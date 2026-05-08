@@ -1,0 +1,477 @@
+<UserControl x:Class="FuelPro.UI.Views.DashboardView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             xmlns:converters="clr-namespace:FuelPro.UI.Converters">
+    <UserControl.Resources>
+        <converters:IndianCurrencyConverter x:Key="CurrencyConv"/>
+        <converters:LitreFormatConverter x:Key="LitreConv"/>
+        <converters:BoolToVisibilityConverter x:Key="BoolToVis"/>
+        <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis"/>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="32,24">
+        <StackPanel>
+            <!-- Header -->
+            <Grid Margin="0,0,0,24">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="Dashboard" FontSize="28" FontWeight="Bold"
+                           Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                <DatePicker Grid.Column="1" SelectedDate="{Binding SelectedDate}"
+                            Width="180" materialDesign:HintAssist.Hint="Select Date"
+                            Style="{StaticResource MaterialDesignOutlinedDatePicker}"/>
+            </Grid>
+
+            <!-- Today's Summary Cards -->
+            <TextBlock Text="Today's Summary" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,12"
+                       Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}"/>
+
+            <UniformGrid Columns="4" Margin="0,0,0,24">
+                <!-- Today's Gross Sales -->
+                <materialDesign:Card Margin="0,0,12,0" Padding="20" UniformCornerRadius="12"
+                                     materialDesign:ElevationAssist.Elevation="Dp4">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <materialDesign:PackIcon Kind="CurrencyInr" Width="24" Height="24"
+                                                     Foreground="#4CAF50"/>
+                            <TextBlock Text="Today's Gross Sales" FontSize="14" Opacity="0.7" Margin="8,0,0,0"/>
+                        </StackPanel>
+                        <TextBlock Text="{Binding TodayTotalSale, Converter={StaticResource CurrencyConv}}"
+                                   FontSize="32" FontWeight="Bold"/>
+                    </StackPanel>
+                </materialDesign:Card>
+
+                <!-- Today's Collection -->
+                <materialDesign:Card Margin="6,0,6,0" Padding="20" UniformCornerRadius="12"
+                                     materialDesign:ElevationAssist.Elevation="Dp4">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <materialDesign:PackIcon Kind="CashCheck" Width="24" Height="24"
+                                                     Foreground="#2196F3"/>
+                            <TextBlock Text="Today's Collection" FontSize="14" Opacity="0.7" Margin="8,0,0,0"/>
+                        </StackPanel>
+                        <TextBlock Text="{Binding TodayCollection, Converter={StaticResource CurrencyConv}}"
+                                   FontSize="32" FontWeight="Bold"/>
+                    </StackPanel>
+                </materialDesign:Card>
+
+                <!-- Pending Mismatch -->
+                <materialDesign:Card Margin="6,0,6,0" Padding="20" UniformCornerRadius="12"
+                                     materialDesign:ElevationAssist.Elevation="Dp4">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <materialDesign:PackIcon Kind="AlertCircle" Width="24" Height="24"
+                                                     Foreground="#FF9800"/>
+                            <TextBlock Text="Pending Mismatch" FontSize="14" Opacity="0.7" Margin="8,0,0,0"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Bottom">
+                            <TextBlock Text="{Binding TodayTotalMismatch, Converter={StaticResource CurrencyConv}}"
+                                       FontSize="32" FontWeight="Bold" Foreground="#FF9800"/>
+                            <TextBlock Text="{Binding PendingMismatchCount, StringFormat='({0} entries)'}"
+                                       FontSize="14" Opacity="0.7" Margin="8,0,0,6" VerticalAlignment="Bottom"/>
+                        </StackPanel>
+                    </StackPanel>
+                </materialDesign:Card>
+
+                <!-- Total Creditors Today -->
+                <materialDesign:Card Margin="12,0,0,0" Padding="20" UniformCornerRadius="12"
+                                     materialDesign:ElevationAssist.Elevation="Dp4">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <materialDesign:PackIcon Kind="CellphoneNfc" Width="24" Height="24"
+                                                     Foreground="#9C27B0"/>
+                            <TextBlock Text="Total Creditors Today" FontSize="14" Opacity="0.7" Margin="8,0,0,0"/>
+                        </StackPanel>
+                        <TextBlock Text="{Binding TotalCreditorsToday, Converter={StaticResource CurrencyConv}}"
+                                   FontSize="32" FontWeight="Bold"/>
+                    </StackPanel>
+                </materialDesign:Card>
+            </UniformGrid>
+
+            <!-- Daily Financial Breakdown -->
+            <TextBlock Text="Daily Financial Breakdown" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,12"
+                       Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}"/>
+            
+            <UniformGrid Columns="8" Margin="0,0,0,24">
+                <!-- PhonePe -->
+                <materialDesign:Card Margin="0,0,6,0" Padding="12" UniformCornerRadius="12" materialDesign:ElevationAssist.Elevation="Dp3">
+                    <StackPanel>
+                        <TextBlock Text="PhonePe" FontSize="14" Opacity="0.7"/>
+                        <TextBlock Text="{Binding TodayTotalPhonePe, Converter={StaticResource CurrencyConv}}" FontSize="22" FontWeight="Bold" Margin="0,4,0,0"/>
+                    </StackPanel>
+                </materialDesign:Card>
+                
+                <!-- PhonePe Card (M) -->
+                <materialDesign:Card Margin="3,0,3,0" Padding="12" UniformCornerRadius="12" materialDesign:ElevationAssist.Elevation="Dp3">
+                    <StackPanel>
+                        <TextBlock Text="P.Pe Card (M)" FontSize="14" Opacity="0.7"/>
+                        <TextBlock Text="{Binding TodayTotalPhonePeCardMorning, Converter={StaticResource CurrencyConv}}" FontSize="22" FontWeight="Bold" Margin="0,4,0,0"/>
+                    </StackPanel>
+                </materialDesign:Card>
+
+                <!-- PhonePe Card (N) -->
+                <materialDesign:Card Margin="3,0,3,0" Padding="12" UniformCornerRadius="12" materialDesign:ElevationAssist.Elevation="Dp3">
+                    <StackPanel>
+                        <TextBlock Text="P.Pe Card (N)" FontSize="14" Opacity="0.7"/>
+                        <TextBlock Text="{Binding TodayTotalPhonePeCardNight, Converter={StaticResource CurrencyConv}}" FontSize="22" FontWeight="Bold" Margin="0,4,0,0"/>
+                    </StackPanel>
+                </materialDesign:Card>
+                
+                <!-- PineLab Card -->
+                <materialDesign:Card Margin="3,0,3,0" Padding="12" UniformCornerRadius="12" materialDesign:ElevationAssist.Elevation="Dp3">
+                    <StackPanel>
+                        <TextBlock Text="PineLab Card" FontSize="14" Opacity="0.7"/>
+                        <TextBlock Text="{Binding TodayTotalCreditCard, Converter={StaticResource CurrencyConv}}" FontSize="22" FontWeight="Bold" Margin="0,4,0,0"/>
+                    </StackPanel>
+                </materialDesign:Card>
+
+                <!-- Petro Card -->
+                <materialDesign:Card Margin="3,0,3,0" Padding="12" UniformCornerRadius="12" materialDesign:ElevationAssist.Elevation="Dp3">
+                    <StackPanel>
+                        <TextBlock Text="Petro Card" FontSize="14" Opacity="0.7"/>
+                        <TextBlock Text="{Binding TodayTotalPetroCard, Converter={StaticResource CurrencyConv}}" FontSize="22" FontWeight="Bold" Margin="0,4,0,0"/>
+                    </StackPanel>
+                </materialDesign:Card>
+
+                <!-- Bank Cash -->
+                <materialDesign:Card Margin="3,0,3,0" Padding="12" UniformCornerRadius="12" materialDesign:ElevationAssist.Elevation="Dp3">
+                    <StackPanel>
+                        <TextBlock Text="Bank Cash" FontSize="14" Opacity="0.7"/>
+                        <TextBlock Text="{Binding TodayTotalBankCash, Converter={StaticResource CurrencyConv}}" FontSize="22" FontWeight="Bold" Margin="0,4,0,0"/>
+                    </StackPanel>
+                </materialDesign:Card>
+
+                <!-- Cash In Hand -->
+                <materialDesign:Card Margin="3,0,3,0" Padding="12" UniformCornerRadius="12" materialDesign:ElevationAssist.Elevation="Dp3">
+                    <StackPanel>
+                        <TextBlock Text="Cash In Hand" FontSize="14" Opacity="0.7"/>
+                        <TextBlock Text="{Binding TodayTotalCashInHand, Converter={StaticResource CurrencyConv}}" FontSize="22" FontWeight="Bold" Margin="0,4,0,0"/>
+                    </StackPanel>
+                </materialDesign:Card>
+
+                <!-- Expenses -->
+                <materialDesign:Card Margin="6,0,0,0" Padding="12" UniformCornerRadius="12" materialDesign:ElevationAssist.Elevation="Dp3">
+                    <StackPanel>
+                        <TextBlock Text="Expenses" FontSize="14" Opacity="0.7"/>
+                        <TextBlock Text="{Binding TodayTotalExpenses, Converter={StaticResource CurrencyConv}}" FontSize="22" FontWeight="Bold" Margin="0,4,0,0"/>
+                    </StackPanel>
+                </materialDesign:Card>
+            </UniformGrid>
+
+            <!-- Shift Cards -->
+            <TextBlock Text="Shift Breakdown" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,12"
+                       Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}"/>
+
+            <UniformGrid Columns="3" Margin="0,0,0,16">
+                <!-- Morning Shift -->
+                <materialDesign:Card Margin="0,0,8,0" Padding="20" UniformCornerRadius="12"
+                                     materialDesign:ElevationAssist.Elevation="Dp3">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                            <materialDesign:PackIcon Kind="WeatherSunny" Width="24" Height="24" Foreground="#FFC107"/>
+                            <TextBlock Text="Shift A — Morning" FontSize="16" FontWeight="SemiBold" Margin="8,0"/>
+                        </StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/><ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/>
+                            </Grid.RowDefinitions>
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Entries:" Opacity="0.6"/>
+                            <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding MorningShift.TotalDsmEntries}" FontWeight="SemiBold"/>
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Sale:" Opacity="0.6"/>
+                            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding MorningShift.TotalFuelSale, Converter={StaticResource CurrencyConv}}" FontWeight="SemiBold"/>
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="Cash:" Opacity="0.6"/>
+                            <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding MorningShift.TotalCash, Converter={StaticResource CurrencyConv}}" FontWeight="SemiBold"/>
+                            <TextBlock Grid.Row="3" Grid.Column="0" Text="Debit:" Opacity="0.6"/>
+                            <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding MorningShift.TotalDebit, Converter={StaticResource CurrencyConv}}" FontWeight="SemiBold"/>
+                        </Grid>
+                    </StackPanel>
+                </materialDesign:Card>
+
+                <!-- Afternoon Shift -->
+                <materialDesign:Card Margin="4,0,4,0" Padding="20" UniformCornerRadius="12"
+                                     materialDesign:ElevationAssist.Elevation="Dp3">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                            <materialDesign:PackIcon Kind="WeatherPartlyCloudy" Width="24" Height="24" Foreground="#FF9800"/>
+                            <TextBlock Text="Shift B — Afternoon" FontSize="16" FontWeight="SemiBold" Margin="8,0"/>
+                        </StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/><ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/>
+                            </Grid.RowDefinitions>
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Entries:" Opacity="0.6"/>
+                            <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding AfternoonShift.TotalDsmEntries}" FontWeight="SemiBold"/>
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Sale:" Opacity="0.6"/>
+                            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding AfternoonShift.TotalFuelSale, Converter={StaticResource CurrencyConv}}" FontWeight="SemiBold"/>
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="Cash:" Opacity="0.6"/>
+                            <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding AfternoonShift.TotalCash, Converter={StaticResource CurrencyConv}}" FontWeight="SemiBold"/>
+                            <TextBlock Grid.Row="3" Grid.Column="0" Text="Debit:" Opacity="0.6"/>
+                            <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding AfternoonShift.TotalDebit, Converter={StaticResource CurrencyConv}}" FontWeight="SemiBold"/>
+                        </Grid>
+                    </StackPanel>
+                </materialDesign:Card>
+
+                <!-- Night Shift -->
+                <materialDesign:Card Margin="8,0,0,0" Padding="20" UniformCornerRadius="12"
+                                     materialDesign:ElevationAssist.Elevation="Dp3">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                            <materialDesign:PackIcon Kind="WeatherNight" Width="24" Height="24" Foreground="#3F51B5"/>
+                            <TextBlock Text="Shift C — Night" FontSize="16" FontWeight="SemiBold" Margin="8,0"/>
+                        </StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/><ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/>
+                            </Grid.RowDefinitions>
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Entries:" Opacity="0.6"/>
+                            <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding NightShift.TotalDsmEntries}" FontWeight="SemiBold"/>
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Sale:" Opacity="0.6"/>
+                            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding NightShift.TotalFuelSale, Converter={StaticResource CurrencyConv}}" FontWeight="SemiBold"/>
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="Cash:" Opacity="0.6"/>
+                            <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding NightShift.TotalCash, Converter={StaticResource CurrencyConv}}" FontWeight="SemiBold"/>
+                            <TextBlock Grid.Row="3" Grid.Column="0" Text="Debit:" Opacity="0.6"/>
+                            <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding NightShift.TotalDebit, Converter={StaticResource CurrencyConv}}" FontWeight="SemiBold"/>
+                        </Grid>
+                    </StackPanel>
+                </materialDesign:Card>
+            </UniformGrid>
+
+            <!-- Bottom Section: Debtors and Repayments -->
+            <Grid Margin="0,0,0,24">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                
+                <!-- Debtors List and Outstanding -->
+                <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                    <TextBlock Text="Today's Debtors List" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,12"
+                               Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}"/>
+                    
+                    <materialDesign:Card Padding="24" UniformCornerRadius="12" Margin="0,0,0,16"
+                                         materialDesign:ElevationAssist.Elevation="Dp3" VerticalAlignment="Top">
+                        <DataGrid ItemsSource="{Binding TodayDebtorsList}" IsReadOnly="True" 
+                                  HeadersVisibility="Column" MaxHeight="400" FontSize="13" AutoGenerateColumns="False">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="DSM" Binding="{Binding DsmName}" Width="100"/>
+                                <DataGridTextColumn Header="Debtor Name" Binding="{Binding DebtorName}" Width="*"/>
+                                <DataGridTextColumn Header="Amount" Binding="{Binding Amount, StringFormat=N2}" Width="100"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </materialDesign:Card>
+
+                    <!-- Outstanding Creditor Balances (Monthly) -->
+                    <TextBlock Text="Outstanding Creditor Balances (This Month)" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,12"
+                               Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}"/>
+                    
+                    <materialDesign:Card Padding="24" UniformCornerRadius="12"
+                                         materialDesign:ElevationAssist.Elevation="Dp3" VerticalAlignment="Top">
+                        <DataGrid ItemsSource="{Binding OutstandingCreditors}" IsReadOnly="True" 
+                                  HeadersVisibility="Column" MaxHeight="300" FontSize="13" AutoGenerateColumns="False">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Creditor Name" Binding="{Binding CreditorName}" Width="*"/>
+                                <DataGridTextColumn Header="Outstanding Amount" Binding="{Binding TotalDebitAmount, StringFormat=N2}" Width="150" FontWeight="Bold"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </materialDesign:Card>
+                </StackPanel>
+
+                <!-- Creditor Repayments Tracking -->
+                <StackPanel Grid.Column="1" Margin="12,0,0,0">
+                    <TextBlock Text="Creditor Repayments Tracker" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,12"
+                               Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}"/>
+                    
+                    <materialDesign:Card Padding="24" UniformCornerRadius="12"
+                                         materialDesign:ElevationAssist.Elevation="Dp3" VerticalAlignment="Top">
+                        <StackPanel>
+                            <DataGrid ItemsSource="{Binding Repayments}" IsReadOnly="True" Margin="0,0,0,16"
+                              HeadersVisibility="Column" MaxHeight="250" FontSize="13" AutoGenerateColumns="False">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Creditor Name" Binding="{Binding CreditorName}" Width="200"/>
+                            <DataGridTextColumn Header="Mode" Binding="{Binding PaymentMode}" Width="120"/>
+                            <DataGridTextColumn Header="Cheque No." Binding="{Binding ChequeNo}" Width="150"/>
+                            <DataGridTextColumn Header="Amount" Binding="{Binding Amount, StringFormat=N2}" Width="120"/>
+                            <DataGridTemplateColumn Header="" Width="50">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Button Style="{StaticResource MaterialDesignIconButton}" Height="28" Width="28"
+                                                Command="{Binding DataContext.DeleteRepaymentCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}">
+                                            <materialDesign:PackIcon Kind="Delete" Width="16" Height="16" Foreground="#F44336"/>
+                                        </Button>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <TextBlock Text="Log New Repayment" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,8" Opacity="0.7"/>
+                    <Grid Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="2*"/>
+                            <ColumnDefinition Width="1.5*"/>
+                            <ColumnDefinition Width="1.5*"/>
+                            <ColumnDefinition Width="1.5*"/>
+                        </Grid.ColumnDefinitions>
+                        
+                        <ComboBox Grid.Column="0" ItemsSource="{Binding Creditors}" SelectedValue="{Binding NewCreditorName, UpdateSourceTrigger=PropertyChanged}" SelectedValuePath="Name" DisplayMemberPath="Name" IsEditable="True" Margin="0,0,12,0"
+                                  materialDesign:HintAssist.Hint="Creditor Name" materialDesign:HintAssist.IsFloating="True"
+                                  Style="{StaticResource MaterialDesignOutlinedComboBox}"/>
+                        
+                        <ComboBox Grid.Column="1" ItemsSource="{Binding PaymentModes}" SelectedItem="{Binding NewRepaymentMode}" Margin="0,0,12,0"
+                                  materialDesign:HintAssist.Hint="Payment Mode" materialDesign:HintAssist.IsFloating="True"
+                                  Style="{StaticResource MaterialDesignOutlinedComboBox}"/>
+                        
+                        <TextBox Grid.Column="2" Text="{Binding NewChequeNumber, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,12,0"
+                                 materialDesign:HintAssist.Hint="Cheque Number" materialDesign:HintAssist.IsFloating="True">
+                            <TextBox.Style>
+                                <Style TargetType="TextBox" BasedOn="{StaticResource MaterialDesignOutlinedTextBox}">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding NewRepaymentMode}" Value="Cheque">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBox.Style>
+                        </TextBox>
+                        
+                        <TextBox Grid.Column="3" Text="{Binding NewRepaymentAmount, UpdateSourceTrigger=LostFocus, StringFormat=F2}"
+                                 materialDesign:HintAssist.Hint="Amount Received" materialDesign:HintAssist.IsFloating="True"
+                                 Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                    </Grid>
+                    <StackPanel Orientation="Horizontal">
+                        <Button Content="Log Repayment" Command="{Binding AddRepaymentCommand}" Height="40" Padding="24,0"
+                                Style="{StaticResource MaterialDesignRaisedButton}" HorizontalAlignment="Left" Margin="0,0,16,0"/>
+                        <TextBlock Text="{Binding RepaymentStatusMessage}" VerticalAlignment="Center" FontSize="14"/>
+                    </StackPanel>
+                </StackPanel>
+            </materialDesign:Card>
+            </StackPanel>
+            </Grid>
+
+            <!-- ════════ AGS DAILY FUEL SUMMARY ════════ -->
+            <StackPanel Margin="0,0,0,24" Visibility="{Binding HasAgsData, Converter={StaticResource BoolToVis}}">
+                <Grid Margin="0,0,0,12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="AGS Fuel Data Summary" FontSize="18" FontWeight="SemiBold"
+                               Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}"/>
+                    <Border Grid.Column="1" Background="#E8F5E9" CornerRadius="12" Padding="12,6">
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="CheckCircle" Foreground="#4CAF50" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBlock Text="{Binding AgsStatusLabel}" Foreground="#2E7D32" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+                <!-- AGS Day Totals & Tank Stock -->
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Fuel Sales (AGS) -->
+                    <materialDesign:Card Grid.Column="0" Margin="0,0,8,0" Padding="16" UniformCornerRadius="12" materialDesign:ElevationAssist.Elevation="Dp3">
+                        <StackPanel>
+                            <TextBlock Text="Day Total Fuel Sale (Litres)" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,12"/>
+                            <UniformGrid Columns="3">
+                                <StackPanel>
+                                    <TextBlock Text="HSD" Opacity="0.7"/>
+                                    <TextBlock Text="{Binding AgsDayHsd, StringFormat={}{0:N0}}" FontSize="20" FontWeight="Bold" Foreground="#FFA000"/>
+                                </StackPanel>
+                                <StackPanel>
+                                    <TextBlock Text="MS-I" Opacity="0.7"/>
+                                    <TextBlock Text="{Binding AgsDayMsI, StringFormat={}{0:N0}}" FontSize="20" FontWeight="Bold" Foreground="#1E88E5"/>
+                                </StackPanel>
+                                <StackPanel>
+                                    <TextBlock Text="MS-II" Opacity="0.7"/>
+                                    <TextBlock Text="{Binding AgsDayMsII, StringFormat={}{0:N0}}" FontSize="20" FontWeight="Bold" Foreground="#43A047"/>
+                                </StackPanel>
+                            </UniformGrid>
+                            <Border BorderThickness="0,1,0,0" BorderBrush="#E0E0E0" Margin="0,12,0,8" Padding="0,8,0,0">
+                                <Grid>
+                                    <TextBlock Text="Total Sales:" FontWeight="SemiBold"/>
+                                    <TextBlock Text="{Binding AgsDayTotal, StringFormat={}{0:N0} L}" HorizontalAlignment="Right" FontWeight="Bold" FontSize="16"/>
+                                </Grid>
+                            </Border>
+                        </StackPanel>
+                    </materialDesign:Card>
+
+                    <!-- Tank Stocks -->
+                    <materialDesign:Card Grid.Column="1" Margin="8,0,0,0" Padding="16" UniformCornerRadius="12" materialDesign:ElevationAssist.Elevation="Dp3">
+                        <StackPanel>
+                            <TextBlock Text="Tank Stock Levels (Closing)" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,12"/>
+                            <UniformGrid Columns="3">
+                                <StackPanel Margin="0,0,8,0">
+                                    <TextBlock Text="Tank 1 (HSD)" Opacity="0.7"/>
+                                    <TextBlock Text="{Binding HsdClosingStock, StringFormat={}{0:N0} L}" FontSize="16" FontWeight="Bold" Margin="0,4,0,2"/>
+                                    <ProgressBar Value="{Binding HsdLevelPct}" Maximum="100" Height="6" Foreground="#FFA000"/>
+                                </StackPanel>
+                                <StackPanel Margin="4,0,4,0">
+                                    <TextBlock Text="Tank 2 (MS-I)" Opacity="0.7"/>
+                                    <TextBlock Text="{Binding MsIClosingStock, StringFormat={}{0:N0} L}" FontSize="16" FontWeight="Bold" Margin="0,4,0,2"/>
+                                    <ProgressBar Value="{Binding MsILevelPct}" Maximum="100" Height="6" Foreground="#1E88E5"/>
+                                </StackPanel>
+                                <StackPanel Margin="8,0,0,0">
+                                    <TextBlock Text="Tank 3 (MS-II)" Opacity="0.7"/>
+                                    <TextBlock Text="{Binding MsIIClosingStock, StringFormat={}{0:N0} L}" FontSize="16" FontWeight="Bold" Margin="0,4,0,2"/>
+                                    <ProgressBar Value="{Binding MsIILevelPct}" Maximum="100" Height="6" Foreground="#43A047"/>
+                                </StackPanel>
+                            </UniformGrid>
+                        </StackPanel>
+                    </materialDesign:Card>
+                </Grid>
+                
+                <!-- AGS Nozzle Breakdown Table -->
+                <materialDesign:Card Margin="0,16,0,0" Padding="0" UniformCornerRadius="12" materialDesign:ElevationAssist.Elevation="Dp3">
+                    <StackPanel>
+                        <Border Background="{DynamicResource MaterialDesign.Brush.Primary.Light}" Padding="16,12" CornerRadius="12,12,0,0">
+                            <TextBlock Text="Nozzle-wise Dispatch Summary (All Shifts)" Foreground="White" FontWeight="SemiBold"/>
+                        </Border>
+                        <DataGrid ItemsSource="{Binding NozzleDaySummaries}" AutoGenerateColumns="False" IsReadOnly="True"
+                                  HeadersVisibility="Column" GridLinesVisibility="Horizontal" MaxHeight="300" FontSize="12">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Noz" Binding="{Binding NozzleNumber}" Width="50"/>
+                                <DataGridTextColumn Header="Pump" Binding="{Binding PumpDisplay}" Width="60"/>
+                                <DataGridTextColumn Header="Fuel" Binding="{Binding FuelType}" Width="60"/>
+                                <DataGridTextColumn Header="Shift A (L)" Binding="{Binding ShiftALitres, StringFormat=N2}" Width="90"/>
+                                <DataGridTextColumn Header="Shift B (L)" Binding="{Binding ShiftBLitres, StringFormat=N2}" Width="90"/>
+                                <DataGridTextColumn Header="Shift C (L)" Binding="{Binding ShiftCLitres, StringFormat=N2}" Width="90"/>
+                                <DataGridTextColumn Header="Day Total (L)" Binding="{Binding DayTotal, StringFormat=N2}" Width="100" FontWeight="Bold"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </StackPanel>
+                </materialDesign:Card>
+            </StackPanel>
+            
+            <materialDesign:Card Margin="0,0,0,24" Padding="20" UniformCornerRadius="12" Background="#FFF3E0"
+                                 Visibility="{Binding HasAgsData, Converter={StaticResource InverseBoolToVis}}">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                    <materialDesign:PackIcon Kind="InformationOutline" Width="24" Height="24" Foreground="#FF9800" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding AgsStatusLabel}" Foreground="#E65100" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                </StackPanel>
+            </materialDesign:Card>
+
+            <!-- Loading indicator -->
+            <ProgressBar IsIndeterminate="{Binding IsLoading}"
+                         Visibility="{Binding IsLoading, Converter={StaticResource BooleanToVisibilityConverter}}"
+                         Style="{StaticResource MaterialDesignLinearProgressBar}" Margin="0,8"/>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

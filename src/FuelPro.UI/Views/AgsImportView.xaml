@@ -1,0 +1,382 @@
+<UserControl x:Class="FuelPro.UI.Views.AgsImportView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             xmlns:converters="clr-namespace:FuelPro.UI.Converters"
+             xmlns:viewmodels="clr-namespace:FuelPro.UI.ViewModels"
+             mc:Ignorable="d"
+             d:DataContext="{d:DesignInstance Type=viewmodels:AgsImportViewModel}"
+             d:DesignHeight="900" d:DesignWidth="1200"
+             Loaded="UserControl_Loaded">
+
+    <UserControl.Resources>
+        <converters:BoolToVisibilityConverter         x:Key="BoolToVis"/>
+        <converters:InverseBoolToVisibilityConverter  x:Key="InverseBoolToVis"/>
+        <converters:ImportWarningToColorConverter      x:Key="WarnColor"/>
+        <converters:StringToVisibilityConverter        x:Key="StringToVis"/>
+        <converters:InverseBoolConverter               x:Key="InverseBool"/>
+
+        <Style x:Key="SectionCard" TargetType="materialDesign:Card">
+            <Setter Property="Margin" Value="0,0,0,12"/>
+            <Setter Property="Padding" Value="16"/>
+            <Setter Property="UniformCornerRadius" Value="8"/>
+        </Style>
+
+        <Style x:Key="SectionTitle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{DynamicResource MaterialDesign.Brush.Primary}"/>
+            <Setter Property="Margin" Value="0,0,0,10"/>
+        </Style>
+
+        <Style TargetType="DataGrid" BasedOn="{StaticResource MaterialDesignDataGrid}">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource MaterialDesign.Brush.Divider}"/>
+            <Setter Property="HorizontalGridLinesBrush" Value="{DynamicResource MaterialDesign.Brush.Divider}"/>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Background="{DynamicResource MaterialDesign.Brush.Background}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>  <!-- Header bar -->
+            <RowDefinition Height="*"/>     <!-- Scrollable content -->
+        </Grid.RowDefinitions>
+
+        <!-- ══════════════ TOP HEADER BAR ══════════════ -->
+        <materialDesign:Card Grid.Row="0" Margin="16,16,16,0" Padding="16"
+                             UniformCornerRadius="8"
+                             materialDesign:ElevationAssist.Elevation="Dp2">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Title -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="0,0,24,0">
+                    <materialDesign:PackIcon Kind="FileImport" Width="26" Height="26"
+                                             Foreground="{DynamicResource MaterialDesign.Brush.Primary}"
+                                             VerticalAlignment="Center" Margin="0,0,10,0"/>
+                    <TextBlock Text="AGS Report Import" FontSize="20" FontWeight="Bold"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+
+                <!-- Busy indicator -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"
+                            Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}">
+                    <ProgressBar Style="{StaticResource MaterialDesignCircularProgressBar}"
+                                 IsIndeterminate="True" Width="18" Height="18" Margin="0,0,10,0"/>
+                    <TextBlock Text="{Binding BusyMessage}" FontSize="13" Opacity="0.8"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+
+                <!-- Status message (not busy) -->
+                <TextBlock Grid.Column="1" Text="{Binding StatusMessage}"
+                           Visibility="{Binding IsBusy, Converter={StaticResource InverseBoolToVis}}"
+                           Foreground="{DynamicResource MaterialDesign.Brush.Secondary}"
+                           FontSize="12" VerticalAlignment="Center" TextWrapping="Wrap"
+                           Margin="0,0,16,0"/>
+
+                <!-- Refresh history button -->
+                <Button Grid.Column="2"
+                        Command="{Binding LoadHistoryCommand}"
+                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                        Padding="12,6" ToolTip="Refresh import history">
+                    <materialDesign:PackIcon Kind="Refresh" Width="18" Height="18"/>
+                </Button>
+            </Grid>
+        </materialDesign:Card>
+
+        <!-- ══════════════ MAIN SCROLLABLE CONTENT ══════════════ -->
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                      Padding="16,12,16,16">
+            <StackPanel>
+
+                <!-- ══ STEP 1: UPLOAD PANEL ══ -->
+                <materialDesign:Card Style="{StaticResource SectionCard}">
+                    <StackPanel>
+                        <TextBlock Text="Step 1 — Select Date, Shift &amp; PDF" Style="{StaticResource SectionTitle}"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <!-- Date Picker -->
+                            <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                                <TextBlock Text="Shift Date" FontSize="11" Opacity="0.6" Margin="0,0,0,4"/>
+                                <DatePicker SelectedDate="{Binding SelectedDate, Mode=TwoWay}"
+                                            Style="{StaticResource MaterialDesignDatePicker}"
+                                            FontSize="14"/>
+                            </StackPanel>
+
+                            <!-- Shift Selector -->
+                            <StackPanel Grid.Column="1" Margin="0,0,16,0">
+                                <TextBlock Text="Shift" FontSize="11" Opacity="0.6" Margin="0,0,0,8"/>
+                                <StackPanel Orientation="Horizontal">
+                                    <RadioButton Content="Shift A" GroupName="AgsShift" Tag="A"
+                                                 Style="{StaticResource MaterialDesignRadioButton}"
+                                                 IsChecked="True" Margin="0,0,12,0"
+                                                 Checked="ShiftRadio_Checked"/>
+                                    <RadioButton Content="Shift B" GroupName="AgsShift" Tag="B"
+                                                 Style="{StaticResource MaterialDesignRadioButton}"
+                                                 Margin="0,0,12,0"
+                                                 Checked="ShiftRadio_Checked"/>
+                                    <RadioButton Content="Shift C" GroupName="AgsShift" Tag="C"
+                                                 Style="{StaticResource MaterialDesignRadioButton}"
+                                                 Checked="ShiftRadio_Checked"/>
+                                </StackPanel>
+                            </StackPanel>
+
+                            <!-- Browse + Parse Buttons -->
+                            <StackPanel Grid.Column="3" VerticalAlignment="Bottom">
+                                <Button Command="{Binding BrowsePdfCommand}"
+                                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                                        Padding="16,8" Margin="0,0,0,6">
+                                    <StackPanel Orientation="Horizontal">
+                                        <materialDesign:PackIcon Kind="FolderOpen" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <TextBlock Text="Browse PDF" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Button>
+                                <TextBlock Text="{Binding SelectedPdfFileName}" FontSize="10"
+                                           Opacity="0.6" TextTrimming="CharacterEllipsis"
+                                           MaxWidth="200" Margin="0,0,0,6"
+                                           Visibility="{Binding SelectedPdfFileName, Converter={StaticResource StringToVis}}"/>
+                                <Button Command="{Binding ParsePdfCommand}"
+                                        Style="{StaticResource MaterialDesignRaisedButton}"
+                                        Padding="16,8"
+                                        IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <materialDesign:PackIcon Kind="Magnify" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <TextBlock Text="Parse &amp; Preview" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Button>
+                                <Button Command="{Binding ExportParseDumpCommand}"
+                                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                                        Padding="16,8" Margin="0,6,0,0"
+                                        IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <materialDesign:PackIcon Kind="FileDocumentOutline" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <TextBlock Text="Export Parser Debug" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </materialDesign:Card>
+
+                <!-- ══ STEP 2: PREVIEW ══ -->
+                <StackPanel Visibility="{Binding IsPreviewVisible, Converter={StaticResource BoolToVis}}">
+
+                    <!-- Preview Status Banner -->
+                    <Border Background="{DynamicResource MaterialDesign.Brush.Primary}"
+                            CornerRadius="8" Margin="0,0,0,12" Padding="16,12">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <materialDesign:PackIcon Grid.Column="0" Kind="FileCheck" Width="22" Height="22"
+                                                     Foreground="White" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="1" Text="{Binding PreviewStatusText}" Foreground="White"
+                                       FontSize="13" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="2" Text="{Binding PreviewPeriod}" Foreground="White"
+                                       Opacity="0.8" FontSize="12" VerticalAlignment="Center"/>
+                        </Grid>
+                    </Border>
+
+                    <!-- Summary Totals -->
+                    <UniformGrid Columns="3" Margin="0,0,0,12">
+                        <materialDesign:Card Margin="0,0,6,0" Padding="16" UniformCornerRadius="8">
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                    <Ellipse Width="10" Height="10" Fill="#FFA000" Margin="0,0,6,0"/>
+                                    <TextBlock Text="HSD" FontWeight="Bold" FontSize="12"/>
+                                </StackPanel>
+                                <TextBlock Text="{Binding PreviewHsdTotal, StringFormat={}{0:N0} L}"
+                                           FontSize="24" FontWeight="Bold"
+                                           Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                            </StackPanel>
+                        </materialDesign:Card>
+                        <materialDesign:Card Margin="3,0" Padding="16" UniformCornerRadius="8">
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                    <Ellipse Width="10" Height="10" Fill="#1E88E5" Margin="0,0,6,0"/>
+                                    <TextBlock Text="MS-I" FontWeight="Bold" FontSize="12"/>
+                                </StackPanel>
+                                <TextBlock Text="{Binding PreviewMsITotal, StringFormat={}{0:N0} L}"
+                                           FontSize="24" FontWeight="Bold"
+                                           Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                            </StackPanel>
+                        </materialDesign:Card>
+                        <materialDesign:Card Margin="6,0,0,0" Padding="16" UniformCornerRadius="8">
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                    <Ellipse Width="10" Height="10" Fill="#43A047" Margin="0,0,6,0"/>
+                                    <TextBlock Text="MS-II" FontWeight="Bold" FontSize="12"/>
+                                </StackPanel>
+                                <TextBlock Text="{Binding PreviewMsIITotal, StringFormat={}{0:N0} L}"
+                                           FontSize="24" FontWeight="Bold"
+                                           Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                            </StackPanel>
+                        </materialDesign:Card>
+                    </UniformGrid>
+
+                    <!-- Validation Warnings -->
+                    <materialDesign:Card Style="{StaticResource SectionCard}"
+                                         Visibility="{Binding ValidationWarnings.Count, Converter={StaticResource BoolToVis}}">
+                        <StackPanel>
+                            <TextBlock Text="Validation Results" Style="{StaticResource SectionTitle}"/>
+                            <ItemsControl ItemsSource="{Binding ValidationWarnings}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border CornerRadius="4" Padding="10,7" Margin="0,3"
+                                                Background="{Binding Severity, Converter={StaticResource WarnColor}}">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="{Binding SeverityIcon, Mode=OneWay}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                                <TextBlock Text="{Binding Message, Mode=OneWay}" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </materialDesign:Card>
+
+                    <!-- Parse Log -->
+                    <materialDesign:Card Style="{StaticResource SectionCard}"
+                                         Visibility="{Binding ParseLogEntries.Count, Converter={StaticResource BoolToVis}}">
+                        <StackPanel>
+                            <TextBlock Text="Parser Strategy Log" Style="{StaticResource SectionTitle}"/>
+                            <ItemsControl ItemsSource="{Binding ParseLogEntries}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding}" FontFamily="Consolas" FontSize="12" Margin="0,2,0,2"/>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </materialDesign:Card>
+
+                    <!-- Nozzle Readings Table -->
+                    <materialDesign:Card Style="{StaticResource SectionCard}">
+                        <StackPanel>
+                            <TextBlock Text="Nozzle Readings (Step 2 — Preview)" Style="{StaticResource SectionTitle}"/>
+                            <DataGrid ItemsSource="{Binding ParsedNozzleReadings}"
+                                      AutoGenerateColumns="False" IsReadOnly="True"
+                                      CanUserAddRows="False" CanUserSortColumns="True"
+                                      GridLinesVisibility="Horizontal" HeadersVisibility="Column"
+                                      MaxHeight="320" FontSize="12">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Nozzle" Binding="{Binding NozzleNumber}" Width="60"/>
+                                    <DataGridTextColumn Header="Fuel"   Binding="{Binding FuelType}"     Width="65"/>
+                                    <DataGridTextColumn Header="Pump"   Binding="{Binding PumpNumber, StringFormat=P{0}}" Width="55"/>
+                                    <DataGridTextColumn Header="Opening (L)"  Binding="{Binding OpeningReading, StringFormat=N2}" Width="110"/>
+                                    <DataGridTextColumn Header="Closing (L)"  Binding="{Binding ClosingReading, StringFormat=N2}" Width="110"/>
+                                    <DataGridTextColumn Header="Sale (L)"     Binding="{Binding SaleLitres,     StringFormat=N2}" Width="90"/>
+                                    <DataGridTextColumn Header="Test Ded."    Binding="{Binding TestingDeduction, StringFormat=N2}" Width="85"/>
+                                    <DataGridTextColumn Header="Net Sale (L)" Binding="{Binding NetSaleLitres,  StringFormat=N2}" Width="100"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </StackPanel>
+                    </materialDesign:Card>
+
+                    <!-- Tank Stock Table -->
+                    <materialDesign:Card Style="{StaticResource SectionCard}">
+                        <StackPanel>
+                            <TextBlock Text="Tank Stock Readings" Style="{StaticResource SectionTitle}"/>
+                            <DataGrid ItemsSource="{Binding ParsedTankStocks}"
+                                      AutoGenerateColumns="False" IsReadOnly="True"
+                                      CanUserAddRows="False"
+                                      GridLinesVisibility="Horizontal" HeadersVisibility="Column"
+                                      FontSize="12">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Tank"      Binding="{Binding TankNumber, StringFormat=Tank {0}}" Width="65"/>
+                                    <DataGridTextColumn Header="Fuel"      Binding="{Binding FuelType}" Width="65"/>
+                                    <DataGridTextColumn Header="Open Dip (mm)"  Binding="{Binding OpeningDipMM,  StringFormat=N0}" Width="100"/>
+                                    <DataGridTextColumn Header="Close Dip (mm)" Binding="{Binding ClosingDipMM,  StringFormat=N0}" Width="105"/>
+                                    <DataGridTextColumn Header="Opening Stock (L)" Binding="{Binding OpeningStockLitres, StringFormat=N0}" Width="130"/>
+                                    <DataGridTextColumn Header="Closing Stock (L)" Binding="{Binding ClosingStockLitres, StringFormat=N0}" Width="130"/>
+                                    <DataGridTextColumn Header="Dispensed (L)"     Binding="{Binding FuelDispensedLitres, StringFormat=N0}" Width="110"/>
+                                    <DataGridTextColumn Header="Receipt (L)"       Binding="{Binding ReceiptLitres, StringFormat=N0}" Width="90"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </StackPanel>
+                    </materialDesign:Card>
+
+                    <!-- Step 3: Action Buttons -->
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,16">
+                        <Button Command="{Binding ReuploadCommand}"
+                                Style="{StaticResource MaterialDesignOutlinedButton}"
+                                Padding="20,10" Margin="0,0,12,0">
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="ArrowLeft" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Re-upload" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Command="{Binding ConfirmSaveCommand}"
+                                Style="{StaticResource MaterialDesignRaisedButton}"
+                                Padding="24,10"
+                                Background="#388E3C" BorderBrush="#388E3C" Foreground="White"
+                                IsEnabled="{Binding HasBlockingErrors, Converter={StaticResource InverseBool}}">
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="CheckBold" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Confirm &amp; Save Import" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+
+                </StackPanel>
+                <!-- End Step 2 Preview -->
+
+                <!-- ══ IMPORT HISTORY ══ -->
+                <materialDesign:Card Style="{StaticResource SectionCard}">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                            <TextBlock Text="Import History" Style="{StaticResource SectionTitle}" Margin="0"/>
+                            <TextBlock Text="(last 30 records)" FontSize="11" Opacity="0.55"
+                                       VerticalAlignment="Center" Margin="10,0,0,0"/>
+                        </StackPanel>
+                        <DataGrid ItemsSource="{Binding ImportHistory}"
+                                  AutoGenerateColumns="False" IsReadOnly="False"
+                                  CanUserAddRows="False"
+                                  GridLinesVisibility="Horizontal" HeadersVisibility="Column"
+                                  MaxHeight="280" FontSize="12">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Date"     Binding="{Binding ImportDate, StringFormat=dd-MMM-yyyy}" Width="100"/>
+                                <DataGridTextColumn Header="Shift"    Binding="{Binding ShiftType}" Width="55"/>
+                                <DataGridTextColumn Header="PDF File" Binding="{Binding PdfFileName}" Width="280"/>
+                                <DataGridTextColumn Header="HSD (L)"  Binding="{Binding TotalHsdLitres,  StringFormat=N0}" Width="80"/>
+                                <DataGridTextColumn Header="MS-I (L)" Binding="{Binding TotalMsILitres,  StringFormat=N0}" Width="80"/>
+                                <DataGridTextColumn Header="MS-II (L)" Binding="{Binding TotalMsIILitres, StringFormat=N0}" Width="85"/>
+                                <DataGridTextColumn Header="Imported At"
+                                                    Binding="{Binding ImportedAt, StringFormat=dd-MMM hh:mm tt}" Width="130"/>
+                                <DataGridTemplateColumn Header="Action" Width="100">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Button Command="{Binding DataContext.ReimportCommand,
+                                                        RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                    CommandParameter="{Binding}"
+                                                    Style="{StaticResource MaterialDesignOutlinedButton}"
+                                                    Padding="8,2" FontSize="11">
+                                                Re-import
+                                            </Button>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </StackPanel>
+                </materialDesign:Card>
+
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

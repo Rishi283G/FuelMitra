@@ -1,0 +1,288 @@
+<UserControl x:Class="FuelPro.UI.Views.SettingsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="32,24">
+        <StackPanel MaxWidth="800">
+            <TextBlock Text="Settings" FontSize="28" FontWeight="Bold"
+                       Foreground="{DynamicResource MaterialDesign.Brush.Primary}" Margin="0,0,0,24"/>
+
+            <!-- Station Settings -->
+            <materialDesign:Card Padding="24" UniformCornerRadius="12" Margin="0,0,0,20"
+                                 materialDesign:ElevationAssist.Elevation="Dp3">
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                        <materialDesign:PackIcon Kind="GasStation" Width="24" Height="24"
+                                                 Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                        <TextBlock Text="Station &amp; Fuel Rates" FontSize="18" FontWeight="SemiBold" Margin="8,0"
+                                   Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}"/>
+                    </StackPanel>
+
+                    <TextBox Text="{Binding PumpStationName, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,16"
+                             materialDesign:HintAssist.Hint="Pump Station Name" materialDesign:HintAssist.IsFloating="True"
+                             Style="{StaticResource MaterialDesignOutlinedTextBox}" FontSize="16"/>
+
+                    <Grid Margin="0,0,0,16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBox Grid.Column="0" Text="{Binding HsdRate, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0"
+                                 materialDesign:HintAssist.Hint="HSD Rate (₹/L)" materialDesign:HintAssist.IsFloating="True"
+                                 Style="{StaticResource MaterialDesignOutlinedTextBox}" FontSize="16"/>
+                        <TextBox Grid.Column="1" Text="{Binding MsIRate, UpdateSourceTrigger=PropertyChanged}" Margin="8,0,8,0"
+                                 materialDesign:HintAssist.Hint="MS-I Rate (₹/L)" materialDesign:HintAssist.IsFloating="True"
+                                 Style="{StaticResource MaterialDesignOutlinedTextBox}" FontSize="16"/>
+                        <TextBox Grid.Column="2" Text="{Binding MsIIRate, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,0"
+                                 materialDesign:HintAssist.Hint="MS-II Rate (₹/L)" materialDesign:HintAssist.IsFloating="True"
+                                 Style="{StaticResource MaterialDesignOutlinedTextBox}" FontSize="16"/>
+                    </Grid>
+
+                    <StackPanel Orientation="Horizontal">
+                        <Button Content="Save Settings" Command="{Binding SaveSettingsCommand}" Height="40" Padding="24,0"
+                                Style="{StaticResource MaterialDesignRaisedButton}" Margin="0,0,16,0"/>
+                        <TextBlock Text="{Binding StatusMessage}" VerticalAlignment="Center" FontSize="14"/>
+                    </StackPanel>
+
+                    <TextBlock Text="{Binding LastUpdated, StringFormat='Last updated: {0}'}" Opacity="0.5"
+                               FontSize="12" Margin="0,12,0,0"/>
+                </StackPanel>
+            </materialDesign:Card>
+
+            <!-- Change PIN -->
+            <materialDesign:Card Padding="24" UniformCornerRadius="12" Margin="0,0,0,20"
+                                 materialDesign:ElevationAssist.Elevation="Dp3">
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                        <materialDesign:PackIcon Kind="Lock" Width="24" Height="24"
+                                                 Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                        <TextBlock Text="Change PIN" FontSize="18" FontWeight="SemiBold" Margin="8,0"
+                                   Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}"/>
+                    </StackPanel>
+
+                    <Grid Margin="0,0,0,16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/><ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBox Grid.Column="0" Text="{Binding CurrentPin, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0"
+                                 materialDesign:HintAssist.Hint="Current PIN" materialDesign:HintAssist.IsFloating="True"
+                                 Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                        <TextBox Grid.Column="1" Text="{Binding NewPinChange, UpdateSourceTrigger=PropertyChanged}" Margin="8,0,0,0"
+                                 materialDesign:HintAssist.Hint="New PIN" materialDesign:HintAssist.IsFloating="True"
+                                 Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                    </Grid>
+
+                    <StackPanel Orientation="Horizontal">
+                        <Button Content="Change PIN" Command="{Binding ChangePinCommand}" Height="40" Padding="24,0"
+                                Style="{StaticResource MaterialDesignRaisedButton}" Margin="0,0,16,0"/>
+                        <TextBlock Text="{Binding PinStatusMessage}" VerticalAlignment="Center" FontSize="14"/>
+                    </StackPanel>
+                </StackPanel>
+            </materialDesign:Card>
+
+            <!-- User Management -->
+            <materialDesign:Card Padding="24" UniformCornerRadius="12"
+                                 materialDesign:ElevationAssist.Elevation="Dp3">
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                        <materialDesign:PackIcon Kind="AccountGroup" Width="24" Height="24"
+                                                 Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                        <TextBlock Text="User Management" FontSize="18" FontWeight="SemiBold" Margin="8,0"
+                                   Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}"/>
+                    </StackPanel>
+
+                    <!-- Users List -->
+                    <DataGrid ItemsSource="{Binding Users}" IsReadOnly="True" Margin="0,0,0,16"
+                              HeadersVisibility="Column" MaxHeight="200" FontSize="13">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Username" Binding="{Binding Username}" Width="*"/>
+                            <DataGridTextColumn Header="Role" Binding="{Binding Role}" Width="100"/>
+                            <DataGridCheckBoxColumn Header="Active" Binding="{Binding IsActive}" Width="70"/>
+                            <DataGridTemplateColumn Header="" Width="50">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Button Style="{StaticResource MaterialDesignIconButton}" Height="28" Width="28"
+                                                Command="{Binding DataContext.DeleteUserCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}">
+                                            <materialDesign:PackIcon Kind="Delete" Width="16" Height="16" Foreground="#F44336"/>
+                                        </Button>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <!-- Add User -->
+                    <TextBlock Text="Add New User" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,8" Opacity="0.7"/>
+                    <Grid Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="120"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBox Grid.Column="0" Text="{Binding NewUsername, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0"
+                                 materialDesign:HintAssist.Hint="Username" materialDesign:HintAssist.IsFloating="True"
+                                 Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                        <TextBox Grid.Column="1" Text="{Binding NewPin, UpdateSourceTrigger=PropertyChanged}" Margin="8,0,8,0"
+                                 materialDesign:HintAssist.Hint="PIN" materialDesign:HintAssist.IsFloating="True"
+                                 Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                        <ComboBox Grid.Column="2" ItemsSource="{Binding RoleOptions}" SelectedItem="{Binding NewRole}"
+                                  materialDesign:HintAssist.Hint="Role" materialDesign:HintAssist.IsFloating="True"
+                                  Style="{StaticResource MaterialDesignOutlinedComboBox}"/>
+                    </Grid>
+                    <Button Content="Create User" Command="{Binding CreateUserCommand}" Height="40" Padding="24,0"
+                            Style="{StaticResource MaterialDesignRaisedButton}" HorizontalAlignment="Left"/>
+                </StackPanel>
+            </materialDesign:Card>
+
+    <!-- DSM Profile Management -->
+    <materialDesign:Card Padding="24" UniformCornerRadius="12" Margin="0,20,0,0"
+                         materialDesign:ElevationAssist.Elevation="Dp3">
+        <StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                <materialDesign:PackIcon Kind="AccountHardHat" Width="24" Height="24"
+                                         Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                <TextBlock Text="DSM Profile Management" FontSize="18" FontWeight="SemiBold" Margin="8,0"
+                           Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}"/>
+            </StackPanel>
+
+            <DataGrid ItemsSource="{Binding DsmProfiles}" IsReadOnly="True" Margin="0,0,0,16"
+                      HeadersVisibility="Column" MaxHeight="200" FontSize="13" AutoGenerateColumns="False">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="DSM Name" Binding="{Binding DsmName}" Width="*"/>
+                    <DataGridTemplateColumn Header="" Width="50">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Button Style="{StaticResource MaterialDesignIconButton}" Height="28" Width="28"
+                                        Command="{Binding DataContext.DeleteDsmProfileCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding}">
+                                    <materialDesign:PackIcon Kind="Delete" Width="16" Height="16" Foreground="#F44336"/>
+                                </Button>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+
+            <TextBlock Text="Add New DSM" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,8" Opacity="0.7"/>
+            <Grid Margin="0,0,0,12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBox Grid.Column="0" Text="{Binding NewDsmName, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,0"
+                         materialDesign:HintAssist.Hint="DSM Name" materialDesign:HintAssist.IsFloating="True"
+                         Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+            </Grid>
+            <StackPanel Orientation="Horizontal">
+                <Button Content="Add DSM" Command="{Binding AddDsmProfileCommand}" Height="40" Padding="24,0"
+                        Style="{StaticResource MaterialDesignRaisedButton}" HorizontalAlignment="Left" Margin="0,0,16,0"/>
+                <TextBlock Text="{Binding DsmStatusMessage}" VerticalAlignment="Center" FontSize="14"/>
+            </StackPanel>
+        </StackPanel>
+    </materialDesign:Card>
+
+    <!-- Creditor Management Card -->
+    <materialDesign:Card Margin="0,0,0,24" Padding="24" UniformCornerRadius="16" Background="White" materialDesign:ElevationAssist.Elevation="Dp2">
+        <StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                <materialDesign:PackIcon Kind="AccountMultiple" Width="24" Height="24"
+                                         Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                <TextBlock Text="Creditor Management" FontSize="18" FontWeight="SemiBold" Margin="8,0"
+                           Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}"/>
+            </StackPanel>
+
+            <DataGrid ItemsSource="{Binding Creditors}" IsReadOnly="True" Margin="0,0,0,16"
+                      HeadersVisibility="Column" MaxHeight="250" FontSize="13" AutoGenerateColumns="False">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Creditor Name" Binding="{Binding Name}" Width="*"/>
+                    <DataGridTextColumn Header="Phone" Binding="{Binding Phone}" Width="120"/>
+                    <DataGridTemplateColumn Header="" Width="50">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Button Style="{StaticResource MaterialDesignIconButton}" Height="28" Width="28"
+                                        Command="{Binding DataContext.DeleteCreditorCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding}"
+                                        ToolTip="Delete Creditor (will be hidden from dropdowns)">
+                                    <materialDesign:PackIcon Kind="Delete" Width="16" Height="16" Foreground="#F44336"/>
+                                </Button>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+
+            <TextBlock Text="Add New Creditor" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,8" Opacity="0.7"/>
+            <Grid Margin="0,0,0,12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="16"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBox Grid.Column="0" Text="{Binding NewCreditorName, UpdateSourceTrigger=PropertyChanged}"
+                         materialDesign:HintAssist.Hint="Creditor Name (Required)" materialDesign:HintAssist.IsFloating="True"
+                         Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                <TextBox Grid.Column="2" Text="{Binding NewCreditorPhone, UpdateSourceTrigger=PropertyChanged}"
+                         materialDesign:HintAssist.Hint="Phone Number (Optional)" materialDesign:HintAssist.IsFloating="True"
+                         Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+            </Grid>
+            <StackPanel Orientation="Horizontal">
+                <Button Content="Add Creditor" Command="{Binding AddCreditorCommand}" Height="40" Padding="24,0"
+                        Style="{StaticResource MaterialDesignRaisedButton}" HorizontalAlignment="Left" Margin="0,0,16,0"/>
+                <TextBlock Text="{Binding CreditorStatusMessage}" VerticalAlignment="Center" FontSize="14"/>
+            </StackPanel>
+        </StackPanel>
+    </materialDesign:Card>
+
+    <!-- DSM Short Report Card -->
+    <materialDesign:Card Margin="0,0,0,24" Padding="24" UniformCornerRadius="16" Background="White" materialDesign:ElevationAssist.Elevation="Dp2">
+        <StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                <materialDesign:PackIcon Kind="FileDocumentBoxSearchOutline" Width="28" Height="28" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" VerticalAlignment="Center"/>
+                <TextBlock Text="DSM Short Report" FontSize="20" FontWeight="Bold" Margin="12,0,0,0" VerticalAlignment="Center" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
+            </StackPanel>
+
+            <Grid Margin="0,0,0,16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="16" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="16" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <ComboBox Grid.Column="0" ItemsSource="{Binding DsmProfiles}" SelectedValuePath="DsmName" DisplayMemberPath="DsmName" SelectedValue="{Binding SelectedReportDsm}" materialDesign:HintAssist.Hint="Select DSM" materialDesign:HintAssist.IsFloating="True" Style="{StaticResource MaterialDesignOutlinedComboBox}" />
+                
+                <Grid Grid.Column="2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="8"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <ComboBox Grid.Column="0" ItemsSource="{Binding MonthOptions}" DisplayMemberPath="Value" SelectedValuePath="Key" SelectedValue="{Binding SelectedReportMonthNumber}" materialDesign:HintAssist.Hint="Month" materialDesign:HintAssist.IsFloating="True" Style="{StaticResource MaterialDesignOutlinedComboBox}" />
+                    <ComboBox Grid.Column="2" ItemsSource="{Binding YearOptions}" SelectedItem="{Binding SelectedReportYear}" materialDesign:HintAssist.Hint="Year" materialDesign:HintAssist.IsFloating="True" Style="{StaticResource MaterialDesignOutlinedComboBox}" />
+                </Grid>
+
+                <Button Grid.Column="4" Content="Generate Report" Command="{Binding GenerateShortReportCommand}" Height="40" Padding="24,0" Style="{StaticResource MaterialDesignRaisedButton}" VerticalAlignment="Bottom" />
+            </Grid>
+
+            <TextBlock Text="{Binding ReportStatusMessage}" Margin="0,0,0,16" FontWeight="SemiBold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" />
+
+            <DataGrid ItemsSource="{Binding DsmShortReportRows}" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" IsReadOnly="True" HeadersVisibility="Column" Background="Transparent" MaxHeight="300" Margin="0,0,0,16">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat=dd MMM yyyy}" Width="*"/>
+                    <DataGridTextColumn Header="Shift" Binding="{Binding ShiftType}" Width="*"/>
+                    <DataGridTextColumn Header="Short Amount" Binding="{Binding ShortAmount, StringFormat='{}{0:F2}'}" Width="*"/>
+                </DataGrid.Columns>
+            </DataGrid>
+
+            <Border Background="#FFF3E0" Padding="16" CornerRadius="8">
+                <Grid>
+                    <TextBlock Text="Total Short for Month:" FontWeight="Bold" FontSize="16" Foreground="#E65100" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding TotalShortAmount, StringFormat='{}{0:F2}'}" FontWeight="Bold" FontSize="20" Foreground="#E65100" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                </Grid>
+            </Border>
+
+        </StackPanel>
+    </materialDesign:Card>
+
+</StackPanel>
+    </ScrollViewer>
+</UserControl>

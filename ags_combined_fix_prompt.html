@@ -1,0 +1,289 @@
+
+<h2 class="sr-only">Combined AGS PDF Parser Fix Prompt — copy and paste into your AI assistant</h2>
+
+<div style="padding: 1rem 0;">
+
+<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+  <div>
+    <p style="font-size: 13px; color: var(--color-text-secondary); margin: 0;">Two fixes combined into one prompt · C# / PdfPig · .NET backend</p>
+  </div>
+  <button onclick="copyPrompt()" id="copyBtn" style="font-size: 13px; padding: 6px 14px; cursor: pointer; border-radius: var(--border-radius-md);">Copy prompt ↗</button>
+</div>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 1.5rem;">
+  <div style="background: var(--color-background-secondary); border-radius: var(--border-radius-md); padding: 1rem;">
+    <p style="font-size: 12px; font-weight: 500; color: var(--color-text-secondary); margin: 0 0 6px;">Fix 1 — Tank stock</p>
+    <p style="font-size: 13px; margin: 0; color: var(--color-text-primary);">Map by tank <em>number</em>, not product name. Tank 1 → MS-I, Tank 2 → MS-II, Tank 3 → HSD.</p>
+  </div>
+  <div style="background: var(--color-background-secondary); border-radius: var(--border-radius-md); padding: 1rem;">
+    <p style="font-size: 12px; font-weight: 500; color: var(--color-text-secondary); margin: 0 0 6px;">Fix 2 — Nozzle readings</p>
+    <p style="font-size: 13px; margin: 0; color: var(--color-text-primary);">3-strategy parser (columnar → DU block → coordinate), plus PDF text dump diagnostic.</p>
+  </div>
+</div>
+
+<div id="promptBox" style="background: var(--color-background-secondary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); padding: 1.25rem; font-family: var(--font-mono); font-size: 12px; line-height: 1.7; color: var(--color-text-primary); white-space: pre-wrap; max-height: 480px; overflow-y: auto;">You are fixing a C# PDF parsing service (`AgsImportService.cs`) that uses PdfPig to extract data from AGS Field Officer Report PDFs for a petrol station management app.
+
+There are TWO bugs to fix in one go:
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+BUG 1 — TANK STOCK: Only 1 tank row returned instead of 3
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+CAUSE: The parser matches tanks by product name ("MS" / "HSD"). Both Tank 1 and Tank 2 say "MS" in the PDF, so only one entry is produced.
+
+FIX: Map by TANK NUMBER, not product name.
+
+Add these dictionaries:
+
+    private static readonly Dictionary<int, FuelType> AgsTankNumberToFuelType = new()
+    {
+        { 1, FuelType.MS_I  },   // Tank 1 → MS-I
+        { 2, FuelType.MS_II },   // Tank 2 → MS-II
+        { 3, FuelType.HSD   },   // Tank 3 → HSD
+    };
+
+    private static readonly Dictionary<int, int> AgsTankNumberToTankId = new()
+    {
+        { 1, 2 },   // AGS Tank 1 → internal Tank ID 2 (MS-I)
+        { 2, 3 },   // AGS Tank 2 → internal Tank ID 3 (MS-II)
+        { 3, 1 },   // AGS Tank 3 → internal Tank ID 1 (HSD)
+    };
+
+Replace the tank row parser with a regex that leads with the tank number (1, 2, or 3):
+
+    private TankStockEntry? TryParseTankRow(string line)
+    {
+        var pattern = new Regex(
+            @"^([123])\s+(MS|HSD|Petrol|Diesel|Motor\s*Spirit)\s+" +
+            @"([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)" +
+            @"(?:\s+([\d.]+))?(?:\s+([\d.]+))?",
+            RegexOptions.IgnoreCase
+        );
+        var match = pattern.Match(line);
+        if (!match.Success) return null;
+
+        int agsTankNumber = int.Parse(match.Groups[1].Value);
+        if (!AgsTankNumberToFuelType.TryGetValue(agsTankNumber, out var fuelType)) return null;
+
+        bool hasDipReadings = match.Groups[7].Success;
+        decimal openDip = 0, closeDip = 0, openStock = 0, closeStock = 0, dispensed = 0, receipt = 0;
+
+        if (hasDipReadings)
+        {
+            openDip    = ParseDecimal(match.Groups[3].Value);
+            closeDip   = ParseDecimal(match.Groups[4].Value);
+            openStock  = ParseDecimal(match.Groups[5].Value);
+            closeStock = ParseDecimal(match.Groups[6].Value);
+            dispensed  = ParseDecimal(match.Groups[7].Value);
+            receipt    = match.Groups[8].Success ? ParseDecimal(match.Groups[8].Value) : 0;
+        }
+        else
+        {
+            openStock  = ParseDecimal(match.Groups[3].Value);
+            closeStock = ParseDecimal(match.Groups[4].Value);
+            dispensed  = ParseDecimal(match.Groups[5].Value);
+            receipt    = ParseDecimal(match.Groups[6].Value);
+        }
+
+        return new TankStockEntry
+        {
+            TankNumber          = AgsTankNumberToTankId[agsTankNumber],
+            AgsTankNumber       = agsTankNumber,
+            FuelType            = fuelType,
+            OpeningDipMM        = openDip,
+            ClosingDipMM        = closeDip,
+            OpeningStockLitres  = openStock,
+            ClosingStockLitres  = closeStock,
+            FuelDispensedLitres = dispensed,
+            ReceiptLitres       = receipt,
+        };
+    }
+
+Update TankStockEntry to include `public int AgsTankNumber { get; set; }` for debugging.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+BUG 2 — NOZZLE READINGS: All nozzle values return 0
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+CAUSE: The nozzle/DU totalizer section uses a complex multi-column tabular layout that the current single-strategy parser misses.
+
+FIX: Replace the nozzle parser with a 3-strategy fallback approach.
+
+STEP A — Add a PDF text dump diagnostic (call this once to inspect raw PDF layout, then remove):
+
+    public async Task<string> DumpPdfTextAsync(Stream pdfStream)
+    {
+        var sb = new StringBuilder();
+        using var pdf = PdfDocument.Open(pdfStream);
+        foreach (var page in pdf.GetPages())
+        {
+            sb.AppendLine($"=== PAGE {page.Number} ===");
+            var words = page.GetWords()
+                .OrderBy(w => -w.BoundingBox.Top)
+                .ThenBy(w => w.BoundingBox.Left)
+                .ToList();
+            foreach (var word in words)
+                sb.AppendLine($"[X:{word.BoundingBox.Left:F1} Y:{word.BoundingBox.Top:F1}] '{word.Text}'");
+        }
+        return sb.ToString();
+    }
+
+    // In your controller, before parsing:
+    // var dump = await _agsService.DumpPdfTextAsync(stream);
+    // await File.WriteAllTextAsync("Logs/ags_dump.txt", dump);
+    // stream.Position = 0; // CRITICAL: reset stream after dump
+
+STEP B — Replace ExtractNozzleReadings with this 3-strategy version:
+
+    private List<NozzleShiftReading> ExtractNozzleReadings(PdfDocument pdf)
+    {
+        var readings = new List<NozzleShiftReading>();
+        foreach (var page in pdf.GetPages())
+        {
+            var words = page.GetWords(NearestNeighbourWordExtractor.Instance)
+                .OrderBy(w => -w.BoundingBox.Top)
+                .ThenBy(w => w.BoundingBox.Left)
+                .ToList();
+            var fullText = string.Join("\n", GroupWordsIntoLines(words));
+
+            var s1 = TryParseColumnarFormat(fullText);
+            if (s1.Count > 0) { readings.AddRange(s1); continue; }
+
+            var s2 = TryParseDuBlockFormat(fullText);
+            if (s2.Count > 0) { readings.AddRange(s2); continue; }
+
+            var s3 = TryParseByCoordinates(words);
+            if (s3.Count > 0) { readings.AddRange(s3); continue; }
+        }
+        return ApplyNozzleMapping(readings);
+    }
+
+Strategy 1 (columnar) — rows like "1  1  1  HSD  45230.500  45618.750  388.250":
+
+    private List<NozzleShiftReading> TryParseColumnarFormat(string text)
+    {
+        var results = new List<NozzleShiftReading>();
+        if (!Regex.IsMatch(text, @"(Opening|Opn\.?|Open)\s*(Total|Totalizer|Reading)?", RegexOptions.IgnoreCase))
+            return results;
+
+        var rowPattern = new Regex(
+            @"^\s*(\d+)\s+(\d+)\s+(\d+)\s+(HSD|MS|Petrol|Diesel)\s+" +
+            @"([\d,]+\.?\d*)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)" +
+            @"(?:\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*))?",
+            RegexOptions.IgnoreCase | RegexOptions.Multiline
+        );
+        foreach (Match m in rowPattern.Matches(text))
+        {
+            results.Add(new NozzleShiftReading
+            {
+                AgsKey           = $"DU{m.Groups[1].Value}_P{m.Groups[2].Value}_N{m.Groups[3].Value}",
+                AgsProductType   = m.Groups[4].Value,
+                OpeningReading   = ParseDecimal(m.Groups[5].Value),
+                ClosingReading   = ParseDecimal(m.Groups[6].Value),
+                TestingDeduction = m.Groups[8].Success ? ParseDecimal(m.Groups[8].Value) : 0,
+            });
+        }
+        return results;
+    }
+
+Strategy 2 (DU block) — blocks starting with "DU : 1":
+
+    private List<NozzleShiftReading> TryParseDuBlockFormat(string text)
+    {
+        var results = new List<NozzleShiftReading>();
+        var duBlocks = Regex.Split(text, @"DU\s*[:#]?\s*(\d+)", RegexOptions.IgnoreCase);
+        for (int i = 1; i < duBlocks.Length; i += 2)
+        {
+            var duNum = duBlocks[i];
+            var block = i + 1 < duBlocks.Length ? duBlocks[i + 1] : "";
+            var pumpMatch = Regex.Match(block, @"Pump\s*[:#]?\s*(\d+)", RegexOptions.IgnoreCase);
+            var pumpNum = pumpMatch.Success ? pumpMatch.Groups[1].Value : "0";
+
+            var nozzlePattern = new Regex(
+                @"Nozzle\s*[:#]?\s*(\d+)\s*(?:(HSD|MS|Petrol|Diesel)\s*)?" +
+                @"(?:Opening|Opn)[:\s]*([\d,]+\.?\d*)\s*(?:Closing|Cls)[:\s]*([\d,]+\.?\d*)",
+                RegexOptions.IgnoreCase
+            );
+            foreach (Match nm in nozzlePattern.Matches(block))
+            {
+                results.Add(new NozzleShiftReading
+                {
+                    AgsKey         = $"DU{duNum}_P{pumpNum}_N{nm.Groups[1].Value}",
+                    AgsProductType = nm.Groups[2].Value,
+                    OpeningReading = ParseDecimal(nm.Groups[3].Value),
+                    ClosingReading = ParseDecimal(nm.Groups[4].Value),
+                });
+            }
+        }
+        return results;
+    }
+
+Strategy 3 (coordinate-based) — groups words by Y position into rows:
+
+    private List<NozzleShiftReading> TryParseByCoordinates(List<Word> words)
+    {
+        var results = new List<NozzleShiftReading>();
+        var headerWords = words
+            .Where(w => Regex.IsMatch(w.Text, @"Opening|Totalizer|Opn", RegexOptions.IgnoreCase))
+            .ToList();
+        if (!headerWords.Any()) return results;
+
+        double headerY = headerWords.First().BoundingBox.Top;
+        var dataWords = words.Where(w => w.BoundingBox.Top < headerY - 5).ToList();
+
+        var rows = dataWords
+            .GroupBy(w => Math.Round(w.BoundingBox.Top / 4.0) * 4.0)
+            .OrderByDescending(g => g.Key)
+            .Select(g => g.OrderBy(w => w.BoundingBox.Left).ToList())
+            .Where(row => row.Count >= 5)
+            .ToList();
+
+        foreach (var row in rows)
+        {
+            try
+            {
+                var cells = row.Select(w => w.Text).ToArray();
+                if (!int.TryParse(cells[0], out _)) continue;
+                if (!int.TryParse(cells[1], out _)) continue;
+                if (!int.TryParse(cells[2], out _)) continue;
+
+                var decimals = cells.Skip(3)
+                    .Select(c => c.Replace(",", ""))
+                    .Where(c => Regex.IsMatch(c, @"^\d{4,}\.\d+$"))
+                    .Select(c => decimal.Parse(c))
+                    .ToList();
+
+                if (decimals.Count >= 2)
+                {
+                    results.Add(new NozzleShiftReading
+                    {
+                        AgsKey         = $"DU{cells[0]}_P{cells[1]}_N{cells[2]}",
+                        AgsProductType = cells.Length > 3 ? cells[3] : "Unknown",
+                        OpeningReading = decimals[0],
+                        ClosingReading = decimals[1],
+                    });
+                }
+            }
+            catch { }
+        }
+        return results;
+    }
+
+STEP C — After extraction, remap AGS keys to physical nozzle numbers via `ags_nozzle_mapping.json`.
+Load the mapping from disk. For any unmapped AgsKey, log a warning and skip. Apply the physical nozzle → FuelType and PumpNumber dictionaries from the existing config.
+
+STEP D — Return `parseLog` from the API so the frontend can show which strategy matched and how many rows were found. Example log entries:
+    "Strategy 1 (columnar): 0 rows"
+    "Strategy 2 (DU block): 0 rows"
+    "Strategy 3 (coordinate): 28 rows ✓"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+EXPECTED OUTCOME AFTER BOTH FIXES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Tank Stock table: 3 rows (MS-I, MS-II, HSD) with correct opening/closing stock.
+Nozzle Readings table: 28 rows with non-zero opening/closing totalizer values.
+Verify: sum of HSD nozzle net sales must equal tank HSD dispensed (e.g. 991 L).
+
+Do not change the existing nozzle mapping JSON schema or the FuelType enum values.
+Apply both fixes in a single pass. Show the complete updated methods only — no partial diffs.

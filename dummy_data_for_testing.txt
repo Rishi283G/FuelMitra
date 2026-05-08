@@ -1,0 +1,67 @@
+VKD Petroleum - Dummy Data for Testing Day Total Reconciliation (36 DSM Entries)
+===================================================================================
+Date: Any single date (e.g., Today's date)
+
+Fuel Rates (Assumed for calculation):
+HSD: ₹90.00 | MS-I: ₹103.00 | MS-II: ₹103.00
+
+-----------------------------------------------------------------------------------
+SHIFT A (Morning Shift) - 12 DSMs
+-----------------------------------------------------------------------------------
+DSM 1: Ramesh | Pump 1 (HSD)   | Open: 1000 | Close: 1200 | Online: ₹10000 | Cash In Hand: ₹8000
+DSM 2: Suresh | Pump 1 (MS-I)  | Open: 2000 | Close: 2150 | Online: ₹8000  | Cash In Hand: ₹7450
+DSM 3: Anil   | Pump 1 (MS-II) | Open: 1500 | Close: 1600 | Online: ₹5000  | Cash In Hand: ₹5300
+DSM 4: Amit   | Pump 2 (HSD)   | Open: 3000 | Close: 3250 | Online: ₹15000 | Cash In Hand: ₹7500
+DSM 5: Rohan  | Pump 2 (MS-I)  | Open: 4000 | Close: 4100 | Online: ₹6000  | Cash In Hand: ₹4300
+DSM 6: Rahul  | Pump 2 (MS-II) | Open: 2500 | Close: 2580 | Online: ₹4000  | Cash In Hand: ₹4240
+DSM 7: Vijay  | Pump 3 (HSD)   | Open: 5000 | Close: 5300 | Online: ₹18000 | Cash In Hand: ₹9000
+DSM 8: Ajay   | Pump 3 (MS-I)  | Open: 6000 | Close: 6150 | Online: ₹10000 | Cash In Hand: ₹5450
+DSM 9: Prakash| Pump 3 (MS-II) | Open: 3500 | Close: 3600 | Online: ₹6000  | Cash In Hand: ₹4300
+DSM 10: Sunil | Pump 4 (HSD)   | Open: 7000 | Close: 7200 | Online: ₹12000 | Cash In Hand: ₹6000
+DSM 11: Manoj | Pump 4 (MS-I)  | Open: 8000 | Close: 8120 | Online: ₹8000  | Cash In Hand: ₹4360
+DSM 12: Deepak| Pump 4 (MS-II) | Open: 4500 | Close: 4550 | Online: ₹3000  | Cash In Hand: ₹2150
+(After entering, lock Shift A)
+
+-----------------------------------------------------------------------------------
+SHIFT B (Afternoon Shift) - 12 DSMs
+-----------------------------------------------------------------------------------
+[Note: Opening readings must match Shift A's closing readings]
+DSM 13: Sanjay| Pump 1 (HSD)   | Open: 1200 | Close: 1450 | Online: ₹12000 | Cash In Hand: ₹10500
+DSM 14: Vikas | Pump 1 (MS-I)  | Open: 2150 | Close: 2320 | Online: ₹9000  | Cash In Hand: ₹8510
+DSM 15: Alok  | Pump 1 (MS-II) | Open: 1600 | Close: 1720 | Online: ₹6000  | Cash In Hand: ₹6360
+DSM 16: Mohan | Pump 2 (HSD)   | Open: 3250 | Close: 3550 | Online: ₹16000 | Cash In Hand: ₹11000
+DSM 17: Ravi  | Pump 2 (MS-I)  | Open: 4100 | Close: 4230 | Online: ₹7000  | Cash In Hand: ₹6390
+DSM 18: Vinod | Pump 2 (MS-II) | Open: 2580 | Close: 2680 | Online: ₹5000  | Cash In Hand: ₹5300
+DSM 19: Kumar | Pump 3 (HSD)   | Open: 5300 | Close: 5650 | Online: ₹20000 | Cash In Hand: ₹11500
+DSM 20: Ashok | Pump 3 (MS-I)  | Open: 6150 | Close: 6330 | Online: ₹11000 | Cash In Hand: ₹7540
+DSM 21: Pramod| Pump 3 (MS-II) | Open: 3600 | Close: 3710 | Online: ₹6500  | Cash In Hand: ₹4830
+DSM 22: Dinesh| Pump 4 (HSD)   | Open: 7200 | Close: 7450 | Online: ₹14000 | Cash In Hand: ₹8500
+DSM 23: Naveen| Pump 4 (MS-I)  | Open: 8120 | Close: 8260 | Online: ₹9000  | Cash In Hand: ₹5420
+DSM 24: Rajesh| Pump 4 (MS-II) | Open: 4550 | Close: 4610 | Online: ₹3500  | Cash In Hand: ₹2680
+(After entering, lock Shift B)
+
+-----------------------------------------------------------------------------------
+SHIFT C (Night Shift) - 12 DSMs
+-----------------------------------------------------------------------------------
+[Note: Opening readings must match Shift B's closing readings]
+DSM 25: Sameer| Pump 1 (HSD)   | Open: 1450 | Close: 1600 | Online: ₹8000  | Cash In Hand: ₹5500
+DSM 26: Nitin | Pump 1 (MS-I)  | Open: 2320 | Close: 2420 | Online: ₹6000  | Cash In Hand: ₹4300
+DSM 27: Akash | Pump 1 (MS-II) | Open: 1720 | Close: 1780 | Online: ₹3500  | Cash In Hand: ₹2680
+DSM 28: Pranay| Pump 2 (HSD)   | Open: 3550 | Close: 3750 | Online: ₹10000 | Cash In Hand: ₹8000
+DSM 29: Suraj | Pump 2 (MS-I)  | Open: 4230 | Close: 4310 | Online: ₹5000  | Cash In Hand: ₹3240
+DSM 30: Kunal | Pump 2 (MS-II) | Open: 2680 | Close: 2740 | Online: ₹3500  | Cash In Hand: ₹2680
+DSM 31: Tarun | Pump 3 (HSD)   | Open: 5650 | Close: 5880 | Online: ₹12000 | Cash In Hand: ₹8700
+DSM 32: Bipin | Pump 3 (MS-I)  | Open: 6330 | Close: 6450 | Online: ₹7500  | Cash In Hand: ₹4860
+DSM 33: Varun | Pump 3 (MS-II) | Open: 3710 | Close: 3780 | Online: ₹4000  | Cash In Hand: ₹3210
+DSM 34: Gaurav| Pump 4 (HSD)   | Open: 7450 | Close: 7600 | Online: ₹8000  | Cash In Hand: ₹5500
+DSM 35: Hitesh| Pump 4 (MS-I)  | Open: 8260 | Close: 8350 | Online: ₹5500  | Cash In Hand: ₹3770
+DSM 36: Jatin | Pump 4 (MS-II) | Open: 4610 | Close: 4660 | Online: ₹3000  | Cash In Hand: ₹2150
+(After entering, lock Shift C)
+
+-----------------------------------------------------------------------------------
+HOW TO TEST:
+1. Go to Day Total page.
+2. Select the date you entered the data for.
+3. Verify that the "Gross Litres" for Pump 1 HSD equals exactly 600 Litres (1600 - 1000).
+4. Verify all 36 rows appear in the DSM Summary section with their respective shifts.
+5. Check if the "Difference" box says "Balanced". (This dummy data is perfectly balanced to have zero difference based on the rates provided).
