@@ -129,10 +129,7 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
         <div class="mini-hdr">Creditors / Debtors Register</div>
         <table><thead><tr><th>Name &amp; Description</th><th>Cheque No.</th><th>Amount (&#8377;)</th></tr></thead><tbody id="tCred"></tbody></table>
       </div>
-      <div class="ms-box">
-        <div class="ms-box-title">Total MS Dispensed &mdash; This Shift</div>
-        <div class="ms-row" style="border:none;padding-top:0;margin-top:0"><span><strong style="color:#0f4c81;">Total MS</strong></span><span id="msTotal" style="font-weight:700;font-size:13px;color:#0f4c81;">&ndash; L</span></div>
-      </div>
+
       <div>
         <div class="mini-hdr">Fuel Dispensed &amp; Sale</div>
         <table><thead><tr><th>No.</th><th>Description</th><th>Litres</th><th>Rate</th><th>Amount (&#8377;)</th></tr></thead><tbody id="tFuel"></tbody></table>
@@ -162,6 +159,7 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
           <tr><td>Bank Cash (Cash 1)</td><td id="rBank">&ndash;</td></tr>
           <tr><td>Cash In Hand (Cash 2)</td><td id="rHand">&ndash;</td></tr>
           <tr><td>Expenses</td><td id="rExp">&ndash;</td></tr>
+          <tr><td style="color:#8a1500; font-weight:700">Total DSM Short</td><td id="rTotalDsmShort" style="color:#8a1500; font-weight:700">&ndash;</td></tr>
           <tr class="tr-recon-total"><td>TOTAL COLLECTION</td><td id="rTotal">&ndash;</td></tr>
           <tr class="tr-sub"><td>Gross Fuel Sale</td><td id="rGross">&ndash;</td></tr>
           <tr><td colspan="2" id="rDiff" class="diff-ok">&ndash;</td></tr>
@@ -198,7 +196,8 @@ function renderData(){
   var fuelRows=d.fuelSale||[];var grossFuel=0,totalL=0;
   fuelRows.forEach(function(f){grossFuel+=(f.amount||0);totalL+=(f.litres||0);});
   grossFuel+=(d.otherCash||0)+(d.cheque||0);
-  var rec=d.reconciliation||{};var recTotal=rec.total||0;var diff=grossFuel-recTotal;
+  var rec=d.reconciliation||{};var recTotal=rec.total||0;
+  var diff=grossFuel-recTotal;
 
   document.getElementById('sGross').textContent=inrZ(grossFuel);
   document.getElementById('sCollect').textContent=inrZ(recTotal);
@@ -252,7 +251,6 @@ function renderData(){
   var ftr2=document.createElement('tr');ftr2.className='tr-total';
   ftr2.innerHTML='<td colspan="2">'+parseFloat(ftTotL).toFixed(4)+' L \u2014 TOTAL</td><td>'+parseFloat(ftTotL).toFixed(4)+'</td><td>\u2013</td><td>'+inrZ(ftTotA)+'</td>';ft.appendChild(ftr2);
 
-  document.getElementById('msTotal').textContent=parseFloat((d.msILitres||0)+(d.msIILitres||0)).toFixed(4)+' L';
 
   document.getElementById('rMsTest').textContent=inr(rec.msTesting);
   document.getElementById('rHsdTest').textContent=inr(rec.hsdTesting);
@@ -266,6 +264,7 @@ function renderData(){
   document.getElementById('rBank').textContent=inr(rec.bankCash);
   document.getElementById('rHand').textContent=inr(rec.cashInHand);
   document.getElementById('rExp').textContent=inr(rec.expenses);
+  document.getElementById('rTotalDsmShort').textContent=inrZ(rec.totalDsmShort);
   document.getElementById('rTotal').textContent=inrZ(recTotal);
   document.getElementById('rGross').textContent=inrZ(grossFuel);
   var dCell=document.getElementById('rDiff');

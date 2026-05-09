@@ -93,7 +93,10 @@
 
                     <!-- Users List -->
                     <DataGrid ItemsSource="{Binding Users}" IsReadOnly="True" Margin="0,0,0,16"
-                              HeadersVisibility="Column" MaxHeight="200" FontSize="13">
+                              AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False"
+                              HeadersVisibility="Column" MaxHeight="200" FontSize="13" GridLinesVisibility="Horizontal"
+                              materialDesign:DataGridAssist.CellPadding="12 8"
+                              materialDesign:DataGridAssist.ColumnHeaderPadding="12 8">
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="Username" Binding="{Binding Username}" Width="*"/>
                             <DataGridTextColumn Header="Role" Binding="{Binding Role}" Width="100"/>
@@ -134,7 +137,7 @@
             </materialDesign:Card>
 
     <!-- DSM Profile Management -->
-    <materialDesign:Card Padding="24" UniformCornerRadius="12" Margin="0,20,0,0"
+    <materialDesign:Card Padding="24" UniformCornerRadius="12" Margin="0,20,0,24"
                          materialDesign:ElevationAssist.Elevation="Dp3">
         <StackPanel>
             <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
@@ -145,7 +148,10 @@
             </StackPanel>
 
             <DataGrid ItemsSource="{Binding DsmProfiles}" IsReadOnly="True" Margin="0,0,0,16"
-                      HeadersVisibility="Column" MaxHeight="200" FontSize="13" AutoGenerateColumns="False">
+                      AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False"
+                      HeadersVisibility="Column" MaxHeight="200" FontSize="13" GridLinesVisibility="Horizontal"
+                      materialDesign:DataGridAssist.CellPadding="12 8"
+                      materialDesign:DataGridAssist.ColumnHeaderPadding="12 8">
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="DSM Name" Binding="{Binding DsmName}" Width="*"/>
                     <DataGridTemplateColumn Header="" Width="50">
@@ -190,10 +196,13 @@
             </StackPanel>
 
             <DataGrid ItemsSource="{Binding Creditors}" IsReadOnly="True" Margin="0,0,0,16"
-                      HeadersVisibility="Column" MaxHeight="250" FontSize="13" AutoGenerateColumns="False">
+                      AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False"
+                      HeadersVisibility="Column" MaxHeight="250" FontSize="13" GridLinesVisibility="Horizontal"
+                      materialDesign:DataGridAssist.CellPadding="12 8"
+                      materialDesign:DataGridAssist.ColumnHeaderPadding="12 8">
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="Creditor Name" Binding="{Binding Name}" Width="*"/>
-                    <DataGridTextColumn Header="Phone" Binding="{Binding Phone}" Width="120"/>
+                    <DataGridTextColumn Header="Cheque No." Binding="{Binding Phone}" Width="120"/>
                     <DataGridTemplateColumn Header="" Width="50">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
@@ -220,7 +229,7 @@
                          materialDesign:HintAssist.Hint="Creditor Name (Required)" materialDesign:HintAssist.IsFloating="True"
                          Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
                 <TextBox Grid.Column="2" Text="{Binding NewCreditorPhone, UpdateSourceTrigger=PropertyChanged}"
-                         materialDesign:HintAssist.Hint="Phone Number (Optional)" materialDesign:HintAssist.IsFloating="True"
+                         materialDesign:HintAssist.Hint="Cheque No. (Optional)" materialDesign:HintAssist.IsFloating="True"
                          Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
             </Grid>
             <StackPanel Orientation="Horizontal">
@@ -265,7 +274,7 @@
 
             <TextBlock Text="{Binding ReportStatusMessage}" Margin="0,0,0,16" FontWeight="SemiBold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" />
 
-            <DataGrid ItemsSource="{Binding DsmShortReportRows}" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" IsReadOnly="True" HeadersVisibility="Column" Background="Transparent" MaxHeight="300" Margin="0,0,0,16">
+            <DataGrid ItemsSource="{Binding DsmShortReportRows}" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" IsReadOnly="True" HeadersVisibility="Column" Background="Transparent" MaxHeight="300" Margin="0,0,0,16" GridLinesVisibility="Horizontal" materialDesign:DataGridAssist.CellPadding="12 8" materialDesign:DataGridAssist.ColumnHeaderPadding="12 8">
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat=dd MMM yyyy}" Width="*"/>
                     <DataGridTextColumn Header="Shift" Binding="{Binding ShiftType}" Width="*"/>

@@ -59,6 +59,38 @@ public partial class FinalCalculationView : UserControl
             double recBank       = GetReconAmount(reconRows, "Bank Cash");
             double recHand       = GetReconAmount(reconRows, "Cash In Hand");
 
+            // Calculate Print-Specific Fuel Amounts based on Hardcoded Nozzle Assignments
+            var hsdNozzles = new HashSet<int> { 1, 2, 7, 8 };
+            var ms1Nozzles = new HashSet<int> { 5, 6, 11, 12, 15, 16, 19, 20, 23, 24, 27, 28 };
+            var ms2Nozzles = new HashSet<int> { 3, 4, 9, 10, 13, 14, 17, 18, 21, 22, 25, 26 };
+
+            double printHsdLitres = 0, printHsdAmount = 0;
+            double printMs1Litres = 0, printMs1Amount = 0;
+            double printMs2Litres = 0, printMs2Amount = 0;
+
+            foreach (var entry in vm.LoadedEntries)
+            {
+                if (entry.NozzleReadings == null) continue;
+                foreach (var reading in entry.NozzleReadings)
+                {
+                    if (hsdNozzles.Contains(reading.NozzleNumber))
+                    {
+                        printHsdLitres += reading.SaleLitres;
+                        printHsdAmount += reading.Amount;
+                    }
+                    else if (ms1Nozzles.Contains(reading.NozzleNumber))
+                    {
+                        printMs1Litres += reading.SaleLitres;
+                        printMs1Amount += reading.Amount;
+                    }
+                    else if (ms2Nozzles.Contains(reading.NozzleNumber))
+                    {
+                        printMs2Litres += reading.SaleLitres;
+                        printMs2Amount += reading.Amount;
+                    }
+                }
+            }
+
             var builder = new PrintDataBuilder();
 
             var printData = builder.BuildPrintData(
@@ -69,15 +101,15 @@ public partial class FinalCalculationView : UserControl
                 cash1Agg:                 BuildCashAgg(vm, "Cash1"),
                 cash2Agg:                 BuildCashAgg(vm, "Cash2"),
                 creditorRows:             vm.CreditorRows.ToList(),
-                hsdLitres:                vm.HsdLitres,
+                hsdLitres:                printHsdLitres,
                 hsdRate:                  vm.HsdRate,
-                hsdAmount:                vm.HsdAmount,
-                msILitres:                vm.MsILitres,
+                hsdAmount:                printHsdAmount,
+                msILitres:                printMs1Litres,
                 msIRate:                  vm.MsIRate,
-                msIAmount:                vm.MsIAmount,
-                msIILitres:               vm.MsIILitres,
+                msIAmount:                printMs1Amount,
+                msIILitres:               printMs2Litres,
                 msIIRate:                 vm.MsIIRate,
-                msIIAmount:               vm.MsIIAmount,
+                msIIAmount:               printMs2Amount,
                 otherCashTotal:           vm.OtherCashTotal,
                 reconciliationMsTesting:  recMsTesting,
                 reconciliationHsdTesting: recHsdTesting,
@@ -94,6 +126,7 @@ public partial class FinalCalculationView : UserControl
                 expensesTotal:            vm.ExpensesTotal,
                 reconciliationTotal:      vm.ReconciliationTotal,
                 grossFuelSaleTotal:       vm.GrossSaleTotal,
+                totalDsmShort:            vm.TotalDsmShort,
                 expenseRows:              vm.ExpenseRows.ToList());
 
             var printService = new PrintService();

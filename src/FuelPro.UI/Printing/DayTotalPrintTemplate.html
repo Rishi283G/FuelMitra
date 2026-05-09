@@ -186,6 +186,7 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
           <tr><td>Cash In Hand</td><td id="rHand">&ndash;</td></tr>
           <tr><td>Creditors / Debtors</td><td id="rCred">&ndash;</td></tr>
           <tr><td>Total Expenses</td><td id="rExp">&ndash;</td></tr>
+          <tr><td style="color:#8a1500; font-weight:700">Total DSM Short</td><td id="rTotalDsmShort" style="color:#8a1500; font-weight:700">&ndash;</td></tr>
           <tr class="tr-recon-total"><td>TOTAL COLLECTION (A)</td><td id="rTotal">&ndash;</td></tr>
           <tr class="tr-sub"><td>Total Day Sale (B)</td><td id="rSale">&ndash;</td></tr>
           <tr><td colspan="2" id="rDiff" class="diff-ok">&ndash;</td></tr>
@@ -331,10 +332,11 @@ function renderData(){
   document.getElementById('rExp').textContent=inrZ(d.expensesTotal);
   document.getElementById('rTotal').textContent=inrZ(d.reconciliationTotalAmount);
   document.getElementById('rSale').textContent=inrZ(d.grossDaySaleTotal);
+  document.getElementById('rTotalDsmShort').textContent=inrZ(d.totalDsmShort);
   var dCell=document.getElementById('rDiff');
   if(Math.abs(diff)<0.01){dCell.textContent='\u2713  BALANCED \u2014 Difference: \u20B90.00';dCell.className='diff-ok';}
-  else if(diff>0){dCell.textContent='\u26A0  SHORT \u2014 Difference: '+inrZ(diff);dCell.className='diff-bad';}
-  else{dCell.textContent='\u26A0  EXCESS \u2014 Difference: '+inrZ(Math.abs(diff));dCell.className='diff-bad';}
+  else if(diff<0){dCell.textContent='\u26A0  SHORT \u2014 Difference: '+inrZ(Math.abs(diff));dCell.className='diff-bad';}
+  else{dCell.textContent='\u26A0  EXCESS \u2014 Difference: '+inrZ(diff);dCell.className='diff-bad';}
 
   document.getElementById('ftrMid').innerHTML='<strong>'+d.date+'</strong> &middot; '+parseFloat(nTotL).toFixed(2)+' L &middot; '+inrZ(d.totalFuelSaleAmount);
 }

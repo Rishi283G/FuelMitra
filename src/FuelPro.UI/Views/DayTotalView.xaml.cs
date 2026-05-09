@@ -50,6 +50,7 @@ public partial class DayTotalView : UserControl
             reconciliationTotalAmount = vm.ReconciliationTotalAmount,
             grossDaySaleTotal         = vm.GrossDaySaleTotal,
             difference                = vm.Difference,
+            totalDsmShort             = vm.TotalDsmShort,
             creditorsTotal            = vm.CreditorsTotal,
             expensesTotal             = vm.ExpensesTotal,
             phonePeTotal              = vm.PhonePeTotal,

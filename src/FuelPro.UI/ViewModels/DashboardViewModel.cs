@@ -150,6 +150,7 @@ public partial class DashboardViewModel : ObservableObject
             PendingMismatchCount = 0;
             TodayTotalMismatch = 0;
             TotalCreditorsToday = 0;
+            double totalDsmShort = 0;
             
             TodayTotalPhonePe = 0;
             TodayTotalPhonePeCardMorning = 0;
@@ -189,11 +190,16 @@ public partial class DashboardViewModel : ObservableObject
                         Expenses = entry.Expenses.Select(e => new ExpenseDto { Amount = (decimal)e.Amount }).ToList()
                     });
 
+                    double mismatch = (double)calc.Mismatch;
+                    if (mismatch < -0.01) {
+                        totalDsmShort += Math.Abs(mismatch);
+                    } else if (mismatch > 0.01) {
+                        PendingMismatchCount++; // Only count excesses as pending mismatches
+                    }
+
                     TodayTotalSale += (double)calc.GrossSales;
                     TodayCollection += (double)calc.TotalCollection;
                     TotalCreditorsToday += (double)calc.TotalCreditors;
-                    TodayTotalMismatch += (double)calc.Mismatch;
-                    if (!calc.IsBalanced) PendingMismatchCount++;
                     
                     TodayTotalPhonePe += (entry.PaymentCollection?.PhonePe ?? 0);
                     TodayTotalPhonePeCardMorning += (entry.PaymentCollection?.PhonePeCardMorning ?? 0);
@@ -231,6 +237,16 @@ public partial class DashboardViewModel : ObservableObject
                 {
                     TodayTotalSale += otherCashResult.Data.Sum(o => o.Amount);
                 }
+            }
+
+            // Recompute TodayTotalMismatch ignoring DSM Shorts
+            TodayTotalMismatch = (TodayCollection + totalDsmShort) - TodayTotalSale;
+            
+            // If the final mismatch is NOT balanced, we consider that a pending mismatch for the day
+            if (Math.Abs(TodayTotalMismatch) > 0.01 && PendingMismatchCount == 0)
+            {
+                 // If there's a day-level mismatch but no entry-level excess, we just flag 1 for the UI.
+                 PendingMismatchCount = 1;
             }
 
             var repaymentsResult = await _repaymentRepo.GetByDateAsync(SelectedDate);

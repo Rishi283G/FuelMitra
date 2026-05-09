@@ -62,6 +62,7 @@ public partial class DayTotalViewModel : ObservableObject
     [ObservableProperty] private double _grossDaySaleTotal;
     [ObservableProperty] private double _difference;
     [ObservableProperty] private bool _isBalanced;
+    [ObservableProperty] private double _totalDsmShort;
 
     public DayTotalViewModel()
     {
@@ -166,7 +167,18 @@ public partial class DayTotalViewModel : ObservableObject
             var hsdTesting = allEntries.SelectMany(e => e.TestingEntries).Where(t => t.FuelType == "HSD").Sum(t => t.Amount);
             var totalTesting = msTesting + hsdTesting;
 
-            ReconciliationTotalAmount = TotalDigitalAndCash + CreditorsTotal + ExpensesTotal + totalTesting;
+            double totalDsmShort = 0;
+            var mismatchGroups = allEntries.GroupBy(e => new { e.ShiftId, e.DsmName, GroupPumpId = e.ReconciledToPumpId ?? e.PumpId });
+            foreach (var g in mismatchGroups)
+            {
+                var sumMismatch = g.Sum(e => (double)e.Mismatch);
+                if (sumMismatch < 0)
+                {
+                    totalDsmShort += Math.Abs(sumMismatch);
+                }
+            }
+            TotalDsmShort = totalDsmShort;
+            ReconciliationTotalAmount = TotalDigitalAndCash + CreditorsTotal + ExpensesTotal + totalTesting + TotalDsmShort;
             GrossDaySaleTotal = TotalDayFuelSaleAmount;
 
             Difference = ReconciliationTotalAmount - GrossDaySaleTotal;
@@ -254,7 +266,7 @@ public partial class DayTotalViewModel : ObservableObject
         CreditorRows.Clear(); CreditorsTotal = 0;
         ExpenseRows.Clear(); ExpensesTotal = 0;
         
-        ReconciliationTotalAmount = GrossDaySaleTotal = Difference = 0;
+        ReconciliationTotalAmount = GrossDaySaleTotal = Difference = TotalDsmShort = 0;
         IsBalanced = false;
     }
 

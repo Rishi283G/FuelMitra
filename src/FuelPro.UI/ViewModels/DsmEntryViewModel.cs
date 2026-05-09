@@ -250,7 +250,7 @@ public partial class DsmEntryViewModel : ObservableObject
         }
     }
 
-    partial void OnSelectedDateChanged(DateTime value) { LoadNozzlesForPump(); OnPropertyChanged(nameof(IsEditableDay)); }
+    partial void OnSelectedDateChanged(DateTime value) { LoadNozzlesForPump(); }
     partial void OnSelectedShiftChanged(string value) => LoadNozzlesForPump();
     partial void OnDsmNameChanged(string value) => _ = RefreshConnectedPumpGrossSalesAsync();
     partial void OnSelectedConnectedPumpChanged(PumpDisplayItem? value) => _ = RefreshConnectedPumpGrossSalesAsync();
@@ -601,19 +601,9 @@ public partial class DsmEntryViewModel : ObservableObject
         StatusMessage = "Form cleared — ready for new entry";
     }
 
-    /// <summary>
-    /// Whether the currently selected date is today (entries are editable only on the same day).
-    /// </summary>
-    public bool IsEditableDay => SelectedDate.Date == DateTime.Today;
-
     [RelayCommand]
     private async Task EditEntryAsync(int dsmEntryId)
     {
-        if (!IsEditableDay)
-        {
-            StatusMessage = "❌ Entries can only be edited on the same day they were created.";
-            return;
-        }
 
         try
         {

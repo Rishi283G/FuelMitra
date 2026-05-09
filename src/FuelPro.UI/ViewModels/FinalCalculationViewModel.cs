@@ -83,10 +83,12 @@ public partial class FinalCalculationViewModel : ObservableObject
     [ObservableProperty] private double _difference;
     [ObservableProperty] private bool _isBalanced;
     [ObservableProperty] private bool _includeOtherCashInGrossSale;
+    [ObservableProperty] private double _totalDsmShort;
 
     public string[] ShiftOptions { get; } = { "A", "B", "C" };
 
     private List<DsmEntry> _loadedEntries = new();
+    public IReadOnlyList<DsmEntry> LoadedEntries => _loadedEntries;
 
     public FinalCalculationViewModel()
     {
@@ -234,9 +236,26 @@ public partial class FinalCalculationViewModel : ObservableObject
         var debit = CreditorsTotal;
         var creditCard = DsmSummaryRows.Sum(r => r.CreditCard);
 
+        double totalDsmShort = 0;
+        var mismatchGroups = _loadedEntries.GroupBy(e => new { e.ShiftId, e.DsmName, GroupPumpId = e.ReconciledToPumpId ?? e.PumpId });
+        foreach (var g in mismatchGroups)
+        {
+            var sumMismatch = g.Sum(e => (double)e.Mismatch);
+            if (sumMismatch < 0)
+            {
+                totalDsmShort += Math.Abs(sumMismatch);
+            }
+        }
+        TotalDsmShort = totalDsmShort;
         var reconRows = _aggregation.BuildReconciliationRows(
             msTesting, hsdTesting, phonePeCardMorning, phonePeCardNight, phonePeMorning, phonePeNight, petroCard,
             debit, creditCard, Cash1Total, Cash2Total, ExpensesTotal);
+            
+        if (TotalDsmShort > 0.01)
+        {
+            reconRows.Add(new ReconciliationRowDto { Description = "Total DSM Short", Amount = TotalDsmShort });
+        }
+        
         ReconciliationRows = new ObservableCollection<ReconciliationRowDto>(reconRows);
         ReconciliationTotal = reconRows.Sum(r => r.Amount);
 
@@ -263,7 +282,7 @@ public partial class FinalCalculationViewModel : ObservableObject
         MsILitres = MsIRate = MsIAmount = 0;
         MsIILitres = MsIIRate = MsIIAmount = 0;
         TotalLitres = TotalFuelSaleAmount = MsTotalLitres = 0;
-        GrandTotalSaleAmount = GrossSaleTotal = Difference = 0;
+        GrandTotalSaleAmount = GrossSaleTotal = Difference = TotalDsmShort = 0;
         IsBalanced = false;
         IsShiftLocked = false;
     }

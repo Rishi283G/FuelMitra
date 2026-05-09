@@ -35,7 +35,7 @@
                               Margin="0,0,12,0"
                               materialDesign:HintAssist.Hint="Shift" materialDesign:HintAssist.IsFloating="True"
                               Style="{StaticResource MaterialDesignOutlinedComboBox}"/>
-                    <ComboBox Grid.Column="2" ItemsSource="{Binding DsmOptions}" SelectedItem="{Binding DsmName, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,12,0"
+                    <ComboBox Grid.Column="2" ItemsSource="{Binding DsmOptions}" IsEditable="True" Text="{Binding DsmName, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,12,0"
                               materialDesign:HintAssist.Hint="DSM Name" materialDesign:HintAssist.IsFloating="True"
                               Style="{StaticResource MaterialDesignOutlinedComboBox}"/>
                     <ComboBox Grid.Column="3" ItemsSource="{Binding PumpOptions}" SelectedItem="{Binding SelectedPump}"
@@ -155,49 +155,49 @@
                             <TextBlock Text="💳 Payment Collection" FontSize="16" FontWeight="SemiBold"
                                        Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}" Margin="0,0,0,12"/>
                             <UniformGrid Columns="2" Rows="4">
-                                <TextBox Text="{Binding PhonePeCardMorning, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,0,8,8"
+                                <TextBox Text="{Binding PhonePeCardMorning, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,0,8,12"
                                          materialDesign:HintAssist.Hint="PhonePe Card (Morning)" materialDesign:HintAssist.IsFloating="True"
                                          Style="{StaticResource MaterialDesignOutlinedTextBox}"
                                          PreviewTextInput="DecimalTextBox_PreviewTextInput"
                                          GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"
                                          LostKeyboardFocus="DecimalTextBox_LostKeyboardFocus"/>
-                                <TextBox Text="{Binding PhonePeCardNight, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="8,0,0,8"
+                                <TextBox Text="{Binding PhonePeCardNight, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="8,0,0,12"
                                          materialDesign:HintAssist.Hint="PhonePe Card (Night)" materialDesign:HintAssist.IsFloating="True"
                                          Style="{StaticResource MaterialDesignOutlinedTextBox}"
                                          PreviewTextInput="DecimalTextBox_PreviewTextInput"
                                          GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"
                                          LostKeyboardFocus="DecimalTextBox_LostKeyboardFocus"/>
-                                <TextBox Text="{Binding PhonePeMorning, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="8,0,0,8"
+                                <TextBox Text="{Binding PhonePeMorning, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,0,8,12"
                                          materialDesign:HintAssist.Hint="PhonePe (Morning)" materialDesign:HintAssist.IsFloating="True"
                                          Style="{StaticResource MaterialDesignOutlinedTextBox}"
                                          PreviewTextInput="DecimalTextBox_PreviewTextInput"
                                          GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"
                                          LostKeyboardFocus="DecimalTextBox_LostKeyboardFocus"/>
-                                <TextBox Text="{Binding PhonePeNight, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,0,8,8"
+                                <TextBox Text="{Binding PhonePeNight, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="8,0,0,12"
                                          materialDesign:HintAssist.Hint="PhonePe (Night)" materialDesign:HintAssist.IsFloating="True"
                                          Style="{StaticResource MaterialDesignOutlinedTextBox}"
                                          PreviewTextInput="DecimalTextBox_PreviewTextInput"
                                          GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"
                                          LostKeyboardFocus="DecimalTextBox_LostKeyboardFocus"/>
-                                <TextBox Text="{Binding CreditCard, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="8,0,0,8"
+                                <TextBox Text="{Binding CreditCard, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,0,8,12"
                                          materialDesign:HintAssist.Hint="PineLab Card" materialDesign:HintAssist.IsFloating="True"
                                          Style="{StaticResource MaterialDesignOutlinedTextBox}"
                                          PreviewTextInput="DecimalTextBox_PreviewTextInput"
                                          GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"
                                          LostKeyboardFocus="DecimalTextBox_LostKeyboardFocus"/>
-                                <TextBox Text="{Binding PetroCard, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,0,8,8"
+                                <TextBox Text="{Binding PetroCard, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="8,0,0,12"
                                          materialDesign:HintAssist.Hint="Petro Card" materialDesign:HintAssist.IsFloating="True"
                                          Style="{StaticResource MaterialDesignOutlinedTextBox}"
                                          PreviewTextInput="DecimalTextBox_PreviewTextInput"
                                          GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"
                                          LostKeyboardFocus="DecimalTextBox_LostKeyboardFocus"/>
-                                <TextBox Text="{Binding CashDeposit, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="8,0,0,8"
+                                <TextBox Text="{Binding CashDeposit, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,0,8,0"
                                          materialDesign:HintAssist.Hint="Cash Deposit" materialDesign:HintAssist.IsFloating="True"
                                          Style="{StaticResource MaterialDesignOutlinedTextBox}"
                                          PreviewTextInput="DecimalTextBox_PreviewTextInput"
                                          GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"
                                          LostKeyboardFocus="DecimalTextBox_LostKeyboardFocus"/>
-                                <TextBox Text="{Binding Others, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,0,8,0"
+                                <TextBox Text="{Binding Others, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="8,0,0,0"
                                          materialDesign:HintAssist.Hint="Others (Not in Total)" materialDesign:HintAssist.IsFloating="True"
                                          Style="{StaticResource MaterialDesignOutlinedTextBox}"
                                          PreviewTextInput="DecimalTextBox_PreviewTextInput"
@@ -446,8 +446,7 @@
                                         <Button Content="✏️ Edit" Height="28" FontSize="11" Padding="8,0"
                                                 Style="{StaticResource MaterialDesignOutlinedButton}"
                                                 Command="{Binding DataContext.EditEntryCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                CommandParameter="{Binding DsmEntryId}"
-                                                Visibility="{Binding DataContext.IsEditableDay, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolVisConv}}"/>
+                                                CommandParameter="{Binding DsmEntryId}"/>
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>

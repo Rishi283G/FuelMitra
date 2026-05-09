@@ -450,10 +450,10 @@
                                 </Grid>
                             </Border>
 
-                            <Border Margin="0,16,0,0" Padding="12" CornerRadius="8" Background="{Binding Difference, Converter={StaticResource DiffBadgeBrushConverter}}">
+                            <Border Margin="0,16,0,0" Padding="16" CornerRadius="8" Background="{Binding Difference, Converter={StaticResource DiffBadgeBrushConverter}}">
                                 <Grid>
-                                    <TextBlock Text="Difference (B - A):" Foreground="White" FontWeight="SemiBold" VerticalAlignment="Center" />
-                                    <TextBlock Text="{Binding Difference, Converter={StaticResource DiffBadgeConverter}}" HorizontalAlignment="Right" Foreground="White" FontWeight="Bold" FontSize="18" VerticalAlignment="Center" />
+                                    <TextBlock Text="Difference:" Foreground="White" FontWeight="SemiBold" VerticalAlignment="Center" FontSize="16" />
+                                    <TextBlock Text="{Binding Difference, Converter={StaticResource DiffBadgeConverter}}" HorizontalAlignment="Right" Foreground="White" FontWeight="Bold" FontSize="20" VerticalAlignment="Center" />
                                 </Grid>
                             </Border>
 
