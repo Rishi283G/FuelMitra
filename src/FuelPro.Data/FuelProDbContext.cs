@@ -83,12 +83,14 @@ public class FuelProDbContext : DbContext
             entity.Property(e => e.PhonePeCardNight).HasDefaultValue(0.0);
             entity.Property(e => e.PhonePeMorning).HasDefaultValue(0.0);
             entity.Property(e => e.PhonePeNight).HasDefaultValue(0.0);
-            entity.Property(e => e.CreditCard).HasDefaultValue(0.0);
+            entity.Property(e => e.CreditCardMorning).HasDefaultValue(0.0);
+            entity.Property(e => e.CreditCardNight).HasDefaultValue(0.0);
             entity.Property(e => e.PetroCard).HasDefaultValue(0.0);
 
-            // PhonePe and PhonePeCard are now NotMapped computed properties — ignore in EF
+            // Computed properties are ignored in EF
             entity.Ignore(e => e.PhonePe);
             entity.Ignore(e => e.PhonePeCard);
+            entity.Ignore(e => e.CreditCard);
         });
 
         // Creditor

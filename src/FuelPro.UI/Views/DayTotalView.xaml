@@ -153,8 +153,12 @@
                                                 <TextBlock Text="{Binding PhonePeCardNightTotal, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" FontSize="16"/>
                                             </StackPanel>
                                             <StackPanel Margin="0,0,0,12">
-                                                <TextBlock Text="PineLab Card" Foreground="Gray" FontSize="12"/>
-                                                <TextBlock Text="{Binding CreditCardTotal, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" FontSize="16"/>
+                                                <TextBlock Text="PineLab Card (Morning)" Foreground="Gray" FontSize="12"/>
+                                                <TextBlock Text="{Binding CreditCardMorningTotal, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" FontSize="16"/>
+                                            </StackPanel>
+                                            <StackPanel Margin="0,0,0,12">
+                                                <TextBlock Text="PineLab Card (Night)" Foreground="Gray" FontSize="12"/>
+                                                <TextBlock Text="{Binding CreditCardNightTotal, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" FontSize="16"/>
                                             </StackPanel>
                                             <StackPanel Margin="0,0,0,12">
                                                 <TextBlock Text="Petro Card" Foreground="Gray" FontSize="12"/>

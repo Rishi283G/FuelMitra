@@ -45,7 +45,8 @@ public class ShiftAggregationService : IShiftAggregationService
                     PhonePe = entry.PaymentCollection?.PhonePe ?? 0,
                     PhonePeMorning = entry.PaymentCollection?.PhonePeMorning ?? 0,
                     PhonePeNight = entry.PaymentCollection?.PhonePeNight ?? 0,
-                    CreditCard = entry.PaymentCollection?.CreditCard ?? 0,
+                    CreditCardMorning = entry.PaymentCollection?.CreditCardMorning ?? 0,
+                    CreditCardNight = entry.PaymentCollection?.CreditCardNight ?? 0,
                     PetroCard = entry.PaymentCollection?.PetroCard ?? 0,
                     CashDeposit = cash1 + (entry.PaymentCollection?.CashDeposit ?? 0),
                     Debit = totalDebit,
@@ -77,7 +78,8 @@ public class ShiftAggregationService : IShiftAggregationService
             PhonePeCardMorning = rows.Sum(r => r.PhonePeCardMorning),
             PhonePeCardNight = rows.Sum(r => r.PhonePeCardNight),
             PhonePe = rows.Sum(r => r.PhonePe),
-            CreditCard = rows.Sum(r => r.CreditCard),
+            CreditCardMorning = rows.Sum(r => r.CreditCardMorning),
+            CreditCardNight = rows.Sum(r => r.CreditCardNight),
             PetroCard = rows.Sum(r => r.PetroCard),
             CashDeposit = rows.Sum(r => r.CashDeposit),
             Debit = rows.Sum(r => r.Debit),
@@ -259,7 +261,7 @@ public class ShiftAggregationService : IShiftAggregationService
     /// </summary>
     public List<ReconciliationRowDto> BuildReconciliationRows(
         double msTesting, double hsdTesting, double phonePeCardMorning, double phonePeCardNight, double phonePeMorning, double phonePeNight, double petroCard,
-        double debit, double creditCard, double bankCash, double cashInHand,
+        double debit, double creditCardMorning, double creditCardNight, double bankCash, double cashInHand,
         double expenses)
     {
         return new List<ReconciliationRowDto>
@@ -272,7 +274,8 @@ public class ShiftAggregationService : IShiftAggregationService
             new() { Description = "Phone Pe (Night)", Amount = phonePeNight },
             new() { Description = "P. Card", Amount = petroCard },
             new() { Description = "Debit", Amount = debit },
-            new() { Description = "PineLab Card", Amount = creditCard },
+            new() { Description = "PineLab Card (Morning)", Amount = creditCardMorning },
+            new() { Description = "PineLab Card (Night)", Amount = creditCardNight },
             new() { Description = "Bank Cash", Amount = bankCash },
             new() { Description = "Cash In Hand", Amount = cashInHand },
             new() { Description = "Expenses", Amount = expenses }

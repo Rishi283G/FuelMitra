@@ -24,7 +24,7 @@ public class ExportService
             writer.WriteLine("DSM Name,Total In (Direct),Creditors,Total Collection,Mismatch");
             foreach (var r in calc.DsmSummaryRows)
             {
-                var totalInDirect = r.PhonePeCard + r.PhonePe + r.CreditCard + r.PetroCard + r.CashDeposit + r.CashInHand;
+                var totalInDirect = r.PhonePeCardMorning + r.PhonePeCardNight + r.PhonePeMorning + r.PhonePeNight + r.CreditCardMorning + r.CreditCardNight + r.PetroCard + r.CashDeposit + r.CashInHand;
                 var totalCollection = totalInDirect + r.Debit;
                 var mismatch = calc.TotalFuelSaleAmount - totalCollection;
                 writer.WriteLine($"{r.DsmName},{totalInDirect},{r.Debit},{totalCollection},{mismatch}");
@@ -61,7 +61,8 @@ public class ExportService
             writer.WriteLine($"PhonePe Total,{calc.PhonePeTotal}");
             writer.WriteLine($"Petro Card,{calc.PetroCardTotal}");
             writer.WriteLine($"Debit,{calc.TotalDebit}");
-            writer.WriteLine($"PineLab Card,{calc.CreditCardTotal}");
+            writer.WriteLine($"PineLab Card (Morning),{calc.CreditCardMorningTotal}");
+            writer.WriteLine($"PineLab Card (Night),{calc.CreditCardNightTotal}");
             writer.WriteLine($"Bank Cash,{calc.BankCash}");
             writer.WriteLine($"Cash in Hand,{calc.CashInHand}");
             writer.WriteLine($"TOTAL,{calc.TotalAmounts}");

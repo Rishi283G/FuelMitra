@@ -90,7 +90,8 @@ public class ShiftCalculationService
                     PhonePe = (double)((entry.PaymentCollection?.PhonePe ?? 0) + (entry.PaymentCollection?.PhonePeCard ?? 0)),
                     PhonePeMorning = entry.PaymentCollection?.PhonePeMorning ?? 0,
                     PhonePeNight = entry.PaymentCollection?.PhonePeNight ?? 0,
-                    CreditCard = entry.PaymentCollection?.CreditCard ?? 0,
+                    CreditCardMorning = entry.PaymentCollection?.CreditCardMorning ?? 0,
+                    CreditCardNight = entry.PaymentCollection?.CreditCardNight ?? 0,
                     PetroCard = entry.PaymentCollection?.PetroCard ?? 0,
                     Debit = (double)calc.TotalCreditors,
                     Expenses = entry.Expenses.Sum(e => e.Amount),
@@ -179,7 +180,9 @@ public class ShiftCalculationService
             dto.PhonePeMorningTotal = dto.DsmSummaryRows.Sum(r => r.PhonePeMorning);
             dto.PhonePeNightTotal = dto.DsmSummaryRows.Sum(r => r.PhonePeNight);
             dto.PetroCardTotal = dto.DsmSummaryRows.Sum(r => r.PetroCard);
-            dto.CreditCardTotal = dto.DsmSummaryRows.Sum(r => r.CreditCard);
+            dto.CreditCardMorningTotal = dto.DsmSummaryRows.Sum(r => r.CreditCardMorning);
+            dto.CreditCardNightTotal = dto.DsmSummaryRows.Sum(r => r.CreditCardNight);
+            dto.CreditCardTotal = dto.CreditCardMorningTotal + dto.CreditCardNightTotal;
             dto.BankCash = dto.Cash1Aggregate.GrandTotal;
             dto.CashInHand = dto.Cash2Aggregate.GrandTotal;
 

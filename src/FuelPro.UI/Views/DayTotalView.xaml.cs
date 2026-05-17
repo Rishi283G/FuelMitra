@@ -56,7 +56,8 @@ public partial class DayTotalView : UserControl
             phonePeTotal              = vm.PhonePeTotal,
             phonePeCardMorningTotal   = vm.PhonePeCardMorningTotal,
             phonePeCardNightTotal     = vm.PhonePeCardNightTotal,
-            creditCardTotal           = vm.CreditCardTotal,
+            creditCardMorningTotal    = vm.CreditCardMorningTotal,
+            creditCardNightTotal      = vm.CreditCardNightTotal,
             petroCardTotal            = vm.PetroCardTotal,
             bankCashTotal             = vm.BankCashTotal,
             cashInHandTotal           = vm.CashInHandTotal,
@@ -79,7 +80,8 @@ public partial class DayTotalView : UserControl
                 phonePe     = r.Row.PhonePe,
                 phonePeCardMorning = r.Row.PhonePeCardMorning,
                 phonePeCardNight   = r.Row.PhonePeCardNight,
-                creditCard  = r.Row.CreditCard,
+                creditCardMorning = r.Row.CreditCardMorning,
+                creditCardNight   = r.Row.CreditCardNight,
                 petroCard   = r.Row.PetroCard,
                 bankCash    = r.Row.CashDeposit,
                 debit       = r.Row.Debit,
@@ -87,7 +89,7 @@ public partial class DayTotalView : UserControl
                 testing     = r.Row.Testing,
                 cashInHand  = r.Row.CashInHand,
                 grossSale   = r.Row.GrossSales,
-                mismatch    = (r.Row.PhonePe + r.Row.PhonePeCardMorning + r.Row.PhonePeCardNight + r.Row.CreditCard + r.Row.PetroCard + r.Row.CashDeposit + r.Row.Debit + r.Row.Expenses + r.Row.Testing + r.Row.CashInHand) - r.Row.GrossSales
+                mismatch    = (r.Row.PhonePe + r.Row.PhonePeCardMorning + r.Row.PhonePeCardNight + r.Row.CreditCardMorning + r.Row.CreditCardNight + r.Row.PetroCard + r.Row.CashDeposit + r.Row.Debit + r.Row.Expenses + r.Row.Testing + r.Row.CashInHand) - r.Row.GrossSales
             }).ToList(),
             creditors = vm.CreditorRows.Select(c => new
             {

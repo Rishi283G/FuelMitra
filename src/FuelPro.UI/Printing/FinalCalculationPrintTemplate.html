@@ -155,7 +155,8 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
           <tr><td>Phone Pe Card (Night)</td><td id="rPhonePeCardN">&ndash;</td></tr>
           <tr><td>P. Card (Petro Card)</td><td id="rPCard">&ndash;</td></tr>
           <tr><td>Debit (Creditors)</td><td id="rDebit">&ndash;</td></tr>
-          <tr><td>PineLab Card</td><td id="rCCard">&ndash;</td></tr>
+          <tr><td>PineLab Card (Morning)</td><td id="rCCardM">&ndash;</td></tr>
+          <tr><td>PineLab Card (Night)</td><td id="rCCardN">&ndash;</td></tr>
           <tr><td>Bank Cash (Cash 1)</td><td id="rBank">&ndash;</td></tr>
           <tr><td>Cash In Hand (Cash 2)</td><td id="rHand">&ndash;</td></tr>
           <tr><td>Expenses</td><td id="rExp">&ndash;</td></tr>
@@ -260,7 +261,8 @@ function renderData(){
   document.getElementById('rPhonePeCardN').textContent=inr(rec.phonePeCardNight);
   document.getElementById('rPCard').textContent=inr(rec.petroCard);
   document.getElementById('rDebit').textContent=inr(rec.debit);
-  document.getElementById('rCCard').textContent=inr(rec.creditCard);
+  document.getElementById('rCCardM').textContent=inr(rec.creditCardMorning);
+  document.getElementById('rCCardN').textContent=inr(rec.creditCardNight);
   document.getElementById('rBank').textContent=inr(rec.bankCash);
   document.getElementById('rHand').textContent=inr(rec.cashInHand);
   document.getElementById('rExp').textContent=inr(rec.expenses);

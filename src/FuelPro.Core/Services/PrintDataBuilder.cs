@@ -36,13 +36,15 @@ public class PrintDataBuilder
         double phonePeCardTotal,
         double phonePeCardMorningTotal,
         double phonePeCardNightTotal,
-        double creditCardTotal,
+        double creditCardMorningTotal,
+        double creditCardNightTotal,
         double petroCardTotal,
         double bankCash,
         double cashInHand,
         double expensesTotal,
         double reconciliationTotal,
         double grossFuelSaleTotal,
+        double totalDsmShort,
         List<ExpenseRegisterRowDto>? expenseRows = null)
     {
         try
@@ -60,7 +62,7 @@ public class PrintDataBuilder
             {
                 DsmName    = r.DsmName,
                 PumpNo     = r.PumpId,
-                CardAmount = (decimal)r.CreditCard,
+                CardAmount = (decimal)(r.CreditCardMorning + r.CreditCardNight),
                 PhonePay   = (decimal)(r.PhonePeMorning + r.PhonePeNight + r.PhonePeCardMorning + r.PhonePeCardNight),
                 PhonePeCardMorning = (decimal)r.PhonePeCardMorning,
                 PhonePeCardNight = (decimal)r.PhonePeCardNight,
@@ -174,11 +176,13 @@ public class PrintDataBuilder
             PhonePeNight   = (decimal)phonePeNightTotal,
             PetroCard  = (decimal)petroCardTotal,
             Debit      = (decimal)creditorRows.Sum(c => c.Amount),
-            CreditCard = (decimal)creditCardTotal,
+            CreditCardMorning = (decimal)creditCardMorningTotal,
+            CreditCardNight = (decimal)creditCardNightTotal,
                 BankCash   = (decimal)bankCash,
                 CashInHand = (decimal)cashInHand,
                 Expenses   = (decimal)expensesTotal,
-                Total      = (decimal)reconciliationTotal
+                Total      = (decimal)reconciliationTotal,
+                TotalDsmShort = (decimal)totalDsmShort
             };
 
             return new FinalCalcPrintData

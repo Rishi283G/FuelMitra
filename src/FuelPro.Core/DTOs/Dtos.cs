@@ -103,7 +103,9 @@ public class FinalCalculationDto
     public double PhonePeCardMorningTotal { get; set; }
     public double PhonePeCardNightTotal { get; set; }
     public double PetroCardTotal { get; set; }
-    public double CreditCardTotal { get; set; }
+    public double CreditCardTotal { get; set; } // Kept for legacy/combined display if needed
+    public double CreditCardMorningTotal { get; set; }
+    public double CreditCardNightTotal { get; set; }
     public double BankCash { get; set; }
     public double CashInHand { get; set; }
     public double TotalAmounts { get; set; }
@@ -124,7 +126,8 @@ public class DsmSummaryRowDto
     public double PhonePe { get; set; }
     public double PhonePeMorning { get; set; }
     public double PhonePeNight { get; set; }
-    public double CreditCard { get; set; }
+    public double CreditCardMorning { get; set; }
+    public double CreditCardNight { get; set; }
     public double PetroCard { get; set; }
     public double CashDeposit { get; set; }  // Cash 1 — Bank Deposit
     public double Debit { get; set; }        // Sum of creditors/debit entries

@@ -28,6 +28,8 @@ public class DsmPrintRow
     public string DsmName { get; set; } = string.Empty;
     public int PumpNo { get; set; }
     public decimal CardAmount { get; set; }
+    public decimal CreditCardMorning { get; set; }
+    public decimal CreditCardNight { get; set; }
     public decimal PhonePay { get; set; }
     public decimal PhonePeCardMorning { get; set; }
     public decimal PhonePeCardNight { get; set; }
@@ -96,8 +98,11 @@ public class ReconciliationPrintBlock
     public decimal PetroCard { get; set; }
     public decimal Debit { get; set; }
     public decimal CreditCard { get; set; }
+    public decimal CreditCardMorning { get; set; }
+    public decimal CreditCardNight { get; set; }
     public decimal BankCash { get; set; }
     public decimal CashInHand { get; set; }
     public decimal Expenses { get; set; }
     public decimal Total { get; set; }
+    public decimal TotalDsmShort { get; set; }
 }

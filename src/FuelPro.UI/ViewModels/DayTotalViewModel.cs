@@ -38,6 +38,8 @@ public partial class DayTotalViewModel : ObservableObject
     [ObservableProperty] private double _phonePeTotal;
     [ObservableProperty] private double _phonePeCardMorningTotal;
     [ObservableProperty] private double _phonePeCardNightTotal;
+    [ObservableProperty] private double _creditCardMorningTotal;
+    [ObservableProperty] private double _creditCardNightTotal;
     [ObservableProperty] private double _creditCardTotal;
     [ObservableProperty] private double _petroCardTotal;
     [ObservableProperty] private double _bankCashTotal;
@@ -139,7 +141,9 @@ public partial class DayTotalViewModel : ObservableObject
             PhonePeTotal = totalsRow.PhonePe;
             PhonePeCardMorningTotal = totalsRow.PhonePeCardMorning;
             PhonePeCardNightTotal = totalsRow.PhonePeCardNight;
-            CreditCardTotal = totalsRow.CreditCard;
+            CreditCardMorningTotal = totalsRow.CreditCardMorning;
+            CreditCardNightTotal = totalsRow.CreditCardNight;
+            CreditCardTotal = CreditCardMorningTotal + CreditCardNightTotal;
             PetroCardTotal = totalsRow.PetroCard;
             
             var cash1Agg = _aggregation.AggregateCash(allEntries, "Cash1");
@@ -261,7 +265,7 @@ public partial class DayTotalViewModel : ObservableObject
         TotalHsdLitres = TotalMsILitres = TotalMsIILitres = TotalMsLitres = 0;
         TotalDayFuelSaleAmount = 0;
         
-        PhonePeTotal = PhonePeCardMorningTotal = PhonePeCardNightTotal = CreditCardTotal = PetroCardTotal = BankCashTotal = CashInHandTotal = TotalDigital = TotalCash = TotalDigitalAndCash = 0;
+        PhonePeTotal = PhonePeCardMorningTotal = PhonePeCardNightTotal = CreditCardMorningTotal = CreditCardNightTotal = CreditCardTotal = PetroCardTotal = BankCashTotal = CashInHandTotal = TotalDigital = TotalCash = TotalDigitalAndCash = 0;
         
         CreditorRows.Clear(); CreditorsTotal = 0;
         ExpenseRows.Clear(); ExpensesTotal = 0;

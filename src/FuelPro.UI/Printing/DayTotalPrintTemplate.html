@@ -140,7 +140,9 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
       <div style="font-weight:bold;color:#5a6a7a">+</div>
       <div class="kpi"><div class="kpi-lbl">PhonePe Card</div><div class="kpi-val" id="kPeCardBox">&ndash;</div></div>
       <div style="font-weight:bold;color:#5a6a7a">+</div>
-      <div class="kpi"><div class="kpi-lbl">PineLab Card</div><div class="kpi-val" id="kCCardBox">&ndash;</div></div>
+      <div class="kpi"><div class="kpi-lbl">PineLab Card (Morning)</div><div class="kpi-val" id="kCCardMBox">&ndash;</div></div>
+      <div style="font-weight:bold;color:#5a6a7a">+</div>
+      <div class="kpi"><div class="kpi-lbl">PineLab Card (Night)</div><div class="kpi-val" id="kCCardNBox">&ndash;</div></div>
       <div style="font-weight:bold;color:#5a6a7a">+</div>
       <div class="kpi"><div class="kpi-lbl">Petro Card</div><div class="kpi-val" id="kPCardBox">&ndash;</div></div>
       <div style="font-weight:bold;color:#5a6a7a">+</div>
@@ -180,7 +182,8 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
         <div class="recon-box"><table><thead><tr><th>Description</th><th>Amount (&#8377;)</th></tr></thead><tbody>
           <tr><td>PhonePe</td><td id="rPe">&ndash;</td></tr>
           <tr><td>PhonePe Card</td><td id="rPeCard">&ndash;</td></tr>
-          <tr><td>PineLab Card</td><td id="rCCard">&ndash;</td></tr>
+          <tr><td>PineLab Card (Morning)</td><td id="rCCardM">&ndash;</td></tr>
+          <tr><td>PineLab Card (Night)</td><td id="rCCardN">&ndash;</td></tr>
           <tr><td>Petro Card</td><td id="rPCard">&ndash;</td></tr>
           <tr><td>Bank Cash (Cash Deposit)</td><td id="rBank">&ndash;</td></tr>
           <tr><td>Cash In Hand</td><td id="rHand">&ndash;</td></tr>
@@ -244,7 +247,8 @@ function renderData(){
   // Day Total Breakdown row
   document.getElementById('kPeBox').textContent=inrZ(d.phonePeTotal);
   document.getElementById('kPeCardBox').textContent=inrZ(d.phonePeCardTotal);
-  document.getElementById('kCCardBox').textContent=inrZ(d.creditCardTotal);
+  document.getElementById('kCCardMBox').textContent=inrZ(d.creditCardMorningTotal);
+  document.getElementById('kCCardNBox').textContent=inrZ(d.creditCardNightTotal);
   document.getElementById('kPCardBox').textContent=inrZ(d.petroCardTotal);
   document.getElementById('kBankBox').textContent=inrZ(d.bankCashTotal);
   document.getElementById('kHandBox').textContent=inrZ(d.cashInHandTotal);
@@ -290,7 +294,8 @@ function renderData(){
   var cols=[
     {lbl:'PhonePe',val:d.phonePeTotal},
     {lbl:'PhonePe Card',val:d.phonePeCardTotal},
-    {lbl:'PineLab Card',val:d.creditCardTotal},
+    {lbl:'PineLab Card (Morning)',val:d.creditCardMorningTotal},
+    {lbl:'PineLab Card (Night)',val:d.creditCardNightTotal},
     {lbl:'Petro Card',val:d.petroCardTotal},
     {lbl:'Bank Cash',val:d.bankCashTotal},
     {lbl:'Cash In Hand',val:d.cashInHandTotal}
@@ -324,7 +329,8 @@ function renderData(){
   // Reconciliation
   document.getElementById('rPe').textContent=inrZ(d.phonePeTotal);
   document.getElementById('rPeCard').textContent=inrZ(d.phonePeCardTotal);
-  document.getElementById('rCCard').textContent=inrZ(d.creditCardTotal);
+  document.getElementById('rCCardM').textContent=inrZ(d.creditCardMorningTotal);
+  document.getElementById('rCCardN').textContent=inrZ(d.creditCardNightTotal);
   document.getElementById('rPCard').textContent=inrZ(d.petroCardTotal);
   document.getElementById('rBank').textContent=inrZ(d.bankCashTotal);
   document.getElementById('rHand').textContent=inrZ(d.cashInHandTotal);

@@ -20,7 +20,7 @@ public interface IShiftAggregationService
 
     List<ReconciliationRowDto> BuildReconciliationRows(
         double msTesting, double hsdTesting, double phonePeCardMorning, double phonePeCardNight, double phonePeMorning, double phonePeNight, double petroCard,
-        double debit, double creditCard, double bankCash, double cashInHand,
+        double debit, double creditCardMorning, double creditCardNight, double bankCash, double cashInHand,
         double expenses);
 
     double CalculateDifference(double grossSaleFuel, double reconciliationTotal);

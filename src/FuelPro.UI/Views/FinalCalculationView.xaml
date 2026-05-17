@@ -120,7 +120,8 @@
                                     <DataGridTextColumn Header="P.Pe Card (N)" Binding="{Binding PhonePeCardNight, Converter={StaticResource CurrencyConverter}}" />
                                     <DataGridTextColumn Header="Phone Pe (M)" Binding="{Binding PhonePeMorning, Converter={StaticResource CurrencyConverter}}" />
                                     <DataGridTextColumn Header="Phone Pe (N)" Binding="{Binding PhonePeNight, Converter={StaticResource CurrencyConverter}}" />
-                                    <DataGridTextColumn Header="PineLab" Binding="{Binding CreditCard, Converter={StaticResource CurrencyConverter}}" />
+                                    <DataGridTextColumn Header="PineLab (M)" Binding="{Binding CreditCardMorning, Converter={StaticResource CurrencyConverter}}" />
+                                    <DataGridTextColumn Header="PineLab (N)" Binding="{Binding CreditCardNight, Converter={StaticResource CurrencyConverter}}" />
                                     <DataGridTextColumn Header="Petro Card" Binding="{Binding PetroCard, Converter={StaticResource CurrencyConverter}}" />
                                     <DataGridTextColumn Header="Bank Cash" Binding="{Binding CashDeposit, Converter={StaticResource CurrencyConverter}}" />
                                     <DataGridTextColumn Header="Creditors" Binding="{Binding Debit, Converter={StaticResource CurrencyConverter}}" Foreground="Red" />
@@ -147,20 +148,22 @@
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" Text="TOTAL" FontWeight="Bold" Foreground="White" />
                                     <TextBlock Grid.Column="1" Text="{Binding PhonePeCardMorning, Converter={StaticResource CurrencyConverter}}" Foreground="White" Margin="8,0" />
                                     <TextBlock Grid.Column="2" Text="{Binding PhonePeCardNight, Converter={StaticResource CurrencyConverter}}" Foreground="White" Margin="8,0" />
                                     <TextBlock Grid.Column="3" Text="{Binding PhonePeMorning, Converter={StaticResource CurrencyConverter}}" Foreground="White" Margin="8,0" />
                                     <TextBlock Grid.Column="4" Text="{Binding PhonePeNight, Converter={StaticResource CurrencyConverter}}" Foreground="White" Margin="8,0" />
-                                    <TextBlock Grid.Column="5" Text="{Binding CreditCard, Converter={StaticResource CurrencyConverter}}" Foreground="White" Margin="8,0" />
-                                    <TextBlock Grid.Column="6" Text="{Binding PetroCard, Converter={StaticResource CurrencyConverter}}" Foreground="White" Margin="8,0" />
-                                    <TextBlock Grid.Column="7" Text="{Binding CashDeposit, Converter={StaticResource CurrencyConverter}}" Foreground="White" Margin="8,0" />
-                                    <TextBlock Grid.Column="8" Text="{Binding Debit, Converter={StaticResource CurrencyConverter}}" Foreground="White" Margin="8,0" />
-                                    <TextBlock Grid.Column="9" Text="{Binding Expenses, Converter={StaticResource CurrencyConverter}}" Foreground="White" Margin="8,0" />
-                                    <TextBlock Grid.Column="10" Text="{Binding Testing, Converter={StaticResource CurrencyConverter}}" Foreground="White" Margin="8,0" />
-                                    <TextBlock Grid.Column="11" Text="{Binding CashInHand, Converter={StaticResource CurrencyConverter}}" Foreground="White" Margin="8,0" />
-                                    <TextBlock Grid.Column="12" Text="{Binding GrossSales, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" Foreground="White" Margin="8,0" />
+                                    <TextBlock Grid.Column="5" Text="{Binding CreditCardMorning, Converter={StaticResource CurrencyConverter}}" Foreground="White" Margin="8,0" />
+                                    <TextBlock Grid.Column="6" Text="{Binding CreditCardNight, Converter={StaticResource CurrencyConverter}}" Foreground="White" Margin="8,0" />
+                                    <TextBlock Grid.Column="7" Text="{Binding PetroCard, Converter={StaticResource CurrencyConverter}}" Foreground="White" Margin="8,0" />
+                                    <TextBlock Grid.Column="8" Text="{Binding CashDeposit, Converter={StaticResource CurrencyConverter}}" Foreground="White" Margin="8,0" />
+                                    <TextBlock Grid.Column="9" Text="{Binding Debit, Converter={StaticResource CurrencyConverter}}" Foreground="White" Margin="8,0" />
+                                    <TextBlock Grid.Column="10" Text="{Binding Expenses, Converter={StaticResource CurrencyConverter}}" Foreground="White" Margin="8,0" />
+                                    <TextBlock Grid.Column="11" Text="{Binding Testing, Converter={StaticResource CurrencyConverter}}" Foreground="White" Margin="8,0" />
+                                    <TextBlock Grid.Column="12" Text="{Binding CashInHand, Converter={StaticResource CurrencyConverter}}" Foreground="White" Margin="8,0" />
+                                    <TextBlock Grid.Column="13" Text="{Binding GrossSales, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" Foreground="White" Margin="8,0" />
                                 </Grid>
                             </Border>
                         </StackPanel>

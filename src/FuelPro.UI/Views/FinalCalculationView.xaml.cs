@@ -55,7 +55,8 @@ public partial class FinalCalculationView : UserControl
             double recPhonePeNight   = GetReconAmount(reconRows, "Phone Pe (Night)");
             double recPCard      = GetReconAmount(reconRows, "P. Card");
             double recDebit      = GetReconAmount(reconRows, "Debit");
-            double recCCard      = GetReconAmount(reconRows, "PineLab Card");
+            double recCCardMorning = GetReconAmount(reconRows, "PineLab Card (Morning)");
+            double recCCardNight   = GetReconAmount(reconRows, "PineLab Card (Night)");
             double recBank       = GetReconAmount(reconRows, "Bank Cash");
             double recHand       = GetReconAmount(reconRows, "Cash In Hand");
 
@@ -119,7 +120,8 @@ public partial class FinalCalculationView : UserControl
                 phonePeCardTotal:         recPhonePeCardMorning + recPhonePeCardNight,
                 phonePeCardMorningTotal:  recPhonePeCardMorning,
                 phonePeCardNightTotal:    recPhonePeCardNight,
-                creditCardTotal:          recCCard,
+                creditCardMorningTotal:   recCCardMorning,
+                creditCardNightTotal:     recCCardNight,
                 petroCardTotal:           recPCard,
                 bankCash:                 recBank,
                 cashInHand:               recHand,

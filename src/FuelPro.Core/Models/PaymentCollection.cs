@@ -19,7 +19,11 @@ public class PaymentCollection
     public double PhonePeCardNight { get; set; }
     public double PhonePeMorning { get; set; }
     public double PhonePeNight { get; set; }
-    public double CreditCard { get; set; }
+    [NotMapped]
+    public double CreditCard => CreditCardMorning + CreditCardNight;
+
+    public double CreditCardMorning { get; set; }
+    public double CreditCardNight { get; set; }
     public double PetroCard { get; set; }
     public double Others { get; set; }
     public double CashDeposit { get; set; }

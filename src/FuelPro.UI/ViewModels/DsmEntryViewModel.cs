@@ -162,7 +162,8 @@ public partial class DsmEntryViewModel : ObservableObject
     [ObservableProperty] private double? _phonePeCardNight;
     [ObservableProperty] private double? _phonePeMorning;
     [ObservableProperty] private double? _phonePeNight;
-    [ObservableProperty] private double? _creditCard;
+    [ObservableProperty] private double? _creditCardMorning;
+    [ObservableProperty] private double? _creditCardNight;
     [ObservableProperty] private double? _petroCard;
     [ObservableProperty] private double? _others;
     [ObservableProperty] private double? _cashDeposit;
@@ -171,7 +172,8 @@ public partial class DsmEntryViewModel : ObservableObject
     partial void OnPhonePeCardNightChanged(double? value) => RecalculateAll();
     partial void OnPhonePeMorningChanged(double? value) => RecalculateAll();
     partial void OnPhonePeNightChanged(double? value) => RecalculateAll();
-    partial void OnCreditCardChanged(double? value) => RecalculateAll();
+    partial void OnCreditCardMorningChanged(double? value) => RecalculateAll();
+    partial void OnCreditCardNightChanged(double? value) => RecalculateAll();
     partial void OnPetroCardChanged(double? value) => RecalculateAll();
     partial void OnOthersChanged(double? value) => RecalculateAll();
     partial void OnCashDepositChanged(double? value) => RecalculateAll();
@@ -534,7 +536,8 @@ public partial class DsmEntryViewModel : ObservableObject
                 PhonePeCardNight = PhonePeCardNight ?? 0,
                 PhonePeMorning = PhonePeMorning ?? 0,
                 PhonePeNight = PhonePeNight ?? 0,
-                CreditCard = CreditCard ?? 0,
+                CreditCardMorning = CreditCardMorning ?? 0,
+                CreditCardNight = CreditCardNight ?? 0,
                 PetroCard = PetroCard ?? 0,
                 Others = Others ?? 0,
                 CashDeposit = CashDeposit ?? 0
@@ -588,7 +591,7 @@ public partial class DsmEntryViewModel : ObservableObject
     {
         DsmName = "";
         EditingEntryId = null;
-        PhonePeCardMorning = PhonePeCardNight = PhonePeMorning = PhonePeNight = CreditCard = PetroCard = Others = CashDeposit = null;
+        PhonePeCardMorning = PhonePeCardNight = PhonePeMorning = PhonePeNight = CreditCardMorning = CreditCardNight = PetroCard = Others = CashDeposit = null;
         SelectedConnectedPump = null;
         ConnectedPumpGrossSales = 0;
         ConnectedPumpStatus = "";
@@ -641,7 +644,8 @@ public partial class DsmEntryViewModel : ObservableObject
             PhonePeCardNight = entry.PaymentCollection?.PhonePeCardNight;
             PhonePeMorning = entry.PaymentCollection?.PhonePeMorning;
             PhonePeNight = entry.PaymentCollection?.PhonePeNight;
-            CreditCard = entry.PaymentCollection?.CreditCard;
+            CreditCardMorning = entry.PaymentCollection?.CreditCardMorning;
+            CreditCardNight = entry.PaymentCollection?.CreditCardNight;
             PetroCard = entry.PaymentCollection?.PetroCard;
             Others = entry.PaymentCollection?.Others;
             CashDeposit = entry.PaymentCollection?.CashDeposit;
@@ -786,7 +790,7 @@ public partial class DsmEntryViewModel : ObservableObject
             var draft = new
             {
                 SelectedDate, SelectedShift, DsmName, PumpId = SelectedPump?.PumpId ?? 1,
-                PhonePeCardMorning, PhonePeCardNight, PhonePeMorning, PhonePeNight, CreditCard, PetroCard,
+                PhonePeCardMorning, PhonePeCardNight, PhonePeMorning, PhonePeNight, CreditCardMorning, CreditCardNight, PetroCard,
                 TestingRows = TestingRows.Select(t => new { t.FuelType, t.Litres, t.Rate, t.Amount }).ToList()
             };
             _draftService.SaveDraft(JsonConvert.SerializeObject(draft));
@@ -803,7 +807,7 @@ public partial class DsmEntryViewModel : ObservableObject
             {
                 // Others is NOT included in TotalInDirect — it is informational only
                 PhonePe = (decimal)((PhonePeMorning ?? 0) + (PhonePeNight ?? 0) + (PhonePeCardMorning ?? 0) + (PhonePeCardNight ?? 0)),
-                CreditCard = (decimal)((CreditCard ?? 0) + (PetroCard ?? 0)),
+                CreditCard = (decimal)((CreditCardMorning ?? 0) + (CreditCardNight ?? 0) + (PetroCard ?? 0)),
                 CashDeposit = (decimal)(CashDeposit ?? 0),
                 PhysicalCash = (decimal)(Cash1.TotalAmount + Cash2.TotalAmount)
             },

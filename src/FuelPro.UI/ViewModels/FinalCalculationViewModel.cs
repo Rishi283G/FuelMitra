@@ -234,7 +234,8 @@ public partial class FinalCalculationViewModel : ObservableObject
         var phonePeNight = DsmSummaryRows.Sum(r => r.PhonePeNight);
         var petroCard = DsmSummaryRows.Sum(r => r.PetroCard);
         var debit = CreditorsTotal;
-        var creditCard = DsmSummaryRows.Sum(r => r.CreditCard);
+        var creditCardMorning = DsmSummaryRows.Sum(r => r.CreditCardMorning);
+        var creditCardNight = DsmSummaryRows.Sum(r => r.CreditCardNight);
 
         double totalDsmShort = 0;
         var mismatchGroups = _loadedEntries.GroupBy(e => new { e.ShiftId, e.DsmName, GroupPumpId = e.ReconciledToPumpId ?? e.PumpId });
@@ -249,7 +250,7 @@ public partial class FinalCalculationViewModel : ObservableObject
         TotalDsmShort = totalDsmShort;
         var reconRows = _aggregation.BuildReconciliationRows(
             msTesting, hsdTesting, phonePeCardMorning, phonePeCardNight, phonePeMorning, phonePeNight, petroCard,
-            debit, creditCard, Cash1Total, Cash2Total, ExpensesTotal);
+            debit, creditCardMorning, creditCardNight, Cash1Total, Cash2Total, ExpensesTotal);
             
         if (TotalDsmShort > 0.01)
         {
@@ -369,11 +370,11 @@ public partial class FinalCalculationViewModel : ObservableObject
 
             WriteCsvEntry(zip, $"DSM_Summary_{dateStr}_Shift{shiftLabel}.csv", w =>
             {
-                w.WriteLine("DSM Name,Pump No.,P.Pe Card (Morning),P.Pe Card (Night),Phone Pe,PineLab Card,Petro Card,Bank Cash,Debit,Expenses,Testing,Cash In Hand,Gross Sale");
+                w.WriteLine("DSM Name,Pump No.,P.Pe Card (Morning),P.Pe Card (Night),Phone Pe,PineLab Card (Morning),PineLab Card (Night),Petro Card,Bank Cash,Debit,Expenses,Testing,Cash In Hand,Gross Sale");
                 foreach (var r in DsmSummaryRows)
-                    w.WriteLine($"{r.DsmName},{r.PumpId},{r.PhonePeCardMorning:F2},{r.PhonePeCardNight:F2},{r.PhonePe:F2},{r.CreditCard:F2},{r.PetroCard:F2},{r.CashDeposit:F2},{r.Debit:F2},{r.Expenses:F2},{r.Testing:F2},{r.CashInHand:F2},{r.GrossSales:F2}");
+                    w.WriteLine($"{r.DsmName},{r.PumpId},{r.PhonePeCardMorning:F2},{r.PhonePeCardNight:F2},{r.PhonePe:F2},{r.CreditCardMorning:F2},{r.CreditCardNight:F2},{r.PetroCard:F2},{r.CashDeposit:F2},{r.Debit:F2},{r.Expenses:F2},{r.Testing:F2},{r.CashInHand:F2},{r.GrossSales:F2}");
                 if (DsmSummaryTotals != null)
-                    w.WriteLine($"TOTAL,,{DsmSummaryTotals.PhonePeCardMorning:F2},{DsmSummaryTotals.PhonePeCardNight:F2},{DsmSummaryTotals.PhonePe:F2},{DsmSummaryTotals.CreditCard:F2},{DsmSummaryTotals.PetroCard:F2},{DsmSummaryTotals.CashDeposit:F2},{DsmSummaryTotals.Debit:F2},{DsmSummaryTotals.Expenses:F2},{DsmSummaryTotals.Testing:F2},{DsmSummaryTotals.CashInHand:F2},{DsmSummaryTotals.GrossSales:F2}");
+                    w.WriteLine($"TOTAL,,{DsmSummaryTotals.PhonePeCardMorning:F2},{DsmSummaryTotals.PhonePeCardNight:F2},{DsmSummaryTotals.PhonePe:F2},{DsmSummaryTotals.CreditCardMorning:F2},{DsmSummaryTotals.CreditCardNight:F2},{DsmSummaryTotals.PetroCard:F2},{DsmSummaryTotals.CashDeposit:F2},{DsmSummaryTotals.Debit:F2},{DsmSummaryTotals.Expenses:F2},{DsmSummaryTotals.Testing:F2},{DsmSummaryTotals.CashInHand:F2},{DsmSummaryTotals.GrossSales:F2}");
             });
 
             WriteCsvEntry(zip, $"Cash_Details_{dateStr}_Shift{shiftLabel}.csv", w =>

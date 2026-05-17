@@ -619,7 +619,8 @@ public class PaymentRepository : IPaymentRepository
                 existing.PhonePeCardNight = payment.PhonePeCardNight;
                 existing.PhonePeMorning = payment.PhonePeMorning;
                 existing.PhonePeNight = payment.PhonePeNight;
-                existing.CreditCard  = payment.CreditCard;
+                existing.CreditCardMorning = payment.CreditCardMorning;
+                existing.CreditCardNight = payment.CreditCardNight;
                 existing.PetroCard   = payment.PetroCard;
                 existing.CashDeposit = payment.CashDeposit;
                 existing.Others      = payment.Others;
