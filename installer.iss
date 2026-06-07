@@ -16,7 +16,7 @@ DisableProgramGroupPage=yes
 ; Installer Output
 OutputDir=.\installer_output
 OutputBaseFilename=FuelPro_Setup_v{#MyAppVersion}
-Compression=lzma2/ultra64
+Compression=lzma2
 SolidCompression=yes
 
 ; Cosmetics

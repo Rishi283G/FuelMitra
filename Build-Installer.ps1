@@ -7,7 +7,7 @@ Write-Host "`n[1/3] Publishing .NET 8 Application..." -ForegroundColor Yellow
 $publishDir = ".\publish_output"
 if (Test-Path $publishDir) { Remove-Item -Recurse -Force $publishDir }
 
-dotnet publish src/FuelPro.UI/FuelPro.UI.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o $publishDir
+dotnet publish src/FuelPro.UI/FuelPro.UI.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o $publishDir -m:1
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "`n[ERROR] dotnet publish failed!" -ForegroundColor Red

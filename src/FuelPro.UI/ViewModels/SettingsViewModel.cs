@@ -18,9 +18,9 @@ public partial class SettingsViewModel : ObservableObject
     private readonly ICreditorRepository _creditorRepo;
 
     [ObservableProperty] private string _pumpStationName = "";
-    [ObservableProperty] private double _hsdRate;
-    [ObservableProperty] private double _msIRate;
-    [ObservableProperty] private double _msIIRate;
+    [ObservableProperty] private string _hsdRate = "";
+    [ObservableProperty] private string _msIRate = "";
+    [ObservableProperty] private string _msIIRate = "";
     [ObservableProperty] private string _lastUpdated = "";
     [ObservableProperty] private string _statusMessage = "";
 
@@ -76,9 +76,9 @@ public partial class SettingsViewModel : ObservableObject
         {
             _settings = result.Data;
             PumpStationName = _settings.PumpStationName;
-            HsdRate = _settings.HsdRate;
-            MsIRate = _settings.MsIRate;
-            MsIIRate = _settings.MsIIRate;
+            HsdRate = _settings.HsdRate.ToString(CultureInfo.CurrentCulture);
+            MsIRate = _settings.MsIRate.ToString(CultureInfo.CurrentCulture);
+            MsIIRate = _settings.MsIIRate.ToString(CultureInfo.CurrentCulture);
             LastUpdated = _settings.LastUpdated.ToString("dd MMM yyyy hh:mm tt");
         }
 
@@ -102,14 +102,30 @@ public partial class SettingsViewModel : ObservableObject
     private async Task SaveSettingsAsync()
     {
         if (_settings == null) return;
+
+        if (!TryParseRate(HsdRate, out var hsd) ||
+            !TryParseRate(MsIRate, out var ms1) ||
+            !TryParseRate(MsIIRate, out var ms2))
+        {
+            StatusMessage = "❌ Invalid rate values. Please enter valid numbers.";
+            return;
+        }
+
         _settings.PumpStationName = PumpStationName;
-        _settings.HsdRate = HsdRate;
-        _settings.MsIRate = MsIRate;
-        _settings.MsIIRate = MsIIRate;
+        _settings.HsdRate = hsd;
+        _settings.MsIRate = ms1;
+        _settings.MsIIRate = ms2;
 
         var result = await _settingsRepo.SaveSettingsAsync(_settings);
         StatusMessage = result.Success ? "✅ Settings saved!" : $"❌ {result.Error}";
         if (result.Success) LastUpdated = DateTime.Now.ToString("dd MMM yyyy hh:mm tt");
+    }
+
+    private bool TryParseRate(string text, out double value)
+    {
+        if (double.TryParse(text, NumberStyles.Any, CultureInfo.CurrentCulture, out value))
+            return true;
+        return double.TryParse(text, NumberStyles.Any, CultureInfo.InvariantCulture, out value);
     }
 
     [RelayCommand]
