@@ -164,6 +164,8 @@ public partial class DashboardViewModel : ObservableObject
             TodayTotalExpenses = 0;
             TodayDebtorsList.Clear();
 
+            var entryCalculations = new System.Collections.Generic.List<(int ShiftId, string DsmName, int PumpId, int? ReconciledToPumpId, double Mismatch)>();
+
             foreach (var shiftType in new[] { "A", "B", "C" })
             {
                 var shiftResult = await _shiftRepository.GetShiftAsync(SelectedDate, shiftType);
@@ -193,11 +195,7 @@ public partial class DashboardViewModel : ObservableObject
                     });
 
                     double mismatch = (double)calc.Mismatch;
-                    if (mismatch < -0.01) {
-                        totalDsmShort += Math.Abs(mismatch);
-                    } else if (mismatch > 0.01) {
-                        PendingMismatchCount++; // Only count excesses as pending mismatches
-                    }
+                    entryCalculations.Add((entry.ShiftId, entry.DsmName ?? "", entry.PumpId, entry.ReconciledToPumpId, mismatch));
 
                     TodayTotalSale += (double)calc.GrossSales;
                     TodayCollection += (double)calc.TotalCollection;
@@ -238,6 +236,21 @@ public partial class DashboardViewModel : ObservableObject
                 if (otherCashResult.Success && otherCashResult.Data != null)
                 {
                     TodayTotalSale += otherCashResult.Data.Sum(o => o.Amount);
+                }
+            }
+
+            // Group by shift, name, and connected/reconciled pump (matching DayTotal calculation)
+            var mismatchGroups = entryCalculations.GroupBy(e => new { e.ShiftId, e.DsmName, GroupPumpId = e.ReconciledToPumpId ?? e.PumpId });
+            foreach (var g in mismatchGroups)
+            {
+                var sumMismatch = g.Sum(e => e.Mismatch);
+                if (sumMismatch < -0.01)
+                {
+                    totalDsmShort += Math.Abs(sumMismatch);
+                }
+                else if (sumMismatch > 0.01)
+                {
+                    PendingMismatchCount++;
                 }
             }
 
