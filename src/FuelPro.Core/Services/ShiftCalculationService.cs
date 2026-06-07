@@ -148,20 +148,20 @@ public class ShiftCalculationService
             }
             dto.TotalExpenses = dto.ExpenseRegisterRows.Sum(r => r.Amount);
 
-            // TABLE E — Fuel Dispensed
+            // TABLE E — Fuel Dispensed (classify by nozzle number, not stored FuelType)
             var allReadings = entries.SelectMany(e => e.NozzleReadings).ToList();
 
-            var hsdReadings = allReadings.Where(r => r.FuelType == "HSD").ToList();
+            var hsdReadings = allReadings.Where(r => PumpConfiguration.GetFuelTypeDisplayName(r.NozzleNumber) == "HSD").ToList();
             dto.HsdLitres = hsdReadings.Sum(r => r.SaleLitres);
             dto.HsdRate = hsdReadings.FirstOrDefault()?.Rate ?? 0;
             dto.HsdAmount = hsdReadings.Sum(r => r.Amount);
 
-            var msIReadings = allReadings.Where(r => r.FuelType == "MS-I").ToList();
+            var msIReadings = allReadings.Where(r => PumpConfiguration.GetFuelTypeDisplayName(r.NozzleNumber) == "MS-I").ToList();
             dto.MsILitres = msIReadings.Sum(r => r.SaleLitres);
             dto.MsIRate = msIReadings.FirstOrDefault()?.Rate ?? 0;
             dto.MsIAmount = msIReadings.Sum(r => r.Amount);
 
-            var msIIReadings = allReadings.Where(r => r.FuelType == "MS-II").ToList();
+            var msIIReadings = allReadings.Where(r => PumpConfiguration.GetFuelTypeDisplayName(r.NozzleNumber) == "MS-II").ToList();
             dto.MsIILitres = msIIReadings.Sum(r => r.SaleLitres);
             dto.MsIIRate = msIIReadings.FirstOrDefault()?.Rate ?? 0;
             dto.MsIIAmount = msIIReadings.Sum(r => r.Amount);

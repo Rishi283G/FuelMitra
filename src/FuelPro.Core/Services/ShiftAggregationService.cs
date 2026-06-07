@@ -216,6 +216,8 @@ public class ShiftAggregationService : IShiftAggregationService
 
     /// <summary>
     /// TABLE E — Calculates total litres and amount for a fuel type from all DSM nozzle readings.
+    /// Classifies each reading by PumpConfiguration (nozzle number) rather than the stored
+    /// FuelType string, so old entries with stale labels are handled correctly.
     /// Optionally applies an override rate; if null, uses the rate stored on each reading.
     /// </summary>
     public (double litres, double amount) GetFuelTotals(List<DsmEntry> entries, string fuelType, double? overrideRate)
@@ -224,7 +226,7 @@ public class ShiftAggregationService : IShiftAggregationService
         {
             var readings = entries
                 .SelectMany(e => e.NozzleReadings)
-                .Where(r => r.FuelType == fuelType)
+                .Where(r => PumpConfiguration.GetFuelTypeDisplayName(r.NozzleNumber) == fuelType)
                 .ToList();
 
             var litres = readings.Sum(r => r.SaleLitres);
@@ -253,7 +255,7 @@ public class ShiftAggregationService : IShiftAggregationService
     /// </summary>
     public double GetTotalLitresByFuelType(List<NozzleReading> allReadings, string fuelType)
     {
-        return allReadings.Where(r => r.FuelType == fuelType).Sum(r => r.SaleLitres);
+        return allReadings.Where(r => PumpConfiguration.GetFuelTypeDisplayName(r.NozzleNumber) == fuelType).Sum(r => r.SaleLitres);
     }
 
     /// <summary>

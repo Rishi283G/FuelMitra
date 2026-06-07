@@ -209,10 +209,15 @@ public partial class DayTotalViewModel : ObservableObject
         double defaultMsI = settingsResult.Success ? settingsResult.Data!.MsIRate : 103.81;
         double defaultMsII = settingsResult.Success ? settingsResult.Data!.MsIIRate : 103.81;
 
-        // Group by Pump and Nozzle, then find min opening and max closing across the whole day
-        var allReadings = allEntries.SelectMany(e => e.NozzleReadings.Select(r => new { e.PumpId, Reading = r })).ToList();
+        // Group by Pump and canonical fuel type (from PumpConfiguration, not stored FuelType)
+        var allReadings = allEntries.SelectMany(e => e.NozzleReadings.Select(r => new
+        {
+            e.PumpId,
+            Reading = r,
+            CanonicalFuelType = FuelPro.Core.Common.PumpConfiguration.GetFuelTypeDisplayName(r.NozzleNumber)
+        })).ToList();
 
-        var pumpGroups = allReadings.GroupBy(x => new { x.PumpId, x.Reading.FuelType });
+        var pumpGroups = allReadings.GroupBy(x => new { x.PumpId, FuelType = x.CanonicalFuelType });
 
         foreach (var group in pumpGroups)
         {

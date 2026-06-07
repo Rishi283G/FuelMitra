@@ -25,7 +25,7 @@ public class ShiftAggregationServiceTests
                 DsmName = "DSM 1",
                 PumpId = 1,
                 GrossSales = 5000,
-                PaymentCollection = new PaymentCollection { PhonePeMorning = 1000, CreditCard = 500 },
+                PaymentCollection = new PaymentCollection { PhonePeMorning = 1000, CreditCardMorning = 500 },
                 CashDenominations = new List<CashDenomination>
                 {
                     new CashDenomination { CashType = "Cash1", TotalAmount = 1000 },
@@ -46,7 +46,8 @@ public class ShiftAggregationServiceTests
         Assert.Equal("DSM 1", r.DsmName);
         Assert.Equal(1, r.PumpId);
         Assert.Equal(1000, r.PhonePe);
-        Assert.Equal(500, r.CreditCard);
+        Assert.Equal(500, r.CreditCardMorning);
+        Assert.Equal(0, r.CreditCardNight);
         Assert.Equal(1000, r.CashDeposit);
         Assert.Equal(500, r.CashInHand);
         Assert.Equal(1500, r.Debit);
@@ -95,8 +96,8 @@ public class ShiftAggregationServiceTests
             {
                 NozzleReadings = new List<NozzleReading>
                 {
-                    new NozzleReading { FuelType = "HSD", SaleLitres = 100, Rate = 90, Amount = 9000 },
-                    new NozzleReading { FuelType = "MS-I", SaleLitres = 50, Rate = 100, Amount = 5000 }
+                    new NozzleReading { NozzleNumber = 1, FuelType = "HSD", SaleLitres = 100, Rate = 90, Amount = 9000 },
+                    new NozzleReading { NozzleNumber = 5, FuelType = "MS-I", SaleLitres = 50, Rate = 100, Amount = 5000 }
                 }
             }
         };

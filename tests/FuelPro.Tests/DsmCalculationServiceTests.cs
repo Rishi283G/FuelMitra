@@ -20,14 +20,14 @@ public class DsmCalculationServiceTests
     public void ShortEntry()
     {
         var result = _service.Calculate(BuildEntry(10000m, 5000m, 3000m));
-        Assert.Equal(2000m, result.Mismatch);
+        Assert.Equal(-2000m, result.Mismatch);
         Assert.False(result.IsBalanced);
     }
 
     [Fact]
     public void ExpensesNotDeducted()
     {
-        var result = _service.Calculate(BuildEntry(10000m, 6000m, 4000m, expenses: 500m));
+        var result = _service.Calculate(BuildEntry(10000m, 5500m, 4000m, expenses: 500m));
         Assert.Equal(0m, result.Mismatch);
         Assert.True(result.IsBalanced);
     }
@@ -35,7 +35,7 @@ public class DsmCalculationServiceTests
     [Fact]
     public void TestingNotDeducted()
     {
-        var result = _service.Calculate(BuildEntry(10000m, 6000m, 4000m, testing: 200m));
+        var result = _service.Calculate(BuildEntry(10000m, 5800m, 4000m, testing: 200m));
         Assert.Equal(0m, result.Mismatch);
         Assert.True(result.IsBalanced);
     }

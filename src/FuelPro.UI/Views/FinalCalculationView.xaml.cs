@@ -60,11 +60,8 @@ public partial class FinalCalculationView : UserControl
             double recBank       = GetReconAmount(reconRows, "Bank Cash");
             double recHand       = GetReconAmount(reconRows, "Cash In Hand");
 
-            // Calculate Print-Specific Fuel Amounts based on Hardcoded Nozzle Assignments
-            var hsdNozzles = new HashSet<int> { 1, 2, 7, 8 };
-            var ms1Nozzles = new HashSet<int> { 5, 6, 11, 12, 15, 16, 19, 20, 23, 24, 27, 28 };
-            var ms2Nozzles = new HashSet<int> { 3, 4, 9, 10, 13, 14, 17, 18, 21, 22, 25, 26 };
-
+            // Calculate Print-Specific Fuel Amounts using canonical nozzle mapping
+            // (derives fuel type from nozzle number, not the stored FuelType string)
             double printHsdLitres = 0, printHsdAmount = 0;
             double printMs1Litres = 0, printMs1Amount = 0;
             double printMs2Litres = 0, printMs2Amount = 0;
@@ -74,20 +71,21 @@ public partial class FinalCalculationView : UserControl
                 if (entry.NozzleReadings == null) continue;
                 foreach (var reading in entry.NozzleReadings)
                 {
-                    if (hsdNozzles.Contains(reading.NozzleNumber))
+                    var canonicalFuelType = FuelPro.Core.Common.PumpConfiguration.GetFuelTypeDisplayName(reading.NozzleNumber);
+                    switch (canonicalFuelType)
                     {
-                        printHsdLitres += reading.SaleLitres;
-                        printHsdAmount += reading.Amount;
-                    }
-                    else if (ms1Nozzles.Contains(reading.NozzleNumber))
-                    {
-                        printMs1Litres += reading.SaleLitres;
-                        printMs1Amount += reading.Amount;
-                    }
-                    else if (ms2Nozzles.Contains(reading.NozzleNumber))
-                    {
-                        printMs2Litres += reading.SaleLitres;
-                        printMs2Amount += reading.Amount;
+                        case "HSD":
+                            printHsdLitres += reading.SaleLitres;
+                            printHsdAmount += reading.Amount;
+                            break;
+                        case "MS-I":
+                            printMs1Litres += reading.SaleLitres;
+                            printMs1Amount += reading.Amount;
+                            break;
+                        case "MS-II":
+                            printMs2Litres += reading.SaleLitres;
+                            printMs2Amount += reading.Amount;
+                            break;
                     }
                 }
             }

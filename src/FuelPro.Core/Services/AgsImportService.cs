@@ -49,14 +49,14 @@ public class AgsImportService : IAgsImportService
         { "4|7|2", new AgsNozzleMeta(20, 7, "MS-I") },
         { "4|8|1", new AgsNozzleMeta(17, 8, "MS-II") },
         { "4|8|2", new AgsNozzleMeta(19, 8, "MS-I") },
-        { "5|9|1", new AgsNozzleMeta(21, 9, "MS-II") },
-        { "5|10|1", new AgsNozzleMeta(23, 9, "MS-I") },
-        { "5|11|1", new AgsNozzleMeta(22, 10, "MS-II") },
-        { "5|12|1", new AgsNozzleMeta(24, 10, "MS-I") },
-        { "6|13|1", new AgsNozzleMeta(25, 11, "MS-II") },
-        { "6|14|1", new AgsNozzleMeta(27, 11, "MS-I") },
-        { "6|15|1", new AgsNozzleMeta(26, 12, "MS-II") },
-        { "6|16|1", new AgsNozzleMeta(28, 12, "MS-I") },
+        { "5|9|1",  new AgsNozzleMeta(21,  9, "MS-I")  },
+        { "5|10|1", new AgsNozzleMeta(23,  9, "MS-II") },
+        { "5|11|1", new AgsNozzleMeta(22, 10, "MS-I")  },
+        { "5|12|1", new AgsNozzleMeta(24, 10, "MS-II") },
+        { "6|13|1", new AgsNozzleMeta(25, 11, "MS-I")  },
+        { "6|14|1", new AgsNozzleMeta(27, 11, "MS-II") },
+        { "6|15|1", new AgsNozzleMeta(26, 12, "MS-I")  },
+        { "6|16|1", new AgsNozzleMeta(28, 12, "MS-II") },
     };
 
     private sealed record AgsTankMeta(int InternalTankId, string FuelType);

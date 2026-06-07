@@ -1,10 +1,12 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using FuelPro.Core.Common;
 using FuelPro.Core.DTOs;
 using FuelPro.Core.Repositories;
 using FuelPro.Core.Services;
 using Microsoft.Extensions.DependencyInjection;
 using System.Collections.ObjectModel;
+using System.Linq;
 
 namespace FuelPro.UI.ViewModels;
 
@@ -431,24 +433,6 @@ public partial class DashboardViewModel : ObservableObject
 
             // Nozzle summary (all 28)
             NozzleDaySummaries.Clear();
-            var nozzleFuelMap = new Dictionary<int,string>
-            {
-                {1,"HSD"},{2,"HSD"},{3,"MS-II"},{4,"MS-II"},
-                {5,"MS-I"},{6,"MS-I"},{7,"HSD"},{8,"HSD"},
-                {9,"MS-II"},{10,"MS-II"},{11,"MS-I"},{12,"MS-I"},
-                {13,"MS-II"},{14,"MS-II"},{15,"MS-I"},{16,"MS-I"},
-                {17,"MS-II"},{18,"MS-II"},{19,"MS-I"},{20,"MS-I"},
-                {21,"MS-II"},{22,"MS-II"},{23,"MS-I"},{24,"MS-I"},
-                {25,"MS-II"},{26,"MS-II"},{27,"MS-I"},{28,"MS-I"},
-            };
-            var nozzlePumpMap = new Dictionary<int,int>
-            {
-                {2,1},{4,1},{6,1},{1,2},{3,2},{5,2},
-                {8,3},{10,3},{12,3},{7,4},{9,4},{11,4},
-                {14,5},{16,5},{13,6},{15,6},{18,7},{20,7},
-                {17,8},{19,8},{21,9},{23,9},{22,10},{24,10},
-                {25,11},{27,11},{26,12},{28,12},
-            };
 
             for (int n = 1; n <= 28; n++)
             {
@@ -461,11 +445,16 @@ public partial class DashboardViewModel : ObservableObject
                     else if (shift.ShiftType == "B") shiftB = nozzleReading.NetSaleLitres;
                     else if (shift.ShiftType == "C") shiftC = nozzleReading.NetSaleLitres;
                 }
+
+                // Find pump number from PumpConfiguration
+                int pumpNumber = PumpConfiguration.PumpNozzleMapping
+                    .FirstOrDefault(kv => kv.Value.Contains(n)).Key;
+
                 NozzleDaySummaries.Add(new NozzleDaySummaryRow
                 {
                     NozzleNumber = n,
-                    FuelType     = nozzleFuelMap.TryGetValue(n, out var ft) ? ft : "?",
-                    PumpNumber   = nozzlePumpMap.TryGetValue(n, out var pn) ? pn : 0,
+                    FuelType     = PumpConfiguration.GetFuelTypeDisplayName(n),
+                    PumpNumber   = pumpNumber,
                     ShiftALitres = shiftA,
                     ShiftBLitres = shiftB,
                     ShiftCLitres = shiftC,

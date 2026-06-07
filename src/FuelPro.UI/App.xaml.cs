@@ -112,7 +112,10 @@ public partial class App : Application
                     ""IsEditable"" INTEGER NOT NULL DEFAULT 1,
                     ""CreatedAt"" TEXT NOT NULL,
                     CONSTRAINT ""FK_ShiftOtherCash_Shifts_ShiftId"" FOREIGN KEY (""ShiftId"") REFERENCES ""Shifts"" (""ShiftId"") ON DELETE SET NULL
-                );
+                );";
+            cmd.ExecuteNonQuery();
+
+            cmd.CommandText = @"
                 CREATE INDEX ""IX_ShiftOtherCash_ShiftDate_ShiftNumber"" ON ""ShiftOtherCash"" (""ShiftDate"", ""ShiftNumber"");
                 CREATE INDEX ""IX_ShiftOtherCash_ShiftId"" ON ""ShiftOtherCash"" (""ShiftId"");
             ";
@@ -134,7 +137,10 @@ public partial class App : Application
                     ""FuelType"" TEXT NOT NULL,
                     ""OverrideRate"" REAL NOT NULL,
                     CONSTRAINT ""FK_ShiftFuelRates_Shifts_ShiftId"" FOREIGN KEY (""ShiftId"") REFERENCES ""Shifts"" (""ShiftId"") ON DELETE SET NULL
-                );
+                );";
+            cmd.ExecuteNonQuery();
+
+            cmd.CommandText = @"
                 CREATE UNIQUE INDEX ""IX_ShiftFuelRates_ShiftDate_ShiftNumber_FuelType"" ON ""ShiftFuelRates"" (""ShiftDate"", ""ShiftNumber"", ""FuelType"");
                 CREATE INDEX ""IX_ShiftFuelRates_ShiftId"" ON ""ShiftFuelRates"" (""ShiftId"");
             ";
@@ -154,7 +160,10 @@ public partial class App : Application
                     ""Phone"" TEXT,
                     ""IsActive"" INTEGER NOT NULL DEFAULT 1,
                     ""CreatedAt"" TEXT NOT NULL DEFAULT (datetime('now'))
-                );
+                );";
+            cmd.ExecuteNonQuery();
+
+            cmd.CommandText = @"
                 CREATE UNIQUE INDEX ""IX_Creditors_Name"" ON ""Creditors"" (""Name"");
             ";
             cmd.ExecuteNonQuery();

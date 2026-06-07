@@ -28,8 +28,10 @@ public static class PumpConfiguration
     /// <summary>
     /// Exact nozzle-to-fuel-type mapping per the pump station configuration.
     /// Nozzles 1,2,7,8 → HSD
-    /// Nozzles 3,4,9,10,13,14,17,18,21,22,25,26 → MS-II
-    /// Nozzles 5,6,11,12,15,16,19,20,23,24,27,28 → MS-I
+    /// Nozzles 3,4,9,10,13,14,17,18 → MS-II  (DU1–DU4)
+    /// Nozzles 5,6,11,12,15,16,19,20 → MS-I   (DU1–DU4)
+    /// Nozzles 21,22,25,26 → MS-I   (DU5–DU6, physically confirmed)
+    /// Nozzles 23,24,27,28 → MS-II  (DU5–DU6, physically confirmed)
     /// </summary>
     private static readonly Dictionary<int, FuelType> NozzleFuelMap = new()
     {
@@ -43,10 +45,10 @@ public static class PumpConfiguration
         { 15, FuelType.MS_I },  { 16, FuelType.MS_I },
         { 17, FuelType.MS_II }, { 18, FuelType.MS_II },
         { 19, FuelType.MS_I },  { 20, FuelType.MS_I },
-        { 21, FuelType.MS_II }, { 22, FuelType.MS_II },
-        { 23, FuelType.MS_I },  { 24, FuelType.MS_I },
-        { 25, FuelType.MS_II }, { 26, FuelType.MS_II },
-        { 27, FuelType.MS_I },  { 28, FuelType.MS_I },
+        { 21, FuelType.MS_I  }, { 22, FuelType.MS_I  },  // P9/P10 nozzle 1 → MS-I
+        { 23, FuelType.MS_II }, { 24, FuelType.MS_II },  // P9/P10 nozzle 2 → MS-II
+        { 25, FuelType.MS_I  }, { 26, FuelType.MS_I  },  // P11/P12 nozzle 1 → MS-I
+        { 27, FuelType.MS_II }, { 28, FuelType.MS_II },  // P11/P12 nozzle 2 → MS-II
     };
 
     /// <summary>
@@ -58,6 +60,14 @@ public static class PumpConfiguration
             return fuelType;
         throw new ArgumentOutOfRangeException(nameof(nozzleNumber), $"Invalid nozzle number: {nozzleNumber}");
     }
+
+    /// <summary>
+    /// Returns the canonical display name ("HSD", "MS-I", "MS-II") for a nozzle number.
+    /// Use this instead of the stored FuelType string to ensure old DB records
+    /// are classified correctly even if they were saved with a stale mapping.
+    /// </summary>
+    public static string GetFuelTypeDisplayName(int nozzleNumber)
+        => GetFuelType(nozzleNumber).ToDisplayName();
 
     /// <summary>
     /// Get all nozzle numbers for a given pump ID.
