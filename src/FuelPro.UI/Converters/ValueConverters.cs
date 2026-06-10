@@ -185,3 +185,30 @@ public class StringToVisibilityConverter : IValueConverter
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
         => throw new NotImplementedException();
 }
+
+/// <summary>
+/// Converts an integer denomination quantity to its rupee amount.
+/// ConverterParameter = denomination face value (e.g. "500", "200").
+/// Used to show auto-calculated Amount column in Cash In Hand table.
+/// </summary>
+public class DenomAmountConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        var qty = value switch
+        {
+            int i => (double)i,
+            double d => d,
+            null => 0.0,
+            _ => 0.0
+        };
+
+        if (parameter is string ps && double.TryParse(ps, NumberStyles.Any, CultureInfo.InvariantCulture, out var denom))
+            return $"{qty * denom:N2}";
+
+        return $"{qty:N2}";
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotImplementedException();
+}

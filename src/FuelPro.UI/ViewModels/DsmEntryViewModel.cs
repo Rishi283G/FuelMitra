@@ -6,12 +6,12 @@ using FuelPro.Core.Services;
 using FuelPro.Core.DTOs;
 using FuelPro.Core.Repositories;
 using FuelPro.Core.Models.AGS;
+using FuelPro.UI.Printing;
 using Microsoft.Extensions.DependencyInjection;
 using System.Collections.ObjectModel;
 using System.Windows;
 using Newtonsoft.Json;
 using System.Windows.Threading;
-using System.Globalization;
 
 namespace FuelPro.UI.ViewModels;
 
@@ -141,6 +141,7 @@ public partial class DsmEntryViewModel : ObservableObject
     private readonly Core.Repositories.INozzleReadingRepository _nozzleRepository;
     private readonly IAgsImportRepository _agsImportRepository;
     private readonly DispatcherTimer _autoSaveTimer;
+    private readonly PrintService _printService;
 
     // Header fields
     [ObservableProperty] private DateTime _selectedDate = DateTime.Today;
@@ -226,6 +227,7 @@ public partial class DsmEntryViewModel : ObservableObject
         _agsImportRepository = App.Services.GetRequiredService<IAgsImportRepository>();
         _dsmProfileRepo = App.Services.GetRequiredService<IDsmProfileRepository>();
         _creditorRepo = App.Services.GetRequiredService<ICreditorRepository>();
+        _printService = App.Services.GetRequiredService<PrintService>();
 
         Cash1 = new CashDenomRow { CashType = "Cash1", OnTotalChanged = RecalculateAll };
         Cash2 = new CashDenomRow { CashType = "Cash2", OnTotalChanged = RecalculateAll };
@@ -872,5 +874,151 @@ public partial class DsmEntryViewModel : ObservableObject
         }
         if (string.IsNullOrWhiteSpace(DsmName)) errors.Add("DSM Name is required.");
         return errors;
+    }
+
+    // ── Print Commands ────────────────────────────────────────────────────────
+
+    [RelayCommand]
+    private void PrintDsm()
+    {
+        if (string.IsNullOrWhiteSpace(DsmName))
+        {
+            MessageBox.Show("Please enter a DSM Name before printing.", "Print", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var settings = App.Services.GetRequiredService<ISettingsRepository>();
+        var settingsResult = settings.GetSettingsAsync().GetAwaiter().GetResult();
+        var stationName = settingsResult.Success ? settingsResult.Data?.PumpStationName ?? "VKD Petroleum" : "VKD Petroleum";
+
+        var nozzleRows = NozzleReadings.Select(n => new DsmNozzlePrintRow
+        {
+            NozzleNumber  = n.NozzleNumber,
+            FuelType      = n.FuelType,
+            OpeningReading = n.OpeningReading ?? 0,
+            ClosingReading = n.ClosingReading ?? 0,
+            SaleLitres    = n.SaleLitres,
+            Rate          = n.Rate ?? 0,
+            Amount        = n.Amount
+        }).ToList();
+
+        var payments = new DsmPaymentPrintBlock
+        {
+            PhonePeCardMorning = PhonePeCardMorning ?? 0,
+            PhonePeCardNight   = PhonePeCardNight   ?? 0,
+            PhonePeMorning     = PhonePeMorning     ?? 0,
+            PhonePeNight       = PhonePeNight       ?? 0,
+            CreditCardMorning  = CreditCardMorning  ?? 0,
+            CreditCardNight    = CreditCardNight    ?? 0,
+            PetroCard          = PetroCard          ?? 0,
+            CashDeposit        = CashDeposit        ?? 0,
+            Others             = Others             ?? 0,
+            BankDeposit        = Cash1.TotalAmount,
+            TotalDigital       = (PhonePeCardMorning ?? 0) + (PhonePeCardNight ?? 0)
+                               + (PhonePeMorning ?? 0)     + (PhonePeNight ?? 0)
+                               + (CreditCardMorning ?? 0)  + (CreditCardNight ?? 0)
+                               + (PetroCard ?? 0)          + (CashDeposit ?? 0)
+        };
+
+        var cashDenom = new DsmCashDenomPrintBlock
+        {
+            Qty500 = Cash2.Denom500 ?? 0,
+            Amt500 = (Cash2.Denom500 ?? 0) * 500.0,
+            Qty200 = Cash2.Denom200 ?? 0,
+            Amt200 = (Cash2.Denom200 ?? 0) * 200.0,
+            Qty100 = Cash2.Denom100 ?? 0,
+            Amt100 = (Cash2.Denom100 ?? 0) * 100.0,
+            Qty50  = Cash2.Denom50  ?? 0,
+            Amt50  = (Cash2.Denom50  ?? 0) * 50.0,
+            Qty20  = Cash2.Denom20  ?? 0,
+            Amt20  = (Cash2.Denom20  ?? 0) * 20.0,
+            Qty10  = Cash2.Denom10  ?? 0,
+            Amt10  = (Cash2.Denom10  ?? 0) * 10.0,
+            Coins  = Cash2.Coins    ?? 0,
+            Total  = Cash2.TotalAmount
+        };
+
+        var creditors = Debits.Where(d => !string.IsNullOrWhiteSpace(d.DebtorName))
+            .Select(d => new DsmCreditorPrintRow { DebtorName = d.DebtorName, ChequeNo = d.ChequeNo ?? "", Amount = d.Amount ?? 0 }).ToList();
+
+        var expenses = Expenses.Where(e => !string.IsNullOrWhiteSpace(e.Description))
+            .Select(e => new DsmExpensePrintRow { Description = e.Description, Amount = e.Amount ?? 0 }).ToList();
+
+        var testing = TestingRows.Where(t => t.Amount > 0)
+            .Select(t => new DsmTestingPrintRow { FuelType = t.FuelType, Litres = t.Litres ?? 0, Rate = t.Rate ?? 0, Amount = t.Amount }).ToList();
+
+        var recon = new DsmReconciliationPrintBlock
+        {
+            GrossSales      = GrossSales,
+            TotalCollection = FinalAdjusted,
+            Creditors       = TotalDebtors,
+            Testing         = TestingRows.Sum(t => t.Amount),
+            Expenses        = Expenses.Sum(e => e.Amount ?? 0),
+            Cash            = Cash2.TotalAmount,
+            Mismatch        = Difference
+        };
+
+        var printData = new DsmSheetPrintData
+        {
+            StationName  = stationName,
+            CompanyName  = "VKD Petroleum",
+            Date         = SelectedDate.ToString("dd/MM/yyyy"),
+            Shift        = SelectedShift,
+            DsmName      = DsmName,
+            PumpNo       = SelectedPump?.DisplayText ?? "",
+            PrintedAt    = DateTime.Now.ToString("dd/MM/yyyy HH:mm"),
+            NozzleRows   = nozzleRows,
+            TotalLitres  = TotalLitres,
+            GrossSales   = GrossSales,
+            Payments     = payments,
+            CashDenom    = cashDenom,
+            Creditors    = creditors,
+            TotalCreditors = TotalDebtors,
+            Expenses     = expenses,
+            TotalExpenses = Expenses.Sum(e => e.Amount ?? 0),
+            Testing      = testing,
+            TotalTesting = TestingRows.Sum(t => t.Amount),
+            Reconciliation = recon
+        };
+
+        _printService.PrintDsmSheet(printData);
+    }
+
+    [RelayCommand]
+    private void PrintShiftSummary()
+    {
+        if (ShiftEntries.Count == 0)
+        {
+            MessageBox.Show("No shift entries loaded. Click 'View Shift Entries' first.", "Print",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var settings = App.Services.GetRequiredService<ISettingsRepository>();
+        var settingsResult = settings.GetSettingsAsync().GetAwaiter().GetResult();
+        var stationName = settingsResult.Success ? settingsResult.Data?.PumpStationName ?? "VKD Petroleum" : "VKD Petroleum";
+
+        var rows = ShiftEntries.Select(e => new ShiftSummaryDsmRow
+        {
+            DsmName        = e.DsmName,
+            PumpId         = e.PumpId,
+            GrossSales     = e.GrossSales,
+            TotalCollection = e.TotalPaymentIn,
+            Mismatch       = e.Difference
+        }).ToList();
+
+        var printData = new ShiftSummaryPrintData
+        {
+            StationName    = stationName,
+            Date           = SelectedDate.ToString("dd/MM/yyyy"),
+            Shift          = SelectedShift,
+            PrintedAt      = DateTime.Now.ToString("dd/MM/yyyy HH:mm"),
+            Rows           = rows,
+            TotalSales     = rows.Sum(r => r.GrossSales),
+            TotalCollection = rows.Sum(r => r.TotalCollection),
+            TotalMismatch  = rows.Sum(r => r.Mismatch)
+        };
+
+        _printService.PrintShiftSummary(printData);
     }
 }

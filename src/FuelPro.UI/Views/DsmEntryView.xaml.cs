@@ -9,62 +9,59 @@ namespace FuelPro.UI.Views;
 public partial class DsmEntryView : UserControl
 {
     private static readonly Regex DecimalInputRegex = new(@"^-?\d*([.,]\d*)?$");
+    private static readonly Regex IntegerInputRegex  = new(@"^\d*$");
 
     public DsmEntryView() => InitializeComponent();
 
+    // ── Decimal TextBox handlers ──────────────────────────────────────────
+
     private void DecimalTextBox_PreviewTextInput(object sender, TextCompositionEventArgs e)
     {
-        if (sender is not TextBox textBox)
-            return;
-
+        if (sender is not TextBox textBox) return;
         e.Handled = !IsValidDecimalText(GetProposedText(textBox, e.Text));
     }
 
     private void DecimalTextBox_Pasting(object sender, DataObjectPastingEventArgs e)
     {
-        if (sender is not TextBox textBox)
-            return;
-
-        if (!e.SourceDataObject.GetDataPresent(DataFormats.Text))
-        {
-            e.CancelCommand();
-            return;
-        }
-
+        if (sender is not TextBox textBox) return;
+        if (!e.SourceDataObject.GetDataPresent(DataFormats.Text)) { e.CancelCommand(); return; }
         var pastedText = e.SourceDataObject.GetData(DataFormats.Text) as string ?? string.Empty;
-        if (!IsValidDecimalText(GetProposedText(textBox, pastedText)))
-            e.CancelCommand();
+        if (!IsValidDecimalText(GetProposedText(textBox, pastedText))) e.CancelCommand();
     }
 
     private void DecimalTextBox_GotKeyboardFocus(object sender, System.Windows.Input.KeyboardFocusChangedEventArgs e)
     {
-        if (sender is not TextBox textBox)
-            return;
-
-        if (textBox.Text == "0.00" || textBox.Text == "0")
-            textBox.Clear();
+        if (sender is not TextBox textBox) return;
+        if (textBox.Text == "0.00" || textBox.Text == "0") textBox.Clear();
     }
 
     private void DecimalTextBox_LostKeyboardFocus(object sender, System.Windows.Input.KeyboardFocusChangedEventArgs e)
     {
-        if (sender is not TextBox textBox)
-            return;
-
-        if (string.IsNullOrWhiteSpace(textBox.Text))
-        {
-            textBox.Text = "0.00";
-            return;
-        }
-
+        if (sender is not TextBox textBox) return;
+        if (string.IsNullOrWhiteSpace(textBox.Text)) { textBox.Text = "0.00"; return; }
         if (double.TryParse(textBox.Text, NumberStyles.Any, CultureInfo.CurrentCulture, out var value) ||
             double.TryParse(textBox.Text, NumberStyles.Any, CultureInfo.InvariantCulture, out value))
-        {
-            textBox.Text = value.ToString("0.00", CultureInfo.InvariantCulture);
-            return;
-        }
-
+        { textBox.Text = value.ToString("0.00", CultureInfo.InvariantCulture); return; }
         textBox.Text = "0.00";
     }
+
+    // ── Integer TextBox handlers (for denomination Qty inputs) ────────────
+
+    private void IntegerTextBox_PreviewTextInput(object sender, TextCompositionEventArgs e)
+    {
+        if (sender is not TextBox textBox) return;
+        e.Handled = !IntegerInputRegex.IsMatch(GetProposedText(textBox, e.Text));
+    }
+
+    private void IntegerTextBox_LostKeyboardFocus(object sender, System.Windows.Input.KeyboardFocusChangedEventArgs e)
+    {
+        if (sender is not TextBox textBox) return;
+        if (string.IsNullOrWhiteSpace(textBox.Text)) { textBox.Text = "0"; return; }
+        if (int.TryParse(textBox.Text, out var i)) { textBox.Text = i.ToString(); return; }
+        textBox.Text = "0";
+    }
+
+    // ── Shared helpers ────────────────────────────────────────────────────
 
     private static string GetProposedText(TextBox textBox, string input)
     {

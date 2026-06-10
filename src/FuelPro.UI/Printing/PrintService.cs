@@ -132,11 +132,94 @@ public class PrintService
         }
     }
 
+    /// <summary>
+    /// Prints an individual DSM Entry Sheet (9 sections: header, nozzles, payments,
+    /// cash denomination, creditors, expenses, testing, reconciliation, signatures).
+    /// </summary>
+    public void PrintDsmSheet(FuelPro.Core.DTOs.DsmSheetPrintData data)
+    {
+        try
+        {
+            var json = JsonSerializer.Serialize(data, _jsonOptions);
+            var templateHtml = LoadNamedTemplate("DsmSheetPrintTemplate.html");
+
+            if (!templateHtml.Contains(MARKER))
+            {
+                MessageBox.Show("DSM Sheet print template is outdated.",
+                    "Print Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            var finalHtml = templateHtml.Replace(MARKER, json);
+            var tempFile = Path.Combine(Path.GetTempPath(),
+                $"VKDDsmSheet_{DateTime.Now:yyyyMMddHHmmss}.html");
+
+            File.WriteAllText(tempFile, finalHtml, Encoding.UTF8);
+            Process.Start(new ProcessStartInfo { FileName = tempFile, UseShellExecute = true });
+
+            Task.Delay(TimeSpan.FromMinutes(5)).ContinueWith(_ =>
+            {
+                try { if (File.Exists(tempFile)) File.Delete(tempFile); } catch { }
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "PrintDsmSheet failed");
+            MessageBox.Show($"Print failed.\n\nError: {ex.Message}",
+                "Print Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    /// <summary>
+    /// Prints the Shift Summary report — lists all DSM entries for the shift with totals.
+    /// </summary>
+    public void PrintShiftSummary(FuelPro.Core.DTOs.ShiftSummaryPrintData data)
+    {
+        try
+        {
+            var json = JsonSerializer.Serialize(data, _jsonOptions);
+            var templateHtml = LoadNamedTemplate("ShiftSummaryPrintTemplate.html");
+
+            if (!templateHtml.Contains(MARKER))
+            {
+                MessageBox.Show("Shift Summary print template is outdated.",
+                    "Print Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            var finalHtml = templateHtml.Replace(MARKER, json);
+            var tempFile = Path.Combine(Path.GetTempPath(),
+                $"VKDShiftSummary_{DateTime.Now:yyyyMMddHHmmss}.html");
+
+            File.WriteAllText(tempFile, finalHtml, Encoding.UTF8);
+            Process.Start(new ProcessStartInfo { FileName = tempFile, UseShellExecute = true });
+
+            Task.Delay(TimeSpan.FromMinutes(5)).ContinueWith(_ =>
+            {
+                try { if (File.Exists(tempFile)) File.Delete(tempFile); } catch { }
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "PrintShiftSummary failed");
+            MessageBox.Show($"Print failed.\n\nError: {ex.Message}",
+                "Print Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
     private string LoadDayTotalTemplate()
+    {
+        return LoadNamedTemplate("DayTotalPrintTemplate.html");
+    }
+
+    /// <summary>
+    /// Generic template loader — tries embedded resource first, then file fallback.
+    /// </summary>
+    private string LoadNamedTemplate(string fileName)
     {
         var assembly = Assembly.GetExecutingAssembly();
         var resourceName = assembly.GetManifestResourceNames()
-            .FirstOrDefault(n => n.EndsWith("DayTotalPrintTemplate.html"));
+            .FirstOrDefault(n => n.EndsWith(fileName));
 
         if (resourceName != null)
         {
@@ -146,56 +229,27 @@ public class PrintService
         }
 
         var exeDir = AppDomain.CurrentDomain.BaseDirectory;
-        var path = Path.Combine(exeDir, "Printing", "DayTotalPrintTemplate.html");
+        var path = Path.Combine(exeDir, "Printing", fileName);
 
         if (!File.Exists(path))
         {
             var srcPath = Path.Combine(exeDir, "..", "..", "..", "..",
-                "FuelPro.UI", "Printing", "DayTotalPrintTemplate.html");
+                "FuelPro.UI", "Printing", fileName);
             path = Path.GetFullPath(srcPath);
         }
 
         if (!File.Exists(path))
-            throw new FileNotFoundException("Day Total print template not found: " + path);
+            throw new FileNotFoundException($"Print template not found: {fileName}", path);
 
         return File.ReadAllText(path, Encoding.UTF8);
     }
 
     /// <summary>
-    /// Loads the HTML template — tries embedded resource first, then file fallback.
+    /// Loads the FinalCalculation HTML template — delegates to generic loader.
     /// </summary>
     private string LoadTemplate()
     {
-        // Try embedded resource first
-        var assembly = Assembly.GetExecutingAssembly();
-        var resourceName = assembly.GetManifestResourceNames()
-            .FirstOrDefault(n => n.EndsWith("FinalCalculationPrintTemplate.html"));
-
-        if (resourceName != null)
-        {
-            using var stream = assembly.GetManifestResourceStream(resourceName)!;
-            using var reader = new StreamReader(stream);
-            _logger.Debug("Loaded print template from embedded resource: {Name}", resourceName);
-            return reader.ReadToEnd();
-        }
-
-        // Fallback: file next to exe
-        var exeDir = AppDomain.CurrentDomain.BaseDirectory;
-        var path = Path.Combine(exeDir, "Printing", "FinalCalculationPrintTemplate.html");
-
-        if (!File.Exists(path))
-        {
-            // Dev fallback: source directory
-            var srcPath = Path.Combine(
-                exeDir, "..", "..", "..", "..",
-                "FuelPro.UI", "Printing", "FinalCalculationPrintTemplate.html");
-            path = Path.GetFullPath(srcPath);
-        }
-
-        if (!File.Exists(path))
-            throw new FileNotFoundException("Print template not found. Expected: " + path);
-
-        _logger.Debug("Loaded print template from file: {Path}", path);
-        return File.ReadAllText(path, Encoding.UTF8);
+        _logger.Debug("Loading FinalCalculationPrintTemplate.html");
+        return LoadNamedTemplate("FinalCalculationPrintTemplate.html");
     }
 }

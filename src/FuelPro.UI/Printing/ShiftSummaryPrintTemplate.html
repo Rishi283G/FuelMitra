@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Shift Summary Report</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 11px; color: #111; background: #fff; }
+
+  #toolbar {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+    background: #1B5E20; color: #fff; padding: 8px 16px;
+    display: flex; align-items: center; gap: 12px;
+    box-shadow: 0 2px 6px rgba(0,0,0,.3);
+  }
+  #toolbar span { font-size: 14px; font-weight: 600; flex: 1; }
+  #toolbar button {
+    background: #fff; color: #1B5E20; border: none; padding: 6px 18px;
+    border-radius: 4px; font-size: 12px; font-weight: 600; cursor: pointer;
+  }
+
+  .page {
+    width: 210mm; min-height: 297mm;
+    margin: 48px auto 20px; padding: 14mm 12mm 10mm;
+    background: #fff; border: 1px solid #ccc;
+  }
+
+  .header { text-align: center; border-bottom: 2.5px solid #1B5E20; padding-bottom: 8px; margin-bottom: 12px; }
+  .header .company { font-size: 18px; font-weight: 700; color: #1B5E20; letter-spacing: 1px; }
+  .header .station { font-size: 13px; font-weight: 600; color: #333; }
+  .header .doc-title { font-size: 12px; font-weight: 700; color: #555; margin-top: 4px; text-transform: uppercase; letter-spacing: 1px; }
+
+  .meta-row { display: flex; gap: 40px; margin-bottom: 12px; font-size: 11px; }
+  .meta-item { display: flex; gap: 6px; }
+  .meta-label { font-weight: 600; color: #555; }
+  .meta-value { font-weight: 500; color: #111; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 10.5px; margin-bottom: 14px; }
+  th {
+    background: #1B5E20; color: #fff; font-weight: 700;
+    font-size: 10px; text-transform: uppercase; letter-spacing: .5px;
+    padding: 5px 6px; border: 1px solid #2E7D32; text-align: center;
+  }
+  td { padding: 4px 6px; border: 1px solid #ddd; vertical-align: middle; }
+  tr:nth-child(even) td { background: #F1F8E9; }
+  .num { text-align: right; }
+  .total-row td { font-weight: 700; background: #DCEDC8 !important; border-top: 2px solid #1B5E20; font-size: 11.5px; }
+
+  .mismatch-pos { color: #c62828; font-weight: 700; }
+  .mismatch-zero { color: #2e7d32; font-weight: 700; }
+  .mismatch-neg { color: #1565C0; font-weight: 700; }
+
+  .summary-box {
+    border: 1.5px solid #1B5E20; border-radius: 6px; padding: 10px 16px;
+    margin-top: 12px; display: grid; grid-template-columns: repeat(3,1fr); gap: 10px;
+  }
+  .summary-box .sum-item { text-align: center; }
+  .summary-box .sum-label { font-size: 9.5px; color: #555; font-weight: 600; text-transform: uppercase; }
+  .summary-box .sum-value { font-size: 15px; font-weight: 700; color: #1B5E20; }
+
+  .signatures {
+    display: grid; grid-template-columns: repeat(3,1fr);
+    gap: 20px; margin-top: 24px; text-align: center;
+  }
+  .sig-box { border-top: 1.5px solid #333; padding-top: 6px; font-size: 10px; font-weight: 600; }
+
+  .print-footer { text-align: center; font-size: 9px; color: #999; margin-top: 16px; border-top: 1px solid #eee; padding-top: 6px; }
+
+  @media print {
+    #toolbar { display: none !important; }
+    body { margin: 0; }
+    .page { width: 100%; margin: 0; border: none; padding: 10mm; min-height: auto; }
+    @page { size: A4 portrait; margin: 10mm 8mm; }
+    th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .total-row td { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .summary-box { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <span>📋 VKD Petroleum — Shift Summary Report</span>
+  <button onclick="window.print()">🖨️ Print / Save PDF</button>
+  <button onclick="window.close()">✖ Close</button>
+</div>
+
+<div class="page">
+
+  <div class="header">
+    <div class="doc-title">Shift Summary Report</div>
+  </div>
+
+  <div class="meta-row">
+    <div class="meta-item"><span class="meta-label">Date:</span><span class="meta-value" id="metaDate"></span></div>
+    <div class="meta-item"><span class="meta-label">Shift:</span><span class="meta-value" id="metaShift"></span></div>
+    <div class="meta-item"><span class="meta-label">Printed:</span><span class="meta-value" id="metaPrinted"></span></div>
+  </div>
+
+  <table id="mainTable">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>DSM Name</th>
+        <th>Pump</th>
+        <th class="num">Gross Sales (₹)</th>
+        <th class="num">Total Collection (₹)</th>
+        <th class="num">Mismatch (₹)</th>
+      </tr>
+    </thead>
+    <tbody id="mainBody"></tbody>
+    <tfoot>
+      <tr class="total-row" id="totalRow">
+        <td colspan="3" style="text-align:right;font-weight:700;">SHIFT TOTALS</td>
+        <td class="num" id="totalSales"></td>
+        <td class="num" id="totalCollection"></td>
+        <td class="num" id="totalMismatch"></td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <!-- Summary boxes -->
+  <div class="summary-box">
+    <div class="sum-item">
+      <div class="sum-label">Total Sales</div>
+      <div class="sum-value" id="boxSales"></div>
+    </div>
+    <div class="sum-item">
+      <div class="sum-label">Total Collection</div>
+      <div class="sum-value" id="boxCollection"></div>
+    </div>
+    <div class="sum-item">
+      <div class="sum-label">Total Mismatch</div>
+      <div class="sum-value" id="boxMismatch"></div>
+    </div>
+  </div>
+
+  <!-- Signatures -->
+  <div class="signatures">
+    <div class="sig-box">DSM / Supervisor</div>
+    <div class="sig-box">Manager Signature</div>
+    <div class="sig-box">Owner Signature</div>
+  </div>
+
+  <div class="print-footer" id="printFooter"></div>
+</div>
+
+<script>
+const data = /* INJECT_JSON_HERE */{};
+const INR = (n) => '₹' + (+(n||0)).toLocaleString('en-IN', {minimumFractionDigits:2,maximumFractionDigits:2});
+
+document.getElementById('metaDate').textContent = data.date || '';
+document.getElementById('metaShift').textContent = 'Shift ' + (data.shift || '');
+document.getElementById('metaPrinted').textContent = data.printedAt || new Date().toLocaleString('en-IN');
+
+const mb = document.getElementById('mainBody');
+(data.rows || []).forEach((r, i) => {
+  const mis = r.mismatch || 0;
+  const mc = mis > 0.005 ? 'mismatch-pos' : mis < -0.005 ? 'mismatch-neg' : 'mismatch-zero';
+  mb.innerHTML += `<tr>
+    <td class="num">${i+1}</td>
+    <td>${r.dsmName}</td>
+    <td class="num">${r.pumpId}</td>
+    <td class="num">${INR(r.grossSales)}</td>
+    <td class="num">${INR(r.totalCollection)}</td>
+    <td class="num"><span class="${mc}">${INR(r.mismatch)}</span></td>
+  </tr>`;
+});
+
+document.getElementById('totalSales').textContent = INR(data.totalSales);
+document.getElementById('totalCollection').textContent = INR(data.totalCollection);
+const tm = data.totalMismatch || 0;
+const tmc = tm > 0.005 ? 'mismatch-pos' : tm < -0.005 ? 'mismatch-neg' : 'mismatch-zero';
+document.getElementById('totalMismatch').innerHTML = `<span class="${tmc}">${INR(tm)}</span>`;
+
+document.getElementById('boxSales').textContent = INR(data.totalSales);
+document.getElementById('boxCollection').textContent = INR(data.totalCollection);
+document.getElementById('boxMismatch').innerHTML = `<span class="${tmc}">${INR(tm)}</span>`;
+
+document.getElementById('printFooter').textContent =
+  `VKD Petroleum | Shift ${data.shift} Summary | ${data.date} | Printed: ${data.printedAt || new Date().toLocaleString('en-IN')}`;
+</script>
+</body>
+</html>

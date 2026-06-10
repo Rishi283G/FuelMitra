@@ -50,6 +50,18 @@
     <EmbeddedResource Include="Printing\DayTotalPrintTemplate.html">
       <LogicalName>FuelPro.UI.Printing.DayTotalPrintTemplate.html</LogicalName>
     </EmbeddedResource>
+    <Content Include="Printing\DsmSheetPrintTemplate.html">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <EmbeddedResource Include="Printing\DsmSheetPrintTemplate.html">
+      <LogicalName>FuelPro.UI.Printing.DsmSheetPrintTemplate.html</LogicalName>
+    </EmbeddedResource>
+    <Content Include="Printing\ShiftSummaryPrintTemplate.html">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <EmbeddedResource Include="Printing\ShiftSummaryPrintTemplate.html">
+      <LogicalName>FuelPro.UI.Printing.ShiftSummaryPrintTemplate.html</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <ItemGroup>

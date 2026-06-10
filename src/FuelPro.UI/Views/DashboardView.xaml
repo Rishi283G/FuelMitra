@@ -8,6 +8,7 @@
         <converters:LitreFormatConverter x:Key="LitreConv"/>
         <converters:BoolToVisibilityConverter x:Key="BoolToVis"/>
         <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis"/>
+        <converters:InverseBoolConverter x:Key="InverseBool"/>
     </UserControl.Resources>
 
     <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="32,24">
@@ -19,10 +20,21 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock Text="Dashboard" FontSize="28" FontWeight="Bold"
-                           Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
-                <DatePicker Grid.Column="1" SelectedDate="{Binding SelectedDate}"
-                            Width="180" materialDesign:HintAssist.Hint="Select Date"
-                            Style="{StaticResource MaterialDesignOutlinedDatePicker}"/>
+                           Foreground="{DynamicResource MaterialDesign.Brush.Primary}" VerticalAlignment="Center"/>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <ComboBox ItemsSource="{Binding Presets}" SelectedItem="{Binding SelectedPreset}"
+                              Width="150" Margin="0,0,12,0" materialDesign:HintAssist.Hint="Range Preset"
+                              Style="{StaticResource MaterialDesignOutlinedComboBox}"
+                              IsEnabled="{Binding IsLoading, Converter={StaticResource InverseBool}}"/>
+                    <DatePicker SelectedDate="{Binding StartDate}" Width="150" Margin="0,0,12,0"
+                                materialDesign:HintAssist.Hint="From Date"
+                                Style="{StaticResource MaterialDesignOutlinedDatePicker}"
+                                IsEnabled="{Binding IsLoading, Converter={StaticResource InverseBool}}"/>
+                    <DatePicker SelectedDate="{Binding EndDate}" Width="150"
+                                materialDesign:HintAssist.Hint="To Date"
+                                Style="{StaticResource MaterialDesignOutlinedDatePicker}"
+                                IsEnabled="{Binding IsLoading, Converter={StaticResource InverseBool}}"/>
+                </StackPanel>
             </Grid>
 
             <!-- Today's Summary Cards -->

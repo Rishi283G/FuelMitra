@@ -21,6 +21,11 @@ public partial class DayTotalViewModel : ObservableObject
     private readonly ILogger _logger = Log.ForContext<DayTotalViewModel>();
 
     [ObservableProperty] private DateTime _selectedDate = DateTime.Today;
+    [ObservableProperty] private DateTime _startDate = DateTime.Today;
+    [ObservableProperty] private DateTime _endDate = DateTime.Today;
+    [ObservableProperty] private string _selectedPreset = "Today";
+
+    public string[] Presets { get; } = { "Today", "Yesterday", "This Week", "This Month", "Last 7 Days", "Last 30 Days", "Custom" };
     [ObservableProperty] private bool _isLoading;
     [ObservableProperty] private bool _hasData;
     [ObservableProperty] private string _statusMessage = "";
@@ -76,7 +81,83 @@ public partial class DayTotalViewModel : ObservableObject
         _aggregation = App.Services.GetRequiredService<IShiftAggregationService>();
     }
 
-    partial void OnSelectedDateChanged(DateTime value) => _ = LoadDayDataAsync();
+    private bool _isUpdatingPreset;
+
+    partial void OnSelectedDateChanged(DateTime value)
+    {
+        if (!_isUpdatingPreset)
+        {
+            _isUpdatingPreset = true;
+            StartDate = value;
+            EndDate = value;
+            _isUpdatingPreset = false;
+            _ = LoadDayDataAsync();
+        }
+    }
+
+    partial void OnSelectedPresetChanged(string value)
+    {
+        if (value == "Custom") return;
+
+        _isUpdatingPreset = true;
+        var today = DateTime.Today;
+        DateTime newStart = today;
+        DateTime newEnd = today;
+        switch (value)
+        {
+            case "Today":
+                newStart = today;
+                newEnd = today;
+                break;
+            case "Yesterday":
+                newStart = today.AddDays(-1);
+                newEnd = today.AddDays(-1);
+                break;
+            case "This Week":
+                int diff = (7 + (today.DayOfWeek - DayOfWeek.Monday)) % 7;
+                newStart = today.AddDays(-1 * diff).Date;
+                newEnd = today;
+                break;
+            case "This Month":
+                newStart = new DateTime(today.Year, today.Month, 1);
+                newEnd = today;
+                break;
+            case "Last 7 Days":
+                newStart = today.AddDays(-6);
+                newEnd = today;
+                break;
+            case "Last 30 Days":
+                newStart = today.AddDays(-29);
+                newEnd = today;
+                break;
+        }
+
+        StartDate = newStart;
+        EndDate = newEnd;
+        SelectedDate = newEnd;
+        _isUpdatingPreset = false;
+
+        _ = LoadDayDataAsync();
+    }
+
+    partial void OnStartDateChanged(DateTime value)
+    {
+        if (!_isUpdatingPreset)
+        {
+            SelectedPreset = "Custom";
+            _ = LoadDayDataAsync();
+        }
+    }
+
+    partial void OnEndDateChanged(DateTime value)
+    {
+        SelectedDate = value;
+        if (!_isUpdatingPreset)
+        {
+            SelectedPreset = "Custom";
+            _ = LoadDayDataAsync();
+        }
+    }
 
     [RelayCommand]
     private async Task LoadDayDataAsync()
@@ -86,54 +167,39 @@ public partial class DayTotalViewModel : ObservableObject
         HasData = false;
         try
         {
-            var allEntries = new List<DsmEntry>();
-            var allExpenses = new List<Expense>();
-            var shiftOverrides = new Dictionary<string, double>();
             DsmPrintRows = new List<(string Shift, DsmSummaryRowDto Row)>();
 
-            // Aggregate data from all shifts (A, B, C)
-            foreach (var shiftLabel in new[] { "A", "B", "C" })
+            var entriesResult = await _dsmRepo.GetEntriesForDateRangeAsync(StartDate, EndDate);
+            var allEntries = entriesResult.Success && entriesResult.Data != null ? entriesResult.Data : new List<DsmEntry>();
+
+            var shiftsResult = await _shiftRepo.GetShiftsByDateRangeAsync(StartDate, EndDate);
+            var shifts = shiftsResult.Success && shiftsResult.Data != null ? shiftsResult.Data : new List<Shift>();
+            var shiftIds = shifts.Select(s => s.ShiftId).ToList();
+
+            var expResult = await _expenseRepo.GetExpensesByShiftIdsAsync(shiftIds);
+            var allExpenses = expResult.Success && expResult.Data != null ? expResult.Data : new List<Expense>();
+
+            // Build per-shift DSM rows with the shift label/date
+            var entriesByShift = allEntries.GroupBy(e => e.ShiftId);
+            foreach (var g in entriesByShift)
             {
-                var shiftResult = await _shiftRepo.GetShiftAsync(SelectedDate, shiftLabel);
-                if (!shiftResult.Success || shiftResult.Data == null) continue;
-
-                var shift = shiftResult.Data;
+                var shift = shifts.FirstOrDefault(s => s.ShiftId == g.Key);
+                var shiftLabel = shift != null ? $"{shift.ShiftDate:dd/MM} {shift.ShiftType}" : "Unknown";
                 
-                var entriesResult = await _dsmRepo.GetEntriesForShiftAsync(shift.ShiftId);
-                if (entriesResult.Success && entriesResult.Data != null)
-                {
-                    allEntries.AddRange(entriesResult.Data);
-                    // Build per-shift DSM rows with the shift label
-                    var shiftDsmRows = _aggregation.BuildDsmSummaryRows(entriesResult.Data);
-                    foreach (var r in shiftDsmRows)
-                        DsmPrintRows.Add((shiftLabel, r));
-                }
-
-                var expResult = await _expenseRepo.GetByShiftIdAsync(shift.ShiftId);
-                if (expResult.Success && expResult.Data != null)
-                {
-                    allExpenses.AddRange(expResult.Data);
-                }
-                
-                var rateOverrides = await _fuelRateRepo.GetByShiftAsync(SelectedDate, shiftLabel);
-                if (rateOverrides.Success && rateOverrides.Data != null)
-                {
-                    foreach(var ro in rateOverrides.Data)
-                    {
-                        shiftOverrides.TryAdd(ro.FuelType, ro.OverrideRate);
-                    }
-                }
+                var shiftDsmRows = _aggregation.BuildDsmSummaryRows(g.ToList());
+                foreach (var r in shiftDsmRows)
+                    DsmPrintRows.Add((shiftLabel, r));
             }
 
             if (allEntries.Count == 0)
             {
-                StatusMessage = "No entries found for this date.";
+                StatusMessage = "No entries found for this date range.";
                 ClearAll();
                 return;
             }
 
             // 1. Calculate Nozzle-wise Sale
-            CalculateNozzleWiseSale(allEntries, shiftOverrides);
+            CalculateNozzleWiseSale(allEntries);
 
             // 2. Collections (using DsmSummaryRows)
             var summaryRows = _aggregation.BuildDsmSummaryRows(allEntries);
@@ -201,13 +267,9 @@ public partial class DayTotalViewModel : ObservableObject
         }
     }
 
-    private void CalculateNozzleWiseSale(List<DsmEntry> allEntries, Dictionary<string, double> shiftOverrides)
+    private void CalculateNozzleWiseSale(List<DsmEntry> allEntries)
     {
         var nozzleRows = new List<NozzleSummaryRowDto>();
-        var settingsResult = _settingsRepo.GetSettingsAsync().Result;
-        double defaultHsd = settingsResult.Success ? settingsResult.Data!.HsdRate : 90.35;
-        double defaultMsI = settingsResult.Success ? settingsResult.Data!.MsIRate : 103.81;
-        double defaultMsII = settingsResult.Success ? settingsResult.Data!.MsIIRate : 103.81;
 
         // Group by Pump and canonical fuel type (from PumpConfiguration, not stored FuelType)
         var allReadings = allEntries.SelectMany(e => e.NozzleReadings.Select(r => new
@@ -221,25 +283,12 @@ public partial class DayTotalViewModel : ObservableObject
 
         foreach (var group in pumpGroups)
         {
-            // The earliest entry has the minimum OpeningReading (assuming readings only go up)
             var opening = group.Min(x => x.Reading.OpeningReading);
             var closing = group.Max(x => x.Reading.ClosingReading);
-            
-            // Total gross litres sold from this pump/fuel
             var grossLitres = closing - opening;
-
-            // Total testing for this pump (if we can link it)
             var netLitres = group.Sum(x => x.Reading.SaleLitres);
-
-            double rate = group.Key.FuelType switch
-            {
-                "HSD" => shiftOverrides.TryGetValue("HSD", out var hr) ? hr : defaultHsd,
-                "MS-I" => shiftOverrides.TryGetValue("MS-I", out var m1r) ? m1r : defaultMsI,
-                "MS-II" => shiftOverrides.TryGetValue("MS-II", out var m2r) ? m2r : defaultMsII,
-                _ => defaultHsd
-            };
-
-            double amount = netLitres * rate;
+            var amount = group.Sum(x => x.Reading.Amount);
+            double rate = netLitres > 0 ? amount / netLitres : group.Select(x => x.Reading.Rate).FirstOrDefault();
 
             nozzleRows.Add(new NozzleSummaryRowDto
             {

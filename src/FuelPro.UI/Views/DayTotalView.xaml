@@ -65,8 +65,20 @@
                     <TextBlock Text="Day Total Reconciliation" FontSize="20" FontWeight="Bold" VerticalAlignment="Center" />
                 </StackPanel>
 
-                <DatePicker Grid.Column="1" materialDesign:HintAssist.Hint="Select Date" Style="{StaticResource MaterialDesignFloatingHintDatePicker}"
-                            SelectedDate="{Binding SelectedDate}" Width="150" Margin="0,0,16,0" IsEnabled="{Binding IsLoading, Converter={StaticResource InverseBool}}"/>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,16,0">
+                    <ComboBox ItemsSource="{Binding Presets}" SelectedItem="{Binding SelectedPreset}"
+                              Width="130" Margin="0,0,8,0" materialDesign:HintAssist.Hint="Range Preset"
+                              Style="{StaticResource MaterialDesignFloatingHintComboBox}"
+                              IsEnabled="{Binding IsLoading, Converter={StaticResource InverseBool}}"/>
+                    <DatePicker SelectedDate="{Binding StartDate}" Width="130" Margin="0,0,8,0"
+                                materialDesign:HintAssist.Hint="From Date"
+                                Style="{StaticResource MaterialDesignFloatingHintDatePicker}"
+                                IsEnabled="{Binding IsLoading, Converter={StaticResource InverseBool}}"/>
+                    <DatePicker SelectedDate="{Binding EndDate}" Width="130"
+                                materialDesign:HintAssist.Hint="To Date"
+                                Style="{StaticResource MaterialDesignFloatingHintDatePicker}"
+                                IsEnabled="{Binding IsLoading, Converter={StaticResource InverseBool}}"/>
+                </StackPanel>
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="24,0,0,0">
                     <TextBlock Text="{Binding StatusMessage}" Foreground="{DynamicResource MaterialDesign.Brush.Error}" VerticalAlignment="Center" />

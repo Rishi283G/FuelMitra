@@ -2,6 +2,8 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FuelPro.Core.Common;
 using FuelPro.Core.DTOs;
+using FuelPro.Core.Models;
+using FuelPro.Core.Models.AGS;
 using FuelPro.Core.Repositories;
 using FuelPro.Core.Services;
 using Microsoft.Extensions.DependencyInjection;
@@ -42,6 +44,11 @@ public partial class DashboardViewModel : ObservableObject
     [ObservableProperty] private double _totalCreditorsToday;
     [ObservableProperty] private bool _isLoading;
     [ObservableProperty] private DateTime _selectedDate = DateTime.Today;
+    [ObservableProperty] private DateTime _startDate = DateTime.Today;
+    [ObservableProperty] private DateTime _endDate = DateTime.Today;
+    [ObservableProperty] private string _selectedPreset = "Today";
+
+    public string[] Presets { get; } = { "Today", "Yesterday", "This Week", "This Month", "Last 7 Days", "Last 30 Days", "Custom" };
 
     // Creditor Repayment & Tracker tracking
     public System.Collections.ObjectModel.ObservableCollection<FuelPro.Core.Models.Creditor> Creditors { get; } = new();
@@ -121,10 +128,86 @@ public partial class DashboardViewModel : ObservableObject
         _ = LoadAgsDataAsync();
     }
 
+    private bool _isUpdatingPreset;
+
     partial void OnSelectedDateChanged(DateTime value)
     {
+        if (!_isUpdatingPreset)
+        {
+            _isUpdatingPreset = true;
+            StartDate = value;
+            EndDate = value;
+            _isUpdatingPreset = false;
+            _ = LoadDataAsync();
+            _ = LoadAgsDataAsync();
+        }
+    }
+
+    partial void OnSelectedPresetChanged(string value)
+    {
+        if (value == "Custom") return;
+
+        _isUpdatingPreset = true;
+        var today = DateTime.Today;
+        DateTime newStart = today;
+        DateTime newEnd = today;
+        switch (value)
+        {
+            case "Today":
+                newStart = today;
+                newEnd = today;
+                break;
+            case "Yesterday":
+                newStart = today.AddDays(-1);
+                newEnd = today.AddDays(-1);
+                break;
+            case "This Week":
+                int diff = (7 + (today.DayOfWeek - DayOfWeek.Monday)) % 7;
+                newStart = today.AddDays(-1 * diff).Date;
+                newEnd = today;
+                break;
+            case "This Month":
+                newStart = new DateTime(today.Year, today.Month, 1);
+                newEnd = today;
+                break;
+            case "Last 7 Days":
+                newStart = today.AddDays(-6);
+                newEnd = today;
+                break;
+            case "Last 30 Days":
+                newStart = today.AddDays(-29);
+                newEnd = today;
+                break;
+        }
+
+        StartDate = newStart;
+        EndDate = newEnd;
+        SelectedDate = newEnd;
+        _isUpdatingPreset = false;
+
         _ = LoadDataAsync();
         _ = LoadAgsDataAsync();
+    }
+
+    partial void OnStartDateChanged(DateTime value)
+    {
+        if (!_isUpdatingPreset)
+        {
+            SelectedPreset = "Custom";
+            _ = LoadDataAsync();
+            _ = LoadAgsDataAsync();
+        }
+    }
+
+    partial void OnEndDateChanged(DateTime value)
+    {
+        SelectedDate = value;
+        if (!_isUpdatingPreset)
+        {
+            SelectedPreset = "Custom";
+            _ = LoadDataAsync();
+            _ = LoadAgsDataAsync();
+        }
     }
 
     [RelayCommand]
@@ -133,14 +216,22 @@ public partial class DashboardViewModel : ObservableObject
         IsLoading = true;
         try
         {
-            var morningResult = await _calcService.GetShiftSummaryAsync(SelectedDate, "A");
-            MorningShift = morningResult.Success ? morningResult.Data : new ShiftSummaryDto();
+            var entriesResult = await _dsmEntryRepository.GetEntriesForDateRangeAsync(StartDate, EndDate);
+            var entries = entriesResult.Success && entriesResult.Data != null ? entriesResult.Data : new List<DsmEntry>();
 
-            var afternoonResult = await _calcService.GetShiftSummaryAsync(SelectedDate, "B");
-            AfternoonShift = afternoonResult.Success ? afternoonResult.Data : new ShiftSummaryDto();
+            var shiftsResult = await _shiftRepository.GetShiftsByDateRangeAsync(StartDate, EndDate);
+            var shifts = shiftsResult.Success && shiftsResult.Data != null ? shiftsResult.Data : new List<Shift>();
+            var shiftIds = shifts.Select(s => s.ShiftId).ToList();
 
-            var nightResult = await _calcService.GetShiftSummaryAsync(SelectedDate, "C");
-            NightShift = nightResult.Success ? nightResult.Data : new ShiftSummaryDto();
+            var otherCashResult = await App.Services.GetRequiredService<IShiftOtherCashRepository>().GetByDateRangeAsync(StartDate, EndDate);
+            var otherCashList = otherCashResult.Success && otherCashResult.Data != null ? otherCashResult.Data : new List<ShiftOtherCash>();
+
+            var shiftExpensesResult = await App.Services.GetRequiredService<IExpenseRepository>().GetExpensesByShiftIdsAsync(shiftIds);
+            var shiftExpenses = shiftExpensesResult.Success && shiftExpensesResult.Data != null ? shiftExpensesResult.Data : new List<Expense>();
+
+            MorningShift = AggregateShiftSummary(shifts, entries, otherCashList, shiftExpenses, "A");
+            AfternoonShift = AggregateShiftSummary(shifts, entries, otherCashList, shiftExpenses, "B");
+            NightShift = AggregateShiftSummary(shifts, entries, otherCashList, shiftExpenses, "C");
 
             TodayTotalSale = 0;
             TodayTotalLitres = (MorningShift?.TotalHsdLitres ?? 0) + (MorningShift?.TotalMsILitres ?? 0) + (MorningShift?.TotalMsIILitres ?? 0)
@@ -166,77 +257,71 @@ public partial class DashboardViewModel : ObservableObject
 
             var entryCalculations = new System.Collections.Generic.List<(int ShiftId, string DsmName, int PumpId, int? ReconciledToPumpId, double Mismatch)>();
 
-            foreach (var shiftType in new[] { "A", "B", "C" })
+            foreach (var entry in entries)
             {
-                var shiftResult = await _shiftRepository.GetShiftAsync(SelectedDate, shiftType);
-                if (!shiftResult.Success || shiftResult.Data == null) continue;
-                var entriesResult = await _dsmEntryRepository.GetEntriesForShiftAsync(shiftResult.Data.ShiftId);
-                if (!entriesResult.Success || entriesResult.Data == null) continue;
-                foreach (var entry in entriesResult.Data)
+                var cash1 = entry.CashDenominations.Where(x => x.CashType == "Cash1").Sum(x => x.TotalAmount);
+                var cash2 = entry.CashDenominations.Where(x => x.CashType == "Cash2").Sum(x => x.TotalAmount);
+
+                var calc = _dsmCalculationService.Calculate(new DsmEntryDto
                 {
-                    var calc = _dsmCalculationService.Calculate(new DsmEntryDto
+                    DSMEntryId = entry.DsmEntryId,
+                    NozzleReadings = entry.NozzleReadings.Select(r => new NozzleReadingDto { Amount = (decimal)r.Amount }).ToList(),
+                    PaymentCollection = new PaymentCollectionDto
                     {
-                        DSMEntryId = entry.DsmEntryId,
-                        NozzleReadings = entry.NozzleReadings.Select(r => new NozzleReadingDto { Amount = (decimal)r.Amount }).ToList(),
-                        PaymentCollection = new PaymentCollectionDto
-                        {
-                            PhonePe = (decimal)((entry.PaymentCollection?.PhonePe ?? 0) + (entry.PaymentCollection?.PhonePeCardMorning ?? 0) + (entry.PaymentCollection?.PhonePeCardNight ?? 0)),
-                            CreditCard = (decimal)((entry.PaymentCollection?.CreditCard ?? 0) + (entry.PaymentCollection?.PetroCard ?? 0)),
-                            CashDeposit = (decimal)(entry.CashDenominations.Where(x => x.CashType == "Cash1").Sum(x => x.TotalAmount) + entry.CashDenominations.Where(x => x.CashType == "Cash2").Sum(x => x.TotalAmount) + (entry.PaymentCollection?.CashDeposit ?? 0)),
-                            PhysicalCash = 0  // Others is informational only, not included in TotalInDirect
-                        },
-                        DebitEntries = entry.DebitEntries.Select(d => new DebitEntryDto { Amount = (decimal)d.Amount }).ToList(),
-                        TestingEntries = entry.TestingEntries.Select(t => new TestingEntryDto
-                        {
-                            FuelType = t.FuelType,
-                            Amount = (decimal)t.Amount
-                        }).ToList(),
-                        Expenses = entry.Expenses.Select(e => new ExpenseDto { Amount = (decimal)e.Amount }).ToList()
+                        PhonePe = (decimal)((entry.PaymentCollection?.PhonePe ?? 0) + (entry.PaymentCollection?.PhonePeCardMorning ?? 0) + (entry.PaymentCollection?.PhonePeCardNight ?? 0)),
+                        CreditCard = (decimal)((entry.PaymentCollection?.CreditCard ?? 0) + (entry.PaymentCollection?.PetroCard ?? 0)),
+                        CashDeposit = (decimal)(cash1 + cash2 + (entry.PaymentCollection?.CashDeposit ?? 0)),
+                        PhysicalCash = 0
+                    },
+                    DebitEntries = entry.DebitEntries.Select(d => new DebitEntryDto { Amount = (decimal)d.Amount }).ToList(),
+                    TestingEntries = entry.TestingEntries.Select(t => new TestingEntryDto
+                    {
+                        FuelType = t.FuelType,
+                        Amount = (decimal)t.Amount
+                    }).ToList(),
+                    Expenses = entry.Expenses.Select(e => new ExpenseDto { Amount = (decimal)e.Amount }).ToList()
+                });
+
+                double mismatch = (double)calc.Mismatch;
+                entryCalculations.Add((entry.ShiftId, entry.DsmName ?? "", entry.PumpId, entry.ReconciledToPumpId, mismatch));
+
+                TodayTotalSale += (double)calc.GrossSales;
+                TodayCollection += (double)calc.TotalCollection;
+                TotalCreditorsToday += (double)calc.TotalCreditors;
+                
+                TodayTotalPhonePe += (entry.PaymentCollection?.PhonePe ?? 0);
+                TodayTotalPhonePeCardMorning += (entry.PaymentCollection?.PhonePeCardMorning ?? 0);
+                TodayTotalPhonePeCardNight += (entry.PaymentCollection?.PhonePeCardNight ?? 0);
+                TodayTotalCreditCard += (entry.PaymentCollection?.CreditCard ?? 0);
+                TodayTotalPetroCard += (entry.PaymentCollection?.PetroCard ?? 0);
+                TodayTotalBankCash += cash1 + (entry.PaymentCollection?.CashDeposit ?? 0);
+                TodayTotalCashInHand += cash2;
+                TodayTotalExpenses += entry.Expenses.Sum(x => x.Amount);
+                
+                foreach (var d in entry.DebitEntries)
+                {
+                    TodayDebtorsList.Add(new DebitRegisterRowDto
+                    {
+                        DsmName = entry.DsmName ?? "",
+                        PumpId = entry.PumpId,
+                        DebtorName = d.DebtorName,
+                        Amount = (double)d.Amount
                     });
-
-                    double mismatch = (double)calc.Mismatch;
-                    entryCalculations.Add((entry.ShiftId, entry.DsmName ?? "", entry.PumpId, entry.ReconciledToPumpId, mismatch));
-
-                    TodayTotalSale += (double)calc.GrossSales;
-                    TodayCollection += (double)calc.TotalCollection;
-                    TotalCreditorsToday += (double)calc.TotalCreditors;
-                    
-                    TodayTotalPhonePe += (entry.PaymentCollection?.PhonePe ?? 0);
-                    TodayTotalPhonePeCardMorning += (entry.PaymentCollection?.PhonePeCardMorning ?? 0);
-                    TodayTotalPhonePeCardNight += (entry.PaymentCollection?.PhonePeCardNight ?? 0);
-                    TodayTotalCreditCard += (entry.PaymentCollection?.CreditCard ?? 0);
-                    TodayTotalPetroCard += (entry.PaymentCollection?.PetroCard ?? 0);
-                    TodayTotalBankCash += entry.CashDenominations.Where(x => x.CashType == "Cash1").Sum(x => x.TotalAmount) + (entry.PaymentCollection?.CashDeposit ?? 0);
-                    TodayTotalCashInHand += entry.CashDenominations.Where(x => x.CashType == "Cash2").Sum(x => x.TotalAmount);
-                    TodayTotalExpenses += entry.Expenses.Sum(x => x.Amount);
-                    
-                    foreach (var d in entry.DebitEntries)
-                    {
-                        TodayDebtorsList.Add(new DebitRegisterRowDto
-                        {
-                            DsmName = entry.DsmName ?? "",
-                            PumpId = entry.PumpId,
-                            DebtorName = d.DebtorName,
-                            Amount = (double)d.Amount
-                        });
-                    }
                 }
+            }
 
-                // Add shift-level expenses
-                var shiftExpResult = await App.Services.GetRequiredService<IExpenseRepository>().GetByShiftIdAsync(shiftResult.Data.ShiftId);
-                if (shiftExpResult.Success && shiftExpResult.Data != null)
-                {
-                    var shiftExpSum = shiftExpResult.Data.Sum(e => e.Amount);
-                    TodayTotalExpenses += shiftExpSum;
-                    TodayCollection += shiftExpSum;
-                }
+            // Add shift-level expenses
+            if (shiftExpenses.Any())
+            {
+                var shiftExpSum = shiftExpenses.Sum(e => e.Amount);
+                TodayTotalExpenses += shiftExpSum;
+                TodayCollection += shiftExpSum;
+            }
 
-                // Add shift-level other cash
-                var otherCashResult = await App.Services.GetRequiredService<IShiftOtherCashRepository>().GetByShiftAsync(SelectedDate, shiftType);
-                if (otherCashResult.Success && otherCashResult.Data != null)
-                {
-                    TodayTotalSale += otherCashResult.Data.Sum(o => o.Amount);
-                }
+            // Add shift-level other cash
+            if (otherCashList.Any())
+            {
+                TodayTotalSale += otherCashList.Sum(o => o.Amount);
             }
 
             // Group by shift, name, and connected/reconciled pump (matching DayTotal calculation)
@@ -264,7 +349,7 @@ public partial class DashboardViewModel : ObservableObject
                  PendingMismatchCount = 1;
             }
 
-            var repaymentsResult = await _repaymentRepo.GetByDateAsync(SelectedDate);
+            var repaymentsResult = await _repaymentRepo.GetByDateRangeAsync(StartDate, EndDate);
             Repayments.Clear();
             if (repaymentsResult.Success && repaymentsResult.Data != null)
             {
@@ -284,23 +369,104 @@ public partial class DashboardViewModel : ObservableObject
         finally { IsLoading = false; }
     }
 
+    private ShiftSummaryDto AggregateShiftSummary(
+        List<Shift> shifts,
+        List<DsmEntry> entries,
+        List<ShiftOtherCash> otherCashList,
+        List<Expense> shiftExpenses,
+        string shiftType)
+    {
+        var shiftTypeShifts = shifts.Where(s => s.ShiftType == shiftType).ToList();
+        var shiftIds = shiftTypeShifts.Select(s => s.ShiftId).ToHashSet();
+        
+        var shiftEntries = entries.Where(e => shiftIds.Contains(e.ShiftId)).ToList();
+        var shiftOtherCash = otherCashList.Where(o => o.ShiftNumber == shiftType).ToList();
+        var typeShiftExpenses = shiftExpenses.Where(e => e.ShiftId != null && shiftIds.Contains(e.ShiftId.Value)).ToList();
+
+        var summary = new ShiftSummaryDto
+        {
+            ShiftDate = EndDate,
+            ShiftType = shiftType,
+            TotalDsmEntries = shiftEntries.Count,
+            IsLocked = shiftTypeShifts.Any() && shiftTypeShifts.All(s => s.IsLocked)
+        };
+
+        double totalFuelSale = 0;
+        double totalCash = 0;
+        double totalDigital = 0;
+        double totalDebit = 0;
+        double totalExpenses = typeShiftExpenses.Sum(e => e.Amount);
+
+        foreach (var entry in shiftEntries)
+        {
+            var cash1 = entry.CashDenominations.Where(c => c.CashType == "Cash1").Sum(c => c.TotalAmount);
+            var cash2 = entry.CashDenominations.Where(c => c.CashType == "Cash2").Sum(c => c.TotalAmount);
+            var calc = _dsmCalculationService.Calculate(new DsmEntryDto
+            {
+                DSMEntryId = entry.DsmEntryId,
+                NozzleReadings = entry.NozzleReadings.Select(n => new NozzleReadingDto { Amount = (decimal)n.Amount }).ToList(),
+                PaymentCollection = new PaymentCollectionDto
+                {
+                    PhonePe = (decimal)((entry.PaymentCollection?.PhonePe ?? 0) + (entry.PaymentCollection?.PhonePeCard ?? 0)),
+                    CreditCard = (decimal)((entry.PaymentCollection?.CreditCard ?? 0) + (entry.PaymentCollection?.PetroCard ?? 0)),
+                    CashDeposit = (decimal)(cash1 + cash2 + (entry.PaymentCollection?.CashDeposit ?? 0)),
+                    PhysicalCash = 0
+                },
+                DebitEntries = entry.DebitEntries.Select(d => new DebitEntryDto { Amount = (decimal)d.Amount }).ToList(),
+                TestingEntries = entry.TestingEntries.Select(t => new TestingEntryDto
+                {
+                    FuelType = t.FuelType,
+                    Amount = (decimal)t.Amount
+                }).ToList()
+            });
+
+            totalFuelSale += (double)calc.GrossSales;
+            totalDebit += (double)calc.TotalCreditors;
+            totalExpenses += entry.Expenses.Sum(e => e.Amount);
+            
+            var phonePe = (double)((entry.PaymentCollection?.PhonePe ?? 0) + (entry.PaymentCollection?.PhonePeCard ?? 0));
+            var petroCard = entry.PaymentCollection?.PetroCard ?? 0;
+            var creditCard = (double)((entry.PaymentCollection?.CreditCard ?? 0) + (entry.PaymentCollection?.CreditCardMorning ?? 0) + (entry.PaymentCollection?.CreditCardNight ?? 0));
+            totalDigital += phonePe + petroCard + creditCard;
+            
+            totalCash += cash1 + cash2;
+        }
+
+        totalFuelSale += shiftOtherCash.Sum(o => o.Amount);
+
+        summary.TotalFuelSale = totalFuelSale;
+        summary.TotalCash = totalCash;
+        summary.TotalDigitalPayments = totalDigital;
+        summary.TotalDebit = totalDebit;
+        summary.TotalExpenses = totalExpenses;
+
+        summary.TotalHsdLitres = shiftEntries.SelectMany(e => e.NozzleReadings)
+            .Where(r => PumpConfiguration.GetFuelTypeDisplayName(r.NozzleNumber) == "HSD")
+            .Sum(r => r.SaleLitres);
+        summary.TotalMsILitres = shiftEntries.SelectMany(e => e.NozzleReadings)
+            .Where(r => PumpConfiguration.GetFuelTypeDisplayName(r.NozzleNumber) == "MS-I")
+            .Sum(r => r.SaleLitres);
+        summary.TotalMsIILitres = shiftEntries.SelectMany(e => e.NozzleReadings)
+            .Where(r => PumpConfiguration.GetFuelTypeDisplayName(r.NozzleNumber) == "MS-II")
+            .Sum(r => r.SaleLitres);
+
+        return summary;
+    }
+
     private async Task LoadOutstandingCreditorsAsync()
     {
         OutstandingCreditors.Clear();
         
-        // 1. Get all un-reconciled DSM entries for the month
-        var result = await _dsmEntryRepository.GetEntriesForMonthAsync(SelectedDate.Year, SelectedDate.Month);
+        var result = await _dsmEntryRepository.GetEntriesForMonthAsync(EndDate.Year, EndDate.Month);
         if (!result.Success || result.Data == null) return;
 
-        // Group debits by DebtorName where IsReconciled == false
         var unreturnedDebits = result.Data
             .Where(e => !e.IsReconciled)
             .SelectMany(e => e.DebitEntries)
             .GroupBy(d => d.DebtorName.Trim())
             .ToDictionary(g => g.Key, g => g.Sum(d => d.Amount), StringComparer.OrdinalIgnoreCase);
 
-        // 2. Subtract repayments made this month
-        var allRepaymentsThisMonth = await _repaymentRepo.GetByMonthAsync(SelectedDate.Year, SelectedDate.Month);
+        var allRepaymentsThisMonth = await _repaymentRepo.GetByMonthAsync(EndDate.Year, EndDate.Month);
         if (allRepaymentsThisMonth.Success && allRepaymentsThisMonth.Data != null)
         {
             var repaymentsByName = allRepaymentsThisMonth.Data
@@ -316,7 +482,6 @@ public partial class DashboardViewModel : ObservableObject
             }
         }
 
-        // 3. Populate ObservableCollection with positive balances
         foreach (var kvp in unreturnedDebits.Where(k => k.Value > 0).OrderBy(k => k.Key))
         {
             OutstandingCreditors.Add(new CreditorBalanceDto
@@ -377,53 +542,101 @@ public partial class DashboardViewModel : ObservableObject
         try
         {
             var agsRepo = App.Services.GetRequiredService<IAgsImportRepository>();
-            var agsAggSvc = App.Services.GetRequiredService<IAgsDailyAggregationService>();
 
-            var shiftsResult = await agsRepo.GetShiftsForDateAsync(SelectedDate);
-            if (!shiftsResult.Success || shiftsResult.Data == null || !shiftsResult.Data.Any())
+            var allShifts = new List<AgsShiftImport>();
+            var allSummaries = new List<AgsDailySummary>();
+            var totalDays = (EndDate.Date - StartDate.Date).Days + 1;
+
+            for (var dt = StartDate.Date; dt <= EndDate.Date; dt = dt.AddDays(1))
             {
-                HasAgsData = false;
-                AgsStatusLabel = "No AGS data imported for this date";
-                return;
+                var shiftsRes = await agsRepo.GetShiftsForDateAsync(dt);
+                if (shiftsRes.Success && shiftsRes.Data != null)
+                {
+                    allShifts.AddRange(shiftsRes.Data.Where(s => s.IsActive));
+                }
+                var summaryRes = await agsRepo.GetDailySummaryAsync(dt);
+                if (summaryRes.Success && summaryRes.Data != null)
+                {
+                    allSummaries.Add(summaryRes.Data);
+                }
             }
 
-            var summaryResult = await agsRepo.GetDailySummaryAsync(SelectedDate);
-            if (!summaryResult.Success || summaryResult.Data == null)
+            if (!allShifts.Any())
             {
                 HasAgsData = false;
-                AgsStatusLabel = "AGS summary not found";
+                AgsStatusLabel = "No AGS data imported for this date range";
                 return;
             }
-
-            var dto = agsAggSvc.ToDto(summaryResult.Data, shiftsResult.Data);
 
             // Shift status
-            AgsShiftAImported = dto.ShiftAImported;
-            AgsShiftBImported = dto.ShiftBImported;
-            AgsShiftCImported = dto.ShiftCImported;
-            AgsShiftsImported = dto.ShiftsImportedCount;
-            AgsAllShiftsImported = dto.AllShiftsImported;
+            AgsShiftAImported = allShifts.Any(s => s.ShiftType == "A");
+            AgsShiftBImported = allShifts.Any(s => s.ShiftType == "B");
+            AgsShiftCImported = allShifts.Any(s => s.ShiftType == "C");
+            AgsShiftsImported = allShifts.Count;
+            AgsAllShiftsImported = allShifts.Count == totalDays * 3;
 
-            AgsShiftATime = dto.ShiftAData != null ? dto.ShiftAData.ImportedAt.ToString("hh:mm tt") : "Pending";
-            AgsShiftBTime = dto.ShiftBData != null ? dto.ShiftBData.ImportedAt.ToString("hh:mm tt") : "Pending";
-            AgsShiftCTime = dto.ShiftCData != null ? dto.ShiftCData.ImportedAt.ToString("hh:mm tt") : "Pending";
+            if (StartDate.Date == EndDate.Date)
+            {
+                var shiftA = allShifts.FirstOrDefault(s => s.ShiftType == "A");
+                var shiftB = allShifts.FirstOrDefault(s => s.ShiftType == "B");
+                var shiftC = allShifts.FirstOrDefault(s => s.ShiftType == "C");
+                AgsShiftATime = shiftA != null ? shiftA.ImportedAt.ToString("hh:mm tt") : "Pending";
+                AgsShiftBTime = shiftB != null ? shiftB.ImportedAt.ToString("hh:mm tt") : "Pending";
+                AgsShiftCTime = shiftC != null ? shiftC.ImportedAt.ToString("hh:mm tt") : "Pending";
+            }
+            else
+            {
+                var countA = allShifts.Count(s => s.ShiftType == "A");
+                var countB = allShifts.Count(s => s.ShiftType == "B");
+                var countC = allShifts.Count(s => s.ShiftType == "C");
+                AgsShiftATime = $"{countA}/{totalDays} Days";
+                AgsShiftBTime = $"{countB}/{totalDays} Days";
+                AgsShiftCTime = $"{countC}/{totalDays} Days";
+            }
 
             // Day totals
-            AgsDayHsd   = dto.DayTotalHsdLitres;
-            AgsDayMsI   = dto.DayTotalMsILitres;
-            AgsDayMsII  = dto.DayTotalMsIILitres;
-            AgsDayTotal = dto.DayGrandTotalLitres;
+            AgsDayHsd = 0;
+            AgsDayMsI = 0;
+            AgsDayMsII = 0;
+            AgsDayTotal = 0;
 
-            // Tank stock
-            HsdOpeningStock = dto.HsdDayOpeningStock;
-            HsdClosingStock = dto.HsdDayClosingStock;
-            HsdDispensed    = HsdOpeningStock - HsdClosingStock;
-            MsIOpeningStock  = dto.MsIDayOpeningStock;
-            MsIClosingStock  = dto.MsIDayClosingStock;
-            MsIDispensed     = MsIOpeningStock - MsIClosingStock;
-            MsIIOpeningStock = dto.MsIIDayOpeningStock;
-            MsIIClosingStock = dto.MsIIDayClosingStock;
-            MsIIDispensed    = MsIIOpeningStock - MsIIClosingStock;
+            foreach (var s in allShifts)
+            {
+                double hsd = 0, msI = 0, msII = 0;
+                if (s.NozzleReadings != null && s.NozzleReadings.Any())
+                {
+                    hsd  = s.NozzleReadings.Where(r => PumpConfiguration.GetFuelTypeDisplayName(r.NozzleNumber) == "HSD"  ).Sum(r => r.NetSaleLitres);
+                    msI  = s.NozzleReadings.Where(r => PumpConfiguration.GetFuelTypeDisplayName(r.NozzleNumber) == "MS-I" ).Sum(r => r.NetSaleLitres);
+                    msII = s.NozzleReadings.Where(r => PumpConfiguration.GetFuelTypeDisplayName(r.NozzleNumber) == "MS-II").Sum(r => r.NetSaleLitres);
+                }
+                else
+                {
+                    hsd  = s.TotalHsdLitres;
+                    msI  = s.TotalMsILitres;
+                    msII = s.TotalMsIILitres;
+                }
+                AgsDayHsd += hsd;
+                AgsDayMsI += msI;
+                AgsDayMsII += msII;
+                AgsDayTotal += (hsd + msI + msII);
+            }
+
+            // Tank stock (Opening from earliest shift, closing from latest shift)
+            var sortedShifts = allShifts.OrderBy(s => s.ImportDate).ThenBy(s => s.ShiftType).ToList();
+            var firstShift = sortedShifts.FirstOrDefault();
+            var lastShift = sortedShifts.LastOrDefault();
+
+            HsdOpeningStock = firstShift?.HsdOpeningStock ?? 0;
+            HsdClosingStock = lastShift?.HsdClosingStock ?? 0;
+            HsdDispensed    = AgsDayHsd;
+
+            MsIOpeningStock  = firstShift?.MsIOpeningStock ?? 0;
+            MsIClosingStock  = lastShift?.MsIClosingStock ?? 0;
+            MsIDispensed     = AgsDayMsI;
+
+            MsIIOpeningStock = firstShift?.MsIIOpeningStock ?? 0;
+            MsIIClosingStock = lastShift?.MsIIClosingStock ?? 0;
+            MsIIDispensed    = AgsDayMsII;
 
             // Tank level % (closing/opening)
             HsdLevelPct  = HsdOpeningStock  > 0 ? HsdClosingStock  / HsdOpeningStock  * 100 : 0;
@@ -431,18 +644,39 @@ public partial class DashboardViewModel : ObservableObject
             MsIILevelPct = MsIIOpeningStock > 0 ? MsIIClosingStock / MsIIOpeningStock * 100 : 0;
 
             // Per-shift breakdown
-            AgsShiftAHsd  = dto.ShiftAData?.HsdLitres  ?? 0;
-            AgsShiftAMsI  = dto.ShiftAData?.MsILitres  ?? 0;
-            AgsShiftAMsII = dto.ShiftAData?.MsIILitres ?? 0;
-            AgsShiftATotal = dto.ShiftAData?.TotalLitres ?? 0;
-            AgsShiftBHsd  = dto.ShiftBData?.HsdLitres  ?? 0;
-            AgsShiftBMsI  = dto.ShiftBData?.MsILitres  ?? 0;
-            AgsShiftBMsII = dto.ShiftBData?.MsIILitres ?? 0;
-            AgsShiftBTotal = dto.ShiftBData?.TotalLitres ?? 0;
-            AgsShiftCHsd  = dto.ShiftCData?.HsdLitres  ?? 0;
-            AgsShiftCMsI  = dto.ShiftCData?.MsILitres  ?? 0;
-            AgsShiftCMsII = dto.ShiftCData?.MsIILitres ?? 0;
-            AgsShiftCTotal = dto.ShiftCData?.TotalLitres ?? 0;
+            AgsShiftAHsd  = 0; AgsShiftAMsI  = 0; AgsShiftAMsII = 0; AgsShiftATotal = 0;
+            AgsShiftBHsd  = 0; AgsShiftBMsI  = 0; AgsShiftBMsII = 0; AgsShiftBTotal = 0;
+            AgsShiftCHsd  = 0; AgsShiftCMsI  = 0; AgsShiftCMsII = 0; AgsShiftCTotal = 0;
+
+            foreach (var s in allShifts)
+            {
+                double hsd = 0, msI = 0, msII = 0;
+                if (s.NozzleReadings != null && s.NozzleReadings.Any())
+                {
+                    hsd  = s.NozzleReadings.Where(r => PumpConfiguration.GetFuelTypeDisplayName(r.NozzleNumber) == "HSD"  ).Sum(r => r.NetSaleLitres);
+                    msI  = s.NozzleReadings.Where(r => PumpConfiguration.GetFuelTypeDisplayName(r.NozzleNumber) == "MS-I" ).Sum(r => r.NetSaleLitres);
+                    msII = s.NozzleReadings.Where(r => PumpConfiguration.GetFuelTypeDisplayName(r.NozzleNumber) == "MS-II").Sum(r => r.NetSaleLitres);
+                }
+                else
+                {
+                    hsd  = s.TotalHsdLitres;
+                    msI  = s.TotalMsILitres;
+                    msII = s.TotalMsIILitres;
+                }
+
+                if (s.ShiftType == "A")
+                {
+                    AgsShiftAHsd += hsd; AgsShiftAMsI += msI; AgsShiftAMsII += msII; AgsShiftATotal += (hsd + msI + msII);
+                }
+                else if (s.ShiftType == "B")
+                {
+                    AgsShiftBHsd += hsd; AgsShiftBMsI += msI; AgsShiftBMsII += msII; AgsShiftBTotal += (hsd + msI + msII);
+                }
+                else if (s.ShiftType == "C")
+                {
+                    AgsShiftCHsd += hsd; AgsShiftCMsI += msI; AgsShiftCMsII += msII; AgsShiftCTotal += (hsd + msI + msII);
+                }
+            }
 
             // Nozzle summary (all 28)
             NozzleDaySummaries.Clear();
@@ -450,13 +684,13 @@ public partial class DashboardViewModel : ObservableObject
             for (int n = 1; n <= 28; n++)
             {
                 double shiftA = 0, shiftB = 0, shiftC = 0;
-                foreach (var shift in shiftsResult.Data)
+                foreach (var shift in allShifts)
                 {
                     var nozzleReading = shift.NozzleReadings.FirstOrDefault(r => r.NozzleNumber == n);
                     if (nozzleReading == null) continue;
-                    if (shift.ShiftType == "A") shiftA = nozzleReading.NetSaleLitres;
-                    else if (shift.ShiftType == "B") shiftB = nozzleReading.NetSaleLitres;
-                    else if (shift.ShiftType == "C") shiftC = nozzleReading.NetSaleLitres;
+                    if (shift.ShiftType == "A") shiftA += nozzleReading.NetSaleLitres;
+                    else if (shift.ShiftType == "B") shiftB += nozzleReading.NetSaleLitres;
+                    else if (shift.ShiftType == "C") shiftC += nozzleReading.NetSaleLitres;
                 }
 
                 // Find pump number from PumpConfiguration
@@ -475,9 +709,19 @@ public partial class DashboardViewModel : ObservableObject
                 });
             }
 
-            AgsStatusLabel = dto.AllShiftsImported
-                ? $"{SelectedDate:dd-MMM-yyyy} — All 3 shifts imported"
-                : $"{SelectedDate:dd-MMM-yyyy} — {dto.ShiftsImportedCount}/3 shifts imported (partial)";
+            if (StartDate.Date == EndDate.Date)
+            {
+                AgsStatusLabel = allShifts.Count == 3
+                    ? $"{StartDate:dd-MMM-yyyy} — All 3 shifts imported"
+                    : $"{StartDate:dd-MMM-yyyy} — {allShifts.Count}/3 shifts imported (partial)";
+            }
+            else
+            {
+                var totalExpected = totalDays * 3;
+                AgsStatusLabel = allShifts.Count == totalExpected
+                    ? $"{StartDate:dd-MMM-yyyy} to {EndDate:dd-MMM-yyyy} — All {allShifts.Count} shifts imported"
+                    : $"{StartDate:dd-MMM-yyyy} to {EndDate:dd-MMM-yyyy} — {allShifts.Count}/{totalExpected} shifts imported (partial)";
+            }
             HasAgsData = true;
         }
         catch (Exception ex)

@@ -9,6 +9,7 @@ using FuelPro.Core.Repositories;
 using FuelPro.Data.Repositories;
 using FuelPro.Core.Services;
 using FuelPro.UI.ViewModels;
+using FuelPro.UI.Printing;
 using Serilog;
 
 namespace FuelPro.UI;
@@ -245,6 +246,7 @@ public partial class App : Application
         services.AddTransient<IAgsImportService, AgsImportService>();
         services.AddTransient<IAgsDailyAggregationService, AgsDailyAggregationService>();
         services.AddTransient<AgsImportValidator>();
+        services.AddTransient<PrintService>();
         
         // ViewModels
         services.AddTransient<LoginViewModel>();
