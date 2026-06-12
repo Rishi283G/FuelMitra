@@ -27,6 +27,7 @@ public interface IShiftRepository
     Task<Result<List<Shift>>> GetShiftsForDateAsync(DateTime date);
     Task<Result> LockShiftAsync(int shiftId);
     Task<Result<bool>> IsShiftLockedAsync(int shiftId);
+    Task<Result<List<Shift>>> GetShiftsByDateRangeAsync(DateTime startDate, DateTime endDate);
 }
 
 public interface IDsmEntryRepository
@@ -40,6 +41,7 @@ public interface IDsmEntryRepository
     Task<Result<List<string>>> GetDistinctDsmNamesAsync();
     Task<Result<List<DsmEntry>>> GetEntriesForDsmAndMonthAsync(string dsmName, int year, int month);
     Task<Result<List<DsmEntry>>> GetEntriesForMonthAsync(int year, int month);
+    Task<Result<List<DsmEntry>>> GetEntriesForDateRangeAsync(DateTime startDate, DateTime endDate);
 }
 
 public interface INozzleReadingRepository
@@ -74,6 +76,7 @@ public interface IExpenseRepository
     Task<Result> SaveExpensesAsync(int dsmEntryId, List<Expense> expenses);
     Task<Result<Expense>> AddShiftExpenseAsync(int shiftId, string description, double amount);
     Task<Result> DeleteExpenseAsync(int expenseId);
+    Task<Result<List<Expense>>> GetExpensesByShiftIdsAsync(List<int> shiftIds);
 }
 
 public interface ICashDenominationRepository
@@ -87,6 +90,7 @@ public interface IShiftOtherCashRepository
     Task<Result<List<ShiftOtherCash>>> GetByShiftAsync(DateTime date, string shiftNumber);
     Task<Result<ShiftOtherCash>> AddAsync(ShiftOtherCash entry);
     Task<Result> DeleteAsync(int shiftOtherCashId);
+    Task<Result<List<ShiftOtherCash>>> GetByDateRangeAsync(DateTime startDate, DateTime endDate);
 }
 
 public interface IShiftFuelRateRepository
@@ -117,6 +121,7 @@ public interface ICreditorRepaymentRepository
     Task<Result<List<CreditorRepayment>>> GetByMonthAsync(int year, int month);
     Task<Result<CreditorRepayment>> AddAsync(CreditorRepayment repayment);
     Task<Result> DeleteAsync(int id);
+    Task<Result<List<CreditorRepayment>>> GetByDateRangeAsync(DateTime startDate, DateTime endDate);
 }
 
 public interface IAgsImportRepository

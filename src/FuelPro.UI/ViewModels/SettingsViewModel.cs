@@ -6,6 +6,7 @@ using FuelPro.Core.Repositories;
 using Microsoft.Extensions.DependencyInjection;
 using System.Collections.ObjectModel;
 using System.Globalization;
+using Rashtra.Licensing;
 
 namespace FuelPro.UI.ViewModels;
 
@@ -16,6 +17,7 @@ public partial class SettingsViewModel : ObservableObject
     private readonly IUserRepository _userRepo;
     private readonly IDsmProfileRepository _dsmProfileRepo;
     private readonly ICreditorRepository _creditorRepo;
+    private readonly LicenseManager _licenseManager;
 
     [ObservableProperty] private string _pumpStationName = "";
     [ObservableProperty] private string _hsdRate = "";
@@ -57,6 +59,7 @@ public partial class SettingsViewModel : ObservableObject
         _userRepo = App.Services.GetRequiredService<IUserRepository>();
         _dsmProfileRepo = App.Services.GetRequiredService<IDsmProfileRepository>();
         _creditorRepo = App.Services.GetRequiredService<ICreditorRepository>();
+        _licenseManager = App.Services.GetRequiredService<LicenseManager>();
         for (var month = 1; month <= 12; month++)
         {
             MonthOptions.Add(new KeyValuePair<int, string>(month, CultureInfo.CurrentCulture.DateTimeFormat.GetMonthName(month)));
@@ -67,6 +70,7 @@ public partial class SettingsViewModel : ObservableObject
             YearOptions.Add(year);
         }
         _ = LoadAsync();
+        LoadLicenseInfo();
     }
 
     private async Task LoadAsync()
@@ -312,5 +316,86 @@ public partial class SettingsViewModel : ObservableObject
         {
             ReportStatusMessage = $"✅ Found {DsmShortReportRows.Count} short entries.";
         }
+    }
+
+    // License Management
+    [ObservableProperty] private string _licenseProductName = "Unknown";
+    [ObservableProperty] private string _licenseStatus = "Unknown";
+    [ObservableProperty] private string _licenseCustomerName = "";
+    [ObservableProperty] private string _licenseBusinessName = "";
+    [ObservableProperty] private string _licenseMobileNumber = "";
+    [ObservableProperty] private string _licenseDeviceId = "";
+    [ObservableProperty] private string _licenseType = "";
+    [ObservableProperty] private string _licenseExpiryDate = "";
+    [ObservableProperty] private string _licenseActivationDate = "";
+    [ObservableProperty] private string _licenseStatusColor = "#F44336";
+
+    private void LoadLicenseInfo()
+    {
+        LicenseDeviceId = DeviceIdentifier.GetDeviceId();
+        var validation = _licenseManager.ValidateLicense();
+        if (validation.IsValid && validation.License != null)
+        {
+            var lic = validation.License;
+            LicenseProductName = lic.ProductName switch
+            {
+                "FPL" => "FuelPro Lite",
+                "VKD" => "VKD Petroleum",
+                "ZPA" => "ZP Automation",
+                _ => lic.ProductName
+            };
+            LicenseCustomerName = lic.CustomerName;
+            LicenseBusinessName = lic.BusinessName;
+            LicenseMobileNumber = lic.MobileNumber;
+            LicenseType = lic.LicenseType;
+            LicenseActivationDate = lic.ActivationDate.ToString("dd MMM yyyy");
+            LicenseExpiryDate = lic.ExpiryDate.HasValue ? lic.ExpiryDate.Value.ToString("dd MMM yyyy") : "N/A (Lifetime)";
+            
+            if (lic.LicenseType == "Trial")
+            {
+                var daysLeft = (lic.ExpiryDate!.Value - DateTime.Now).Days;
+                LicenseStatus = $"Trial Active ({daysLeft} days left)";
+                LicenseStatusColor = "#FF9800";
+            }
+            else if (lic.LicenseType == "Annual")
+            {
+                var daysLeft = (lic.ExpiryDate!.Value - DateTime.Now).Days;
+                LicenseStatus = $"Annual Active ({daysLeft} days left)";
+                LicenseStatusColor = "#FF9800";
+            }
+            else if (lic.LicenseType == "Demo")
+            {
+                var daysLeft = (lic.ExpiryDate!.Value - DateTime.Now).Days;
+                LicenseStatus = $"Demo Active ({daysLeft} days left)";
+                LicenseStatusColor = "#FF9800";
+            }
+            else
+            {
+                LicenseStatus = "Active (Lifetime)";
+                LicenseStatusColor = "#4CAF50";
+            }
+        }
+        else
+        {
+            LicenseStatus = $"Unlicensed/Invalid ({validation.ErrorMessage})";
+            LicenseStatusColor = "#F44336";
+        }
+    }
+
+    [RelayCommand]
+    private void ExportLicenseInfo()
+    {
+        var text = $"Product: {LicenseProductName}\n" +
+                   $"Status: {LicenseStatus}\n" +
+                   $"Device ID: {LicenseDeviceId}\n" +
+                   $"Customer Name: {LicenseCustomerName}\n" +
+                   $"Business Name: {LicenseBusinessName}\n" +
+                   $"Mobile: {LicenseMobileNumber}\n" +
+                   $"Type: {LicenseType}\n" +
+                   $"Activated: {LicenseActivationDate}\n" +
+                   $"Expires: {LicenseExpiryDate}";
+        
+        System.Windows.Clipboard.SetText(text);
+        System.Windows.MessageBox.Show("License details copied to clipboard!", "FuelPro — License Management", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Information);
     }
 }

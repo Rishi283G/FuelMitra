@@ -83,6 +83,22 @@ public partial class App : Application
                 "FuelPro — Database Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
 
+        // Validate License
+        var licenseManager = Services.GetRequiredService<Rashtra.Licensing.LicenseManager>();
+        var validationResult = licenseManager.ValidateLicense();
+        if (validationResult.IsValid)
+        {
+            Log.Information("License is valid for client {CustomerName}", validationResult.License?.CustomerName);
+            var loginView = new Views.LoginView();
+            loginView.Show();
+        }
+        else
+        {
+            Log.Warning("License is invalid or missing: {ErrorMessage}", validationResult.ErrorMessage);
+            var activationWindow = new Views.ActivationWindow();
+            activationWindow.Show();
+        }
+
         base.OnStartup(e);
     }
 
@@ -257,6 +273,10 @@ public partial class App : Application
         services.AddTransient<DayTotalViewModel>();
         services.AddTransient<SettingsViewModel>();
         services.AddTransient<AgsImportViewModel>();
+
+        // Licensing
+        services.AddSingleton(new Rashtra.Licensing.LicenseManager("FPL", "FuelProLite"));
+        services.AddTransient<ActivationViewModel>();
     }
 
     protected override void OnExit(ExitEventArgs e)

@@ -266,6 +266,27 @@ public class ShiftRepository : IShiftRepository
             return Result<bool>.Fail($"Failed to check shift lock: {ex.Message}");
         }
     }
+
+    public async Task<Result<List<Shift>>> GetShiftsByDateRangeAsync(DateTime startDate, DateTime endDate)
+    {
+        try
+        {
+            var start = startDate.Date;
+            var end = endDate.Date;
+            var shifts = await _context.Shifts
+                .Include(s => s.DsmEntries)
+                .Where(s => s.ShiftDate >= start && s.ShiftDate <= end)
+                .OrderBy(s => s.ShiftDate)
+                .ThenBy(s => s.ShiftType)
+                .ToListAsync();
+            return Result<List<Shift>>.Ok(shifts);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to get shifts for date range {Start} to {End}", startDate, endDate);
+            return Result<List<Shift>>.Fail($"Failed to load shifts: {ex.Message}");
+        }
+    }
 }
 
 public class DsmEntryRepository : IDsmEntryRepository
@@ -489,6 +510,34 @@ public class DsmEntryRepository : IDsmEntryRepository
         catch (Exception ex)
         {
             _logger.Error(ex, "Failed to get DSM entries for month {Year}-{Month}", year, month);
+            return Result<List<DsmEntry>>.Fail($"Failed to load entries: {ex.Message}");
+        }
+    }
+
+    public async Task<Result<List<DsmEntry>>> GetEntriesForDateRangeAsync(DateTime startDate, DateTime endDate)
+    {
+        try
+        {
+            var start = startDate.Date;
+            var end = endDate.Date;
+            var entries = await _context.DsmEntries
+                .AsNoTracking()
+                .Include(e => e.Shift)
+                .Include(e => e.NozzleReadings)
+                .Include(e => e.PaymentCollection)
+                .Include(e => e.DebitEntries)
+                .Include(e => e.TestingEntries)
+                .Include(e => e.Expenses)
+                .Include(e => e.CashDenominations)
+                .Where(e => e.Shift != null && e.Shift.ShiftDate >= start && e.Shift.ShiftDate <= end)
+                .OrderBy(e => e.Shift!.ShiftDate)
+                .ThenBy(e => e.Shift!.ShiftType)
+                .ToListAsync();
+            return Result<List<DsmEntry>>.Ok(entries);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to get DSM entries for date range {Start} to {End}", startDate, endDate);
             return Result<List<DsmEntry>>.Fail($"Failed to load entries: {ex.Message}");
         }
     }
@@ -822,6 +871,22 @@ public class ExpenseRepository : IExpenseRepository
             return Result.Fail($"Failed to delete expense: {ex.Message}");
         }
     }
+
+    public async Task<Result<List<Expense>>> GetExpensesByShiftIdsAsync(List<int> shiftIds)
+    {
+        try
+        {
+            var expenses = await _context.Expenses
+                .Where(e => e.ShiftId != null && shiftIds.Contains(e.ShiftId.Value) && e.DsmEntryId == null)
+                .ToListAsync();
+            return Result<List<Expense>>.Ok(expenses);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to get expenses for shift IDs");
+            return Result<List<Expense>>.Fail($"Failed to load expenses: {ex.Message}");
+        }
+    }
 }
 
 public class CashDenominationRepository : ICashDenominationRepository
@@ -926,6 +991,25 @@ public class ShiftOtherCashRepository : IShiftOtherCashRepository
         {
             _logger.Error(ex, "Failed to delete shift other cash {Id}", shiftOtherCashId);
             return Result.Fail($"Failed to delete: {ex.Message}");
+        }
+    }
+
+    public async Task<Result<List<ShiftOtherCash>>> GetByDateRangeAsync(DateTime startDate, DateTime endDate)
+    {
+        try
+        {
+            var start = startDate.Date;
+            var end = endDate.Date;
+            var entries = await _context.ShiftOtherCash
+                .Where(e => e.ShiftDate >= start && e.ShiftDate <= end)
+                .OrderBy(e => e.ShiftDate)
+                .ToListAsync();
+            return Result<List<ShiftOtherCash>>.Ok(entries);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to get shift other cash for range");
+            return Result<List<ShiftOtherCash>>.Fail($"Failed to load other cash: {ex.Message}");
         }
     }
 }
@@ -1117,6 +1201,25 @@ public class CreditorRepaymentRepository : ICreditorRepaymentRepository
         {
             _logger.Error(ex, "Failed to delete creditor repayment {Id}", id);
             return Result.Fail($"Failed to delete repayment: {ex.Message}");
+        }
+    }
+
+    public async Task<Result<List<CreditorRepayment>>> GetByDateRangeAsync(DateTime startDate, DateTime endDate)
+    {
+        try
+        {
+            var start = startDate.Date;
+            var end = endDate.Date;
+            var repayments = await _context.CreditorRepayments
+                .Where(r => r.RepaymentDate >= start && r.RepaymentDate <= end)
+                .OrderBy(r => r.RepaymentDate)
+                .ToListAsync();
+            return Result<List<CreditorRepayment>>.Ok(repayments);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to get creditor repayments for range");
+            return Result<List<CreditorRepayment>>.Fail($"Failed to load repayments: {ex.Message}");
         }
     }
 }
