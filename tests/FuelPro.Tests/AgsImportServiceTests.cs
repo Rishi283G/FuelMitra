@@ -1,3 +1,4 @@
+using System.IO;
 using FuelPro.Core.Services;
 
 namespace FuelPro.Tests;

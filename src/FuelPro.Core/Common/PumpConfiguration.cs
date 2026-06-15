@@ -6,85 +6,172 @@ namespace FuelPro.Core.Common;
 /// </summary>
 public static class PumpConfiguration
 {
+    public static readonly DateTime MigrationCutoffDate = new(2026, 6, 14);
+
     /// <summary>
-    /// Pump ID → list of nozzle numbers assigned to that pump.
+    /// Operational Pump ID → list of nozzle numbers assigned to that pump.
     /// </summary>
     public static readonly Dictionary<int, int[]> PumpNozzleMapping = new()
     {
-        { 1,  new[] { 2, 4, 6 } },
-        { 2,  new[] { 1, 3, 5 } },
-        { 3,  new[] { 8, 10, 12 } },
-        { 4,  new[] { 7, 9, 11 } },
-        { 5,  new[] { 14, 16 } },
-        { 6,  new[] { 13, 15 } },
-        { 7,  new[] { 18, 20 } },
-        { 8,  new[] { 17, 19 } },
-        { 9,  new[] { 21, 23 } },
-        { 10, new[] { 22, 24 } },
-        { 11, new[] { 25, 27 } },
-        { 12, new[] { 26, 28 } },
+        { 1, new[] { 1, 2 } },
+        { 2, new[] { 3, 4 } },
+        { 3, new[] { 5, 6, 7 } },
+        { 4, new[] { 8, 9, 10 } },
+        { 5, new[] { 11, 12, 13 } },
+        { 6, new[] { 14, 15, 16 } },
+        { 7, new[] { 17, 18 } },
+        { 8, new[] { 19, 20 } }
     };
 
     /// <summary>
-    /// Exact nozzle-to-fuel-type mapping per the pump station configuration.
-    /// Nozzles 1,2,7,8 → HSD
-    /// Nozzles 3,4,9,10,13,14,17,18 → MS-II  (DU1–DU4)
-    /// Nozzles 5,6,11,12,15,16,19,20 → MS-I   (DU1–DU4)
-    /// Nozzles 21,22,25,26 → MS-I   (DU5–DU6, physically confirmed)
-    /// Nozzles 23,24,27,28 → MS-II  (DU5–DU6, physically confirmed)
+    /// Historical Pump ID → list of nozzle numbers assigned to that pump.
     /// </summary>
-    private static readonly Dictionary<int, FuelType> NozzleFuelMap = new()
+    private static readonly Dictionary<int, int[]> HistoricalPumpNozzleMapping = new()
     {
-        { 1, FuelType.HSD },    { 2, FuelType.HSD },
-        { 3, FuelType.MS_II },  { 4, FuelType.MS_II },
-        { 5, FuelType.MS_I },   { 6, FuelType.MS_I },
-        { 7, FuelType.HSD },    { 8, FuelType.HSD },
-        { 9, FuelType.MS_II },  { 10, FuelType.MS_II },
-        { 11, FuelType.MS_I },  { 12, FuelType.MS_I },
-        { 13, FuelType.MS_II }, { 14, FuelType.MS_II },
-        { 15, FuelType.MS_I },  { 16, FuelType.MS_I },
-        { 17, FuelType.MS_II }, { 18, FuelType.MS_II },
-        { 19, FuelType.MS_I },  { 20, FuelType.MS_I },
-        { 21, FuelType.MS_I  }, { 22, FuelType.MS_I  },  // P9/P10 nozzle 1 → MS-I
-        { 23, FuelType.MS_II }, { 24, FuelType.MS_II },  // P9/P10 nozzle 2 → MS-II
-        { 25, FuelType.MS_I  }, { 26, FuelType.MS_I  },  // P11/P12 nozzle 1 → MS-I
-        { 27, FuelType.MS_II }, { 28, FuelType.MS_II },  // P11/P12 nozzle 2 → MS-II
+        { 1, new[] { 1, 2, 3, 4 } },
+        { 2, new[] { 5, 6, 7, 8, 9, 10 } },
+        { 3, new[] { 11, 12, 13, 14, 15, 16 } },
+        { 4, new[] { 17, 18, 19, 20 } }
     };
 
     /// <summary>
-    /// Determines the fuel type for a given nozzle number.
+    /// Exact (PumpId, NozzleNumber) to FuelType mapping for current 8 operational pumps.
     /// </summary>
-    public static FuelType GetFuelType(int nozzleNumber)
+    private static readonly Dictionary<(int PumpId, int NozzleNumber), FuelType> NozzleFuelMap = new()
     {
-        if (NozzleFuelMap.TryGetValue(nozzleNumber, out var fuelType))
+        // Pump 1
+        { (1, 1), FuelType.MS_I },
+        { (1, 2), FuelType.MS_II },
+
+        // Pump 2
+        { (2, 3), FuelType.MS_I },
+        { (2, 4), FuelType.MS_II },
+
+        // Pump 3
+        { (3, 5), FuelType.MS_I },
+        { (3, 6), FuelType.MS_II },
+        { (3, 7), FuelType.HSD },
+
+        // Pump 4
+        { (4, 8), FuelType.MS_I },
+        { (4, 9), FuelType.MS_II },
+        { (4, 10), FuelType.HSD },
+
+        // Pump 5
+        { (5, 11), FuelType.MS_I },
+        { (5, 12), FuelType.MS_II },
+        { (5, 13), FuelType.HSD },
+
+        // Pump 6
+        { (6, 14), FuelType.MS_I },
+        { (6, 15), FuelType.MS_II },
+        { (6, 16), FuelType.HSD },
+
+        // Pump 7
+        { (7, 17), FuelType.HSD },
+        { (7, 18), FuelType.HSD },
+
+        // Pump 8
+        { (8, 19), FuelType.HSD },
+        { (8, 20), FuelType.HSD }
+    };
+
+    /// <summary>
+    /// Historical (PumpId, NozzleNumber) to FuelType mapping for physical machines.
+    /// </summary>
+    private static readonly Dictionary<(int PumpId, int NozzleNumber), FuelType> HistoricalNozzleFuelMap = new()
+    {
+        // Pump 1
+        { (1, 1), FuelType.MS_I },
+        { (1, 2), FuelType.MS_II },
+        { (1, 3), FuelType.MS_I },
+        { (1, 4), FuelType.MS_II },
+
+        // Pump 2
+        { (2, 5), FuelType.MS_II },
+        { (2, 6), FuelType.HSD },
+        { (2, 7), FuelType.HSD },
+        { (2, 8), FuelType.MS_I },
+        { (2, 9), FuelType.MS_II },
+        { (2, 10), FuelType.MS_I },
+
+        // Pump 3
+        { (3, 11), FuelType.MS_I },
+        { (3, 12), FuelType.MS_II },
+        { (3, 13), FuelType.HSD },
+        { (3, 14), FuelType.MS_I },
+        { (3, 15), FuelType.MS_II },
+        { (3, 16), FuelType.HSD },
+
+        // Pump 4
+        { (4, 17), FuelType.HSD },
+        { (4, 18), FuelType.HSD },
+        { (4, 19), FuelType.HSD },
+        { (4, 20), FuelType.HSD }
+    };
+
+    /// <summary>
+    /// Expose all defined nozzles.
+    /// </summary>
+    public static readonly List<(int PumpId, int NozzleNumber)> AllNozzles = NozzleFuelMap.Keys.ToList();
+
+    public static FuelType GetFuelType(int pumpId, int nozzleNumber, DateTime? date = null)
+    {
+        var isHistorical = date.HasValue && date.Value.Date < MigrationCutoffDate;
+        if (isHistorical)
+        {
+            if (HistoricalNozzleFuelMap.TryGetValue((pumpId, nozzleNumber), out var historicalFuelType))
+                return historicalFuelType;
+
+            // Historical fallback to prevent crash and preserve correct classification of old records
+            if (nozzleNumber == 1 || nozzleNumber == 2 || nozzleNumber == 7 || nozzleNumber == 8)
+                return FuelType.HSD;
+            
+            if (nozzleNumber == 3 || nozzleNumber == 4 || nozzleNumber == 9 || nozzleNumber == 10 || 
+                nozzleNumber == 13 || nozzleNumber == 14 || nozzleNumber == 17 || nozzleNumber == 18 || 
+                nozzleNumber == 23 || nozzleNumber == 24 || nozzleNumber == 27 || nozzleNumber == 28)
+            {
+                return FuelType.MS_II;
+            }
+
+            return FuelType.MS_I;
+        }
+
+        // For current/new records, avoid fallback logic and throw exception on invalid mapping
+        if (NozzleFuelMap.TryGetValue((pumpId, nozzleNumber), out var fuelType))
             return fuelType;
-        throw new ArgumentOutOfRangeException(nameof(nozzleNumber), $"Invalid nozzle number: {nozzleNumber}");
+
+        throw new ArgumentException($"Invalid operational pump and nozzle mapping: Pump {pumpId}, Nozzle {nozzleNumber}");
     }
 
     /// <summary>
-    /// Returns the canonical display name ("HSD", "MS-I", "MS-II") for a nozzle number.
+    /// Returns the canonical display name ("HSD", "MS-I", "MS-II") for a pump ID and nozzle number.
     /// Use this instead of the stored FuelType string to ensure old DB records
     /// are classified correctly even if they were saved with a stale mapping.
     /// </summary>
-    public static string GetFuelTypeDisplayName(int nozzleNumber)
-        => GetFuelType(nozzleNumber).ToDisplayName();
+    public static string GetFuelTypeDisplayName(int pumpId, int nozzleNumber, DateTime? date = null)
+        => GetFuelType(pumpId, nozzleNumber, date).ToDisplayName();
 
     /// <summary>
     /// Get all nozzle numbers for a given pump ID.
     /// </summary>
-    public static int[] GetNozzlesForPump(int pumpId)
+    public static int[] GetNozzlesForPump(int pumpId, DateTime? date = null)
     {
-        return PumpNozzleMapping.TryGetValue(pumpId, out var nozzles)
+        var isHistorical = date.HasValue && date.Value.Date < MigrationCutoffDate;
+        var map = isHistorical ? HistoricalPumpNozzleMapping : PumpNozzleMapping;
+        return map.TryGetValue(pumpId, out var nozzles)
             ? nozzles
             : Array.Empty<int>();
     }
 
     /// <summary>
-    /// Get display items for pump dropdown: "Pump 1 : 2, 4, 6"
+    /// Get display items for pump dropdown: "Pump 1 : 1, 2, 3, 4"
     /// </summary>
-    public static List<PumpDisplayItem> GetPumpDisplayItems()
+    public static List<PumpDisplayItem> GetPumpDisplayItems(DateTime? date = null)
     {
-        return PumpNozzleMapping
+        var isHistorical = date.HasValue && date.Value.Date < MigrationCutoffDate;
+        var map = isHistorical ? HistoricalPumpNozzleMapping : PumpNozzleMapping;
+        return map
             .OrderBy(p => p.Key)
             .Select(p => new PumpDisplayItem
             {
@@ -97,12 +184,12 @@ public static class PumpConfiguration
     /// <summary>
     /// Total number of pumps.
     /// </summary>
-    public const int TotalPumps = 12;
+    public const int TotalPumps = 8;
 
     /// <summary>
     /// Total number of nozzles.
     /// </summary>
-    public const int TotalNozzles = 28;
+    public const int TotalNozzles = 20;
 
     /// <summary>
     /// Denomination values for cash counting.

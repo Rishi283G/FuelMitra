@@ -41,6 +41,23 @@ public class LitreFormatConverter : IValueConverter
 }
 
 /// <summary>
+/// Formats litres to 2 decimal places for dashboard display.
+/// </summary>
+public class LitresConverter : IValueConverter
+{
+    private static readonly CultureInfo IndianCulture = new("en-IN");
+
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is double d) return $"{d.ToString("N2", IndianCulture)} L";
+        return "0.00 L";
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotImplementedException();
+}
+
+/// <summary>
 /// Green brush if value is 0, Red if non-zero.
 /// </summary>
 public class DifferenceColorConverter : IValueConverter
@@ -207,6 +224,41 @@ public class DenomAmountConverter : IValueConverter
             return $"{qty * denom:N2}";
 
         return $"{qty:N2}";
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotImplementedException();
+}
+
+/// <summary>
+/// Converts null/non-null to Visibility.
+/// Parameter = "Inverted" to reverse the behavior.
+/// </summary>
+public class NullToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        bool isNull = value == null;
+        bool invert = parameter?.ToString() == "Inverted";
+
+        bool visible = invert ? isNull : !isNull;
+        return visible ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotImplementedException();
+}
+
+/// <summary>
+/// Converts equality of value and parameter to Visibility.
+/// </summary>
+public class EqualToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value == null || parameter == null) return Visibility.Collapsed;
+        bool equal = string.Equals(value.ToString(), parameter.ToString(), StringComparison.OrdinalIgnoreCase);
+        return equal ? Visibility.Visible : Visibility.Collapsed;
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)

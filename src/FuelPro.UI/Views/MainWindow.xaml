@@ -13,11 +13,11 @@
         FontFamily="{materialDesign:MaterialDesignFont}">
 
     <Window.Resources>
-        <DataTemplate DataType="{x:Type vm:DashboardViewModel}">
-            <views:DashboardView/>
-        </DataTemplate>
         <DataTemplate DataType="{x:Type vm:DsmEntryViewModel}">
             <views:DsmEntryView/>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:OilDefDailyLogViewModel}">
+            <views:OilDefDailyLogView/>
         </DataTemplate>
         <DataTemplate DataType="{x:Type vm:FinalCalculationViewModel}">
             <views:FinalCalculationView/>
@@ -53,8 +53,8 @@
                                              Foreground="White"
                                              HorizontalAlignment="Center" Margin="0,8,0,24"/>
 
-                    <!-- Dashboard -->
-                    <Button Command="{Binding NavigateToDashboardCommand}" ToolTip="Dashboard" Margin="0,4">
+                    <!-- DSM Entry -->
+                    <Button Command="{Binding NavigateToDsmEntryCommand}" ToolTip="DSM Entry" Margin="0,4">
                         <Button.Style>
                             <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
                                 <Setter Property="Foreground" Value="White" />
@@ -67,11 +67,11 @@
                                 </Style.Triggers>
                             </Style>
                         </Button.Style>
-                        <materialDesign:PackIcon Kind="ViewDashboard" Width="28" Height="28"/>
+                        <materialDesign:PackIcon Kind="ClipboardEdit" Width="28" Height="28"/>
                     </Button>
 
-                    <!-- DSM Entry -->
-                    <Button Command="{Binding NavigateToDsmEntryCommand}" ToolTip="DSM Entry" Margin="0,4">
+                    <!-- Oil & DEF Log -->
+                    <Button Command="{Binding NavigateToOilDefDailyLogCommand}" ToolTip="Oil &amp; DEF Daily Log" Margin="0,4">
                         <Button.Style>
                             <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
                                 <Setter Property="Foreground" Value="White" />
@@ -84,7 +84,7 @@
                                 </Style.Triggers>
                             </Style>
                         </Button.Style>
-                        <materialDesign:PackIcon Kind="ClipboardEdit" Width="28" Height="28"/>
+                        <materialDesign:PackIcon Kind="Oil" Width="28" Height="28"/>
                     </Button>
 
                     <!-- Final Calculation -->
@@ -157,10 +157,64 @@
                 </StackPanel>
             </Border>
 
-            <!-- Main Content -->
-            <ContentControl Grid.Column="1" Grid.Row="0"
-                            Content="{Binding CurrentView}"
-                            Margin="0"/>
+            <!-- Main Content Area with Top Toolbar -->
+            <Grid Grid.Column="1" Grid.Row="0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <!-- Persistent Top Toolbar -->
+                <Border Grid.Row="0" Background="White" BorderThickness="0,0,0,1" BorderBrush="#E0E0E0" Padding="20,10">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Left: Station Name -->
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                            <materialDesign:PackIcon Kind="GasStation" Width="20" Height="20" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" Margin="0,0,8,0"/>
+                            <TextBlock Text="{Binding StationName}" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        </StackPanel>
+
+                        <!-- Right: Sync status indicator & Force Sync button -->
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Ellipse Width="10" Height="10" Margin="0,0,8,0" VerticalAlignment="Center">
+                                <Ellipse.Style>
+                                    <Style TargetType="Ellipse">
+                                        <Setter Property="Fill" Value="#F44336"/>
+                                        <Setter Property="ToolTip" Value="Offline"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding SyncStatusText}" Value="Synced">
+                                                <Setter Property="Fill" Value="#4CAF50"/>
+                                                <Setter Property="ToolTip" Value="Synced"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding SyncStatusText}" Value="Syncing">
+                                                <Setter Property="Fill" Value="#FFEB3B"/>
+                                                <Setter Property="ToolTip" Value="Syncing"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Ellipse.Style>
+                            </Ellipse>
+                            <TextBlock Text="{Binding SyncStatusText}" FontSize="12" FontWeight="Medium" VerticalAlignment="Center" Margin="0,0,16,0" Opacity="0.8"/>
+
+                            <Button Command="{Binding ForceSyncCommand}" Style="{StaticResource MaterialDesignOutlinedButton}" Height="32" Padding="12,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <materialDesign:PackIcon Kind="CloudSync" Width="16" Height="16" Margin="0,0,4,0"/>
+                                    <TextBlock Text="Sync Now" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- Main Content -->
+                <ContentControl Grid.Row="1"
+                                Content="{Binding CurrentView}"
+                                Margin="0"/>
+            </Grid>
 
             <!-- Status Bar -->
             <Border Grid.Column="1" Grid.Row="1"
@@ -173,6 +227,8 @@
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
                     <StackPanel Grid.Column="0" Orientation="Horizontal">
@@ -183,13 +239,27 @@
                     <TextBlock Grid.Column="1" Text="{Binding StationName}" FontSize="11"
                                HorizontalAlignment="Center" Opacity="0.5"/>
 
+                    <!-- Sync Status -->
                     <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="16,0">
+                        <materialDesign:PackIcon Kind="CloudSync" Width="14" Height="14" Margin="0,0,4,0" Opacity="0.6"/>
+                        <TextBlock Text="{Binding SyncStatusText}" FontSize="11" Opacity="0.6"/>
+                        <TextBlock Text=" · " FontSize="11" Opacity="0.3"/>
+                        <TextBlock Text="{Binding PendingSyncCount, StringFormat='{}{0} pending'}" FontSize="11" Opacity="0.6"/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="3" Orientation="Horizontal" Margin="16,0">
+                        <materialDesign:PackIcon Kind="ContentSave" Width="14" Height="14" Margin="0,0,4,0" Opacity="0.5"/>
+                        <TextBlock Text="{Binding LastSyncTime, StringFormat='Last Sync: {0}'}"
+                                   FontSize="11" Opacity="0.6"/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="4" Orientation="Horizontal" Margin="16,0">
                         <materialDesign:PackIcon Kind="ContentSave" Width="14" Height="14" Margin="0,0,4,0" Opacity="0.5"/>
                         <TextBlock Text="{Binding LastSaveTime, StringFormat='Last Save: {0}'}"
                                    FontSize="11" Opacity="0.6"/>
                     </StackPanel>
 
-                    <StackPanel Grid.Column="3" Orientation="Horizontal">
+                    <StackPanel Grid.Column="5" Orientation="Horizontal">
                         <materialDesign:PackIcon Kind="Clock" Width="14" Height="14" Margin="0,0,4,0" Opacity="0.5"/>
                         <TextBlock Text="{Binding CurrentDateTime}" FontSize="11" Opacity="0.7"/>
                     </StackPanel>

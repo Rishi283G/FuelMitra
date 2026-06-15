@@ -1,5 +1,5 @@
 Remove-Item -Recurse -Force C:\publish_temp -ErrorAction Ignore
-$process = Start-Process dotnet -ArgumentList "publish src/FuelPro.UI/FuelPro.UI.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:IncludeNativeLibrariesForSelfExtract=false -o C:\publish_temp --no-restore" -Wait -NoNewWindow -PassThru
+$process = Start-Process dotnet -ArgumentList "publish src/FuelPro.UI/FuelPro.UI.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:IncludeNativeLibrariesForSelfExtract=false -o C:\publish_temp --no-restore -m:1" -Wait -NoNewWindow -PassThru
 if ($process.ExitCode -eq 0) {
     Remove-Item -Recurse -Force publish_output -ErrorAction Ignore
     New-Item -ItemType Directory -Path publish_output

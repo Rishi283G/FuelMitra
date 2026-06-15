@@ -440,15 +440,15 @@ public partial class DashboardViewModel : ObservableObject
         summary.TotalDebit = totalDebit;
         summary.TotalExpenses = totalExpenses;
 
-        summary.TotalHsdLitres = shiftEntries.SelectMany(e => e.NozzleReadings)
-            .Where(r => PumpConfiguration.GetFuelTypeDisplayName(r.NozzleNumber) == "HSD")
-            .Sum(r => r.SaleLitres);
-        summary.TotalMsILitres = shiftEntries.SelectMany(e => e.NozzleReadings)
-            .Where(r => PumpConfiguration.GetFuelTypeDisplayName(r.NozzleNumber) == "MS-I")
-            .Sum(r => r.SaleLitres);
-        summary.TotalMsIILitres = shiftEntries.SelectMany(e => e.NozzleReadings)
-            .Where(r => PumpConfiguration.GetFuelTypeDisplayName(r.NozzleNumber) == "MS-II")
-            .Sum(r => r.SaleLitres);
+        summary.TotalHsdLitres = shiftEntries.SelectMany(e => e.NozzleReadings.Select(r => new { e.PumpId, Reading = r }))
+            .Where(x => PumpConfiguration.GetFuelTypeDisplayName(x.PumpId, x.Reading.NozzleNumber, EndDate) == "HSD")
+            .Sum(x => x.Reading.SaleLitres);
+        summary.TotalMsILitres = shiftEntries.SelectMany(e => e.NozzleReadings.Select(r => new { e.PumpId, Reading = r }))
+            .Where(x => PumpConfiguration.GetFuelTypeDisplayName(x.PumpId, x.Reading.NozzleNumber, EndDate) == "MS-I")
+            .Sum(x => x.Reading.SaleLitres);
+        summary.TotalMsIILitres = shiftEntries.SelectMany(e => e.NozzleReadings.Select(r => new { e.PumpId, Reading = r }))
+            .Where(x => PumpConfiguration.GetFuelTypeDisplayName(x.PumpId, x.Reading.NozzleNumber, EndDate) == "MS-II")
+            .Sum(x => x.Reading.SaleLitres);
 
         return summary;
     }
@@ -605,9 +605,9 @@ public partial class DashboardViewModel : ObservableObject
                 double hsd = 0, msI = 0, msII = 0;
                 if (s.NozzleReadings != null && s.NozzleReadings.Any())
                 {
-                    hsd  = s.NozzleReadings.Where(r => PumpConfiguration.GetFuelTypeDisplayName(r.NozzleNumber) == "HSD"  ).Sum(r => r.NetSaleLitres);
-                    msI  = s.NozzleReadings.Where(r => PumpConfiguration.GetFuelTypeDisplayName(r.NozzleNumber) == "MS-I" ).Sum(r => r.NetSaleLitres);
-                    msII = s.NozzleReadings.Where(r => PumpConfiguration.GetFuelTypeDisplayName(r.NozzleNumber) == "MS-II").Sum(r => r.NetSaleLitres);
+                    hsd  = s.NozzleReadings.Where(r => PumpConfiguration.GetFuelTypeDisplayName(r.PumpNumber, r.NozzleNumber, s.ImportDate) == "HSD"  ).Sum(r => r.NetSaleLitres);
+                    msI  = s.NozzleReadings.Where(r => PumpConfiguration.GetFuelTypeDisplayName(r.PumpNumber, r.NozzleNumber, s.ImportDate) == "MS-I" ).Sum(r => r.NetSaleLitres);
+                    msII = s.NozzleReadings.Where(r => PumpConfiguration.GetFuelTypeDisplayName(r.PumpNumber, r.NozzleNumber, s.ImportDate) == "MS-II").Sum(r => r.NetSaleLitres);
                 }
                 else
                 {
@@ -653,9 +653,9 @@ public partial class DashboardViewModel : ObservableObject
                 double hsd = 0, msI = 0, msII = 0;
                 if (s.NozzleReadings != null && s.NozzleReadings.Any())
                 {
-                    hsd  = s.NozzleReadings.Where(r => PumpConfiguration.GetFuelTypeDisplayName(r.NozzleNumber) == "HSD"  ).Sum(r => r.NetSaleLitres);
-                    msI  = s.NozzleReadings.Where(r => PumpConfiguration.GetFuelTypeDisplayName(r.NozzleNumber) == "MS-I" ).Sum(r => r.NetSaleLitres);
-                    msII = s.NozzleReadings.Where(r => PumpConfiguration.GetFuelTypeDisplayName(r.NozzleNumber) == "MS-II").Sum(r => r.NetSaleLitres);
+                    hsd  = s.NozzleReadings.Where(r => PumpConfiguration.GetFuelTypeDisplayName(r.PumpNumber, r.NozzleNumber, s.ImportDate) == "HSD"  ).Sum(r => r.NetSaleLitres);
+                    msI  = s.NozzleReadings.Where(r => PumpConfiguration.GetFuelTypeDisplayName(r.PumpNumber, r.NozzleNumber, s.ImportDate) == "MS-I" ).Sum(r => r.NetSaleLitres);
+                    msII = s.NozzleReadings.Where(r => PumpConfiguration.GetFuelTypeDisplayName(r.PumpNumber, r.NozzleNumber, s.ImportDate) == "MS-II").Sum(r => r.NetSaleLitres);
                 }
                 else
                 {
@@ -681,27 +681,25 @@ public partial class DashboardViewModel : ObservableObject
             // Nozzle summary (all 28)
             NozzleDaySummaries.Clear();
 
-            for (int n = 1; n <= 28; n++)
+            foreach (var nozzleInfo in PumpConfiguration.AllNozzles)
             {
+                int n = nozzleInfo.NozzleNumber;
+                int p = nozzleInfo.PumpId;
                 double shiftA = 0, shiftB = 0, shiftC = 0;
                 foreach (var shift in allShifts)
                 {
-                    var nozzleReading = shift.NozzleReadings.FirstOrDefault(r => r.NozzleNumber == n);
+                    var nozzleReading = shift.NozzleReadings.FirstOrDefault(r => r.NozzleNumber == n && r.PumpNumber == p);
                     if (nozzleReading == null) continue;
                     if (shift.ShiftType == "A") shiftA += nozzleReading.NetSaleLitres;
                     else if (shift.ShiftType == "B") shiftB += nozzleReading.NetSaleLitres;
                     else if (shift.ShiftType == "C") shiftC += nozzleReading.NetSaleLitres;
                 }
 
-                // Find pump number from PumpConfiguration
-                int pumpNumber = PumpConfiguration.PumpNozzleMapping
-                    .FirstOrDefault(kv => kv.Value.Contains(n)).Key;
-
                 NozzleDaySummaries.Add(new NozzleDaySummaryRow
                 {
                     NozzleNumber = n,
-                    FuelType     = PumpConfiguration.GetFuelTypeDisplayName(n),
-                    PumpNumber   = pumpNumber,
+                    FuelType     = PumpConfiguration.GetFuelTypeDisplayName(p, n, EndDate),
+                    PumpNumber   = p,
                     ShiftALitres = shiftA,
                     ShiftBLitres = shiftB,
                     ShiftCLitres = shiftC,

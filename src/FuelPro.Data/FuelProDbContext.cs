@@ -1,3 +1,4 @@
+using System.Threading;
 using Microsoft.EntityFrameworkCore;
 using FuelPro.Core.Models;
 using FuelPro.Core.Models.AGS;
@@ -24,6 +25,14 @@ public class FuelProDbContext : DbContext
     public DbSet<DsmProfile> DsmProfiles => Set<DsmProfile>();
     public DbSet<CreditorRepayment> CreditorRepayments => Set<CreditorRepayment>();
     public DbSet<Creditor> Creditors => Set<Creditor>();
+    public DbSet<SyncChangeLog> SyncChangeLogs => Set<SyncChangeLog>();
+    public DbSet<SyncIdMapping> SyncIdMappings => Set<SyncIdMapping>();
+    public DbSet<FuelProfitMargin> FuelProfitMargins => Set<FuelProfitMargin>();
+    public DbSet<ProductMaster> ProductMasters => Set<ProductMaster>();
+    public DbSet<OilDefInventory> OilDefInventories => Set<OilDefInventory>();
+    public DbSet<OilDefPurchase> OilDefPurchases => Set<OilDefPurchase>();
+    public DbSet<DsmSalaryAdjustment> DsmSalaryAdjustments => Set<DsmSalaryAdjustment>();
+    public DbSet<OilDefDailyLog> OilDefDailyLogs => Set<OilDefDailyLog>();
 
     // AGS Import
     public DbSet<AgsShiftImport> AgsShiftImports => Set<AgsShiftImport>();
@@ -215,5 +224,174 @@ public class FuelProDbContext : DbContext
             entity.Property(e => e.NozzleDaySalesJson).HasDefaultValue("{}");
             entity.Property(e => e.ShiftBreakdownJson).HasDefaultValue("{}");
         });
+
+        // SyncIdMapping
+        modelBuilder.Entity<SyncIdMapping>(entity =>
+        {
+            entity.HasIndex(e => new { e.TableName, e.RemoteGuid }).IsUnique();
+        });
+    }
+
+    public override int SaveChanges()
+    {
+        var changes = CaptureChanges();
+        var result = base.SaveChanges();
+        SaveChangeLogs(changes);
+        return result;
+    }
+
+    public override async Task<int> SaveChangesAsync(System.Threading.CancellationToken cancellationToken = default)
+    {
+        var changes = CaptureChanges();
+        var result = await base.SaveChangesAsync(cancellationToken);
+        await SaveChangeLogsAsync(changes);
+        return result;
+    }
+
+    private class CapturedChange
+    {
+        public object Entity { get; set; } = null!;
+        public string TableName { get; set; } = string.Empty;
+        public string Operation { get; set; } = string.Empty;
+        public int RecordId { get; set; }
+    }
+
+    private static readonly AsyncLocal<bool> _bypassTracking = new();
+    public static bool BypassTracking
+    {
+        get => _bypassTracking.Value;
+        set => _bypassTracking.Value = value;
+    }
+
+    private List<CapturedChange> CaptureChanges()
+    {
+        var list = new List<CapturedChange>();
+        if (BypassTracking) return list;
+
+        var entries = ChangeTracker.Entries();
+
+        foreach (var entry in entries)
+        {
+            if (entry.Entity is SyncChangeLog) continue;
+            if (entry.Entity.GetType().Namespace?.StartsWith("FuelPro.Core.Models") != true) continue;
+
+            if (entry.State == EntityState.Added)
+            {
+                list.Add(new CapturedChange
+                {
+                    Entity = entry.Entity,
+                    TableName = entry.Metadata.GetTableName() ?? entry.Entity.GetType().Name,
+                    Operation = "INSERT"
+                });
+            }
+            else if (entry.State == EntityState.Modified)
+            {
+                list.Add(new CapturedChange
+                {
+                    Entity = entry.Entity,
+                    TableName = entry.Metadata.GetTableName() ?? entry.Entity.GetType().Name,
+                    Operation = "UPDATE",
+                    RecordId = GetPrimaryKeyValue(entry.Entity)
+                });
+            }
+            else if (entry.State == EntityState.Deleted)
+            {
+                list.Add(new CapturedChange
+                {
+                    Entity = entry.Entity,
+                    TableName = entry.Metadata.GetTableName() ?? entry.Entity.GetType().Name,
+                    Operation = "DELETE",
+                    RecordId = GetPrimaryKeyValue(entry.Entity)
+                });
+            }
+        }
+
+        return list;
+    }
+
+    private string? _cachedStationId;
+    private string? _cachedMachineId;
+
+    private void PopulateStationAndMachine(SyncChangeLog log)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(_cachedStationId))
+            {
+                _cachedStationId = AppMeta.AsNoTracking().FirstOrDefault(m => m.Key == "Sync.StationId")?.Value ?? "";
+            }
+            if (string.IsNullOrEmpty(_cachedMachineId))
+            {
+                _cachedMachineId = AppMeta.AsNoTracking().FirstOrDefault(m => m.Key == "Sync.MachineId")?.Value ?? "";
+            }
+            log.StationId = string.IsNullOrEmpty(_cachedStationId) ? null : _cachedStationId;
+            log.MachineId = string.IsNullOrEmpty(_cachedMachineId) ? null : _cachedMachineId;
+        }
+        catch
+        {
+            // Fallback in case AppMeta is not accessible or not created yet
+        }
+    }
+
+    private void SaveChangeLogs(List<CapturedChange> changes)
+    {
+        if (changes.Count == 0) return;
+
+        foreach (var change in changes)
+        {
+            var recordId = change.Operation == "INSERT" ? GetPrimaryKeyValue(change.Entity) : change.RecordId;
+            if (recordId == 0) continue; // Skip if no valid key
+
+            var log = new SyncChangeLog
+            {
+                TableName = change.TableName,
+                RecordId = recordId,
+                Operation = change.Operation,
+                CreatedAt = DateTime.Now,
+                IsSynced = false
+            };
+            PopulateStationAndMachine(log);
+            SyncChangeLogs.Add(log);
+        }
+
+        base.SaveChanges();
+    }
+
+    private async Task SaveChangeLogsAsync(List<CapturedChange> changes)
+    {
+        if (changes.Count == 0) return;
+
+        foreach (var change in changes)
+        {
+            var recordId = change.Operation == "INSERT" ? GetPrimaryKeyValue(change.Entity) : change.RecordId;
+            if (recordId == 0) continue;
+
+            var log = new SyncChangeLog
+            {
+                TableName = change.TableName,
+                RecordId = recordId,
+                Operation = change.Operation,
+                CreatedAt = DateTime.Now,
+                IsSynced = false
+            };
+            PopulateStationAndMachine(log);
+            SyncChangeLogs.Add(log);
+        }
+
+        await base.SaveChangesAsync();
+    }
+
+    private int GetPrimaryKeyValue(object entity)
+    {
+        var entry = Entry(entity);
+        var keyProperty = entry.Metadata.FindPrimaryKey()?.Properties.FirstOrDefault();
+        if (keyProperty == null) return 0;
+        var value = entry.Property(keyProperty.Name).CurrentValue;
+        if (value == null) return 0;
+        if (int.TryParse(value.ToString(), out var intVal))
+        {
+            return intVal;
+        }
+        return 0;
     }
 }

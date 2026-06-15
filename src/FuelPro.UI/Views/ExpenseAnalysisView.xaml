@@ -1,0 +1,116 @@
+<UserControl x:Class="FuelPro.UI.Views.ExpenseAnalysisView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             xmlns:converters="clr-namespace:FuelPro.UI.Converters">
+    
+    <UserControl.Resources>
+        <converters:IndianCurrencyConverter x:Key="CurrencyConverter"/>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <Grid Margin="24,16">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <!-- Header and Filter Area -->
+            <Grid Grid.Row="0" Margin="0,0,0,16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                    <materialDesign:PackIcon Kind="CashMultiple" Width="28" Height="28" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                    <TextBlock Text="Expense Analysis" FontSize="24" FontWeight="Bold" VerticalAlignment="Center"/>
+                </StackPanel>
+
+                <!-- Date range filters -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center">
+                    <DatePicker SelectedDate="{Binding StartDate}" materialDesign:HintAssist.Hint="Start Date" Style="{StaticResource MaterialDesignOutlinedDatePicker}" Width="160" Margin="0,0,16,0" Height="48"/>
+                    <DatePicker SelectedDate="{Binding EndDate}" materialDesign:HintAssist.Hint="End Date" Style="{StaticResource MaterialDesignOutlinedDatePicker}" Width="160" Height="48"/>
+                </StackPanel>
+
+                <!-- Search -->
+                <TextBox Grid.Column="2" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" Width="220"
+                         materialDesign:HintAssist.Hint="Search expenses..." materialDesign:HintAssist.IsFloating="False"
+                         materialDesign:TextFieldAssist.HasClearButton="True"
+                         Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                         VerticalAlignment="Center" Height="48">
+                    <TextBox.InputBindings>
+                        <KeyBinding Key="Enter" Command="{Binding LoadCommand}"/>
+                    </TextBox.InputBindings>
+                </TextBox>
+            </Grid>
+
+            <!-- Loading Indicator -->
+            <ProgressBar Grid.Row="1" IsIndeterminate="{Binding IsLoading}" Visibility="{Binding IsLoading, Converter={StaticResource BooleanToVisibilityConverter}}" Style="{StaticResource MaterialDesignLinearProgressBar}" Margin="0,0,0,12"/>
+
+            <!-- Main Panels -->
+            <Grid Grid.Row="2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="2*"/>
+                    <ColumnDefinition Width="16"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Itemized list -->
+                <materialDesign:Card Grid.Column="0" Padding="16" UniformCornerRadius="12" materialDesign:ElevationAssist.Elevation="Dp2">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0" Text="Itemized Expenses" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,12"/>
+
+                        <DataGrid Grid.Row="1" ItemsSource="{Binding ItemizedExpenses}" AutoGenerateColumns="False" IsReadOnly="True" MaxHeight="520"
+                                  materialDesign:DataGridAssist.CellPadding="12 8" CanUserSortColumns="True">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat=dd MMM yyyy}" Width="110"/>
+                                <DataGridTextColumn Header="Shift" Binding="{Binding ShiftType}" Width="70"/>
+                                <DataGridTextColumn Header="Source" Binding="{Binding Source}" Width="130"/>
+                                <DataGridTextColumn Header="Description / Purpose" Binding="{Binding Description}" Width="*"/>
+                                <DataGridTextColumn Header="Amount" Binding="{Binding Amount, Converter={StaticResource CurrencyConverter}}" Width="110"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+
+                        <!-- Total display -->
+                        <Border Grid.Row="2" Background="#FFF3E0" Padding="12" Margin="0,12,0,0" CornerRadius="8">
+                            <Grid>
+                                <TextBlock Text="Total Filtered Expenses:" FontWeight="Bold" FontSize="15" Foreground="#E65100" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding TotalExpensesAmount, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" FontSize="18" Foreground="#E65100" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </materialDesign:Card>
+
+                <!-- Grouped summaries -->
+                <materialDesign:Card Grid.Column="2" Padding="16" UniformCornerRadius="12" materialDesign:ElevationAssist.Elevation="Dp2">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0" Text="Category Summaries" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,12"/>
+
+                        <DataGrid Grid.Row="1" ItemsSource="{Binding GroupedExpenses}" AutoGenerateColumns="False" IsReadOnly="True" MaxHeight="520"
+                                  materialDesign:DataGridAssist.CellPadding="12 8">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Category" Binding="{Binding Category}" Width="*"/>
+                                <DataGridTextColumn Header="Count" Binding="{Binding Count}" Width="70"/>
+                                <DataGridTextColumn Header="Total Amount" Binding="{Binding Amount, Converter={StaticResource CurrencyConverter}}" Width="120"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </Grid>
+                </materialDesign:Card>
+            </Grid>
+        </Grid>
+    </ScrollViewer>
+</UserControl>

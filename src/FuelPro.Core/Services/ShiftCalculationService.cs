@@ -148,20 +148,20 @@ public class ShiftCalculationService
             }
             dto.TotalExpenses = dto.ExpenseRegisterRows.Sum(r => r.Amount);
 
-            // TABLE E — Fuel Dispensed (classify by nozzle number, not stored FuelType)
-            var allReadings = entries.SelectMany(e => e.NozzleReadings).ToList();
+            // TABLE E — Fuel Dispensed (classify by nozzle number and pump, not stored FuelType)
+            var readingsWithPump = entries.SelectMany(e => e.NozzleReadings.Select(r => new { e.PumpId, Reading = r })).ToList();
 
-            var hsdReadings = allReadings.Where(r => PumpConfiguration.GetFuelTypeDisplayName(r.NozzleNumber) == "HSD").ToList();
+            var hsdReadings = readingsWithPump.Where(x => PumpConfiguration.GetFuelTypeDisplayName(x.PumpId, x.Reading.NozzleNumber, shift.ShiftDate) == "HSD").Select(x => x.Reading).ToList();
             dto.HsdLitres = hsdReadings.Sum(r => r.SaleLitres);
             dto.HsdRate = hsdReadings.FirstOrDefault()?.Rate ?? 0;
             dto.HsdAmount = hsdReadings.Sum(r => r.Amount);
 
-            var msIReadings = allReadings.Where(r => PumpConfiguration.GetFuelTypeDisplayName(r.NozzleNumber) == "MS-I").ToList();
+            var msIReadings = readingsWithPump.Where(x => PumpConfiguration.GetFuelTypeDisplayName(x.PumpId, x.Reading.NozzleNumber, shift.ShiftDate) == "MS-I").Select(x => x.Reading).ToList();
             dto.MsILitres = msIReadings.Sum(r => r.SaleLitres);
             dto.MsIRate = msIReadings.FirstOrDefault()?.Rate ?? 0;
             dto.MsIAmount = msIReadings.Sum(r => r.Amount);
 
-            var msIIReadings = allReadings.Where(r => PumpConfiguration.GetFuelTypeDisplayName(r.NozzleNumber) == "MS-II").ToList();
+            var msIIReadings = readingsWithPump.Where(x => PumpConfiguration.GetFuelTypeDisplayName(x.PumpId, x.Reading.NozzleNumber, shift.ShiftDate) == "MS-II").Select(x => x.Reading).ToList();
             dto.MsIILitres = msIIReadings.Sum(r => r.SaleLitres);
             dto.MsIIRate = msIIReadings.FirstOrDefault()?.Rate ?? 0;
             dto.MsIIAmount = msIIReadings.Sum(r => r.Amount);

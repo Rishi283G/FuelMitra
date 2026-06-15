@@ -1,11 +1,16 @@
+using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading.Tasks;
 using System.Windows;
 using FuelPro.Core.DTOs;
+using FuelPro.Data;
 using Serilog;
 
 namespace FuelPro.UI.Printing;
@@ -32,6 +37,71 @@ public class PrintService
 
     private const string MARKER = "/* INJECT_JSON_HERE */{}";
 
+    private string GetSerializedJsonWithLogoAndStationName(object data)
+    {
+        // 1. Get station name
+        string stationName = "Shree Mahakaleshwar Petroleum";
+        try
+        {
+            var dbContext = App.Services?.GetService(typeof(FuelProDbContext)) as FuelProDbContext;
+            if (dbContext != null)
+            {
+                var settings = dbContext.Settings.FirstOrDefault();
+                if (settings != null)
+                {
+                    stationName = settings.StationDisplayName;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to get station display name from DB for print");
+        }
+
+        // 2. Get base64 logo (light logo by default for printing since templates use white background)
+        string logoBase64 = "";
+        try
+        {
+            var logoPath = App.GetLogoPath(isDark: false);
+            if (!string.IsNullOrEmpty(logoPath) && File.Exists(logoPath))
+            {
+                var bytes = File.ReadAllBytes(logoPath);
+                var ext = Path.GetExtension(logoPath).TrimStart('.').ToLower();
+                if (ext == "jpg") ext = "jpeg";
+                logoBase64 = $"data:image/{ext};base64,{Convert.ToBase64String(bytes)}";
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to encode logo to base64 for print");
+        }
+
+        // 3. Serialize data, parse it, and inject logo and stationName
+        try
+        {
+            var serialized = JsonSerializer.Serialize(data, _jsonOptions);
+            using var doc = JsonDocument.Parse(serialized);
+            var dictionary = new Dictionary<string, object>();
+
+            // Populate from existing properties
+            foreach (var prop in doc.RootElement.EnumerateObject())
+            {
+                dictionary[prop.Name] = prop.Value;
+            }
+
+            // Inject or override
+            dictionary["stationName"] = stationName;
+            dictionary["logo"] = logoBase64;
+
+            return JsonSerializer.Serialize(dictionary, _jsonOptions);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to inject logo and stationName to json");
+            return JsonSerializer.Serialize(data, _jsonOptions);
+        }
+    }
+
     /// <summary>
     /// Builds the temp HTML, opens in default browser for printing.
     /// Call from the UI thread.
@@ -46,8 +116,8 @@ public class PrintService
             // STEP A: Read template
             var templateHtml = LoadTemplate();
 
-            // STEP B: Serialize data to JSON
-            var json = JsonSerializer.Serialize(data, _jsonOptions);
+            // STEP B: Serialize data to JSON with logo and stationName
+            var json = GetSerializedJsonWithLogoAndStationName(data);
 
             // STEP C: Inject JSON into template
             if (!templateHtml.Contains(MARKER))
@@ -64,7 +134,7 @@ public class PrintService
             // STEP D: Write to unique temp file
             var tempFile = Path.Combine(
                 Path.GetTempPath(),
-                $"VKDPrint_{DateTime.Now:yyyyMMddHHmmss}.html");
+                $"PyroSyncPrint_{DateTime.Now:yyyyMMddHHmmss}.html");
 
             File.WriteAllText(tempFile, finalHtml, Encoding.UTF8);
             _logger.Information("Print temp file written: {Path}", tempFile);
@@ -101,7 +171,7 @@ public class PrintService
     {
         try
         {
-            var json = JsonSerializer.Serialize(data, _jsonOptions);
+            var json = GetSerializedJsonWithLogoAndStationName(data);
             var templateHtml = LoadDayTotalTemplate();
 
             if (!templateHtml.Contains(MARKER))
@@ -113,7 +183,7 @@ public class PrintService
 
             var finalHtml = templateHtml.Replace(MARKER, json);
             var tempFile = Path.Combine(Path.GetTempPath(),
-                $"VKDDayTotal_{DateTime.Now:yyyyMMddHHmmss}.html");
+                $"PyroSyncDayTotal_{DateTime.Now:yyyyMMddHHmmss}.html");
 
             File.WriteAllText(tempFile, finalHtml, Encoding.UTF8);
 
@@ -140,7 +210,7 @@ public class PrintService
     {
         try
         {
-            var json = JsonSerializer.Serialize(data, _jsonOptions);
+            var json = GetSerializedJsonWithLogoAndStationName(data);
             var templateHtml = LoadNamedTemplate("DsmSheetPrintTemplate.html");
 
             if (!templateHtml.Contains(MARKER))
@@ -152,7 +222,7 @@ public class PrintService
 
             var finalHtml = templateHtml.Replace(MARKER, json);
             var tempFile = Path.Combine(Path.GetTempPath(),
-                $"VKDDsmSheet_{DateTime.Now:yyyyMMddHHmmss}.html");
+                $"PyroSyncDsmSheet_{DateTime.Now:yyyyMMddHHmmss}.html");
 
             File.WriteAllText(tempFile, finalHtml, Encoding.UTF8);
             Process.Start(new ProcessStartInfo { FileName = tempFile, UseShellExecute = true });
@@ -177,7 +247,7 @@ public class PrintService
     {
         try
         {
-            var json = JsonSerializer.Serialize(data, _jsonOptions);
+            var json = GetSerializedJsonWithLogoAndStationName(data);
             var templateHtml = LoadNamedTemplate("ShiftSummaryPrintTemplate.html");
 
             if (!templateHtml.Contains(MARKER))
@@ -189,7 +259,7 @@ public class PrintService
 
             var finalHtml = templateHtml.Replace(MARKER, json);
             var tempFile = Path.Combine(Path.GetTempPath(),
-                $"VKDShiftSummary_{DateTime.Now:yyyyMMddHHmmss}.html");
+                $"PyroSyncShiftSummary_{DateTime.Now:yyyyMMddHHmmss}.html");
 
             File.WriteAllText(tempFile, finalHtml, Encoding.UTF8);
             Process.Start(new ProcessStartInfo { FileName = tempFile, UseShellExecute = true });
@@ -202,6 +272,77 @@ public class PrintService
         catch (Exception ex)
         {
             _logger.Error(ex, "PrintShiftSummary failed");
+            MessageBox.Show($"Print failed.\n\nError: {ex.Message}",
+                "Print Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    /// <summary>
+    /// Prints the Monthly Profit &amp; Loss Statement report.
+    /// </summary>
+    public void PrintMonthlyPL(object data)
+    {
+        try
+        {
+            var json = GetSerializedJsonWithLogoAndStationName(data);
+            var templateHtml = LoadNamedTemplate("MonthlyPLPrintTemplate.html");
+
+            if (!templateHtml.Contains(MARKER))
+            {
+                MessageBox.Show("Monthly P&L print template is outdated.",
+                    "Print Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            var finalHtml = templateHtml.Replace(MARKER, json);
+            var tempFile = Path.Combine(Path.GetTempPath(),
+                $"PyroSyncMonthlyPL_{DateTime.Now:yyyyMMddHHmmss}.html");
+
+            File.WriteAllText(tempFile, finalHtml, Encoding.UTF8);
+            Process.Start(new ProcessStartInfo { FileName = tempFile, UseShellExecute = true });
+
+            Task.Delay(TimeSpan.FromMinutes(5)).ContinueWith(_ =>
+            {
+                try { if (File.Exists(tempFile)) File.Delete(tempFile); } catch { }
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "PrintMonthlyPL failed");
+            MessageBox.Show($"Print failed.\n\nError: {ex.Message}",
+                "Print Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    public void PrintOilDefSummary(object data)
+    {
+        try
+        {
+            var json = GetSerializedJsonWithLogoAndStationName(data);
+            var templateHtml = LoadNamedTemplate("OilDefSummaryPrintTemplate.html");
+
+            if (!templateHtml.Contains(MARKER))
+            {
+                MessageBox.Show("Oil & DEF Summary print template is outdated.",
+                    "Print Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            var finalHtml = templateHtml.Replace(MARKER, json);
+            var tempFile = Path.Combine(Path.GetTempPath(),
+                $"PyroSyncOilDefSummary_{DateTime.Now:yyyyMMddHHmmss}.html");
+
+            File.WriteAllText(tempFile, finalHtml, Encoding.UTF8);
+            Process.Start(new ProcessStartInfo { FileName = tempFile, UseShellExecute = true });
+
+            Task.Delay(TimeSpan.FromMinutes(5)).ContinueWith(_ =>
+            {
+                try { if (File.Exists(tempFile)) File.Delete(tempFile); } catch { }
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "PrintOilDefSummary failed");
             MessageBox.Show($"Print failed.\n\nError: {ex.Message}",
                 "Print Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }

@@ -1,17 +1,9 @@
 {
-  "_comment": "Maps AGS DU|Pump|Nozzle keys to physical nozzle numbers 1-28 for Site 215436.",
+  "_comment": "Maps AGS DU|Pump|Nozzle keys to physical nozzle numbers 1-20 for 4 Pumps.",
   "mappings": {
-    "DU1_P1_N1":  2,  "DU1_P1_N2":  4,  "DU1_P1_N3":  6,
-    "DU1_P2_N1":  1,  "DU1_P2_N2":  3,  "DU1_P2_N3":  5,
-    "DU2_P3_N1":  8,  "DU2_P3_N2": 10,  "DU2_P3_N3": 12,
-    "DU2_P4_N1":  7,  "DU2_P4_N2":  9,  "DU2_P4_N3": 11,
-    "DU3_P5_N1": 14,  "DU3_P5_N2": 16,
-    "DU3_P6_N1": 13,  "DU3_P6_N2": 15,
-    "DU4_P7_N1": 18,  "DU4_P7_N2": 20,
-    "DU4_P8_N1": 17,  "DU4_P8_N2": 19,
-    "DU5_P9_N1": 22,  "DU5_P10_N1": 24,
-    "DU5_P11_N1": 21, "DU5_P12_N1": 23,
-    "DU6_P13_N1": 25, "DU6_P14_N1": 27,
-    "DU6_P15_N1": 26, "DU6_P16_N1": 28
+    "DU1_P1_N1": 1,  "DU1_P1_N2": 2,  "DU1_P1_N3": 3,  "DU1_P1_N4": 4,
+    "DU1_P2_N1": 5,  "DU1_P2_N2": 6,  "DU1_P2_N3": 7,  "DU1_P2_N4": 8,  "DU1_P2_N5": 9,  "DU1_P2_N6": 10,
+    "DU2_P3_N1": 11, "DU2_P3_N2": 12, "DU2_P3_N3": 13, "DU2_P3_N4": 14, "DU2_P3_N5": 15, "DU2_P3_N6": 16,
+    "DU2_P4_N1": 17, "DU2_P4_N2": 18, "DU2_P4_N3": 19, "DU2_P4_N4": 20
   }
 }

@@ -13,13 +13,23 @@ public partial class MainWindowViewModel : ObservableObject
     private readonly ISettingsRepository _settingsRepo;
 
     [ObservableProperty] private object? _currentView;
-    [ObservableProperty] private string _windowTitle = "Fuel Pro";
+    [ObservableProperty] private string _windowTitle = "PyroSync";
     [ObservableProperty] private string _currentDateTime = DateTime.Now.ToString("dd MMM yyyy  hh:mm tt");
     [ObservableProperty] private string _dbPath = App.DbPath;
     [ObservableProperty] private string _lastSaveTime = "—";
-    [ObservableProperty] private string _stationName = "VKD Petroleum";
+    [ObservableProperty] private string _stationName = "Shree Mahakaleshwar Petroleum";
+    
+    public string LogoSource => App.GetLogoPath(false);
+    public string SidebarLogoSource => App.GetLogoPath(true);
+    public string HeaderLogoSource => App.GetLogoPath(false);
     [ObservableProperty] private string _currentUser = "";
     [ObservableProperty] private int _selectedNavIndex;
+
+    // Sync status
+    [ObservableProperty] private string _lastSyncTime = "—";
+    [ObservableProperty] private int _pendingSyncCount;
+    [ObservableProperty] private string _syncStatusText = "Not Connected";
+    [ObservableProperty] private bool _isSyncConnected;
 
     private readonly DispatcherTimer _clockTimer;
 
@@ -34,6 +44,18 @@ public partial class MainWindowViewModel : ObservableObject
 
         CurrentUser = _authService.CurrentUser?.Username ?? "";
         _ = LoadStationNameAsync();
+
+        // Wire Cloud Sync Status
+        var syncEngine = App.Services.GetRequiredService<FuelPro.Sync.SyncEngine>();
+        syncEngine.SyncStatusChanged += (status) =>
+        {
+            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+            {
+                UpdateSyncStatus(status.LastSyncTime, status.PendingRecords, status.IsConnected, status.StatusMessage);
+            });
+        };
+        // Initial sync state update
+        UpdateSyncStatus(syncEngine.CurrentStatus.LastSyncTime, syncEngine.CurrentStatus.PendingRecords, syncEngine.CurrentStatus.IsConnected, syncEngine.CurrentStatus.StatusMessage);
     }
 
     private async Task LoadStationNameAsync()
@@ -41,23 +63,38 @@ public partial class MainWindowViewModel : ObservableObject
         var result = await _settingsRepo.GetSettingsAsync();
         if (result.Success && result.Data != null)
         {
-            StationName = result.Data.PumpStationName;
-            WindowTitle = $"Fuel Pro — {StationName} — {DateTime.Now:dd MMM yyyy}";
+            StationName = result.Data.StationDisplayName;
+            WindowTitle = $"PyroSync — {StationName} — {DateTime.Now:dd MMM yyyy}";
         }
     }
 
-    [RelayCommand]
-    private void NavigateToDashboard()
+    public void RefreshBranding()
     {
-        SelectedNavIndex = 0;
-        CurrentView = App.Services.GetRequiredService<DashboardViewModel>();
+        OnPropertyChanged(nameof(LogoSource));
+        OnPropertyChanged(nameof(SidebarLogoSource));
+        OnPropertyChanged(nameof(HeaderLogoSource));
+        _ = LoadStationNameAsync();
+    }
+
+    [RelayCommand]
+    private async Task ForceSyncAsync()
+    {
+        var syncEngine = App.Services.GetRequiredService<FuelPro.Sync.SyncEngine>();
+        await syncEngine.ForceSyncAsync();
     }
 
     [RelayCommand]
     private void NavigateToDsmEntry()
     {
-        SelectedNavIndex = 1;
+        SelectedNavIndex = 0;
         CurrentView = App.Services.GetRequiredService<DsmEntryViewModel>();
+    }
+
+    [RelayCommand]
+    private void NavigateToOilDefDailyLog()
+    {
+        SelectedNavIndex = 1;
+        CurrentView = App.Services.GetRequiredService<OilDefDailyLogViewModel>();
     }
 
     [RelayCommand]
@@ -92,4 +129,12 @@ public partial class MainWindowViewModel : ObservableObject
         LastSaveTime = DateTime.Now.ToString("hh:mm:ss tt");
 
     public void RefreshTitle() => _ = LoadStationNameAsync();
+
+    public void UpdateSyncStatus(DateTime lastSync, int pendingCount, bool isConnected, string statusMessage)
+    {
+        LastSyncTime = lastSync.ToString("dd MMM yyyy hh:mm tt");
+        PendingSyncCount = pendingCount;
+        IsSyncConnected = isConnected;
+        SyncStatusText = statusMessage;
+    }
 }

@@ -1108,6 +1108,21 @@ public class DsmProfileRepository : IDsmProfileRepository
         }
     }
 
+    public async Task<Result> UpdateAsync(DsmProfile profile)
+    {
+        try
+        {
+            _context.DsmProfiles.Update(profile);
+            await _context.SaveChangesAsync();
+            return Result.Ok();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to update DSM profile");
+            return Result.Fail($"Failed to update profile: {ex.Message}");
+        }
+    }
+
     public async Task<Result> DeleteAsync(int id)
     {
         try

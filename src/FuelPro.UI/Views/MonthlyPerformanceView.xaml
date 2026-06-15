@@ -1,0 +1,65 @@
+<UserControl x:Class="FuelPro.UI.Views.MonthlyPerformanceView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             xmlns:converters="clr-namespace:FuelPro.UI.Converters">
+    <UserControl.Resources>
+        <converters:IndianCurrencyConverter x:Key="CurrencyConverter"/>
+        <converters:LitresConverter x:Key="LitresConverter"/>
+    </UserControl.Resources>
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="24,16">
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                <materialDesign:PackIcon Kind="CalendarMonth" Width="28" Height="28" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                <TextBlock Text="Monthly Performance" FontSize="24" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,24,0"/>
+                <DatePicker SelectedDate="{Binding SelectedMonth}" materialDesign:HintAssist.Hint="Select Month" Style="{StaticResource MaterialDesignOutlinedDatePicker}" Width="200" Height="48"/>
+            </StackPanel>
+            <ProgressBar IsIndeterminate="{Binding IsLoading}" Visibility="{Binding IsLoading, Converter={StaticResource BooleanToVisibilityConverter}}" Style="{StaticResource MaterialDesignLinearProgressBar}" Margin="0,0,0,8"/>
+            <UniformGrid Columns="5" Margin="0,0,0,16">
+                <materialDesign:Card Margin="4" Padding="12" UniformCornerRadius="8">
+                    <StackPanel>
+                        <TextBlock Text="Total Sale" FontSize="11" Opacity="0.5"/>
+                        <TextBlock Text="{Binding MonthTotalSale, Converter={StaticResource CurrencyConverter}}" FontSize="18" FontWeight="Bold" Foreground="#1565C0"/>
+                    </StackPanel>
+                </materialDesign:Card>
+                <materialDesign:Card Margin="4" Padding="12" UniformCornerRadius="8">
+                    <StackPanel>
+                        <TextBlock Text="Total Litres" FontSize="11" Opacity="0.5"/>
+                        <TextBlock Text="{Binding MonthTotalLitres, Converter={StaticResource LitresConverter}}" FontSize="18" FontWeight="Bold" Foreground="#2E7D32"/>
+                    </StackPanel>
+                </materialDesign:Card>
+                <materialDesign:Card Margin="4" Padding="12" UniformCornerRadius="8">
+                    <StackPanel>
+                        <TextBlock Text="Total Collection" FontSize="11" Opacity="0.5"/>
+                        <TextBlock Text="{Binding MonthTotalCollection, Converter={StaticResource CurrencyConverter}}" FontSize="18" FontWeight="Bold" Foreground="#F57F17"/>
+                    </StackPanel>
+                </materialDesign:Card>
+                <materialDesign:Card Margin="4" Padding="12" UniformCornerRadius="8">
+                    <StackPanel>
+                        <TextBlock Text="Avg Daily Sale" FontSize="11" Opacity="0.5"/>
+                        <TextBlock Text="{Binding MonthAvgDailySale, Converter={StaticResource CurrencyConverter}}" FontSize="18" FontWeight="Bold"/>
+                    </StackPanel>
+                </materialDesign:Card>
+                <materialDesign:Card Margin="4" Padding="12" UniformCornerRadius="8">
+                    <StackPanel>
+                        <TextBlock Text="Total DSM Entries" FontSize="11" Opacity="0.5"/>
+                        <TextBlock Text="{Binding MonthTotalEntries}" FontSize="18" FontWeight="Bold"/>
+                    </StackPanel>
+                </materialDesign:Card>
+            </UniformGrid>
+            <TextBlock Text="Day-wise Performance Breakdown" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,8"/>
+            <DataGrid ItemsSource="{Binding DayRows}" AutoGenerateColumns="False" IsReadOnly="True"
+                      materialDesign:DataGridAssist.CellPadding="12 8" CanUserSortColumns="True">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Date" Binding="{Binding DateDisplay}" Width="100"/>
+                    <DataGridTextColumn Header="Day" Binding="{Binding DayName}" Width="80"/>
+                    <DataGridTextColumn Header="DSM Entries" Binding="{Binding DsmEntryCount}" Width="100"/>
+                    <DataGridTextColumn Header="Sale" Binding="{Binding TotalSale, Converter={StaticResource CurrencyConverter}}" Width="*"/>
+                    <DataGridTextColumn Header="Litres" Binding="{Binding TotalLitres, Converter={StaticResource LitresConverter}}" Width="*"/>
+                    <DataGridTextColumn Header="Collection" Binding="{Binding TotalCollection, Converter={StaticResource CurrencyConverter}}" Width="*"/>
+                    <DataGridTextColumn Header="Mismatch" Binding="{Binding Mismatch, Converter={StaticResource CurrencyConverter}}" Width="*"/>
+                </DataGrid.Columns>
+            </DataGrid>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using FuelPro.Core.Common;
 using FuelPro.Core.Services;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -13,6 +14,11 @@ public partial class LoginViewModel : ObservableObject
     [ObservableProperty] private string _pin = string.Empty;
     [ObservableProperty] private string _errorMessage = string.Empty;
     [ObservableProperty] private bool _isLoading;
+
+    /// <summary>
+    /// The role of the user who just logged in.
+    /// </summary>
+    public UserRole LoggedInRole { get; private set; }
 
     public event Action? LoginSucceeded;
 
@@ -37,6 +43,7 @@ public partial class LoginViewModel : ObservableObject
             var result = await _authService.LoginAsync(Username, Pin);
             if (result.Success)
             {
+                LoggedInRole = result.Data!.ParsedRole;
                 LoginSucceeded?.Invoke();
             }
             else
@@ -50,3 +57,4 @@ public partial class LoginViewModel : ObservableObject
         }
     }
 }
+

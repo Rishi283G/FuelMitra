@@ -1,8 +1,15 @@
 using FuelPro.Core.Common;
 using FuelPro.Core.DTOs;
+using FuelPro.Core.Repositories;
+using FuelPro.Core.Models;
 using CsvHelper;
+using System;
+using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
+using System.Linq;
 using System.Text;
+using System.Threading.Tasks;
 using Serilog;
 
 namespace FuelPro.Core.Services;
@@ -10,6 +17,105 @@ namespace FuelPro.Core.Services;
 public class ExportService
 {
     private readonly ILogger _logger = Log.ForContext<ExportService>();
+    private readonly IDsmEntryRepository _dsmEntryRepo;
+    private readonly IDsmCalculationService _dsmCalculationService;
+    private readonly IShiftRepository _shiftRepo;
+    private readonly IExpenseRepository _expenseRepo;
+
+    public ExportService(
+        IDsmEntryRepository dsmEntryRepo,
+        IDsmCalculationService dsmCalculationService,
+        IShiftRepository shiftRepo,
+        IExpenseRepository expenseRepo)
+    {
+        _dsmEntryRepo = dsmEntryRepo;
+        _dsmCalculationService = dsmCalculationService;
+        _shiftRepo = shiftRepo;
+        _expenseRepo = expenseRepo;
+    }
+
+    public async Task<Result<string>> ExportDailyDataAsync(DateTime startDate, DateTime endDate)
+    {
+        try
+        {
+            var entriesResult = await _dsmEntryRepo.GetEntriesForDateRangeAsync(startDate, endDate);
+            var entries = entriesResult.Success && entriesResult.Data != null ? entriesResult.Data : new List<DsmEntry>();
+
+            var shiftsResult = await _shiftRepo.GetShiftsByDateRangeAsync(startDate, endDate);
+            var shifts = shiftsResult.Success && shiftsResult.Data != null ? shiftsResult.Data : new List<Shift>();
+            var shiftIds = shifts.Select(s => s.ShiftId).ToList();
+
+            var shiftExpensesResult = await _expenseRepo.GetExpensesByShiftIdsAsync(shiftIds);
+            var shiftExpenses = shiftExpensesResult.Success && shiftExpensesResult.Data != null ? shiftExpensesResult.Data : new List<Expense>();
+
+            var downloadsPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
+            if (!Directory.Exists(downloadsPath))
+            {
+                downloadsPath = AppDomain.CurrentDomain.BaseDirectory;
+            }
+
+            var filePath = Path.Combine(downloadsPath, $"FuelPro_DailyPerformance_{startDate:yyyyMMdd}_to_{endDate:yyyyMMdd}.csv");
+
+            using var writer = new StreamWriter(filePath, false, Encoding.UTF8);
+            await writer.WriteLineAsync("FuelPro Daily Performance Summary Report");
+            await writer.WriteLineAsync($"Period: {startDate:dd MMM yyyy} to {endDate:dd MMM yyyy}");
+            await writer.WriteLineAsync();
+            await writer.WriteLineAsync("Date,Gross Sales,Total Litres,Collection,Mismatch,Cash,PhonePe,Credit Card,Petro Card,Debits,Expenses");
+
+            var byDay = entries.GroupBy(e => e.Shift != null ? e.Shift.ShiftDate.Date : DateTime.Today);
+
+            foreach (var dayGroup in byDay.OrderBy(g => g.Key))
+            {
+                double sale = 0, litres = 0, collection = 0, cash = 0, phonePe = 0, creditCard = 0, petroCard = 0, debits = 0, expenses = 0;
+
+                foreach (var entry in dayGroup)
+                {
+                    var cash1 = entry.CashDenominations.Where(x => x.CashType == "Cash1").Sum(x => x.TotalAmount);
+                    var cash2 = entry.CashDenominations.Where(x => x.CashType == "Cash2").Sum(x => x.TotalAmount);
+
+                    var calc = _dsmCalculationService.Calculate(new DsmEntryDto
+                    {
+                        DSMEntryId = entry.DsmEntryId,
+                        NozzleReadings = entry.NozzleReadings.Select(r => new NozzleReadingDto { Amount = (decimal)r.Amount }).ToList(),
+                        PaymentCollection = new PaymentCollectionDto
+                        {
+                            PhonePe = (decimal)((entry.PaymentCollection?.PhonePe ?? 0) + (entry.PaymentCollection?.PhonePeCardMorning ?? 0) + (entry.PaymentCollection?.PhonePeCardNight ?? 0)),
+                            CreditCard = (decimal)((entry.PaymentCollection?.CreditCard ?? 0) + (entry.PaymentCollection?.PetroCard ?? 0)),
+                            CashDeposit = (decimal)(cash1 + cash2 + (entry.PaymentCollection?.CashDeposit ?? 0)),
+                            PhysicalCash = 0
+                        },
+                        DebitEntries = entry.DebitEntries.Select(d => new DebitEntryDto { Amount = (decimal)d.Amount }).ToList(),
+                        TestingEntries = entry.TestingEntries.Select(t => new TestingEntryDto { FuelType = t.FuelType, Amount = (decimal)t.Amount }).ToList(),
+                        Expenses = entry.Expenses.Select(e => new ExpenseDto { Amount = (decimal)e.Amount }).ToList()
+                    });
+
+                    sale += (double)calc.GrossSales;
+                    collection += (double)calc.TotalCollection;
+                    debits += (double)calc.TotalCreditors;
+                    expenses += entry.Expenses.Sum(x => x.Amount);
+
+                    phonePe += (entry.PaymentCollection?.PhonePe ?? 0);
+                    creditCard += (entry.PaymentCollection?.CreditCard ?? 0);
+                    petroCard += (entry.PaymentCollection?.PetroCard ?? 0);
+                    cash += cash1 + cash2 + (entry.PaymentCollection?.CashDeposit ?? 0);
+                    litres += entry.NozzleReadings.Sum(r => r.SaleLitres);
+                }
+
+                // Add shift expenses
+                var dayShiftIds = shifts.Where(s => s.ShiftDate.Date == dayGroup.Key).Select(s => s.ShiftId).ToList();
+                expenses += shiftExpenses.Where(e => e.ShiftId.HasValue && dayShiftIds.Contains(e.ShiftId.Value)).Sum(e => e.Amount);
+
+                await writer.WriteLineAsync($"{dayGroup.Key:dd/MM/yyyy},{sale},{litres},{collection},{collection - sale},{cash},{phonePe},{creditCard},{petroCard},{debits},{expenses}");
+            }
+
+            return Result<string>.Ok(filePath);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "CSV Daily data export failed");
+            return Result<string>.Fail($"Export failed: {ex.Message}");
+        }
+    }
 
     public Result ExportFinalCalculationToCsv(FinalCalculationDto calc, string filePath)
     {

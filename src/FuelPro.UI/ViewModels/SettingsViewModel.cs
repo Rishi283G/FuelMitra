@@ -3,9 +3,15 @@ using CommunityToolkit.Mvvm.Input;
 using FuelPro.Core.Models;
 using FuelPro.Core.Services;
 using FuelPro.Core.Repositories;
+using FuelPro.Data;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.EntityFrameworkCore;
+using System;
 using System.Collections.ObjectModel;
 using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
 using Rashtra.Licensing;
 
 namespace FuelPro.UI.ViewModels;
@@ -18,9 +24,20 @@ public partial class SettingsViewModel : ObservableObject
     private readonly IDsmProfileRepository _dsmProfileRepo;
     private readonly ICreditorRepository _creditorRepo;
     private readonly LicenseManager _licenseManager;
+    private readonly FuelPro.Sync.SyncConfigService _syncConfigService;
+    private readonly FuelPro.Sync.SyncEngine _syncEngine;
 
     [ObservableProperty] private string _pumpStationName = "";
     [ObservableProperty] private string _hsdRate = "";
+
+    // Cloud Sync Settings
+    [ObservableProperty] private string _supabaseUrl = "";
+    [ObservableProperty] private string _supabaseApiKey = "";
+    [ObservableProperty] private string _syncStationId = "";
+    [ObservableProperty] private string _syncMachineId = "";
+    [ObservableProperty] private bool _syncEnabled;
+    [ObservableProperty] private string _syncStatusMessage = "";
+    [ObservableProperty] private string _lastSyncTimeDisplay = "—";
     [ObservableProperty] private string _msIRate = "";
     [ObservableProperty] private string _msIIRate = "";
     [ObservableProperty] private string _lastUpdated = "";
@@ -60,6 +77,8 @@ public partial class SettingsViewModel : ObservableObject
         _dsmProfileRepo = App.Services.GetRequiredService<IDsmProfileRepository>();
         _creditorRepo = App.Services.GetRequiredService<ICreditorRepository>();
         _licenseManager = App.Services.GetRequiredService<LicenseManager>();
+        _syncConfigService = App.Services.GetRequiredService<FuelPro.Sync.SyncConfigService>();
+        _syncEngine = App.Services.GetRequiredService<FuelPro.Sync.SyncEngine>();
         for (var month = 1; month <= 12; month++)
         {
             MonthOptions.Add(new KeyValuePair<int, string>(month, CultureInfo.CurrentCulture.DateTimeFormat.GetMonthName(month)));
@@ -85,6 +104,16 @@ public partial class SettingsViewModel : ObservableObject
             MsIIRate = _settings.MsIIRate.ToString(CultureInfo.CurrentCulture);
             LastUpdated = _settings.LastUpdated.ToString("dd MMM yyyy hh:mm tt");
         }
+
+
+        // Load Cloud Sync Settings
+        var syncSettings = await _syncConfigService.GetSettingsAsync();
+        SupabaseUrl = syncSettings.SupabaseUrl;
+        SupabaseApiKey = syncSettings.SupabaseApiKey;
+        SyncStationId = syncSettings.StationId;
+        SyncMachineId = syncSettings.MachineId;
+        SyncEnabled = syncSettings.SyncEnabled;
+        LastSyncTimeDisplay = syncSettings.LastSyncTime.ToString("dd MMM yyyy hh:mm tt");
 
         var usersResult = await _userRepo.GetAllUsersAsync();
         Users.Clear();
@@ -121,6 +150,19 @@ public partial class SettingsViewModel : ObservableObject
         _settings.MsIIRate = ms2;
 
         var result = await _settingsRepo.SaveSettingsAsync(_settings);
+        if (result.Success)
+        {
+
+            // Notify main windows to reload their titles and logos
+            if (System.Windows.Application.Current.Windows.OfType<System.Windows.Window>().FirstOrDefault(w => w is Views.MainWindow) is System.Windows.Window mw && mw.DataContext is MainWindowViewModel mwVm)
+            {
+                mwVm.RefreshBranding();
+            }
+            if (System.Windows.Application.Current.Windows.OfType<System.Windows.Window>().FirstOrDefault(w => w is Views.OwnerMainWindow) is System.Windows.Window omw && omw.DataContext is OwnerMainWindowViewModel omwVm)
+            {
+                omwVm.RefreshBranding();
+            }
+        }
         StatusMessage = result.Success ? "✅ Settings saved!" : $"❌ {result.Error}";
         if (result.Success) LastUpdated = DateTime.Now.ToString("dd MMM yyyy hh:mm tt");
     }
@@ -339,9 +381,9 @@ public partial class SettingsViewModel : ObservableObject
             var lic = validation.License;
             LicenseProductName = lic.ProductName switch
             {
-                "FPL" => "FuelPro Lite",
-                "VKD" => "VKD Petroleum",
-                "ZPA" => "ZP Automation",
+                "FPL" => "PyroSync",
+                "VKD" => "PyroSync",
+                "ZPA" => "PyroSync",
                 _ => lic.ProductName
             };
             LicenseCustomerName = lic.CustomerName;
@@ -397,5 +439,57 @@ public partial class SettingsViewModel : ObservableObject
         
         System.Windows.Clipboard.SetText(text);
         System.Windows.MessageBox.Show("License details copied to clipboard!", "FuelPro — License Management", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Information);
+    }
+
+    [RelayCommand]
+    private async Task SaveSyncSettingsAsync()
+    {
+        try
+        {
+            var settings = new FuelPro.Sync.SyncSettings
+            {
+                SupabaseUrl = SupabaseUrl.Trim(),
+                SupabaseApiKey = SupabaseApiKey.Trim(),
+                StationId = SyncStationId.Trim(),
+                MachineId = SyncMachineId,
+                SyncEnabled = SyncEnabled,
+                LastSyncTime = _syncEngine.CurrentStatus.LastSyncTime
+            };
+            await _syncConfigService.SaveSettingsAsync(settings);
+            SyncStatusMessage = "✅ Sync settings saved!";
+            
+            // Trigger sync update
+            await _syncEngine.ForceSyncAsync();
+        }
+        catch (System.Exception ex)
+        {
+            SyncStatusMessage = $"❌ Save error: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    private void CopyStationId()
+    {
+        if (!string.IsNullOrEmpty(SyncStationId))
+        {
+            System.Windows.Clipboard.SetText(SyncStationId);
+        }
+    }
+
+    [RelayCommand]
+    private async Task ForceSyncAsync()
+    {
+        SyncStatusMessage = "⏳ Syncing...";
+        try
+        {
+            await _syncEngine.ForceSyncAsync();
+            var status = _syncEngine.CurrentStatus;
+            LastSyncTimeDisplay = status.LastSyncTime.ToString("dd MMM yyyy hh:mm tt");
+            SyncStatusMessage = status.IsConnected ? $"✅ Sync successful: {status.StatusMessage}" : $"❌ Sync failed: {status.StatusMessage}";
+        }
+        catch (System.Exception ex)
+        {
+            SyncStatusMessage = $"❌ Sync error: {ex.Message}";
+        }
     }
 }

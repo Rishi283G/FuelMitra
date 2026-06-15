@@ -276,7 +276,7 @@ public partial class DayTotalViewModel : ObservableObject
         {
             e.PumpId,
             Reading = r,
-            CanonicalFuelType = FuelPro.Core.Common.PumpConfiguration.GetFuelTypeDisplayName(r.NozzleNumber)
+            CanonicalFuelType = FuelPro.Core.Common.PumpConfiguration.GetFuelTypeDisplayName(e.PumpId, r.NozzleNumber, e.Shift?.ShiftDate ?? SelectedDate)
         })).ToList();
 
         var pumpGroups = allReadings.GroupBy(x => new { x.PumpId, FuelType = x.CanonicalFuelType });

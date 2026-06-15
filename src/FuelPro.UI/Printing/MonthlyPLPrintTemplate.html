@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Monthly Profit & Loss Statement</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 20px;
+            color: #333;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        .header {
+            text-align: center;
+            border-bottom: 2px solid #00695C;
+            padding-bottom: 12px;
+            margin-bottom: 20px;
+        }
+        .header h1 {
+            margin: 0;
+            color: #00695C;
+            font-size: 24px;
+        }
+        .header p {
+            margin: 4px 0 0 0;
+            font-size: 14px;
+            opacity: 0.8;
+        }
+        .meta-info {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 24px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px 12px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+            font-weight: 600;
+            color: #444;
+        }
+        .text-right {
+            text-align: right;
+        }
+        .section-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #00695C;
+            margin-top: 20px;
+            margin-bottom: 8px;
+            border-bottom: 1px solid #00695C;
+            padding-bottom: 4px;
+        }
+        .total-row {
+            font-weight: bold;
+            background-color: #e8f5e9;
+        }
+        .expense-row {
+            background-color: #fafafa;
+        }
+        .summary-card {
+            background-color: #f5f5f5;
+            border-left: 4px solid #00695C;
+            padding: 16px;
+            margin-top: 24px;
+            border-radius: 4px;
+        }
+        .summary-card table {
+            margin-bottom: 0;
+            border: none;
+        }
+        .summary-card td {
+            border: none;
+            padding: 6px 12px;
+        }
+        .net-profit {
+            font-size: 18px;
+            font-weight: bold;
+            color: #2e7d32;
+        }
+        .net-loss {
+            font-size: 18px;
+            font-weight: bold;
+            color: #c62828;
+        }
+        .print-btn {
+            display: block;
+            width: 120px;
+            margin: 20px auto;
+            padding: 10px;
+            text-align: center;
+            background-color: #00695C;
+            color: white;
+            font-weight: bold;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        @media print {
+            .print-btn {
+                display: none;
+            }
+            body {
+                margin: 0;
+                font-size: 12px;
+            }
+        }
+    </style>
+    <script>
+        // Data will be injected here as JSON
+        const data = /* INJECT_JSON_HERE */{};
+
+        function formatCurrency(val) {
+            return "₹" + Number(val).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        function formatLitres(val) {
+            return Number(val).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " L";
+        }
+
+        function formatQty(val) {
+            return Number(val).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        function renderData() {
+            if (!data || !data.startDate) return;
+
+            document.getElementById('stationName').innerText = data.stationName || "VKD Petroleum";
+            document.getElementById('dateRange').innerText = `${data.startDate} to ${data.endDate}`;
+
+            // Fuel Table
+            const fuelBody = document.getElementById('fuelBody');
+            fuelBody.innerHTML = `
+                <tr>
+                    <td>MS1 / Diesel (HSD)</td>
+                    <td class="text-right">${formatLitres(data.fuelProfit.hsdLitres)}</td>
+                    <td class="text-right">₹${data.fuelProfit.hsdMargin.toFixed(2)}</td>
+                    <td class="text-right">${formatCurrency(data.fuelProfit.hsdProfit)}</td>
+                </tr>
+                <tr>
+                    <td>MS-I (Petrol)</td>
+                    <td class="text-right">${formatLitres(data.fuelProfit.msILitres)}</td>
+                    <td class="text-right">₹${data.fuelProfit.msIMargin.toFixed(2)}</td>
+                    <td class="text-right">${formatCurrency(data.fuelProfit.msIProfit)}</td>
+                </tr>
+                <tr>
+                    <td>MS-II (Power Petrol)</td>
+                    <td class="text-right">${formatLitres(data.fuelProfit.msIILitres)}</td>
+                    <td class="text-right">₹${data.fuelProfit.msIIMargin.toFixed(2)}</td>
+                    <td class="text-right">${formatCurrency(data.fuelProfit.msIIProfit)}</td>
+                </tr>
+                <tr class="total-row">
+                    <td>Total Fuel</td>
+                    <td class="text-right">${formatLitres(data.fuelProfit.totalLitres)}</td>
+                    <td class="text-right">-</td>
+                    <td class="text-right">${formatCurrency(data.fuelProfit.totalFuelProfit)}</td>
+                </tr>
+            `;
+
+            // Oil & DEF Table
+            const inventoryBody = document.getElementById('inventoryBody');
+            inventoryBody.innerHTML = `
+                <tr>
+                    <td>Lube Oil</td>
+                    <td class="text-right">${formatQty(data.oilProfit.openingStock)}</td>
+                    <td class="text-right">${formatQty(data.oilProfit.closingStock)}</td>
+                    <td class="text-right">${formatQty(data.oilProfit.salesQuantity)}</td>
+                    <td class="text-right">₹${data.oilProfit.averagePurchasePrice.toFixed(2)}</td>
+                    <td class="text-right">₹${data.oilProfit.salePrice.toFixed(2)}</td>
+                    <td class="text-right" style="font-weight: 600;">${formatCurrency(data.oilProfit.totalProfit)}</td>
+                </tr>
+                <tr>
+                    <td>DEF (AdBlue)</td>
+                    <td class="text-right">${formatQty(data.defProfit.openingStock)}</td>
+                    <td class="text-right">${formatQty(data.defProfit.closingStock)}</td>
+                    <td class="text-right">${formatQty(data.defProfit.salesQuantity)}</td>
+                    <td class="text-right">₹${data.defProfit.averagePurchasePrice.toFixed(2)}</td>
+                    <td class="text-right">₹${data.defProfit.salePrice.toFixed(2)}</td>
+                    <td class="text-right" style="font-weight: 600;">${formatCurrency(data.defProfit.totalProfit)}</td>
+                </tr>
+                <tr class="total-row">
+                    <td colspan="6">Total Oil & DEF Profit</td>
+                    <td class="text-right">${formatCurrency(data.oilProfit.totalProfit + data.defProfit.totalProfit)}</td>
+                </tr>
+            `;
+
+            // Expenses Table
+            const expenseBody = document.getElementById('expenseBody');
+            let expensesHtml = '';
+            if (data.expenses && data.expenses.length > 0) {
+                data.expenses.forEach(exp => {
+                    expensesHtml += `
+                        <tr class="expense-row">
+                            <td>${exp.category}</td>
+                            <td class="text-right">${formatCurrency(exp.amount)}</td>
+                        </tr>
+                    `;
+                });
+            } else {
+                expensesHtml += `<tr><td colspan="2" style="text-align: center; opacity: 0.6;">No operational expenses recorded in range.</td></tr>`;
+            }
+            expensesHtml += `
+                <tr class="total-row">
+                    <td>Total Operational Expenses</td>
+                    <td class="text-right">${formatCurrency(data.totalExpenses)}</td>
+                </tr>
+            `;
+            expenseBody.innerHTML = expensesHtml;
+
+            // Summary Block
+            document.getElementById('grossProfitText').innerText = formatCurrency(data.grossProfit);
+            document.getElementById('operatingExpensesText').innerText = formatCurrency(data.totalExpenses);
+            document.getElementById('dsmSalariesText').innerText = formatCurrency(data.totalDsmSalaries);
+            
+            const netProfitCell = document.getElementById('netProfitText');
+            netProfitCell.innerText = formatCurrency(data.netProfit);
+            if (data.netProfit >= 0) {
+                netProfitCell.className = 'net-profit text-right';
+            } else {
+                netProfitCell.className = 'net-loss text-right';
+            }
+            if (data.logo) {
+                const logoImg = document.getElementById('logo');
+                if (logoImg) {
+                    logoImg.src = data.logo;
+                    logoImg.style.display = 'block';
+                }
+            }
+        }
+
+        window.onload = function() {
+            renderData();
+        };
+
+        function printDoc() {
+            window.print();
+        }
+    </script>
+</head>
+<body>
+    <button class="print-btn" onclick="printDoc()">Print Report</button>
+    <div class="header">
+        <div style="display: flex; align-items: center; justify-content: center; gap: 15px;">
+            <img id="logo" style="display: none; height: 50px;" src="" alt="logo" />
+            <h1 id="stationName">VKD Petroleum</h1>
+        </div>
+        <p>Monthly Profit & Loss Statement</p>
+        <p id="dateRange">01-Jun-2026 to 30-Jun-2026</p>
+    </div>
+
+    <div class="section-title">1. Gross Revenue from Fuel Margins</div>
+    <table>
+        <thead>
+            <tr>
+                <th>Fuel Product</th>
+                <th class="text-right">Volume Sold</th>
+                <th class="text-right">Avg Margin/Litre</th>
+                <th class="text-right">Profit generated</th>
+            </tr>
+        </thead>
+        <tbody id="fuelBody">
+            <!-- Row data injected -->
+        </tbody>
+    </table>
+
+    <div class="section-title">2. Lube Oil & DEF Stock Profits</div>
+    <table>
+        <thead>
+            <tr>
+                <th>Product Type</th>
+                <th class="text-right">Opening Stock</th>
+                <th class="text-right">Closing Stock</th>
+                <th class="text-right">Qty Sold</th>
+                <th class="text-right">Avg Cost Price</th>
+                <th class="text-right">Avg Sale Price</th>
+                <th class="text-right">Profit generated</th>
+            </tr>
+        </thead>
+        <tbody id="inventoryBody">
+            <!-- Row data injected -->
+        </tbody>
+    </table>
+
+    <div class="section-title">3. Operating Expenses Log</div>
+    <table>
+        <thead>
+            <tr>
+                <th>Expense Description</th>
+                <th class="text-right">Amount</th>
+            </tr>
+        </thead>
+        <tbody id="expenseBody">
+            <!-- Row data injected -->
+        </tbody>
+    </table>
+
+    <div class="section-title">4. Financial Summary</div>
+    <div class="summary-card">
+        <table>
+            <tr>
+                <td style="font-weight: 600;">Total Gross Profit (Fuel + Oil/DEF):</td>
+                <td class="text-right" id="grossProfitText" style="font-weight: 600;">₹0.00</td>
+            </tr>
+            <tr>
+                <td style="color: #c62828;">Less: Total Operating Expenses:</td>
+                <td class="text-right" id="operatingExpensesText" style="color: #c62828;">-₹0.00</td>
+            </tr>
+            <tr>
+                <td style="color: #7b1fa2;">Less: Total DSM Salaries Cost:</td>
+                <td class="text-right" id="dsmSalariesText" style="color: #7b1fa2;">-₹0.00</td>
+            </tr>
+            <tr style="border-top: 2px solid #00695C; font-size: 16px;">
+                <td style="font-weight: bold; padding-top: 10px;">Net Operating Profit / Loss:</td>
+                <td class="text-right" id="netProfitText" style="font-weight: bold; padding-top: 10px;">₹0.00</td>
+            </tr>
+        </table>
+    </div>
+</body>
+</html>

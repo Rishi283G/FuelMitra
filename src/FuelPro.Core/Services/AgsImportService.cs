@@ -24,39 +24,47 @@ public class AgsImportService : IAgsImportService
 
     // ─────────────────────────────────────────────────────────────────────────
     //  Hardcoded AGS key mapping for Site 215436
+    //  Maps: DU|Pump|Nozzle (physical machine numbers) -> Operational Pump (1-8)
     // ─────────────────────────────────────────────────────────────────────────
     private sealed record AgsNozzleMeta(int PhysicalNozzle, int PumpNumber, string FuelType);
 
     private static readonly Dictionary<string, AgsNozzleMeta> AgsNozzleMap = new(StringComparer.OrdinalIgnoreCase)
     {
-        { "1|1|1", new AgsNozzleMeta(2, 1, "HSD") },
-        { "1|1|2", new AgsNozzleMeta(4, 1, "MS-II") },
-        { "1|1|3", new AgsNozzleMeta(6, 1, "MS-I") },
-        { "1|2|1", new AgsNozzleMeta(1, 2, "HSD") },
-        { "1|2|2", new AgsNozzleMeta(3, 2, "MS-II") },
-        { "1|2|3", new AgsNozzleMeta(5, 2, "MS-I") },
-        { "2|3|1", new AgsNozzleMeta(8, 3, "HSD") },
-        { "2|3|2", new AgsNozzleMeta(10, 3, "MS-II") },
-        { "2|3|3", new AgsNozzleMeta(12, 3, "MS-I") },
-        { "2|4|1", new AgsNozzleMeta(7, 4, "HSD") },
-        { "2|4|2", new AgsNozzleMeta(9, 4, "MS-II") },
-        { "2|4|3", new AgsNozzleMeta(11, 4, "MS-I") },
-        { "3|5|1", new AgsNozzleMeta(14, 5, "MS-II") },
-        { "3|5|2", new AgsNozzleMeta(16, 5, "MS-I") },
-        { "3|6|1", new AgsNozzleMeta(13, 6, "MS-II") },
-        { "3|6|2", new AgsNozzleMeta(15, 6, "MS-I") },
-        { "4|7|1", new AgsNozzleMeta(18, 7, "MS-II") },
-        { "4|7|2", new AgsNozzleMeta(20, 7, "MS-I") },
-        { "4|8|1", new AgsNozzleMeta(17, 8, "MS-II") },
-        { "4|8|2", new AgsNozzleMeta(19, 8, "MS-I") },
-        { "5|9|1",  new AgsNozzleMeta(21,  9, "MS-I")  },
-        { "5|10|1", new AgsNozzleMeta(23,  9, "MS-II") },
-        { "5|11|1", new AgsNozzleMeta(22, 10, "MS-I")  },
-        { "5|12|1", new AgsNozzleMeta(24, 10, "MS-II") },
-        { "6|13|1", new AgsNozzleMeta(25, 11, "MS-I")  },
-        { "6|14|1", new AgsNozzleMeta(27, 11, "MS-II") },
-        { "6|15|1", new AgsNozzleMeta(26, 12, "MS-I")  },
-        { "6|16|1", new AgsNozzleMeta(28, 12, "MS-II") },
+        // Operational Pump 1 (Machine 1 Side A)
+        { "1|1|1", new AgsNozzleMeta(1, 1, "MS-I") },
+        { "1|1|2", new AgsNozzleMeta(2, 1, "MS-II") },
+
+        // Operational Pump 2 (Machine 1 Side B)
+        { "1|1|3", new AgsNozzleMeta(3, 2, "MS-I") },
+        { "1|1|4", new AgsNozzleMeta(4, 2, "MS-II") },
+
+        // Operational Pump 3 (Machine 2 Side A)
+        { "1|2|1", new AgsNozzleMeta(5, 3, "MS-I") },
+        { "1|2|2", new AgsNozzleMeta(6, 3, "MS-II") },
+        { "1|2|3", new AgsNozzleMeta(7, 3, "HSD") },
+
+        // Operational Pump 4 (Machine 2 Side B)
+        { "1|2|4", new AgsNozzleMeta(8, 4, "MS-I") },
+        { "1|2|5", new AgsNozzleMeta(9, 4, "MS-II") },
+        { "1|2|6", new AgsNozzleMeta(10, 4, "HSD") },
+
+        // Operational Pump 5 (Machine 3 Side A)
+        { "2|3|1", new AgsNozzleMeta(11, 5, "MS-I") },
+        { "2|3|2", new AgsNozzleMeta(12, 5, "MS-II") },
+        { "2|3|3", new AgsNozzleMeta(13, 5, "HSD") },
+
+        // Operational Pump 6 (Machine 3 Side B)
+        { "2|3|4", new AgsNozzleMeta(14, 6, "MS-I") },
+        { "2|3|5", new AgsNozzleMeta(15, 6, "MS-II") },
+        { "2|3|6", new AgsNozzleMeta(16, 6, "HSD") },
+
+        // Operational Pump 7 (Machine 4 Side A)
+        { "2|4|1", new AgsNozzleMeta(17, 7, "HSD") },
+        { "2|4|2", new AgsNozzleMeta(18, 7, "HSD") },
+
+        // Operational Pump 8 (Machine 4 Side B)
+        { "2|4|3", new AgsNozzleMeta(19, 8, "HSD") },
+        { "2|4|4", new AgsNozzleMeta(20, 8, "HSD") }
     };
 
     private sealed record AgsTankMeta(int InternalTankId, string FuelType);

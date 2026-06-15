@@ -1,0 +1,190 @@
+<UserControl x:Class="FuelPro.UI.Views.OilDefInventoryView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             xmlns:converters="clr-namespace:FuelPro.UI.Converters">
+    <UserControl.Resources>
+        <converters:IndianCurrencyConverter x:Key="CurrencyConverter"/>
+        <Style x:Key="MaterialDesignTextBlockCenter" TargetType="TextBlock">
+            <Setter Property="TextAlignment" Value="Center"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+        </Style>
+        <Style x:Key="MaterialDesignTextBlockRight" TargetType="TextBlock">
+            <Setter Property="TextAlignment" Value="Right"/>
+            <Setter Property="HorizontalAlignment" Value="Right"/>
+        </Style>
+    </UserControl.Resources>
+    <Grid Margin="24,16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,16">
+            <materialDesign:PackIcon Kind="Storage" Width="28" Height="28" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+            <TextBlock Text="Oil &amp; DEF Inventory" FontSize="24" FontWeight="Bold" VerticalAlignment="Center"/>
+        </StackPanel>
+
+        <!-- Main Content (Tabbed) -->
+        <TabControl Grid.Row="1" materialDesign:ColorZoneAssist.Mode="Standard">
+            
+            <!-- Tab 1: Stock Take -->
+            <TabItem Header="Monthly Stock Take">
+                <Grid Margin="0,16,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Filter Area -->
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,16">
+                        <ComboBox ItemsSource="{Binding Years}" SelectedItem="{Binding SelectedYear}"
+                                  materialDesign:HintAssist.Hint="Year" Style="{StaticResource MaterialDesignOutlinedComboBox}"
+                                  Width="120" Margin="0,0,12,0" Height="48"/>
+                        
+                        <ComboBox ItemsSource="{Binding Months}" SelectedItem="{Binding SelectedMonthName}"
+                                  materialDesign:HintAssist.Hint="Month" Style="{StaticResource MaterialDesignOutlinedComboBox}"
+                                  Width="150" Margin="0,0,16,0" Height="48"/>
+                        
+                        <Button Content="Refresh" Style="{StaticResource MaterialDesignOutlinedButton}"
+                                Command="{Binding LoadDataCommand}" Height="48" Padding="12,0"/>
+                    </StackPanel>
+
+                    <ProgressBar Grid.Row="0" VerticalAlignment="Bottom" IsIndeterminate="{Binding IsLoading}"
+                                 Visibility="{Binding IsLoading, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                 Style="{StaticResource MaterialDesignLinearProgressBar}" Margin="0,0,0,-4"/>
+
+                    <!-- Stock Take Input Grid -->
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <!-- Oil Inventory Card -->
+                            <materialDesign:Card Grid.Column="0" Margin="0,0,12,0" Padding="20" UniformCornerRadius="8" materialDesign:ElevationAssist.Elevation="Dp1">
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                                        <materialDesign:PackIcon Kind="Oil" Width="24" Height="24" Foreground="#1565C0" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <TextBlock Text="Lube Oil Stock Take" FontSize="18" FontWeight="Bold" Foreground="#1565C0" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    
+                                    <TextBox Text="{Binding OilOpeningStock, UpdateSourceTrigger=PropertyChanged}" materialDesign:HintAssist.Hint="Opening Stock (Units/Litres)"
+                                             Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,0,16" Height="48" PreviewTextInput="NumberValidationTextBox"/>
+
+                                    <TextBox Text="{Binding OilClosingStock, UpdateSourceTrigger=PropertyChanged}" materialDesign:HintAssist.Hint="Closing Stock (Units/Litres)"
+                                             Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,0,16" Height="48" PreviewTextInput="NumberValidationTextBox"/>
+
+                                    <TextBox Text="{Binding OilSalePrice, UpdateSourceTrigger=PropertyChanged}" materialDesign:HintAssist.Hint="Sale Price per Unit (₹)"
+                                             Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,0,8" Height="48" PreviewTextInput="NumberValidationTextBox"/>
+                                    
+                                    <TextBlock Text="* Litres / units sold will be calculated as: Opening + Purchases - Closing" FontSize="11" Opacity="0.6" Margin="4,4,0,0" TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </materialDesign:Card>
+
+                            <!-- DEF Inventory Card -->
+                            <materialDesign:Card Grid.Column="1" Margin="12,0,0,0" Padding="20" UniformCornerRadius="8" materialDesign:ElevationAssist.Elevation="Dp1">
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                                        <materialDesign:PackIcon Kind="WaterPercent" Width="24" Height="24" Foreground="#00796B" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <TextBlock Text="DEF (AdBlue) Stock Take" FontSize="18" FontWeight="Bold" Foreground="#00796B" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    
+                                    <TextBox Text="{Binding DefOpeningStock, UpdateSourceTrigger=PropertyChanged}" materialDesign:HintAssist.Hint="Opening Stock (Litres)"
+                                             Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,0,16" Height="48" PreviewTextInput="NumberValidationTextBox"/>
+
+                                    <TextBox Text="{Binding DefClosingStock, UpdateSourceTrigger=PropertyChanged}" materialDesign:HintAssist.Hint="Closing Stock (Litres)"
+                                             Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,0,16" Height="48" PreviewTextInput="NumberValidationTextBox"/>
+
+                                    <TextBox Text="{Binding DefSalePrice, UpdateSourceTrigger=PropertyChanged}" materialDesign:HintAssist.Hint="Sale Price per Litre (₹)"
+                                             Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,0,8" Height="48" PreviewTextInput="NumberValidationTextBox"/>
+
+                                    <TextBlock Text="* Litres sold will be calculated as: Opening + Purchases - Closing" FontSize="11" Opacity="0.6" Margin="4,4,0,0" TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </materialDesign:Card>
+                        </Grid>
+                    </ScrollViewer>
+
+                    <!-- Save Button Row -->
+                    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+                        <Button Content="Save Stock Take" Style="{StaticResource MaterialDesignRaisedButton}"
+                                Command="{Binding SaveStockTakeCommand}" Width="200" Height="40" Background="#2E7D32" BorderBrush="#2E7D32"/>
+                    </StackPanel>
+                </Grid>
+            </TabItem>
+
+            <!-- Tab 2: Purchase Invoice Logging -->
+            <TabItem Header="Supplier Invoices Registry">
+                <Grid Margin="0,16,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="2*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Left: Invoices Grid -->
+                    <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                        <TextBlock Text="Monthly Invoices Log" FontSize="16" FontWeight="Bold" Margin="0,0,0,12" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                        <DataGrid ItemsSource="{Binding Purchases}" AutoGenerateColumns="False" IsReadOnly="True"
+                                  materialDesign:DataGridAssist.CellPadding="10 8" Height="480">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Date" Binding="{Binding PurchaseDate, StringFormat='{}{0:dd-MMM-yyyy}'}" Width="*"/>
+                                <DataGridTextColumn Header="Product" Binding="{Binding ProductType}" Width="80"/>
+                                <DataGridTextColumn Header="Supplier Name" Binding="{Binding SupplierName}" Width="1.5*"/>
+                                <DataGridTextColumn Header="Invoice No." Binding="{Binding InvoiceNumber}" Width="*"/>
+                                <DataGridTextColumn Header="Quantity" Binding="{Binding Quantity, StringFormat='{}{0:N2}'}" Width="80" ElementStyle="{StaticResource MaterialDesignTextBlockRight}"/>
+                                <DataGridTextColumn Header="Unit Price" Binding="{Binding UnitPrice, Converter={StaticResource CurrencyConverter}}" Width="100" ElementStyle="{StaticResource MaterialDesignTextBlockRight}"/>
+                                <DataGridTextColumn Header="Total Cost" Binding="{Binding TotalCost, Converter={StaticResource CurrencyConverter}}" Width="120" ElementStyle="{StaticResource MaterialDesignTextBlockRight}"/>
+                                
+                                <DataGridTemplateColumn Header="Action" Width="70">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Button Style="{StaticResource MaterialDesignIconButton}" 
+                                                    Command="{Binding DataContext.DeletePurchaseCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" 
+                                                    CommandParameter="{Binding}" Height="30" Width="30" Foreground="#C62828">
+                                                <materialDesign:PackIcon Kind="Delete" Width="16" Height="16"/>
+                                            </Button>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </StackPanel>
+
+                    <!-- Right: Add Purchase Card -->
+                    <materialDesign:Card Grid.Column="1" Padding="16" UniformCornerRadius="8" materialDesign:ElevationAssist.Elevation="Dp1" Height="480" VerticalAlignment="Top">
+                        <StackPanel>
+                            <TextBlock Text="Log Purchase Invoice" FontSize="16" FontWeight="Bold" Margin="0,0,0,16" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
+
+                            <ComboBox SelectedValue="{Binding NewPurchaseProductType}" SelectedValuePath="Content" materialDesign:HintAssist.Hint="Product Type"
+                                      Style="{StaticResource MaterialDesignOutlinedComboBox}" Margin="0,0,0,12" Height="48">
+                                <ComboBoxItem Content="Oil"/>
+                                <ComboBoxItem Content="DEF"/>
+                            </ComboBox>
+
+                            <DatePicker SelectedDate="{Binding NewPurchaseDate}" materialDesign:HintAssist.Hint="Purchase Date"
+                                        Style="{StaticResource MaterialDesignOutlinedDatePicker}" Margin="0,0,0,12" Height="48"/>
+
+                            <TextBox Text="{Binding NewPurchaseSupplierName, UpdateSourceTrigger=PropertyChanged}" materialDesign:HintAssist.Hint="Supplier Name"
+                                     Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,0,12" Height="48"/>
+
+                            <TextBox Text="{Binding NewPurchaseInvoiceNumber, UpdateSourceTrigger=PropertyChanged}" materialDesign:HintAssist.Hint="Invoice Number"
+                                     Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,0,12" Height="48"/>
+
+                            <TextBox Text="{Binding NewPurchaseQuantity, UpdateSourceTrigger=PropertyChanged}" materialDesign:HintAssist.Hint="Quantity Purchased"
+                                     Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,0,12" Height="48" PreviewTextInput="NumberValidationTextBox"/>
+
+                            <TextBox Text="{Binding NewPurchaseUnitPrice, UpdateSourceTrigger=PropertyChanged}" materialDesign:HintAssist.Hint="Unit Cost Price (₹)"
+                                     Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,0,24" Height="48" PreviewTextInput="NumberValidationTextBox"/>
+
+                            <Button Content="Save Invoice" Style="{StaticResource MaterialDesignRaisedButton}"
+                                    Command="{Binding AddPurchaseCommand}" Height="40"/>
+                        </StackPanel>
+                    </materialDesign:Card>
+                </Grid>
+            </TabItem>
+        </TabControl>
+    </Grid>
+</UserControl>

@@ -209,7 +209,7 @@ public partial class DsmEntryViewModel : ObservableObject
     public ObservableCollection<Creditor> Creditors { get; } = new();
 
     public string[] ShiftOptions { get; } = { "A", "B", "C" };
-    public List<PumpDisplayItem> PumpOptions { get; } = PumpConfiguration.GetPumpDisplayItems();
+    public ObservableCollection<PumpDisplayItem> PumpOptions { get; } = new();
     public ObservableCollection<PumpDisplayItem> ConnectablePumpOptions { get; } = new();
 
     // DSM list for current shift
@@ -232,8 +232,8 @@ public partial class DsmEntryViewModel : ObservableObject
         Cash1 = new CashDenomRow { CashType = "Cash1", OnTotalChanged = RecalculateAll };
         Cash2 = new CashDenomRow { CashType = "Cash2", OnTotalChanged = RecalculateAll };
 
-        // Set default pump
-        SelectedPump = PumpOptions.First();
+        // Populate pump options for default selected date
+        ReloadPumpOptions();
 
         // Auto-save timer
         _autoSaveTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
@@ -254,7 +254,11 @@ public partial class DsmEntryViewModel : ObservableObject
         }
     }
 
-    partial void OnSelectedDateChanged(DateTime value) { LoadNozzlesForPump(); }
+    partial void OnSelectedDateChanged(DateTime value)
+    {
+        ReloadPumpOptions();
+        LoadNozzlesForPump();
+    }
     partial void OnSelectedShiftChanged(string value) => LoadNozzlesForPump();
     partial void OnDsmNameChanged(string value) => _ = RefreshConnectedPumpGrossSalesAsync();
     partial void OnSelectedConnectedPumpChanged(PumpDisplayItem? value) => _ = RefreshConnectedPumpGrossSalesAsync();
@@ -264,7 +268,7 @@ public partial class DsmEntryViewModel : ObservableObject
         NozzleReadings.Clear();
         OpeningWarnings.Clear();
         if (SelectedPump == null) return;
-        var nozzles = PumpConfiguration.GetNozzlesForPump(SelectedPump.PumpId);
+        var nozzles = PumpConfiguration.GetNozzlesForPump(SelectedPump.PumpId, SelectedDate);
         var (hsdRate, msIRate, msIIRate) = await _dsmService.GetCurrentRatesAsync();
         var previousResult = await _nozzleRepository.GetPreviousShiftClosingsAsync(SelectedDate, SelectedShift, SelectedPump.PumpId);
         var previousClosings = previousResult.Success ? previousResult.Data! : new Dictionary<int, double>();
@@ -284,7 +288,7 @@ public partial class DsmEntryViewModel : ObservableObject
         var currentShiftAutoFilledCount = 0;
         foreach (var n in nozzles)
         {
-            var fuelType = PumpConfiguration.GetFuelType(n);
+            var fuelType = PumpConfiguration.GetFuelType(SelectedPump.PumpId, n, SelectedDate);
             var rate = fuelType switch
             {
                 FuelType.HSD => hsdRate,
@@ -349,6 +353,35 @@ public partial class DsmEntryViewModel : ObservableObject
         RebuildTestingRows(hsdRate, msIRate, msIIRate);
         await RefreshConnectedPumpGrossSalesAsync();
         RecalculateAll();
+    }
+
+    private void ReloadPumpOptions()
+    {
+        var currentPumpId = SelectedPump?.PumpId;
+        PumpOptions.Clear();
+        foreach (var item in PumpConfiguration.GetPumpDisplayItems(SelectedDate))
+        {
+            PumpOptions.Add(item);
+        }
+        
+        // Try to keep the selected pump, or default to the first one
+        if (currentPumpId.HasValue)
+        {
+            var match = PumpOptions.FirstOrDefault(p => p.PumpId == currentPumpId.Value);
+            if (match != null)
+            {
+                SelectedPump = match;
+            }
+            else
+            {
+                SelectedPump = PumpOptions.FirstOrDefault()!;
+            }
+        }
+        else
+        {
+            SelectedPump = PumpOptions.FirstOrDefault()!;
+        }
+        RefreshConnectablePumpOptions();
     }
 
     private void RefreshConnectablePumpOptions()
@@ -574,6 +607,10 @@ public partial class DsmEntryViewModel : ObservableObject
                 StatusMessage = "✅ DSM Entry saved successfully!";
                 _draftService.ClearDraft();
                 await LoadShiftEntriesAsync();
+
+                // Trigger background sync now that transaction is fully committed
+                var syncEngine = App.Services.GetRequiredService<FuelPro.Sync.SyncEngine>();
+                _ = syncEngine.ForceSyncAsync();
             }
             else
             {

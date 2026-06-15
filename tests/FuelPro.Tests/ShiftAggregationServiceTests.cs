@@ -94,10 +94,11 @@ public class ShiftAggregationServiceTests
         {
             new DsmEntry
             {
+                PumpId = 3,
                 NozzleReadings = new List<NozzleReading>
                 {
-                    new NozzleReading { NozzleNumber = 1, FuelType = "HSD", SaleLitres = 100, Rate = 90, Amount = 9000 },
-                    new NozzleReading { NozzleNumber = 5, FuelType = "MS-I", SaleLitres = 50, Rate = 100, Amount = 5000 }
+                    new NozzleReading { NozzleNumber = 7, FuelType = "HSD", SaleLitres = 100, Rate = 90, Amount = 9000 },
+                    new NozzleReading { NozzleNumber = 6, FuelType = "MS-II", SaleLitres = 50, Rate = 100, Amount = 5000 }
                 }
             }
         };

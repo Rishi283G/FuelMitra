@@ -30,6 +30,7 @@
     <ProjectReference Include="..\FuelPro.Core\FuelPro.Core.csproj" />
     <ProjectReference Include="..\FuelPro.Data\FuelPro.Data.csproj" />
     <ProjectReference Include="..\Rashtra.Licensing\Rashtra.Licensing.csproj" />
+    <ProjectReference Include="..\FuelPro.Sync\FuelPro.Sync.csproj" />
   </ItemGroup>
 
   <ItemGroup>

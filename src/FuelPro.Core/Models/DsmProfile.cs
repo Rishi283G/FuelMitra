@@ -12,4 +12,11 @@ public class DsmProfile
     [Required]
     [MaxLength(100)]
     public string DsmName { get; set; } = string.Empty;
+
+    [MaxLength(50)]
+    public string SalaryType { get; set; } = "FixedMonthly"; // "FixedMonthly", "PerShift", "PerDay"
+
+    public double BaseSalary { get; set; } = 12000.0;
+
+    public DateTime? JoiningDate { get; set; }
 }

@@ -1,5 +1,9 @@
+param(
+    [string]$Configuration = "Release"
+)
+
 Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host "  FuelPro - Installer Build Script" -ForegroundColor Cyan
+Write-Host "  FuelPro - Installer Build Script ($Configuration)" -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan
 
 # 1. Publish the application as a standalone Windows executable
@@ -7,7 +11,11 @@ Write-Host "`n[1/3] Publishing .NET 8 Application..." -ForegroundColor Yellow
 $publishDir = ".\publish_output"
 if (Test-Path $publishDir) { Remove-Item -Recurse -Force $publishDir }
 
-dotnet publish src/FuelPro.UI/FuelPro.UI.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:IncludeNativeLibrariesForSelfExtract=false -o $publishDir -m:1
+if ($Configuration -eq "Release") {
+    dotnet publish src/FuelPro.UI/FuelPro.UI.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:IncludeNativeLibrariesForSelfExtract=false -o $publishDir -m:1
+} else {
+    dotnet publish src/FuelPro.UI/FuelPro.UI.csproj -c $Configuration -r win-x64 --self-contained true -p:PublishSingleFile=false -p:IncludeNativeLibrariesForSelfExtract=false -p:UseSharedCompilation=false -p:Optimize=false -o $publishDir -m:1
+}
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "`n[ERROR] dotnet publish failed!" -ForegroundColor Red

@@ -1,6 +1,6 @@
 @echo off
 echo Building the application...
-dotnet publish src\FuelPro.UI\FuelPro.UI.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:IncludeNativeLibrariesForSelfExtract=false -o publish_output
+dotnet publish src\FuelPro.UI\FuelPro.UI.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:IncludeNativeLibrariesForSelfExtract=false -o publish_output -m:1
 if %ERRORLEVEL% NEQ 0 (
     echo Build failed!
     exit /b %ERRORLEVEL%

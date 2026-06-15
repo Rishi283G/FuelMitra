@@ -15,7 +15,14 @@ public class Setting
     public double MsIIRate { get; set; } = 103.81;
 
     [MaxLength(300)]
-    public string PumpStationName { get; set; } = "VKD Petroleum";
+    public string PumpStationName { get; set; } = "Shree Mahakaleshwar Petroleum";
+
+    [NotMapped]
+    public string StationDisplayName
+    {
+        get => PumpStationName;
+        set => PumpStationName = value;
+    }
 
     public DateTime LastUpdated { get; set; } = DateTime.Now;
 }

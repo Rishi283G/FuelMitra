@@ -112,6 +112,7 @@ public interface IDsmProfileRepository
 {
     Task<Result<List<DsmProfile>>> GetAllAsync();
     Task<Result<DsmProfile>> AddAsync(DsmProfile profile);
+    Task<Result> UpdateAsync(DsmProfile profile);
     Task<Result> DeleteAsync(int id);
 }
 

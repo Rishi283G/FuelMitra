@@ -1,4 +1,5 @@
 using System.Windows;
+using FuelPro.Core.Common;
 using FuelPro.UI.ViewModels;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -22,8 +23,24 @@ public partial class LoginView : Window
 
     private void OnLoginSuccess()
     {
-        var mainWindow = new MainWindow();
-        mainWindow.Show();
+        Window nextWindow;
+
+        if (_vm.LoggedInRole == UserRole.Owner)
+        {
+            nextWindow = new OwnerMainWindow();
+        }
+        else if (_vm.LoggedInRole == UserRole.Developer)
+        {
+            nextWindow = new DeveloperMainWindow();
+        }
+        else
+        {
+            // Manager role (and legacy Operator/Admin) uses MainWindow
+            nextWindow = new MainWindow();
+        }
+
+        nextWindow.Show();
         Close();
     }
 }
+

@@ -4,6 +4,7 @@
     <TargetFramework>net8.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <UseWpf>true</UseWpf>
 
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
@@ -14,6 +15,8 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
     <PackageReference Include="xunit" Version="2.5.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.5.3" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="8.0.11" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
   </ItemGroup>
 
   <ItemGroup>
@@ -22,6 +25,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\FuelPro.Core\FuelPro.Core.csproj" />
+    <ProjectReference Include="..\..\src\FuelPro.Data\FuelPro.Data.csproj" />
+    <ProjectReference Include="..\..\src\FuelPro.Sync\FuelPro.Sync.csproj" />
+    <ProjectReference Include="..\..\src\FuelPro.UI\FuelPro.UI.csproj" />
     <ProjectReference Include="..\..\src\Rashtra.Licensing\Rashtra.Licensing.csproj" />
   </ItemGroup>
 

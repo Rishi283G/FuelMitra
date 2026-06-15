@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Oil & DEF Inventory Summary Report</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 20px;
+            color: #333;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        .header {
+            text-align: center;
+            border-bottom: 2px solid #00796B;
+            padding-bottom: 12px;
+            margin-bottom: 20px;
+        }
+        .header h1 {
+            margin: 0;
+            color: #00796B;
+            font-size: 24px;
+        }
+        .header p {
+            margin: 4px 0 0 0;
+            font-size: 14px;
+            opacity: 0.8;
+        }
+        .meta-info {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 24px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px 12px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+            font-weight: 600;
+            color: #444;
+        }
+        .text-right {
+            text-align: right;
+        }
+        .section-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #00796B;
+            margin-top: 20px;
+            margin-bottom: 8px;
+            border-bottom: 1px solid #00796B;
+            padding-bottom: 4px;
+        }
+        .total-row {
+            font-weight: bold;
+            background-color: #e8f5e9;
+        }
+        .print-btn {
+            display: block;
+            width: 120px;
+            margin: 20px auto;
+            padding: 10px;
+            text-align: center;
+            background-color: #00796B;
+            color: white;
+            font-weight: bold;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        @media print {
+            .print-btn {
+                display: none;
+            }
+            body {
+                margin: 0;
+                font-size: 12px;
+            }
+        }
+    </style>
+    <script>
+        const data = /* INJECT_JSON_HERE */{};
+
+        function formatCurrency(val) {
+            return "₹" + Number(val).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        function formatQty(val, unit) {
+            return Number(val).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " " + (unit || "");
+        }
+
+        function renderData() {
+            if (!data || !data.startDate) return;
+
+            document.getElementById('stationName').innerText = data.stationName || "VKD Petroleum";
+            document.getElementById('dateRange').innerText = `${data.startDate} to ${data.endDate}`;
+
+            // Oil Products
+            const oilBody = document.getElementById('oilBody');
+            let oilHtml = '';
+            if (data.oilProducts && data.oilProducts.length > 0) {
+                data.oilProducts.forEach(item => {
+                    oilHtml += `
+                        <tr>
+                            <td>${item.productName}</td>
+                            <td class="text-right">${formatQty(item.openingStock, item.unit)}</td>
+                            <td class="text-right">${formatQty(item.purchasedQty, item.unit)}</td>
+                            <td class="text-right">${formatQty(item.soldQty, item.unit)}</td>
+                            <td class="text-right">${formatQty(item.closingStock, item.unit)}</td>
+                            <td class="text-right">${formatCurrency(item.purchaseValue)}</td>
+                            <td class="text-right">${formatCurrency(item.salesValue)}</td>
+                            <td class="text-right" style="font-weight: 600; color: #2e7d32;">${formatCurrency(item.profit)}</td>
+                        </tr>
+                    `;
+                });
+            } else {
+                oilHtml += `<tr><td colspan="8" style="text-align: center; opacity: 0.6;">No Oil data available.</td></tr>`;
+            }
+            oilHtml += `
+                <tr class="total-row">
+                    <td>Total Oil Summary</td>
+                    <td class="text-right">${formatQty(data.oilSummary.openingStock)}</td>
+                    <td class="text-right">${formatQty(data.oilSummary.purchasedQty)}</td>
+                    <td class="text-right">${formatQty(data.oilSummary.soldQty)}</td>
+                    <td class="text-right">${formatQty(data.oilSummary.closingStock)}</td>
+                    <td class="text-right">${formatCurrency(data.oilSummary.purchaseValue)}</td>
+                    <td class="text-right">${formatCurrency(data.oilSummary.salesValue)}</td>
+                    <td class="text-right">${formatCurrency(data.oilSummary.profit)}</td>
+                </tr>
+            `;
+            oilBody.innerHTML = oilHtml;
+
+            // DEF Products
+            const defBody = document.getElementById('defBody');
+            let defHtml = '';
+            if (data.defProducts && data.defProducts.length > 0) {
+                data.defProducts.forEach(item => {
+                    defHtml += `
+                        <tr>
+                            <td>${item.productName}</td>
+                            <td class="text-right">${formatQty(item.openingStock, item.unit)}</td>
+                            <td class="text-right">${formatQty(item.purchasedQty, item.unit)}</td>
+                            <td class="text-right">${formatQty(item.soldQty, item.unit)}</td>
+                            <td class="text-right">${formatQty(item.closingStock, item.unit)}</td>
+                            <td class="text-right">${formatCurrency(item.purchaseValue)}</td>
+                            <td class="text-right">${formatCurrency(item.salesValue)}</td>
+                            <td class="text-right" style="font-weight: 600; color: #2e7d32;">${formatCurrency(item.profit)}</td>
+                        </tr>
+                    `;
+                });
+            } else {
+                defHtml += `<tr><td colspan="8" style="text-align: center; opacity: 0.6;">No DEF data available.</td></tr>`;
+            }
+            defHtml += `
+                <tr class="total-row">
+                    <td>Total DEF Summary</td>
+                    <td class="text-right">${formatQty(data.defSummary.openingStock)}</td>
+                    <td class="text-right">${formatQty(data.defSummary.purchasedQty)}</td>
+                    <td class="text-right">${formatQty(data.defSummary.soldQty)}</td>
+                    <td class="text-right">${formatQty(data.defSummary.closingStock)}</td>
+                    <td class="text-right">${formatCurrency(data.defSummary.purchaseValue)}</td>
+                    <td class="text-right">${formatCurrency(data.defSummary.salesValue)}</td>
+                    <td class="text-right">${formatCurrency(data.defSummary.profit)}</td>
+                </tr>
+            `;
+            defBody.innerHTML = defHtml;
+
+            // Combined Summary Block
+            document.getElementById('combinedOilSales').innerText = formatCurrency(data.oilSummary.salesValue);
+            document.getElementById('combinedDefSales').innerText = formatCurrency(data.defSummary.salesValue);
+            document.getElementById('combinedTotalSales').innerText = formatCurrency(data.oilSummary.salesValue + data.defSummary.salesValue);
+
+            document.getElementById('combinedOilProfit').innerText = formatCurrency(data.oilSummary.profit);
+            document.getElementById('combinedDefProfit').innerText = formatCurrency(data.defSummary.profit);
+            document.getElementById('combinedTotalProfit').innerText = formatCurrency(data.oilSummary.profit + data.defSummary.profit);
+            if (data.logo) {
+                const logoImg = document.getElementById('logo');
+                if (logoImg) {
+                    logoImg.src = data.logo;
+                    logoImg.style.display = 'block';
+                }
+            }
+        }
+
+        window.onload = function() {
+            renderData();
+        };
+
+        function printDoc() {
+            window.print();
+        }
+    </script>
+</head>
+<body>
+    <button class="print-btn" onclick="printDoc()">Print Report</button>
+    <div class="header">
+        <div style="display: flex; align-items: center; justify-content: center; gap: 15px;">
+            <img id="logo" style="display: none; height: 50px;" src="" alt="logo" />
+            <h1 id="stationName">VKD Petroleum</h1>
+        </div>
+        <p>Oil & DEF Inventory & Profit Summary Report</p>
+        <p id="dateRange">01-Jun-2026 to 30-Jun-2026</p>
+    </div>
+
+    <div class="section-title">1. Lube Oil Products Summary</div>
+    <table>
+        <thead>
+            <tr>
+                <th>Product Name</th>
+                <th class="text-right">Opening Stock</th>
+                <th class="text-right">Purchased Qty</th>
+                <th class="text-right">Sold Qty</th>
+                <th class="text-right">Closing Stock</th>
+                <th class="text-right">Purchase Cost</th>
+                <th class="text-right">Sales Value</th>
+                <th class="text-right">Gross Profit</th>
+            </tr>
+        </thead>
+        <tbody id="oilBody">
+            <!-- Row data injected -->
+        </tbody>
+    </table>
+
+    <div class="section-title">2. DEF Products Summary</div>
+    <table>
+        <thead>
+            <tr>
+                <th>Product Name</th>
+                <th class="text-right">Opening Stock</th>
+                <th class="text-right">Purchased Qty</th>
+                <th class="text-right">Sold Qty</th>
+                <th class="text-right">Closing Stock</th>
+                <th class="text-right">Purchase Cost</th>
+                <th class="text-right">Sales Value</th>
+                <th class="text-right">Gross Profit</th>
+            </tr>
+        </thead>
+        <tbody id="defBody">
+            <!-- Row data injected -->
+        </tbody>
+    </table>
+
+    <div class="section-title">3. Combined Operations Summary</div>
+    <table style="width: 50%; float: left; margin-right: 4%;">
+        <thead>
+            <tr>
+                <th colspan="2">Revenue Summary</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>Total Oil Sales Revenue:</td>
+                <td class="text-right" id="combinedOilSales">₹0.00</td>
+            </tr>
+            <tr>
+                <td>Total DEF Sales Revenue:</td>
+                <td class="text-right" id="combinedDefSales">₹0.00</td>
+            </tr>
+            <tr class="total-row">
+                <td>Total Combined Revenue:</td>
+                <td class="text-right" id="combinedTotalSales">₹0.00</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <table style="width: 44%; float: left;">
+        <thead>
+            <tr>
+                <th colspan="2">Profit Summary</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>Total Oil Profit:</td>
+                <td class="text-right" id="combinedOilProfit">₹0.00</td>
+            </tr>
+            <tr>
+                <td>Total DEF Profit:</td>
+                <td class="text-right" id="combinedDefProfit">₹0.00</td>
+            </tr>
+            <tr class="total-row" style="background-color: #d0f8ce;">
+                <td style="color: #1b5e20;">Total Combined Profit:</td>
+                <td class="text-right" id="combinedTotalProfit" style="color: #1b5e20;">₹0.00</td>
+            </tr>
+        </tbody>
+    </table>
+</body>
+</html>

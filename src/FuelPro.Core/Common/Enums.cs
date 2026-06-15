@@ -22,8 +22,37 @@ public enum CashType
 
 public enum UserRole
 {
-    Admin,
-    Operator
+    Manager,
+    Owner,
+    Developer
+}
+
+public static class UserRoleExtensions
+{
+    public static string ToDisplayName(this UserRole role) => role switch
+    {
+        UserRole.Manager => "Manager",
+        UserRole.Owner => "Owner",
+        UserRole.Developer => "Developer",
+        _ => role.ToString()
+    };
+
+    /// <summary>
+    /// Checks if the role string matches a known role (case-insensitive).
+    /// Handles legacy "Admin" and "Operator" role by mapping them to Manager.
+    /// </summary>
+    public static UserRole ParseRole(string role)
+    {
+        if (string.Equals(role, "Admin", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(role, "Manager", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(role, "Operator", StringComparison.OrdinalIgnoreCase))
+            return UserRole.Manager;
+
+        if (string.Equals(role, "Owner", StringComparison.OrdinalIgnoreCase))
+            return UserRole.Owner;
+
+        return UserRole.Developer;
+    }
 }
 
 public static class ShiftTypeExtensions

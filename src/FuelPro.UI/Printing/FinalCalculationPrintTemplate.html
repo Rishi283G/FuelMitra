@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>VKD Petroleum — Shift Report</title>
+<title id="htmlTitle">Shift Report</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:Arial,sans-serif;font-size:12px;color:#0f1923;background:#f0f4f8;line-height:1.4}
@@ -95,13 +95,19 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
 </head>
 <body>
 <div class="toolbar">
-  <span>&#9981; VKD Petroleum &mdash; Print Preview</span>
+  <span id="previewTitle">&#9981; Shree Mahakaleshwar Petroleum &mdash; Print Preview</span>
   <button class="btn-print" onclick="window.print()">&#128424; Print / Save PDF</button>
 </div>
 <div class="page">
   <div class="rpt-hdr">
     <div class="rpt-hdr-top">
-      <div><div class="rpt-title">VKD PETROLEUM</div><div class="rpt-sub">Daily Shift Report &mdash; Final Calculation</div></div>
+      <div style="display: flex; align-items: center; gap: 15px;">
+        <img id="logo" style="display: none; height: 50px;" src="" alt="logo" />
+        <div>
+          <div class="rpt-title" id="rptTitle">VKD PETROLEUM</div>
+          <div class="rpt-sub">Daily Shift Report &mdash; Final Calculation</div>
+        </div>
+      </div>
       <div class="shift-pill" id="hShift">SHIFT &ndash;</div>
     </div>
     <div class="rpt-meta">
@@ -169,7 +175,7 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
     </div>
   </div>
   <div class="rpt-ftr">
-    <span>VKD Petroleum &mdash; Confidential Shift Report</span>
+    <span id="ftrStation">VKD Petroleum &mdash; Confidential Shift Report</span>
     <span id="ftrMid">&ndash;</span>
     <span>Page 1 of 1</span>
   </div>
@@ -188,9 +194,24 @@ function inrZ(v){
 function renderData(){
   var d=printData;
   if(!d||!d.date){document.getElementById('hDate').textContent='No data';return;}
+  var station = d.stationName || 'Shree Mahakaleshwar Petroleum';
+  document.title = station + ' — Shift Report';
+  var rptTitle = document.getElementById('rptTitle');
+  if(rptTitle) rptTitle.textContent = station.toUpperCase();
+  var previewTitle = document.getElementById('previewTitle');
+  if(previewTitle) previewTitle.innerHTML = '&#9981; ' + station + ' &mdash; Print Preview';
+  var ftrStation = document.getElementById('ftrStation');
+  if(ftrStation) ftrStation.innerHTML = station + ' &mdash; Confidential Shift Report';
+  if(d.logo){
+    var logoImg = document.getElementById('logo');
+    if(logoImg){
+      logoImg.src = d.logo;
+      logoImg.style.display = 'block';
+    }
+  }
   document.getElementById('hShift').textContent='SHIFT '+(d.shiftLabel||'\u2013');
   document.getElementById('hDate').textContent=d.date||'\u2013';
-  document.getElementById('hStation').textContent=d.stationName||'\u2013';
+  document.getElementById('hStation').textContent=station;
   document.getElementById('hDsms').textContent=(d.dsmEntries||[]).map(function(x){return x.dsmName;}).join(', ')||'\u2013';
   document.getElementById('hPrinted').textContent=new Date().toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
 

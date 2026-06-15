@@ -1,0 +1,159 @@
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using FuelPro.Core.Models;
+using FuelPro.Core.Repositories;
+using Microsoft.Extensions.DependencyInjection;
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Linq;
+using System.Threading.Tasks;
+
+namespace FuelPro.UI.ViewModels;
+
+public partial class ExpenseAnalysisViewModel : ObservableObject
+{
+    private readonly IShiftRepository _shiftRepo;
+    private readonly IDsmEntryRepository _dsmEntryRepo;
+    private readonly IExpenseRepository _expenseRepo;
+
+    [ObservableProperty] private DateTime _startDate = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+    [ObservableProperty] private DateTime _endDate = DateTime.Today;
+    [ObservableProperty] private string _searchText = string.Empty;
+    [ObservableProperty] private bool _isLoading;
+    [ObservableProperty] private double _totalExpensesAmount;
+
+    public ObservableCollection<ExpenseItemRow> ItemizedExpenses { get; } = new();
+    public ObservableCollection<ExpenseCategoryGroupRow> GroupedExpenses { get; } = new();
+
+    private List<ExpenseItemRow> _allLoadedExpenses = new();
+
+    public ExpenseAnalysisViewModel()
+    {
+        _shiftRepo = App.Services.GetRequiredService<IShiftRepository>();
+        _dsmEntryRepo = App.Services.GetRequiredService<IDsmEntryRepository>();
+        _expenseRepo = App.Services.GetRequiredService<IExpenseRepository>();
+        _ = LoadAsync();
+    }
+
+    partial void OnStartDateChanged(DateTime value) => _ = LoadAsync();
+    partial void OnEndDateChanged(DateTime value) => _ = LoadAsync();
+    partial void OnSearchTextChanged(string value) => ApplyFilter();
+
+    [RelayCommand]
+    private async Task LoadAsync()
+    {
+        IsLoading = true;
+        try
+        {
+            var shiftsResult = await _shiftRepo.GetShiftsByDateRangeAsync(StartDate, EndDate);
+            var shifts = shiftsResult.Success && shiftsResult.Data != null ? shiftsResult.Data : new List<Shift>();
+            var shiftIds = shifts.Select(s => s.ShiftId).ToList();
+
+            var loaded = new List<ExpenseItemRow>();
+
+            // 1. Get shift-level expenses
+            var shiftExpensesResult = await _expenseRepo.GetExpensesByShiftIdsAsync(shiftIds);
+            if (shiftExpensesResult.Success && shiftExpensesResult.Data != null)
+            {
+                foreach (var exp in shiftExpensesResult.Data)
+                {
+                    var shift = shifts.FirstOrDefault(s => s.ShiftId == exp.ShiftId);
+                    loaded.Add(new ExpenseItemRow
+                    {
+                        ExpenseId = exp.ExpenseId,
+                        Date = shift?.ShiftDate ?? DateTime.Today,
+                        ShiftType = shift?.ShiftType ?? "—",
+                        Source = "Shift Level",
+                        Description = exp.Description,
+                        Amount = exp.Amount
+                    });
+                }
+            }
+
+            // 2. Get DSM-entry-level expenses
+            var entriesResult = await _dsmEntryRepo.GetEntriesForDateRangeAsync(StartDate, EndDate);
+            if (entriesResult.Success && entriesResult.Data != null)
+            {
+                foreach (var entry in entriesResult.Data)
+                {
+                    foreach (var exp in entry.Expenses)
+                    {
+                        loaded.Add(new ExpenseItemRow
+                        {
+                            ExpenseId = exp.ExpenseId,
+                            Date = entry.Shift?.ShiftDate ?? DateTime.Today,
+                            ShiftType = entry.Shift?.ShiftType ?? "—",
+                            Source = $"DSM: {entry.DsmName}",
+                            Description = exp.Description,
+                            Amount = exp.Amount
+                        });
+                    }
+                }
+            }
+
+            _allLoadedExpenses = loaded.OrderByDescending(e => e.Date).ThenBy(e => e.ShiftType).ToList();
+            ApplyFilter();
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private void ApplyFilter()
+    {
+        ItemizedExpenses.Clear();
+        GroupedExpenses.Clear();
+
+        var query = _allLoadedExpenses.AsEnumerable();
+
+        if (!string.IsNullOrWhiteSpace(SearchText))
+        {
+            query = query.Where(e => e.Description.Contains(SearchText, StringComparison.OrdinalIgnoreCase) || 
+                                     e.Source.Contains(SearchText, StringComparison.OrdinalIgnoreCase));
+        }
+
+        var filteredList = query.ToList();
+        foreach (var item in filteredList)
+        {
+            ItemizedExpenses.Add(item);
+        }
+
+        TotalExpensesAmount = filteredList.Sum(e => e.Amount);
+
+        // Group by Description (acts as category)
+        var grouped = filteredList
+            .GroupBy(e => e.Description.Trim())
+            .Select(g => new ExpenseCategoryGroupRow
+            {
+                Category = g.Key,
+                Amount = g.Sum(e => e.Amount),
+                Count = g.Count()
+            })
+            .OrderByDescending(g => g.Amount)
+            .ToList();
+
+        foreach (var group in grouped)
+        {
+            GroupedExpenses.Add(group);
+        }
+    }
+}
+
+public class ExpenseItemRow
+{
+    public int ExpenseId { get; set; }
+    public DateTime Date { get; set; }
+    public string ShiftType { get; set; } = "";
+    public string Source { get; set; } = "";
+    public string Description { get; set; } = "";
+    public double Amount { get; set; }
+}
+
+public class ExpenseCategoryGroupRow
+{
+    public string Category { get; set; } = "";
+    public double Amount { get; set; }
+    public int Count { get; set; }
+}

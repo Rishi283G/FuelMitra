@@ -224,9 +224,11 @@ public class ShiftAggregationService : IShiftAggregationService
     {
         try
         {
+            var shiftDate = entries.FirstOrDefault()?.Shift?.ShiftDate;
             var readings = entries
-                .SelectMany(e => e.NozzleReadings)
-                .Where(r => PumpConfiguration.GetFuelTypeDisplayName(r.NozzleNumber) == fuelType)
+                .SelectMany(e => e.NozzleReadings.Select(r => new { e.PumpId, Reading = r }))
+                .Where(x => PumpConfiguration.GetFuelTypeDisplayName(x.PumpId, x.Reading.NozzleNumber, shiftDate) == fuelType)
+                .Select(x => x.Reading)
                 .ToList();
 
             var litres = readings.Sum(r => r.SaleLitres);
@@ -255,7 +257,16 @@ public class ShiftAggregationService : IShiftAggregationService
     /// </summary>
     public double GetTotalLitresByFuelType(List<NozzleReading> allReadings, string fuelType)
     {
-        return allReadings.Where(r => PumpConfiguration.GetFuelTypeDisplayName(r.NozzleNumber) == fuelType).Sum(r => r.SaleLitres);
+        return allReadings.Where(r => 
+        {
+            int pumpId = r.DsmEntry?.PumpId ?? 0;
+            if (pumpId == 0)
+            {
+                var match = PumpConfiguration.PumpNozzleMapping.FirstOrDefault(kv => kv.Value.Contains(r.NozzleNumber));
+                pumpId = match.Key;
+            }
+            return PumpConfiguration.GetFuelTypeDisplayName(pumpId, r.NozzleNumber, r.DsmEntry?.Shift?.ShiftDate) == fuelType;
+        }).Sum(r => r.SaleLitres);
     }
 
     /// <summary>

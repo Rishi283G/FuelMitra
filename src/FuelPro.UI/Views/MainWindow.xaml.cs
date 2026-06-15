@@ -11,6 +11,6 @@ public partial class MainWindow : Window
         InitializeComponent();
         var vm = App.Services.GetRequiredService<MainWindowViewModel>();
         DataContext = vm;
-        vm.NavigateToDashboardCommand.Execute(null);
+        vm.NavigateToDsmEntryCommand.Execute(null);
     }
 }

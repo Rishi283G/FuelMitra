@@ -1,0 +1,265 @@
+<UserControl x:Class="FuelPro.UI.Views.OilDefSummaryView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             xmlns:converters="clr-namespace:FuelPro.UI.Converters">
+    <UserControl.Resources>
+        <converters:IndianCurrencyConverter x:Key="CurrencyConverter"/>
+        
+        <Style TargetType="DatePicker" BasedOn="{StaticResource MaterialDesignOutlinedDatePicker}">
+            <Setter Property="Foreground" Value="#212121"/>
+        </Style>
+
+        <Style x:Key="KpiLabel" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Opacity" Value="0.6"/>
+            <Setter Property="Margin" Value="0,0,0,2"/>
+        </Style>
+        <Style x:Key="KpiValue" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="15"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Margin="24,16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- ─── Header ─── -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,8">
+            <materialDesign:PackIcon Kind="ChartBar" Width="28" Height="28" Foreground="#00695C" VerticalAlignment="Center" Margin="0,0,10,0"/>
+            <TextBlock Text="Oil &amp; DEF Summary" FontSize="24" FontWeight="Bold" VerticalAlignment="Center"/>
+        </StackPanel>
+
+        <!-- ─── Date Filters + Print ─── -->
+        <materialDesign:Card Grid.Row="1" Margin="0,4,0,16" Padding="14" UniformCornerRadius="8"
+                             materialDesign:ElevationAssist.Elevation="Dp1">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Content="Today" Style="{StaticResource MaterialDesignOutlinedButton}"
+                            Command="{Binding SetPresetCommand}" CommandParameter="Today" Margin="0,0,6,0" Height="40"/>
+                    <Button Content="Yesterday" Style="{StaticResource MaterialDesignOutlinedButton}"
+                            Command="{Binding SetPresetCommand}" CommandParameter="Yesterday" Margin="0,0,6,0" Height="40"/>
+                    <Button Content="Weekly" Style="{StaticResource MaterialDesignOutlinedButton}"
+                            Command="{Binding SetPresetCommand}" CommandParameter="Weekly" Margin="0,0,6,0" Height="40"/>
+                    <Button Content="Monthly" Style="{StaticResource MaterialDesignOutlinedButton}"
+                            Command="{Binding SetPresetCommand}" CommandParameter="Monthly" Margin="0,0,6,0" Height="40"/>
+                    <Button Content="Prev. Month" Style="{StaticResource MaterialDesignOutlinedButton}"
+                            Command="{Binding SetPresetCommand}" CommandParameter="PreviousMonth" Margin="0,0,16,0" Height="40"/>
+
+                    <DatePicker SelectedDate="{Binding StartDate}" materialDesign:HintAssist.Hint="From"
+                                Width="140" Height="48" Margin="0,0,8,0"/>
+                    <DatePicker SelectedDate="{Binding EndDate}" materialDesign:HintAssist.Hint="To"
+                                Width="140" Height="48"/>
+                </StackPanel>
+
+                <Button Grid.Column="1" Style="{StaticResource MaterialDesignRaisedButton}"
+                        Command="{Binding PrintReportCommand}"
+                        Background="#00695C" BorderBrush="#00695C"
+                        Height="40" Padding="16,0" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal">
+                        <materialDesign:PackIcon Kind="Printer" Width="18" Height="18" Margin="0,0,6,0"/>
+                        <TextBlock Text="Print Summary" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+            </Grid>
+        </materialDesign:Card>
+
+        <!-- Loading bar -->
+        <ProgressBar Grid.Row="1" VerticalAlignment="Bottom" IsIndeterminate="{Binding IsLoading}"
+                     Visibility="{Binding IsLoading, Converter={StaticResource BooleanToVisibilityConverter}}"
+                     Style="{StaticResource MaterialDesignLinearProgressBar}" Margin="0,0,0,-8"/>
+
+        <!-- ─── Main Content ─── -->
+        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+
+                <!-- ── Period Label ── -->
+                <TextBlock Text="{Binding PeriodLabel}" FontSize="13" FontWeight="SemiBold"
+                           Opacity="0.5" Margin="0,0,0,12"/>
+
+                <!-- ── Top KPI Cards Row ── -->
+                <Grid Margin="0,0,0,16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Total Sales Revenue -->
+                    <materialDesign:Card Grid.Column="0" Margin="0,0,8,0" Padding="18"
+                                        UniformCornerRadius="10" materialDesign:ElevationAssist.Elevation="Dp1">
+                        <StackPanel>
+                            <TextBlock Text="Total Sales Revenue" Style="{StaticResource KpiLabel}"/>
+                            <TextBlock Text="{Binding TotalSalesRevenue, Converter={StaticResource CurrencyConverter}}"
+                                       FontSize="22" FontWeight="Bold" Foreground="#1565C0"/>
+                        </StackPanel>
+                    </materialDesign:Card>
+
+                    <!-- Total Profit -->
+                    <materialDesign:Card Grid.Column="1" Margin="4,0,4,0" Padding="18"
+                                        UniformCornerRadius="10" materialDesign:ElevationAssist.Elevation="Dp1">
+                        <StackPanel>
+                            <TextBlock Text="Total Profit (Oil + DEF)" Style="{StaticResource KpiLabel}"/>
+                            <TextBlock Text="{Binding TotalProfit, Converter={StaticResource CurrencyConverter}}"
+                                       FontSize="22" FontWeight="Bold" Foreground="#2E7D32"/>
+                        </StackPanel>
+                    </materialDesign:Card>
+
+                    <!-- Loss from Adjustments -->
+                    <materialDesign:Card Grid.Column="2" Margin="8,0,0,0" Padding="18"
+                                        UniformCornerRadius="10" materialDesign:ElevationAssist.Elevation="Dp1">
+                        <StackPanel>
+                            <TextBlock Text="Estimated Loss (Damage/Adj.)" Style="{StaticResource KpiLabel}"/>
+                            <TextBlock Text="{Binding TotalAdjustmentLoss, Converter={StaticResource CurrencyConverter}}"
+                                       FontSize="22" FontWeight="Bold" Foreground="#C62828"/>
+                        </StackPanel>
+                    </materialDesign:Card>
+                </Grid>
+
+                <!-- ── Oil & DEF Breakdown Cards ── -->
+                <Grid Margin="0,0,0,16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Oil Card -->
+                    <materialDesign:Card Grid.Column="0" Margin="0,0,8,0" Padding="18"
+                                        UniformCornerRadius="10" materialDesign:ElevationAssist.Elevation="Dp1">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
+                                <materialDesign:PackIcon Kind="Oil" Width="20" Height="20" Foreground="#1565C0" Margin="0,0,8,0"/>
+                                <TextBlock Text="Lube Oil Summary" FontSize="16" FontWeight="Bold" Foreground="#1565C0"/>
+                            </StackPanel>
+                            <UniformGrid Columns="2" Rows="4">
+                                <StackPanel Margin="4">
+                                    <TextBlock Text="Opening Stock" Style="{StaticResource KpiLabel}"/>
+                                    <TextBlock Text="{Binding OilOpening, StringFormat='{}{0:N2} Units'}" Style="{StaticResource KpiValue}"/>
+                                </StackPanel>
+                                <StackPanel Margin="4">
+                                    <TextBlock Text="Closing Stock" Style="{StaticResource KpiLabel}"/>
+                                    <TextBlock Text="{Binding OilClosing, StringFormat='{}{0:N2} Units'}" Style="{StaticResource KpiValue}"/>
+                                </StackPanel>
+                                <StackPanel Margin="4">
+                                    <TextBlock Text="Purchased Qty" Style="{StaticResource KpiLabel}"/>
+                                    <TextBlock Text="{Binding OilPurchasedQty, StringFormat='{}{0:N2} Units'}" Style="{StaticResource KpiValue}"/>
+                                </StackPanel>
+                                <StackPanel Margin="4">
+                                    <TextBlock Text="Sold Quantity" Style="{StaticResource KpiLabel}"/>
+                                    <TextBlock Text="{Binding OilSoldQty, StringFormat='{}{0:N2} Units'}" Style="{StaticResource KpiValue}"/>
+                                </StackPanel>
+                                <StackPanel Margin="4">
+                                    <TextBlock Text="Purchase Cost" Style="{StaticResource KpiLabel}"/>
+                                    <TextBlock Text="{Binding OilPurchaseValue, Converter={StaticResource CurrencyConverter}}" Style="{StaticResource KpiValue}"/>
+                                </StackPanel>
+                                <StackPanel Margin="4">
+                                    <TextBlock Text="Sales Revenue" Style="{StaticResource KpiLabel}"/>
+                                    <TextBlock Text="{Binding OilSalesRevenue, Converter={StaticResource CurrencyConverter}}" Style="{StaticResource KpiValue}"/>
+                                </StackPanel>
+                                <StackPanel Margin="4" Grid.ColumnSpan="2">
+                                    <TextBlock Text="Oil Profit" Style="{StaticResource KpiLabel}"/>
+                                    <TextBlock Text="{Binding OilProfit, Converter={StaticResource CurrencyConverter}}"
+                                               FontSize="17" FontWeight="Bold" Foreground="#2E7D32"/>
+                                </StackPanel>
+                            </UniformGrid>
+                        </StackPanel>
+                    </materialDesign:Card>
+
+                    <!-- DEF Card -->
+                    <materialDesign:Card Grid.Column="1" Margin="8,0,0,0" Padding="18"
+                                        UniformCornerRadius="10" materialDesign:ElevationAssist.Elevation="Dp1">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
+                                <materialDesign:PackIcon Kind="Water" Width="20" Height="20" Foreground="#00796B" Margin="0,0,8,0"/>
+                                <TextBlock Text="DEF (AdBlue) Summary" FontSize="16" FontWeight="Bold" Foreground="#00796B"/>
+                            </StackPanel>
+                            <UniformGrid Columns="2" Rows="4">
+                                <StackPanel Margin="4">
+                                    <TextBlock Text="Opening Stock" Style="{StaticResource KpiLabel}"/>
+                                    <TextBlock Text="{Binding DefOpening, StringFormat='{}{0:N2} L'}" Style="{StaticResource KpiValue}"/>
+                                </StackPanel>
+                                <StackPanel Margin="4">
+                                    <TextBlock Text="Closing Stock" Style="{StaticResource KpiLabel}"/>
+                                    <TextBlock Text="{Binding DefClosing, StringFormat='{}{0:N2} L'}" Style="{StaticResource KpiValue}"/>
+                                </StackPanel>
+                                <StackPanel Margin="4">
+                                    <TextBlock Text="Purchased Qty" Style="{StaticResource KpiLabel}"/>
+                                    <TextBlock Text="{Binding DefPurchasedQty, StringFormat='{}{0:N2} L'}" Style="{StaticResource KpiValue}"/>
+                                </StackPanel>
+                                <StackPanel Margin="4">
+                                    <TextBlock Text="Sold Quantity" Style="{StaticResource KpiLabel}"/>
+                                    <TextBlock Text="{Binding DefSoldQty, StringFormat='{}{0:N2} L'}" Style="{StaticResource KpiValue}"/>
+                                </StackPanel>
+                                <StackPanel Margin="4">
+                                    <TextBlock Text="Purchase Cost" Style="{StaticResource KpiLabel}"/>
+                                    <TextBlock Text="{Binding DefPurchaseValue, Converter={StaticResource CurrencyConverter}}" Style="{StaticResource KpiValue}"/>
+                                </StackPanel>
+                                <StackPanel Margin="4">
+                                    <TextBlock Text="Sales Revenue" Style="{StaticResource KpiLabel}"/>
+                                    <TextBlock Text="{Binding DefSalesRevenue, Converter={StaticResource CurrencyConverter}}" Style="{StaticResource KpiValue}"/>
+                                </StackPanel>
+                                <StackPanel Margin="4" Grid.ColumnSpan="2">
+                                    <TextBlock Text="DEF Profit" Style="{StaticResource KpiLabel}"/>
+                                    <TextBlock Text="{Binding DefProfit, Converter={StaticResource CurrencyConverter}}"
+                                               FontSize="17" FontWeight="Bold" Foreground="#2E7D32"/>
+                                </StackPanel>
+                            </UniformGrid>
+                        </StackPanel>
+                    </materialDesign:Card>
+                </Grid>
+
+                <!-- ── Sales Log Table ── -->
+                <materialDesign:Card Margin="0,0,0,16" Padding="16" UniformCornerRadius="8"
+                                     materialDesign:ElevationAssist.Elevation="Dp1">
+                    <StackPanel>
+                        <TextBlock Text="Sales Transaction Log" FontSize="15" FontWeight="Bold"
+                                   Foreground="{DynamicResource MaterialDesign.Brush.Primary}" Margin="0,0,0,10"/>
+                        <DataGrid ItemsSource="{Binding RecentSalesLogs}" AutoGenerateColumns="False"
+                                  IsReadOnly="True" materialDesign:DataGridAssist.CellPadding="8 6"
+                                  MaxHeight="300" VerticalScrollBarVisibility="Auto">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Date" Binding="{Binding LogDate, StringFormat='{}{0:dd-MMM-yyyy}'}" Width="120"/>
+                                <DataGridTextColumn Header="Product" Binding="{Binding Product.ProductName}" Width="2*"/>
+                                <DataGridTextColumn Header="Category" Binding="{Binding ProductType}" Width="80"/>
+                                <DataGridTextColumn Header="Qty Sold" Binding="{Binding SoldQuantity, StringFormat='{}{0:N2}'}" Width="100"/>
+                                <DataGridTextColumn Header="Rate" Binding="{Binding OverrideSaleRate, StringFormat='₹{0:N2}'}" Width="100"/>
+                                <DataGridTextColumn Header="Stock After" Binding="{Binding RemainingStock, StringFormat='{}{0:N2}'}" Width="100"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </StackPanel>
+                </materialDesign:Card>
+
+                <!-- ── Adjustment / Loss Log Table ── -->
+                <materialDesign:Card Margin="0,0,0,16" Padding="16" UniformCornerRadius="8"
+                                     materialDesign:ElevationAssist.Elevation="Dp1">
+                    <StackPanel>
+                        <TextBlock Text="Stock Adjustments &amp; Losses" FontSize="15" FontWeight="Bold"
+                                   Foreground="#C62828" Margin="0,0,0,10"/>
+                        <DataGrid ItemsSource="{Binding AdjustmentRows}" AutoGenerateColumns="False"
+                                  IsReadOnly="True" materialDesign:DataGridAssist.CellPadding="8 6"
+                                  MaxHeight="250" VerticalScrollBarVisibility="Auto">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat='{}{0:dd-MMM-yyyy}'}" Width="120"/>
+                                <DataGridTextColumn Header="Product" Binding="{Binding ProductName}" Width="2*"/>
+                                <DataGridTextColumn Header="Adj. Qty" Binding="{Binding AdjustmentQty, StringFormat='{}{0:N2}'}" Width="100"/>
+                                <DataGridTextColumn Header="Reason" Binding="{Binding Type}" Width="2*"/>
+                                <DataGridTextColumn Header="Remarks" Binding="{Binding Remarks}" Width="2*"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </StackPanel>
+                </materialDesign:Card>
+
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

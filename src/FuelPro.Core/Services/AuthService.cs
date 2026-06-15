@@ -15,6 +15,21 @@ public class AuthService
 
     public User? CurrentUser { get; private set; }
 
+    /// <summary>
+    /// True if the currently logged-in user is a Manager (or legacy Admin).
+    /// </summary>
+    public bool IsManager => CurrentUser?.IsManager ?? false;
+
+    /// <summary>
+    /// True if the currently logged-in user is an Owner.
+    /// </summary>
+    public bool IsOwner => CurrentUser?.IsOwner ?? false;
+
+    /// <summary>
+    /// True if the currently logged-in user is a Developer.
+    /// </summary>
+    public bool IsDeveloper => CurrentUser?.IsDeveloper ?? false;
+
     public AuthService(IUserRepository userRepo) => _userRepo = userRepo;
 
     public async Task<Result<User>> LoginAsync(string username, string pin)

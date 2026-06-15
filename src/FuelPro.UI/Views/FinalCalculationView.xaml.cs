@@ -71,7 +71,7 @@ public partial class FinalCalculationView : UserControl
                 if (entry.NozzleReadings == null) continue;
                 foreach (var reading in entry.NozzleReadings)
                 {
-                    var canonicalFuelType = FuelPro.Core.Common.PumpConfiguration.GetFuelTypeDisplayName(reading.NozzleNumber);
+                    var canonicalFuelType = FuelPro.Core.Common.PumpConfiguration.GetFuelTypeDisplayName(entry.PumpId, reading.NozzleNumber, vm.SelectedDate);
                     switch (canonicalFuelType)
                     {
                         case "HSD":
