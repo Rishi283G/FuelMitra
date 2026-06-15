@@ -235,7 +235,7 @@
                     <materialDesign:Card Style="{StaticResource SectionCard}">
                         <StackPanel>
                             <Grid Margin="0,0,0,12">
-                                <TextBlock Text="3. Creditors / Debit Register" Style="{StaticResource SectionTitle}" Margin="0" />
+                                <TextBlock Text="3. Debtors / Debit Register" Style="{StaticResource SectionTitle}" Margin="0" />
                                 <TextBlock Text="{Binding CreditorsTotal, Converter={StaticResource CurrencyConverter}, StringFormat='Total: {0}'}" HorizontalAlignment="Right" FontWeight="Bold" FontSize="16" Foreground="{DynamicResource MaterialDesign.Brush.Error}" />
                             </Grid>
                             <DataGrid ItemsSource="{Binding CreditorRows}" AutoGenerateColumns="False" IsReadOnly="True" MaxHeight="300">
@@ -272,7 +272,7 @@
                                     <TextBlock Grid.Row="0" Grid.Column="0" Text="Digital &amp; Cash Collection" Margin="0,4" />
                                     <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding TotalDigitalAndCash, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" Margin="0,4" />
 
-                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Debtors / Creditors" Margin="0,4" />
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Debtors" Margin="0,4" />
                                     <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding CreditorsTotal, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" Margin="0,4" />
 
                                     <TextBlock Grid.Row="2" Grid.Column="0" Text="Total Expenses" Margin="0,4" />

@@ -486,7 +486,7 @@ public partial class DashboardViewModel : ObservableObject
         {
             OutstandingCreditors.Add(new CreditorBalanceDto
             {
-                CreditorName = kvp.Key,
+                DebtorName = kvp.Key,
                 TotalDebitAmount = (double)kvp.Value
             });
         }

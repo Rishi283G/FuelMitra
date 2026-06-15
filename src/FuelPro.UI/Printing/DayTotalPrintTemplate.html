@@ -124,7 +124,7 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
   <!-- SECTION 2: DSM SUMMARY (ALL SHIFTS) -->
   <div class="sec">
     <div class="sec-title">2. DSM Summary &mdash; All Shifts</div>
-    <table><thead><tr><th>DSM Name</th><th>Shift</th><th>Pump</th><th>PhonePe</th><th>P.Pe Card</th><th>Cr. Card</th><th>Petro Card</th><th>Bank Cash</th><th>Creditors</th><th>Expenses</th><th>Testing</th><th>Hand Cash</th><th>Gross Sale</th><th>Mismatch</th></tr></thead><tbody id="tDsm"></tbody></table>
+    <table><thead><tr><th>DSM Name</th><th>Shift</th><th>Pump</th><th>PhonePe</th><th>P.Pe Card</th><th>Cr. Card</th><th>Petro Card</th><th>Bank Cash</th><th>Debtors</th><th>Expenses</th><th>Testing</th><th>Hand Cash</th><th>Gross Sale</th><th>Mismatch</th></tr></thead><tbody id="tDsm"></tbody></table>
   </div>
   <hr class="div">
 
@@ -137,7 +137,7 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
       <div class="kpi"><div class="kpi-lbl">MS Total</div><div class="kpi-val" id="kMsTotalLtr">&ndash;</div></div>
       <div class="kpi" style="border-color:#1a3a6b"><div class="kpi-lbl">Total Litres</div><div class="kpi-val" id="kLitres" style="color:#1a3a6b">&ndash;</div></div>
       <div class="kpi"><div class="kpi-lbl">Total Collection</div><div class="kpi-val" id="kCollect">&ndash;</div></div>
-      <div class="kpi"><div class="kpi-lbl">Total Creditors</div><div class="kpi-val" id="kCred">&ndash;</div></div>
+      <div class="kpi"><div class="kpi-lbl">Total Debtors</div><div class="kpi-val" id="kCred">&ndash;</div></div>
       <div class="kpi"><div class="kpi-lbl">Total Expenses</div><div class="kpi-val" id="kExp">&ndash;</div></div>
       <div class="kpi"><div class="kpi-lbl">Difference</div><div class="kpi-val" id="kDiff">&ndash;</div></div>
     </div>
@@ -156,7 +156,7 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
       <div style="font-weight:bold;color:#5a6a7a">+</div>
       <div class="kpi"><div class="kpi-lbl">Cash in Hand</div><div class="kpi-val" id="kHandBox">&ndash;</div></div>
       <div style="font-weight:bold;color:#5a6a7a">+</div>
-      <div class="kpi"><div class="kpi-lbl">Creditors</div><div class="kpi-val" id="kCredBox">&ndash;</div></div>
+      <div class="kpi"><div class="kpi-lbl">Debtors</div><div class="kpi-val" id="kCredBox">&ndash;</div></div>
       <div style="font-weight:bold;color:#5a6a7a">+</div>
       <div class="kpi"><div class="kpi-lbl">Expenses</div><div class="kpi-val" id="kExpBox">&ndash;</div></div>
       <div style="font-weight:bold;font-size:18px;color:#1a3a6b;margin:0 4px">=</div>
@@ -174,7 +174,7 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
   <!-- SECTION 4: CREDITORS & EXPENSES -->
   <div class="g2" style="padding-top:14px">
     <div class="col">
-      <div><div class="mini-hdr">Creditors / Debtors Register</div>
+      <div><div class="mini-hdr">Debtors Register</div>
         <table><thead><tr><th>DSM</th><th>Debtor Name</th><th>Cheque No.</th><th>Amount (&#8377;)</th></tr></thead><tbody id="tCred"></tbody></table>
       </div>
     </div>
@@ -193,7 +193,7 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
           <tr><td>Petro Card</td><td id="rPCard">&ndash;</td></tr>
           <tr><td>Bank Cash (Cash Deposit)</td><td id="rBank">&ndash;</td></tr>
           <tr><td>Cash In Hand</td><td id="rHand">&ndash;</td></tr>
-          <tr><td>Creditors / Debtors</td><td id="rCred">&ndash;</td></tr>
+          <tr><td>Debtors</td><td id="rCred">&ndash;</td></tr>
           <tr><td>Total Expenses</td><td id="rExp">&ndash;</td></tr>
           <tr><td style="color:#8a1500; font-weight:700">Total DSM Short</td><td id="rTotalDsmShort" style="color:#8a1500; font-weight:700">&ndash;</td></tr>
           <tr class="tr-recon-total"><td>TOTAL COLLECTION (A)</td><td id="rTotal">&ndash;</td></tr>
@@ -335,7 +335,7 @@ function renderData(){
     ct.appendChild(tr);credTot+=(c.amount||0);
   });
   var ctr=document.createElement('tr');ctr.className='tr-total';
-  ctr.innerHTML='<td colspan="3">TOTAL CREDITORS</td><td>'+inrZ(credTot)+'</td>';ct.appendChild(ctr);
+  ctr.innerHTML='<td colspan="3">TOTAL DEBTORS</td><td>'+inrZ(credTot)+'</td>';ct.appendChild(ctr);
 
   // Expenses
   var et=document.getElementById('tExp');et.innerHTML='';var expTot=0;

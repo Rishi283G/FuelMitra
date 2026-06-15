@@ -95,7 +95,7 @@
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                             <materialDesign:PackIcon Kind="CellphoneNfc" Width="24" Height="24"
                                                      Foreground="#9C27B0"/>
-                            <TextBlock Text="Total Creditors Today" FontSize="14" Opacity="0.7" Margin="8,0,0,0"/>
+                            <TextBlock Text="Total Debtors Today" FontSize="14" Opacity="0.7" Margin="8,0,0,0"/>
                         </StackPanel>
                         <TextBlock Text="{Binding TotalCreditorsToday, Converter={StaticResource CurrencyConv}}"
                                    FontSize="32" FontWeight="Bold"/>
@@ -285,7 +285,7 @@
                     </materialDesign:Card>
 
                     <!-- Outstanding Creditor Balances (Monthly) -->
-                    <TextBlock Text="Outstanding Creditor Balances (This Month)" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,12"
+                    <TextBlock Text="Outstanding Debtor Balances (This Month)" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,12"
                                Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}"/>
                     
                     <materialDesign:Card Padding="24" UniformCornerRadius="12"
@@ -293,7 +293,7 @@
                         <DataGrid ItemsSource="{Binding OutstandingCreditors}" IsReadOnly="True" 
                                   HeadersVisibility="Column" MaxHeight="300" FontSize="13" AutoGenerateColumns="False">
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="Creditor Name" Binding="{Binding CreditorName}" Width="*"/>
+                                <DataGridTextColumn Header="Debtor Name" Binding="{Binding DebtorName}" Width="*"/>
                                 <DataGridTextColumn Header="Outstanding Amount" Binding="{Binding TotalDebitAmount, StringFormat=N2}" Width="150" FontWeight="Bold"/>
                             </DataGrid.Columns>
                         </DataGrid>
@@ -302,7 +302,7 @@
 
                 <!-- Creditor Repayments Tracking -->
                 <StackPanel Grid.Column="1" Margin="12,0,0,0">
-                    <TextBlock Text="Creditor Repayments Tracker" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,12"
+                    <TextBlock Text="Debtor Repayments Tracker" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,12"
                                Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}"/>
                     
                     <materialDesign:Card Padding="24" UniformCornerRadius="12"
@@ -311,7 +311,7 @@
                             <DataGrid ItemsSource="{Binding Repayments}" IsReadOnly="True" Margin="0,0,0,16"
                               HeadersVisibility="Column" MaxHeight="250" FontSize="13" AutoGenerateColumns="False">
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="Creditor Name" Binding="{Binding CreditorName}" Width="200"/>
+                            <DataGridTextColumn Header="Debtor Name" Binding="{Binding CreditorName}" Width="200"/>
                             <DataGridTextColumn Header="Mode" Binding="{Binding PaymentMode}" Width="120"/>
                             <DataGridTextColumn Header="Cheque No." Binding="{Binding ChequeNo}" Width="150"/>
                             <DataGridTextColumn Header="Amount" Binding="{Binding Amount, StringFormat=N2}" Width="120"/>
@@ -339,7 +339,7 @@
                         </Grid.ColumnDefinitions>
                         
                         <ComboBox Grid.Column="0" ItemsSource="{Binding Creditors}" SelectedValue="{Binding NewCreditorName, UpdateSourceTrigger=PropertyChanged}" SelectedValuePath="Name" DisplayMemberPath="Name" IsEditable="True" Margin="0,0,12,0"
-                                  materialDesign:HintAssist.Hint="Creditor Name" materialDesign:HintAssist.IsFloating="True"
+                                  materialDesign:HintAssist.Hint="Debtor Name" materialDesign:HintAssist.IsFloating="True"
                                   Style="{StaticResource MaterialDesignOutlinedComboBox}"/>
                         
                         <ComboBox Grid.Column="1" ItemsSource="{Binding PaymentModes}" SelectedItem="{Binding NewRepaymentMode}" Margin="0,0,12,0"

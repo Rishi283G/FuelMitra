@@ -219,7 +219,7 @@
                                          materialDesign:ElevationAssist.Elevation="Dp3">
                         <StackPanel>
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                <TextBlock Text="📋 Creditors" FontSize="16" FontWeight="SemiBold"
+                                <TextBlock Text="📋 Debtors" FontSize="16" FontWeight="SemiBold"
                                            Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}"/>
                                 <Button Content="+ Add" Margin="16,0,0,0"
                                         Style="{StaticResource MaterialDesignOutlinedButton}"
@@ -549,7 +549,7 @@
                             <TextBlock Text="{Binding TotalPaymentIn, StringFormat='₹{0:N2}'}" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center"/>
                         </StackPanel>
                         <StackPanel HorizontalAlignment="Center">
-                            <TextBlock Text="Creditors" Opacity="0.6" HorizontalAlignment="Center"/>
+                            <TextBlock Text="Debtors" Opacity="0.6" HorizontalAlignment="Center"/>
                             <TextBlock Text="{Binding TotalDebtors, StringFormat='₹{0:N2}'}" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center"/>
                         </StackPanel>
                         <StackPanel HorizontalAlignment="Center">
@@ -560,7 +560,7 @@
                             <TextBlock Text="Mismatch" Opacity="0.6" HorizontalAlignment="Center"/>
                             <TextBlock Text="{Binding Difference, StringFormat='₹{0:N2}'}" FontSize="22" FontWeight="Bold"
                                        Foreground="{Binding Difference, Converter={StaticResource DiffColorConv}}" HorizontalAlignment="Center"
-                                       ToolTip="Mismatch = Total Collection - Gross Sales. Total Collection includes direct payments, creditors, testing, and expenses."/>
+                                       ToolTip="Mismatch = Total Collection - Gross Sales. Total Collection includes direct payments, debtors, testing, and expenses."/>
                         </StackPanel>
                     </UniformGrid>
                 </StackPanel>

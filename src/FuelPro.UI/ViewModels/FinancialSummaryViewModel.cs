@@ -32,6 +32,7 @@ public partial class FinancialSummaryViewModel : ObservableObject
 
     // Repayment details
     public ObservableCollection<CreditorRepayment> Repayments { get; } = new();
+    public ObservableCollection<DebtorLogEntryDto> DebtorLogs { get; } = new();
 
     public FinancialSummaryViewModel()
     {
@@ -60,6 +61,7 @@ public partial class FinancialSummaryViewModel : ObservableObject
 
             TotalBankCash = 0; TotalCashInHand = 0; TotalDigitalPayments = 0; TotalExpenses = 0;
             TotalDebitorsOutstanding = 0;
+            DebtorLogs.Clear();
 
             foreach (var entry in entries)
             {
@@ -75,6 +77,18 @@ public partial class FinancialSummaryViewModel : ObservableObject
 
                 TotalExpenses += entry.Expenses.Sum(e => e.Amount);
                 TotalDebitorsOutstanding += entry.DebitEntries.Sum(d => d.Amount);
+
+                foreach (var d in entry.DebitEntries)
+                {
+                    DebtorLogs.Add(new DebtorLogEntryDto
+                    {
+                        Date = entry.Shift?.ShiftDate ?? entry.CreatedAt,
+                        DsmName = entry.DsmName,
+                        DebtorName = d.DebtorName,
+                        ChequeNo = d.ChequeNo,
+                        Amount = d.Amount
+                    });
+                }
             }
 
             // Shift-level expenses
@@ -96,4 +110,13 @@ public partial class FinancialSummaryViewModel : ObservableObject
         }
         finally { IsLoading = false; }
     }
+}
+
+public class DebtorLogEntryDto
+{
+    public DateTime Date { get; set; }
+    public string DsmName { get; set; } = string.Empty;
+    public string DebtorName { get; set; } = string.Empty;
+    public string? ChequeNo { get; set; }
+    public double Amount { get; set; }
 }

@@ -73,9 +73,9 @@ public partial class App : Application
             using var scope = Services.CreateScope();
             var context = scope.ServiceProvider.GetRequiredService<FuelProDbContext>();
             var credentialService = scope.ServiceProvider.GetRequiredService<ICredentialFileService>();
-            EnsureLegacyDatabaseCompatibility();
-            
             await SeedData.InitializeAsync(context, credentialService);
+            
+            EnsureLegacyDatabaseCompatibility();
             
             var recalcMigration = scope.ServiceProvider.GetRequiredService<RecalculationMigrationService>();
             await recalcMigration.RunIfNeededAsync();
@@ -123,6 +123,10 @@ public partial class App : Application
     {
         using var connection = new SqliteConnection($"Data Source={DbPath}");
         connection.Open();
+
+        // Guard: skip column additions for tables that don't exist yet (e.g. fresh install)
+        if (!TableExists(connection, "PaymentCollections") || !TableExists(connection, "DsmEntries"))
+            return;
 
         EnsureColumnExists(connection, "PaymentCollections", "CashDeposit", "ALTER TABLE PaymentCollections ADD COLUMN CashDeposit REAL NOT NULL DEFAULT 0.0;");
         EnsureColumnExists(connection, "DsmEntries", "ConnectedPumpId", "ALTER TABLE DsmEntries ADD COLUMN ConnectedPumpId INTEGER NULL;");
@@ -365,6 +369,14 @@ public partial class App : Application
         }
 
         // AGS tables are now handled via EF Core Migrations.
+    }
+
+    private static bool TableExists(SqliteConnection connection, string tableName)
+    {
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name=@name";
+        cmd.Parameters.AddWithValue("@name", tableName);
+        return cmd.ExecuteScalar() != null;
     }
 
     private static void EnsureColumnExists(SqliteConnection connection, string tableName, string columnName, string alterSql)

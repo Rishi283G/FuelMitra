@@ -238,6 +238,6 @@ public class ReconciliationRowDto
 /// </summary>
 public class CreditorBalanceDto
 {
-    public string CreditorName { get; set; } = string.Empty;
+    public string DebtorName { get; set; } = string.Empty;
     public double TotalDebitAmount { get; set; }
 }

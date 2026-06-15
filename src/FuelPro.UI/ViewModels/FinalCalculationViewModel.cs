@@ -23,6 +23,8 @@ public partial class FinalCalculationViewModel : ObservableObject
     private readonly IShiftOtherCashRepository _otherCashRepo;
     private readonly IShiftFuelRateRepository _fuelRateRepo;
     private readonly IShiftAggregationService _aggregation;
+    private readonly ICreditorRepository _creditorRepo;
+    private readonly ICreditorRepaymentRepository _repaymentRepo;
     private readonly ILogger _logger = Log.ForContext<FinalCalculationViewModel>();
 
     [ObservableProperty] private DateTime _selectedDate = DateTime.Today;
@@ -85,6 +87,16 @@ public partial class FinalCalculationViewModel : ObservableObject
     [ObservableProperty] private bool _includeOtherCashInGrossSale;
     [ObservableProperty] private double _totalDsmShort;
 
+    // DEBTOR REPAYMENTS (Part 5)
+    [ObservableProperty] private ObservableCollection<CreditorRepayment> _debtorRepayments = new();
+    [ObservableProperty] private ObservableCollection<Creditor> _debtorsList = new();
+    [ObservableProperty] private string _newDebtorName = "";
+    [ObservableProperty] private string _newRepaymentMode = "Cash";
+    [ObservableProperty] private double _newRepaymentAmount;
+    [ObservableProperty] private string? _newChequeNumber = "";
+    [ObservableProperty] private string _repaymentStatusMessage = "";
+    public string[] PaymentModes { get; } = { "Cash", "PhonePe", "Credit Card", "Cheque" };
+
     public string[] ShiftOptions { get; } = { "A", "B", "C" };
 
     private List<DsmEntry> _loadedEntries = new();
@@ -99,6 +111,8 @@ public partial class FinalCalculationViewModel : ObservableObject
         _otherCashRepo = App.Services.GetRequiredService<IShiftOtherCashRepository>();
         _fuelRateRepo = App.Services.GetRequiredService<IShiftFuelRateRepository>();
         _aggregation = App.Services.GetRequiredService<IShiftAggregationService>();
+        _creditorRepo = App.Services.GetRequiredService<ICreditorRepository>();
+        _repaymentRepo = App.Services.GetRequiredService<ICreditorRepaymentRepository>();
     }
 
     partial void OnSelectedDateChanged(DateTime value) => _ = LoadShiftDataAsync();
@@ -213,6 +227,8 @@ public partial class FinalCalculationViewModel : ObservableObject
             // TABLE F — Reconciliation
             RecalcReconciliation();
 
+            await LoadDebtorRepaymentsAsync();
+
             HasData = true;
             StatusMessage = IsShiftLocked ? "🔒 SHIFT LOCKED" : "";
         }
@@ -286,6 +302,13 @@ public partial class FinalCalculationViewModel : ObservableObject
         GrandTotalSaleAmount = GrossSaleTotal = Difference = TotalDsmShort = 0;
         IsBalanced = false;
         IsShiftLocked = false;
+        DebtorRepayments.Clear();
+        DebtorsList.Clear();
+        NewDebtorName = "";
+        NewRepaymentMode = "Cash";
+        NewRepaymentAmount = 0;
+        NewChequeNumber = "";
+        RepaymentStatusMessage = "";
     }
 
     [RelayCommand]
@@ -384,7 +407,7 @@ public partial class FinalCalculationViewModel : ObservableObject
                 w.WriteLine($"Cash In Hand,{Cash2Total:F2}");
             });
 
-            WriteCsvEntry(zip, $"Creditors_{dateStr}_Shift{shiftLabel}.csv", w =>
+            WriteCsvEntry(zip, $"Debtors_{dateStr}_Shift{shiftLabel}.csv", w =>
             {
                 w.WriteLine("DSM Name,Pump No.,Name,Cheque No.,Amount");
                 foreach (var r in CreditorRows) w.WriteLine($"{r.DsmName},{r.PumpId},{r.DebtorName},{r.ChequeNo},{r.Amount:F2}");
@@ -436,6 +459,126 @@ public partial class FinalCalculationViewModel : ObservableObject
 
     [RelayCommand]
     private async Task RefreshAsync() => await LoadShiftDataAsync();
+
+    private async Task LoadDebtorRepaymentsAsync()
+    {
+        DebtorRepayments.Clear();
+        DebtorsList.Clear();
+
+        var debtorsRes = await _creditorRepo.GetAllActiveAsync();
+        if (debtorsRes.Success && debtorsRes.Data != null)
+        {
+            foreach (var d in debtorsRes.Data)
+            {
+                DebtorsList.Add(d);
+            }
+        }
+
+        var repaymentsRes = await _repaymentRepo.GetByDateAsync(SelectedDate.Date);
+        if (repaymentsRes.Success && repaymentsRes.Data != null)
+        {
+            foreach (var r in repaymentsRes.Data)
+            {
+                DebtorRepayments.Add(r);
+            }
+        }
+    }
+
+    [RelayCommand]
+    private async Task AddDebtorRepaymentAsync()
+    {
+        if (IsShiftLocked)
+        {
+            RepaymentStatusMessage = "❌ Shift is locked.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(NewDebtorName))
+        {
+            RepaymentStatusMessage = "❌ Debtor Name is required.";
+            return;
+        }
+
+        if (NewRepaymentAmount <= 0)
+        {
+            RepaymentStatusMessage = "❌ Amount must be greater than zero.";
+            return;
+        }
+
+        // Validate outstanding balance: Outstanding Balance = Total Debit - Total Repayments
+        var allEntriesResult = await _dsmRepo.GetEntriesForDateRangeAsync(new DateTime(2000, 1, 1), DateTime.Today.AddYears(1));
+        double totalDebit = 0;
+        if (allEntriesResult.Success && allEntriesResult.Data != null)
+        {
+            totalDebit = allEntriesResult.Data
+                .SelectMany(e => e.DebitEntries)
+                .Where(d => d.DebtorName.Trim().Equals(NewDebtorName.Trim(), StringComparison.OrdinalIgnoreCase))
+                .Sum(d => d.Amount);
+        }
+
+        double totalRepayments = 0;
+        var repaymentsResult = await _repaymentRepo.GetByDateRangeAsync(new DateTime(2000, 1, 1), DateTime.Today.AddYears(1));
+        if (repaymentsResult.Success && repaymentsResult.Data != null)
+        {
+            totalRepayments = repaymentsResult.Data
+                .Where(r => r.CreditorName.Trim().Equals(NewDebtorName.Trim(), StringComparison.OrdinalIgnoreCase))
+                .Sum(r => r.Amount);
+        }
+
+        double outstandingBalance = totalDebit - totalRepayments;
+        if (NewRepaymentAmount > outstandingBalance)
+        {
+            RepaymentStatusMessage = $"❌ Repayment exceeds outstanding balance of ₹{outstandingBalance:F2}.";
+            return;
+        }
+
+        var repayment = new CreditorRepayment
+        {
+            CreditorName = NewDebtorName.Trim(),
+            RepaymentDate = SelectedDate.Date,
+            PaymentMode = NewRepaymentMode,
+            ChequeNo = NewRepaymentMode == "Cheque" ? NewChequeNumber?.Trim() : null,
+            Amount = NewRepaymentAmount,
+            CreatedAt = DateTime.Now
+        };
+
+        var result = await _repaymentRepo.AddAsync(repayment);
+        if (result.Success)
+        {
+            RepaymentStatusMessage = "✅ Repayment logged successfully!";
+            NewDebtorName = "";
+            NewRepaymentAmount = 0;
+            NewChequeNumber = "";
+            NewRepaymentMode = "Cash";
+            await LoadShiftDataAsync();
+        }
+        else
+        {
+            RepaymentStatusMessage = $"❌ {result.Error}";
+        }
+    }
+
+    [RelayCommand]
+    private async Task DeleteDebtorRepaymentAsync(CreditorRepayment? repayment)
+    {
+        if (repayment == null) return;
+        if (IsShiftLocked)
+        {
+            RepaymentStatusMessage = "❌ Shift is locked.";
+            return;
+        }
+
+        var result = await _repaymentRepo.DeleteAsync(repayment.CreditorRepaymentId);
+        if (result.Success)
+        {
+            RepaymentStatusMessage = "✅ Repayment deleted.";
+            await LoadShiftDataAsync();
+        }
+        else
+        {
+            RepaymentStatusMessage = $"❌ {result.Error}";
+        }
+    }
 
     /// <summary>
     /// Returns shift display label: A→I, B→II, C→III

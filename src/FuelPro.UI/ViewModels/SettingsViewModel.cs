@@ -242,7 +242,7 @@ public partial class SettingsViewModel : ObservableObject
     {
         if (string.IsNullOrWhiteSpace(NewCreditorName))
         {
-            CreditorStatusMessage = "❌ Creditor Name is required";
+            CreditorStatusMessage = "❌ Debtor Name is required";
             return;
         }
         var creditor = new Creditor 
@@ -255,7 +255,7 @@ public partial class SettingsViewModel : ObservableObject
         {
             NewCreditorName = "";
             NewCreditorPhone = "";
-            CreditorStatusMessage = "✅ Creditor added!";
+            CreditorStatusMessage = "✅ Debtor added!";
             await LoadAsync();
         }
         else CreditorStatusMessage = $"❌ {result.Error}";

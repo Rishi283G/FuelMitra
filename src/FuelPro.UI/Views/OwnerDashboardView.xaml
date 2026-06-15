@@ -240,7 +240,7 @@
                                        FontSize="16" FontWeight="Bold"/>
                         </StackPanel>
                         <StackPanel Margin="4">
-                            <TextBlock Text="Debit (Creditors)" FontSize="11" Opacity="0.5"/>
+                            <TextBlock Text="Debit (Debtors)" FontSize="11" Opacity="0.5"/>
                             <TextBlock Text="{Binding TodayTotalDebit, Converter={StaticResource CurrencyConverter}}"
                                        FontSize="16" FontWeight="Bold" Foreground="#E65100"/>
                         </StackPanel>

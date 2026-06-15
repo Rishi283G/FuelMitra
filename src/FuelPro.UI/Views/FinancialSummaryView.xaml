@@ -64,30 +64,56 @@
                 </materialDesign:Card>
                 <materialDesign:Card Margin="4" Padding="12" UniformCornerRadius="6">
                     <StackPanel>
-                        <TextBlock Text="Total Creditor Repayments" FontSize="11" Opacity="0.5"/>
+                        <TextBlock Text="Total Debtor Repayments" FontSize="11" Opacity="0.5"/>
                         <TextBlock Text="{Binding TotalCreditorRepayments, Converter={StaticResource CurrencyConverter}}" FontSize="16" FontWeight="SemiBold" Foreground="#004D40"/>
                     </StackPanel>
                 </materialDesign:Card>
                 <materialDesign:Card Margin="4" Padding="12" UniformCornerRadius="6">
                     <StackPanel>
-                        <TextBlock Text="Outstanding Creditor Debits" FontSize="11" Opacity="0.5"/>
+                        <TextBlock Text="Outstanding Debtor Debits" FontSize="11" Opacity="0.5"/>
                         <TextBlock Text="{Binding TotalDebitorsOutstanding, Converter={StaticResource CurrencyConverter}}" FontSize="16" FontWeight="SemiBold" Foreground="#E65100"/>
                     </StackPanel>
                 </materialDesign:Card>
             </UniformGrid>
 
-            <!-- Creditor Repayment Details -->
-            <TextBlock Text="Creditor Repayments Log" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,8"/>
-            <DataGrid ItemsSource="{Binding Repayments}" AutoGenerateColumns="False" IsReadOnly="True"
-                      materialDesign:DataGridAssist.CellPadding="12 8" CanUserSortColumns="True">
-                <DataGrid.Columns>
-                    <DataGridTextColumn Header="Repayment Date" Binding="{Binding RepaymentDate, StringFormat='{}{0:dd MMM yyyy}'}" Width="150"/>
-                    <DataGridTextColumn Header="Creditor Name" Binding="{Binding CreditorName}" Width="*"/>
-                    <DataGridTextColumn Header="Payment Mode" Binding="{Binding PaymentMode}" Width="150"/>
-                    <DataGridTextColumn Header="Cheque / Reference No" Binding="{Binding ChequeNo}" Width="180"/>
-                    <DataGridTextColumn Header="Amount" Binding="{Binding Amount, Converter={StaticResource CurrencyConverter}}" Width="150"/>
-                </DataGrid.Columns>
-            </DataGrid>
+            <!-- Debits and Repayments Log side-by-side -->
+            <Grid Margin="0,0,0,16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="16" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <!-- Left Column: Debtor Debit Logs -->
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="Debtor Debit Logs" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                    <DataGrid ItemsSource="{Binding DebtorLogs}" AutoGenerateColumns="False" IsReadOnly="True"
+                              materialDesign:DataGridAssist.CellPadding="12 8" CanUserSortColumns="True" MaxHeight="450">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat='{}{0:dd MMM yyyy}'}" Width="110"/>
+                            <DataGridTextColumn Header="Debtor Name" Binding="{Binding DebtorName}" Width="*"/>
+                            <DataGridTextColumn Header="DSM Name" Binding="{Binding DsmName}" Width="100"/>
+                            <DataGridTextColumn Header="Cheque No" Binding="{Binding ChequeNo}" Width="100"/>
+                            <DataGridTextColumn Header="Amount" Binding="{Binding Amount, Converter={StaticResource CurrencyConverter}}" Width="110"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </StackPanel>
+
+                <!-- Right Column: Debtor Repayments Log -->
+                <StackPanel Grid.Column="2">
+                    <TextBlock Text="Debtor Repayments Log" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                    <DataGrid ItemsSource="{Binding Repayments}" AutoGenerateColumns="False" IsReadOnly="True"
+                              materialDesign:DataGridAssist.CellPadding="12 8" CanUserSortColumns="True" MaxHeight="450">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Repayment Date" Binding="{Binding RepaymentDate, StringFormat='{}{0:dd MMM yyyy}'}" Width="110"/>
+                            <DataGridTextColumn Header="Debtor Name" Binding="{Binding CreditorName}" Width="*"/>
+                            <DataGridTextColumn Header="Payment Mode" Binding="{Binding PaymentMode}" Width="100"/>
+                            <DataGridTextColumn Header="Cheque / Ref No" Binding="{Binding ChequeNo}" Width="100"/>
+                            <DataGridTextColumn Header="Amount" Binding="{Binding Amount, Converter={StaticResource CurrencyConverter}}" Width="110"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </StackPanel>
+            </Grid>
         </StackPanel>
     </ScrollViewer>
 </UserControl>

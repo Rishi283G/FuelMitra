@@ -179,7 +179,7 @@
             <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
                 <materialDesign:PackIcon Kind="AccountMultiple" Width="24" Height="24"
                                          Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
-                <TextBlock Text="Creditor Management" FontSize="18" FontWeight="SemiBold" Margin="8,0"
+                <TextBlock Text="Debtor Management" FontSize="18" FontWeight="SemiBold" Margin="8,0"
                            Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}"/>
             </StackPanel>
 
@@ -189,7 +189,7 @@
                       materialDesign:DataGridAssist.CellPadding="12 8"
                       materialDesign:DataGridAssist.ColumnHeaderPadding="12 8">
                 <DataGrid.Columns>
-                    <DataGridTextColumn Header="Creditor Name" Binding="{Binding Name}" Width="*"/>
+                    <DataGridTextColumn Header="Debtor Name" Binding="{Binding Name}" Width="*"/>
                     <DataGridTextColumn Header="Cheque No." Binding="{Binding Phone}" Width="120"/>
                     <DataGridTemplateColumn Header="" Width="50">
                         <DataGridTemplateColumn.CellTemplate>
@@ -197,7 +197,7 @@
                                 <Button Style="{StaticResource MaterialDesignIconButton}" Height="28" Width="28"
                                         Command="{Binding DataContext.DeleteCreditorCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                         CommandParameter="{Binding}"
-                                        ToolTip="Delete Creditor (will be hidden from dropdowns)">
+                                        ToolTip="Delete Debtor (will be hidden from dropdowns)">
                                     <materialDesign:PackIcon Kind="Delete" Width="16" Height="16" Foreground="#F44336"/>
                                 </Button>
                             </DataTemplate>
@@ -206,7 +206,7 @@
                 </DataGrid.Columns>
             </DataGrid>
 
-            <TextBlock Text="Add New Creditor" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,8" Opacity="0.7"/>
+            <TextBlock Text="Add New Debtor" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,8" Opacity="0.7"/>
             <Grid Margin="0,0,0,12">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
@@ -214,14 +214,14 @@
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
                 <TextBox Grid.Column="0" Text="{Binding NewCreditorName, UpdateSourceTrigger=PropertyChanged}"
-                         materialDesign:HintAssist.Hint="Creditor Name (Required)" materialDesign:HintAssist.IsFloating="True"
+                         materialDesign:HintAssist.Hint="Debtor Name (Required)" materialDesign:HintAssist.IsFloating="True"
                          Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
                 <TextBox Grid.Column="2" Text="{Binding NewCreditorPhone, UpdateSourceTrigger=PropertyChanged}"
                          materialDesign:HintAssist.Hint="Cheque No. (Optional)" materialDesign:HintAssist.IsFloating="True"
                          Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
             </Grid>
             <StackPanel Orientation="Horizontal">
-                <Button Content="Add Creditor" Command="{Binding AddCreditorCommand}" Height="40" Padding="24,0"
+                <Button Content="Add Debtor" Command="{Binding AddCreditorCommand}" Height="40" Padding="24,0"
                         Style="{StaticResource MaterialDesignRaisedButton}" HorizontalAlignment="Left" Margin="0,0,16,0"/>
                 <TextBlock Text="{Binding CreditorStatusMessage}" VerticalAlignment="Center" FontSize="14"/>
             </StackPanel>
