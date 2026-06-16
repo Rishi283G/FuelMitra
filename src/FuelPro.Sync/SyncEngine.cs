@@ -232,6 +232,9 @@ public class SyncEngine
             localToGuid[m.TableName][m.LocalId] = m.RemoteGuid;
         }
 
+        // Track which SyncGuids have been confirmed pushed to Supabase in this cycle
+        var pushedGuids = new HashSet<string>();
+
         // Group by TableName and order by dependency so parent tables are pushed before child tables
         var groups = pendingLogs
             .GroupBy(l => l.TableName)
@@ -283,6 +286,10 @@ public class SyncEngine
                 var entityType = context.Model.GetEntityTypes().FirstOrDefault(t => t.GetTableName() == tableName);
                 if (entityType != null)
                 {
+                    // ── Collect parent records that need to be force-pushed ──
+                    // Key: parentTableName → Dict of (localId → record dict ready for upsert)
+                    var missingParents = new Dictionary<string, Dictionary<int, Dictionary<string, object?>>>();
+
                     foreach (var op in latestOps)
                     {
                         var record = await context.FindAsync(entityType.ClrType, op.RecordId);
@@ -308,6 +315,55 @@ public class SyncEngine
                                         var parentGuid = await GetOrCreateSyncGuidAsync(context, localToGuid, fk.ReferencedTable, localFkId, settings);
                                         // Replace the integer FK with the parent's SyncGuid
                                         dict[fk.FkProperty] = parentGuid;
+
+                                        // Check if this parent was already pushed in this cycle or is in the current pending batch
+                                        if (!pushedGuids.Contains(parentGuid))
+                                        {
+                                            // Check if the parent is in the current pending logs (will be pushed as part of its own group)
+                                            var parentIsPending = pendingLogs.Any(l => l.TableName == fk.ReferencedTable && l.RecordId == localFkId && !l.IsSynced);
+                                            if (!parentIsPending)
+                                            {
+                                                // Parent has no pending sync log — it was already synced before (or never queued).
+                                                // We need to force-push it to ensure it exists in Supabase.
+                                                if (!missingParents.ContainsKey(fk.ReferencedTable))
+                                                    missingParents[fk.ReferencedTable] = new Dictionary<int, Dictionary<string, object?>>();
+
+                                                if (!missingParents[fk.ReferencedTable].ContainsKey(localFkId))
+                                                {
+                                                    var parentEntityType = context.Model.GetEntityTypes().FirstOrDefault(t => t.GetTableName() == fk.ReferencedTable);
+                                                    if (parentEntityType != null)
+                                                    {
+                                                        var parentRecord = await context.FindAsync(parentEntityType.ClrType, localFkId);
+                                                        if (parentRecord != null)
+                                                        {
+                                                            var parentDict = GetDatabaseValues(context, parentRecord);
+                                                            parentDict["SyncGuid"] = parentGuid;
+                                                            parentDict["station_id"] = settings.StationId;
+                                                            parentDict["local_id"] = localFkId;
+                                                            parentDict["machine_id"] = settings.MachineId;
+
+                                                            // Also translate any grandparent FKs on the parent record
+                                                            if (FkConfigByTable.TryGetValue(fk.ReferencedTable, out var parentFkMappings))
+                                                            {
+                                                                foreach (var parentFk in parentFkMappings)
+                                                                {
+                                                                    if (parentDict.TryGetValue(parentFk.FkProperty, out var parentFkVal) && parentFkVal != null)
+                                                                    {
+                                                                        var grandparentLocalId = Convert.ToInt32(parentFkVal);
+                                                                        if (grandparentLocalId == 0) continue;
+                                                                        var grandparentGuid = await GetOrCreateSyncGuidAsync(context, localToGuid, parentFk.ReferencedTable, grandparentLocalId, settings);
+                                                                        parentDict[parentFk.FkProperty] = grandparentGuid;
+                                                                    }
+                                                                }
+                                                            }
+
+                                                            missingParents[fk.ReferencedTable][localFkId] = parentDict;
+                                                            _logger.Information("Will force-push missing parent {Table} LocalId={Id} SyncGuid={Guid}", fk.ReferencedTable, localFkId, parentGuid);
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -318,6 +374,30 @@ public class SyncEngine
                             dict["machine_id"] = settings.MachineId;
 
                             recordsToUpsert.Add(dict);
+                        }
+                    }
+
+                    // ── Force-push any missing parent records before the child batch ──
+                    foreach (var (parentTable, parentRecords) in missingParents)
+                    {
+                        if (parentRecords.Count > 0)
+                        {
+                            var parentList = parentRecords.Values.ToList();
+                            var parentJson = JsonConvert.SerializeObject(parentList);
+                            var parentResponse = await _httpClient.SendRequestAsync(HttpMethod.Post, parentTable, parentJson, isUpsert: true, onConflict: "SyncGuid");
+                            if (!parentResponse.IsSuccessStatusCode)
+                            {
+                                var parentError = await parentResponse.Content.ReadAsStringAsync();
+                                _logger.Error("Failed to force-push missing parent records for table {Table}: {Error}", parentTable, parentError);
+                                throw new HttpRequestException($"Supabase UPSERT failed for parent table {parentTable}: {parentError}");
+                            }
+                            // Mark these parent GUIDs as pushed
+                            foreach (var parentDict in parentList)
+                            {
+                                if (parentDict.TryGetValue("SyncGuid", out var pg) && pg != null)
+                                    pushedGuids.Add(pg.ToString()!);
+                            }
+                            _logger.Information("Force-pushed {Count} missing parent records to {Table}", parentList.Count, parentTable);
                         }
                     }
                 }
@@ -331,6 +411,12 @@ public class SyncEngine
                     {
                         var error = await response.Content.ReadAsStringAsync();
                         throw new HttpRequestException($"Supabase UPSERT failed for table {tableName}: {error}");
+                    }
+                    // Mark all upserted GUIDs as pushed
+                    foreach (var rec in recordsToUpsert)
+                    {
+                        if (rec.TryGetValue("SyncGuid", out var sg) && sg != null)
+                            pushedGuids.Add(sg.ToString()!);
                     }
                 }
             }
