@@ -64,6 +64,18 @@
     <EmbeddedResource Include="Printing\ShiftSummaryPrintTemplate.html">
       <LogicalName>FuelPro.UI.Printing.ShiftSummaryPrintTemplate.html</LogicalName>
     </EmbeddedResource>
+    <Content Include="Printing\MonthlyPLPrintTemplate.html">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <EmbeddedResource Include="Printing\MonthlyPLPrintTemplate.html">
+      <LogicalName>FuelPro.UI.Printing.MonthlyPLPrintTemplate.html</LogicalName>
+    </EmbeddedResource>
+    <Content Include="Printing\OilDefSummaryPrintTemplate.html">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <EmbeddedResource Include="Printing\OilDefSummaryPrintTemplate.html">
+      <LogicalName>FuelPro.UI.Printing.OilDefSummaryPrintTemplate.html</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <ItemGroup>

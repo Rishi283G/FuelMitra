@@ -5,6 +5,7 @@
              xmlns:converters="clr-namespace:FuelPro.UI.Converters">
     <UserControl.Resources>
         <converters:IndianCurrencyConverter x:Key="CurrencyConverter"/>
+        <converters:EqualToBoolConverter x:Key="EqualToBoolConverter"/>
         
         <Style TargetType="DatePicker" BasedOn="{StaticResource MaterialDesignOutlinedDatePicker}">
             <Setter Property="Foreground" Value="#212121"/>
@@ -35,14 +36,62 @@
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                     <!-- Preset Selector -->
                     <StackPanel Orientation="Horizontal" Margin="0,0,16,0">
-                        <Button Content="Daily" Style="{StaticResource MaterialDesignOutlinedButton}" Command="{Binding SetPresetCommand}" CommandParameter="Daily" Margin="0,0,4,0" Height="48" Padding="8,0"/>
-                        <Button Content="Weekly" Style="{StaticResource MaterialDesignOutlinedButton}" Command="{Binding SetPresetCommand}" CommandParameter="Weekly" Margin="0,0,4,0" Height="48" Padding="8,0"/>
-                        <Button Content="Monthly" Style="{StaticResource MaterialDesignOutlinedButton}" Command="{Binding SetPresetCommand}" CommandParameter="Monthly" Margin="0,0,4,0" Height="48" Padding="8,0"/>
-                        <Button Content="Custom" Style="{StaticResource MaterialDesignOutlinedButton}" Command="{Binding SetPresetCommand}" CommandParameter="Custom" Height="48" Padding="8,0"/>
+                        <Button Content="Daily" Command="{Binding SetPresetCommand}" CommandParameter="Daily" Margin="0,0,4,0" Height="48" Padding="8,0">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding SelectedPreset, Converter={StaticResource EqualToBoolConverter}, ConverterParameter=Daily}" Value="True">
+                                            <Setter Property="Background" Value="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                            <Setter Property="Foreground" Value="{DynamicResource MaterialDesign.Brush.Primary.Foreground}"/>
+                                            <Setter Property="BorderBrush" Value="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                        <Button Content="Weekly" Command="{Binding SetPresetCommand}" CommandParameter="Weekly" Margin="0,0,4,0" Height="48" Padding="8,0">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding SelectedPreset, Converter={StaticResource EqualToBoolConverter}, ConverterParameter=Weekly}" Value="True">
+                                            <Setter Property="Background" Value="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                            <Setter Property="Foreground" Value="{DynamicResource MaterialDesign.Brush.Primary.Foreground}"/>
+                                            <Setter Property="BorderBrush" Value="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                        <Button Content="Monthly" Command="{Binding SetPresetCommand}" CommandParameter="Monthly" Margin="0,0,4,0" Height="48" Padding="8,0">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding SelectedPreset, Converter={StaticResource EqualToBoolConverter}, ConverterParameter=Monthly}" Value="True">
+                                            <Setter Property="Background" Value="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                            <Setter Property="Foreground" Value="{DynamicResource MaterialDesign.Brush.Primary.Foreground}"/>
+                                            <Setter Property="BorderBrush" Value="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                        <Button Content="Custom" Command="{Binding SetPresetCommand}" CommandParameter="Custom" Height="48" Padding="8,0">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding SelectedPreset, Converter={StaticResource EqualToBoolConverter}, ConverterParameter=Custom}" Value="True">
+                                            <Setter Property="Background" Value="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                            <Setter Property="Foreground" Value="{DynamicResource MaterialDesign.Brush.Primary.Foreground}"/>
+                                            <Setter Property="BorderBrush" Value="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
                     </StackPanel>
                     
-                    <DatePicker SelectedDate="{Binding StartDate}" materialDesign:HintAssist.Hint="From" Style="{StaticResource MaterialDesignOutlinedDatePicker}" Width="130" Margin="0,0,8,0" Height="48"/>
-                    <DatePicker SelectedDate="{Binding EndDate}" materialDesign:HintAssist.Hint="To" Style="{StaticResource MaterialDesignOutlinedDatePicker}" Width="130" Height="48"/>
+                    <DatePicker SelectedDate="{Binding StartDate}" IsEnabled="{Binding IsCustomRange}" materialDesign:HintAssist.Hint="From" Style="{StaticResource MaterialDesignOutlinedDatePicker}" Width="130" Margin="0,0,8,0" Height="48"/>
+                    <DatePicker SelectedDate="{Binding EndDate}" IsEnabled="{Binding IsCustomRange}" materialDesign:HintAssist.Hint="To" Style="{StaticResource MaterialDesignOutlinedDatePicker}" Width="130" Height="48"/>
                 </StackPanel>
             </Grid>
             

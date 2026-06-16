@@ -147,7 +147,9 @@ public class DashboardValidationTest
         await monthlyPerfVm.LoadCommand.ExecuteAsync(null);
 
         var dsmPerfVm = serviceProvider.GetRequiredService<DsmPerformanceViewModel>();
-        dsmPerfVm.SelectedMonth = startOfMonth;
+        dsmPerfVm.SelectedPreset = "Custom";
+        dsmPerfVm.StartDate = startOfMonth;
+        dsmPerfVm.EndDate = targetDate;
         await dsmPerfVm.LoadCommand.ExecuteAsync(null);
 
         var profitLossVm = serviceProvider.GetRequiredService<ProfitLossViewModel>();

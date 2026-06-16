@@ -29,6 +29,20 @@ public partial class ProfitLossViewModel : ObservableObject
 
     // Legacy support fields for secondary collections info
     [ObservableProperty] private double _totalGrossSales;
+
+    public bool IsCustomRange => SelectedPreset == "Custom";
+
+    partial void OnSelectedPresetChanged(string value) => OnPropertyChanged(nameof(IsCustomRange));
+
+    partial void OnStartDateChanged(DateTime value)
+    {
+        if (SelectedPreset == "Custom") _ = LoadAsync();
+    }
+
+    partial void OnEndDateChanged(DateTime value)
+    {
+        if (SelectedPreset == "Custom") _ = LoadAsync();
+    }
     [ObservableProperty] private double _totalCollection;
     [ObservableProperty] private double _totalCreditorDebits;
     [ObservableProperty] private double _totalCreditorRepayments;
@@ -88,9 +102,6 @@ public partial class ProfitLossViewModel : ObservableObject
         _ = LoadAsync();
     }
 
-    partial void OnStartDateChanged(DateTime value) => _ = LoadAsync();
-    partial void OnEndDateChanged(DateTime value) => _ = LoadAsync();
-
     [RelayCommand]
     private void SetPreset(string preset)
     {
@@ -113,6 +124,7 @@ public partial class ProfitLossViewModel : ObservableObject
                 // Don't change dates, let the user change
                 break;
         }
+        _ = LoadAsync();
     }
 
     [RelayCommand]
@@ -201,7 +213,7 @@ public partial class ProfitLossViewModel : ObservableObject
                 ? (double)repResult.Data.Sum(r => r.Amount)
                 : 0;
 
-            var calculationData = _ownerCalcService.Calculate(entries, shiftExpensesList, null);
+            var calculationData = _ownerCalcService.Calculate(entries, shiftExpensesList, Array.Empty<ShiftOtherCash>());
             TotalGrossSales = calculationData.GrossSales;
             TotalCollection = calculationData.AdjustedCollection;
             TotalCreditorDebits = calculationData.Debit;

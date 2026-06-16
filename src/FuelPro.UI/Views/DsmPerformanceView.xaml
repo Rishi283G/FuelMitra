@@ -6,32 +6,118 @@
     <UserControl.Resources>
         <converters:IndianCurrencyConverter x:Key="CurrencyConverter"/>
         <converters:LitresConverter x:Key="LitresConverter"/>
+        <converters:EqualToBoolConverter x:Key="EqualToBoolConverter"/>
     </UserControl.Resources>
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Margin="24,16">
-            <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
-                <materialDesign:PackIcon Kind="AccountGroup" Width="28" Height="28" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                <TextBlock Text="DSM Performance" FontSize="24" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,24,0"/>
-                <DatePicker SelectedDate="{Binding SelectedMonth}" materialDesign:HintAssist.Hint="Select Month" Style="{StaticResource MaterialDesignOutlinedDatePicker}" Width="200" Height="48"/>
-            </StackPanel>
+            <!-- Header with date range pickers and presets -->
+            <Grid Margin="0,0,0,16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                    <materialDesign:PackIcon Kind="AccountGroup" Width="28" Height="28" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                    <TextBlock Text="DSM Performance" FontSize="24" FontWeight="Bold" VerticalAlignment="Center"/>
+                </StackPanel>
+
+                <!-- Date Range Controls -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <!-- Preset Selector -->
+                    <StackPanel Orientation="Horizontal" Margin="0,0,16,0">
+                        <Button Content="Daily" Command="{Binding SetPresetCommand}" CommandParameter="Daily" Margin="0,0,4,0" Height="48" Padding="8,0">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding SelectedPreset, Converter={StaticResource EqualToBoolConverter}, ConverterParameter=Daily}" Value="True">
+                                            <Setter Property="Background" Value="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                            <Setter Property="Foreground" Value="{DynamicResource MaterialDesign.Brush.Primary.Foreground}"/>
+                                            <Setter Property="BorderBrush" Value="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                        <Button Content="Weekly" Command="{Binding SetPresetCommand}" CommandParameter="Weekly" Margin="0,0,4,0" Height="48" Padding="8,0">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding SelectedPreset, Converter={StaticResource EqualToBoolConverter}, ConverterParameter=Weekly}" Value="True">
+                                            <Setter Property="Background" Value="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                            <Setter Property="Foreground" Value="{DynamicResource MaterialDesign.Brush.Primary.Foreground}"/>
+                                            <Setter Property="BorderBrush" Value="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                        <Button Content="Monthly" Command="{Binding SetPresetCommand}" CommandParameter="Monthly" Margin="0,0,4,0" Height="48" Padding="8,0">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding SelectedPreset, Converter={StaticResource EqualToBoolConverter}, ConverterParameter=Monthly}" Value="True">
+                                            <Setter Property="Background" Value="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                            <Setter Property="Foreground" Value="{DynamicResource MaterialDesign.Brush.Primary.Foreground}"/>
+                                            <Setter Property="BorderBrush" Value="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                        <Button Content="Custom" Command="{Binding SetPresetCommand}" CommandParameter="Custom" Height="48" Padding="8,0">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding SelectedPreset, Converter={StaticResource EqualToBoolConverter}, ConverterParameter=Custom}" Value="True">
+                                            <Setter Property="Background" Value="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                            <Setter Property="Foreground" Value="{DynamicResource MaterialDesign.Brush.Primary.Foreground}"/>
+                                            <Setter Property="BorderBrush" Value="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                    </StackPanel>
+                    
+                    <DatePicker SelectedDate="{Binding StartDate}" IsEnabled="{Binding IsCustomRange}" materialDesign:HintAssist.Hint="From" Style="{StaticResource MaterialDesignOutlinedDatePicker}" Width="130" Margin="0,0,8,0" Height="48"/>
+                    <DatePicker SelectedDate="{Binding EndDate}" IsEnabled="{Binding IsCustomRange}" materialDesign:HintAssist.Hint="To" Style="{StaticResource MaterialDesignOutlinedDatePicker}" Width="130" Height="48"/>
+                </StackPanel>
+            </Grid>
+
             <ProgressBar IsIndeterminate="{Binding IsLoading}" Visibility="{Binding IsLoading, Converter={StaticResource BooleanToVisibilityConverter}}" Style="{StaticResource MaterialDesignLinearProgressBar}" Margin="0,0,0,8"/>
             
+            <!-- Filters and Search Bar -->
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,16" VerticalAlignment="Center">
+                <ComboBox ItemsSource="{Binding DsmFilterOptions}" 
+                          SelectedItem="{Binding SelectedDsmFilter}" 
+                          materialDesign:HintAssist.Hint="Filter by DSM" 
+                          Style="{StaticResource MaterialDesignOutlinedComboBox}" 
+                          Width="200" Margin="0,0,16,0" Height="48"/>
+                
+                <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" 
+                         materialDesign:HintAssist.Hint="Search DSM name..." 
+                         Style="{StaticResource MaterialDesignOutlinedTextBox}" 
+                         Width="250" Height="48" 
+                         materialDesign:TextFieldAssist.HasClearButton="True"/>
+            </StackPanel>
+
             <UniformGrid Columns="4" Margin="0,0,0,16">
                 <materialDesign:Card Margin="4" Padding="12" UniformCornerRadius="8">
                     <StackPanel>
-                        <TextBlock Text="Monthly Gross Sales" FontSize="11" Opacity="0.5"/>
+                        <TextBlock Text="Range Gross Sales" FontSize="11" Opacity="0.5"/>
                         <TextBlock Text="{Binding TotalSale, Converter={StaticResource CurrencyConverter}}" FontSize="18" FontWeight="Bold" Foreground="#1565C0"/>
                     </StackPanel>
                 </materialDesign:Card>
                 <materialDesign:Card Margin="4" Padding="12" UniformCornerRadius="8">
                     <StackPanel>
-                        <TextBlock Text="Monthly Litres Sold" FontSize="11" Opacity="0.5"/>
+                        <TextBlock Text="Range Litres Sold" FontSize="11" Opacity="0.5"/>
                         <TextBlock Text="{Binding TotalLitres, Converter={StaticResource LitresConverter}}" FontSize="18" FontWeight="Bold" Foreground="#2E7D32"/>
                     </StackPanel>
                 </materialDesign:Card>
                 <materialDesign:Card Margin="4" Padding="12" UniformCornerRadius="8">
                     <StackPanel>
-                        <TextBlock Text="Monthly Net Mismatch" FontSize="11" Opacity="0.5"/>
+                        <TextBlock Text="Range Net Mismatch" FontSize="11" Opacity="0.5"/>
                         <TextBlock Text="{Binding TotalMismatch, Converter={StaticResource CurrencyConverter}}" FontSize="18" FontWeight="Bold" Foreground="#C62828"/>
                     </StackPanel>
                 </materialDesign:Card>
@@ -50,6 +136,14 @@
                     <DataGridTextColumn Header="DSM Name" Binding="{Binding DsmName}" Width="*"/>
                     <DataGridTextColumn Header="Shifts Worked" Binding="{Binding ShiftCount}" Width="110"/>
                     <DataGridTextColumn Header="Total Sales" Binding="{Binding TotalSale, Converter={StaticResource CurrencyConverter}}" Width="120"/>
+                    <DataGridTextColumn Header="Total Cash" Binding="{Binding TotalCash, Converter={StaticResource CurrencyConverter}}" Width="110"/>
+                    <DataGridTextColumn Header="Cash (Bank)" Binding="{Binding CashDeposit, Converter={StaticResource CurrencyConverter}}" Width="110"/>
+                    <DataGridTextColumn Header="Cash (Hand)" Binding="{Binding CashInHand, Converter={StaticResource CurrencyConverter}}" Width="110"/>
+                    <DataGridTextColumn Header="PhonePe" Binding="{Binding PhonePe, Converter={StaticResource CurrencyConverter}}" Width="110"/>
+                    <DataGridTextColumn Header="PhonePe Card" Binding="{Binding PhonePeCard, Converter={StaticResource CurrencyConverter}}" Width="120"/>
+                    <DataGridTextColumn Header="PineLab Card" Binding="{Binding CreditCard, Converter={StaticResource CurrencyConverter}}" Width="120"/>
+                    <DataGridTextColumn Header="Petro Card" Binding="{Binding PetroCard, Converter={StaticResource CurrencyConverter}}" Width="110"/>
+                    <DataGridTextColumn Header="Debits" Binding="{Binding Debit, Converter={StaticResource CurrencyConverter}}" Width="100"/>
                     <DataGridTextColumn Header="Total Collection" Binding="{Binding TotalCollection, Converter={StaticResource CurrencyConverter}}" Width="130"/>
                     <DataGridTextColumn Header="Total Short" Binding="{Binding TotalShortAmount, Converter={StaticResource CurrencyConverter}}" Width="120"/>
                     <DataGridTextColumn Header="Average Short" Binding="{Binding AverageShort, Converter={StaticResource CurrencyConverter}}" Width="120"/>

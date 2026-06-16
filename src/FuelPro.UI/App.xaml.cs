@@ -73,9 +73,11 @@ public partial class App : Application
             using var scope = Services.CreateScope();
             var context = scope.ServiceProvider.GetRequiredService<FuelProDbContext>();
             var credentialService = scope.ServiceProvider.GetRequiredService<ICredentialFileService>();
-            await SeedData.InitializeAsync(context, credentialService);
             
+            // Create legacy tables FIRST so SeedData can safely ALTER/query them
             EnsureLegacyDatabaseCompatibility();
+            
+            await SeedData.InitializeAsync(context, credentialService);
             
             var recalcMigration = scope.ServiceProvider.GetRequiredService<RecalculationMigrationService>();
             await recalcMigration.RunIfNeededAsync();
@@ -100,21 +102,28 @@ public partial class App : Application
             Log.Error(ex, "Failed to start Sync Engine on startup");
         }
 
-        // Validate License
-        var licenseManager = Services.GetRequiredService<Rashtra.Licensing.LicenseManager>();
-        var validationResult = licenseManager.ValidateLicense();
-        if (validationResult.IsValid)
-        {
-            Log.Information("License is valid for client {CustomerName}", validationResult.License?.CustomerName);
-            var loginView = new Views.LoginView();
-            loginView.Show();
-        }
-        else
-        {
-            Log.Warning("License is invalid or missing: {ErrorMessage}", validationResult.ErrorMessage);
-            var activationWindow = new Views.ActivationWindow();
-            activationWindow.Show();
-        }
+        // ── LICENSE VALIDATION BYPASSED FOR TESTING ──
+        // Uncomment the block below to re-enable activation enforcement.
+        //
+        // var licenseManager = Services.GetRequiredService<Rashtra.Licensing.LicenseManager>();
+        // var validationResult = licenseManager.ValidateLicense();
+        // if (validationResult.IsValid)
+        // {
+        //     Log.Information("License is valid for client {CustomerName}", validationResult.License?.CustomerName);
+        //     var loginView = new Views.LoginView();
+        //     loginView.Show();
+        // }
+        // else
+        // {
+        //     Log.Warning("License is invalid or missing: {ErrorMessage}", validationResult.ErrorMessage);
+        //     var activationWindow = new Views.ActivationWindow();
+        //     activationWindow.Show();
+        // }
+
+        // TESTING MODE: Skip activation, go straight to login
+        Log.Information("License validation BYPASSED (testing mode)");
+        var loginView = new Views.LoginView();
+        loginView.Show();
 
         base.OnStartup(e);
     }

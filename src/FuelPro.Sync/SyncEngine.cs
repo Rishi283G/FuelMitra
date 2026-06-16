@@ -232,8 +232,10 @@ public class SyncEngine
             localToGuid[m.TableName][m.LocalId] = m.RemoteGuid;
         }
 
-        // Group by TableName to run batch operations
-        var groups = pendingLogs.GroupBy(l => l.TableName);
+        // Group by TableName and order by dependency so parent tables are pushed before child tables
+        var groups = pendingLogs
+            .GroupBy(l => l.TableName)
+            .OrderBy(g => GetPushOrderIndex(g.Key));
 
         foreach (var group in groups)
         {
@@ -289,7 +291,7 @@ public class SyncEngine
                             var dict = GetDatabaseValues(context, record);
 
                             // ── Assign or retrieve SyncGuid ──
-                            var syncGuid = await GetOrCreateSyncGuidAsync(context, localToGuid, tableName, op.RecordId);
+                            var syncGuid = await GetOrCreateSyncGuidAsync(context, localToGuid, tableName, op.RecordId, settings);
                             dict["SyncGuid"] = syncGuid;
 
                             // ── Translate FK integer IDs → parent SyncGuids ──
@@ -303,7 +305,7 @@ public class SyncEngine
                                         // For nullable FKs, 0 means null
                                         if (localFkId == 0) continue;
 
-                                        var parentGuid = await GetOrCreateSyncGuidAsync(context, localToGuid, fk.ReferencedTable, localFkId);
+                                        var parentGuid = await GetOrCreateSyncGuidAsync(context, localToGuid, fk.ReferencedTable, localFkId, settings);
                                         // Replace the integer FK with the parent's SyncGuid
                                         dict[fk.FkProperty] = parentGuid;
                                     }
@@ -585,7 +587,8 @@ public class SyncEngine
         FuelProDbContext context,
         Dictionary<string, Dictionary<int, string>> localToGuid,
         string tableName,
-        int localId)
+        int localId,
+        SyncSettings settings)
     {
         if (!localToGuid.ContainsKey(tableName))
             localToGuid[tableName] = new Dictionary<int, string>();
@@ -610,6 +613,25 @@ public class SyncEngine
             RemoteGuid = newGuid,
             LocalId = localId
         });
+
+        // Queue a sync log so the record is pushed to Supabase if it isn't already queued
+        var hasPendingLog = await context.SyncChangeLogs
+            .AnyAsync(l => l.TableName == tableName && l.RecordId == localId && !l.IsSynced);
+        if (!hasPendingLog)
+        {
+            context.SyncChangeLogs.Add(new SyncChangeLog
+            {
+                TableName = tableName,
+                RecordId = localId,
+                Operation = "INSERT",
+                CreatedAt = DateTime.Now,
+                IsSynced = false,
+                StationId = settings.StationId,
+                MachineId = settings.MachineId
+            });
+            _logger.Information("Queued missing parent record for push: {Table} LocalId={Id}", tableName, localId);
+        }
+
         await context.SaveChangesAsync();
 
         localToGuid[tableName][localId] = newGuid;
@@ -650,5 +672,17 @@ public class SyncEngine
 
         _logger.Information("Sync Status: {StatusMessage} | Pending: {PendingRecords} | Last Sync: {LastSyncTime}", message, pending, lastSync);
         SyncStatusChanged?.Invoke(CurrentStatus);
+    }
+
+    private static int GetPushOrderIndex(string tableName)
+    {
+        if (tableName == "Users") return 0;
+        
+        for (int i = 0; i < PullTableOrder.Length; i++)
+        {
+            if (PullTableOrder[i].TableName == tableName)
+                return i + 1;
+        }
+        return int.MaxValue;
     }
 }

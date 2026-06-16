@@ -383,12 +383,22 @@ public partial class ReportsViewModel : ObservableObject
     private async Task ExportMonthlyReportAsync()
     {
         IsLoading = true;
-        StatusMessage = "Exporting monthly Excel report...";
         try
         {
-            int monthNum = GetMonthNumber(SelectedMonthName);
-            var startDate = new DateTime(SelectedYear, monthNum, 1);
-            var endDate = new DateTime(SelectedYear, monthNum, DateTime.DaysInMonth(SelectedYear, monthNum));
+            DateTime startDate, endDate;
+            if (SelectedReportType == "DSR")
+            {
+                StatusMessage = "Exporting DSR report to Excel...";
+                startDate = SelectedDate.Date;
+                endDate = SelectedDate.Date;
+            }
+            else
+            {
+                StatusMessage = "Exporting monthly Excel report...";
+                int monthNum = GetMonthNumber(SelectedMonthName);
+                startDate = new DateTime(SelectedYear, monthNum, 1);
+                endDate = new DateTime(SelectedYear, monthNum, DateTime.DaysInMonth(SelectedYear, monthNum));
+            }
             
             var result = await _exportService.ExportDailyDataAsync(startDate, endDate);
             StatusMessage = result.Success

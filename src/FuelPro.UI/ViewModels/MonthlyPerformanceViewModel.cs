@@ -71,7 +71,7 @@ public partial class MonthlyPerformanceViewModel : ObservableObject
 
             foreach (var dayGroup in byDay.OrderBy(g => g.Key))
             {
-                var dayResult = _ownerCalcService.Calculate(dayGroup, null, null);
+                var dayResult = _ownerCalcService.Calculate(dayGroup, Array.Empty<Expense>(), Array.Empty<ShiftOtherCash>());
 
                 DayRows.Add(new MonthDayRow
                 {
