@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
-    <ApplicationIcon>app.ico</ApplicationIcon>
+    <ApplicationIcon>Resources\fuel-pump-icon.ico</ApplicationIcon>
     <GenerateMSBuildEditorConfig>false</GenerateMSBuildEditorConfig>
   </PropertyGroup>
 
@@ -79,7 +79,14 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Resource Include="app.ico" />
+    <Resource Include="Resources\fuel-pump-icon.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="..\..\Assets\**\*.*">
+      <Link>Assets\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>

@@ -99,6 +99,31 @@ public partial class OilDefDailyLogViewModel : ObservableObject
     public ObservableCollection<OilDefDailyLog> HistoryLogs { get; } = new();
     public ObservableCollection<OilDefPurchase> HistoryPurchases { get; } = new();
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsEditingPurchase))]
+    private OilDefPurchase? _editingPurchase;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsEditingSale))]
+    private OilDefDailyLog? _editingSaleLog;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsEditingAdjustment))]
+    private OilDefDailyLog? _editingAdjustmentLog;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsEditingProduct))]
+    [NotifyPropertyChangedFor(nameof(ProductFormTitle))]
+    [NotifyPropertyChangedFor(nameof(ProductButtonContent))]
+    private ProductMaster? _editingProduct;
+
+    public bool IsEditingPurchase => EditingPurchase != null;
+    public bool IsEditingSale => EditingSaleLog != null;
+    public bool IsEditingAdjustment => EditingAdjustmentLog != null;
+    public bool IsEditingProduct => EditingProduct != null;
+    public string ProductFormTitle => IsEditingProduct ? "Edit Product" : "Add Product to Catalog";
+    public string ProductButtonContent => IsEditingProduct ? "Update Product" : "Add to Catalog";
+
     public OilDefDailyLogViewModel()
     {
         _dbContext = App.Services.GetRequiredService<FuelProDbContext>();
@@ -153,12 +178,12 @@ public partial class OilDefDailyLogViewModel : ObservableObject
                 }
             }
             await _dbContext.SaveChangesAsync();
-            MessageBox.Show("Sale rates saved successfully.", "FuelPro — Rates Updated", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show("Sale rates saved successfully.", "PyroSync — Rates Updated", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)
         {
             Serilog.Log.Error(ex, "Failed to save product rates");
-            MessageBox.Show($"Error saving rates: {ex.Message}", "FuelPro — Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show($"Error saving rates: {ex.Message}", "PyroSync — Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -295,23 +320,116 @@ public partial class OilDefDailyLogViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private void EditPurchase(OilDefPurchase purchase)
+    {
+        if (purchase == null) return;
+        EditingPurchase = purchase;
+        PurchaseDate = purchase.PurchaseDate;
+        SelectedProductForPurchase = ActiveProducts.FirstOrDefault(p => p.Id == purchase.ProductId);
+        PurchaseSupplierName = purchase.SupplierName;
+        PurchaseInvoiceNumber = purchase.InvoiceNumber;
+        PurchaseQty = purchase.Quantity;
+        PurchaseUnitPrice = purchase.UnitPrice;
+    }
+
+    [RelayCommand]
+    private void CancelEditPurchase()
+    {
+        EditingPurchase = null;
+        PurchaseDate = DateTime.Today;
+        PurchaseSupplierName = string.Empty;
+        PurchaseInvoiceNumber = string.Empty;
+        PurchaseQty = 0;
+        PurchaseUnitPrice = 0;
+    }
+
+    [RelayCommand]
+    private void EditSaleLog(OilDefDailyLog log)
+    {
+        if (log == null) return;
+        EditingSaleLog = log;
+        SaleDate = log.LogDate;
+        SelectedProduct = ActiveProducts.FirstOrDefault(p => p.Id == log.ProductId);
+        SaleQty = log.SoldQuantity;
+        SaleRate = log.OverrideSaleRate ?? log.Product?.DefaultSaleRate ?? 0;
+    }
+
+    [RelayCommand]
+    private void CancelEditSale()
+    {
+        EditingSaleLog = null;
+        SaleDate = DateTime.Today;
+        SaleQty = 0;
+        if (SelectedProduct != null)
+        {
+            SaleRate = SelectedProduct.DefaultSaleRate;
+        }
+    }
+
+    [RelayCommand]
+    private void EditAdjustmentLog(OilDefDailyLog log)
+    {
+        if (log == null) return;
+        EditingAdjustmentLog = log;
+        AdjustmentDate = log.LogDate;
+        SelectedProduct = ActiveProducts.FirstOrDefault(p => p.Id == log.ProductId);
+        AdjustmentQty = log.AdjustmentQuantity;
+        SelectedAdjustmentType = log.AdjustmentType ?? "Physical Count Correction";
+        AdjustmentRemarks = log.Remarks ?? string.Empty;
+    }
+
+    [RelayCommand]
+    private void CancelEditAdjustment()
+    {
+        EditingAdjustmentLog = null;
+        AdjustmentDate = DateTime.Today;
+        AdjustmentQty = 0;
+        SelectedAdjustmentType = "Physical Count Correction";
+        AdjustmentRemarks = string.Empty;
+    }
+
+    [RelayCommand]
     private async Task SaveSaleAsync()
     {
         if (SelectedProduct == null)
         {
-            MessageBox.Show("Please select a product to log sales.", "FuelPro — Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show("Please select a product to log sales.", "PyroSync — Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
         if (SaleQty <= 0)
         {
-            MessageBox.Show("Sales quantity must be greater than zero.", "FuelPro — Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show("Sales quantity must be greater than zero.", "PyroSync — Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
         IsLoading = true;
         try
         {
+            // If editing, validate same day edit restriction
+            if (EditingSaleLog != null)
+            {
+                if (EditingSaleLog.LogDate.Date != DateTime.Today)
+                {
+                    MessageBox.Show("Mistaken entries can only be edited on the same day.", "PyroSync — Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                // If product or date changed, clean up the old log record
+                if (EditingSaleLog.ProductId != SelectedProduct.Id || EditingSaleLog.LogDate.Date != SaleDate.Date)
+                {
+                    var oldLog = await _dbContext.OilDefDailyLogs.FindAsync(EditingSaleLog.Id);
+                    if (oldLog != null)
+                    {
+                        oldLog.SoldQuantity = 0;
+                        oldLog.OverrideSaleRate = null;
+                        _dbContext.Entry(oldLog).State = EntityState.Modified;
+                        await _dbContext.SaveChangesAsync();
+                        await RecalculateRunningBalancesAsync(oldLog.ProductId, oldLog.LogDate);
+                    }
+                }
+            }
+
             var log = await _dbContext.OilDefDailyLogs
                 .FirstOrDefaultAsync(l => l.ProductId == SelectedProduct.Id && l.LogDate == SaleDate.Date);
 
@@ -337,11 +455,12 @@ public partial class OilDefDailyLogViewModel : ObservableObject
             await _dbContext.SaveChangesAsync();
             await RecalculateRunningBalancesAsync(SelectedProduct.Id, SaleDate.Date);
 
-            MessageBox.Show("Sales logged and stock recalculated successfully!", "FuelPro — Success", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show("Sales logged and stock recalculated successfully!", "PyroSync — Success", MessageBoxButton.OK, MessageBoxImage.Information);
             
             // Reset
             SaleQty = 0;
             SaleRate = SelectedProduct.DefaultSaleRate;
+            EditingSaleLog = null; // Clear edit state
 
             await LoadDashboardDataAsync();
             await LoadHistoryAsync();
@@ -349,7 +468,7 @@ public partial class OilDefDailyLogViewModel : ObservableObject
         catch (Exception ex)
         {
             Serilog.Log.Error(ex, "Failed to save sale");
-            MessageBox.Show($"Error saving sale: {ex.Message}", "FuelPro — Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show($"Error saving sale: {ex.Message}", "PyroSync — Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally { IsLoading = false; }
     }
@@ -359,74 +478,155 @@ public partial class OilDefDailyLogViewModel : ObservableObject
     {
         if (SelectedProductForPurchase == null)
         {
-            MessageBox.Show("Please select a product.", "FuelPro — Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show("Please select a product.", "PyroSync — Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
         if (string.IsNullOrWhiteSpace(PurchaseSupplierName) || string.IsNullOrWhiteSpace(PurchaseInvoiceNumber))
         {
-            MessageBox.Show("Supplier Name and Invoice Number are required.", "FuelPro — Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show("Supplier Name and Invoice Number are required.", "PyroSync — Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
         if (PurchaseQty <= 0 || PurchaseUnitPrice <= 0)
         {
-            MessageBox.Show("Quantity and Unit Price must be greater than zero.", "FuelPro — Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show("Quantity and Unit Price must be greater than zero.", "PyroSync — Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
         IsLoading = true;
         try
         {
-            var newPurchase = new OilDefPurchase
+            if (EditingPurchase != null)
             {
-                ProductId = SelectedProductForPurchase!.Id,
-                ProductType = SelectedProductForPurchase.Category,
-                PurchaseDate = PurchaseDate.Date,
-                SupplierName = PurchaseSupplierName,
-                InvoiceNumber = PurchaseInvoiceNumber,
-                Quantity = PurchaseQty,
-                UnitPrice = PurchaseUnitPrice,
-                TotalCost = Math.Round(PurchaseQty * PurchaseUnitPrice, 2)
-            };
-            _dbContext.OilDefPurchases.Add(newPurchase);
-            await _dbContext.SaveChangesAsync();
+                // Validate same-day edit
+                if (EditingPurchase.PurchaseDate.Date != DateTime.Today)
+                {
+                    MessageBox.Show("Mistaken entries can only be edited on the same day.", "PyroSync — Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
 
-            // Aggregate total purchases of this product on this day to update AddedQuantity in log
-            var totalPurchasedOnDay = await _dbContext.OilDefPurchases
-                .Where(p => p.ProductId == SelectedProductForPurchase.Id && p.PurchaseDate == PurchaseDate.Date)
-                .SumAsync(p => p.Quantity);
+                var oldProductId = EditingPurchase.ProductId;
+                var oldPurchaseDate = EditingPurchase.PurchaseDate.Date;
 
-            var log = await _dbContext.OilDefDailyLogs
-                .FirstOrDefaultAsync(l => l.ProductId == SelectedProductForPurchase.Id && l.LogDate == PurchaseDate.Date);
+                // Load tracked purchase
+                var purchase = await _dbContext.OilDefPurchases.FindAsync(EditingPurchase.Id);
+                if (purchase != null)
+                {
+                    purchase.ProductId = SelectedProductForPurchase.Id;
+                    purchase.ProductType = SelectedProductForPurchase.Category;
+                    purchase.PurchaseDate = PurchaseDate.Date;
+                    purchase.SupplierName = PurchaseSupplierName;
+                    purchase.InvoiceNumber = PurchaseInvoiceNumber;
+                    purchase.Quantity = PurchaseQty;
+                    purchase.UnitPrice = PurchaseUnitPrice;
+                    purchase.TotalCost = Math.Round(PurchaseQty * PurchaseUnitPrice, 2);
+                    _dbContext.Entry(purchase).State = EntityState.Modified;
+                    await _dbContext.SaveChangesAsync();
+                }
 
-            if (log != null)
-            {
-                log.AddedQuantity = totalPurchasedOnDay;
-                _dbContext.Entry(log).State = EntityState.Modified;
+                // Recalculate old day/product if changed
+                if (oldProductId != SelectedProductForPurchase.Id || oldPurchaseDate != PurchaseDate.Date)
+                {
+                    var totalPurchasedOnOldDay = await _dbContext.OilDefPurchases
+                        .Where(p => p.ProductId == oldProductId && p.PurchaseDate == oldPurchaseDate)
+                        .SumAsync(p => p.Quantity);
+
+                    var oldLog = await _dbContext.OilDefDailyLogs
+                        .FirstOrDefaultAsync(l => l.ProductId == oldProductId && l.LogDate == oldPurchaseDate);
+
+                    if (oldLog != null)
+                    {
+                        oldLog.AddedQuantity = totalPurchasedOnOldDay;
+                        _dbContext.Entry(oldLog).State = EntityState.Modified;
+                        await _dbContext.SaveChangesAsync();
+                        await RecalculateRunningBalancesAsync(oldProductId, oldPurchaseDate);
+                    }
+                }
+
+                // Recalculate new day/product
+                var totalPurchasedOnDay = await _dbContext.OilDefPurchases
+                    .Where(p => p.ProductId == SelectedProductForPurchase.Id && p.PurchaseDate == PurchaseDate.Date)
+                    .SumAsync(p => p.Quantity);
+
+                var log = await _dbContext.OilDefDailyLogs
+                    .FirstOrDefaultAsync(l => l.ProductId == SelectedProductForPurchase.Id && l.LogDate == PurchaseDate.Date);
+
+                if (log != null)
+                {
+                    log.AddedQuantity = totalPurchasedOnDay;
+                    _dbContext.Entry(log).State = EntityState.Modified;
+                }
+                else
+                {
+                    log = new OilDefDailyLog
+                    {
+                        LogDate = PurchaseDate.Date,
+                        ProductId = SelectedProductForPurchase.Id,
+                        ProductType = SelectedProductForPurchase.Category,
+                        AddedQuantity = totalPurchasedOnDay
+                    };
+                    _dbContext.OilDefDailyLogs.Add(log);
+                }
+
+                await _dbContext.SaveChangesAsync();
+                await RecalculateRunningBalancesAsync(SelectedProductForPurchase.Id, PurchaseDate.Date);
+
+                MessageBox.Show("Purchase invoice updated and stock recalculated!", "PyroSync — Success", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             else
             {
-                log = new OilDefDailyLog
+                var newPurchase = new OilDefPurchase
                 {
-                    LogDate = PurchaseDate.Date,
-                    ProductId = SelectedProductForPurchase.Id,
+                    ProductId = SelectedProductForPurchase!.Id,
                     ProductType = SelectedProductForPurchase.Category,
-                    AddedQuantity = totalPurchasedOnDay
+                    PurchaseDate = PurchaseDate.Date,
+                    SupplierName = PurchaseSupplierName,
+                    InvoiceNumber = PurchaseInvoiceNumber,
+                    Quantity = PurchaseQty,
+                    UnitPrice = PurchaseUnitPrice,
+                    TotalCost = Math.Round(PurchaseQty * PurchaseUnitPrice, 2)
                 };
-                _dbContext.OilDefDailyLogs.Add(log);
+                _dbContext.OilDefPurchases.Add(newPurchase);
+                await _dbContext.SaveChangesAsync();
+
+                // Aggregate total purchases of this product on this day to update AddedQuantity in log
+                var totalPurchasedOnDay = await _dbContext.OilDefPurchases
+                    .Where(p => p.ProductId == SelectedProductForPurchase.Id && p.PurchaseDate == PurchaseDate.Date)
+                    .SumAsync(p => p.Quantity);
+
+                var log = await _dbContext.OilDefDailyLogs
+                    .FirstOrDefaultAsync(l => l.ProductId == SelectedProductForPurchase.Id && l.LogDate == PurchaseDate.Date);
+
+                if (log != null)
+                {
+                    log.AddedQuantity = totalPurchasedOnDay;
+                    _dbContext.Entry(log).State = EntityState.Modified;
+                }
+                else
+                {
+                    log = new OilDefDailyLog
+                    {
+                        LogDate = PurchaseDate.Date,
+                        ProductId = SelectedProductForPurchase.Id,
+                        ProductType = SelectedProductForPurchase.Category,
+                        AddedQuantity = totalPurchasedOnDay
+                    };
+                    _dbContext.OilDefDailyLogs.Add(log);
+                }
+
+                await _dbContext.SaveChangesAsync();
+                await RecalculateRunningBalancesAsync(SelectedProductForPurchase.Id, PurchaseDate.Date);
+
+                MessageBox.Show("Purchase invoice logged and stock updated!", "PyroSync — Success", MessageBoxButton.OK, MessageBoxImage.Information);
             }
-
-            await _dbContext.SaveChangesAsync();
-            await RecalculateRunningBalancesAsync(SelectedProductForPurchase.Id, PurchaseDate.Date);
-
-            MessageBox.Show("Purchase invoice logged and stock updated!", "FuelPro — Success", MessageBoxButton.OK, MessageBoxImage.Information);
 
             // Reset
             PurchaseSupplierName = string.Empty;
             PurchaseInvoiceNumber = string.Empty;
             PurchaseQty = 0;
             PurchaseUnitPrice = 0;
+            EditingPurchase = null; // Clear edit state
 
             await LoadDashboardDataAsync();
             await LoadHistoryAsync();
@@ -434,7 +634,7 @@ public partial class OilDefDailyLogViewModel : ObservableObject
         catch (Exception ex)
         {
             Serilog.Log.Error(ex, "Failed to save purchase");
-            MessageBox.Show($"Error saving purchase: {ex.Message}", "FuelPro — Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show($"Error saving purchase: {ex.Message}", "PyroSync — Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally { IsLoading = false; }
     }
@@ -444,19 +644,44 @@ public partial class OilDefDailyLogViewModel : ObservableObject
     {
         if (SelectedProduct == null)
         {
-            MessageBox.Show("Please select a product.", "FuelPro — Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show("Please select a product.", "PyroSync — Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
         if (AdjustmentQty == 0)
         {
-            MessageBox.Show("Adjustment quantity cannot be zero.", "FuelPro — Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show("Adjustment quantity cannot be zero.", "PyroSync — Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
         IsLoading = true;
         try
         {
+            // If editing, validate same day edit restriction
+            if (EditingAdjustmentLog != null)
+            {
+                if (EditingAdjustmentLog.LogDate.Date != DateTime.Today)
+                {
+                    MessageBox.Show("Mistaken entries can only be edited on the same day.", "PyroSync — Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                // If product or date changed, clean up the old log record
+                if (EditingAdjustmentLog.ProductId != SelectedProduct.Id || EditingAdjustmentLog.LogDate.Date != AdjustmentDate.Date)
+                {
+                    var oldLog = await _dbContext.OilDefDailyLogs.FindAsync(EditingAdjustmentLog.Id);
+                    if (oldLog != null)
+                    {
+                        oldLog.AdjustmentQuantity = 0;
+                        oldLog.AdjustmentType = null;
+                        oldLog.Remarks = null;
+                        _dbContext.Entry(oldLog).State = EntityState.Modified;
+                        await _dbContext.SaveChangesAsync();
+                        await RecalculateRunningBalancesAsync(oldLog.ProductId, oldLog.LogDate);
+                    }
+                }
+            }
+
             var log = await _dbContext.OilDefDailyLogs
                 .FirstOrDefaultAsync(l => l.ProductId == SelectedProduct.Id && l.LogDate == AdjustmentDate.Date);
 
@@ -484,11 +709,12 @@ public partial class OilDefDailyLogViewModel : ObservableObject
             await _dbContext.SaveChangesAsync();
             await RecalculateRunningBalancesAsync(SelectedProduct.Id, AdjustmentDate.Date);
 
-            MessageBox.Show("Stock adjustment applied successfully!", "FuelPro — Success", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show("Stock adjustment applied successfully!", "PyroSync — Success", MessageBoxButton.OK, MessageBoxImage.Information);
 
             // Reset
             AdjustmentQty = 0;
             AdjustmentRemarks = string.Empty;
+            EditingAdjustmentLog = null; // Clear edit state
 
             await LoadDashboardDataAsync();
             await LoadHistoryAsync();
@@ -496,9 +722,29 @@ public partial class OilDefDailyLogViewModel : ObservableObject
         catch (Exception ex)
         {
             Serilog.Log.Error(ex, "Failed to save adjustment");
-            MessageBox.Show($"Error saving adjustment: {ex.Message}", "FuelPro — Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show($"Error saving adjustment: {ex.Message}", "PyroSync — Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally { IsLoading = false; }
+    }
+
+    [RelayCommand]
+    private void EditProduct(ProductMaster product)
+    {
+        EditingProduct = product;
+        NewProductName = product.ProductName;
+        NewProductCategory = product.Category;
+        NewProductUnit = product.Unit;
+        NewProductDefaultSaleRate = product.DefaultSaleRate;
+    }
+
+    [RelayCommand]
+    private void CancelEditProduct()
+    {
+        EditingProduct = null;
+        NewProductName = string.Empty;
+        NewProductCategory = "Oil";
+        NewProductUnit = "Litre";
+        NewProductDefaultSaleRate = 0;
     }
 
     [RelayCommand]
@@ -506,42 +752,84 @@ public partial class OilDefDailyLogViewModel : ObservableObject
     {
         if (string.IsNullOrWhiteSpace(NewProductName))
         {
-            MessageBox.Show("Product Name is required.", "FuelPro — Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show("Product Name is required.", "PyroSync — Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
         if (NewProductDefaultSaleRate <= 0)
         {
-            MessageBox.Show("Default Sale Rate must be greater than zero.", "FuelPro — Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show("Default Sale Rate must be greater than zero.", "PyroSync — Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
         IsLoading = true;
         try
         {
-            var product = new ProductMaster
+            if (EditingProduct != null)
             {
-                ProductName = NewProductName,
-                Category = NewProductCategory,
-                Unit = NewProductUnit,
-                DefaultSaleRate = NewProductDefaultSaleRate,
-                IsActive = true
-            };
-            _dbContext.ProductMasters.Add(product);
-            await _dbContext.SaveChangesAsync();
-
-            MessageBox.Show("Product added to catalog successfully!", "FuelPro — Success", MessageBoxButton.OK, MessageBoxImage.Information);
+                var tracked = await _dbContext.ProductMasters.FindAsync(EditingProduct.Id);
+                if (tracked != null)
+                {
+                    tracked.ProductName = NewProductName;
+                    tracked.Category = NewProductCategory;
+                    tracked.Unit = NewProductUnit;
+                    tracked.DefaultSaleRate = NewProductDefaultSaleRate;
+                    _dbContext.Entry(tracked).State = EntityState.Modified;
+                    await _dbContext.SaveChangesAsync();
+                    MessageBox.Show("Product updated successfully!", "PyroSync — Success", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+            }
+            else
+            {
+                var product = new ProductMaster
+                {
+                    ProductName = NewProductName,
+                    Category = NewProductCategory,
+                    Unit = NewProductUnit,
+                    DefaultSaleRate = NewProductDefaultSaleRate,
+                    IsActive = true
+                };
+                _dbContext.ProductMasters.Add(product);
+                await _dbContext.SaveChangesAsync();
+                MessageBox.Show("Product added to catalog successfully!", "PyroSync — Success", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
 
             // Reset
-            NewProductName = string.Empty;
-            NewProductDefaultSaleRate = 0;
-
+            CancelEditProduct();
             await LoadProductsAsync();
         }
         catch (Exception ex)
         {
             Serilog.Log.Error(ex, "Failed to save product master");
-            MessageBox.Show($"Error saving product: {ex.Message}", "FuelPro — Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show($"Error saving product: {ex.Message}", "PyroSync — Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally { IsLoading = false; }
+    }
+
+    [RelayCommand]
+    private async Task DeleteProductAsync(ProductMaster product)
+    {
+        var confirm = MessageBox.Show($"Are you sure you want to delete '{product.ProductName}'? This will deactivate the product but preserve historical records.", 
+            "Confirm Deactivate", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (confirm != MessageBoxResult.Yes) return;
+
+        IsLoading = true;
+        try
+        {
+            var tracked = await _dbContext.ProductMasters.FindAsync(product.Id);
+            if (tracked != null)
+            {
+                tracked.IsActive = false;
+                _dbContext.Entry(tracked).State = EntityState.Modified;
+                await _dbContext.SaveChangesAsync();
+                MessageBox.Show("Product deactivated successfully.", "PyroSync — Success", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            await LoadProductsAsync();
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to deactivate product");
+            MessageBox.Show($"Error deactivating product: {ex.Message}", "PyroSync — Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally { IsLoading = false; }
     }
@@ -631,7 +919,7 @@ public partial class OilDefDailyLogViewModel : ObservableObject
 
             var payload = new
             {
-                stationName = _dbContext.Settings.Select(s => s.PumpStationName).FirstOrDefault() ?? "VKD Petroleum",
+                stationName = _dbContext.Settings.Select(s => s.PumpStationName).FirstOrDefault() ?? "PyroSync",
                 startDate = StartDate.ToString("dd-MMM-yyyy"),
                 endDate = EndDate.ToString("dd-MMM-yyyy"),
                 oilProducts = oilRows,

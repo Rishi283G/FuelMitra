@@ -1,0 +1,102 @@
+<UserControl x:Class="FuelPro.UI.Views.OuterExpensesView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             xmlns:converters="clr-namespace:FuelPro.UI.Converters">
+    <UserControl.Resources>
+        <converters:IndianCurrencyConverter x:Key="CurrencyConverter"/>
+        <BooleanToVisibilityConverter x:Key="BoolToVisConverter"/>
+    </UserControl.Resources>
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,20">
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                <materialDesign:PackIcon Kind="CashMinus" Width="28" Height="28" Foreground="#C62828" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                <TextBlock Text="Owner Outer Expenses" FontSize="24" FontWeight="Bold" VerticalAlignment="Center"/>
+            </StackPanel>
+            <TextBlock Text="Local-only owner expenses. Excluded from synchronization and manager screens." FontSize="12" Opacity="0.6"/>
+        </StackPanel>
+
+        <!-- Main Body -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="4*"/>
+                <ColumnDefinition Width="6*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Left Form -->
+            <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto" MaxHeight="600" Margin="0,0,16,0">
+                <materialDesign:Card Padding="24" UniformCornerRadius="10" materialDesign:ElevationAssist.Elevation="Dp1" VerticalAlignment="Top">
+                    <StackPanel>
+                        <TextBlock Text="Add Expense Record" FontSize="16" FontWeight="Bold" Margin="0,0,16,16" Foreground="#C62828"
+                                   Visibility="{Binding IsEditing, Converter={StaticResource BoolToVisConverter}, ConverterParameter=Inverse}"/>
+                        <TextBlock Text="Edit Expense Record" FontSize="16" FontWeight="Bold" Margin="0,0,16,16" Foreground="#C62828"
+                                   Visibility="{Binding IsEditing, Converter={StaticResource BoolToVisConverter}}"/>
+
+                        <DatePicker SelectedDate="{Binding ExpenseDate}" materialDesign:HintAssist.Hint="Expense Date"
+                                    Style="{StaticResource MaterialDesignOutlinedDatePicker}" Margin="0,0,0,14" Height="48"/>
+
+                        <TextBox Text="{Binding Description, UpdateSourceTrigger=PropertyChanged}"
+                                 materialDesign:HintAssist.Hint="Description (e.g. Office Rent, Owner Draw)"
+                                 Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,0,14" Height="48"/>
+
+                        <TextBox Text="{Binding Amount, UpdateSourceTrigger=PropertyChanged}"
+                                 materialDesign:HintAssist.Hint="Amount (₹)"
+                                 Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,0,24" Height="48"/>
+
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="Save Expense" Style="{StaticResource MaterialDesignRaisedButton}"
+                                    Command="{Binding SaveExpenseCommand}"
+                                    Background="#C62828" BorderBrush="#C62828" Height="44" Width="140"/>
+                            <Button Content="Cancel" Style="{StaticResource MaterialDesignFlatButton}"
+                                    Command="{Binding CancelEditCommand}"
+                                    Visibility="{Binding IsEditing, Converter={StaticResource BoolToVisConverter}}"
+                                    Height="44" Foreground="#D32F2F" Margin="10,0,0,0"/>
+                        </StackPanel>
+                    </StackPanel>
+                </materialDesign:Card>
+            </ScrollViewer>
+
+            <!-- Right Grid -->
+            <Grid Grid.Column="1">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Text="Expense Log History" FontSize="15" FontWeight="Bold" Margin="0,0,0,10" Foreground="#C62828"/>
+                
+                <DataGrid Grid.Row="1" ItemsSource="{Binding HistoryExpenses}" AutoGenerateColumns="False" IsReadOnly="True"
+                          materialDesign:DataGridAssist.CellPadding="10 8" VerticalScrollBarVisibility="Auto">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Date" Binding="{Binding ExpenseDate, StringFormat='{}{0:dd-MMM-yyyy}'}" Width="110"/>
+                        <DataGridTextColumn Header="Description" Binding="{Binding Description}" Width="2*"/>
+                        <DataGridTextColumn Header="Amount" Binding="{Binding Amount, Converter={StaticResource CurrencyConverter}}" Width="*"/>
+                        <DataGridTemplateColumn Header="Actions" Width="140">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button Content="Edit" Style="{StaticResource MaterialDesignFlatButton}"
+                                                Command="{Binding DataContext.EditExpenseCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}"
+                                                Height="26" Padding="6,0" Margin="0,0,4,0"/>
+                                        <Button Content="Delete" Style="{StaticResource MaterialDesignFlatButton}" Foreground="#D32F2F"
+                                                Command="{Binding DataContext.DeleteExpenseCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}"
+                                                Height="26" Padding="6,0"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </Grid>
+        </Grid>
+    </Grid>
+</UserControl>

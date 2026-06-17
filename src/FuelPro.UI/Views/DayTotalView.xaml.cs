@@ -28,7 +28,7 @@ public partial class DayTotalView : UserControl
             return;
         }
 
-        string stationName = "VKD Petroleum";
+        string stationName = "PyroSync";
         try
         {
             var settingsRepo = App.Services.GetRequiredService<FuelPro.Core.Repositories.ISettingsRepository>();

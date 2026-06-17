@@ -54,8 +54,9 @@ public class FinancialCalculationResult
     public double DsmBaseSalaries { get; set; }
     public double SalaryAdjustments { get; set; }
     public double ShortRecoveries { get; set; }
+    public double OwnerOuterExpenses { get; set; }
 
-    public double NetProfit => GrossProfit - TotalExpenses - DsmBaseSalaries - SalaryAdjustments + ShortRecoveries;
+    public double NetProfit => GrossProfit - TotalExpenses - DsmBaseSalaries - SalaryAdjustments + ShortRecoveries - OwnerOuterExpenses;
 }
 
 public class DsmSalaryRowDto

@@ -21,7 +21,7 @@ namespace Rashtra.LicenseGenerator
 
     public partial class MainWindowViewModel : ObservableObject
     {
-        [ObservableProperty] private string _selectedProduct = "FPL";
+        [ObservableProperty] private string _selectedProduct = "PSC";
         [ObservableProperty] private string _selectedLicenseType = "Lifetime";
         [ObservableProperty] private string _customerName = "";
         [ObservableProperty] private string _businessName = "";
@@ -36,7 +36,7 @@ namespace Rashtra.LicenseGenerator
         public Dictionary<string, string> ProductOptions { get; } = new()
         {
             { "FPL", "FuelPro Lite (FPL)" },
-            { "VKD", "VKD Petroleum (VKD)" },
+            { "PSC", "PyroSync (PSC)" },
             { "ZPA", "ZP Automation (ZPA)" }
         };
 

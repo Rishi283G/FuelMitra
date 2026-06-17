@@ -95,15 +95,15 @@ namespace Rashtra.Licensing
             }
             else
             {
-                if (key.Contains("-T-") || key.StartsWith(_productCode + "-T", StringComparison.OrdinalIgnoreCase))
+                if (key.Contains("-T-") || key.StartsWith(_productCode + "-T-", StringComparison.OrdinalIgnoreCase))
                 {
                     verifyProductCode = _productCode + "-T";
                 }
-                else if (key.Contains("-A-") || key.StartsWith(_productCode + "-A", StringComparison.OrdinalIgnoreCase))
+                else if (key.Contains("-A-") || key.StartsWith(_productCode + "-A-", StringComparison.OrdinalIgnoreCase))
                 {
                     verifyProductCode = _productCode + "-A";
                 }
-                else if (key.Contains("-D-") || key.StartsWith(_productCode + "-D", StringComparison.OrdinalIgnoreCase))
+                else if (key.Contains("-D-") || key.StartsWith(_productCode + "-D-", StringComparison.OrdinalIgnoreCase))
                 {
                     verifyProductCode = _productCode + "-D";
                 }

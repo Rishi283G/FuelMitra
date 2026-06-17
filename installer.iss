@@ -1,6 +1,6 @@
-#define MyAppName "FuelPro"
+#define MyAppName "PyroSync"
 #define MyAppVersion "1.0.1"
-#define MyAppPublisher "VKD Petroleum"
+#define MyAppPublisher "PyroSync"
 #define MyAppExeName "FuelPro.UI.exe"
 
 [Setup]
@@ -9,19 +9,20 @@ AppId={{5B24A61B-3914-4CC7-B9C0-8D3A8E0FF6A2}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
-DefaultDirName={autopf}\VKD Petroleum\{#MyAppName}
-DefaultGroupName=VKD Petroleum
+DefaultDirName={autopf}\{#MyAppName}
+DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 
 ; Installer Output
 OutputDir=.\installer_output
-OutputBaseFilename=FuelPro_Setup_v{#MyAppVersion}
+OutputBaseFilename=PyroSync_Setup_v{#MyAppVersion}
 Compression=lzma2
 SolidCompression=yes
 
 ; Cosmetics
 PrivilegesRequired=admin
 ArchitecturesInstallIn64BitMode=x64
+SetupIconFile=src\FuelPro.UI\Resources\fuel-pump-icon.ico
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"

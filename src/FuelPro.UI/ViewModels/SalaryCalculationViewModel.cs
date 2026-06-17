@@ -122,13 +122,13 @@ public partial class SalaryCalculationViewModel : ObservableObject
         {
             int monthNum = GetMonthNumber(SelectedMonthName);
             await _financialCalcService.SaveDsmSalaryAdjustmentsAsync(SelectedYear, monthNum, SalaryRows.ToList());
-            MessageBox.Show("Salary adjustments saved successfully!", "FuelPro — Success", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show("Salary adjustments saved successfully!", "PyroSync — Success", MessageBoxButton.OK, MessageBoxImage.Information);
             await LoadSalariesAsync();
         }
         catch (Exception ex)
         {
             Serilog.Log.Error(ex, "Failed to save salary adjustments");
-            MessageBox.Show($"Failed to save adjustments: {ex.Message}", "FuelPro — Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show($"Failed to save adjustments: {ex.Message}", "PyroSync — Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally { IsLoading = false; }
     }
@@ -138,7 +138,7 @@ public partial class SalaryCalculationViewModel : ObservableObject
     {
         if (string.IsNullOrWhiteSpace(NewProfile.DsmName))
         {
-            MessageBox.Show("Please enter a DSM Name.", "FuelPro — Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show("Please enter a DSM Name.", "PyroSync — Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
@@ -147,13 +147,13 @@ public partial class SalaryCalculationViewModel : ObservableObject
             var res = await _profileRepo.AddAsync(NewProfile);
             if (res.Success)
             {
-                MessageBox.Show("DSM Profile added successfully!", "FuelPro — Success", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show("DSM Profile added successfully!", "PyroSync — Success", MessageBoxButton.OK, MessageBoxImage.Information);
                 NewProfile = new DsmProfile { SalaryType = "FixedMonthly", BaseSalary = 12000.0 };
                 await LoadAllAsync();
             }
             else
             {
-                MessageBox.Show(res.Error, "FuelPro — Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show(res.Error, "PyroSync — Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
         catch (Exception ex)
@@ -167,7 +167,7 @@ public partial class SalaryCalculationViewModel : ObservableObject
     {
         if (SelectedProfile == null)
         {
-            MessageBox.Show("Please select a profile to update.", "FuelPro — Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show("Please select a profile to update.", "PyroSync — Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
@@ -176,13 +176,13 @@ public partial class SalaryCalculationViewModel : ObservableObject
             var res = await _profileRepo.UpdateAsync(SelectedProfile);
             if (res.Success)
             {
-                MessageBox.Show("DSM Profile updated successfully!", "FuelPro — Success", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show("DSM Profile updated successfully!", "PyroSync — Success", MessageBoxButton.OK, MessageBoxImage.Information);
                 SelectedProfile = null;
                 await LoadAllAsync();
             }
             else
             {
-                MessageBox.Show(res.Error, "FuelPro — Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show(res.Error, "PyroSync — Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
         catch (Exception ex)
@@ -196,7 +196,7 @@ public partial class SalaryCalculationViewModel : ObservableObject
     {
         if (SelectedProfile == null)
         {
-            MessageBox.Show("Please select a profile to delete.", "FuelPro — Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show("Please select a profile to delete.", "PyroSync — Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
@@ -208,13 +208,13 @@ public partial class SalaryCalculationViewModel : ObservableObject
             var res = await _profileRepo.DeleteAsync(SelectedProfile.DsmProfileId);
             if (res.Success)
             {
-                MessageBox.Show("DSM Profile deleted successfully!", "FuelPro — Success", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show("DSM Profile deleted successfully!", "PyroSync — Success", MessageBoxButton.OK, MessageBoxImage.Information);
                 SelectedProfile = null;
                 await LoadAllAsync();
             }
             else
             {
-                MessageBox.Show(res.Error, "FuelPro — Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show(res.Error, "PyroSync — Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
         catch (Exception ex)

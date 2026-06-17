@@ -32,4 +32,7 @@ public class OilDefPurchase
     public double Quantity { get; set; }
     public double UnitPrice { get; set; }
     public double TotalCost { get; set; }
+
+    [NotMapped]
+    public bool IsEditable => PurchaseDate.Date == DateTime.Today;
 }

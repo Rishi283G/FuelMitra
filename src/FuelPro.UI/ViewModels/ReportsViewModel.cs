@@ -90,7 +90,7 @@ public partial class ReportsViewModel : ObservableObject
 
                 if (entries.Count == 0)
                 {
-                    MessageBox.Show("No entry data found for the selected date.", "FuelPro — Report", MessageBoxButton.OK, MessageBoxImage.Information);
+                    MessageBox.Show("No entry data found for the selected date.", "PyroSync — Report", MessageBoxButton.OK, MessageBoxImage.Information);
                     StatusMessage = "No data found.";
                     return;
                 }
@@ -99,7 +99,7 @@ public partial class ReportsViewModel : ObservableObject
                 var expResult = await _expenseRepo.GetExpensesByShiftIdsAsync(shiftIds);
                 var allExpenses = expResult.Success && expResult.Data != null ? expResult.Data : new List<Expense>();
 
-                var stationName = "VKD Petroleum";
+                var stationName = "PyroSync";
                 var s = await _settingsRepo.GetSettingsAsync();
                 if (s.Success && s.Data != null) stationName = s.Data.PumpStationName;
 
@@ -318,7 +318,7 @@ public partial class ReportsViewModel : ObservableObject
                     .Select(kvp => new { category = kvp.Key, amount = kvp.Value })
                     .ToList();
 
-                var stationName = "VKD Petroleum";
+                var stationName = "PyroSync";
                 var s = await _settingsRepo.GetSettingsAsync();
                 if (s.Success && s.Data != null) stationName = s.Data.PumpStationName;
 
@@ -363,6 +363,7 @@ public partial class ReportsViewModel : ObservableObject
                     totalExpenses = financials.TotalExpenses,
                     totalDsmSalaries = financials.TotalDsmSalaries,
                     grossProfit = financials.GrossProfit,
+                    ownerOuterExpenses = financials.OwnerOuterExpenses,
                     netProfit = financials.NetProfit
                 };
 
@@ -373,7 +374,7 @@ public partial class ReportsViewModel : ObservableObject
         catch (Exception ex)
         {
             Serilog.Log.Error(ex, "Failed to print report");
-            MessageBox.Show($"Print failed: {ex.Message}", "FuelPro — Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show($"Print failed: {ex.Message}", "PyroSync — Error", MessageBoxButton.OK, MessageBoxImage.Error);
             StatusMessage = "Print failed.";
         }
         finally { IsLoading = false; }

@@ -35,7 +35,7 @@ public partial class FinalCalculationView : UserControl
         try
         {
             // Retrieve station name from settings
-            string stationName = "VKD Petroleum";
+            string stationName = "PyroSync";
             try
             {
                 var settingsRepo = App.Services.GetRequiredService<FuelPro.Core.Repositories.ISettingsRepository>();

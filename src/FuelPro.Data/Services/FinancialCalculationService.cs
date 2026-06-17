@@ -152,6 +152,12 @@ public class FinancialCalculationService : IFinancialCalculationService
         result.SalaryAdjustments = Math.Round(adjustments, 2);
         result.ShortRecoveries = Math.Round(recoveries, 2);
 
+        // Fetch local-only Owner Outer Expenses in range
+        var outerExpSum = await _dbContext.OuterExpenses
+            .Where(e => e.ExpenseDate >= startDate.Date && e.ExpenseDate <= endDate.Date)
+            .SumAsync(e => e.Amount);
+        result.OwnerOuterExpenses = Math.Round(outerExpSum, 2);
+
         return result;
     }
 

@@ -32,4 +32,10 @@ public class SyncChangeLog
 
     [MaxLength(100)]
     public string? MachineId { get; set; }
+
+    [MaxLength(100)]
+    public string? SyncGuid { get; set; }
+
+    [MaxLength(100)]
+    public string? RecordGuid { get; set; }
 }

@@ -23,6 +23,12 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host "[SUCCESS] Application published to $publishDir" -ForegroundColor Green
 
+# Copy Assets folder to publish directory
+if (Test-Path ".\Assets") {
+    Copy-Item -Path ".\Assets" -Destination "$publishDir\Assets" -Recurse -Force
+    Write-Host "[SUCCESS] Assets folder copied to $publishDir\Assets" -ForegroundColor Green
+}
+
 # 2. Check for Inno Setup, download and install if missing
 Write-Host "`n[2/3] Checking Inno Setup Compiler..." -ForegroundColor Yellow
 $isccPathAdmin = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"

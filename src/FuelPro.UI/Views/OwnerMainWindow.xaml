@@ -10,7 +10,8 @@
         WindowState="Maximized"
         Background="{DynamicResource MaterialDesign.Brush.Background}"
         TextElement.Foreground="{DynamicResource MaterialDesign.Brush.Foreground}"
-        FontFamily="{materialDesign:MaterialDesignFont}">
+        FontFamily="{materialDesign:MaterialDesignFont}"
+        Icon="pack://application:,,,/Resources/fuel-pump-icon.ico">
 
     <Window.Resources>
         <DataTemplate DataType="{x:Type vm:OwnerDashboardViewModel}">
@@ -48,6 +49,9 @@
         </DataTemplate>
         <DataTemplate DataType="{x:Type vm:OilDefSummaryViewModel}">
             <views:OilDefSummaryView/>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:OuterExpensesViewModel}">
+            <views:OuterExpensesView/>
         </DataTemplate>
     </Window.Resources>
 
@@ -276,6 +280,23 @@
                             </Style>
                         </Button.Style>
                         <materialDesign:PackIcon Kind="ChartBar" Width="24" Height="24"/>
+                    </Button>
+
+                    <!-- Outer Expenses -->
+                    <Button Command="{Binding NavigateToOuterExpensesCommand}" ToolTip="Outer Expenses" Margin="0,3">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
+                                <Setter Property="Foreground" Value="White" />
+                                <Setter Property="Opacity" Value="0.5" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding SelectedNavIndex}" Value="12">
+                                        <Setter Property="Opacity" Value="1" />
+                                        <Setter Property="Background" Value="#33FFFFFF" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                        <materialDesign:PackIcon Kind="CashMinus" Width="24" Height="24"/>
                     </Button>
                 </StackPanel>
             </Border>

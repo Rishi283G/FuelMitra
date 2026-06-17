@@ -134,7 +134,7 @@
         function renderData() {
             if (!data || !data.startDate) return;
 
-            document.getElementById('stationName').innerText = data.stationName || "VKD Petroleum";
+            document.getElementById('stationName').innerText = data.stationName || "PyroSync";
             document.getElementById('dateRange').innerText = `${data.startDate} to ${data.endDate}`;
 
             // Fuel Table
@@ -220,6 +220,7 @@
             document.getElementById('grossProfitText').innerText = formatCurrency(data.grossProfit);
             document.getElementById('operatingExpensesText').innerText = formatCurrency(data.totalExpenses);
             document.getElementById('dsmSalariesText').innerText = formatCurrency(data.totalDsmSalaries);
+            document.getElementById('ownerOuterExpensesText').innerText = formatCurrency(data.ownerOuterExpenses || 0);
             
             const netProfitCell = document.getElementById('netProfitText');
             netProfitCell.innerText = formatCurrency(data.netProfit);
@@ -251,7 +252,7 @@
     <div class="header">
         <div style="display: flex; align-items: center; justify-content: center; gap: 15px;">
             <img id="logo" style="display: none; height: 50px;" src="" alt="logo" />
-            <h1 id="stationName">VKD Petroleum</h1>
+            <h1 id="stationName">PyroSync</h1>
         </div>
         <p>Monthly Profit & Loss Statement</p>
         <p id="dateRange">01-Jun-2026 to 30-Jun-2026</p>
@@ -317,6 +318,10 @@
             <tr>
                 <td style="color: #7b1fa2;">Less: Total DSM Salaries Cost:</td>
                 <td class="text-right" id="dsmSalariesText" style="color: #7b1fa2;">-₹0.00</td>
+            </tr>
+            <tr>
+                <td style="color: #c62828;">Less: Owner Outer Expenses:</td>
+                <td class="text-right" id="ownerOuterExpensesText" style="color: #c62828;">-₹0.00</td>
             </tr>
             <tr style="border-top: 2px solid #00695C; font-size: 16px;">
                 <td style="font-weight: bold; padding-top: 10px;">Net Operating Profit / Loss:</td>

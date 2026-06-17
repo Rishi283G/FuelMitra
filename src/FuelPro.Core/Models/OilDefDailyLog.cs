@@ -38,4 +38,7 @@ public class OilDefDailyLog
     /// <summary>Total sale value for this log row: Qty × EffectiveRate.</summary>
     [NotMapped]
     public double SalesValue => SoldQuantity * EffectiveRate;
+
+    [NotMapped]
+    public bool IsEditable => LogDate.Date == DateTime.Today;
 }

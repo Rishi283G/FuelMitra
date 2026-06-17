@@ -46,6 +46,18 @@ namespace FuelPro.Tests
         }
 
         [Fact]
+        public void LicenseManager_VerifyKey_Succeeds_For_PSC_Lifetime_Key_With_First_Char_T()
+        {
+            var licenseManager = new LicenseManager("PSC", TestFolderName);
+            var customerName = "rushikesh jadhav";
+            var deviceId = "RT-DD9D-6C54-B8CE";
+            var key = "PSC-T4VC-SRPJ-4RGD";
+
+            var result = licenseManager.VerifyKey(customerName, deviceId, key);
+            Assert.True(result);
+        }
+
+        [Fact]
         public void LicenseManager_VerifyKey_Fails_For_Mismatched_Customer()
         {
             var licenseManager = new LicenseManager(TestProductCode, TestFolderName);

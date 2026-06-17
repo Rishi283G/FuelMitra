@@ -161,6 +161,13 @@ public partial class OwnerMainWindowViewModel : ObservableObject
         CurrentView = App.Services.GetRequiredService<OilDefSummaryViewModel>();
     }
 
+    [RelayCommand]
+    private void NavigateToOuterExpenses()
+    {
+        SelectedNavIndex = 12;
+        CurrentView = App.Services.GetRequiredService<OuterExpensesViewModel>();
+    }
+
     /// <summary>
     /// Called by the sync engine to update status display.
     /// </summary>

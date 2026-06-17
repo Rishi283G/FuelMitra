@@ -104,6 +104,26 @@ public static class SeedData
         // Add StationId and MachineId columns to SyncChangeLogs if not present
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE SyncChangeLogs ADD COLUMN StationId TEXT NULL;"); } catch { }
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE SyncChangeLogs ADD COLUMN MachineId TEXT NULL;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE SyncChangeLogs ADD COLUMN SyncGuid TEXT NULL;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE SyncChangeLogs ADD COLUMN RecordGuid TEXT NULL;"); } catch { }
+
+        // Create OuterExpenses table if it does not exist
+        try
+        {
+            await context.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE IF NOT EXISTS OuterExpenses (
+                    OuterExpenseId INTEGER PRIMARY KEY AUTOINCREMENT,
+                    Description TEXT NOT NULL,
+                    Amount REAL NOT NULL,
+                    ExpenseDate TEXT NOT NULL,
+                    CreatedAt TEXT NOT NULL
+                );
+            ");
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Failed to create OuterExpenses table");
+        }
 
         // Seed default products
         if (!await context.ProductMasters.AnyAsync())
@@ -233,8 +253,9 @@ public static class SeedData
             }
         }
 
-        // Seed default settings if none exist
-        if (!await context.Settings.AnyAsync())
+        // Seed default settings or migrate legacy pump name
+        var settings = await context.Settings.FirstOrDefaultAsync();
+        if (settings == null)
         {
             var defaultSettings = new Setting
             {
@@ -244,8 +265,12 @@ public static class SeedData
                 PumpStationName = "Shree Mahakaleshwar Petroleum",
                 LastUpdated = DateTime.Now
             };
-
             context.Settings.Add(defaultSettings);
+        }
+        else if (settings.PumpStationName == "VKD Petroleum" || string.IsNullOrWhiteSpace(settings.PumpStationName))
+        {
+            settings.PumpStationName = "Shree Mahakaleshwar Petroleum";
+            context.Entry(settings).State = EntityState.Modified;
         }
 
         await context.SaveChangesAsync();

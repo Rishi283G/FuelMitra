@@ -52,7 +52,7 @@ namespace FuelPro.UI.ViewModels
                 return;
             }
 
-            var request = $"Product: FuelPro Lite\n" +
+            var request = $"Product: PyroSync\n" +
                           $"Customer Name: {CustomerName.Trim()}\n" +
                           $"Business Name: {BusinessName.Trim()}\n" +
                           $"Mobile Number: {MobileNumber.Trim()}\n" +

@@ -176,13 +176,13 @@ public partial class OilDefInventoryViewModel : ObservableObject
             }
 
             await _dbContext.SaveChangesAsync();
-            MessageBox.Show("Monthly stock take saved successfully!", "FuelPro — Success", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show("Monthly stock take saved successfully!", "PyroSync — Success", MessageBoxButton.OK, MessageBoxImage.Information);
             await LoadDataAsync();
         }
         catch (Exception ex)
         {
             Serilog.Log.Error(ex, "Failed to save monthly stock take");
-            MessageBox.Show($"Error saving stock take: {ex.Message}", "FuelPro — Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show($"Error saving stock take: {ex.Message}", "PyroSync — Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally { IsLoading = false; }
     }
@@ -192,13 +192,13 @@ public partial class OilDefInventoryViewModel : ObservableObject
     {
         if (string.IsNullOrWhiteSpace(NewPurchaseSupplierName) || string.IsNullOrWhiteSpace(NewPurchaseInvoiceNumber))
         {
-            MessageBox.Show("Supplier Name and Invoice Number are required.", "FuelPro — Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show("Supplier Name and Invoice Number are required.", "PyroSync — Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
         if (NewPurchaseQuantity <= 0 || NewPurchaseUnitPrice <= 0)
         {
-            MessageBox.Show("Quantity and Unit Price must be greater than zero.", "FuelPro — Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show("Quantity and Unit Price must be greater than zero.", "PyroSync — Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
@@ -219,7 +219,7 @@ public partial class OilDefInventoryViewModel : ObservableObject
             _dbContext.OilDefPurchases.Add(newPurchase);
             await _dbContext.SaveChangesAsync();
 
-            MessageBox.Show("Purchase invoice logged successfully!", "FuelPro — Success", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show("Purchase invoice logged successfully!", "PyroSync — Success", MessageBoxButton.OK, MessageBoxImage.Information);
 
             // Reset fields
             NewPurchaseSupplierName = string.Empty;
@@ -232,7 +232,7 @@ public partial class OilDefInventoryViewModel : ObservableObject
         catch (Exception ex)
         {
             Serilog.Log.Error(ex, "Failed to add purchase invoice");
-            MessageBox.Show($"Error saving purchase: {ex.Message}", "FuelPro — Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show($"Error saving purchase: {ex.Message}", "PyroSync — Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally { IsLoading = false; }
     }
@@ -250,13 +250,13 @@ public partial class OilDefInventoryViewModel : ObservableObject
         {
             _dbContext.OilDefPurchases.Remove(purchase);
             await _dbContext.SaveChangesAsync();
-            MessageBox.Show("Invoice deleted successfully.", "FuelPro — Success", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show("Invoice deleted successfully.", "PyroSync — Success", MessageBoxButton.OK, MessageBoxImage.Information);
             await LoadDataAsync();
         }
         catch (Exception ex)
         {
             Serilog.Log.Error(ex, "Failed to delete purchase invoice");
-            MessageBox.Show($"Error deleting invoice: {ex.Message}", "FuelPro — Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show($"Error deleting invoice: {ex.Message}", "PyroSync — Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally { IsLoading = false; }
     }

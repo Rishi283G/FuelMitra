@@ -1,13 +1,13 @@
 # End-to-End Synchronization Validation Report (GUID-based)
 
-This validation was executed on 15 Jun 2026 08:11:54 AM to verify GUID-based database synchronization integrity between the local FuelPro SQLite client and the Supabase Cloud database.
+This validation was executed on 17 Jun 2026 12:00:46 AM to verify GUID-based database synchronization integrity between the local FuelPro SQLite client and the Supabase Cloud database.
 
 ## Sync Metrics
-- **Station ID**: RASHTRA-DE936B
+- **Station ID**: RASHTRA-7598DA
 - **Machine ID**: ORION-PRIME
-- **Test Date (ShiftDate)**: 2037-07-11 (Morning Shift 'A')
+- **Test Date (ShiftDate)**: 2042-07-06 (Morning Shift 'A')
 - **Sync Trigger Type**: Force Manual Sync Push (Manager Mode)
-- **Sync Duration**: 1.83 seconds
+- **Sync Duration**: 2.10 seconds
 - **Identity Strategy**: SyncGuid (UUID) as cloud primary key
 - **Overall Status**: SUCCESS (All test records synced and validated)
 
@@ -15,12 +15,13 @@ This validation was executed on 15 Jun 2026 08:11:54 AM to verify GUID-based dat
 
 ## 1. Records Created Locally (SQLite)
 The following mock records were generated inside the local database:
-- **Shift**: Local ID `41` → SyncGuid `e9fa6d28-8859-4419-b1bb-04b6e7a769fd`
-- **DsmEntry**: Local ID `78` → SyncGuid `5a5b0ac5-42af-430b-97f9-161799fd6510`
-- **NozzleReading**: Local ID `352` → SyncGuid `f10e32bd-67fa-42c3-beaa-f480e6da5737`
-- **PaymentCollection**: Local ID `78`
-- **Expense**: Local ID `74`
-- **TestingEntry**: Local ID `86`
+- **Shift**: Local ID `3` → SyncGuid `13f49831-1432-4dc4-8115-0b0f0eac9b67`
+- **DsmProfile**: Local ID `2` → SyncGuid `d655c3a0-4ebd-4d5e-a9b4-75b0f42ae5fe`
+- **DsmEntry**: Local ID `3` → SyncGuid `30f0cb4d-dbf2-46ba-85a3-c8067e420608`
+- **NozzleReading**: Local ID `3` → SyncGuid `73285950-7e3f-4c9c-ac72-b20d0c641f06`
+- **PaymentCollection**: Local ID `3`
+- **Expense**: Local ID `3`
+- **TestingEntry**: Local ID `3`
 
 ---
 
@@ -31,14 +32,15 @@ The following mock records were generated inside the local database:
 
 | Record | Local ID | SyncGuid (Cloud PK) | FK Validation |
 | :--- | :---: | :--- | :--- |
-| **Shift** | `41` | `e9fa6d28-8859-4419-b1bb-04b6e7a769fd` | N/A (root) |
-| **DsmEntry** | `78` | `5a5b0ac5-42af-430b-97f9-161799fd6510` | ShiftId → `e9fa6d28-8859-4419-b1bb-04b6e7a769fd` ✓ |
-| **NozzleReading** | `352` | `f10e32bd-67fa-42c3-beaa-f480e6da5737` | DsmEntryId → `5a5b0ac5-42af-430b-97f9-161799fd6510` ✓ |
+| **Shift** | `3` | `13f49831-1432-4dc4-8115-0b0f0eac9b67` | N/A (root) |
+| **DsmProfile** | `2` | `d655c3a0-4ebd-4d5e-a9b4-75b0f42ae5fe` | N/A (root) |
+| **DsmEntry** | `3` | `30f0cb4d-dbf2-46ba-85a3-c8067e420608` | ShiftId → `13f49831-1432-4dc4-8115-0b0f0eac9b67` ✓ |
+| **NozzleReading** | `3` | `73285950-7e3f-4c9c-ac72-b20d0c641f06` | DsmEntryId → `30f0cb4d-dbf2-46ba-85a3-c8067e420608` ✓ |
 
 ---
 
 ## 3. Summary Findings
-- **Data Integrity**: Verified. Column values match precisely.
+- **Data Integrity**: Verified. Column values match precisely (including new DsmProfiles columns: SalaryType, BaseSalary, JoiningDate).
 - **GUID Identity**: Verified. All records have unique SyncGuids as primary keys.
 - **FK Remapping**: Verified. Child records reference parent SyncGuids (not local integer IDs).
 - **No Collisions**: Verified. UUID uniqueness prevents multi-machine conflicts.

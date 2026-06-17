@@ -33,6 +33,7 @@ public class FuelProDbContext : DbContext
     public DbSet<OilDefPurchase> OilDefPurchases => Set<OilDefPurchase>();
     public DbSet<DsmSalaryAdjustment> DsmSalaryAdjustments => Set<DsmSalaryAdjustment>();
     public DbSet<OilDefDailyLog> OilDefDailyLogs => Set<OilDefDailyLog>();
+    public DbSet<OuterExpense> OuterExpenses => Set<OuterExpense>();
 
     // AGS Import
     public DbSet<AgsShiftImport> AgsShiftImports => Set<AgsShiftImport>();
@@ -158,7 +159,7 @@ public class FuelProDbContext : DbContext
             entity.Property(e => e.HsdRate).HasDefaultValue(90.35);
             entity.Property(e => e.MsIRate).HasDefaultValue(103.81);
             entity.Property(e => e.MsIIRate).HasDefaultValue(103.81);
-            entity.Property(e => e.PumpStationName).HasDefaultValue("VKD Petroleum");
+            entity.Property(e => e.PumpStationName).HasDefaultValue("PyroSync");
         });
 
         modelBuilder.Entity<AppMeta>(entity =>
@@ -254,6 +255,7 @@ public class FuelProDbContext : DbContext
         public string TableName { get; set; } = string.Empty;
         public string Operation { get; set; } = string.Empty;
         public int RecordId { get; set; }
+        public string? RecordGuid { get; set; }
     }
 
     private static readonly AsyncLocal<bool> _bypassTracking = new();
@@ -272,7 +274,7 @@ public class FuelProDbContext : DbContext
 
         foreach (var entry in entries)
         {
-            if (entry.Entity is SyncChangeLog) continue;
+            if (entry.Entity is SyncChangeLog || entry.Entity is OuterExpense) continue;
             if (entry.Entity.GetType().Namespace?.StartsWith("FuelPro.Core.Models") != true) continue;
 
             if (entry.State == EntityState.Added)
@@ -296,12 +298,34 @@ public class FuelProDbContext : DbContext
             }
             else if (entry.State == EntityState.Deleted)
             {
+                var tableName = entry.Metadata.GetTableName() ?? entry.Entity.GetType().Name;
+                var localId = GetPrimaryKeyValue(entry.Entity);
+                
+                string? remoteGuid = null;
+                try
+                {
+                    var mapping = SyncIdMappings.Local.FirstOrDefault(m => m.TableName == tableName && m.LocalId == localId);
+                    remoteGuid = mapping?.RemoteGuid;
+                    if (remoteGuid == null)
+                    {
+                        remoteGuid = SyncIdMappings.AsNoTracking()
+                            .Where(m => m.TableName == tableName && m.LocalId == localId)
+                            .Select(m => m.RemoteGuid)
+                            .FirstOrDefault();
+                    }
+                }
+                catch
+                {
+                    // Ignore errors during delete query
+                }
+
                 list.Add(new CapturedChange
                 {
                     Entity = entry.Entity,
-                    TableName = entry.Metadata.GetTableName() ?? entry.Entity.GetType().Name,
+                    TableName = tableName,
                     Operation = "DELETE",
-                    RecordId = GetPrimaryKeyValue(entry.Entity)
+                    RecordId = localId,
+                    RecordGuid = remoteGuid
                 });
             }
         }
@@ -348,7 +372,9 @@ public class FuelProDbContext : DbContext
                 RecordId = recordId,
                 Operation = change.Operation,
                 CreatedAt = DateTime.Now,
-                IsSynced = false
+                IsSynced = false,
+                SyncGuid = Guid.NewGuid().ToString(),
+                RecordGuid = change.RecordGuid
             };
             PopulateStationAndMachine(log);
             SyncChangeLogs.Add(log);
@@ -372,7 +398,9 @@ public class FuelProDbContext : DbContext
                 RecordId = recordId,
                 Operation = change.Operation,
                 CreatedAt = DateTime.Now,
-                IsSynced = false
+                IsSynced = false,
+                SyncGuid = Guid.NewGuid().ToString(),
+                RecordGuid = change.RecordGuid
             };
             PopulateStationAndMachine(log);
             SyncChangeLogs.Add(log);

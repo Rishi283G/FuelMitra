@@ -49,7 +49,12 @@ public class SyncEngine
         "AgsShiftImports",
         "AgsNozzleReadings",
         "AgsTankStocks",
-        "AgsDailySummaries"
+        "AgsDailySummaries",
+        "ProductMasters",
+        "OilDefInventories",
+        "OilDefPurchases",
+        "OilDefDailyLogs",
+        "SyncChangeLogs"
     };
 
     // ── FK Configuration ──────────────────────────────────────────────
@@ -64,13 +69,18 @@ public class SyncEngine
     /// </summary>
     private static readonly TableSyncConfig[] PullTableOrder = new[]
     {
+        new TableSyncConfig("SyncChangeLogs", Array.Empty<FkMapping>()),
         new TableSyncConfig("Settings", Array.Empty<FkMapping>()),
         new TableSyncConfig("DsmProfiles", Array.Empty<FkMapping>()),
         new TableSyncConfig("Creditors", Array.Empty<FkMapping>()),
+        new TableSyncConfig("ProductMasters", Array.Empty<FkMapping>()),
         new TableSyncConfig("Shifts", Array.Empty<FkMapping>()),
         new TableSyncConfig("AgsShiftImports", Array.Empty<FkMapping>()),
         new TableSyncConfig("AgsDailySummaries", Array.Empty<FkMapping>()),
         new TableSyncConfig("CreditorRepayments", Array.Empty<FkMapping>()),
+        new TableSyncConfig("OilDefInventories", new[] { new FkMapping("ProductId", "ProductMasters") }),
+        new TableSyncConfig("OilDefPurchases", new[] { new FkMapping("ProductId", "ProductMasters") }),
+        new TableSyncConfig("OilDefDailyLogs", new[] { new FkMapping("ProductId", "ProductMasters") }),
         new TableSyncConfig("ShiftOtherCash", new[] { new FkMapping("ShiftId", "Shifts") }),
         new TableSyncConfig("ShiftFuelRates", new[] { new FkMapping("ShiftId", "Shifts") }),
         new TableSyncConfig("DsmEntries", new[] { new FkMapping("ShiftId", "Shifts") }),
@@ -249,6 +259,11 @@ public class SyncEngine
             foreach (var del in deletes)
             {
                 var syncGuid = GetExistingSyncGuid(localToGuid, tableName, del.RecordId);
+                if (string.IsNullOrEmpty(syncGuid))
+                {
+                    syncGuid = del.RecordGuid;
+                }
+
                 if (!string.IsNullOrEmpty(syncGuid))
                 {
                     var response = await _httpClient.SendRequestAsync(HttpMethod.Delete, $"{tableName}?SyncGuid=eq.{syncGuid}");
@@ -259,15 +274,34 @@ public class SyncEngine
                     }
                     // Remove the local mapping
                     var mappingToRemove = await context.SyncIdMappings
-                        .FirstOrDefaultAsync(m => m.TableName == tableName && m.LocalId == del.RecordId);
+                        .FirstOrDefaultAsync(m => m.TableName == tableName && (m.LocalId == del.RecordId || m.RemoteGuid == syncGuid));
                     if (mappingToRemove != null)
                     {
                         context.SyncIdMappings.Remove(mappingToRemove);
                     }
+
+                    // ALSO push this DELETE log entry to Supabase SyncChangeLogs table!
+                    var logDict = new Dictionary<string, object?>
+                    {
+                        { "SyncGuid", del.SyncGuid },
+                        { "TableName", del.TableName },
+                        { "RecordGuid", syncGuid },
+                        { "Operation", "DELETE" },
+                        { "station_id", settings.StationId },
+                        { "machine_id", settings.MachineId },
+                        { "CreatedAt", del.CreatedAt.ToUniversalTime().ToString("o") }
+                    };
+                    var logJson = JsonConvert.SerializeObject(new[] { logDict });
+                    var logResponse = await _httpClient.SendRequestAsync(HttpMethod.Post, "SyncChangeLogs", logJson, isUpsert: true, onConflict: "SyncGuid");
+                    if (!logResponse.IsSuccessStatusCode)
+                    {
+                        var logError = await logResponse.Content.ReadAsStringAsync();
+                        _logger.Error("Failed to push DELETE log entry to Supabase SyncChangeLogs: {Error}", logError);
+                    }
                 }
                 else
                 {
-                    _logger.Warning("Push DELETE: No SyncGuid mapping found for {Table} LocalId={Id}. Skipping cloud delete.", tableName, del.RecordId);
+                    _logger.Warning("Push DELETE: No SyncGuid or RecordGuid mapping found for {Table} LocalId={Id}. Skipping cloud delete.", tableName, del.RecordId);
                 }
             }
 
@@ -470,10 +504,77 @@ public class SyncEngine
             guidToLocal[m.TableName][m.RemoteGuid] = m.LocalId;
         }
 
-        var queryTime = settings.LastSyncTime.ToUniversalTime().ToString("o");
-
         foreach (var tableDef in PullTableOrder)
         {
+            if (tableDef.TableName == "SyncChangeLogs")
+            {
+                // Special handling for pulling delete propagation logs
+                var logQueryTime = settings.LastSyncTime.ToUniversalTime().ToString("o");
+                var logResponse = await _httpClient.SendRequestAsync(HttpMethod.Get,
+                    $"SyncChangeLogs?station_id=eq.{settings.StationId}&updated_at=gt.{logQueryTime}");
+                if (logResponse.IsSuccessStatusCode)
+                {
+                    var logJson = await logResponse.Content.ReadAsStringAsync();
+                    var logs = JsonConvert.DeserializeObject<List<Dictionary<string, object>>>(logJson);
+                    if (logs != null && logs.Count > 0)
+                    {
+                        FuelProDbContext.BypassTracking = true;
+                        try
+                        {
+                            foreach (var logDict in logs)
+                            {
+                                if (logDict.TryGetValue("machine_id", out var machineIdObj) && machineIdObj?.ToString() == settings.MachineId)
+                                {
+                                    // Skip logs generated by ourselves
+                                    continue;
+                                }
+
+                                if (!logDict.TryGetValue("Operation", out var opObj) || opObj?.ToString() != "DELETE") continue;
+                                if (!logDict.TryGetValue("TableName", out var tableObj) || tableObj == null) continue;
+                                if (!logDict.TryGetValue("RecordGuid", out var guidObj) || guidObj == null) continue;
+
+                                var deletedTableName = tableObj.ToString()!;
+                                var deletedRecordGuid = guidObj.ToString()!;
+
+                                // Find entity type
+                                var targetEntityType = context.Model.GetEntityTypes().FirstOrDefault(t => t.GetTableName() == deletedTableName);
+                                if (targetEntityType == null) continue;
+
+                                // Find mapping
+                                var mapping = await context.SyncIdMappings
+                                    .FirstOrDefaultAsync(m => m.TableName == deletedTableName && m.RemoteGuid == deletedRecordGuid);
+                                if (mapping != null)
+                                {
+                                    var localId = mapping.LocalId;
+                                    var entity = await context.FindAsync(targetEntityType.ClrType, localId);
+                                    if (entity != null)
+                                    {
+                                        context.Remove(entity);
+                                        _logger.Information("Pull DELETE: Deleted local record from {Table} with LocalId={Id} (SyncGuid={Guid})", deletedTableName, localId, deletedRecordGuid);
+                                    }
+                                    context.SyncIdMappings.Remove(mapping);
+                                }
+                            }
+                            await context.SaveChangesAsync();
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.Error(ex, "Error processing pull deletes from SyncChangeLogs");
+                        }
+                        finally
+                        {
+                            FuelProDbContext.BypassTracking = false;
+                        }
+                    }
+                }
+                else
+                {
+                    var error = await logResponse.Content.ReadAsStringAsync();
+                    _logger.Warning("Supabase GET failed for SyncChangeLogs: {Error}", error);
+                }
+                continue;
+            }
+
             var entityType = context.Model.GetEntityTypes()
                 .FirstOrDefault(t => t.GetTableName() == tableDef.TableName);
             if (entityType == null) continue;
@@ -481,9 +582,16 @@ public class SyncEngine
             var pkProp = entityType.FindPrimaryKey()?.Properties.FirstOrDefault();
             if (pkProp == null) continue;
 
-            // Fetch records updated since LastSyncTime for this StationId
+            // Determine the query time for this specific table.
+            // If this table has no mappings yet, perform a full sync from the beginning.
+            var tableHasMappings = guidToLocal.TryGetValue(tableDef.TableName, out var mappings) && mappings.Count > 0;
+            var tableQueryTime = tableHasMappings 
+                ? settings.LastSyncTime.ToUniversalTime().ToString("o") 
+                : DateTime.MinValue.ToUniversalTime().ToString("o");
+
+            // Fetch records updated since tableQueryTime for this StationId
             var response = await _httpClient.SendRequestAsync(HttpMethod.Get,
-                $"{tableDef.TableName}?station_id=eq.{settings.StationId}&updated_at=gt.{queryTime}");
+                $"{tableDef.TableName}?station_id=eq.{settings.StationId}&updated_at=gt.{tableQueryTime}");
             if (!response.IsSuccessStatusCode)
             {
                 var error = await response.Content.ReadAsStringAsync();
@@ -713,7 +821,8 @@ public class SyncEngine
                 CreatedAt = DateTime.Now,
                 IsSynced = false,
                 StationId = settings.StationId,
-                MachineId = settings.MachineId
+                MachineId = settings.MachineId,
+                SyncGuid = Guid.NewGuid().ToString()
             });
             _logger.Information("Queued missing parent record for push: {Table} LocalId={Id}", tableName, localId);
         }
@@ -744,6 +853,7 @@ public class SyncEngine
         var entry = context.Entry(entity);
         foreach (var property in entry.Metadata.GetProperties())
         {
+            if (property.Name == "Id") continue;
             values[property.Name] = entry.Property(property.Name).CurrentValue;
         }
         return values;

@@ -292,6 +292,10 @@
                                 <TextBlock Text="Other Recoveries" FontSize="13"/>
                                 <TextBlock Text="{Binding ShortRecoveries, Converter={StaticResource CurrencyConverter}, StringFormat='+{0}'}" FontWeight="Medium" HorizontalAlignment="Right" Foreground="#2E7D32"/>
                             </Grid>
+                            <Grid Margin="0,4">
+                                <TextBlock Text="Owner Outer Expenses" FontSize="13"/>
+                                <TextBlock Text="{Binding OwnerOuterExpenses, Converter={StaticResource CurrencyConverter}, StringFormat='-{0}'}" FontWeight="Medium" HorizontalAlignment="Right" Foreground="#C62828"/>
+                            </Grid>
                             
                             <Separator Margin="0,8" Background="#00695C"/>
                             <Grid Margin="0,4">

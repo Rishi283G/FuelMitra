@@ -6,7 +6,8 @@
         WindowStyle="None"
         ShowInTaskbar="False"
         Visibility="Hidden"
-        AllowsTransparency="False">
+        AllowsTransparency="False"
+        Icon="pack://application:,,,/Resources/fuel-pump-icon.ico">
     <Grid>
         <WebBrowser x:Name="PrintBrowser"
                     LoadCompleted="PrintBrowser_LoadCompleted" />

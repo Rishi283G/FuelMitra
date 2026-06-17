@@ -926,7 +926,7 @@ public partial class DsmEntryViewModel : ObservableObject
 
         var settings = App.Services.GetRequiredService<ISettingsRepository>();
         var settingsResult = settings.GetSettingsAsync().GetAwaiter().GetResult();
-        var stationName = settingsResult.Success ? settingsResult.Data?.PumpStationName ?? "VKD Petroleum" : "VKD Petroleum";
+        var stationName = settingsResult.Success ? settingsResult.Data?.PumpStationName ?? "PyroSync" : "PyroSync";
 
         var nozzleRows = NozzleReadings.Select(n => new DsmNozzlePrintRow
         {
@@ -998,7 +998,7 @@ public partial class DsmEntryViewModel : ObservableObject
         var printData = new DsmSheetPrintData
         {
             StationName  = stationName,
-            CompanyName  = "VKD Petroleum",
+            CompanyName  = "PyroSync",
             Date         = SelectedDate.ToString("dd/MM/yyyy"),
             Shift        = SelectedShift,
             DsmName      = DsmName,
@@ -1033,7 +1033,7 @@ public partial class DsmEntryViewModel : ObservableObject
 
         var settings = App.Services.GetRequiredService<ISettingsRepository>();
         var settingsResult = settings.GetSettingsAsync().GetAwaiter().GetResult();
-        var stationName = settingsResult.Success ? settingsResult.Data?.PumpStationName ?? "VKD Petroleum" : "VKD Petroleum";
+        var stationName = settingsResult.Success ? settingsResult.Data?.PumpStationName ?? "PyroSync" : "PyroSync";
 
         var rows = ShiftEntries.Select(e => new ShiftSummaryDsmRow
         {

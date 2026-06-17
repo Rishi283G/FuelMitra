@@ -10,7 +10,8 @@
         WindowState="Maximized"
         Background="{DynamicResource MaterialDesign.Brush.Background}"
         TextElement.Foreground="{DynamicResource MaterialDesign.Brush.Foreground}"
-        FontFamily="{materialDesign:MaterialDesignFont}">
+        FontFamily="{materialDesign:MaterialDesignFont}"
+        Icon="pack://application:,,,/Resources/fuel-pump-icon.ico">
 
     <Window.Resources>
         <DataTemplate DataType="{x:Type vm:DsmEntryViewModel}">

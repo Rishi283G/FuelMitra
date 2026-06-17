@@ -40,6 +40,7 @@ publish_output_latest/
 build_output/
 installer_output/
 nuget_packages/
+generator_output/
 
 # Project-specific ignores
 ags_coord_dump.txt
@@ -48,6 +49,7 @@ build_log.txt
 pdf_dump.txt
 scratch_log.txt
 scratch/
+scratch_*
 
 # Images and PDFs that might be temporary
 *.pdf

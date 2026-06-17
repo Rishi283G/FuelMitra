@@ -68,6 +68,19 @@ public partial class OilDefSummaryViewModel : ObservableObject
         _financialCalcService = App.Services.GetRequiredService<IFinancialCalculationService>();
         _printService = new PrintService();
 
+        // Wire Sync Status to trigger auto-reload
+        var syncEngine = App.Services.GetRequiredService<FuelPro.Sync.SyncEngine>();
+        syncEngine.SyncStatusChanged += (status) =>
+        {
+            System.Windows.Application.Current.Dispatcher.Invoke(async () =>
+            {
+                if (status.StatusMessage == "Synced")
+                {
+                    await LoadSummaryAsync();
+                }
+            });
+        };
+
         _ = SetPresetAsync(SelectedPreset);
     }
 

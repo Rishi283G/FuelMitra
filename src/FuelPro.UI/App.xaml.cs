@@ -102,28 +102,21 @@ public partial class App : Application
             Log.Error(ex, "Failed to start Sync Engine on startup");
         }
 
-        // ── LICENSE VALIDATION BYPASSED FOR TESTING ──
-        // Uncomment the block below to re-enable activation enforcement.
-        //
-        // var licenseManager = Services.GetRequiredService<Rashtra.Licensing.LicenseManager>();
-        // var validationResult = licenseManager.ValidateLicense();
-        // if (validationResult.IsValid)
-        // {
-        //     Log.Information("License is valid for client {CustomerName}", validationResult.License?.CustomerName);
-        //     var loginView = new Views.LoginView();
-        //     loginView.Show();
-        // }
-        // else
-        // {
-        //     Log.Warning("License is invalid or missing: {ErrorMessage}", validationResult.ErrorMessage);
-        //     var activationWindow = new Views.ActivationWindow();
-        //     activationWindow.Show();
-        // }
-
-        // TESTING MODE: Skip activation, go straight to login
-        Log.Information("License validation BYPASSED (testing mode)");
-        var loginView = new Views.LoginView();
-        loginView.Show();
+        // ── LICENSE VALIDATION ──
+        var licenseManager = Services.GetRequiredService<Rashtra.Licensing.LicenseManager>();
+        var validationResult = licenseManager.ValidateLicense();
+        if (validationResult.IsValid)
+        {
+            Log.Information("License is valid for client {CustomerName}", validationResult.License?.CustomerName);
+            var loginView = new Views.LoginView();
+            loginView.Show();
+        }
+        else
+        {
+            Log.Warning("License is invalid or missing: {ErrorMessage}", validationResult.ErrorMessage);
+            var activationWindow = new Views.ActivationWindow();
+            activationWindow.Show();
+        }
 
         base.OnStartup(e);
     }
@@ -249,15 +242,19 @@ public partial class App : Application
                     ""IsSynced"" INTEGER NOT NULL DEFAULT 0,
                     ""SyncedAt"" TEXT NULL,
                     ""StationId"" TEXT NULL,
-                    ""MachineId"" TEXT NULL
+                    ""MachineId"" TEXT NULL,
+                    ""SyncGuid"" TEXT NULL,
+                    ""RecordGuid"" TEXT NULL
                 );";
             cmd.ExecuteNonQuery();
-            Log.Information("Created SyncChangeLogs table with StationId and MachineId columns");
+            Log.Information("Created SyncChangeLogs table with StationId, MachineId, SyncGuid, and RecordGuid columns");
         }
         else
         {
             EnsureColumnExists(connection, "SyncChangeLogs", "StationId", "ALTER TABLE SyncChangeLogs ADD COLUMN StationId TEXT NULL;");
             EnsureColumnExists(connection, "SyncChangeLogs", "MachineId", "ALTER TABLE SyncChangeLogs ADD COLUMN MachineId TEXT NULL;");
+            EnsureColumnExists(connection, "SyncChangeLogs", "SyncGuid", "ALTER TABLE SyncChangeLogs ADD COLUMN SyncGuid TEXT NULL;");
+            EnsureColumnExists(connection, "SyncChangeLogs", "RecordGuid", "ALTER TABLE SyncChangeLogs ADD COLUMN RecordGuid TEXT NULL;");
         }
 
         // Owner Dashboard Expansion columns and tables
@@ -480,13 +477,14 @@ public partial class App : Application
         services.AddTransient<FinancialSummaryViewModel>();
         services.AddTransient<ReportsViewModel>();
         services.AddTransient<ExpenseAnalysisViewModel>();
+        services.AddTransient<OuterExpensesViewModel>();
         services.AddTransient<MismatchLedgerViewModel>();
 
         // Developer ViewModels
         services.AddTransient<DeveloperMainWindowViewModel>();
 
         // Licensing
-        services.AddSingleton(new Rashtra.Licensing.LicenseManager("FPL", "PyroSync"));
+        services.AddSingleton(new Rashtra.Licensing.LicenseManager("PSC", "PyroSync"));
         services.AddTransient<ActivationViewModel>();
     }
 
@@ -569,28 +567,27 @@ public partial class App : Application
     {
         try
         {
-            using var connection = new SqliteConnection($"Data Source={DbPath}");
-            connection.Open();
-            using var cmd = connection.CreateCommand();
-            cmd.CommandText = "SELECT Value FROM AppMeta WHERE Key = @key";
-            cmd.Parameters.AddWithValue("@key", isDark ? "ApplicationLogoDarkPath" : "ApplicationLogoPath");
-            var path = cmd.ExecuteScalar()?.ToString();
-            if (!string.IsNullOrEmpty(path) && File.Exists(path))
-            {
-                return path;
-            }
-        }
-        catch { }
+            var exeDir = AppDomain.CurrentDomain.BaseDirectory;
+            var logoName = isDark ? "pyrosync logo dark.jpg" : "pyrosync logo light.jpg";
+            
+            // 1. Try local execution directory Assets/
+            var path = Path.Combine(exeDir, "Assets", logoName);
+            if (File.Exists(path)) return path;
 
-        // Fallback to local app data folder
-        var appDataFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FuelPro");
-        var defaultPath = Path.Combine(appDataFolder, isDark ? "logo_dark.png" : "logo_light.png");
-        if (File.Exists(defaultPath))
+            // 2. Try development path fallback
+            var devPath = Path.Combine(exeDir, "..", "..", "..", "..", "Assets", logoName);
+            if (File.Exists(devPath)) return Path.GetFullPath(devPath);
+            
+            // 3. Fallback to exe dir itself
+            var fallbackPath = Path.Combine(exeDir, logoName);
+            if (File.Exists(fallbackPath)) return fallbackPath;
+            
+            return path;
+        }
+        catch (Exception ex)
         {
-            return defaultPath;
+            Log.Error(ex, "Failed to get logo path");
+            return string.Empty;
         }
-
-        // Final fallback to pack URI
-        return isDark ? "pack://application:,,,/Resources/logo_dark.png" : "pack://application:,,,/Resources/logo_light.png";
     }
 }

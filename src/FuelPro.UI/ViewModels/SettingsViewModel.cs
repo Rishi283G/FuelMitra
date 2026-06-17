@@ -384,6 +384,7 @@ public partial class SettingsViewModel : ObservableObject
                 "FPL" => "PyroSync",
                 "VKD" => "PyroSync",
                 "ZPA" => "PyroSync",
+                "PSC" => "PyroSync",
                 _ => lic.ProductName
             };
             LicenseCustomerName = lic.CustomerName;
@@ -438,7 +439,7 @@ public partial class SettingsViewModel : ObservableObject
                    $"Expires: {LicenseExpiryDate}";
         
         System.Windows.Clipboard.SetText(text);
-        System.Windows.MessageBox.Show("License details copied to clipboard!", "FuelPro — License Management", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Information);
+        System.Windows.MessageBox.Show("License details copied to clipboard!", "PyroSync — License Management", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Information);
     }
 
     [RelayCommand]

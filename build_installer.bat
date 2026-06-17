@@ -6,6 +6,7 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b %ERRORLEVEL%
 )
 echo Build succeeded!
+xcopy /E /I /Y Assets publish_output\Assets
 echo Compiling the installer...
 iscc installer.iss
 if %ERRORLEVEL% NEQ 0 (

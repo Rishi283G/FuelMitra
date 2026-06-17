@@ -6,6 +6,7 @@
     <UserControl.Resources>
         <converters:IndianCurrencyConverter x:Key="CurrencyConverter"/>
         <converters:LitresConverter x:Key="LitresConverter"/>
+        <BooleanToVisibilityConverter x:Key="BoolToVisConverter"/>
         
         <Style TargetType="TextBox" BasedOn="{StaticResource MaterialDesignOutlinedTextBox}">
             <Setter Property="Foreground" Value="#212121"/>
@@ -45,15 +46,9 @@
         <materialDesign:Card Grid.Row="1" Margin="0,0,0,16" Padding="16,14"
                              UniformCornerRadius="10" materialDesign:ElevationAssist.Elevation="Dp2"
                              Background="#E8F5E9">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-
+            <DockPanel LastChildFill="True">
                 <!-- Icon + Label -->
-                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,24,0">
+                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,24,0">
                     <materialDesign:PackIcon Kind="Tag" Width="22" Height="22" Foreground="#2E7D32" VerticalAlignment="Center" Margin="0,0,8,0"/>
                     <StackPanel>
                         <TextBlock Text="Sale Rates" FontSize="14" FontWeight="Bold" Foreground="#1B5E20"/>
@@ -61,8 +56,15 @@
                     </StackPanel>
                 </StackPanel>
 
+                <!-- Save Rates Button -->
+                <Button DockPanel.Dock="Right" Content="Save Rates" Style="{StaticResource MaterialDesignRaisedButton}"
+                        Command="{Binding SaveProductRatesCommand}"
+                        Background="#2E7D32" BorderBrush="#2E7D32"
+                        Height="40" Padding="16,0" VerticalAlignment="Center"
+                        Margin="12,0,0,0"/>
+
                 <!-- Product Rates — one row per product -->
-                <ItemsControl Grid.Column="1" ItemsSource="{Binding ActiveProducts}" VerticalAlignment="Center">
+                <ItemsControl ItemsSource="{Binding ActiveProducts}" VerticalAlignment="Center">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
                             <WrapPanel Orientation="Horizontal"/>
@@ -100,13 +102,7 @@
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
-
-                <!-- Save Rates Button -->
-                <Button Grid.Column="2" Content="Save Rates" Style="{StaticResource MaterialDesignRaisedButton}"
-                        Command="{Binding SaveProductRatesCommand}"
-                        Background="#2E7D32" BorderBrush="#2E7D32"
-                        Height="40" Padding="16,0" VerticalAlignment="Center"/>
-            </Grid>
+            </DockPanel>
         </materialDesign:Card>
 
         <!-- ─── Main Tab Control ─── -->
@@ -121,55 +117,62 @@
                     </Grid.ColumnDefinitions>
 
                     <!-- Left: Purchase Entry Form -->
-                    <materialDesign:Card Grid.Column="0" Margin="0,0,16,0" Padding="20"
-                                        UniformCornerRadius="10" materialDesign:ElevationAssist.Elevation="Dp1"
-                                        VerticalAlignment="Top">
-                        <StackPanel>
-                            <StackPanel Orientation="Horizontal" Margin="0,0,0,18">
-                                <materialDesign:PackIcon Kind="PackageVariant" Width="22" Height="22" Foreground="#00796B" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                <TextBlock Text="Record Stock Purchase Invoice" FontSize="16" FontWeight="Bold" Foreground="#00796B" VerticalAlignment="Center"/>
+                    <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto" MaxHeight="600" Margin="0,0,16,0">
+                        <materialDesign:Card Padding="20"
+                                            UniformCornerRadius="10" materialDesign:ElevationAssist.Elevation="Dp1"
+                                            VerticalAlignment="Top">
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,18">
+                                    <materialDesign:PackIcon Kind="PackageVariant" Width="22" Height="22" Foreground="#00796B" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <TextBlock Text="Record Stock Purchase Invoice" FontSize="16" FontWeight="Bold" Foreground="#00796B" VerticalAlignment="Center"/>
+                                </StackPanel>
+
+                                <DatePicker SelectedDate="{Binding PurchaseDate}" materialDesign:HintAssist.Hint="Purchase Date"
+                                            Margin="0,0,0,14" Height="48"/>
+
+                                <ComboBox ItemsSource="{Binding ActiveProducts}" SelectedItem="{Binding SelectedProductForPurchase}"
+                                          DisplayMemberPath="ProductName"
+                                          materialDesign:HintAssist.Hint="Select Product"
+                                          Margin="0,0,0,14" Height="48"/>
+
+                                <TextBox Text="{Binding PurchaseSupplierName, UpdateSourceTrigger=PropertyChanged}"
+                                         materialDesign:HintAssist.Hint="Supplier / Vendor Name"
+                                         Margin="0,0,0,14" Height="48"/>
+
+                                <TextBox Text="{Binding PurchaseInvoiceNumber, UpdateSourceTrigger=PropertyChanged}"
+                                         materialDesign:HintAssist.Hint="Invoice Number"
+                                         Margin="0,0,0,14" Height="48"/>
+
+                                <Grid Margin="0,0,0,14">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="12"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock Text="Quantity Received" FontSize="11" Opacity="0.6" Margin="4,0,0,3"/>
+                                        <TextBox Text="{Binding PurchaseQty, UpdateSourceTrigger=PropertyChanged}"
+                                                 materialDesign:HintAssist.Hint="e.g. 10" Height="48"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2">
+                                        <TextBlock Text="Cost per Unit (₹)" FontSize="11" Opacity="0.6" Margin="4,0,0,3"/>
+                                        <TextBox Text="{Binding PurchaseUnitPrice, UpdateSourceTrigger=PropertyChanged}"
+                                                 materialDesign:HintAssist.Hint="e.g. 500.00" Height="48"/>
+                                    </StackPanel>
+                                </Grid>
+
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Stretch">
+                                    <Button Content="Save Purchase" Style="{StaticResource MaterialDesignRaisedButton}"
+                                            Command="{Binding SavePurchaseCommand}"
+                                            Height="44" Background="#00796B" BorderBrush="#00796B" Width="180"/>
+                                    <Button Content="Cancel Edit" Style="{StaticResource MaterialDesignFlatButton}"
+                                            Command="{Binding CancelEditPurchaseCommand}"
+                                            Visibility="{Binding IsEditingPurchase, Converter={StaticResource BoolToVisConverter}}"
+                                            Height="44" Foreground="#D32F2F" Margin="10,0,0,0"/>
+                                </StackPanel>
                             </StackPanel>
-
-                            <DatePicker SelectedDate="{Binding PurchaseDate}" materialDesign:HintAssist.Hint="Purchase Date"
-                                        Margin="0,0,0,14" Height="48"/>
-
-                            <ComboBox ItemsSource="{Binding ActiveProducts}" SelectedItem="{Binding SelectedProductForPurchase}"
-                                      DisplayMemberPath="ProductName"
-                                      materialDesign:HintAssist.Hint="Select Product"
-                                      Margin="0,0,0,14" Height="48"/>
-
-                            <TextBox Text="{Binding PurchaseSupplierName, UpdateSourceTrigger=PropertyChanged}"
-                                     materialDesign:HintAssist.Hint="Supplier / Vendor Name"
-                                     Margin="0,0,0,14" Height="48"/>
-
-                            <TextBox Text="{Binding PurchaseInvoiceNumber, UpdateSourceTrigger=PropertyChanged}"
-                                     materialDesign:HintAssist.Hint="Invoice Number"
-                                     Margin="0,0,0,14" Height="48"/>
-
-                            <Grid Margin="0,0,0,14">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="12"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <!-- Explicit labels: hints float away when value is non-empty (e.g. "0") -->
-                                <StackPanel Grid.Column="0">
-                                    <TextBlock Text="Quantity Received" FontSize="11" Opacity="0.6" Margin="4,0,0,3"/>
-                                    <TextBox Text="{Binding PurchaseQty, UpdateSourceTrigger=PropertyChanged}"
-                                             materialDesign:HintAssist.Hint="e.g. 10" Height="48"/>
-                                </StackPanel>
-                                <StackPanel Grid.Column="2">
-                                    <TextBlock Text="Cost per Unit (₹)" FontSize="11" Opacity="0.6" Margin="4,0,0,3"/>
-                                    <TextBox Text="{Binding PurchaseUnitPrice, UpdateSourceTrigger=PropertyChanged}"
-                                             materialDesign:HintAssist.Hint="e.g. 500.00" Height="48"/>
-                                </StackPanel>
-                            </Grid>
-
-                            <Button Content="Save Purchase Invoice" Style="{StaticResource MaterialDesignRaisedButton}"
-                                    Command="{Binding SavePurchaseCommand}"
-                                    Height="44" Background="#00796B" BorderBrush="#00796B"/>
-                        </StackPanel>
-                    </materialDesign:Card>
+                        </materialDesign:Card>
+                    </ScrollViewer>
 
                     <!-- Right: Recent Purchase History -->
                     <Grid Grid.Column="1">
@@ -189,6 +192,17 @@
                                 <DataGridTextColumn Header="Invoice #" Binding="{Binding InvoiceNumber}" Width="*"/>
                                 <DataGridTextColumn Header="Qty" Binding="{Binding Quantity, StringFormat='{}{0:N2}'}" Width="70"/>
                                 <DataGridTextColumn Header="Total" Binding="{Binding TotalCost, Converter={StaticResource CurrencyConverter}}" Width="100"/>
+                                <DataGridTemplateColumn Header="Action" Width="80">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Button Content="Edit" Style="{StaticResource MaterialDesignFlatButton}"
+                                                    Command="{Binding DataContext.EditPurchaseCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="{Binding}"
+                                                    IsEnabled="{Binding IsEditable}"
+                                                    Height="26" Padding="6,0"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
                             </DataGrid.Columns>
                         </DataGrid>
                     </Grid>
@@ -204,42 +218,50 @@
                     </Grid.ColumnDefinitions>
 
                     <!-- Left: Sales Entry Form -->
-                    <materialDesign:Card Grid.Column="0" Margin="0,0,16,0" Padding="20"
-                                        UniformCornerRadius="10" materialDesign:ElevationAssist.Elevation="Dp1"
-                                        VerticalAlignment="Top">
-                        <StackPanel>
-                            <StackPanel Orientation="Horizontal" Margin="0,0,0,18">
-                                <materialDesign:PackIcon Kind="Cart" Width="22" Height="22" Foreground="#1565C0" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                <TextBlock Text="Record Units Sold" FontSize="16" FontWeight="Bold" Foreground="#1565C0" VerticalAlignment="Center"/>
-                            </StackPanel>
-
-                            <DatePicker SelectedDate="{Binding SaleDate}" materialDesign:HintAssist.Hint="Sale Date"
-                                        Margin="0,0,0,14" Height="48"/>
-
-                            <ComboBox ItemsSource="{Binding ActiveProducts}" SelectedItem="{Binding SelectedProduct}"
-                                      DisplayMemberPath="ProductName"
-                                      materialDesign:HintAssist.Hint="Select Product"
-                                      Margin="0,0,0,14" Height="48"/>
-
-                            <TextBox Text="{Binding SaleQty, UpdateSourceTrigger=PropertyChanged}"
-                                     materialDesign:HintAssist.Hint="Quantity Sold"
-                                     Margin="0,0,0,14" Height="48"/>
-
-                            <!-- Override Rate (optional — auto-filled from product master) -->
-                            <Border Background="#FFF8E1" CornerRadius="6" Padding="10,8" Margin="0,0,0,14">
-                                <StackPanel>
-                                    <TextBlock Style="{StaticResource RateLabelStyle}" Text="Sale Rate (₹) — leave 0 to use default from rate card above"/>
-                                    <TextBox Text="{Binding SaleRate, UpdateSourceTrigger=PropertyChanged}"
-                                             materialDesign:HintAssist.Hint="Override Rate (optional)"
-                                             Height="48"/>
+                    <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto" MaxHeight="600" Margin="0,0,16,0">
+                        <materialDesign:Card Padding="20"
+                                            UniformCornerRadius="10" materialDesign:ElevationAssist.Elevation="Dp1"
+                                            VerticalAlignment="Top">
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,18">
+                                    <materialDesign:PackIcon Kind="Cart" Width="22" Height="22" Foreground="#1565C0" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <TextBlock Text="Record Units Sold" FontSize="16" FontWeight="Bold" Foreground="#1565C0" VerticalAlignment="Center"/>
                                 </StackPanel>
-                            </Border>
 
-                            <Button Content="Save Daily Sale" Style="{StaticResource MaterialDesignRaisedButton}"
-                                    Command="{Binding SaveSaleCommand}"
-                                    Height="44" Background="#1565C0" BorderBrush="#1565C0"/>
-                        </StackPanel>
-                    </materialDesign:Card>
+                                <DatePicker SelectedDate="{Binding SaleDate}" materialDesign:HintAssist.Hint="Sale Date"
+                                            Margin="0,0,0,14" Height="48"/>
+
+                                <ComboBox ItemsSource="{Binding ActiveProducts}" SelectedItem="{Binding SelectedProduct}"
+                                          DisplayMemberPath="ProductName"
+                                          materialDesign:HintAssist.Hint="Select Product"
+                                          Margin="0,0,0,14" Height="48"/>
+
+                                <TextBox Text="{Binding SaleQty, UpdateSourceTrigger=PropertyChanged}"
+                                         materialDesign:HintAssist.Hint="Quantity Sold"
+                                         Margin="0,0,0,14" Height="48"/>
+
+                                <!-- Override Rate (optional — auto-filled from product master) -->
+                                <Border Background="#FFF8E1" CornerRadius="6" Padding="10,8" Margin="0,0,0,14">
+                                    <StackPanel>
+                                        <TextBlock Style="{StaticResource RateLabelStyle}" Text="Sale Rate (₹) — leave 0 to use default from rate card above"/>
+                                        <TextBox Text="{Binding SaleRate, UpdateSourceTrigger=PropertyChanged}"
+                                                 materialDesign:HintAssist.Hint="Override Rate (optional)"
+                                                 Height="48"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Stretch">
+                                    <Button Content="Save Daily Sale" Style="{StaticResource MaterialDesignRaisedButton}"
+                                            Command="{Binding SaveSaleCommand}"
+                                            Height="44" Background="#1565C0" BorderBrush="#1565C0" Width="180"/>
+                                    <Button Content="Cancel Edit" Style="{StaticResource MaterialDesignFlatButton}"
+                                            Command="{Binding CancelEditSaleCommand}"
+                                            Visibility="{Binding IsEditingSale, Converter={StaticResource BoolToVisConverter}}"
+                                            Height="44" Foreground="#D32F2F" Margin="10,0,0,0"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </materialDesign:Card>
+                    </ScrollViewer>
 
                     <!-- Right: Recent Sales History -->
                     <Grid Grid.Column="1">
@@ -260,6 +282,17 @@
                                 <DataGridTextColumn Header="Sales Value (₹)" Binding="{Binding SalesValue, StringFormat='₹{0:N2}'}" Width="130"/>
                                 <DataGridTextColumn Header="Stock" Binding="{Binding RemainingStock, StringFormat='{}{0:N2}'}" Width="85"/>
                                 <DataGridTextColumn Header="Adj." Binding="{Binding AdjustmentQuantity, StringFormat='{}{0:N2}'}" Width="65"/>
+                                <DataGridTemplateColumn Header="Action" Width="80">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Button Content="Edit" Style="{StaticResource MaterialDesignFlatButton}"
+                                                    Command="{Binding DataContext.EditSaleLogCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="{Binding}"
+                                                    IsEnabled="{Binding IsEditable}"
+                                                    Height="26" Padding="6,0"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
                             </DataGrid.Columns>
                         </DataGrid>
                     </Grid>
@@ -274,40 +307,48 @@
                         <ColumnDefinition Width="5*"/>
                     </Grid.ColumnDefinitions>
 
-                    <materialDesign:Card Grid.Column="0" Margin="0,0,16,0" Padding="20"
-                                        UniformCornerRadius="10" materialDesign:ElevationAssist.Elevation="Dp1"
-                                        VerticalAlignment="Top">
-                        <StackPanel>
-                            <StackPanel Orientation="Horizontal" Margin="0,0,0,18">
-                                <materialDesign:PackIcon Kind="Wrench" Width="22" Height="22" Foreground="#E65100" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                <TextBlock Text="Record Stock Adjustment" FontSize="16" FontWeight="Bold" Foreground="#E65100" VerticalAlignment="Center"/>
+                    <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto" MaxHeight="600" Margin="0,0,16,0">
+                        <materialDesign:Card Padding="20"
+                                            UniformCornerRadius="10" materialDesign:ElevationAssist.Elevation="Dp1"
+                                            VerticalAlignment="Top">
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,18">
+                                    <materialDesign:PackIcon Kind="Wrench" Width="22" Height="22" Foreground="#E65100" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <TextBlock Text="Record Stock Adjustment" FontSize="16" FontWeight="Bold" Foreground="#E65100" VerticalAlignment="Center"/>
+                                </StackPanel>
+
+                                <DatePicker SelectedDate="{Binding AdjustmentDate}" materialDesign:HintAssist.Hint="Adjustment Date"
+                                            Margin="0,0,0,14" Height="48"/>
+
+                                <ComboBox ItemsSource="{Binding ActiveProducts}" SelectedItem="{Binding SelectedProduct}"
+                                          DisplayMemberPath="ProductName"
+                                          materialDesign:HintAssist.Hint="Select Product"
+                                          Margin="0,0,0,14" Height="48"/>
+
+                                <TextBox Text="{Binding AdjustmentQty, UpdateSourceTrigger=PropertyChanged}"
+                                         materialDesign:HintAssist.Hint="Adjustment Qty (+/-, use negative to reduce)"
+                                         Margin="0,0,0,14" Height="48"/>
+
+                                <ComboBox ItemsSource="{Binding AdjustmentTypes}" SelectedItem="{Binding SelectedAdjustmentType}"
+                                          materialDesign:HintAssist.Hint="Reason / Adjustment Type"
+                                          Margin="0,0,0,14" Height="48"/>
+
+                                <TextBox Text="{Binding AdjustmentRemarks, UpdateSourceTrigger=PropertyChanged}"
+                                         materialDesign:HintAssist.Hint="Remarks (optional)"
+                                         Margin="0,0,0,24" Height="48"/>
+
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Stretch">
+                                    <Button Content="Save Stock Adjustment" Style="{StaticResource MaterialDesignRaisedButton}"
+                                            Command="{Binding SaveAdjustmentCommand}"
+                                            Height="44" Background="#E65100" BorderBrush="#E65100" Width="180"/>
+                                    <Button Content="Cancel Edit" Style="{StaticResource MaterialDesignFlatButton}"
+                                            Command="{Binding CancelEditAdjustmentCommand}"
+                                            Visibility="{Binding IsEditingAdjustment, Converter={StaticResource BoolToVisConverter}}"
+                                            Height="44" Foreground="#D32F2F" Margin="10,0,0,0"/>
+                                </StackPanel>
                             </StackPanel>
-
-                            <DatePicker SelectedDate="{Binding AdjustmentDate}" materialDesign:HintAssist.Hint="Adjustment Date"
-                                        Margin="0,0,0,14" Height="48"/>
-
-                            <ComboBox ItemsSource="{Binding ActiveProducts}" SelectedItem="{Binding SelectedProduct}"
-                                      DisplayMemberPath="ProductName"
-                                      materialDesign:HintAssist.Hint="Select Product"
-                                      Margin="0,0,0,14" Height="48"/>
-
-                            <TextBox Text="{Binding AdjustmentQty, UpdateSourceTrigger=PropertyChanged}"
-                                     materialDesign:HintAssist.Hint="Adjustment Qty (+/-, use negative to reduce)"
-                                     Margin="0,0,0,14" Height="48"/>
-
-                            <ComboBox ItemsSource="{Binding AdjustmentTypes}" SelectedItem="{Binding SelectedAdjustmentType}"
-                                      materialDesign:HintAssist.Hint="Reason / Adjustment Type"
-                                      Margin="0,0,0,14" Height="48"/>
-
-                            <TextBox Text="{Binding AdjustmentRemarks, UpdateSourceTrigger=PropertyChanged}"
-                                     materialDesign:HintAssist.Hint="Remarks (optional)"
-                                     Margin="0,0,0,24" Height="48"/>
-
-                            <Button Content="Save Stock Adjustment" Style="{StaticResource MaterialDesignRaisedButton}"
-                                    Command="{Binding SaveAdjustmentCommand}"
-                                    Height="44" Background="#E65100" BorderBrush="#E65100"/>
-                        </StackPanel>
-                    </materialDesign:Card>
+                        </materialDesign:Card>
+                    </ScrollViewer>
 
                     <!-- Right: Adjustment history from logs -->
                     <Grid Grid.Column="1">
@@ -326,6 +367,17 @@
                                 <DataGridTextColumn Header="Adj. Qty" Binding="{Binding AdjustmentQuantity, StringFormat='{}{0:N2}'}" Width="90"/>
                                 <DataGridTextColumn Header="Type" Binding="{Binding AdjustmentType}" Width="2*"/>
                                 <DataGridTextColumn Header="Stock After" Binding="{Binding RemainingStock, StringFormat='{}{0:N2}'}" Width="90"/>
+                                <DataGridTemplateColumn Header="Action" Width="80">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Button Content="Edit" Style="{StaticResource MaterialDesignFlatButton}"
+                                                    Command="{Binding DataContext.EditAdjustmentLogCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="{Binding}"
+                                                    IsEnabled="{Binding IsEditable}"
+                                                    Height="26" Padding="6,0"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
                             </DataGrid.Columns>
                         </DataGrid>
                     </Grid>
@@ -340,34 +392,42 @@
                         <ColumnDefinition Width="6*"/>
                     </Grid.ColumnDefinitions>
 
-                    <materialDesign:Card Grid.Column="0" Margin="0,0,16,0" Padding="20"
-                                        UniformCornerRadius="10" materialDesign:ElevationAssist.Elevation="Dp1"
-                                        VerticalAlignment="Top">
-                        <StackPanel>
-                            <TextBlock Text="Add Product to Catalog" FontSize="16" FontWeight="Bold"
-                                       Margin="0,0,0,16" Foreground="#4A148C"/>
+                    <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto" MaxHeight="600" Margin="0,0,16,0">
+                        <materialDesign:Card Padding="20"
+                                            UniformCornerRadius="10" materialDesign:ElevationAssist.Elevation="Dp1"
+                                            VerticalAlignment="Top">
+                            <StackPanel>
+                                <TextBlock Text="{Binding ProductFormTitle}" FontSize="16" FontWeight="Bold"
+                                           Margin="0,0,0,16" Foreground="#4A148C"/>
 
-                            <TextBox Text="{Binding NewProductName, UpdateSourceTrigger=PropertyChanged}"
-                                     materialDesign:HintAssist.Hint="Product Name (e.g. Castrol CRB 20W40)"
-                                     Margin="0,0,0,14" Height="48"/>
+                                <TextBox Text="{Binding NewProductName, UpdateSourceTrigger=PropertyChanged}"
+                                         materialDesign:HintAssist.Hint="Product Name (e.g. Castrol CRB 20W40)"
+                                         Margin="0,0,0,14" Height="48"/>
 
-                            <ComboBox ItemsSource="{Binding ProductCategories}" SelectedItem="{Binding NewProductCategory}"
-                                      materialDesign:HintAssist.Hint="Category (Oil / DEF)"
-                                      Margin="0,0,0,14" Height="48"/>
+                                <ComboBox ItemsSource="{Binding ProductCategories}" SelectedItem="{Binding NewProductCategory}"
+                                          materialDesign:HintAssist.Hint="Category (Oil / DEF)"
+                                          Margin="0,0,0,14" Height="48"/>
 
-                            <ComboBox ItemsSource="{Binding ProductUnits}" SelectedItem="{Binding NewProductUnit}"
-                                      materialDesign:HintAssist.Hint="Unit"
-                                      Margin="0,0,0,14" Height="48"/>
+                                <ComboBox ItemsSource="{Binding ProductUnits}" SelectedItem="{Binding NewProductUnit}"
+                                          materialDesign:HintAssist.Hint="Unit"
+                                          Margin="0,0,0,14" Height="48"/>
 
-                            <TextBox Text="{Binding NewProductDefaultSaleRate, UpdateSourceTrigger=PropertyChanged}"
-                                     materialDesign:HintAssist.Hint="Default Sale Rate / MRP (₹)"
-                                     Margin="0,0,0,24" Height="48"/>
+                                <TextBox Text="{Binding NewProductDefaultSaleRate, UpdateSourceTrigger=PropertyChanged}"
+                                         materialDesign:HintAssist.Hint="Default Sale Rate / MRP (₹)"
+                                         Margin="0,0,0,24" Height="48"/>
 
-                            <Button Content="Add to Catalog" Style="{StaticResource MaterialDesignRaisedButton}"
-                                    Command="{Binding SaveProductMasterCommand}"
-                                    Height="44" Background="#4A148C" BorderBrush="#4A148C"/>
-                        </StackPanel>
-                    </materialDesign:Card>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Stretch">
+                                    <Button Content="{Binding ProductButtonContent}" Style="{StaticResource MaterialDesignRaisedButton}"
+                                            Command="{Binding SaveProductMasterCommand}"
+                                            Height="44" Background="#4A148C" BorderBrush="#4A148C" Width="150"/>
+                                    <Button Content="Cancel" Style="{StaticResource MaterialDesignFlatButton}"
+                                            Command="{Binding CancelEditProductCommand}"
+                                            Visibility="{Binding IsEditingProduct, Converter={StaticResource BoolToVisConverter}}"
+                                            Height="44" Foreground="#D32F2F" Margin="10,0,0,0"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </materialDesign:Card>
+                    </ScrollViewer>
 
                     <!-- Catalog table -->
                     <Grid Grid.Column="1">
@@ -385,6 +445,22 @@
                                 <DataGridTextColumn Header="Category" Binding="{Binding Category}" Width="*"/>
                                 <DataGridTextColumn Header="Unit" Binding="{Binding Unit}" Width="*"/>
                                 <DataGridTextColumn Header="Default Rate (₹)" Binding="{Binding DefaultSaleRate, StringFormat='{}{0:N2}'}" Width="*"/>
+                                <DataGridTemplateColumn Header="Actions" Width="140">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal">
+                                                <Button Content="Edit" Style="{StaticResource MaterialDesignFlatButton}"
+                                                        Command="{Binding DataContext.EditProductCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}"
+                                                        Height="26" Padding="6,0" Margin="0,0,4,0"/>
+                                                <Button Content="Delete" Style="{StaticResource MaterialDesignFlatButton}" Foreground="#D32F2F"
+                                                        Command="{Binding DataContext.DeleteProductCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}"
+                                                        Height="26" Padding="6,0"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
                             </DataGrid.Columns>
                         </DataGrid>
                     </Grid>

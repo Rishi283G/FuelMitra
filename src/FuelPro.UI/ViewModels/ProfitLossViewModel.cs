@@ -87,6 +87,7 @@ public partial class ProfitLossViewModel : ObservableObject
     [ObservableProperty] private double _dsmBaseSalaries;
     [ObservableProperty] private double _salaryAdjustments;
     [ObservableProperty] private double _shortRecoveries;
+    [ObservableProperty] private double _ownerOuterExpenses;
     [ObservableProperty] private double _netProfit;
 
     public ObservableCollection<ExpenseBreakdownRow> ExpenseBreakdown { get; } = new();
@@ -99,6 +100,20 @@ public partial class ProfitLossViewModel : ObservableObject
         _repaymentRepo = App.Services.GetRequiredService<ICreditorRepaymentRepository>();
         _ownerCalcService = App.Services.GetRequiredService<IOwnerCalculationService>();
         _financialCalcService = App.Services.GetRequiredService<IFinancialCalculationService>();
+        
+        // Wire Sync Status to trigger auto-reload
+        var syncEngine = App.Services.GetRequiredService<FuelPro.Sync.SyncEngine>();
+        syncEngine.SyncStatusChanged += (status) =>
+        {
+            System.Windows.Application.Current.Dispatcher.Invoke(async () =>
+            {
+                if (status.StatusMessage == "Synced")
+                {
+                    await LoadAsync();
+                }
+            });
+        };
+
         _ = LoadAsync();
     }
 
@@ -170,6 +185,7 @@ public partial class ProfitLossViewModel : ObservableObject
             DsmBaseSalaries = result.DsmBaseSalaries;
             SalaryAdjustments = result.SalaryAdjustments;
             ShortRecoveries = result.ShortRecoveries;
+            OwnerOuterExpenses = result.OwnerOuterExpenses;
             NetProfit = result.NetProfit;
 
             // Load expense breakdown
