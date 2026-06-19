@@ -1,0 +1,28 @@
+# .NET build artifacts
+**/bin/**
+**/obj/**
+.vs/
+
+# Other desktop app projects (not needed for DSM PWA deploy)
+src/FuelPro.Core/
+src/FuelPro.Data/
+src/FuelPro.Sync/
+src/FuelPro.UI/
+src/Rashtra.Licensing/
+src/Rashtra.LicenseGenerator/
+tests/
+TestPdfParse/
+
+# Local scratch and publish outputs
+scratch/
+publish_output/
+publish_output_latest/
+build_output/
+installer_output/
+generator_output/
+
+# Large or temporary files
+*.pdf
+*.jpeg
+*.png
+*.jpg

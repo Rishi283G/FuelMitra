@@ -169,7 +169,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       errs.push('No nozzle readings loaded. Please reload the page or contact your manager.');
       return errs;
     }
-    nozzleRows.forEach((r, i) => {
+    nozzleRows.forEach((r) => {
       if (r.closingReading < r.openingReading)
         errs.push(`Nozzle ${r.nozzleId} (${r.fuelType}): Closing (${r.closingReading}) < Opening (${r.openingReading})`);
       if (r.openingReading < 0 || r.closingReading < 0)

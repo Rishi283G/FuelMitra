@@ -15,6 +15,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Serilog;
 
+namespace FuelPro.UI.ViewModels;
+
 /// <summary>Editable row used in the Nozzle Config tab UI.</summary>
 public partial class EditableNozzleRow : CommunityToolkit.Mvvm.ComponentModel.ObservableObject
 {
@@ -22,8 +24,6 @@ public partial class EditableNozzleRow : CommunityToolkit.Mvvm.ComponentModel.Ob
     [CommunityToolkit.Mvvm.ComponentModel.ObservableProperty] private string _fuelType = "MS-I";
     public int SortOrder { get; set; }
 }
-
-namespace FuelPro.UI.ViewModels;
 
 public partial class DsmManagementViewModel : ObservableObject
 {

@@ -81,6 +81,7 @@ CREATE TABLE IF NOT EXISTS "DsmSubmissionReadings" (
     "SubmissionId" UUID NOT NULL REFERENCES "DsmSubmissions" ("Id") ON DELETE CASCADE,
     "PumpId" INTEGER NOT NULL,
     "NozzleId" INTEGER NOT NULL,
+    "FuelType" TEXT,
     "OpeningReading" DOUBLE PRECISION NOT NULL,
     "ClosingReading" DOUBLE PRECISION NOT NULL,
     "Rate" DOUBLE PRECISION NOT NULL

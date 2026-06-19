@@ -59,9 +59,17 @@ export function useSubmissionService() {
           Rate: r.rate,
         }));
 
-        const { error: readingsError } = await supabase
+        let { error: readingsError } = await supabase
           .from('DsmSubmissionReadings')
           .insert(readingsPayload);
+
+        // Phase-1 Supabase schema may lack FuelType; retry without it
+        if (readingsError?.message?.includes("'FuelType'")) {
+          const legacyPayload = readingsPayload.map(({ FuelType: _ft, ...rest }) => rest);
+          ({ error: readingsError } = await supabase
+            .from('DsmSubmissionReadings')
+            .insert(legacyPayload));
+        }
 
         if (readingsError) {
           console.error('DsmSubmissionReadings insert error:', readingsError);
