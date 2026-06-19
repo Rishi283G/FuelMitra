@@ -1,4 +1,4 @@
-$dllPath = "D:\Projects\Pump_Automation\ShiN\ShiN_P3_NVL-Cloud\src\FuelPro.UI\bin\Debug\net8.0-windows\Microsoft.Data.Sqlite.dll"
+$dllPath = "d:\Projects\Pump_Automation\PyroSync_Max\PyroSync_Max\src\FuelPro.UI\bin\Debug\net8.0-windows\Microsoft.Data.Sqlite.dll"
 $dbPath = "$env:LOCALAPPDATA\FuelPro\fuelPro.db"
 
 # Load the assembly

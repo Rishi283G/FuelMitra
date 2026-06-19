@@ -11,7 +11,9 @@ using FuelPro.Core.Services;
 using FuelPro.Data.Services;
 using FuelPro.UI.ViewModels;
 using FuelPro.UI.Printing;
+using FuelPro.Sync;
 using Serilog;
+
 
 namespace FuelPro.UI;
 
@@ -90,16 +92,20 @@ public partial class App : Application
                 "FuelPro — Database Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
 
-        // Start Cloud Sync Engine
+        // Start Cloud Sync Engine and Polling Service
         try
         {
             var syncEngine = Services.GetRequiredService<FuelPro.Sync.SyncEngine>();
             syncEngine.Start();
             Log.Information("Sync Engine started successfully on startup");
+
+            var pollingService = Services.GetRequiredService<FuelPro.Sync.DsmSubmissionPollingService>();
+            pollingService.Start();
+            Log.Information("DSM Submission Polling Service started successfully on startup");
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "Failed to start Sync Engine on startup");
+            Log.Error(ex, "Failed to start Sync Engine or Polling Service on startup");
         }
 
         // ── LICENSE VALIDATION ──
@@ -431,6 +437,8 @@ public partial class App : Application
 
         // Services
         services.AddSingleton<AuthService>();
+        services.AddTransient<DsmAuthAdminService>();
+        services.AddTransient<SupabaseDsmService>();
         services.AddTransient<DsmEntryService>();
         services.AddTransient<ShiftCalculationService>();
         services.AddSingleton<IDsmCalculationService, DsmCalculationService>();
@@ -450,6 +458,7 @@ public partial class App : Application
         // Sync Services
         services.AddSingleton<FuelPro.Sync.SyncConfigService>();
         services.AddSingleton<FuelPro.Sync.SyncEngine>();
+        services.AddSingleton<FuelPro.Sync.DsmSubmissionPollingService>();
         
         // ViewModels
         services.AddTransient<LoginViewModel>();
@@ -482,6 +491,9 @@ public partial class App : Application
 
         // Developer ViewModels
         services.AddTransient<DeveloperMainWindowViewModel>();
+        services.AddTransient<DsmManagementViewModel>();
+        services.AddTransient<DsmApprovalQueueViewModel>();
+
 
         // Licensing
         services.AddSingleton(new Rashtra.Licensing.LicenseManager("PSC", "PyroSync"));
@@ -494,10 +506,13 @@ public partial class App : Application
         {
             var syncEngine = Services.GetService<FuelPro.Sync.SyncEngine>();
             syncEngine?.Stop();
+
+            var pollingService = Services.GetService<FuelPro.Sync.DsmSubmissionPollingService>();
+            pollingService?.Stop();
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "Error stopping Sync Engine during exit");
+            Log.Error(ex, "Error stopping Sync Engine or Polling Service during exit");
         }
 
         Log.Information("Application shutting down");

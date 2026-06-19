@@ -27,6 +27,7 @@ public class SyncConfigService
         
         var url = await GetMetaValueAsync(context, "Sync.SupabaseUrl", "");
         var apiKey = await GetMetaValueAsync(context, "Sync.SupabaseApiKey", "");
+        var serviceRoleKey = await GetMetaValueAsync(context, "Sync.SupabaseServiceRoleKey", "");
         var stationId = await GetMetaValueAsync(context, "Sync.StationId", "");
         var machineId = await GetMetaValueAsync(context, "Sync.MachineId", "");
         var isEnabledStr = await GetMetaValueAsync(context, "Sync.IsEnabled", "false");
@@ -58,6 +59,7 @@ public class SyncConfigService
         {
             SupabaseUrl = url,
             SupabaseApiKey = apiKey,
+            SupabaseServiceRoleKey = serviceRoleKey,
             StationId = stationId,
             MachineId = machineId,
             SyncEnabled = isEnabled,
@@ -71,6 +73,7 @@ public class SyncConfigService
 
         await SetMetaValueAsync(context, "Sync.SupabaseUrl", settings.SupabaseUrl);
         await SetMetaValueAsync(context, "Sync.SupabaseApiKey", settings.SupabaseApiKey);
+        await SetMetaValueAsync(context, "Sync.SupabaseServiceRoleKey", settings.SupabaseServiceRoleKey);
         await SetMetaValueAsync(context, "Sync.StationId", settings.StationId);
         await SetMetaValueAsync(context, "Sync.MachineId", settings.MachineId);
         await SetMetaValueAsync(context, "Sync.IsEnabled", settings.SyncEnabled.ToString());
@@ -105,6 +108,7 @@ public class SyncSettings
 {
     public string SupabaseUrl { get; set; } = string.Empty;
     public string SupabaseApiKey { get; set; } = string.Empty;
+    public string SupabaseServiceRoleKey { get; set; } = string.Empty;
     public string StationId { get; set; } = string.Empty;
     public string MachineId { get; set; } = string.Empty;
     public bool SyncEnabled { get; set; }

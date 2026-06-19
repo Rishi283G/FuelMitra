@@ -34,6 +34,11 @@ public class FuelProDbContext : DbContext
     public DbSet<DsmSalaryAdjustment> DsmSalaryAdjustments => Set<DsmSalaryAdjustment>();
     public DbSet<OilDefDailyLog> OilDefDailyLogs => Set<OilDefDailyLog>();
     public DbSet<OuterExpense> OuterExpenses => Set<OuterExpense>();
+    public DbSet<DsmUser> DsmUsers => Set<DsmUser>();
+    public DbSet<DsmPumpAssignment> DsmPumpAssignments => Set<DsmPumpAssignment>();
+    public DbSet<DsmDevice> DsmDevices => Set<DsmDevice>();
+    public DbSet<DsmApprovalAudit> DsmApprovalAudits => Set<DsmApprovalAudit>();
+    public DbSet<DsmAttendance> DsmAttendance => Set<DsmAttendance>();
 
     // AGS Import
     public DbSet<AgsShiftImport> AgsShiftImports => Set<AgsShiftImport>();
@@ -230,6 +235,52 @@ public class FuelProDbContext : DbContext
         modelBuilder.Entity<SyncIdMapping>(entity =>
         {
             entity.HasIndex(e => new { e.TableName, e.RemoteGuid }).IsUnique();
+        });
+
+        // DsmUser
+        modelBuilder.Entity<DsmUser>(entity =>
+        {
+            entity.HasIndex(e => e.MobileNumber).IsUnique();
+            entity.HasIndex(e => e.EmployeeCode);
+        });
+
+        // DsmPumpAssignment
+        modelBuilder.Entity<DsmPumpAssignment>(entity =>
+        {
+            entity.HasOne(e => e.DsmUser)
+                  .WithMany()
+                  .HasForeignKey(e => e.DsmUserId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(e => new { e.PumpId, e.ShiftType, e.IsActive });
+        });
+
+        // DsmDevice
+        modelBuilder.Entity<DsmDevice>(entity =>
+        {
+            entity.HasOne(e => e.DsmUser)
+                  .WithMany()
+                  .HasForeignKey(e => e.DsmUserId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(e => e.DeviceId);
+        });
+
+        // DsmApprovalAudit
+        modelBuilder.Entity<DsmApprovalAudit>(entity =>
+        {
+            entity.HasIndex(e => e.SubmissionId);
+        });
+
+        // DsmAttendance
+        modelBuilder.Entity<DsmAttendance>(entity =>
+        {
+            entity.HasOne(e => e.DsmUser)
+                  .WithMany()
+                  .HasForeignKey(e => e.DsmUserId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(e => new { e.DsmUserId, e.AttendanceDate, e.ShiftType }).IsUnique();
         });
     }
 

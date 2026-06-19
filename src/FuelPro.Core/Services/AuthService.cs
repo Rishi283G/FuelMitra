@@ -66,6 +66,13 @@ public class AuthService
             var user = allUsersResult.Data?.FirstOrDefault(u => u.UserId == userId);
             if (user == null) return Result.Fail("User not found");
 
+            // Prevent changing Developer PIN via application UI
+            if (string.Equals(user.Role, "Developer", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(user.Username, "Developer", StringComparison.OrdinalIgnoreCase))
+            {
+                return Result.Fail("Developer PIN cannot be modified.");
+            }
+
             if (!BCrypt.Net.BCrypt.Verify(currentPin, user.PinHash))
                 return Result.Fail("Current PIN is incorrect");
 

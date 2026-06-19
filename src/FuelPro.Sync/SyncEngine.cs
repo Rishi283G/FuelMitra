@@ -54,6 +54,11 @@ public class SyncEngine
         "OilDefInventories",
         "OilDefPurchases",
         "OilDefDailyLogs",
+        "DsmUsers",
+        "DsmPumpAssignments",
+        "DsmDevices",
+        "DsmApprovalAudits",
+        "DsmAttendance",
         "SyncChangeLogs"
     };
 
@@ -72,6 +77,11 @@ public class SyncEngine
         new TableSyncConfig("SyncChangeLogs", Array.Empty<FkMapping>()),
         new TableSyncConfig("Settings", Array.Empty<FkMapping>()),
         new TableSyncConfig("DsmProfiles", Array.Empty<FkMapping>()),
+        new TableSyncConfig("DsmUsers", Array.Empty<FkMapping>()),
+        new TableSyncConfig("DsmDevices", new[] { new FkMapping("DsmUserId", "DsmUsers") }),
+        new TableSyncConfig("DsmPumpAssignments", new[] { new FkMapping("DsmUserId", "DsmUsers") }),
+        new TableSyncConfig("DsmApprovalAudits", Array.Empty<FkMapping>()),
+        new TableSyncConfig("DsmAttendance", new[] { new FkMapping("DsmUserId", "DsmUsers") }),
         new TableSyncConfig("Creditors", Array.Empty<FkMapping>()),
         new TableSyncConfig("ProductMasters", Array.Empty<FkMapping>()),
         new TableSyncConfig("Shifts", Array.Empty<FkMapping>()),
@@ -851,9 +861,25 @@ public class SyncEngine
     {
         var values = new Dictionary<string, object?>();
         var entry = context.Entry(entity);
+        var tableName = entry.Metadata.GetTableName() ?? string.Empty;
+        var pkProperties = entry.Metadata.FindPrimaryKey()?.Properties;
+        
+        var excludePkTables = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "DsmUsers",
+            "DsmPumpAssignments",
+            "DsmDevices",
+            "DsmApprovalAudits",
+            "DsmAttendance"
+        };
+        
+        bool excludePk = excludePkTables.Contains(tableName);
+
         foreach (var property in entry.Metadata.GetProperties())
         {
             if (property.Name == "Id") continue;
+            if (excludePk && pkProperties != null && pkProperties.Contains(property)) continue;
+            
             values[property.Name] = entry.Property(property.Name).CurrentValue;
         }
         return values;

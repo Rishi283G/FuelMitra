@@ -185,7 +185,8 @@
                                                 <DataTemplate>
                                                     <Button Content="Reset PIN" Style="{StaticResource MaterialDesignOutlinedButton}" Height="28" Padding="12,0" FontSize="11"
                                                             Command="{Binding DataContext.ResetUserPinCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                            CommandParameter="{Binding}"/>
+                                                            CommandParameter="{Binding}"
+                                                            IsEnabled="{Binding IsDeveloper, Converter={StaticResource InverseBoolConverter}}"/>
                                                 </DataTemplate>
                                             </DataGridTemplateColumn.CellTemplate>
                                         </DataGridTemplateColumn>
@@ -261,10 +262,15 @@
                                              Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
                                 </Grid>
 
-                                <TextBox Text="{Binding SupabaseApiKey, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,16"
-                                         IsReadOnly="{Binding IsConfigLocked}"
-                                         materialDesign:HintAssist.Hint="Supabase Api Key (Service / Anon Role)" materialDesign:HintAssist.IsFloating="True"
-                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                                 <TextBox Text="{Binding SupabaseApiKey, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,16"
+                                          IsReadOnly="{Binding IsConfigLocked}"
+                                          materialDesign:HintAssist.Hint="Supabase Anon API Key" materialDesign:HintAssist.IsFloating="True"
+                                          Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+
+                                 <TextBox Text="{Binding SupabaseServiceRoleKey, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,16"
+                                          IsReadOnly="{Binding IsConfigLocked}"
+                                          materialDesign:HintAssist.Hint="Supabase Service Role Key (Admin)" materialDesign:HintAssist.IsFloating="True"
+                                          Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
 
                                 <!-- Station ID with Copy & Generate -->
                                 <Grid Margin="0,0,0,16">

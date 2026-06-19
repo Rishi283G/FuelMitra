@@ -32,7 +32,14 @@
         <DataTemplate DataType="{x:Type vm:AgsImportViewModel}">
             <views:AgsImportView/>
         </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:DsmApprovalQueueViewModel}">
+            <views:DsmApprovalQueueView/>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:DsmManagementViewModel}">
+            <views:DsmManagementView/>
+        </DataTemplate>
     </Window.Resources>
+
 
     <materialDesign:DialogHost Identifier="RootDialog">
         <Grid>
@@ -155,8 +162,54 @@
                         </Button.Style>
                         <materialDesign:PackIcon Kind="FileImport" Width="28" Height="28"/>
                     </Button>
+
+                    <!-- DSM Approval Queue with Badge -->
+                    <Button Command="{Binding NavigateToDsmApprovalQueueCommand}" ToolTip="DSM Approval Queue" Margin="0,4">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
+                                <Setter Property="Foreground" Value="White" />
+                                <Setter Property="Opacity" Value="0.5" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding SelectedNavIndex}" Value="6">
+                                        <Setter Property="Opacity" Value="1" />
+                                        <Setter Property="Background" Value="#33FFFFFF" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                        <materialDesign:Badged Badge="{Binding PendingDsmCount}" BadgeColorZoneMode="PrimaryDark">
+                            <materialDesign:Badged.Style>
+                                <Style TargetType="materialDesign:Badged">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding PendingDsmCount}" Value="0">
+                                            <Setter Property="Badge" Value="{x:Null}"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </materialDesign:Badged.Style>
+                            <materialDesign:PackIcon Kind="BriefcaseCheck" Width="28" Height="28"/>
+                        </materialDesign:Badged>
+                    </Button>
+
+                    <!-- DSM Management -->
+                    <Button Command="{Binding NavigateToDsmManagementCommand}" ToolTip="DSM &amp; Device Management" Margin="0,4">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
+                                <Setter Property="Foreground" Value="White" />
+                                <Setter Property="Opacity" Value="0.5" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding SelectedNavIndex}" Value="7">
+                                        <Setter Property="Opacity" Value="1" />
+                                        <Setter Property="Background" Value="#33FFFFFF" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                        <materialDesign:PackIcon Kind="AccountMultiple" Width="28" Height="28"/>
+                    </Button>
                 </StackPanel>
             </Border>
+
 
             <!-- Main Content Area with Top Toolbar -->
             <Grid Grid.Column="1" Grid.Row="0">

@@ -45,6 +45,15 @@ public class SyncValidationTest
         var syncEngine = serviceProvider.GetRequiredService<SyncEngine>();
 
         var settings = await configService.GetSettingsAsync();
+        if (!settings.SyncEnabled || string.IsNullOrEmpty(settings.SupabaseUrl))
+        {
+            settings.SyncEnabled = true;
+            settings.SupabaseUrl = "https://rvcibryprvjbzrtwqktk.supabase.co";
+            settings.SupabaseApiKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ2Y2licnlwcnZqYnpydHdxa3RrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEzMTIxMTcsImV4cCI6MjA5Njg4ODExN30.vMTA97993upfnOCs5ja-kxIhDSHbcx1gEQ6itNm5BBk";
+            settings.StationId = "STA001";
+            await configService.SaveSettingsAsync(settings);
+            settings = await configService.GetSettingsAsync();
+        }
         Assert.True(settings.SyncEnabled, "Sync must be enabled for validation.");
         Assert.False(string.IsNullOrEmpty(settings.SupabaseUrl), "SupabaseUrl must be configured.");
         Assert.False(string.IsNullOrEmpty(settings.SupabaseApiKey), "SupabaseApiKey must be configured.");

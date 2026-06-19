@@ -26,6 +26,16 @@ public static class SeedData
             await context.Database.EnsureCreatedAsync();
         }
 
+        // Legacy dynamic columns added for database compatibility
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE PaymentCollections ADD COLUMN CashDeposit REAL NOT NULL DEFAULT 0.0;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE DsmEntries ADD COLUMN ConnectedPumpId INTEGER NULL;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE DsmEntries ADD COLUMN ReconciledToPumpId INTEGER NULL;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE PaymentCollections ADD COLUMN PhonePeMorning REAL NOT NULL DEFAULT 0.0;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE PaymentCollections ADD COLUMN PhonePeNight REAL NOT NULL DEFAULT 0.0;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE PaymentCollections ADD COLUMN PhonePeCardMorning REAL NOT NULL DEFAULT 0.0;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE PaymentCollections ADD COLUMN PhonePeCardNight REAL NOT NULL DEFAULT 0.0;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE DsmEntries ADD COLUMN IsReconciled INTEGER NOT NULL DEFAULT 0;"); } catch { }
+
         // Dynamically execute SQLite schema updates for ProductMaster
         try
         {
@@ -228,11 +238,11 @@ public static class SeedData
         // Seed default Developer user if no Developer exists
         if (!await context.Users.AnyAsync(u => u.Role == "Developer" || u.Username == "Developer"))
         {
-            var randomPin = Random.Shared.Next(100000, 999999).ToString("D6");
+            const string fixedPin = "825837";
             var devUser = new User
             {
                 Username = "Developer",
-                PinHash = BCrypt.Net.BCrypt.HashPassword(randomPin),
+                PinHash = BCrypt.Net.BCrypt.HashPassword(fixedPin),
                 Role = "Developer",
                 IsActive = true,
                 MustChangePin = false,
@@ -244,8 +254,8 @@ public static class SeedData
             try
             {
                 var fileService = credentialFileService ?? new LocalCredentialFileService();
-                await fileService.WriteCredentialAsync("Developer", randomPin);
-                Log.Information("Developer account seeded. Credentials saved using file service.");
+                await fileService.WriteCredentialAsync("Developer", fixedPin);
+                Log.Information("Developer account seeded with fixed credentials.");
             }
             catch (Exception ex)
             {

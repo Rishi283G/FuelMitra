@@ -31,6 +31,9 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty] private string _syncStatusText = "Not Connected";
     [ObservableProperty] private bool _isSyncConnected;
 
+    // DSM status
+    [ObservableProperty] private int _pendingDsmCount;
+
     private readonly DispatcherTimer _clockTimer;
 
     public MainWindowViewModel()
@@ -56,7 +59,19 @@ public partial class MainWindowViewModel : ObservableObject
         };
         // Initial sync state update
         UpdateSyncStatus(syncEngine.CurrentStatus.LastSyncTime, syncEngine.CurrentStatus.PendingRecords, syncEngine.CurrentStatus.IsConnected, syncEngine.CurrentStatus.StatusMessage);
+
+        // Wire DSM Poller Count
+        var pollingService = App.Services.GetRequiredService<FuelPro.Sync.DsmSubmissionPollingService>();
+        pollingService.PendingCountChanged += (count) =>
+        {
+            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+            {
+                PendingDsmCount = count;
+            });
+        };
+        PendingDsmCount = pollingService.CurrentPendingCount;
     }
+
 
     private async Task LoadStationNameAsync()
     {
@@ -124,6 +139,21 @@ public partial class MainWindowViewModel : ObservableObject
         SelectedNavIndex = 5;
         CurrentView = App.Services.GetRequiredService<AgsImportViewModel>();
     }
+
+    [RelayCommand]
+    private void NavigateToDsmApprovalQueue()
+    {
+        SelectedNavIndex = 6;
+        CurrentView = App.Services.GetRequiredService<DsmApprovalQueueViewModel>();
+    }
+
+    [RelayCommand]
+    private void NavigateToDsmManagement()
+    {
+        SelectedNavIndex = 7;
+        CurrentView = App.Services.GetRequiredService<DsmManagementViewModel>();
+    }
+
 
     public void UpdateLastSaveTime() =>
         LastSaveTime = DateTime.Now.ToString("hh:mm:ss tt");

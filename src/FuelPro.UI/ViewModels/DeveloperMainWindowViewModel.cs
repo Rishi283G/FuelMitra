@@ -44,6 +44,7 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
     // Tab 2: Cloud Config
     [ObservableProperty] private string _supabaseUrl = "";
     [ObservableProperty] private string _supabaseApiKey = "";
+    [ObservableProperty] private string _supabaseServiceRoleKey = "";
     [ObservableProperty] private string _stationId = "";
     [ObservableProperty] private string _machineId = "";
     [ObservableProperty] private bool _syncEnabled;
@@ -179,6 +180,16 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
     private async Task ResetUserPinAsync(User? user)
     {
         if (user == null) return;
+
+        // Prevent accidental reset of Developer credentials
+        if (string.Equals(user.Role, "Developer", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(user.Username, "Developer", StringComparison.OrdinalIgnoreCase))
+        {
+            System.Windows.MessageBox.Show(
+                "Developer PIN cannot be reset from the UI.\nUse the FuelPro.Maintenance tool if a reset is absolutely necessary.",
+                "Operation Blocked", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+            return;
+        }
         
         var randomPin = Random.Shared.Next(1000, 9999).ToString("D4");
         user.PinHash = BCrypt.Net.BCrypt.HashPassword(randomPin);
@@ -203,6 +214,7 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
         var settings = await _syncConfigService.GetSettingsAsync();
         SupabaseUrl = settings.SupabaseUrl;
         SupabaseApiKey = settings.SupabaseApiKey;
+        SupabaseServiceRoleKey = settings.SupabaseServiceRoleKey;
         StationId = settings.StationId;
         MachineId = settings.MachineId;
         SyncEnabled = settings.SyncEnabled;
@@ -309,6 +321,7 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
             {
                 SupabaseUrl = SupabaseUrl.Trim(),
                 SupabaseApiKey = SupabaseApiKey.Trim(),
+                SupabaseServiceRoleKey = SupabaseServiceRoleKey.Trim(),
                 StationId = normalizedStationId,
                 MachineId = MachineId.Trim(),
                 SyncEnabled = SyncEnabled,

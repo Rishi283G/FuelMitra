@@ -109,6 +109,13 @@ public class DashboardValidationTest
 
         var configService = serviceProvider.GetRequiredService<SyncConfigService>();
         var settings = await configService.GetSettingsAsync();
+        if (!settings.SyncEnabled || string.IsNullOrEmpty(settings.SupabaseUrl))
+        {
+            settings.SyncEnabled = true;
+            settings.SupabaseUrl = "https://rvcibryprvjbzrtwqktk.supabase.co";
+            settings.SupabaseApiKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ2Y2licnlwcnZqYnpydHdxa3RrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEzMTIxMTcsImV4cCI6MjA5Njg4ODExN30.vMTA97993upfnOCs5ja-kxIhDSHbcx1gEQ6itNm5BBk";
+            settings.StationId = "STA001";
+        }
         settings.LastSyncTime = DateTime.MinValue; // reset to force pull all records
         await configService.SaveSettingsAsync(settings);
 
@@ -255,6 +262,14 @@ This report compares calculations across the **Owner Dashboard**, **Collection S
             {
                 generatedPin = pinLine.Split(':').Last().Trim();
             }
+        }
+
+        // Ensure database exists and is seeded with default users
+        using (var setupContext = new FuelProDbContext(new DbContextOptionsBuilder<FuelProDbContext>().UseSqlite($"Data Source={_dbPath}").Options))
+        {
+            await setupContext.Database.MigrateAsync();
+            var credentialService = new LocalCredentialFileService(folder);
+            await SeedData.InitializeAsync(setupContext, credentialService);
         }
 
         // 2. Query SQLite Database Users table
