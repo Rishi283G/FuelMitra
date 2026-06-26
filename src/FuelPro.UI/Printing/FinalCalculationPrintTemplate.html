@@ -91,6 +91,79 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
   .diff-ok,.diff-bad,.tr-sub td,.tr-hl td,.mini-hdr{
     -webkit-print-color-adjust:exact;print-color-adjust:exact}
 }
+
+.nozzle-grid-container {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+  width: 100%;
+}
+.nozzle-group-card {
+  flex: 1;
+  border: 1px solid #0f4c81;
+  border-radius: 6px;
+  background: #fff;
+  overflow: hidden;
+}
+.nozzle-group-hdr {
+  background: #0f4c81;
+  color: #fff;
+  font-weight: bold;
+  font-size: 11px;
+  text-align: center;
+  padding: 6px;
+  text-transform: uppercase;
+}
+.tank-info-bar {
+  display: flex;
+  justify-content: space-between;
+  background: #e8f1fb;
+  padding: 4px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  border-bottom: 1px solid #0f4c81;
+}
+.nozzles-layout {
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.nozzle-row {
+  display: flex;
+  gap: 4px;
+}
+.nozzle-cell {
+  flex: 1;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 3px;
+  text-align: center;
+  font-size: 9px;
+  background: #fff;
+}
+.nozzle-cell.dimmed {
+  opacity: 0.35;
+}
+.nozzle-num {
+  font-weight: bold;
+  font-size: 9px;
+  color: #0f4c81;
+  border-bottom: 1px dashed #ddd;
+  padding-bottom: 1px;
+  margin-bottom: 2px;
+}
+.nozzle-sale {
+  font-weight: 700;
+  color: #00663a;
+  font-size: 9.5px;
+}
+.nozzle-readings {
+  font-size: 7.5px;
+  color: #555;
+  margin-top: 1px;
+  line-height: 1.1;
+}
 </style>
 </head>
 <body>
@@ -173,6 +246,11 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
         </tbody></table></div>
       </div>
     </div>
+  </div>
+  <hr class="div">
+  <div class="sec">
+    <div class="sec-title">Nozzle Readings &amp; Tank Status</div>
+    <div id="nozzleGridContainer"></div>
   </div>
   <div class="rpt-ftr">
     <span id="ftrStation">PyroSync &mdash; Confidential Shift Report</span>
@@ -303,6 +381,73 @@ function renderData(){
   });
   var etr=document.createElement('tr');etr.className='tr-total';
   etr.innerHTML='<td colspan="2">Total Expenses</td><td>'+inrZ(expTot)+'</td>';et.appendChild(etr);
+
+  // Nozzle-wise Grid
+  function renderNozzleGroups(containerId, groups) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    container.innerHTML = '';
+    
+    if (!groups || groups.length === 0) {
+      container.innerHTML = '<div style="font-style:italic;color:#666;padding:10px;">No nozzle reading data available.</div>';
+      return;
+    }
+    
+    const gridContainer = document.createElement('div');
+    gridContainer.className = 'nozzle-grid-container';
+    
+    groups.forEach(g => {
+      const card = document.createElement('div');
+      card.className = 'nozzle-group-card';
+      
+      const hdr = document.createElement('div');
+      hdr.className = 'nozzle-group-hdr';
+      hdr.textContent = g.groupName || '';
+      card.appendChild(hdr);
+      
+      const infoBar = document.createElement('div');
+      infoBar.className = 'tank-info-bar';
+      infoBar.innerHTML = `
+        <span>DIP: <strong>${g.dip || 0} mm</strong></span>
+        <span>STOCK: <strong style="color:#00663a">${parseFloat(g.stock || 0).toLocaleString('en-IN', {minimumFractionDigits:2,maximumFractionDigits:2})} L</strong></span>
+      `;
+      card.appendChild(infoBar);
+      
+      const layout = document.createElement('div');
+      layout.className = 'nozzles-layout';
+      
+      (g.rows || []).forEach(row => {
+        const rowDiv = document.createElement('div');
+        rowDiv.className = 'nozzle-row';
+        
+        row.forEach(n => {
+          const cell = document.createElement('div');
+          cell.className = 'nozzle-cell';
+          if (!n.hasReading) {
+            cell.className += ' dimmed';
+          }
+          
+          cell.innerHTML = `
+            <div class="nozzle-num">N${n.nozzleNumber}</div>
+            <div class="nozzle-sale">${n.hasReading ? parseFloat(n.saleLitres || 0).toFixed(2) : '-'}</div>
+            <div class="nozzle-readings">
+              O: ${n.hasReading ? Math.round(n.openingReading) : '-'}<br/>
+              C: ${n.hasReading ? Math.round(n.closingReading) : '-'}
+            </div>
+          `;
+          rowDiv.appendChild(cell);
+        });
+        
+        layout.appendChild(rowDiv);
+      });
+      
+      card.appendChild(layout);
+      gridContainer.appendChild(card);
+    });
+    
+    container.appendChild(gridContainer);
+  }
+  renderNozzleGroups('nozzleGridContainer', d.nozzleGroups);
 
   document.getElementById('ftrMid').innerHTML='<strong>Shift '+d.shiftLabel+'</strong> \u00B7 '+d.date+' \u00B7 '+parseFloat(ftTotL).toFixed(2)+' L \u00B7 '+inrZ(grossFuel);
 }

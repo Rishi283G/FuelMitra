@@ -168,6 +168,13 @@ public partial class OwnerMainWindowViewModel : ObservableObject
         CurrentView = App.Services.GetRequiredService<OuterExpensesViewModel>();
     }
 
+    [RelayCommand]
+    private void NavigateToCardSettlement()
+    {
+        SelectedNavIndex = 13;
+        CurrentView = App.Services.GetRequiredService<CardSettlementViewModel>();
+    }
+
     /// <summary>
     /// Called by the sync engine to update status display.
     /// </summary>

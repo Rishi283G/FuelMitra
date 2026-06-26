@@ -94,44 +94,16 @@
         <!-- MAIN CONTENT -->
         <ScrollViewer Grid.Row="1" Padding="16,0,16,16" VerticalScrollBarVisibility="Auto">
             <Grid Visibility="{Binding HasData, Converter={StaticResource BoolToVis}}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="6*" />
                     <ColumnDefinition Width="4*" />
                 </Grid.ColumnDefinitions>
 
-                <StackPanel Grid.Column="0" Margin="0,0,8,0">
-                    
-                    <!-- TABLE 1: NOZZLE SALE -->
-                    <materialDesign:Card Style="{StaticResource SectionCard}">
-                        <StackPanel>
-                            <TextBlock Text="1. Nozzle-wise Fuel Sale (Shift A Opening to Shift C Closing)" Style="{StaticResource SectionTitle}" />
-                            <DataGrid ItemsSource="{Binding NozzleSaleRows}" AutoGenerateColumns="False" IsReadOnly="True" MaxHeight="400">
-                                <DataGrid.Columns>
-                                    <DataGridTextColumn Header="Pump" Binding="{Binding PumpId, Converter={StaticResource PumpIdConverter}}" FontWeight="Bold"/>
-                                    <DataGridTextColumn Header="Fuel" Binding="{Binding FuelType}" />
-                                    <DataGridTextColumn Header="Opening" Binding="{Binding OpeningReading, StringFormat='F2'}" Foreground="Gray"/>
-                                    <DataGridTextColumn Header="Closing" Binding="{Binding ClosingReading, StringFormat='F2'}" Foreground="Black" FontWeight="SemiBold"/>
-                                    <DataGridTextColumn Header="Gross (L)" Binding="{Binding GrossLitres, Converter={StaticResource LitreConverter}}" />
-                                    <DataGridTextColumn Header="Net Sale" Binding="{Binding NetSaleLitres, Converter={StaticResource LitreConverter}}" FontWeight="Bold" Foreground="Green" />
-                                    <DataGridTextColumn Header="Rate" Binding="{Binding Rate, Converter={StaticResource CurrencyConverter}}" />
-                                    <DataGridTextColumn Header="Amount" Binding="{Binding Amount, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold"/>
-                                </DataGrid.Columns>
-                            </DataGrid>
-                            
-                            <Border Background="{DynamicResource MaterialDesign.Brush.Primary.Light}" Padding="8" Margin="0,8,0,0" CornerRadius="4">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="TOTAL FUEL SALE" FontWeight="Bold" Foreground="White" />
-                                    <TextBlock Grid.Column="1" Text="{Binding TotalDayLitres, Converter={StaticResource LitreConverter}, StringFormat='Total Litres: {0}'}" Foreground="White" Margin="0,0,16,0" FontWeight="SemiBold" />
-                                    <TextBlock Grid.Column="2" Text="{Binding TotalDayFuelSaleAmount, Converter={StaticResource CurrencyConverter}, StringFormat='Amount: {0}'}" FontWeight="Bold" Foreground="White" />
-                                </Grid>
-                            </Border>
-                        </StackPanel>
-                    </materialDesign:Card>
+                <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,8,0">
 
                     <!-- TABLE 2: COLLECTIONS -->
                     <materialDesign:Card Style="{StaticResource SectionCard}">
@@ -229,7 +201,7 @@
 
                 </StackPanel>
 
-                <StackPanel Grid.Column="1" Margin="8,0,0,0">
+                <StackPanel Grid.Row="0" Grid.Column="1" Margin="8,0,0,0">
                     
                     <!-- TABLE 3: CREDITORS -->
                     <materialDesign:Card Style="{StaticResource SectionCard}">
@@ -316,6 +288,113 @@
                     </materialDesign:Card>
 
                 </StackPanel>
+
+                <!-- 1. Nozzle-wise Fuel Sale & Tank Status -->
+                <materialDesign:Card Grid.Row="1" Grid.ColumnSpan="2" Style="{StaticResource SectionCard}" Margin="0,16,0,0">
+                    <StackPanel>
+                        <TextBlock Text="1. Nozzle-wise Fuel Sale &amp; Tank Status (Shift A Opening to Shift C Closing)" Style="{StaticResource SectionTitle}" />
+                        
+                        <ItemsControl ItemsSource="{Binding NozzleGroups}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <UniformGrid Columns="3" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <materialDesign:Card Margin="8" Padding="12" materialDesign:ElevationAssist.Elevation="Dp1" Background="{DynamicResource MaterialDesign.Brush.Surface}">
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="*" />
+                                            </Grid.RowDefinitions>
+                                            
+                                            <!-- Group Header -->
+                                            <Border Grid.Row="0" Background="{DynamicResource MaterialDesign.Brush.Primary.Light}" CornerRadius="4" Padding="8" Margin="0,0,0,12">
+                                                <TextBlock Text="{Binding GroupName}" FontWeight="Bold" Foreground="White" FontSize="15" HorizontalAlignment="Center"/>
+                                            </Border>
+                                            
+                                            <!-- Tank Info (Dip & Stock) -->
+                                            <Grid Grid.Row="1" Margin="0,0,0,12">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="4,0">
+                                                    <TextBlock Text="Dip: " FontWeight="SemiBold" Opacity="0.7"/>
+                                                    <TextBlock Text="{Binding Dip, StringFormat='{}{0} mm'}" FontWeight="Bold"/>
+                                                </StackPanel>
+                                                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="4,0">
+                                                    <TextBlock Text="Stock: " FontWeight="SemiBold" Opacity="0.7"/>
+                                                    <TextBlock Text="{Binding Stock, Converter={StaticResource LitreConverter}}" FontWeight="Bold" Foreground="Green"/>
+                                                </StackPanel>
+                                            </Grid>
+                                            
+                                            <!-- Nozzles Grid -->
+                                            <ItemsControl Grid.Row="2" ItemsSource="{Binding Rows}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <ItemsControl ItemsSource="{Binding}">
+                                                            <ItemsControl.ItemsPanel>
+                                                                <ItemsPanelTemplate>
+                                                                    <UniformGrid Columns="4" />
+                                                                </ItemsPanelTemplate>
+                                                            </ItemsControl.ItemsPanel>
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate>
+                                                                    <Border BorderBrush="{DynamicResource MaterialDesign.Brush.Divider}" BorderThickness="1" CornerRadius="4" Padding="6,4" Margin="2" Background="{DynamicResource MaterialDesign.Brush.Surface}">
+                                                                        <Border.Style>
+                                                                            <Style TargetType="Border">
+                                                                                <Style.Triggers>
+                                                                                    <DataTrigger Binding="{Binding HasReading}" Value="False">
+                                                                                        <Setter Property="Opacity" Value="0.4" />
+                                                                                    </DataTrigger>
+                                                                                </Style.Triggers>
+                                                                            </Style>
+                                                                        </Border.Style>
+                                                                        <Grid>
+                                                                            <Grid.RowDefinitions>
+                                                                                <RowDefinition Height="Auto" />
+                                                                                <RowDefinition Height="Auto" />
+                                                                                <RowDefinition Height="Auto" />
+                                                                            </Grid.RowDefinitions>
+                                                                            <TextBlock Text="{Binding NozzleNumber, StringFormat='N{0}'}" FontWeight="Bold" HorizontalAlignment="Center" FontSize="13"/>
+                                                                            <TextBlock Grid.Row="1" Text="{Binding SaleLitres, Converter={StaticResource LitreConverter}}" HorizontalAlignment="Center" Foreground="Green" FontWeight="SemiBold" FontSize="12"/>
+                                                                            <StackPanel Grid.Row="2" Orientation="Vertical" HorizontalAlignment="Center" Opacity="0.6" Margin="0,2,0,0">
+                                                                                <TextBlock Text="{Binding OpeningReading, StringFormat='O: {0:F0}'}" FontSize="10" HorizontalAlignment="Center"/>
+                                                                                <TextBlock Text="{Binding ClosingReading, StringFormat='C: {0:F0}'}" FontSize="10" HorizontalAlignment="Center"/>
+                                                                            </StackPanel>
+                                                                        </Grid>
+                                                                    </Border>
+                                                                </DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </Grid>
+                                    </materialDesign:Card>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        
+                        <!-- Totals Bar -->
+                        <Border Background="{DynamicResource MaterialDesign.Brush.Primary.Light}" Padding="12" Margin="8,16,8,8" CornerRadius="4">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="TOTAL DAY FUEL SALE" FontWeight="Bold" Foreground="White" FontSize="15" />
+                                <TextBlock Grid.Column="1" Text="{Binding TotalDayLitres, Converter={StaticResource LitreConverter}, StringFormat='Total Litres: {0}'}" Foreground="White" Margin="0,0,24,0" FontWeight="Bold" FontSize="15" />
+                                <TextBlock Grid.Column="2" Text="{Binding TotalDayFuelSaleAmount, Converter={StaticResource CurrencyConverter}, StringFormat='Amount: {0}'}" FontWeight="Bold" Foreground="White" FontSize="15" />
+                            </Grid>
+                        </Border>
+                    </StackPanel>
+                </materialDesign:Card>
+
             </Grid>
         </ScrollViewer>
     </Grid>

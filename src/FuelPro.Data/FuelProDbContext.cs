@@ -63,6 +63,7 @@ public class FuelProDbContext : DbContext
         {
             entity.HasIndex(e => new { e.ShiftDate, e.ShiftType }).IsUnique();
             entity.Property(e => e.IsLocked).HasDefaultValue(false);
+            entity.Property(e => e.CardSettlementPosTotal).HasDefaultValue(0.0);
         });
 
         // DsmEntry
@@ -101,6 +102,13 @@ public class FuelProDbContext : DbContext
             entity.Property(e => e.CreditCardMorning).HasDefaultValue(0.0);
             entity.Property(e => e.CreditCardNight).HasDefaultValue(0.0);
             entity.Property(e => e.PetroCard).HasDefaultValue(0.0);
+
+            entity.Property(e => e.CardTid).IsRequired(false);
+            entity.Property(e => e.CardBatch).IsRequired(false);
+            entity.Property(e => e.PhonePeTid).IsRequired(false);
+            entity.Property(e => e.PhonePeBatch).IsRequired(false);
+            entity.Property(e => e.PetroCardTid).IsRequired(false);
+            entity.Property(e => e.PetroCardBatch).IsRequired(false);
 
             // Computed properties are ignored in EF
             entity.Ignore(e => e.PhonePe);

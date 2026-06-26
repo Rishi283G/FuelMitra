@@ -129,6 +129,8 @@ public partial class FinalCalculationView : UserControl
                 totalDsmShort:            vm.TotalDsmShort,
                 expenseRows:              vm.ExpenseRows.ToList());
 
+            printData.NozzleGroups = vm.NozzleGroups.ToList();
+
             var printService = new PrintService();
             printService.PrintFinalCalculation(printData);
         }

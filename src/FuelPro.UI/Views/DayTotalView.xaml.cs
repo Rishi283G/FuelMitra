@@ -61,6 +61,23 @@ public partial class DayTotalView : UserControl
             petroCardTotal            = vm.PetroCardTotal,
             bankCashTotal             = vm.BankCashTotal,
             cashInHandTotal           = vm.CashInHandTotal,
+            nozzleGroups = vm.NozzleGroups.Select(g => new
+            {
+                groupName = g.GroupName,
+                fuelType = g.FuelType,
+                dip = g.Dip,
+                stock = g.Stock,
+                density = g.Density,
+                rows = g.Rows.Select(r => r.Select(n => new
+                {
+                    nozzleNumber = n.NozzleNumber,
+                    fuelType = n.FuelType,
+                    openingReading = n.OpeningReading,
+                    closingReading = n.ClosingReading,
+                    saleLitres = n.SaleLitres,
+                    hasReading = n.HasReading
+                }).ToList()).ToList()
+            }).ToList(),
             nozzleRows = vm.NozzleSaleRows.Select(r => new
             {
                 pumpId         = r.PumpId,

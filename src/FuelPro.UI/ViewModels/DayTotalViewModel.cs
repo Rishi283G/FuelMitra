@@ -8,10 +8,13 @@ using Microsoft.Extensions.DependencyInjection;
 using System.Collections.ObjectModel;
 using Serilog;
 
+using FuelPro.Core.Models.AGS;
+
 namespace FuelPro.UI.ViewModels;
 
 public partial class DayTotalViewModel : ObservableObject
 {
+    [ObservableProperty] private ObservableCollection<NozzleGroupDto> _nozzleGroups = new();
     private readonly IShiftRepository _shiftRepo;
     private readonly IDsmEntryRepository _dsmRepo;
     private readonly IExpenseRepository _expenseRepo;
@@ -251,8 +254,27 @@ public partial class DayTotalViewModel : ObservableObject
             ReconciliationTotalAmount = TotalDigitalAndCash + CreditorsTotal + ExpensesTotal + totalTesting + TotalDsmShort;
             GrossDaySaleTotal = TotalDayFuelSaleAmount;
 
-            Difference = ReconciliationTotalAmount - GrossDaySaleTotal;
-            IsBalanced = Math.Abs(Difference) < 0.01;
+            // Load AGS Nozzle readings for the day range
+            try
+            {
+                var agsRepo = App.Services.GetRequiredService<IAgsImportRepository>();
+                var dayShifts = new List<AgsShiftImport>();
+                for (var dt = StartDate.Date; dt <= EndDate.Date; dt = dt.AddDays(1))
+                {
+                    var shiftsRes = await agsRepo.GetShiftsForDateAsync(dt);
+                    if (shiftsRes.Success && shiftsRes.Data != null)
+                    {
+                        dayShifts.AddRange(shiftsRes.Data.Where(s => s.IsActive));
+                    }
+                }
+                var nozzleGroupsList = BuildNozzleGroupsForDay(dayShifts);
+                NozzleGroups = new ObservableCollection<NozzleGroupDto>(nozzleGroupsList);
+            }
+            catch (Exception ex)
+            {
+                _logger.Warning(ex, "Failed to load AGS nozzle groups for day total");
+                NozzleGroups = new ObservableCollection<NozzleGroupDto>(BuildNozzleGroups(null));
+            }
 
             HasData = true;
         }
@@ -330,4 +352,172 @@ public partial class DayTotalViewModel : ObservableObject
 
     [RelayCommand]
     private async Task RefreshAsync() => await LoadDayDataAsync();
+
+    private List<NozzleGroupDto> BuildNozzleGroupsForDay(List<AgsShiftImport> dayShifts)
+    {
+        var groups = new List<NozzleGroupDto>();
+        if (dayShifts == null || dayShifts.Count == 0)
+        {
+            return BuildNozzleGroups(null);
+        }
+
+        var allReadings = dayShifts.SelectMany(s => s.NozzleReadings).ToList();
+        
+        var sortedShifts = dayShifts.OrderBy(s => s.ImportDate).ThenBy(s => s.ShiftType).ToList();
+        var firstShift = sortedShifts.First();
+        var lastShift = sortedShifts.Last();
+
+        var firstHsdTank = firstShift.TankStocks.FirstOrDefault(t => t.FuelType == "HSD");
+        var lastHsdTank = lastShift.TankStocks.FirstOrDefault(t => t.FuelType == "HSD");
+        
+        var firstMsITank = firstShift.TankStocks.FirstOrDefault(t => t.FuelType == "MS-I");
+        var lastMsITank = lastShift.TankStocks.FirstOrDefault(t => t.FuelType == "MS-I");
+        
+        var firstMsIITank = firstShift.TankStocks.FirstOrDefault(t => t.FuelType == "MS-II");
+        var lastMsIITank = lastShift.TankStocks.FirstOrDefault(t => t.FuelType == "MS-II");
+
+        NozzleDisplayItem CreateItem(int num, string fuelType)
+        {
+            var nozzleReadings = allReadings.Where(r => r.NozzleNumber == num).ToList();
+            if (nozzleReadings.Count > 0)
+            {
+                var op = nozzleReadings.Min(r => r.OpeningReading);
+                var cl = nozzleReadings.Max(r => r.ClosingReading);
+                var sale = nozzleReadings.Sum(r => r.NetSaleLitres);
+                return new NozzleDisplayItem
+                {
+                    NozzleNumber = num,
+                    FuelType = fuelType,
+                    OpeningReading = op,
+                    ClosingReading = cl,
+                    SaleLitres = sale,
+                    HasReading = true
+                };
+            }
+            return new NozzleDisplayItem
+            {
+                NozzleNumber = num,
+                FuelType = fuelType,
+                OpeningReading = 0,
+                ClosingReading = 0,
+                SaleLitres = 0,
+                HasReading = false
+            };
+        }
+
+        // HSD Group
+        var hsdGroup = new NozzleGroupDto
+        {
+            GroupName = "HSD (Tank 3)",
+            FuelType = "HSD",
+            Dip = lastHsdTank?.ClosingDipMM ?? 0,
+            Stock = lastHsdTank?.ClosingStockLitres ?? 0
+        };
+        hsdGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(1, "HSD"), CreateItem(2, "HSD"), CreateItem(7, "HSD"), CreateItem(8, "HSD") });
+        hsdGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(3, "HSD"), CreateItem(4, "HSD"), CreateItem(9, "HSD"), CreateItem(10, "HSD") });
+        groups.Add(hsdGroup);
+
+        // MS-II Group
+        var msIIGroup = new NozzleGroupDto
+        {
+            GroupName = "MS-II (Tank 2)",
+            FuelType = "MS-II",
+            Dip = lastMsIITank?.ClosingDipMM ?? 0,
+            Stock = lastMsIITank?.ClosingStockLitres ?? 0
+        };
+        msIIGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(13, "MS-II"), CreateItem(14, "MS-II"), CreateItem(17, "MS-II"), CreateItem(18, "MS-II") });
+        msIIGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(21, "MS-II"), CreateItem(22, "MS-II"), CreateItem(25, "MS-II"), CreateItem(26, "MS-II") });
+        groups.Add(msIIGroup);
+
+        // MS-I Group
+        var msIGroup = new NozzleGroupDto
+        {
+            GroupName = "MS-I (Tank 1)",
+            FuelType = "MS-I",
+            Dip = lastMsITank?.ClosingDipMM ?? 0,
+            Stock = lastMsITank?.ClosingStockLitres ?? 0
+        };
+        msIGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(5, "MS-I"), CreateItem(6, "MS-I"), CreateItem(11, "MS-I"), CreateItem(12, "MS-I") });
+        msIGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(15, "MS-I"), CreateItem(16, "MS-I"), CreateItem(19, "MS-I"), CreateItem(20, "MS-I") });
+        msIGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(23, "MS-I"), CreateItem(24, "MS-I"), CreateItem(27, "MS-I"), CreateItem(28, "MS-I") });
+        groups.Add(msIGroup);
+
+        return groups;
+    }
+
+    private List<NozzleGroupDto> BuildNozzleGroups(AgsShiftImport? import)
+    {
+        var groups = new List<NozzleGroupDto>();
+
+        var readingsDict = import?.NozzleReadings?.ToDictionary(r => r.NozzleNumber) 
+                           ?? new Dictionary<int, AgsNozzleReading>();
+
+        var hsdTank = import?.TankStocks?.FirstOrDefault(t => t.FuelType == "HSD");
+        var msITank = import?.TankStocks?.FirstOrDefault(t => t.FuelType == "MS-I");
+        var msIITank = import?.TankStocks?.FirstOrDefault(t => t.FuelType == "MS-II");
+
+        NozzleDisplayItem CreateItem(int num, string fuelType)
+        {
+            if (readingsDict.TryGetValue(num, out var r))
+            {
+                return new NozzleDisplayItem
+                {
+                    NozzleNumber = num,
+                    FuelType = fuelType,
+                    OpeningReading = r.OpeningReading,
+                    ClosingReading = r.ClosingReading,
+                    SaleLitres = r.NetSaleLitres,
+                    HasReading = true
+                };
+            }
+            return new NozzleDisplayItem
+            {
+                NozzleNumber = num,
+                FuelType = fuelType,
+                OpeningReading = 0,
+                ClosingReading = 0,
+                SaleLitres = 0,
+                HasReading = false
+            };
+        }
+
+        // HSD Group
+        var hsdGroup = new NozzleGroupDto
+        {
+            GroupName = "HSD (Tank 3)",
+            FuelType = "HSD",
+            Dip = hsdTank?.ClosingDipMM ?? 0,
+            Stock = hsdTank?.ClosingStockLitres ?? 0
+        };
+        hsdGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(1, "HSD"), CreateItem(2, "HSD"), CreateItem(7, "HSD"), CreateItem(8, "HSD") });
+        hsdGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(3, "HSD"), CreateItem(4, "HSD"), CreateItem(9, "HSD"), CreateItem(10, "HSD") });
+        groups.Add(hsdGroup);
+
+        // MS-II Group
+        var msIIGroup = new NozzleGroupDto
+        {
+            GroupName = "MS-II (Tank 2)",
+            FuelType = "MS-II",
+            Dip = msIITank?.ClosingDipMM ?? 0,
+            Stock = msIITank?.ClosingStockLitres ?? 0
+        };
+        msIIGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(13, "MS-II"), CreateItem(14, "MS-II"), CreateItem(17, "MS-II"), CreateItem(18, "MS-II") });
+        msIIGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(21, "MS-II"), CreateItem(22, "MS-II"), CreateItem(25, "MS-II"), CreateItem(26, "MS-II") });
+        groups.Add(msIIGroup);
+
+        // MS-I Group
+        var msIGroup = new NozzleGroupDto
+        {
+            GroupName = "MS-I (Tank 1)",
+            FuelType = "MS-I",
+            Dip = msITank?.ClosingDipMM ?? 0,
+            Stock = msITank?.ClosingStockLitres ?? 0
+        };
+        msIGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(5, "MS-I"), CreateItem(6, "MS-I"), CreateItem(11, "MS-I"), CreateItem(12, "MS-I") });
+        msIGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(15, "MS-I"), CreateItem(16, "MS-I"), CreateItem(19, "MS-I"), CreateItem(20, "MS-I") });
+        msIGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(23, "MS-I"), CreateItem(24, "MS-I"), CreateItem(27, "MS-I"), CreateItem(28, "MS-I") });
+        groups.Add(msIGroup);
+
+        return groups;
+    }
 }

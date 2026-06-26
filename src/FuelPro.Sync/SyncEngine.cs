@@ -448,14 +448,26 @@ public class SyncEngine
 
                 if (recordsToUpsert.Count > 0)
                 {
-                    var json = JsonConvert.SerializeObject(recordsToUpsert);
-                    // Upsert with SyncGuid as the conflict resolution column
-                    var response = await _httpClient.SendRequestAsync(HttpMethod.Post, tableName, json, isUpsert: true, onConflict: "SyncGuid");
-                    if (!response.IsSuccessStatusCode)
+                    // Split records to process deactivations (IsActive = false) first, avoiding unique constraint violations on active records.
+                    var deactivations = recordsToUpsert.Where(r => r.TryGetValue("IsActive", out var val) && val is bool b && !b).ToList();
+                    var activations = recordsToUpsert.Where(r => !(r.TryGetValue("IsActive", out var val) && val is bool b && !b)).ToList();
+
+                    var batches = new List<List<Dictionary<string, object?>>>();
+                    if (deactivations.Count > 0) batches.Add(deactivations);
+                    if (activations.Count > 0) batches.Add(activations);
+
+                    foreach (var batch in batches)
                     {
-                        var error = await response.Content.ReadAsStringAsync();
-                        throw new HttpRequestException($"Supabase UPSERT failed for table {tableName}: {error}");
+                        var json = JsonConvert.SerializeObject(batch);
+                        // Upsert with SyncGuid as the conflict resolution column
+                        var response = await _httpClient.SendRequestAsync(HttpMethod.Post, tableName, json, isUpsert: true, onConflict: "SyncGuid");
+                        if (!response.IsSuccessStatusCode)
+                        {
+                            var error = await response.Content.ReadAsStringAsync();
+                            throw new HttpRequestException($"Supabase UPSERT failed for table {tableName}: {error}");
+                        }
                     }
+
                     // Mark all upserted GUIDs as pushed
                     foreach (var rec in recordsToUpsert)
                     {

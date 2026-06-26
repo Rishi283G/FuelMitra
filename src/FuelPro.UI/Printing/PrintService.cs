@@ -203,6 +203,43 @@ public class PrintService
     }
 
     /// <summary>
+    /// Prints the Card Settlement report.
+    /// </summary>
+    public void PrintCardSettlement(object data)
+    {
+        try
+        {
+            var json = GetSerializedJsonWithLogoAndStationName(data);
+            var templateHtml = LoadNamedTemplate("CardSettlementPrintTemplate.html");
+
+            if (!templateHtml.Contains(MARKER))
+            {
+                MessageBox.Show("Card Settlement print template is outdated.",
+                    "Print Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            var finalHtml = templateHtml.Replace(MARKER, json);
+            var tempFile = Path.Combine(Path.GetTempPath(),
+                $"PyroSyncCardSettlement_{DateTime.Now:yyyyMMddHHmmss}.html");
+
+            File.WriteAllText(tempFile, finalHtml, Encoding.UTF8);
+            Process.Start(new ProcessStartInfo { FileName = tempFile, UseShellExecute = true });
+
+            Task.Delay(TimeSpan.FromMinutes(5)).ContinueWith(_ =>
+            {
+                try { if (File.Exists(tempFile)) File.Delete(tempFile); } catch { }
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "PrintCardSettlement failed");
+            MessageBox.Show($"Print failed.\n\nError: {ex.Message}",
+                "Print Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    /// <summary>
     /// Prints an individual DSM Entry Sheet (9 sections: header, nozzles, payments,
     /// cash denomination, creditors, expenses, testing, reconciliation, signatures).
     /// </summary>

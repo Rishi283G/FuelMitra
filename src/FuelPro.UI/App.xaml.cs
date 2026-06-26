@@ -233,6 +233,15 @@ public partial class App : Application
         // Feature 3: IsReconciled for Creditor Return Tracker
         EnsureColumnExists(connection, "DsmEntries", "IsReconciled", "ALTER TABLE DsmEntries ADD COLUMN IsReconciled INTEGER NOT NULL DEFAULT 0");
 
+        // Feature: Card Settlement details
+        EnsureColumnExists(connection, "PaymentCollections", "CardTid", "ALTER TABLE PaymentCollections ADD COLUMN CardTid TEXT NULL");
+        EnsureColumnExists(connection, "PaymentCollections", "CardBatch", "ALTER TABLE PaymentCollections ADD COLUMN CardBatch TEXT NULL");
+        EnsureColumnExists(connection, "PaymentCollections", "PhonePeTid", "ALTER TABLE PaymentCollections ADD COLUMN PhonePeTid TEXT NULL");
+        EnsureColumnExists(connection, "PaymentCollections", "PhonePeBatch", "ALTER TABLE PaymentCollections ADD COLUMN PhonePeBatch TEXT NULL");
+        EnsureColumnExists(connection, "PaymentCollections", "PetroCardTid", "ALTER TABLE PaymentCollections ADD COLUMN PetroCardTid TEXT NULL");
+        EnsureColumnExists(connection, "PaymentCollections", "PetroCardBatch", "ALTER TABLE PaymentCollections ADD COLUMN PetroCardBatch TEXT NULL");
+        EnsureColumnExists(connection, "Shifts", "CardSettlementPosTotal", "ALTER TABLE Shifts ADD COLUMN CardSettlementPosTotal REAL NOT NULL DEFAULT 0.0");
+
         // Cloud Sync: SyncChangeLogs Table
         cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='SyncChangeLogs'";
         var syncChangeLogsExists = cmd.ExecuteScalar() != null;
@@ -468,6 +477,7 @@ public partial class App : Application
         services.AddTransient<FinalCalculationViewModel>();
         services.AddTransient<DayTotalViewModel>();
         services.AddTransient<SettingsViewModel>();
+        services.AddTransient<CardSettlementViewModel>();
         services.AddTransient<AgsImportViewModel>();
         services.AddTransient<OilDefDailyLogViewModel>();
 

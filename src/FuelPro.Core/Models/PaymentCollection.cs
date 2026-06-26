@@ -28,6 +28,13 @@ public class PaymentCollection
     public double Others { get; set; }
     public double CashDeposit { get; set; }
 
+    public string? CardTid { get; set; }
+    public string? CardBatch { get; set; }
+    public string? PhonePeTid { get; set; }
+    public string? PhonePeBatch { get; set; }
+    public string? PetroCardTid { get; set; }
+    public string? PetroCardBatch { get; set; }
+
     /// <summary>
     /// Computed total PhonePe (Morning + Night). Kept for backward compatibility.
     /// The old DB column 'PhonePe' is maintained via legacy migration; this is NotMapped.

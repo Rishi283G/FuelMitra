@@ -1,0 +1,175 @@
+<UserControl x:Class="FuelPro.UI.Views.CardSettlementView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             xmlns:converters="clr-namespace:FuelPro.UI.Converters">
+    <UserControl.Resources>
+        <converters:IndianCurrencyConverter x:Key="CurrencyConverter"/>
+        <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter"/>
+        <Style TargetType="TextBlock" x:Key="RightAlignedTextBlockStyle">
+            <Setter Property="HorizontalAlignment" Value="Right"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+    </UserControl.Resources>
+    
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <Grid Margin="24,16">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <!-- Header and Date/Shift Selection -->
+            <Grid Grid.Row="0" Margin="0,0,0,16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                
+                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                    <materialDesign:PackIcon Kind="CreditCardCheck" Width="28" Height="28" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                    <TextBlock Text="Card &amp; Digital Settlement" FontSize="24" FontWeight="Bold" VerticalAlignment="Center"/>
+                </StackPanel>
+                
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <DatePicker SelectedDate="{Binding SelectedDate}" materialDesign:HintAssist.Hint="Select Date" Style="{StaticResource MaterialDesignOutlinedDatePicker}" Width="150" Margin="0,0,12,0" Height="48"/>
+                    <ComboBox ItemsSource="{Binding ShiftOptions}" SelectedItem="{Binding SelectedShift}" materialDesign:HintAssist.Hint="Select Shift" Style="{StaticResource MaterialDesignOutlinedComboBox}" Width="120" Height="48"/>
+                </StackPanel>
+            </Grid>
+
+            <ProgressBar Grid.Row="1" IsIndeterminate="{Binding IsLoading}" Visibility="{Binding IsLoading, Converter={StaticResource BooleanToVisibilityConverter}}" Style="{StaticResource MaterialDesignLinearProgressBar}" Margin="0,0,0,16"/>
+
+            <!-- Status Message (when no data) -->
+            <TextBlock Grid.Row="2" Text="{Binding StatusMessage}" FontSize="16" Foreground="OrangeRed" HorizontalAlignment="Center" Margin="0,20" FontWeight="SemiBold"
+                       Visibility="{Binding HasData, Converter={StaticResource InverseBoolToVisibilityConverter}, FallbackValue=Visible}"/>
+
+            <!-- Main Content (grids and totals) -->
+            <Grid Grid.Row="3" Visibility="{Binding HasData, Converter={StaticResource BooleanToVisibilityConverter}, FallbackValue=Collapsed}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <StackPanel Grid.Row="0">
+                    <!-- SECTION 1: CREDIT CARDS -->
+                    <materialDesign:Card Margin="0,0,0,16" Padding="16" UniformCornerRadius="8" materialDesign:ElevationAssist.Elevation="Dp2">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                <TextBlock Text="I. CREDIT CARD SETTLEMENT" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                <TextBlock Text="{Binding CardTotal, StringFormat=' (Total: ₹{0:N2})'}" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                            </StackPanel>
+                            <DataGrid ItemsSource="{Binding CardPayments}" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" SelectionMode="Single"
+                                      materialDesign:DataGridAssist.CellPadding="8 6" HeadersVisibility="Column">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="No" Binding="{Binding RomanIndex}" IsReadOnly="True" Width="60"/>
+                                    <DataGridTextColumn Header="Salesperson (DSM)" Binding="{Binding DsmName}" IsReadOnly="True" Width="250"/>
+                                    <DataGridTemplateColumn Header="TID" Width="200">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBox Text="{Binding Tid, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource MaterialDesignDataGridTextColumnEditingStyle}"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="Batch No" Width="200">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBox Text="{Binding Batch, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource MaterialDesignDataGridTextColumnEditingStyle}"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTextColumn Header="Amount" Binding="{Binding Amount, Converter={StaticResource CurrencyConverter}}" IsReadOnly="True" Width="*" ElementStyle="{StaticResource RightAlignedTextBlockStyle}"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </StackPanel>
+                    </materialDesign:Card>
+
+                    <!-- SECTION 2: PHONEPE SETTLEMENT -->
+                    <materialDesign:Card Margin="0,0,0,16" Padding="16" UniformCornerRadius="8" materialDesign:ElevationAssist.Elevation="Dp2">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                <TextBlock Text="II. PHONEPE SETTLEMENT" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                <TextBlock Text="{Binding PhonePeTotal, StringFormat=' (Total: ₹{0:N2})'}" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                            </StackPanel>
+                            <DataGrid ItemsSource="{Binding PhonePePayments}" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" SelectionMode="Single"
+                                      materialDesign:DataGridAssist.CellPadding="8 6" HeadersVisibility="Column">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="No" Binding="{Binding RomanIndex}" IsReadOnly="True" Width="60"/>
+                                    <DataGridTextColumn Header="Salesperson (DSM)" Binding="{Binding DsmName}" IsReadOnly="True" Width="250"/>
+                                    <DataGridTemplateColumn Header="TID" Width="200">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBox Text="{Binding Tid, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource MaterialDesignDataGridTextColumnEditingStyle}"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="Batch No" Width="200">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBox Text="{Binding Batch, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource MaterialDesignDataGridTextColumnEditingStyle}"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTextColumn Header="Amount" Binding="{Binding Amount, Converter={StaticResource CurrencyConverter}}" IsReadOnly="True" Width="*" ElementStyle="{StaticResource RightAlignedTextBlockStyle}"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </StackPanel>
+                    </materialDesign:Card>
+
+                    <!-- SECTION 3: PETRO CARD SETTLEMENT -->
+                    <materialDesign:Card Margin="0,0,0,16" Padding="16" UniformCornerRadius="8" materialDesign:ElevationAssist.Elevation="Dp2">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                <TextBlock Text="III. PETRO CARD SETTLEMENT" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                <TextBlock Text="{Binding PetroCardTotal, StringFormat=' (Total: ₹{0:N2})'}" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                            </StackPanel>
+                            <DataGrid ItemsSource="{Binding PetroCardPayments}" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" SelectionMode="Single"
+                                      materialDesign:DataGridAssist.CellPadding="8 6" HeadersVisibility="Column">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="No" Binding="{Binding RomanIndex}" IsReadOnly="True" Width="60"/>
+                                    <DataGridTextColumn Header="Salesperson (DSM)" Binding="{Binding DsmName}" IsReadOnly="True" Width="250"/>
+                                    <DataGridTemplateColumn Header="TID" Width="200">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBox Text="{Binding Tid, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource MaterialDesignDataGridTextColumnEditingStyle}"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="Batch No" Width="200">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBox Text="{Binding Batch, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource MaterialDesignDataGridTextColumnEditingStyle}"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTextColumn Header="Amount" Binding="{Binding Amount, Converter={StaticResource CurrencyConverter}}" IsReadOnly="True" Width="*" ElementStyle="{StaticResource RightAlignedTextBlockStyle}"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </StackPanel>
+                    </materialDesign:Card>
+                </StackPanel>
+
+                <!-- FOOTER ACTIONS -->
+                <materialDesign:Card Grid.Row="1" Padding="16" UniformCornerRadius="8" materialDesign:ElevationAssist.Elevation="Dp3" Background="#FAFAFA">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                        <Button Command="{Binding SaveCommand}" Style="{StaticResource MaterialDesignRaisedButton}" Width="120" Height="40" Margin="0,0,12,0" Background="#2E7D32" BorderBrush="#2E7D32">
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="ContentSave" Width="20" Height="20" Margin="0,0,6,0"/>
+                                <TextBlock Text="Save" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                            </StackPanel>
+                        </Button>
+                        
+                        <Button Command="{Binding PrintCommand}" Style="{StaticResource MaterialDesignOutlinedButton}" Width="120" Height="40">
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="Printer" Width="20" Height="20" Margin="0,0,6,0"/>
+                                <TextBlock Text="Print" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </materialDesign:Card>
+            </Grid>
+        </Grid>
+    </ScrollViewer>
+</UserControl>

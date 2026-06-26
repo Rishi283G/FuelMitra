@@ -53,6 +53,9 @@
         <DataTemplate DataType="{x:Type vm:OuterExpensesViewModel}">
             <views:OuterExpensesView/>
         </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:CardSettlementViewModel}">
+            <views:CardSettlementView/>
+        </DataTemplate>
     </Window.Resources>
 
     <materialDesign:DialogHost Identifier="RootDialog">
@@ -297,6 +300,23 @@
                             </Style>
                         </Button.Style>
                         <materialDesign:PackIcon Kind="CashMinus" Width="24" Height="24"/>
+                    </Button>
+
+                    <!-- Card Settlement -->
+                    <Button Command="{Binding NavigateToCardSettlementCommand}" ToolTip="Card Settlement" Margin="0,3">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
+                                <Setter Property="Foreground" Value="White" />
+                                <Setter Property="Opacity" Value="0.5" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding SelectedNavIndex}" Value="13">
+                                        <Setter Property="Opacity" Value="1" />
+                                        <Setter Property="Background" Value="#33FFFFFF" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                        <materialDesign:PackIcon Kind="CreditCardCheck" Width="24" Height="24"/>
                     </Button>
                 </StackPanel>
             </Border>

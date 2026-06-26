@@ -17,6 +17,7 @@ public class Shift
     public string ShiftType { get; set; } = "A"; // A=Morning, B=Afternoon, C=Night
 
     public bool IsLocked { get; set; } = false;
+    public double CardSettlementPosTotal { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.Now;
 

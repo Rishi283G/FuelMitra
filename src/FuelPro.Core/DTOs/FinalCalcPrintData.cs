@@ -21,6 +21,7 @@ public class FinalCalcPrintData
     public decimal GrossFuelSaleTotal { get; set; }
     public List<ExpensePrintRow> Expenses { get; set; } = new();
     public ReconciliationPrintBlock Reconciliation { get; set; } = new();
+    public List<NozzleGroupDto> NozzleGroups { get; set; } = new();
 }
 
 public class DsmPrintRow

@@ -76,6 +76,12 @@
     <EmbeddedResource Include="Printing\OilDefSummaryPrintTemplate.html">
       <LogicalName>FuelPro.UI.Printing.OilDefSummaryPrintTemplate.html</LogicalName>
     </EmbeddedResource>
+    <Content Include="Printing\CardSettlementPrintTemplate.html">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <EmbeddedResource Include="Printing\CardSettlementPrintTemplate.html">
+      <LogicalName>FuelPro.UI.Printing.CardSettlementPrintTemplate.html</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <ItemGroup>

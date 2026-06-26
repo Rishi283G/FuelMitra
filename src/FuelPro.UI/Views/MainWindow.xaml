@@ -38,6 +38,9 @@
         <DataTemplate DataType="{x:Type vm:DsmManagementViewModel}">
             <views:DsmManagementView/>
         </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:CardSettlementViewModel}">
+            <views:CardSettlementView/>
+        </DataTemplate>
     </Window.Resources>
 
 
@@ -206,6 +209,23 @@
                             </Style>
                         </Button.Style>
                         <materialDesign:PackIcon Kind="AccountMultiple" Width="28" Height="28"/>
+                    </Button>
+
+                    <!-- Card Settlement -->
+                    <Button Command="{Binding NavigateToCardSettlementCommand}" ToolTip="Card Settlement" Margin="0,4">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
+                                <Setter Property="Foreground" Value="White" />
+                                <Setter Property="Opacity" Value="0.5" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding SelectedNavIndex}" Value="8">
+                                        <Setter Property="Opacity" Value="1" />
+                                        <Setter Property="Background" Value="#33FFFFFF" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                        <materialDesign:PackIcon Kind="CreditCardCheck" Width="28" Height="28"/>
                     </Button>
                 </StackPanel>
             </Border>

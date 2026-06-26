@@ -154,6 +154,13 @@ public partial class MainWindowViewModel : ObservableObject
         CurrentView = App.Services.GetRequiredService<DsmManagementViewModel>();
     }
 
+    [RelayCommand]
+    private void NavigateToCardSettlement()
+    {
+        SelectedNavIndex = 8;
+        CurrentView = App.Services.GetRequiredService<CardSettlementViewModel>();
+    }
+
 
     public void UpdateLastSaveTime() =>
         LastSaveTime = DateTime.Now.ToString("hh:mm:ss tt");

@@ -283,8 +283,28 @@ public class ShiftRepository : IShiftRepository
         }
         catch (Exception ex)
         {
-            _logger.Error(ex, "Failed to get shifts for date range {Start} to {End}", startDate, endDate);
+            _logger.Error(ex, "Failed to get shifts by date range {Start} to {End}", startDate, endDate);
             return Result<List<Shift>>.Fail($"Failed to load shifts: {ex.Message}");
+        }
+    }
+
+    public async Task<Result> UpdateShiftAsync(Shift shift)
+    {
+        try
+        {
+            var existing = await _context.Shifts.FindAsync(shift.ShiftId);
+            if (existing == null) return Result.Fail("Shift not found");
+            
+            existing.CardSettlementPosTotal = shift.CardSettlementPosTotal;
+            existing.IsLocked = shift.IsLocked;
+            
+            await _context.SaveChangesAsync();
+            return Result.Ok();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to update shift {ShiftId}", shift.ShiftId);
+            return Result.Fail($"Failed to update shift: {ex.Message}");
         }
     }
 }
@@ -673,6 +693,12 @@ public class PaymentRepository : IPaymentRepository
                 existing.PetroCard   = payment.PetroCard;
                 existing.CashDeposit = payment.CashDeposit;
                 existing.Others      = payment.Others;
+                existing.CardTid     = payment.CardTid;
+                existing.CardBatch   = payment.CardBatch;
+                existing.PhonePeTid  = payment.PhonePeTid;
+                existing.PhonePeBatch = payment.PhonePeBatch;
+                existing.PetroCardTid = payment.PetroCardTid;
+                existing.PetroCardBatch = payment.PetroCardBatch;
             }
             else
             {

@@ -28,6 +28,7 @@ public interface IShiftRepository
     Task<Result> LockShiftAsync(int shiftId);
     Task<Result<bool>> IsShiftLockedAsync(int shiftId);
     Task<Result<List<Shift>>> GetShiftsByDateRangeAsync(DateTime startDate, DateTime endDate);
+    Task<Result> UpdateShiftAsync(Shift shift);
 }
 
 public interface IDsmEntryRepository
