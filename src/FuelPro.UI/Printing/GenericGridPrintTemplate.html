@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Report Statement</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 25px;
+            color: #333;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        .header {
+            text-align: center;
+            border-bottom: 2px solid #00695C;
+            padding-bottom: 12px;
+            margin-bottom: 20px;
+        }
+        .header h1 {
+            margin: 0;
+            color: #00695C;
+            font-size: 24px;
+            font-weight: 700;
+        }
+        .header p {
+            margin: 4px 0 0 0;
+            font-size: 13px;
+            opacity: 0.8;
+            letter-spacing: 0.5px;
+        }
+        .meta-info-container {
+            display: flex;
+            justify-content: space-between;
+            background-color: #F8F9FA;
+            padding: 12px 18px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            border: 1px solid #E9ECEF;
+        }
+        .meta-group h3 {
+            margin: 0 0 4px 0;
+            font-size: 14px;
+            color: #00695C;
+        }
+        .meta-group p {
+            margin: 0;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        .kpi-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-bottom: 24px;
+        }
+        .kpi-card {
+            flex: 1;
+            min-width: 150px;
+            background-color: #FFFFFF;
+            border: 1px solid #DEE2E6;
+            border-radius: 6px;
+            padding: 12px;
+            text-align: center;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+        .kpi-card.highlight {
+            background-color: #E0F2F1;
+            border-color: #00897B;
+        }
+        .kpi-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #6C757D;
+            margin-bottom: 4px;
+            font-weight: 600;
+        }
+        .kpi-value {
+            font-size: 18px;
+            font-weight: 700;
+            color: #212529;
+        }
+        .kpi-card.highlight .kpi-value {
+            color: #00796B;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 30px;
+        }
+        th, td {
+            border: 1px solid #DEE2E6;
+            padding: 10px 12px;
+            text-align: left;
+        }
+        th {
+            background-color: #00695C;
+            color: #FFFFFF;
+            font-weight: 600;
+            font-size: 13px;
+        }
+        .text-right {
+            text-align: right;
+        }
+        .text-center {
+            text-align: center;
+        }
+        .text-bold {
+            font-weight: bold;
+        }
+        .print-btn {
+            display: block;
+            width: 140px;
+            margin: 10px auto 20px auto;
+            padding: 10px 16px;
+            text-align: center;
+            background-color: #00695C;
+            color: white;
+            font-weight: bold;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: background-color 0.2s;
+        }
+        .print-btn:hover {
+            background-color: #004D40;
+        }
+        .signatures {
+            margin-top: 60px;
+            display: flex;
+            justify-content: space-between;
+            padding: 0 30px;
+        }
+        .signature-line {
+            width: 200px;
+            border-top: 1px solid #333;
+            text-align: center;
+            padding-top: 6px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        @media print {
+            .print-btn {
+                display: none;
+            }
+            body {
+                margin: 10px;
+                font-size: 12px;
+            }
+            .meta-info-container {
+                background-color: transparent !important;
+                border: 1px solid #CCC;
+            }
+            .kpi-card {
+                border: 1px solid #CCC !important;
+                box-shadow: none !important;
+            }
+            .kpi-card.highlight {
+                background-color: #E8F5E9 !important;
+            }
+            th {
+                background-color: #00695C !important;
+                color: #FFFFFF !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+        }
+    </style>
+    <script>
+        const data = /* INJECT_JSON_HERE */{};
+
+        function renderData() {
+            if (!data) return;
+
+            document.getElementById('stationName').innerText = data.stationName || "Mitali Service Station";
+            document.getElementById('reportTitle').innerText = data.title || "Report Statement";
+            document.getElementById('subtitleText').innerText = data.subtitle || "";
+            document.getElementById('generatedDate').innerText = "Generated: " + new Date().toLocaleDateString('en-IN', {day: '2-digit', month: 'short', year: 'numeric'});
+
+            // Render KPI cards
+            const kpiContainer = document.getElementById('kpiContainer');
+            if (data.summaryCards && data.summaryCards.length > 0) {
+                let kpiHtml = '';
+                data.summaryCards.forEach(card => {
+                    let hlClass = card.highlight ? "highlight" : "";
+                    kpiHtml += `
+                        <div class="kpi-card ${hlClass}">
+                            <div class="kpi-label">${card.label}</div>
+                            <div class="kpi-value">${card.value}</div>
+                        </div>
+                    `;
+                });
+                kpiContainer.innerHTML = kpiHtml;
+                kpiContainer.style.display = 'flex';
+            } else {
+                kpiContainer.style.display = 'none';
+            }
+
+            // Render Table headers
+            const tableHead = document.getElementById('tableHead');
+            let headerHtml = '<tr>';
+            if (data.headers && data.headers.length > 0) {
+                data.headers.forEach(h => {
+                    headerHtml += `<th>${h}</th>`;
+                });
+            }
+            headerHtml += '</tr>';
+            tableHead.innerHTML = headerHtml;
+
+            // Render Table body
+            const tableBody = document.getElementById('tableBody');
+            let bodyHtml = '';
+            if (data.rows && data.rows.length > 0) {
+                data.rows.forEach(row => {
+                    bodyHtml += '<tr>';
+                    row.forEach((cell, cellIdx) => {
+                        let cellClass = "";
+                        // If cell represents currency or number, align it right. If it contains "₹" or "%", align right.
+                        if (cell && (cell.startsWith("₹") || cell.endsWith("%") || cell.startsWith("-₹") || (!isNaN(cell.replace(/,/g, '')) && cell.trim() !== ""))) {
+                            cellClass = "text-right";
+                        }
+                        // Bold total row or header column if needed
+                        if (row[0] && (row[0].toLowerCase().includes("total") || row[0].toLowerCase().includes("summary"))) {
+                            cellClass += " text-bold";
+                        }
+                        bodyHtml += `<td class="${cellClass}">${cell || ""}</td>`;
+                    });
+                    bodyHtml += '</tr>';
+                });
+            } else {
+                let colCount = data.headers ? data.headers.length : 1;
+                bodyHtml += `<tr><td colspan="${colCount}" class="text-center" style="opacity: 0.6; padding: 20px;">No records found.</td></tr>`;
+            }
+            tableBody.innerHTML = bodyHtml;
+
+            // Render signatures
+            const signaturesDiv = document.getElementById('signatures');
+            if (data.showSignatures) {
+                signaturesDiv.style.display = 'flex';
+            } else {
+                signaturesDiv.style.display = 'none';
+            }
+
+            // Render logo
+            if (data.logo) {
+                const logoImg = document.getElementById('logo');
+                if (logoImg) {
+                    logoImg.src = data.logo;
+                    logoImg.style.display = 'block';
+                }
+            }
+        }
+
+        window.onload = function() {
+            renderData();
+        };
+
+        function printDoc() {
+            window.print();
+        }
+    </script>
+</head>
+<body>
+    <button class="print-btn" onclick="printDoc()">Print Report</button>
+    
+    <div class="header">
+        <div style="display: flex; align-items: center; justify-content: center; gap: 15px;">
+            <img id="logo" style="display: none; height: 50px;" src="" alt="logo" />
+            <h1 id="stationName">Mitali Service Station</h1>
+        </div>
+        <p id="reportTitle">Report Statement</p>
+    </div>
+
+    <div class="meta-info-container">
+        <div class="meta-group">
+            <h3 style="color: #00695C;">Report Context</h3>
+            <p id="subtitleText">All details listed below</p>
+        </div>
+        <div class="meta-group" style="text-align: right;">
+            <h3 style="color: #00695C;">Timestamp</h3>
+            <p id="generatedDate">Generated: 21-Jun-2026</p>
+        </div>
+    </div>
+
+    <div class="kpi-container" id="kpiContainer">
+        <!-- Dynamic cards -->
+    </div>
+
+    <table>
+        <thead id="tableHead">
+            <!-- Dynamic header row -->
+        </thead>
+        <tbody id="tableBody">
+            <!-- Dynamic data rows -->
+        </tbody>
+    </table>
+
+    <div class="signatures" id="signatures" style="display: none;">
+        <div class="signature-line">Manager Signature</div>
+        <div class="signature-line">Owner Signature</div>
+    </div>
+</body>
+</html>

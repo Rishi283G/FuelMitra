@@ -5,7 +5,7 @@ namespace FuelPro.Core.DTOs;
 /// </summary>
 public class ShiftSummaryPrintData
 {
-    public string StationName { get; set; } = "PyroSync";
+    public string StationName { get; set; } = "VKD Petroleum";
     public string Date        { get; set; } = string.Empty;
     public string Shift       { get; set; } = string.Empty; // "A", "B", "C"
     public string PrintedAt   { get; set; } = string.Empty;

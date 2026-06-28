@@ -5,8 +5,16 @@ using FuelPro.Core.DTOs;
 using FuelPro.Core.Models;
 using FuelPro.Core.Repositories;
 using FuelPro.Core.Services;
+using FuelPro.Data;
+using FuelPro.UI.Printing;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
+using System.Threading.Tasks;
+using System.Windows;
 
 namespace FuelPro.UI.ViewModels;
 
@@ -22,8 +30,11 @@ public partial class OwnerDashboardViewModel : ObservableObject
     private readonly IExpenseRepository _expenseRepo;
     private readonly IOwnerCalculationService _ownerCalcService;
     private readonly FuelPro.Sync.SyncEngine _syncEngine;
+    private readonly PrintService _printService;
+    private readonly IFinancialCalculationService _financialCalcService;
+    private readonly FuelProDbContext _dbContext;
 
-    // KPI Properties
+    // Range-wise KPI Properties
     [ObservableProperty] private double _todayTotalSale;
     [ObservableProperty] private double _todayTotalLitres;
     [ObservableProperty] private double _todayTotalCollection;
@@ -35,6 +46,7 @@ public partial class OwnerDashboardViewModel : ObservableObject
     [ObservableProperty] private double _todayHsdLitres;
     [ObservableProperty] private double _todayMsILitres;
     [ObservableProperty] private double _todayMsIILitres;
+    [ObservableProperty] private double _todayCngLitres;
 
     // Payment breakdown
     [ObservableProperty] private double _todayTotalCash;
@@ -42,6 +54,10 @@ public partial class OwnerDashboardViewModel : ObservableObject
     [ObservableProperty] private double _todayTotalCreditCard;
     [ObservableProperty] private double _todayTotalPetroCard;
     [ObservableProperty] private double _todayTotalDebit;
+
+    // Additional Range Metrics
+    [ObservableProperty] private double _rangeNetProfit;
+    [ObservableProperty] private double _outstandingDebtors;
 
     // Shift summaries
     [ObservableProperty] private ShiftSummaryDto? _morningShift;
@@ -54,8 +70,34 @@ public partial class OwnerDashboardViewModel : ObservableObject
     [ObservableProperty] private bool _isSyncHealthy = true;
 
     // Date selection
-    [ObservableProperty] private DateTime _selectedDate = DateTime.Today;
+    [ObservableProperty] private DateTime _startDate = DateTime.Today;
+    [ObservableProperty] private DateTime _endDate = DateTime.Today;
+    [ObservableProperty] private string _selectedPreset = "Today";
     [ObservableProperty] private bool _isLoading;
+
+    public string[] Presets { get; } = { "Today", "Yesterday", "Weekly", "Monthly", "Custom" };
+
+    partial void OnSelectedPresetChanged(string value)
+    {
+        if (value != "Custom" && !_isApplyingPreset)
+        {
+            _ = SetPresetAsync(value);
+        }
+    }
+
+    public DateTime SelectedDate
+    {
+        get => StartDate;
+        set
+        {
+            StartDate = value;
+            EndDate = value;
+            OnPropertyChanged(nameof(SelectedDate));
+        }
+    }
+
+
+    private bool _isApplyingPreset;
 
     public OwnerDashboardViewModel()
     {
@@ -66,6 +108,9 @@ public partial class OwnerDashboardViewModel : ObservableObject
         _expenseRepo = App.Services.GetRequiredService<IExpenseRepository>();
         _ownerCalcService = App.Services.GetRequiredService<IOwnerCalculationService>();
         _syncEngine = App.Services.GetRequiredService<FuelPro.Sync.SyncEngine>();
+        _printService = App.Services.GetRequiredService<PrintService>();
+        _financialCalcService = App.Services.GetRequiredService<IFinancialCalculationService>();
+        _dbContext = App.Services.GetRequiredService<FuelProDbContext>();
 
         // Wire Sync Status
         _syncEngine.SyncStatusChanged += (status) =>
@@ -82,12 +127,55 @@ public partial class OwnerDashboardViewModel : ObservableObject
         // Initial sync state update
         UpdateSyncDisplay(_syncEngine.CurrentStatus.LastSyncTime == default ? (DateTime?)null : _syncEngine.CurrentStatus.LastSyncTime, _syncEngine.CurrentStatus.PendingRecords);
 
-        _ = LoadDataAsync();
+        _ = SetPresetAsync(SelectedPreset);
     }
 
-    partial void OnSelectedDateChanged(DateTime value)
+    partial void OnStartDateChanged(DateTime value)
     {
-        _ = LoadDataAsync();
+        if (!_isApplyingPreset)
+            _ = LoadDataAsync();
+    }
+
+    partial void OnEndDateChanged(DateTime value)
+    {
+        if (!_isApplyingPreset)
+            _ = LoadDataAsync();
+    }
+
+    [RelayCommand]
+    public async Task SetPresetAsync(string preset)
+    {
+        _isApplyingPreset = true;
+        try
+        {
+            SelectedPreset = preset;
+            switch (preset)
+            {
+                case "Today":
+                    StartDate = DateTime.Today;
+                    EndDate = DateTime.Today;
+                    break;
+                case "Yesterday":
+                    StartDate = DateTime.Today.AddDays(-1);
+                    EndDate = DateTime.Today.AddDays(-1);
+                    break;
+                case "Weekly":
+                    StartDate = DateTime.Today.AddDays(-6);
+                    EndDate = DateTime.Today;
+                    break;
+                case "Monthly":
+                    StartDate = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+                    EndDate = DateTime.Today;
+                    break;
+                case "Custom":
+                    break;
+            }
+        }
+        finally
+        {
+            _isApplyingPreset = false;
+        }
+        await LoadDataAsync();
     }
 
     [RelayCommand]
@@ -96,17 +184,17 @@ public partial class OwnerDashboardViewModel : ObservableObject
         IsLoading = true;
         try
         {
-            var entriesResult = await _dsmEntryRepository.GetEntriesForDateRangeAsync(SelectedDate, SelectedDate);
+            var entriesResult = await _dsmEntryRepository.GetEntriesForDateRangeAsync(StartDate.Date, EndDate.Date);
             var entries = entriesResult.Success && entriesResult.Data != null ? entriesResult.Data : new List<DsmEntry>();
 
-            var shiftsResult = await _shiftRepository.GetShiftsByDateRangeAsync(SelectedDate, SelectedDate);
+            var shiftsResult = await _shiftRepository.GetShiftsByDateRangeAsync(StartDate.Date, EndDate.Date);
             var shifts = shiftsResult.Success && shiftsResult.Data != null ? shiftsResult.Data : new List<Shift>();
             var shiftIds = shifts.Select(s => s.ShiftId).ToList();
 
             var shiftExpensesResult = await _expenseRepo.GetExpensesByShiftIdsAsync(shiftIds);
             var shiftExpenses = shiftExpensesResult.Success && shiftExpensesResult.Data != null ? shiftExpensesResult.Data : new List<Expense>();
 
-            var otherCashResult = await App.Services.GetRequiredService<IShiftOtherCashRepository>().GetByDateRangeAsync(SelectedDate, SelectedDate);
+            var otherCashResult = await App.Services.GetRequiredService<IShiftOtherCashRepository>().GetByDateRangeAsync(StartDate.Date, EndDate.Date);
             var otherCashList = otherCashResult.Success && otherCashResult.Data != null ? otherCashResult.Data : new List<ShiftOtherCash>();
 
             TotalDsmEntries = entries.Count;
@@ -124,8 +212,22 @@ public partial class OwnerDashboardViewModel : ObservableObject
             TodayHsdLitres = result.HsdLitres;
             TodayMsILitres = result.MsILitres;
             TodayMsIILitres = result.MsIILitres;
+            TodayCngLitres = result.CngLitres;
             TodayTotalLitres = result.TotalLitres;
             TodayTotalMismatch = result.Mismatch;
+
+            // Comprehensive Profit calculation from IFinancialCalculationService
+            var finResult = await _financialCalcService.CalculateFinancialsAsync(StartDate.Date, EndDate.Date);
+            RangeNetProfit = finResult.NetProfit;
+
+            // Lifetime Outstanding Debtors (overall balance is a lifetime KPI)
+            double totalDebits = await _dbContext.DebitEntries.SumAsync(d => d.Amount);
+            double totalRepayments = await _dbContext.CreditorRepayments.SumAsync(r => r.Amount);
+            OutstandingDebtors = totalDebits - totalRepayments;
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to load Owner Dashboard data");
         }
         finally { IsLoading = false; }
     }
@@ -164,4 +266,56 @@ public partial class OwnerDashboardViewModel : ObservableObject
             IsLoading = false;
         }
     }
+
+    [RelayCommand]
+    private void Print()
+    {
+        try
+        {
+            var summaryCards = new List<GenericGridPrintCard>
+            {
+                new() { Label = "Total Gross Sales", Value = "₹" + TodayTotalSale.ToString("N2"), Highlight = true },
+                new() { Label = "Volume Sold", Value = TodayTotalLitres.ToString("N2") + " L", Highlight = false },
+                new() { Label = "Net Collection", Value = "₹" + TodayTotalCollection.ToString("N2"), Highlight = false },
+                new() { Label = "Total Expenses", Value = "₹" + TodayTotalExpenses.ToString("N2"), Highlight = false },
+                new() { Label = "Net Mismatch", Value = "₹" + TodayTotalMismatch.ToString("N2"), Highlight = false }
+            };
+
+            var headers = new List<string> { "Category / Section", "Item Name / Description", "Value" };
+            var rows = new List<List<string>>
+            {
+                new() { "Fuel Sales Volume", "MS1 / Diesel (HSD)", TodayHsdLitres.ToString("N2") + " L" },
+                new() { "Fuel Sales Volume", "MS-I (Petrol)", TodayMsILitres.ToString("N2") + " L" },
+                new() { "Fuel Sales Volume", "MS-II (Power Petrol)", TodayMsIILitres.ToString("N2") + " L" },
+                new() { "Fuel Sales Volume", "CNG", TodayCngLitres.ToString("N2") + " L" },
+                new() { "Payment Mode Breakdown", "Cash", "₹" + TodayTotalCash.ToString("N2") },
+                new() { "Payment Mode Breakdown", "PhonePe", "₹" + TodayTotalPhonePe.ToString("N2") },
+                new() { "Payment Mode Breakdown", "PineLabs Card", "₹" + TodayTotalCreditCard.ToString("N2") },
+                new() { "Payment Mode Breakdown", "Petro Card", "₹" + TodayTotalPetroCard.ToString("N2") },
+                new() { "Payment Mode Breakdown", "Debit (Debtors)", "₹" + TodayTotalDebit.ToString("N2") }
+            };
+
+            string subtitle = StartDate.Date == EndDate.Date 
+                ? $"Statement for Date: {StartDate:dd-MMM-yyyy}" 
+                : $"Statement for Date Range: {StartDate:dd-MMM-yyyy} to {EndDate:dd-MMM-yyyy}";
+
+            var printData = new GenericGridPrintData
+            {
+                Title = "Owner Daily Dashboard Summary",
+                Subtitle = subtitle,
+                SummaryCards = summaryCards,
+                Headers = headers,
+                Rows = rows,
+                ShowSignatures = true
+            };
+
+            _printService.PrintGenericGrid(printData);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to print Owner Dashboard summary");
+            MessageBox.Show($"Print failed: {ex.Message}", "Print Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
 }
+

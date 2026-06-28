@@ -42,6 +42,7 @@ public class OwnerCalculationService : IOwnerCalculationService
                 if (ft == "HSD") result.HsdLitres += nr.SaleLitres;
                 else if (ft == "MS-I") result.MsILitres += nr.SaleLitres;
                 else if (ft == "MS-II") result.MsIILitres += nr.SaleLitres;
+                else if (ft == "CNG") result.CngLitres += nr.SaleLitres;
             }
         }
 

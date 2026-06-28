@@ -165,6 +165,8 @@
     <div class="meta-item"><span class="meta-label">Shift:</span><span class="meta-value" id="metaShift"></span></div>
     <div class="meta-item dsm-highlight"><span class="meta-label">DSM Name:</span><span class="meta-value" id="metaDsm"></span></div>
     <div class="meta-item"><span class="meta-label">Pump No:</span><span class="meta-value" id="metaPump"></span></div>
+    <div class="meta-item"><span class="meta-label">Start:</span><span class="meta-value" id="metaStart"></span></div>
+    <div class="meta-item"><span class="meta-label">End:</span><span class="meta-value" id="metaEnd"></span></div>
     <div class="meta-item"><span class="meta-label">Printed:</span><span class="meta-value" id="metaPrinted"></span></div>
   </div>
 
@@ -175,7 +177,7 @@
       <thead>
         <tr>
           <th>Nozzle</th><th>Fuel</th><th>Opening Reading</th><th>Closing Reading</th>
-          <th>Sale (L)</th><th>Rate (₹)</th><th>Amount (₹)</th>
+          <th>Sale Qty</th><th>Rate (₹)</th><th>Amount (₹)</th>
         </tr>
       </thead>
       <tbody id="nozzleBody"></tbody>
@@ -270,18 +272,35 @@
     </table>
   </div>
 
-  <!-- SECTION 8: Reconciliation -->
+  <!-- SECTION 8: Personal Debtors -->
+  <div class="section" id="personalDebtorSection" style="display:none;">
+    <div class="section-title">👤 Section 8 — DSM Personal Debtors</div>
+    <table>
+      <thead>
+        <tr><th>#</th><th>Fuel</th><th>Method</th><th>Remarks</th><th class="num">Amount (₹)</th></tr>
+      </thead>
+      <tbody id="personalDebtorBody"></tbody>
+      <tfoot>
+        <tr class="total-row">
+          <td colspan="4" style="text-align:right;">Total Personal Debtors</td>
+          <td class="num" id="personalDebtorTotal"></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+
+  <!-- SECTION 9: Reconciliation -->
   <div class="section">
-    <div class="section-title">📊 Section 8 — Reconciliation Summary</div>
+    <div class="section-title">📊 Section 9 — Reconciliation Summary</div>
     <table id="reconTable">
       <thead><tr><th style="width:55%">Item</th><th class="num">Amount (₹)</th></tr></thead>
       <tbody id="reconBody"></tbody>
     </table>
   </div>
 
-  <!-- SECTION 9: Signatures -->
+  <!-- SECTION 10: Signatures -->
   <div class="section">
-    <div class="section-title">✍️ Section 9 — Signatures</div>
+    <div class="section-title">✍️ Section 10 — Signatures</div>
     <div class="signatures">
       <div class="sig-box">DSM Signature</div>
       <div class="sig-box">Manager Signature</div>
@@ -303,7 +322,7 @@ const row = (cells, cls='') => `<tr class="${cls}">${cells.map(c=>`<td class="${
 const td = (v, num=false) => ({ v, num });
 
 // Dynamic Station and Logo
-const station = data.stationName || 'Shree Mahakaleshwar Petroleum';
+const station = data.stationName || 'Mitali Service Station';
 document.title = station + ' — DSM Entry Sheet';
 document.getElementById('toolbarTitle').textContent = `🖨️ ${station} — DSM Entry Sheet`;
 document.getElementById('headerStationName').textContent = station.toUpperCase();
@@ -322,16 +341,21 @@ document.getElementById('metaShift').textContent = 'Shift ' + (data.shift || '')
 document.getElementById('metaDsm').textContent = data.dsmName || '';
 document.getElementById('metaPump').textContent = data.pumpNo || '';
 document.getElementById('metaPrinted').textContent = data.printedAt || new Date().toLocaleString('en-IN');
+document.getElementById('metaStart').textContent = data.startTime || '—';
+document.getElementById('metaEnd').textContent = data.endTime || '—';
 
 // Section 2 — Nozzle Readings
 const nb = document.getElementById('nozzleBody');
+const fuelLabels = {'HSD':'Diesel','MS-I':'Petrol','MS-II':'Power','CNG':'CNG'};
 (data.nozzleRows || []).forEach(r => {
+  const friendlyFuel = fuelLabels[r.fuelType] || r.fuelType;
+  const unit = r.fuelType === 'CNG' ? ' Kg' : ' L';
   nb.innerHTML += `<tr>
     <td class="num">${r.nozzleNumber}</td>
-    <td>${r.fuelType}</td>
+    <td>${friendlyFuel}</td>
     <td class="num">${NUM(r.openingReading,2)}</td>
     <td class="num">${NUM(r.closingReading,2)}</td>
-    <td class="num">${NUM(r.saleLitres,4)}</td>
+    <td class="num">${NUM(r.saleLitres,4) + unit}</td>
     <td class="num">${INR(r.rate)}</td>
     <td class="num">${INR(r.amount)}</td>
   </tr>`;
@@ -398,11 +422,34 @@ document.getElementById('expenseTotal').textContent = INR(data.totalExpenses);
 // Section 7 — Testing
 const teb = document.getElementById('testingBody');
 (data.testing || []).forEach(t => {
-  teb.innerHTML += `<tr><td>${t.fuelType}</td><td class="num">${NUM(t.litres,4)}</td><td class="num">${INR(t.rate)}</td><td class="num">${INR(t.amount)}</td></tr>`;
+  const friendlyFuel = fuelLabels[t.fuelType] || t.fuelType;
+  const unit = t.fuelType === 'CNG' ? ' Kg' : ' L';
+  teb.innerHTML += `<tr><td>${friendlyFuel}</td><td class="num">${NUM(t.litres,4) + unit}</td><td class="num">${INR(t.rate)}</td><td class="num">${INR(t.amount)}</td></tr>`;
 });
 document.getElementById('testingTotal').textContent = INR(data.totalTesting);
 
-// Section 8 — Reconciliation
+// Section 8 — Personal Debtors
+const pds = data.personalDebtors || [];
+if (pds.length > 0) {
+  document.getElementById('personalDebtorSection').style.display = '';
+  const pdb = document.getElementById('personalDebtorBody');
+  pds.forEach((pd, idx) => {
+    let methodInfo = pd.paymentMethod;
+    if (pd.paymentMethod !== 'Cash' && pd.cardTid) {
+      methodInfo += ` (TID: ${pd.cardTid}, Batch: ${pd.cardBatch || '—'})`;
+    }
+    pdb.innerHTML += `<tr>
+      <td class="num">${idx}</td>
+      <td>${pd.fuelProduct || '—'}</td>
+      <td>${methodInfo}</td>
+      <td>${pd.remarks || '—'}</td>
+      <td class="num">${INR(pd.amount)}</td>
+    </tr>`;
+  });
+  document.getElementById('personalDebtorTotal').textContent = INR(data.totalPersonalDebtors);
+}
+
+// Section 9 — Reconciliation
 const rc = data.reconciliation || {};
 const reb = document.getElementById('reconBody');
 const reconLines = [

@@ -26,5 +26,19 @@ public class CreditorRepayment
 
     public double Amount { get; set; }
 
+    [MaxLength(100)]
+    public string? CardTid { get; set; }
+
+    [MaxLength(100)]
+    public string? CardBatch { get; set; }
+
+    public int Denom500 { get; set; }
+    public int Denom200 { get; set; }
+    public int Denom100 { get; set; }
+    public int Denom50 { get; set; }
+    public int Denom20 { get; set; }
+    public int Denom10 { get; set; }
+    public int Coins { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.Now;
 }

@@ -39,6 +39,11 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   const [short, setShort] = useState(0);
   const [excess, setExcess] = useState(0);
 
+  // Expanded fields for Phase 3
+  const [cardSwipeDetails, setCardSwipeDetails] = useState<{ mode: string; amount: number; tid: string; batch: string; }[]>([]);
+  const [debtorEntries, setDebtorEntries] = useState<{ debtorName: string; amount: number; vehicleNumber?: string; time: string; }[]>([]);
+  const [personalDebtors, setPersonalDebtors] = useState<{ amount: number; fuelProduct?: string; remarks?: string; paymentMethod: string; tid?: string; batch?: string; denom500?: number; denom200?: number; denom100?: number; denom50?: number; denom20?: number; denom10?: number; coins?: number; }[]>([]);
+
   // Loading state for nozzle config
   const [nozzleLoading, setNozzleLoading] = useState(true);
   const [nozzleError, setNozzleError] = useState('');
@@ -104,14 +109,12 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       } else {
         // Fallback: hardcoded config for this station (matches physical pump-nozzle wiring)
         const FALLBACK_CONFIG: Record<number, { nozzleId: number; fuelType: string }[]> = {
-          1: [{ nozzleId: 1, fuelType: 'MS-I' }, { nozzleId: 2, fuelType: 'MS-II' }],
-          2: [{ nozzleId: 3, fuelType: 'MS-I' }, { nozzleId: 4, fuelType: 'MS-II' }],
-          3: [{ nozzleId: 5, fuelType: 'MS-I' }, { nozzleId: 6, fuelType: 'MS-II' }, { nozzleId: 7, fuelType: 'HSD' }],
-          4: [{ nozzleId: 8, fuelType: 'MS-I' }, { nozzleId: 9, fuelType: 'MS-II' }, { nozzleId: 10, fuelType: 'HSD' }],
-          5: [{ nozzleId: 11, fuelType: 'MS-I' }, { nozzleId: 12, fuelType: 'MS-II' }, { nozzleId: 13, fuelType: 'HSD' }],
-          6: [{ nozzleId: 14, fuelType: 'MS-I' }, { nozzleId: 15, fuelType: 'MS-II' }, { nozzleId: 16, fuelType: 'HSD' }],
-          7: [{ nozzleId: 17, fuelType: 'HSD' }, { nozzleId: 18, fuelType: 'HSD' }],
-          8: [{ nozzleId: 19, fuelType: 'HSD' }, { nozzleId: 20, fuelType: 'HSD' }],
+          1: [{ nozzleId: 1, fuelType: 'MS-II' }, { nozzleId: 2, fuelType: 'HSD' }],
+          2: [{ nozzleId: 3, fuelType: 'MS-II' }, { nozzleId: 4, fuelType: 'HSD' }],
+          3: [{ nozzleId: 5, fuelType: 'MS-I' }, { nozzleId: 6, fuelType: 'HSD' }],
+          4: [{ nozzleId: 7, fuelType: 'MS-I' }, { nozzleId: 8, fuelType: 'HSD' }],
+          5: [{ nozzleId: 9, fuelType: 'MS-II' }, { nozzleId: 10, fuelType: 'HSD' }],
+          6: [{ nozzleId: 11, fuelType: 'MS-II' }, { nozzleId: 12, fuelType: 'HSD' }],
         };
         configRows = FALLBACK_CONFIG[pumpId] || [];
       }
@@ -214,6 +217,9 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       notes,
       nozzleReadings: nozzleRows.map(({ rowId: _r, ...rest }) => rest),
       cash, upi, card, credit, expense, expenseNotes, short, excess,
+      cardSwipeDetails,
+      debtorEntries,
+      personalDebtors,
     };
 
     if (!online) {
@@ -454,6 +460,291 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                 placeholder="What was the expense for?" onChange={e => setExpenseNotes(e.target.value)} />
             </div>
 
+            {/* Card Swipe Details Section */}
+            <h2 className="section-heading" style={{ marginTop: '1.5rem' }}>Card Swipe Details</h2>
+            <div className="card-swipe-form" style={{ background: '#1e293b', padding: '12px', borderRadius: '8px', marginBottom: '12px' }}>
+              <div className="field-row-2">
+                <div className="field-group">
+                  <label className="field-label">Card Mode</label>
+                  <select id="swipe-mode" className="field-input" defaultValue="PhonePe Card">
+                    <option value="PhonePe Card">PhonePe Card</option>
+                    <option value="PineLabs Card">PineLabs Card</option>
+                    <option value="PetroCard">PetroCard</option>
+                  </select>
+                </div>
+                <div className="field-group">
+                  <label className="field-label">Amount (₹)</label>
+                  <input id="swipe-amount" type="number" step="0.01" className="field-input" placeholder="0.00" />
+                </div>
+              </div>
+              <div className="field-row-2" style={{ marginTop: '8px' }}>
+                <div className="field-group">
+                  <label className="field-label">TID</label>
+                  <input id="swipe-tid" type="text" className="field-input" placeholder="TID" />
+                </div>
+                <div className="field-group">
+                  <label className="field-label">Batch No.</label>
+                  <input id="swipe-batch" type="text" className="field-input" placeholder="Batch" />
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn-outline"
+                style={{ marginTop: '12px', width: '100%', padding: '8px' }}
+                onClick={() => {
+                  const mode = (document.getElementById('swipe-mode') as HTMLSelectElement).value;
+                  const amountVal = (document.getElementById('swipe-amount') as HTMLInputElement).value;
+                  const tid = (document.getElementById('swipe-tid') as HTMLInputElement).value;
+                  const batch = (document.getElementById('swipe-batch') as HTMLInputElement).value;
+                  if (!amountVal || Number(amountVal) <= 0) return;
+                  setCardSwipeDetails(prev => [...prev, { mode, amount: Number(amountVal), tid, batch }]);
+                  setCard(prev => prev + Number(amountVal));
+                  (document.getElementById('swipe-amount') as HTMLInputElement).value = '';
+                  (document.getElementById('swipe-tid') as HTMLInputElement).value = '';
+                  (document.getElementById('swipe-batch') as HTMLInputElement).value = '';
+                }}
+              >
+                + Add Card Swipe
+              </button>
+            </div>
+
+            {cardSwipeDetails.length > 0 && (
+              <div className="card-swipe-list" style={{ marginBottom: '16px' }}>
+                {cardSwipeDetails.map((item, idx) => (
+                  <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#0f172a', padding: '8px 12px', borderRadius: '4px', marginBottom: '4px', fontSize: '0.85rem' }}>
+                    <div>
+                      <strong>{item.mode}</strong>: ₹{item.amount.toFixed(2)} <br />
+                      <span style={{ color: '#94a3b8' }}>TID: {item.tid} | Batch: {item.batch}</span>
+                    </div>
+                    <button
+                      type="button"
+                      style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}
+                      onClick={() => {
+                        setCardSwipeDetails(prev => prev.filter((_, i) => i !== idx));
+                        setCard(prev => Math.max(0, prev - item.amount));
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Debtor Entries Section */}
+            <h2 className="section-heading" style={{ marginTop: '1.5rem' }}>Debtor Entries Log</h2>
+            <div className="debtor-entry-form" style={{ background: '#1e293b', padding: '12px', borderRadius: '8px', marginBottom: '12px' }}>
+              <div className="field-row-2">
+                <div className="field-group">
+                  <label className="field-label">Debtor Name</label>
+                  <input id="debtor-name" type="text" className="field-input" placeholder="Name" />
+                </div>
+                <div className="field-group">
+                  <label className="field-label">Amount (₹)</label>
+                  <input id="debtor-amount" type="number" step="0.01" className="field-input" placeholder="0.00" />
+                </div>
+              </div>
+              <div className="field-row-2" style={{ marginTop: '8px' }}>
+                <div className="field-group">
+                  <label className="field-label">Vehicle No.</label>
+                  <input id="debtor-vehicle" type="text" className="field-input" placeholder="Vehicle No. (Optional)" />
+                </div>
+                <div className="field-group">
+                  <label className="field-label">Time</label>
+                  <input id="debtor-time" type="text" className="field-input" defaultValue={new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' })} />
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn-outline"
+                style={{ marginTop: '12px', width: '100%', padding: '8px' }}
+                onClick={() => {
+                  const debtorName = (document.getElementById('debtor-name') as HTMLInputElement).value;
+                  const amountVal = (document.getElementById('debtor-amount') as HTMLInputElement).value;
+                  const vehicleNumber = (document.getElementById('debtor-vehicle') as HTMLInputElement).value;
+                  const time = (document.getElementById('debtor-time') as HTMLInputElement).value;
+                  if (!debtorName || !amountVal || Number(amountVal) <= 0) return;
+                  setDebtorEntries(prev => [...prev, { debtorName, amount: Number(amountVal), vehicleNumber, time }]);
+                  setCredit(prev => prev + Number(amountVal));
+                  (document.getElementById('debtor-name') as HTMLInputElement).value = '';
+                  (document.getElementById('debtor-amount') as HTMLInputElement).value = '';
+                  (document.getElementById('debtor-vehicle') as HTMLInputElement).value = '';
+                }}
+              >
+                + Add Debtor Entry
+              </button>
+            </div>
+
+            {debtorEntries.length > 0 && (
+              <div className="debtor-entry-list" style={{ marginBottom: '16px' }}>
+                {debtorEntries.map((item, idx) => (
+                  <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#0f172a', padding: '8px 12px', borderRadius: '4px', marginBottom: '4px', fontSize: '0.85rem' }}>
+                    <div>
+                      <strong>{item.debtorName}</strong>: ₹{item.amount.toFixed(2)} <br />
+                      <span style={{ color: '#94a3b8' }}>Veh: {item.vehicleNumber || 'N/A'} | Time: {item.time}</span>
+                    </div>
+                    <button
+                      type="button"
+                      style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}
+                      onClick={() => {
+                        setDebtorEntries(prev => prev.filter((_, i) => i !== idx));
+                        setCredit(prev => Math.max(0, prev - item.amount));
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* DSM Personal Debtors Section */}
+            <h2 className="section-heading" style={{ marginTop: '1.5rem' }}>DSM Personal Debtors</h2>
+            <div className="personal-debtor-form" style={{ background: '#1e293b', padding: '12px', borderRadius: '8px', marginBottom: '12px' }}>
+              <div className="field-row-2">
+                <div className="field-group">
+                  <label className="field-label">Fuel Product</label>
+                  <select id="pdebt-product" className="field-input" defaultValue="MS-II">
+                    <option value="MS-I">MS-I</option>
+                    <option value="MS-II">MS-II</option>
+                    <option value="HSD">HSD</option>
+                  </select>
+                </div>
+                <div className="field-group">
+                  <label className="field-label">Amount (₹)</label>
+                  <input id="pdebt-amount" type="number" step="0.01" className="field-input" placeholder="0.00" />
+                </div>
+              </div>
+              <div className="field-row-2" style={{ marginTop: '8px' }}>
+                <div className="field-group">
+                  <label className="field-label">Remarks</label>
+                  <input id="pdebt-remarks" type="text" className="field-input" placeholder="Remarks" />
+                </div>
+                <div className="field-group">
+                  <label className="field-label">Payment Mode</label>
+                  <select
+                    id="pdebt-mode"
+                    className="field-input"
+                    defaultValue="Cash"
+                    onChange={(e) => {
+                      const mode = e.target.value;
+                      const cardDiv = document.getElementById('pdebt-card-fields');
+                      const cashDiv = document.getElementById('pdebt-cash-fields');
+                      if (cardDiv) cardDiv.style.display = (mode !== 'Cash') ? 'flex' : 'none';
+                      if (cashDiv) cashDiv.style.display = (mode === 'Cash') ? 'block' : 'none';
+                    }}
+                  >
+                    <option value="Cash">Cash</option>
+                    <option value="PhonePe">PhonePe</option>
+                    <option value="PetroCard">PetroCard</option>
+                    <option value="Others">Others</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Conditional Card Fields */}
+              <div id="pdebt-card-fields" className="field-row-2" style={{ marginTop: '8px', display: 'none' }}>
+                <div className="field-group">
+                  <label className="field-label">TID</label>
+                  <input id="pdebt-tid" type="text" className="field-input" placeholder="TID" />
+                </div>
+                <div className="field-group">
+                  <label className="field-label">Batch No.</label>
+                  <input id="pdebt-batch" type="text" className="field-input" placeholder="Batch" />
+                </div>
+              </div>
+
+              {/* Conditional Cash Fields */}
+              <div id="pdebt-cash-fields" style={{ marginTop: '8px', display: 'block' }}>
+                <label className="field-label">Cash Denominations</label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' }}>
+                  <input id="pdebt-d500" type="number" className="field-input" placeholder="500x" style={{ padding: '4px' }} />
+                  <input id="pdebt-d200" type="number" className="field-input" placeholder="200x" style={{ padding: '4px' }} />
+                  <input id="pdebt-d100" type="number" className="field-input" placeholder="100x" style={{ padding: '4px' }} />
+                  <input id="pdebt-d50" type="number" className="field-input" placeholder="50x" style={{ padding: '4px' }} />
+                  <input id="pdebt-d20" type="number" className="field-input" placeholder="20x" style={{ padding: '4px' }} />
+                  <input id="pdebt-d10" type="number" className="field-input" placeholder="10x" style={{ padding: '4px' }} />
+                  <input id="pdebt-coins" type="number" className="field-input" placeholder="Coins" style={{ padding: '4px', gridColumn: 'span 2' }} />
+                </div>
+              </div>
+
+              <button
+                type="button"
+                className="btn-outline"
+                style={{ marginTop: '12px', width: '100%', padding: '8px' }}
+                onClick={() => {
+                  const fuelProduct = (document.getElementById('pdebt-product') as HTMLSelectElement).value;
+                  const amountVal = (document.getElementById('pdebt-amount') as HTMLInputElement).value;
+                  const remarks = (document.getElementById('pdebt-remarks') as HTMLInputElement).value;
+                  const paymentMethod = (document.getElementById('pdebt-mode') as HTMLSelectElement).value;
+                  
+                  if (!amountVal || Number(amountVal) <= 0) return;
+                  
+                  let entry: any = {
+                    amount: Number(amountVal),
+                    fuelProduct,
+                    remarks,
+                    paymentMethod
+                  };
+
+                  if (paymentMethod === 'Cash') {
+                    entry.denom500 = Number((document.getElementById('pdebt-d500') as HTMLInputElement).value) || 0;
+                    entry.denom200 = Number((document.getElementById('pdebt-d200') as HTMLInputElement).value) || 0;
+                    entry.denom100 = Number((document.getElementById('pdebt-d100') as HTMLInputElement).value) || 0;
+                    entry.denom50 = Number((document.getElementById('pdebt-d50') as HTMLInputElement).value) || 0;
+                    entry.denom20 = Number((document.getElementById('pdebt-d20') as HTMLInputElement).value) || 0;
+                    entry.denom10 = Number((document.getElementById('pdebt-d10') as HTMLInputElement).value) || 0;
+                    entry.coins = Number((document.getElementById('pdebt-coins') as HTMLInputElement).value) || 0;
+                  } else {
+                    entry.tid = (document.getElementById('pdebt-tid') as HTMLInputElement).value;
+                    entry.batch = (document.getElementById('pdebt-batch') as HTMLInputElement).value;
+                  }
+
+                  setPersonalDebtors(prev => [...prev, entry]);
+                  
+                  // Clear form
+                  (document.getElementById('pdebt-amount') as HTMLInputElement).value = '';
+                  (document.getElementById('pdebt-remarks') as HTMLInputElement).value = '';
+                  if (paymentMethod === 'Cash') {
+                    (document.getElementById('pdebt-d500') as HTMLInputElement).value = '';
+                    (document.getElementById('pdebt-d200') as HTMLInputElement).value = '';
+                    (document.getElementById('pdebt-d100') as HTMLInputElement).value = '';
+                    (document.getElementById('pdebt-d50') as HTMLInputElement).value = '';
+                    (document.getElementById('pdebt-d20') as HTMLInputElement).value = '';
+                    (document.getElementById('pdebt-d10') as HTMLInputElement).value = '';
+                    (document.getElementById('pdebt-coins') as HTMLInputElement).value = '';
+                  } else {
+                    (document.getElementById('pdebt-tid') as HTMLInputElement).value = '';
+                    (document.getElementById('pdebt-batch') as HTMLInputElement).value = '';
+                  }
+                }}
+              >
+                + Add Personal Debtor
+              </button>
+            </div>
+
+            {personalDebtors.length > 0 && (
+              <div className="personal-debtor-list" style={{ marginBottom: '16px' }}>
+                {personalDebtors.map((item, idx) => (
+                  <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#0f172a', padding: '8px 12px', borderRadius: '4px', marginBottom: '4px', fontSize: '0.85rem' }}>
+                    <div>
+                      <strong>Personal Debtor #{idx}</strong>: ₹{item.amount.toFixed(2)} ({item.fuelProduct}) <br />
+                      <span style={{ color: '#94a3b8' }}>Mode: {item.paymentMethod} | Remarks: {item.remarks || 'None'}</span>
+                    </div>
+                    <button
+                      type="button"
+                      style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}
+                      onClick={() => {
+                        setPersonalDebtors(prev => prev.filter((_, i) => i !== idx));
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {/* Mismatch Preview */}
             <div className={`mismatch-preview ${Math.abs(mismatch) > 500 ? 'mismatch-warn' : 'mismatch-ok'}`}>
               <div className="mismatch-row">
@@ -526,6 +817,42 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                 <span>Mismatch</span><strong>₹{mismatch.toFixed(2)}</strong>
               </div>
             </div>
+
+            {cardSwipeDetails.length > 0 && (
+              <div className="review-block">
+                <p className="review-block-title">Card Swipe Details</p>
+                {cardSwipeDetails.map((item, idx) => (
+                  <div key={idx} className="review-row">
+                    <span>{item.mode} (TID: {item.tid || 'N/A'}, Batch: {item.batch || 'N/A'})</span>
+                    <strong>₹{item.amount.toFixed(2)}</strong>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {debtorEntries.length > 0 && (
+              <div className="review-block">
+                <p className="review-block-title">Debtor Entries Log</p>
+                {debtorEntries.map((item, idx) => (
+                  <div key={idx} className="review-row">
+                    <span>{item.debtorName} ({item.time})</span>
+                    <strong>₹{item.amount.toFixed(2)}</strong>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {personalDebtors.length > 0 && (
+              <div className="review-block">
+                <p className="review-block-title">DSM Personal Debtors</p>
+                {personalDebtors.map((item, idx) => (
+                  <div key={idx} className="review-row">
+                    <span>Personal Debtor #{idx} ({item.fuelProduct}, {item.paymentMethod})</span>
+                    <strong>₹{item.amount.toFixed(2)}</strong>
+                  </div>
+                ))}
+              </div>
+            )}
 
             <div className="field-group">
               <label className="field-label" htmlFor="submission-notes">Notes (optional)</label>

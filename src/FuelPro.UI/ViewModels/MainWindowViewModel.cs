@@ -161,6 +161,22 @@ public partial class MainWindowViewModel : ObservableObject
         CurrentView = App.Services.GetRequiredService<CardSettlementViewModel>();
     }
 
+    [RelayCommand]
+    private void NavigateToDebtorManagement()
+    {
+        SelectedNavIndex = 9;
+        var debtorVm = App.Services.GetRequiredService<DebtorManagementViewModel>();
+        debtorVm.SelectedTabIndex = 0; // Debtors Directory tab
+        CurrentView = debtorVm;
+    }
+
+    [RelayCommand]
+    private void NavigateToPumpExpenses()
+    {
+        SelectedNavIndex = 10;
+        CurrentView = App.Services.GetRequiredService<PumpExpensesViewModel>();
+    }
+
 
     public void UpdateLastSaveTime() =>
         LastSaveTime = DateTime.Now.ToString("hh:mm:ss tt");

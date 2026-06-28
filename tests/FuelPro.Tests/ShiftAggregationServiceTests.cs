@@ -90,15 +90,17 @@ public class ShiftAggregationServiceTests
     public void GetFuelTotals_WithOverrideRate_ShouldCalculateBasedOnOverride()
     {
         // Arrange
+        var histShift = new Shift { ShiftDate = new DateTime(2026, 6, 20) };
         var entries = new List<DsmEntry>
         {
             new DsmEntry
             {
                 PumpId = 3,
+                Shift = histShift,
                 NozzleReadings = new List<NozzleReading>
                 {
-                    new NozzleReading { NozzleNumber = 7, FuelType = "HSD", SaleLitres = 100, Rate = 90, Amount = 9000 },
-                    new NozzleReading { NozzleNumber = 6, FuelType = "MS-II", SaleLitres = 50, Rate = 100, Amount = 5000 }
+                    new NozzleReading { NozzleNumber = 9, FuelType = "HSD", SaleLitres = 100, Rate = 90, Amount = 9000 },
+                    new NozzleReading { NozzleNumber = 8, FuelType = "MS-II", SaleLitres = 50, Rate = 100, Amount = 5000 }
                 }
             }
         };

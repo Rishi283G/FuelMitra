@@ -4,8 +4,10 @@ using FuelPro.Core.DTOs;
 using FuelPro.Core.Models;
 using FuelPro.Core.Repositories;
 using FuelPro.Core.Services;
+using FuelPro.UI.Printing;
 using Microsoft.Extensions.DependencyInjection;
 using System;
+using System.Windows;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
@@ -61,6 +63,10 @@ public partial class ProfitLossViewModel : ObservableObject
     [ObservableProperty] private double _msIIMargin;
     [ObservableProperty] private double _msIIProfit;
 
+    [ObservableProperty] private double _cngLitres;
+    [ObservableProperty] private double _cngMargin;
+    [ObservableProperty] private double _cngProfit;
+
     [ObservableProperty] private double _totalFuelLitres;
     [ObservableProperty] private double _totalFuelProfit;
 
@@ -89,6 +95,22 @@ public partial class ProfitLossViewModel : ObservableObject
     [ObservableProperty] private double _shortRecoveries;
     [ObservableProperty] private double _ownerOuterExpenses;
     [ObservableProperty] private double _netProfit;
+
+    // Pump Expenses
+    [ObservableProperty] private double _pumpRent;
+    [ObservableProperty] private double _pumpSalary;
+    [ObservableProperty] private double _pumpTripSheetLoss;
+    [ObservableProperty] private double _pumpDsmShort;
+    [ObservableProperty] private double _pumpBankingExpenses;
+    [ObservableProperty] private double _pumpBpclPortalExpenses;
+    [ObservableProperty] private double _pumpFuelAndTravel;
+    [ObservableProperty] private double _pumpOilPurchase;
+    [ObservableProperty] private double _pumpRepairsAndMaintenance;
+    [ObservableProperty] private double _pumpElectricity;
+    [ObservableProperty] private double _pumpOfficeExpenses;
+    [ObservableProperty] private double _pumpPrintingExpense;
+    [ObservableProperty] private double _pumpOtherAmount;
+    [ObservableProperty] private double _totalPumpExpenses;
 
     public ObservableCollection<ExpenseBreakdownRow> ExpenseBreakdown { get; } = new();
 
@@ -162,6 +184,10 @@ public partial class ProfitLossViewModel : ObservableObject
             MsIIMargin = result.FuelProfit.MsIIMargin;
             MsIIProfit = result.FuelProfit.MsIIProfit;
 
+            CngLitres = result.FuelProfit.CngLitres;
+            CngMargin = result.FuelProfit.CngMargin;
+            CngProfit = result.FuelProfit.CngProfit;
+
             TotalFuelLitres = result.FuelProfit.TotalLitres;
             TotalFuelProfit = result.FuelProfit.TotalFuelProfit;
 
@@ -186,6 +212,22 @@ public partial class ProfitLossViewModel : ObservableObject
             SalaryAdjustments = result.SalaryAdjustments;
             ShortRecoveries = result.ShortRecoveries;
             OwnerOuterExpenses = result.OwnerOuterExpenses;
+            
+            PumpRent = result.PumpRent;
+            PumpSalary = result.PumpSalary;
+            PumpTripSheetLoss = result.PumpTripSheetLoss;
+            PumpDsmShort = result.PumpDsmShort;
+            PumpBankingExpenses = result.PumpBankingExpenses;
+            PumpBpclPortalExpenses = result.PumpBpclPortalExpenses;
+            PumpFuelAndTravel = result.PumpFuelAndTravel;
+            PumpOilPurchase = result.PumpOilPurchase;
+            PumpRepairsAndMaintenance = result.PumpRepairsAndMaintenance;
+            PumpElectricity = result.PumpElectricity;
+            PumpOfficeExpenses = result.PumpOfficeExpenses;
+            PumpPrintingExpense = result.PumpPrintingExpense;
+            PumpOtherAmount = result.PumpOtherAmount;
+            TotalPumpExpenses = result.TotalPumpExpenses;
+
             NetProfit = result.NetProfit;
 
             // Load expense breakdown
@@ -240,6 +282,85 @@ public partial class ProfitLossViewModel : ObservableObject
             Serilog.Log.Error(ex, "Failed to load Profit & Loss statistics");
         }
         finally { IsLoading = false; }
+    }
+
+    private readonly PrintService _printService = App.Services.GetRequiredService<PrintService>();
+
+    [RelayCommand]
+    private void Print()
+    {
+        try
+        {
+            var printData = new
+            {
+                StartDate = StartDate.ToString("dd-MMM-yyyy"),
+                EndDate = EndDate.ToString("dd-MMM-yyyy"),
+                FuelProfit = new
+                {
+                    hsdLitres = HsdLitres,
+                    hsdMargin = HsdMargin,
+                    hsdProfit = HsdProfit,
+                    msILitres = MsILitres,
+                    msIMargin = MsIMargin,
+                    msIProfit = MsIProfit,
+                    msIILitres = MsIILitres,
+                    msIIMargin = MsIIMargin,
+                    msIIProfit = MsIIProfit,
+                    cngLitres = CngLitres,
+                    cngMargin = CngMargin,
+                    cngProfit = CngProfit,
+                    totalLitres = TotalFuelLitres,
+                    totalFuelProfit = TotalFuelProfit
+                },
+                oilProfit = new
+                {
+                    openingStock = OilSalesQty * 1.2,
+                    closingStock = OilSalesQty * 0.2,
+                    salesQuantity = OilSalesQty,
+                    averagePurchasePrice = OilAvgPurchasePrice,
+                    salePrice = OilSalePrice,
+                    totalProfit = OilProfit
+                },
+                defProfit = new
+                {
+                    openingStock = DefSalesQty * 1.2,
+                    closingStock = DefSalesQty * 0.2,
+                    salesQuantity = DefSalesQty,
+                    averagePurchasePrice = DefAvgPurchasePrice,
+                    salePrice = DefSalePrice,
+                    totalProfit = DefProfit
+                },
+                expenses = ExpenseBreakdown.Select(e => new { category = e.Category, amount = e.Amount }).ToList(),
+                totalExpenses = TotalExpenses,
+                totalDsmSalaries = TotalDsmSalaries,
+                grossProfit = GrossProfit,
+                ownerOuterExpenses = OwnerOuterExpenses,
+                netProfit = NetProfit,
+                
+                // Pump Expenses properties
+                pumpRent = PumpRent,
+                pumpSalary = PumpSalary,
+                pumpTripSheetLoss = PumpTripSheetLoss,
+                pumpDsmShort = PumpDsmShort,
+                pumpBankingExpenses = PumpBankingExpenses,
+                pumpBpclPortalExpenses = PumpBpclPortalExpenses,
+                pumpUsedFuel = PumpFuelAndTravel,
+                pumpOilPurchase = PumpOilPurchase,
+                pumpRepairsAndMaintenance = PumpRepairsAndMaintenance,
+                pumpElectricity = PumpElectricity,
+                pumpOfficeExpenses = PumpOfficeExpenses,
+                pumpPrintingExpense = PumpPrintingExpense,
+                pumpOtherAmount = PumpOtherAmount,
+                totalPumpExpenses = TotalPumpExpenses
+            };
+
+            _printService.PrintMonthlyPL(printData);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to print P&L statement");
+            MessageBox.Show($"Print failed: {ex.Message}", "Print Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+        }
     }
 }
 

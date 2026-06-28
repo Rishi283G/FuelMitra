@@ -166,13 +166,19 @@ public class ShiftCalculationService
             dto.MsIIRate = msIIReadings.FirstOrDefault()?.Rate ?? 0;
             dto.MsIIAmount = msIIReadings.Sum(r => r.Amount);
 
-            dto.TotalLitres = dto.HsdLitres + dto.MsILitres + dto.MsIILitres;
-            dto.TotalFuelSaleAmount = dto.HsdAmount + dto.MsIAmount + dto.MsIIAmount;
+            var cngReadings = readingsWithPump.Where(x => PumpConfiguration.GetFuelTypeDisplayName(x.PumpId, x.Reading.NozzleNumber, shift.ShiftDate) == "CNG").Select(x => x.Reading).ToList();
+            dto.CngLitres = cngReadings.Sum(r => r.SaleLitres);
+            dto.CngRate = cngReadings.FirstOrDefault()?.Rate ?? 0;
+            dto.CngAmount = cngReadings.Sum(r => r.Amount);
+
+            dto.TotalLitres = dto.HsdLitres + dto.MsILitres + dto.MsIILitres + dto.CngLitres;
+            dto.TotalFuelSaleAmount = dto.HsdAmount + dto.MsIAmount + dto.MsIIAmount + dto.CngAmount;
             dto.TotalMsDispensed = dto.MsILitres + dto.MsIILitres;
 
             // TABLE F — Final Reconciliation
             dto.MsTesting = entries.SelectMany(e => e.TestingEntries).Where(t => t.FuelType == "MS").Sum(t => t.Amount);
             dto.HsdTesting = entries.SelectMany(e => e.TestingEntries).Where(t => t.FuelType == "HSD").Sum(t => t.Amount);
+            dto.CngTesting = entries.SelectMany(e => e.TestingEntries).Where(t => t.FuelType == "CNG").Sum(t => t.Amount);
             dto.PhonePeTotal = dto.DsmSummaryRows.Sum(r => r.PhonePeCard + r.PhonePeMorning + r.PhonePeNight);
             dto.PhonePeCardTotal = dto.DsmSummaryRows.Sum(r => r.PhonePeCard);
             dto.PhonePeCardMorningTotal = dto.DsmSummaryRows.Sum(r => r.PhonePeCardMorning);
@@ -186,7 +192,7 @@ public class ShiftCalculationService
             dto.BankCash = dto.Cash1Aggregate.GrandTotal;
             dto.CashInHand = dto.Cash2Aggregate.GrandTotal;
 
-            dto.TotalAmounts = dto.MsTesting + dto.HsdTesting + dto.PhonePeTotal + dto.PetroCardTotal + dto.CreditCardTotal + dto.TotalDebit
+            dto.TotalAmounts = dto.MsTesting + dto.HsdTesting + dto.CngTesting + dto.PhonePeTotal + dto.PetroCardTotal + dto.CreditCardTotal + dto.TotalDebit
                 + dto.BankCash + dto.CashInHand;
 
             dto.ReconciliationDifference = dto.TotalFuelSaleAmount - dto.TotalAmounts;
@@ -220,6 +226,7 @@ public class ShiftCalculationService
                 TotalHsdLitres = calc.HsdLitres,
                 TotalMsILitres = calc.MsILitres,
                 TotalMsIILitres = calc.MsIILitres,
+                TotalCngLitres = calc.CngLitres,
                 TotalFuelSale = calc.TotalFuelSaleAmount,
                 TotalCash = calc.BankCash + calc.CashInHand,
                 TotalDigitalPayments = calc.PhonePeTotal + calc.PetroCardTotal + calc.CreditCardTotal,

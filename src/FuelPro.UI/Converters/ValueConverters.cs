@@ -1,3 +1,4 @@
+using System;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Data;
@@ -51,6 +52,38 @@ public class LitresConverter : IValueConverter
     {
         if (value is double d) return $"{d.ToString("N2", IndianCulture)} L";
         return "0.00 L";
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotImplementedException();
+}
+
+/// <summary>
+/// Formats Kg to 4 decimal places.
+/// </summary>
+public class KgFormatConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is double d) return $"{d:F4} Kg";
+        return "0.0000 Kg";
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotImplementedException();
+}
+
+/// <summary>
+/// Formats Kg to 2 decimal places for dashboard display.
+/// </summary>
+public class KgConverter : IValueConverter
+{
+    private static readonly CultureInfo IndianCulture = new("en-IN");
+
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is double d) return $"{d.ToString("N2", IndianCulture)} Kg";
+        return "0.00 Kg";
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
@@ -280,4 +313,3 @@ public class EqualToBoolConverter : IValueConverter
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
         => throw new NotImplementedException();
 }
-

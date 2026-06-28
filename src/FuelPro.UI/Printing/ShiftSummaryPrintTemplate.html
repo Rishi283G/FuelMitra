@@ -154,7 +154,7 @@
 const data = /* INJECT_JSON_HERE */{};
 const INR = (n) => '₹' + (+(n||0)).toLocaleString('en-IN', {minimumFractionDigits:2,maximumFractionDigits:2});
 
-const station = data.stationName || 'Shree Mahakaleshwar Petroleum';
+const station = data.stationName || 'Mitali Service Station';
 document.title = station + ' — Shift Summary Report';
 document.getElementById('toolbarTitle').textContent = `📋 ${station} — Shift Summary Report`;
 document.getElementById('headerStationName').textContent = station.toUpperCase();

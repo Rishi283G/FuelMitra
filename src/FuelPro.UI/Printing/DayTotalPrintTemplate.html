@@ -86,85 +86,12 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
   .diff-ok,.diff-bad{font-size:11px;padding:3px!important}
   .rpt-ftr{padding:3px 12px;font-size:7px}
   .rpt-hdr,.tr-total td,.tr-recon-total td,.rpt-ftr,th,.kpi,.coll-item,.recon-box,.diff-ok,.diff-bad,.tr-sub td,.tr-shift td,.shift-section-header{-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  
-  .nozzle-grid-container {
-    display: flex;
-    gap: 12px;
-    margin-bottom: 12px;
-    width: 100%;
-  }
-  .nozzle-group-card {
-    flex: 1;
-    border: 1px solid #1a3a6b;
-    border-radius: 6px;
-    background: #fff;
-    overflow: hidden;
-  }
-  .nozzle-group-hdr {
-    background: #1a3a6b;
-    color: #fff;
-    font-weight: bold;
-    font-size: 11px;
-    text-align: center;
-    padding: 6px;
-    text-transform: uppercase;
-  }
-  .tank-info-bar {
-    display: flex;
-    justify-content: space-between;
-    background: #e8f1fb;
-    padding: 4px 8px;
-    font-size: 10px;
-    font-weight: 600;
-    border-bottom: 1px solid #1a3a6b;
-  }
-  .nozzles-layout {
-    padding: 6px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-  .nozzle-row {
-    display: flex;
-    gap: 4px;
-  }
-  .nozzle-cell {
-    flex: 1;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    padding: 3px;
-    text-align: center;
-    font-size: 9px;
-    background: #fff;
-  }
-  .nozzle-cell.dimmed {
-    opacity: 0.35;
-  }
-  .nozzle-num {
-    font-weight: bold;
-    font-size: 9px;
-    color: #1a3a6b;
-    border-bottom: 1px dashed #ddd;
-    padding-bottom: 1px;
-    margin-bottom: 2px;
-  }
-  .nozzle-sale {
-    font-weight: 700;
-    color: #00663a;
-    font-size: 9.5px;
-  }
-  .nozzle-readings {
-    font-size: 7.5px;
-    color: #555;
-    margin-top: 1px;
-    line-height: 1.1;
-  }
 }
 </style>
 </head>
 <body>
 <div class="toolbar">
-  <span id="previewTitle">&#9981; Shree Mahakaleshwar Petroleum &mdash; Day Total Report</span>
+  <span id="previewTitle">&#9981; Mitali Service Station &mdash; Day Total Report</span>
   <button class="btn-print" onclick="window.print()">&#128424; Print / Save PDF</button>
 </div>
 <div class="page">
@@ -173,7 +100,7 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
       <div style="display: flex; align-items: center; gap: 15px;">
         <img id="logo" style="display: none; height: 50px;" src="" alt="logo" />
         <div>
-          <div class="rpt-title" id="rptTitle">PYROSYNC</div>
+          <div class="rpt-title" id="rptTitle">MITALI SERVICE STATION</div>
           <div class="rpt-sub">Day Total Reconciliation &mdash; Full Day (Shift A + B + C)</div>
         </div>
       </div>
@@ -187,10 +114,10 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
     </div>
   </div>
 
-  <!-- SECTION 1: NOZZLE-WISE FUEL SALE & TANK STATUS -->
+  <!-- SECTION 1: NOZZLE READINGS & TANK STATUS -->
   <div class="sec">
-    <div class="sec-title">1. Nozzle-wise Fuel Sale &amp; Tank Status (Opening Shift A &rarr; Closing Shift C)</div>
-    <div id="nozzleGridContainer"></div>
+    <div class="sec-title">1. Nozzle Readings &amp; Tank Status</div>
+    <div style="display: flex; gap: 15px; margin-bottom: 15px;" id="nozzleGroupsContainer"></div>
   </div>
   <hr class="div">
 
@@ -204,11 +131,10 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
   <!-- TOTAL FUEL TO DIFFERENCE -->
   <div class="kpi-section" style="padding:14px 24px;border-bottom:1px solid #e4ecf2;background:#f8fafb">
     <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px;">
-      <div class="kpi"><div class="kpi-lbl">HSD</div><div class="kpi-val" id="kHsdLtr">&ndash;</div></div>
-      <div class="kpi"><div class="kpi-lbl">MS-I</div><div class="kpi-val" id="kMs1Ltr">&ndash;</div></div>
-      <div class="kpi"><div class="kpi-lbl">MS-II</div><div class="kpi-val" id="kMs2Ltr">&ndash;</div></div>
-      <div class="kpi"><div class="kpi-lbl">MS Total</div><div class="kpi-val" id="kMsTotalLtr">&ndash;</div></div>
-      <div class="kpi" style="border-color:#1a3a6b"><div class="kpi-lbl">Total Litres</div><div class="kpi-val" id="kLitres" style="color:#1a3a6b">&ndash;</div></div>
+      <div class="kpi"><div class="kpi-lbl">Diesel</div><div class="kpi-val" id="kHsdLtr">&ndash;</div></div>
+      <div class="kpi"><div class="kpi-lbl">Petrol</div><div class="kpi-val" id="kMsTotalLtr">&ndash;</div></div>
+      <div class="kpi"><div class="kpi-lbl">CNG</div><div class="kpi-val" id="kCngLtr">&ndash;</div></div>
+      <div class="kpi" style="border-color:#1a3a6b"><div class="kpi-lbl">Total Qty</div><div class="kpi-val" id="kLitres" style="color:#1a3a6b">&ndash;</div></div>
       <div class="kpi"><div class="kpi-lbl">Total Collection</div><div class="kpi-val" id="kCollect">&ndash;</div></div>
       <div class="kpi"><div class="kpi-lbl">Total Debtors</div><div class="kpi-val" id="kCred">&ndash;</div></div>
       <div class="kpi"><div class="kpi-lbl">Total Expenses</div><div class="kpi-val" id="kExp">&ndash;</div></div>
@@ -278,7 +204,7 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
   </div>
 
   <div class="rpt-ftr">
-    <span id="ftrStation">PyroSync &mdash; Confidential Day Total Report</span>
+    <span id="ftrStation">Mitali Service Station &mdash; Confidential Day Total Report</span>
     <span id="ftrMid">&ndash;</span>
     <span>Page 1 of 1</span>
   </div>
@@ -296,13 +222,13 @@ function inrZ(v){
 function shiftBadge(s){
   if(s==='A')return'<span class="b-a">Shift A</span>';
   if(s==='B')return'<span class="b-b">Shift B</span>';
-  return'<span class="b-c">Shift C</span>';
+  return'<span class="b-b">Shift '+s+'</span>';
 }
 
 function renderData(){
   var d=printData;
   if(!d||!d.date){return;}
-  var station = d.stationName || 'Shree Mahakaleshwar Petroleum';
+  var station = d.stationName || 'Mitali Service Station';
   document.title = station + ' — Day Total Report';
   var rptTitle = document.getElementById('rptTitle');
   if(rptTitle) rptTitle.textContent = station.toUpperCase();
@@ -320,15 +246,14 @@ function renderData(){
 
   document.getElementById('hDate').textContent=d.date||'\u2013';
   document.getElementById('hStation').textContent=station;
-  document.getElementById('hShifts').textContent='Shift A + Shift B + Shift C';
+  document.getElementById('hShifts').textContent='Shift A + Shift B';
   document.getElementById('hPrinted').textContent=new Date().toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
 
   // KPI (Litres & Top Row)
   document.getElementById('kHsdLtr').textContent=parseFloat(d.totalHsdLitres||0).toFixed(4)+' L';
-  document.getElementById('kMs1Ltr').textContent=parseFloat(d.totalMsILitres||0).toFixed(4)+' L';
-  document.getElementById('kMs2Ltr').textContent=parseFloat(d.totalMsIILitres||0).toFixed(4)+' L';
+  document.getElementById('kCngLtr').textContent=parseFloat(d.totalCngLitres||0).toFixed(4)+' Kg';
   document.getElementById('kMsTotalLtr').textContent=parseFloat(d.totalMsLitres||0).toFixed(4)+' L';
-  document.getElementById('kLitres').textContent=parseFloat(d.totalDayLitres||0).toFixed(4)+' L';
+  document.getElementById('kLitres').textContent=parseFloat(d.totalDayLitres||0).toFixed(4);
 
   document.getElementById('kCollect').textContent=inrZ(d.reconciliationTotalAmount);
   document.getElementById('kCred').textContent=inrZ(d.creditorsTotal);
@@ -369,83 +294,84 @@ function renderData(){
   ttr.innerHTML='<td>DAY TOTAL</td><td>\u2013</td><td>\u2013</td><td>'+inrZ(tot.ph)+'</td><td>'+inrZ(tot.phc)+'</td><td>'+inrZ(tot.cc)+'</td><td>'+inrZ(tot.pc)+'</td><td>'+inrZ(tot.bk)+'</td><td>'+inrZ(tot.deb)+'</td><td>'+inrZ(tot.exp)+'</td><td>'+inrZ(tot.test)+'</td><td>'+inrZ(tot.c2)+'</td><td>'+inrZ(tot.sale)+'</td><td>'+inrZ(tot.mis)+'</td>';
   tb.appendChild(ttr);
 
-  // Nozzle-wise Grid
-  function renderNozzleGroups(containerId, groups) {
-    const container = document.getElementById(containerId);
-    if (!container) return;
-    container.innerHTML = '';
-    
-    if (!groups || groups.length === 0) {
-      container.innerHTML = '<div style="font-style:italic;color:#666;padding:10px;">No nozzle reading data available.</div>';
-      return;
+  // getVal helper for case-insensitive JSON key lookup
+  function getVal(obj, key) {
+    if (!obj) return undefined;
+    var lowerKey = key.toLowerCase();
+    for (var prop in obj) {
+      if (prop.toLowerCase() === lowerKey) return obj[prop];
     }
-    
-    const gridContainer = document.createElement('div');
-    gridContainer.className = 'nozzle-grid-container';
-    
-    groups.forEach(g => {
-      const card = document.createElement('div');
-      card.className = 'nozzle-group-card';
-      
-      const hdr = document.createElement('div');
-      hdr.className = 'nozzle-group-hdr';
-      hdr.textContent = g.groupName || '';
-      card.appendChild(hdr);
-      
-      const infoBar = document.createElement('div');
-      infoBar.className = 'tank-info-bar';
-      infoBar.innerHTML = `
-        <span>DIP: <strong>${g.dip || 0} mm</strong></span>
-        <span>STOCK: <strong style="color:#00663a">${parseFloat(g.stock || 0).toLocaleString('en-IN', {minimumFractionDigits:2,maximumFractionDigits:2})} L</strong></span>
-      `;
-      card.appendChild(infoBar);
-      
-      const layout = document.createElement('div');
-      layout.className = 'nozzles-layout';
-      
-      (g.rows || []).forEach(row => {
-        const rowDiv = document.createElement('div');
-        rowDiv.className = 'nozzle-row';
-        
-        row.forEach(n => {
-          const cell = document.createElement('div');
-          cell.className = 'nozzle-cell';
-          if (!n.hasReading) {
-            cell.className += ' dimmed';
-          }
-          
-          cell.innerHTML = `
-            <div class="nozzle-num">N${n.nozzleNumber}</div>
-            <div class="nozzle-sale">${n.hasReading ? parseFloat(n.saleLitres || 0).toFixed(2) : '-'}</div>
-            <div class="nozzle-readings">
-              O: ${n.hasReading ? Math.round(n.openingReading) : '-'}<br/>
-              C: ${n.hasReading ? Math.round(n.closingReading) : '-'}
-            </div>
-          `;
-          rowDiv.appendChild(cell);
-        });
-        
-        layout.appendChild(rowDiv);
-      });
-      
-      card.appendChild(layout);
-      gridContainer.appendChild(card);
-    });
-    
-    container.appendChild(gridContainer);
+    return undefined;
   }
-  renderNozzleGroups('nozzleGridContainer', d.nozzleGroups);
+
+  // Render nozzle groups (Tank-wise layout)
+  var container = document.getElementById('nozzleGroupsContainer');
+  if (container) {
+    container.innerHTML = '';
+    var groups = getVal(d, 'nozzleGroups') || [];
+    groups.forEach(function(g) {
+      var groupName = getVal(g, 'groupName') || '';
+      var dip = getVal(g, 'dip') || 0;
+      var stock = getVal(g, 'stock') || 0;
+      var rows = getVal(g, 'rows') || [];
+      
+      var card = document.createElement('div');
+      card.style.cssText = 'flex: 1; border: 1.5px solid #1a3a6b; border-radius: 6px; padding: 10px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.05);';
+      
+      var header = document.createElement('div');
+      header.style.cssText = 'background: #1a3a6b; color: #fff; text-align: center; padding: 4px; font-weight: bold; border-radius: 4px; font-size: 11px;';
+      header.textContent = groupName;
+      card.appendChild(header);
+      
+      var tankInfo = document.createElement('div');
+      tankInfo.style.cssText = 'display: flex; justify-content: space-between; margin-top: 6px; font-size: 10px; font-weight: bold; border-bottom: 1px solid #ddd; padding-bottom: 4px;';
+      tankInfo.innerHTML = '<span>Dip: ' + dip + ' mm</span><span>Stock: ' + parseFloat(stock).toFixed(2) + ' L</span>';
+      card.appendChild(tankInfo);
+      
+      var table = document.createElement('table');
+      table.style.cssText = 'width: 100%; margin-top: 8px; font-size: 10px; border-collapse: collapse;';
+      table.innerHTML = '<thead><tr>' +
+        '<th style="text-align: left; background: none; color: #333; font-weight: bold; padding: 2px; font-size: 9px; border-bottom: 1px solid #eee;">Noz</th>' +
+        '<th style="background: none; color: #333; font-weight: bold; padding: 2px; font-size: 9px; border-bottom: 1px solid #eee; text-align: right;">Opening</th>' +
+        '<th style="background: none; color: #333; font-weight: bold; padding: 2px; font-size: 9px; border-bottom: 1px solid #eee; text-align: right;">Closing</th>' +
+        '<th style="background: none; color: #333; font-weight: bold; padding: 2px; font-size: 9px; border-bottom: 1px solid #eee; text-align: right;">Sale</th>' +
+        '</tr></thead>';
+        
+      var tbody = document.createElement('tbody');
+      rows.forEach(function(row) {
+        row.forEach(function(noz) {
+          var hasReading = getVal(noz, 'hasReading');
+          var opacity = hasReading ? '1' : '0.4';
+          
+          var nozNum = getVal(noz, 'nozzleNumber');
+          var opening = getVal(noz, 'openingReading') || 0;
+          var closing = getVal(noz, 'closingReading') || 0;
+          var sale = getVal(noz, 'saleLitres') || 0;
+          
+          var tr = document.createElement('tr');
+          tr.style.opacity = opacity;
+          tr.innerHTML = '<td style="text-align: left; padding: 3px 2px; border-bottom: 1px solid #f5f5f5;">N' + nozNum + '</td>' +
+            '<td style="text-align: right; padding: 3px 2px; border-bottom: 1px solid #f5f5f5;">' + parseFloat(opening).toFixed(0) + '</td>' +
+            '<td style="text-align: right; padding: 3px 2px; border-bottom: 1px solid #f5f5f5;">' + parseFloat(closing).toFixed(0) + '</td>' +
+            '<td style="text-align: right; padding: 3px 2px; border-bottom: 1px solid #f5f5f5; font-weight: bold; color: #00663a;">' + parseFloat(sale).toFixed(2) + '</td>';
+          tbody.appendChild(tr);
+        });
+      });
+      table.appendChild(tbody);
+      card.appendChild(table);
+      container.appendChild(card);
+    });
+  }
 
   // Collections grid
   var cg=document.getElementById('collGrid');cg.innerHTML='';
   var cols=[
-    {lbl:'PhonePe',val:d.phonePeTotal},
-    {lbl:'PhonePe Card',val:d.phonePeCardTotal},
-    {lbl:'PineLab Card (Morning)',val:d.creditCardMorningTotal},
-    {lbl:'PineLab Card (Night)',val:d.creditCardNightTotal},
-    {lbl:'Petro Card',val:d.petroCardTotal},
-    {lbl:'Bank Cash',val:d.bankCashTotal},
-    {lbl:'Cash In Hand',val:d.cashInHandTotal}
+    {lbl:'Cash',val:d.splitCash},
+    {lbl:'PhonePe',val:d.splitPhonePe},
+    {lbl:'UPI (PhonePe Card)',val:d.splitUpi},
+    {lbl:'PineLabs Card',val:d.splitPineLabsCard},
+    {lbl:'Credit (Debtors)',val:d.splitCredit},
+    {lbl:'Other Collections',val:d.splitOther}
   ];
   cols.forEach(function(c){
     var div=document.createElement('div');div.className='coll-item';
@@ -491,7 +417,7 @@ function renderData(){
   else if(diff<0){dCell.textContent='\u26A0  SHORT \u2014 Difference: '+inrZ(Math.abs(diff));dCell.className='diff-bad';}
   else{dCell.textContent='\u26A0  EXCESS \u2014 Difference: '+inrZ(diff);dCell.className='diff-bad';}
 
-  document.getElementById('ftrMid').innerHTML='<strong>'+d.date+'</strong> &middot; '+parseFloat(d.totalDayLitres||0).toFixed(2)+' L &middot; '+inrZ(d.totalFuelSaleAmount);
+  document.getElementById('ftrMid').innerHTML='<strong>'+d.date+'</strong> &middot; '+parseFloat(getVal(d, 'totalDayLitres')||0).toFixed(2)+' L &middot; '+inrZ(d.totalFuelSaleAmount);
 }
 renderData();
 document.addEventListener('DOMContentLoaded',renderData);

@@ -19,4 +19,10 @@ public class DsmProfile
     public double BaseSalary { get; set; } = 12000.0;
 
     public DateTime? JoiningDate { get; set; }
+
+    [MaxLength(20)]
+    public string? MobileNumber { get; set; }
+
+    public double PendingAdvance { get; set; } = 0.0;
+    public double MonthlyAdvanceDeduction { get; set; } = 0.0;
 }

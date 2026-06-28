@@ -25,6 +25,7 @@ public class ShiftSummaryDto
     public double TotalHsdLitres { get; set; }
     public double TotalMsILitres { get; set; }
     public double TotalMsIILitres { get; set; }
+    public double TotalCngLitres { get; set; }
     public double TotalFuelSale { get; set; }
     public double TotalCash { get; set; }
     public double TotalDigitalPayments { get; set; }
@@ -86,6 +87,9 @@ public class FinalCalculationDto
     public double MsIILitres { get; set; }
     public double MsIIRate { get; set; }
     public double MsIIAmount { get; set; }
+    public double CngLitres { get; set; }
+    public double CngRate { get; set; }
+    public double CngAmount { get; set; }
     public double TotalLitres { get; set; }
     public double TotalFuelSaleAmount { get; set; }
     public double TotalMsDispensed { get; set; }
@@ -96,6 +100,7 @@ public class FinalCalculationDto
     // TABLE F — Final Reconciliation
     public double MsTesting { get; set; }
     public double HsdTesting { get; set; }
+    public double CngTesting { get; set; }
     public double PhonePeTotal { get; set; }
     public double PhonePeMorningTotal { get; set; }
     public double PhonePeNightTotal { get; set; }
@@ -129,6 +134,7 @@ public class DsmSummaryRowDto
     public double CreditCardMorning { get; set; }
     public double CreditCardNight { get; set; }
     public double PetroCard { get; set; }
+    public double Others { get; set; }
     public double CashDeposit { get; set; }  // Cash 1 — Bank Deposit
     public double Debit { get; set; }        // Sum of creditors/debit entries
     public double Expenses { get; set; }
@@ -240,4 +246,13 @@ public class CreditorBalanceDto
 {
     public string DebtorName { get; set; } = string.Empty;
     public double TotalDebitAmount { get; set; }
+}
+
+public class DebtorLogEntryDto
+{
+    public DateTime Date { get; set; }
+    public string DsmName { get; set; } = string.Empty;
+    public string DebtorName { get; set; } = string.Empty;
+    public string? ChequeNo { get; set; }
+    public double Amount { get; set; }
 }

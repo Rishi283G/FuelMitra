@@ -27,9 +27,11 @@ public class PrintDataBuilder
         double hsdLitres, double hsdRate, double hsdAmount,
         double msILitres, double msIRate, double msIAmount,
         double msIILitres, double msIIRate, double msIIAmount,
+        double cngLitres, double cngRate, double cngAmount,
         double otherCashTotal,
         double reconciliationMsTesting,
         double reconciliationHsdTesting,
+        double reconciliationCngTesting,
         double phonePeTotal,
         double phonePeMorningTotal,
         double phonePeNightTotal,
@@ -45,7 +47,8 @@ public class PrintDataBuilder
         double reconciliationTotal,
         double grossFuelSaleTotal,
         double totalDsmShort,
-        List<ExpenseRegisterRowDto>? expenseRows = null)
+        List<ExpenseRegisterRowDto>? expenseRows = null,
+        List<CreditorRepayment>? sameDayRepayments = null)
     {
         try
         {
@@ -63,7 +66,11 @@ public class PrintDataBuilder
                 DsmName    = r.DsmName,
                 PumpNo     = r.PumpId,
                 CardAmount = (decimal)(r.CreditCardMorning + r.CreditCardNight),
+                CreditCardMorning = (decimal)r.CreditCardMorning,
+                CreditCardNight   = (decimal)r.CreditCardNight,
                 PhonePay   = (decimal)(r.PhonePeMorning + r.PhonePeNight + r.PhonePeCardMorning + r.PhonePeCardNight),
+                PhonePeMorning = (decimal)r.PhonePeMorning,
+                PhonePeNight   = (decimal)r.PhonePeNight,
                 PhonePeCardMorning = (decimal)r.PhonePeCardMorning,
                 PhonePeCardNight = (decimal)r.PhonePeCardNight,
                 PetroCard  = (decimal)r.PetroCard,
@@ -127,7 +134,7 @@ public class PrintDataBuilder
             if (hsdLitres > 0 || hsdAmount > 0)
                 fuelRows.Add(new FuelSalePrintRow
                 {
-                    Description = "HSD - 20 KL",
+                    Description = "Diesel - 20 KL",
                     FuelType    = "HSD",
                     TankLabel   = "20 KL",
                     Litres  = (decimal)hsdLitres,
@@ -137,7 +144,7 @@ public class PrintDataBuilder
             if (msIILitres > 0 || msIIAmount > 0)
                 fuelRows.Add(new FuelSalePrintRow
                 {
-                    Description = "MS-(II) - 20 KL",
+                    Description = "Petrol (Tank 2) - 20 KL",
                     FuelType    = "MS-II",
                     TankLabel   = "20 KL",
                     Litres  = (decimal)msIILitres,
@@ -147,12 +154,22 @@ public class PrintDataBuilder
             if (msILitres > 0 || msIAmount > 0)
                 fuelRows.Add(new FuelSalePrintRow
                 {
-                    Description = "MS-(I) - 20 KL",
+                    Description = "Petrol (Tank 1) - 20 KL",
                     FuelType    = "MS-I",
                     TankLabel   = "20 KL",
                     Litres  = (decimal)msILitres,
                     Rate    = (decimal)Math.Round(msIRate, 2),
                     Amount  = (decimal)msIAmount
+                });
+            if (cngLitres > 0 || cngAmount > 0)
+                fuelRows.Add(new FuelSalePrintRow
+                {
+                    Description = "CNG - Line",
+                    FuelType    = "CNG",
+                    TankLabel   = "Line",
+                    Litres  = (decimal)cngLitres,
+                    Rate    = (decimal)Math.Round(cngRate, 2),
+                    Amount  = (decimal)cngAmount
                 });
 
             // Expense rows (informational section for print)
@@ -164,20 +181,21 @@ public class PrintDataBuilder
                     Amount      = (decimal)e.Amount
                 }).ToList();
 
-        // Reconciliation block
-        var rec = new ReconciliationPrintBlock
-        {
-            MsTesting  = (decimal)reconciliationMsTesting,
-            HsdTesting = (decimal)reconciliationHsdTesting,
-            PhonePe    = (decimal)phonePeTotal,
-            PhonePeCardMorning = (decimal)phonePeCardMorningTotal,
-            PhonePeCardNight   = (decimal)phonePeCardNightTotal,
-            PhonePeMorning = (decimal)phonePeMorningTotal,
-            PhonePeNight   = (decimal)phonePeNightTotal,
-            PetroCard  = (decimal)petroCardTotal,
-            Debit      = (decimal)creditorRows.Sum(c => c.Amount),
-            CreditCardMorning = (decimal)creditCardMorningTotal,
-            CreditCardNight = (decimal)creditCardNightTotal,
+            // Reconciliation block
+            var rec = new ReconciliationPrintBlock
+            {
+                MsTesting  = (decimal)reconciliationMsTesting,
+                HsdTesting = (decimal)reconciliationHsdTesting,
+                CngTesting = (decimal)reconciliationCngTesting,
+                PhonePe    = (decimal)phonePeTotal,
+                PhonePeCardMorning = (decimal)phonePeCardMorningTotal,
+                PhonePeCardNight   = (decimal)phonePeCardNightTotal,
+                PhonePeMorning = (decimal)phonePeMorningTotal,
+                PhonePeNight   = (decimal)phonePeNightTotal,
+                PetroCard  = (decimal)petroCardTotal,
+                Debit      = (decimal)creditorRows.Sum(c => c.Amount),
+                CreditCardMorning = (decimal)creditCardMorningTotal,
+                CreditCardNight = (decimal)creditCardNightTotal,
                 BankCash   = (decimal)bankCash,
                 CashInHand = (decimal)cashInHand,
                 Expenses   = (decimal)expensesTotal,
@@ -199,9 +217,17 @@ public class PrintDataBuilder
                 Cheque             = 0m,
                 MsILitres          = (decimal)msILitres,
                 MsIILitres         = (decimal)msIILitres,
+                CngLitres          = (decimal)cngLitres,
                 GrossFuelSaleTotal = (decimal)grossFuelSaleTotal,
                 Expenses           = expensePrintRows,
-                Reconciliation     = rec
+                Reconciliation     = rec,
+                SameDayRepayments  = (sameDayRepayments ?? new List<CreditorRepayment>()).Select(r => new CreditorRepaymentPrintDto
+                {
+                    DebtorName = r.CreditorName,
+                    PaymentMode = r.PaymentMode,
+                    RefNo = r.ChequeNo ?? "",
+                    Amount = (decimal)r.Amount
+                }).ToList()
             };
         }
         catch (Exception ex)

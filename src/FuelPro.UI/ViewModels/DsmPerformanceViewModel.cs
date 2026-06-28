@@ -4,12 +4,14 @@ using FuelPro.Core.DTOs;
 using FuelPro.Core.Models;
 using FuelPro.Core.Repositories;
 using FuelPro.Core.Services;
+using FuelPro.UI.Printing;
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Windows;
 
 namespace FuelPro.UI.ViewModels;
 
@@ -21,6 +23,8 @@ public partial class DsmPerformanceViewModel : ObservableObject
     private readonly IDsmEntryRepository _dsmEntryRepo;
     private readonly IDsmCalculationService _calcService;
     private readonly IOwnerCalculationService _ownerCalcService;
+    private readonly PrintService _printService;
+    private readonly ExcelExportService _excelExportService;
 
     [ObservableProperty] private DateTime _startDate = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
     [ObservableProperty] private DateTime _endDate = DateTime.Today;
@@ -47,6 +51,8 @@ public partial class DsmPerformanceViewModel : ObservableObject
         _dsmEntryRepo = App.Services.GetRequiredService<IDsmEntryRepository>();
         _calcService = App.Services.GetRequiredService<IDsmCalculationService>();
         _ownerCalcService = App.Services.GetRequiredService<IOwnerCalculationService>();
+        _printService = App.Services.GetRequiredService<PrintService>();
+        _excelExportService = App.Services.GetRequiredService<ExcelExportService>();
         _ = LoadAsync();
     }
 
@@ -213,6 +219,111 @@ public partial class DsmPerformanceViewModel : ObservableObject
             TotalLitres += row.TotalLitres;
             TotalMismatch += row.Mismatch;
             TotalShifts += row.ShiftCount;
+        }
+    }
+
+    [RelayCommand]
+    private void Print()
+    {
+        try
+        {
+            var summaryCards = new List<GenericGridPrintCard>
+            {
+                new() { Label = "Total Sales", Value = "₹" + TotalSale.ToString("N2") },
+                new() { Label = "Total Volume", Value = TotalLitres.ToString("N2") + " L" },
+                new() { Label = "Total Mismatch", Value = "₹" + TotalMismatch.ToString("N2"), Highlight = Math.Abs(TotalMismatch) > 1 },
+                new() { Label = "Total Shifts", Value = TotalShifts.ToString() }
+            };
+
+            var headers = new List<string> { "DSM Name", "Shifts Worked", "Total Sales", "Total Collection", "Total Short", "Avg Short", "Highest Short", "Accuracy", "Mismatch Count" };
+            var rows = new List<List<string>>();
+
+            foreach (var r in DsmRows)
+            {
+                rows.Add(new List<string>
+                {
+                    r.DsmName,
+                    r.ShiftCount.ToString(),
+                    "₹" + r.TotalSale.ToString("N2"),
+                    "₹" + r.TotalCollection.ToString("N2"),
+                    "₹" + r.TotalShortAmount.ToString("N2"),
+                    "₹" + r.AverageShort.ToString("N2"),
+                    "₹" + r.HighestShort.ToString("N2"),
+                    r.CollectionAccuracy.ToString("F2") + "%",
+                    r.MismatchCount.ToString()
+                });
+            }
+
+            var printData = new GenericGridPrintData
+            {
+                Title = "DSM Performance Report",
+                Subtitle = $"Period: {StartDate:dd-MMM-yyyy} to {EndDate:dd-MMM-yyyy}" + 
+                           (string.IsNullOrWhiteSpace(SearchText) ? "" : $" (Filtered by: '{SearchText}')"),
+                SummaryCards = summaryCards,
+                Headers = headers,
+                Rows = rows,
+                ShowSignatures = true
+            };
+
+            _printService.PrintGenericGrid(printData);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to print DSM performance");
+            MessageBox.Show($"Failed to print report: {ex.Message}", "Print Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    [RelayCommand]
+    private async Task ExportExcelAsync()
+    {
+        try
+        {
+            var summaryCards = new List<GenericGridPrintCard>
+            {
+                new() { Label = "Total Sales", Value = "₹" + TotalSale.ToString("N2"), Highlight = true },
+                new() { Label = "Total Volume", Value = TotalLitres.ToString("N2") + " L", Highlight = false },
+                new() { Label = "Total Collection", Value = "₹" + TotalMismatch.ToString("N2"), Highlight = false },
+                new() { Label = "Total Shifts", Value = TotalShifts.ToString(), Highlight = false }
+            };
+
+            var headers = new List<string> { "DSM Name", "Shifts Worked", "Total Sales", "Total Collection", "Total Short", "Avg Short", "Highest Short", "Accuracy", "Mismatch Count" };
+            var rows = new List<List<string>>();
+
+            foreach (var r in DsmRows)
+            {
+                rows.Add(new List<string>
+                {
+                    r.DsmName,
+                    r.ShiftCount.ToString(),
+                    "₹" + r.TotalSale.ToString("N2"),
+                    "₹" + r.TotalCollection.ToString("N2"),
+                    "₹" + r.TotalShortAmount.ToString("N2"),
+                    "₹" + r.AverageShort.ToString("N2"),
+                    "₹" + r.HighestShort.ToString("N2"),
+                    r.CollectionAccuracy.ToString("F2") + "%",
+                    r.MismatchCount.ToString()
+                });
+            }
+
+            var printData = new GenericGridPrintData
+            {
+                Title = "DSM Performance Report",
+                Subtitle = $"Period: {StartDate:dd-MMM-yyyy} to {EndDate:dd-MMM-yyyy}" + 
+                           (string.IsNullOrWhiteSpace(SearchText) ? "" : $" (Filtered by: '{SearchText}')"),
+                SummaryCards = summaryCards,
+                Headers = headers,
+                Rows = rows,
+                ShowSignatures = true
+            };
+
+            var path = await _excelExportService.ExportGenericGridAsync(printData, "DsmPerformance");
+            MessageBox.Show($"Report exported successfully to:\n{path}", "Export Success", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to export DSM performance to Excel");
+            MessageBox.Show($"Export failed: {ex.Message}", "Export Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 }

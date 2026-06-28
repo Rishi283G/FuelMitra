@@ -24,6 +24,7 @@ public class SyncEngine
     private Timer? _syncTimer;
     private readonly SemaphoreSlim _syncLock = new(1, 1);
     private bool _isSyncing;
+    private DateTime _lastPullTime = DateTime.MinValue;
 
     public event Action<SyncStatusInfo>? SyncStatusChanged;
     
@@ -59,7 +60,18 @@ public class SyncEngine
         "DsmDevices",
         "DsmApprovalAudits",
         "DsmAttendance",
-        "SyncChangeLogs"
+        "SyncChangeLogs",
+        // New tables from P3_shin_nvl
+        "DebtorVehicles",
+        "PumpMappings",
+        "AuditLogs",
+        "DayLocks",
+        "PumpExpenses",
+        "ExpenseCategories",
+        "PumpExpenseCategoryItems",
+        "DsmSalaryAdjustments",
+        "DsmPersonalDebtors",
+        "DsmPersonalDebtorRepayments"
     };
 
     // ── FK Configuration ──────────────────────────────────────────────
@@ -83,6 +95,7 @@ public class SyncEngine
         new TableSyncConfig("DsmApprovalAudits", Array.Empty<FkMapping>()),
         new TableSyncConfig("DsmAttendance", new[] { new FkMapping("DsmUserId", "DsmUsers") }),
         new TableSyncConfig("Creditors", Array.Empty<FkMapping>()),
+        new TableSyncConfig("DebtorVehicles", new[] { new FkMapping("CreditorId", "Creditors") }),
         new TableSyncConfig("ProductMasters", Array.Empty<FkMapping>()),
         new TableSyncConfig("Shifts", Array.Empty<FkMapping>()),
         new TableSyncConfig("AgsShiftImports", Array.Empty<FkMapping>()),
@@ -102,6 +115,22 @@ public class SyncEngine
         new TableSyncConfig("CashDenominations", new[] { new FkMapping("DsmEntryId", "DsmEntries") }),
         new TableSyncConfig("AgsNozzleReadings", new[] { new FkMapping("AgsShiftImportId", "AgsShiftImports") }),
         new TableSyncConfig("AgsTankStocks", new[] { new FkMapping("AgsShiftImportId", "AgsShiftImports") }),
+        // New tables from P3_shin_nvl
+        new TableSyncConfig("PumpMappings", Array.Empty<FkMapping>()),
+        new TableSyncConfig("AuditLogs", Array.Empty<FkMapping>()),
+        new TableSyncConfig("DayLocks", Array.Empty<FkMapping>()),
+        new TableSyncConfig("PumpExpenses", Array.Empty<FkMapping>()),
+        new TableSyncConfig("ExpenseCategories", Array.Empty<FkMapping>()),
+        new TableSyncConfig("PumpExpenseCategoryItems", new[] {
+            new FkMapping("PumpExpenseId", "PumpExpenses"),
+            new FkMapping("CategoryId", "ExpenseCategories")
+        }),
+        new TableSyncConfig("DsmSalaryAdjustments", Array.Empty<FkMapping>()),
+        new TableSyncConfig("DsmPersonalDebtors", new[] { new FkMapping("DsmEntryId", "DsmEntries") }),
+        new TableSyncConfig("DsmPersonalDebtorRepayments", new[] { 
+            new FkMapping("DsmPersonalDebtorId", "DsmPersonalDebtors"), 
+            new FkMapping("ShiftId", "Shifts") 
+        })
     };
 
     /// <summary>
@@ -133,15 +162,15 @@ public class SyncEngine
     public async Task ForceSyncAsync()
     {
         _logger.Information("Force sync requested.");
-        await RunSyncCycleAsync();
+        await RunSyncCycleAsync(forcePull: true);
     }
 
     private async Task OnTimerTickAsync()
     {
-        await RunSyncCycleAsync();
+        await RunSyncCycleAsync(forcePull: false);
     }
 
-    private async Task RunSyncCycleAsync()
+    private async Task RunSyncCycleAsync(bool forcePull = false)
     {
         if (_isSyncing) return;
         
@@ -168,17 +197,28 @@ public class SyncEngine
 
             var authService = _serviceProvider.GetRequiredService<AuthService>();
             
+            bool shouldPull = forcePull || (DateTime.Now - _lastPullTime).TotalMinutes >= 10;
+
             // Check roles and route accordingly
             if (authService.IsOwner)
             {
                 // Owner is read-only for transaction data at this terminal and only pulls updates
-                await PerformPullAsync(settings);
+                if (shouldPull)
+                {
+                    await PerformPullAsync(settings);
+                    _lastPullTime = DateTime.Now;
+                }
             }
             else
             {
                 // Manager/Operators push local modifications first, then pull updates
                 await PerformPushAsync(settings);
-                await PerformPullAsync(settings);
+                
+                if (shouldPull)
+                {
+                    await PerformPullAsync(settings);
+                    _lastPullTime = DateTime.Now;
+                }
             }
         }
         catch (Exception ex)
@@ -891,6 +931,14 @@ public class SyncEngine
         {
             if (property.Name == "Id") continue;
             if (excludePk && pkProperties != null && pkProperties.Contains(property)) continue;
+            // Temporary exclusions for columns missing on remote Supabase DB until migration script is run
+            if (entity is DsmProfile && (property.Name == "MobileNumber" || property.Name == "PendingAdvance" || property.Name == "MonthlyAdvanceDeduction")) continue;
+            if (entity is DsmSalaryAdjustment && property.Name == "PendingAdvanceDeduction") continue;
+            if (entity is DsmEntry && (property.Name == "ConnectedPumpId" || property.Name == "ReconciledToPumpId" || property.Name == "StartTime" || property.Name == "EndTime" || property.Name == "IsReconciled")) continue;
+            if (entity is PaymentCollection && (property.Name == "CashDeposit" || property.Name == "PhonePeMorning" || property.Name == "PhonePeNight" || property.Name == "PhonePeCardMorning" || property.Name == "PhonePeCardNight" || property.Name == "CardTid" || property.Name == "CardBatch" || property.Name == "PhonePeTid" || property.Name == "PhonePeBatch" || property.Name == "PetroCardTid" || property.Name == "PetroCardBatch")) continue;
+            if (entity is Setting && property.Name == "CngRate") continue;
+            if (entity is DebitEntry && (property.Name == "CreatedAt" || property.Name == "UpdatedAt" || property.Name == "Remarks" || property.Name == "ChequeNo" || property.Name == "VehicleNumber" || property.Name == "SlipNumber")) continue;
+            if (entity is CreditorRepayment && property.Name == "CreatedAt") continue;
             
             values[property.Name] = entry.Property(property.Name).CurrentValue;
         }

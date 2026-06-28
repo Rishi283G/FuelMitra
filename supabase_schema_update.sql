@@ -1,0 +1,260 @@
+-- Supabase Database Schema Sync/Upgrade Script
+-- Run this script in your Supabase SQL Editor to align the remote Postgres database with the latest local SQLite schema.
+-- This script is safe to run multiple times (idempotent).
+
+BEGIN;
+
+-- 1. Ensure all Core Tables exist before running migrations
+
+CREATE TABLE IF NOT EXISTS "Shifts" (
+    "ShiftId" serial PRIMARY KEY,
+    "ShiftDate" date NOT NULL,
+    "ShiftType" text NOT NULL,
+    "IsLocked" boolean NOT NULL DEFAULT FALSE,
+    "SyncGuid" text NULL
+);
+
+CREATE TABLE IF NOT EXISTS "DsmProfiles" (
+    "DsmProfileId" serial PRIMARY KEY,
+    "DsmName" text NOT NULL,
+    "SalaryType" text NOT NULL DEFAULT 'FixedMonthly',
+    "BaseSalary" float8 NOT NULL DEFAULT 12000.0,
+    "JoiningDate" text NULL,
+    "SyncGuid" text NULL
+);
+
+CREATE TABLE IF NOT EXISTS "DsmSalaryAdjustments" (
+    "Id" serial PRIMARY KEY,
+    "DsmProfileId" integer NOT NULL,
+    "AdjustmentDate" timestamp with time zone NOT NULL,
+    "SyncGuid" text NULL
+);
+
+CREATE TABLE IF NOT EXISTS "DsmEntries" (
+    "DsmEntryId" serial PRIMARY KEY,
+    "ShiftId" integer NOT NULL,
+    "DsmName" text NOT NULL,
+    "PumpId" integer NOT NULL,
+    "GrossSales" numeric NOT NULL DEFAULT 0.0,
+    "TotalInDirect" numeric NOT NULL DEFAULT 0.0,
+    "TotalCreditors" numeric NOT NULL DEFAULT 0.0,
+    "TotalCollection" numeric NOT NULL DEFAULT 0.0,
+    "Mismatch" numeric NOT NULL DEFAULT 0.0,
+    "CreatedAt" timestamp with time zone NOT NULL,
+    "UpdatedAt" timestamp with time zone NOT NULL,
+    "SyncGuid" text NULL
+);
+
+CREATE TABLE IF NOT EXISTS "PaymentCollections" (
+    "PaymentId" serial PRIMARY KEY,
+    "DsmEntryId" integer NOT NULL,
+    "Others" float8 NOT NULL DEFAULT 0.0,
+    "SyncGuid" text NULL
+);
+
+CREATE TABLE IF NOT EXISTS "DebitEntries" (
+    "DebitId" serial PRIMARY KEY,
+    "DsmEntryId" integer NOT NULL,
+    "DebtorName" text NOT NULL,
+    "Amount" float8 NOT NULL,
+    "SyncGuid" text NULL
+);
+
+CREATE TABLE IF NOT EXISTS "CreditorRepayments" (
+    "RepaymentId" serial PRIMARY KEY,
+    "CreditorId" integer NOT NULL,
+    "RepaymentDate" timestamp with time zone NOT NULL,
+    "Amount" float8 NOT NULL,
+    "PaymentMode" text NOT NULL,
+    "ChequeNo" text NULL,
+    "SyncGuid" text NULL
+);
+
+CREATE TABLE IF NOT EXISTS "SyncChangeLogs" (
+    "Id" serial PRIMARY KEY,
+    "TableName" text NOT NULL,
+    "RecordId" integer NOT NULL,
+    "Operation" text NOT NULL,
+    "Timestamp" timestamp with time zone NOT NULL,
+    "IsSynced" boolean NOT NULL DEFAULT FALSE,
+    "SyncGuid" text NULL
+);
+
+CREATE TABLE IF NOT EXISTS "Settings" (
+    "SettingId" serial PRIMARY KEY,
+    "HsdRate" float8 NOT NULL DEFAULT 90.35,
+    "MsIRate" float8 NOT NULL DEFAULT 103.81,
+    "MsIIRate" float8 NOT NULL DEFAULT 103.81,
+    "PumpStationName" text NOT NULL DEFAULT 'Mitali Service Station',
+    "LastUpdated" timestamp with time zone NOT NULL,
+    "SyncGuid" text NULL
+);
+
+CREATE TABLE IF NOT EXISTS "DsmSubmissions" (
+    "Id" text PRIMARY KEY,
+    "DsmUserId" text NOT NULL,
+    "StationId" text NOT NULL,
+    "PumpId" integer NOT NULL,
+    "ShiftDate" text NOT NULL,
+    "ShiftType" text NOT NULL,
+    "Status" text NOT NULL DEFAULT 'Pending',
+    "Notes" text NULL,
+    "AttachmentUrl" text NULL,
+    "SubmittedAt" text NOT NULL
+);
+
+
+-- 2. Upgrades to Existing Tables (Adding new columns if they do not exist)
+
+-- Table: Settings
+ALTER TABLE "Settings" ADD COLUMN IF NOT EXISTS "CngRate" float8 NOT NULL DEFAULT 85.0;
+
+-- Table: DsmSubmissions
+ALTER TABLE "DsmSubmissions" ADD COLUMN IF NOT EXISTS "Metadata" jsonb NULL;
+
+-- Table: DsmProfiles
+ALTER TABLE "DsmProfiles" ADD COLUMN IF NOT EXISTS "PendingAdvance" float8 NOT NULL DEFAULT 0.0;
+ALTER TABLE "DsmProfiles" ADD COLUMN IF NOT EXISTS "MonthlyAdvanceDeduction" float8 NOT NULL DEFAULT 0.0;
+ALTER TABLE "DsmProfiles" ADD COLUMN IF NOT EXISTS "MobileNumber" text NULL;
+ALTER TABLE "DsmProfiles" ADD COLUMN IF NOT EXISTS "SalaryType" text NOT NULL DEFAULT 'FixedMonthly';
+ALTER TABLE "DsmProfiles" ADD COLUMN IF NOT EXISTS "BaseSalary" float8 NOT NULL DEFAULT 12000.0;
+ALTER TABLE "DsmProfiles" ADD COLUMN IF NOT EXISTS "JoiningDate" text NULL;
+
+-- Table: DsmSalaryAdjustments
+ALTER TABLE "DsmSalaryAdjustments" ADD COLUMN IF NOT EXISTS "PendingAdvanceDeduction" float8 NOT NULL DEFAULT 0.0;
+
+-- Table: DsmEntries
+ALTER TABLE "DsmEntries" ADD COLUMN IF NOT EXISTS "ConnectedPumpId" integer NULL;
+ALTER TABLE "DsmEntries" ADD COLUMN IF NOT EXISTS "ReconciledToPumpId" integer NULL;
+ALTER TABLE "DsmEntries" ADD COLUMN IF NOT EXISTS "StartTime" text NULL;
+ALTER TABLE "DsmEntries" ADD COLUMN IF NOT EXISTS "EndTime" text NULL;
+ALTER TABLE "DsmEntries" ADD COLUMN IF NOT EXISTS "IsReconciled" boolean NOT NULL DEFAULT FALSE;
+
+-- Table: PaymentCollections
+ALTER TABLE "PaymentCollections" ADD COLUMN IF NOT EXISTS "CashDeposit" float8 NOT NULL DEFAULT 0.0;
+ALTER TABLE "PaymentCollections" ADD COLUMN IF NOT EXISTS "PhonePeMorning" float8 NOT NULL DEFAULT 0.0;
+ALTER TABLE "PaymentCollections" ADD COLUMN IF NOT EXISTS "PhonePeNight" float8 NOT NULL DEFAULT 0.0;
+ALTER TABLE "PaymentCollections" ADD COLUMN IF NOT EXISTS "PhonePeCardMorning" float8 NOT NULL DEFAULT 0.0;
+ALTER TABLE "PaymentCollections" ADD COLUMN IF NOT EXISTS "PhonePeCardNight" float8 NOT NULL DEFAULT 0.0;
+ALTER TABLE "PaymentCollections" ADD COLUMN IF NOT EXISTS "CardTid" text NULL;
+ALTER TABLE "PaymentCollections" ADD COLUMN IF NOT EXISTS "CardBatch" text NULL;
+ALTER TABLE "PaymentCollections" ADD COLUMN IF NOT EXISTS "PhonePeTid" text NULL;
+ALTER TABLE "PaymentCollections" ADD COLUMN IF NOT EXISTS "PhonePeBatch" text NULL;
+ALTER TABLE "PaymentCollections" ADD COLUMN IF NOT EXISTS "PetroCardTid" text NULL;
+ALTER TABLE "PaymentCollections" ADD COLUMN IF NOT EXISTS "PetroCardBatch" text NULL;
+
+-- Table: DebitEntries
+ALTER TABLE "DebitEntries" ADD COLUMN IF NOT EXISTS "Fuel" text NULL;
+ALTER TABLE "DebitEntries" ADD COLUMN IF NOT EXISTS "EntryTime" text NULL;
+ALTER TABLE "DebitEntries" ADD COLUMN IF NOT EXISTS "PaymentMethod" text NOT NULL DEFAULT 'Credit';
+ALTER TABLE "DebitEntries" ADD COLUMN IF NOT EXISTS "CardTid" text NULL;
+ALTER TABLE "DebitEntries" ADD COLUMN IF NOT EXISTS "CardBatch" text NULL;
+ALTER TABLE "DebitEntries" ADD COLUMN IF NOT EXISTS "Denom500" integer NOT NULL DEFAULT 0;
+ALTER TABLE "DebitEntries" ADD COLUMN IF NOT EXISTS "Denom200" integer NOT NULL DEFAULT 0;
+ALTER TABLE "DebitEntries" ADD COLUMN IF NOT EXISTS "Denom100" integer NOT NULL DEFAULT 0;
+ALTER TABLE "DebitEntries" ADD COLUMN IF NOT EXISTS "Denom50" integer NOT NULL DEFAULT 0;
+ALTER TABLE "DebitEntries" ADD COLUMN IF NOT EXISTS "Denom20" integer NOT NULL DEFAULT 0;
+ALTER TABLE "DebitEntries" ADD COLUMN IF NOT EXISTS "Denom10" integer NOT NULL DEFAULT 0;
+ALTER TABLE "DebitEntries" ADD COLUMN IF NOT EXISTS "Coins" integer NOT NULL DEFAULT 0;
+ALTER TABLE "DebitEntries" ADD COLUMN IF NOT EXISTS "CreatedAt" timestamp with time zone NULL;
+ALTER TABLE "DebitEntries" ADD COLUMN IF NOT EXISTS "UpdatedAt" timestamp with time zone NULL;
+ALTER TABLE "DebitEntries" ADD COLUMN IF NOT EXISTS "Remarks" text NULL;
+ALTER TABLE "DebitEntries" ADD COLUMN IF NOT EXISTS "ChequeNo" text NULL;
+ALTER TABLE "DebitEntries" ADD COLUMN IF NOT EXISTS "VehicleNumber" text NULL;
+ALTER TABLE "DebitEntries" ADD COLUMN IF NOT EXISTS "SlipNumber" text NULL;
+
+-- Table: CreditorRepayments
+ALTER TABLE "CreditorRepayments" ADD COLUMN IF NOT EXISTS "CardTid" text NULL;
+ALTER TABLE "CreditorRepayments" ADD COLUMN IF NOT EXISTS "CardBatch" text NULL;
+ALTER TABLE "CreditorRepayments" ADD COLUMN IF NOT EXISTS "Denom500" integer NOT NULL DEFAULT 0;
+ALTER TABLE "CreditorRepayments" ADD COLUMN IF NOT EXISTS "Denom200" integer NOT NULL DEFAULT 0;
+ALTER TABLE "CreditorRepayments" ADD COLUMN IF NOT EXISTS "Denom100" integer NOT NULL DEFAULT 0;
+ALTER TABLE "CreditorRepayments" ADD COLUMN IF NOT EXISTS "Denom50" integer NOT NULL DEFAULT 0;
+ALTER TABLE "CreditorRepayments" ADD COLUMN IF NOT EXISTS "Denom20" integer NOT NULL DEFAULT 0;
+ALTER TABLE "CreditorRepayments" ADD COLUMN IF NOT EXISTS "Denom10" integer NOT NULL DEFAULT 0;
+ALTER TABLE "CreditorRepayments" ADD COLUMN IF NOT EXISTS "Coins" integer NOT NULL DEFAULT 0;
+ALTER TABLE "CreditorRepayments" ADD COLUMN IF NOT EXISTS "CreatedAt" timestamp with time zone NULL;
+
+-- Table: Shifts
+ALTER TABLE "Shifts" ADD COLUMN IF NOT EXISTS "CardSettlementPosTotal" float8 NOT NULL DEFAULT 0.0;
+
+-- Table: SyncChangeLogs
+ALTER TABLE "SyncChangeLogs" ADD COLUMN IF NOT EXISTS "StationId" text NULL;
+ALTER TABLE "SyncChangeLogs" ADD COLUMN IF NOT EXISTS "MachineId" text NULL;
+ALTER TABLE "SyncChangeLogs" ADD COLUMN IF NOT EXISTS "SyncGuid" text NULL;
+ALTER TABLE "SyncChangeLogs" ADD COLUMN IF NOT EXISTS "RecordGuid" text NULL;
+
+
+-- 3. New Table Creations (Creating tables if they do not exist)
+
+CREATE TABLE IF NOT EXISTS "DebtorVehicles" (
+    "Id" serial PRIMARY KEY,
+    "CreditorId" integer NOT NULL,
+    "VehicleNumber" text NOT NULL,
+    "IsActive" boolean NOT NULL DEFAULT TRUE,
+    "SyncGuid" text NULL
+);
+
+CREATE TABLE IF NOT EXISTS "PumpMappings" (
+    "Id" serial PRIMARY KEY,
+    "PumpId" integer NOT NULL,
+    "NozzleNumber" integer NOT NULL,
+    "FuelType" text NOT NULL,
+    "IsActive" boolean NOT NULL DEFAULT TRUE,
+    "SyncGuid" text NULL
+);
+
+CREATE TABLE IF NOT EXISTS "AuditLogs" (
+    "Id" serial PRIMARY KEY,
+    "Action" text NOT NULL,
+    "Details" text NULL,
+    "Timestamp" timestamp with time zone NOT NULL,
+    "SyncGuid" text NULL
+);
+
+CREATE TABLE IF NOT EXISTS "DayLocks" (
+    "Id" serial PRIMARY KEY,
+    "LockDate" timestamp with time zone NOT NULL,
+    "IsLocked" boolean NOT NULL DEFAULT FALSE,
+    "SyncGuid" text NULL
+);
+
+CREATE TABLE IF NOT EXISTS "PumpExpenses" (
+    "Id" serial PRIMARY KEY,
+    "ShiftId" integer NOT NULL,
+    "ExpenseCategoryId" integer NOT NULL,
+    "Amount" float8 NOT NULL,
+    "Description" text NULL,
+    "SyncGuid" text NULL
+);
+
+CREATE TABLE IF NOT EXISTS "ExpenseCategories" (
+    "Id" serial PRIMARY KEY,
+    "Name" text NOT NULL,
+    "SyncGuid" text NULL
+);
+
+CREATE TABLE IF NOT EXISTS "PumpExpenseCategoryItems" (
+    "Id" serial PRIMARY KEY,
+    "PumpExpenseId" integer NOT NULL,
+    "ExpenseCategoryId" integer NOT NULL,
+    "Amount" float8 NOT NULL,
+    "SyncGuid" text NULL
+);
+
+CREATE TABLE IF NOT EXISTS "DsmPersonalDebtors" (
+    "Id" serial PRIMARY KEY,
+    "DsmProfileId" integer NOT NULL,
+    "DebtorName" text NOT NULL,
+    "SyncGuid" text NULL
+);
+
+CREATE TABLE IF NOT EXISTS "DsmPersonalDebtorRepayments" (
+    "Id" serial PRIMARY KEY,
+    "DsmPersonalDebtorId" integer NOT NULL,
+    "RepaymentDate" timestamp with time zone NOT NULL,
+    "Amount" float8 NOT NULL,
+    "SyncGuid" text NULL
+);
+
+COMMIT;

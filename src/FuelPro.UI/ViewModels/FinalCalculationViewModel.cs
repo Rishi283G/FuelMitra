@@ -68,7 +68,10 @@ public partial class FinalCalculationViewModel : ObservableObject
     [ObservableProperty] private double _msIILitres;
     [ObservableProperty] private double _msIIRate;
     [ObservableProperty] private double _msIIAmount;
-    
+    [ObservableProperty] private double _cngLitres;
+    [ObservableProperty] private double _cngRate;
+    [ObservableProperty] private double _cngAmount;
+
     // MS Totals
     [ObservableProperty] private double _msTotalLitres;
     [ObservableProperty] private double _msTotalAmount;
@@ -98,9 +101,18 @@ public partial class FinalCalculationViewModel : ObservableObject
     [ObservableProperty] private double _newRepaymentAmount;
     [ObservableProperty] private string? _newChequeNumber = "";
     [ObservableProperty] private string _repaymentStatusMessage = "";
+    [ObservableProperty] private string? _newCardTid = "";
+    [ObservableProperty] private string? _newCardBatch = "";
+    [ObservableProperty] private int? _newDenom500;
+    [ObservableProperty] private int? _newDenom200;
+    [ObservableProperty] private int? _newDenom100;
+    [ObservableProperty] private int? _newDenom50;
+    [ObservableProperty] private int? _newDenom20;
+    [ObservableProperty] private int? _newDenom10;
+    [ObservableProperty] private int? _newCoins;
     public string[] PaymentModes { get; } = { "Cash", "PhonePe", "Credit Card", "Cheque" };
 
-    public string[] ShiftOptions { get; } = { "A", "B", "C" };
+    public string[] ShiftOptions { get; } = { "A", "B" };
 
     private List<DsmEntry> _loadedEntries = new();
     public IReadOnlyList<DsmEntry> LoadedEntries => _loadedEntries;
@@ -188,6 +200,7 @@ public partial class FinalCalculationViewModel : ObservableObject
             double defaultHsd = settings.Success ? settings.Data!.HsdRate : 90.35;
             double defaultMsI = settings.Success ? settings.Data!.MsIRate : 103.81;
             double defaultMsII = settings.Success ? settings.Data!.MsIIRate : 103.81;
+            double defaultCng = settings.Success ? settings.Data!.CngRate : 85.0;
 
             var (hsdL, hsdA) = _aggregation.GetFuelTotals(_loadedEntries, "HSD",
                 rateDict.TryGetValue("HSD", out var hr) ? hr : null);
@@ -207,11 +220,17 @@ public partial class FinalCalculationViewModel : ObservableObject
             MsIIRate = rateDict.TryGetValue("MS-II", out var mr2r) ? mr2r : defaultMsII;
             MsIIAmount = msIIA;
 
+            var (cngL, cngA) = _aggregation.GetFuelTotals(_loadedEntries, "CNG",
+                rateDict.TryGetValue("CNG", out var cr) ? cr : null);
+            CngLitres = cngL;
+            CngRate = rateDict.TryGetValue("CNG", out var crr) ? crr : defaultCng;
+            CngAmount = cngA;
+
             MsTotalLitres = MsILitres + MsIILitres;
             MsTotalAmount = MsIAmount + MsIIAmount;
 
-            TotalLitres = HsdLitres + MsILitres + MsIILitres;
-            TotalFuelSaleAmount = HsdAmount + MsIAmount + MsIIAmount;
+            TotalLitres = HsdLitres + MsILitres + MsIILitres + CngLitres;
+            TotalFuelSaleAmount = HsdAmount + MsIAmount + MsIIAmount + CngAmount;
 
             // TABLE E — Other Cash
             var otherCashResult = await _otherCashRepo.GetByShiftAsync(SelectedDate, SelectedShift);
@@ -262,6 +281,7 @@ public partial class FinalCalculationViewModel : ObservableObject
     {
         var msTesting = _loadedEntries.SelectMany(e => e.TestingEntries).Where(t => t.FuelType == "MS").Sum(t => t.Amount);
         var hsdTesting = _loadedEntries.SelectMany(e => e.TestingEntries).Where(t => t.FuelType == "HSD").Sum(t => t.Amount);
+        var cngTesting = _loadedEntries.SelectMany(e => e.TestingEntries).Where(t => t.FuelType == "CNG").Sum(t => t.Amount);
         var phonePeCardMorning = DsmSummaryRows.Sum(r => r.PhonePeCardMorning);
         var phonePeCardNight = DsmSummaryRows.Sum(r => r.PhonePeCardNight);
         var phonePeMorning = DsmSummaryRows.Sum(r => r.PhonePeMorning);
@@ -283,7 +303,7 @@ public partial class FinalCalculationViewModel : ObservableObject
         }
         TotalDsmShort = totalDsmShort;
         var reconRows = _aggregation.BuildReconciliationRows(
-            msTesting, hsdTesting, phonePeCardMorning, phonePeCardNight, phonePeMorning, phonePeNight, petroCard,
+            msTesting, hsdTesting, cngTesting, phonePeCardMorning, phonePeCardNight, phonePeMorning, phonePeNight, petroCard,
             debit, creditCardMorning, creditCardNight, Cash1Total, Cash2Total, ExpensesTotal);
             
         if (TotalDsmShort > 0.01)
@@ -316,7 +336,8 @@ public partial class FinalCalculationViewModel : ObservableObject
         HsdLitres = HsdRate = HsdAmount = 0;
         MsILitres = MsIRate = MsIAmount = 0;
         MsIILitres = MsIIRate = MsIIAmount = 0;
-        TotalLitres = TotalFuelSaleAmount = MsTotalLitres = 0;
+        CngLitres = CngRate = CngAmount = 0;
+        TotalLitres = TotalFuelSaleAmount = MsTotalLitres = MsTotalAmount = 0;
         GrandTotalSaleAmount = GrossSaleTotal = Difference = TotalDsmShort = 0;
         IsBalanced = false;
         IsShiftLocked = false;
@@ -327,6 +348,15 @@ public partial class FinalCalculationViewModel : ObservableObject
         NewRepaymentAmount = 0;
         NewChequeNumber = "";
         RepaymentStatusMessage = "";
+        NewCardTid = "";
+        NewCardBatch = "";
+        NewDenom500 = null;
+        NewDenom200 = null;
+        NewDenom100 = null;
+        NewDenom50 = null;
+        NewDenom20 = null;
+        NewDenom10 = null;
+        NewCoins = null;
     }
 
     [RelayCommand]
@@ -557,7 +587,16 @@ public partial class FinalCalculationViewModel : ObservableObject
             PaymentMode = NewRepaymentMode,
             ChequeNo = NewRepaymentMode == "Cheque" ? NewChequeNumber?.Trim() : null,
             Amount = NewRepaymentAmount,
-            CreatedAt = DateTime.Now
+            CreatedAt = DateTime.Now,
+            CardTid = (NewRepaymentMode == "PhonePe" || NewRepaymentMode == "Credit Card" || NewRepaymentMode == "PetroCard" || NewRepaymentMode == "Others") ? NewCardTid?.Trim() : null,
+            CardBatch = (NewRepaymentMode == "PhonePe" || NewRepaymentMode == "Credit Card" || NewRepaymentMode == "PetroCard" || NewRepaymentMode == "Others") ? NewCardBatch?.Trim() : null,
+            Denom500 = NewRepaymentMode == "Cash" ? (NewDenom500 ?? 0) : 0,
+            Denom200 = NewRepaymentMode == "Cash" ? (NewDenom200 ?? 0) : 0,
+            Denom100 = NewRepaymentMode == "Cash" ? (NewDenom100 ?? 0) : 0,
+            Denom50 = NewRepaymentMode == "Cash" ? (NewDenom50 ?? 0) : 0,
+            Denom20 = NewRepaymentMode == "Cash" ? (NewDenom20 ?? 0) : 0,
+            Denom10 = NewRepaymentMode == "Cash" ? (NewDenom10 ?? 0) : 0,
+            Coins = NewRepaymentMode == "Cash" ? (NewCoins ?? 0) : 0
         };
 
         var result = await _repaymentRepo.AddAsync(repayment);
@@ -568,6 +607,15 @@ public partial class FinalCalculationViewModel : ObservableObject
             NewRepaymentAmount = 0;
             NewChequeNumber = "";
             NewRepaymentMode = "Cash";
+            NewCardTid = "";
+            NewCardBatch = "";
+            NewDenom500 = null;
+            NewDenom200 = null;
+            NewDenom100 = null;
+            NewDenom50 = null;
+            NewDenom20 = null;
+            NewDenom10 = null;
+            NewCoins = null;
             await LoadShiftDataAsync();
         }
         else
@@ -620,8 +668,34 @@ public partial class FinalCalculationViewModel : ObservableObject
         var msITank = import?.TankStocks?.FirstOrDefault(t => t.FuelType == "MS-I");
         var msIITank = import?.TankStocks?.FirstOrDefault(t => t.FuelType == "MS-II");
 
+        // Aggregate manual readings from loaded DSM entries
+        var manualReadings = new Dictionary<int, (double Opening, double Closing, double Sale)>();
+        if (_loadedEntries != null)
+        {
+            foreach (var group in _loadedEntries.SelectMany(e => e.NozzleReadings).GroupBy(r => r.NozzleNumber))
+            {
+                var sorted = group.OrderBy(r => r.OpeningReading).ToList();
+                var opening = sorted.FirstOrDefault()?.OpeningReading ?? 0.0;
+                var closing = group.OrderByDescending(r => r.ClosingReading).FirstOrDefault()?.ClosingReading ?? 0.0;
+                var sale = group.Sum(r => r.SaleLitres);
+                manualReadings[group.Key] = (opening, closing, sale);
+            }
+        }
+
         NozzleDisplayItem CreateItem(int num, string fuelType)
         {
+            if (manualReadings.TryGetValue(num, out var mr))
+            {
+                return new NozzleDisplayItem
+                {
+                    NozzleNumber = num,
+                    FuelType = fuelType,
+                    OpeningReading = mr.Opening,
+                    ClosingReading = mr.Closing,
+                    SaleLitres = mr.Sale,
+                    HasReading = true
+                };
+            }
             if (readingsDict.TryGetValue(num, out var r))
             {
                 return new NozzleDisplayItem
@@ -645,41 +719,38 @@ public partial class FinalCalculationViewModel : ObservableObject
             };
         }
 
-        // HSD Group
+        // HSD Group (Diesel)
         var hsdGroup = new NozzleGroupDto
         {
-            GroupName = "HSD (Tank 3)",
-            FuelType = "HSD",
+            GroupName = "Diesel (Tank 3)",
+            FuelType = "Diesel",
             Dip = hsdTank?.ClosingDipMM ?? 0,
             Stock = hsdTank?.ClosingStockLitres ?? 0
         };
-        hsdGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(1, "HSD"), CreateItem(2, "HSD"), CreateItem(7, "HSD"), CreateItem(8, "HSD") });
-        hsdGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(3, "HSD"), CreateItem(4, "HSD"), CreateItem(9, "HSD"), CreateItem(10, "HSD") });
+        hsdGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(3, "Diesel"), CreateItem(4, "Diesel"), CreateItem(7, "Diesel"), CreateItem(8, "Diesel") });
+        hsdGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(11, "Diesel"), CreateItem(12, "Diesel") });
         groups.Add(hsdGroup);
 
-        // MS-II Group
+        // MS-II Group (Petrol Tank 2)
         var msIIGroup = new NozzleGroupDto
         {
-            GroupName = "MS-II (Tank 2)",
-            FuelType = "MS-II",
+            GroupName = "Petrol (Tank 2)",
+            FuelType = "Petrol",
             Dip = msIITank?.ClosingDipMM ?? 0,
             Stock = msIITank?.ClosingStockLitres ?? 0
         };
-        msIIGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(13, "MS-II"), CreateItem(14, "MS-II"), CreateItem(17, "MS-II"), CreateItem(18, "MS-II") });
-        msIIGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(21, "MS-II"), CreateItem(22, "MS-II"), CreateItem(25, "MS-II"), CreateItem(26, "MS-II") });
+        msIIGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(1, "Petrol"), CreateItem(2, "Petrol"), CreateItem(9, "Petrol"), CreateItem(10, "Petrol") });
         groups.Add(msIIGroup);
 
-        // MS-I Group
+        // MS-I Group (Petrol Tank 1)
         var msIGroup = new NozzleGroupDto
         {
-            GroupName = "MS-I (Tank 1)",
-            FuelType = "MS-I",
+            GroupName = "Petrol (Tank 1)",
+            FuelType = "Petrol",
             Dip = msITank?.ClosingDipMM ?? 0,
             Stock = msITank?.ClosingStockLitres ?? 0
         };
-        msIGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(5, "MS-I"), CreateItem(6, "MS-I"), CreateItem(11, "MS-I"), CreateItem(12, "MS-I") });
-        msIGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(15, "MS-I"), CreateItem(16, "MS-I"), CreateItem(19, "MS-I"), CreateItem(20, "MS-I") });
-        msIGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(23, "MS-I"), CreateItem(24, "MS-I"), CreateItem(27, "MS-I"), CreateItem(28, "MS-I") });
+        msIGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(5, "Petrol"), CreateItem(6, "Petrol") });
         groups.Add(msIGroup);
 
         return groups;

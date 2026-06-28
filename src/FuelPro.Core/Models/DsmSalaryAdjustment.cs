@@ -18,6 +18,7 @@ public class DsmSalaryAdjustment
 
     public double AdvancePaid { get; set; }
     public double OtherAdjustments { get; set; }
+    public double PendingAdvanceDeduction { get; set; } = 0.0;
 
     [MaxLength(500)]
     public string Remarks { get; set; } = string.Empty;

@@ -21,7 +21,7 @@ public class AgsDailySummary
     public double DayTotalMsILitres { get; set; }
     public double DayTotalMsIILitres { get; set; }
 
-    // Tank stock: Shift A opening → Shift C closing
+    // Tank stock: Shift A opening → Shift B closing
     public double HsdDayOpeningStock { get; set; }
     public double HsdDayClosingStock { get; set; }
     public double MsIDayOpeningStock { get; set; }

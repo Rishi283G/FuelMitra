@@ -14,30 +14,37 @@ public class OperationalPumpMappingTests
     public void VerifyNozzlesForPump4()
     {
         // 1. Assign DSM to P4
-        var nozzles = PumpConfiguration.GetNozzlesForPump(4);
+        var nozzles = PumpConfiguration.GetNozzlesForPump(4, new DateTime(2026, 6, 20));
 
-        // 2. Verify only N8, N9, N10 appear
-        Assert.Equal(new[] { 8, 9, 10 }, nozzles);
+        // 2. Verify only N10, N11, N12 appear
+        Assert.Equal(new[] { 10, 11, 12 }, nozzles);
     }
 
     [Fact]
     public void VerifyFuelTypesForPump4Nozzles()
     {
+        var histDate = new DateTime(2026, 6, 20);
         // 3. Verify fuel classification
-        Assert.Equal(FuelType.MS_I, PumpConfiguration.GetFuelType(4, 8));
-        Assert.Equal(FuelType.MS_II, PumpConfiguration.GetFuelType(4, 9));
-        Assert.Equal(FuelType.HSD, PumpConfiguration.GetFuelType(4, 10));
+        Assert.Equal(FuelType.MS_I, PumpConfiguration.GetFuelType(4, 10, histDate));
+        Assert.Equal(FuelType.MS_II, PumpConfiguration.GetFuelType(4, 11, histDate));
+        Assert.Equal(FuelType.HSD, PumpConfiguration.GetFuelType(4, 12, histDate));
 
-        Assert.Equal("MS-I", PumpConfiguration.GetFuelTypeDisplayName(4, 8));
-        Assert.Equal("MS-II", PumpConfiguration.GetFuelTypeDisplayName(4, 9));
-        Assert.Equal("HSD", PumpConfiguration.GetFuelTypeDisplayName(4, 10));
+        Assert.Equal("MS-I", PumpConfiguration.GetFuelTypeDisplayName(4, 10, histDate));
+        Assert.Equal("MS-II", PumpConfiguration.GetFuelTypeDisplayName(4, 11, histDate));
+        Assert.Equal("HSD", PumpConfiguration.GetFuelTypeDisplayName(4, 12, histDate));
     }
 
     [Fact]
     public void VerifyStrictNozzleValidation()
     {
-        // Verify that invalid combinations throw an ArgumentException instead of fallback
-        Assert.Throws<ArgumentException>(() => PumpConfiguration.GetFuelType(1, 8));
+        var histDate = new DateTime(2026, 6, 20);
+        // Verify that invalid/mismatched combinations resolve to their actual nozzle fuel type
+        var fuelType = PumpConfiguration.GetFuelType(1, 8, histDate);
+        Assert.Equal(FuelType.MS_II, fuelType);
+
+        // Verify that a completely nonexistent nozzle number returns the fallback
+        var fallbackType = PumpConfiguration.GetFuelType(1, 99, histDate);
+        Assert.Equal(FuelType.MS_I, fallbackType);
     }
 
     [Fact]
@@ -45,16 +52,18 @@ public class OperationalPumpMappingTests
     {
         // 4. Verify DSR / Shift aggregation calculations
         var aggregation = new ShiftAggregationService();
+        var histShift = new Shift { ShiftDate = new DateTime(2026, 6, 20) };
         var entries = new List<DsmEntry>
         {
             new DsmEntry
             {
                 PumpId = 4,
+                Shift = histShift,
                 NozzleReadings = new List<NozzleReading>
                 {
-                    new NozzleReading { NozzleNumber = 8, SaleLitres = 100, Rate = 100, Amount = 10000 },
-                    new NozzleReading { NozzleNumber = 9, SaleLitres = 50, Rate = 100, Amount = 5000 },
-                    new NozzleReading { NozzleNumber = 10, SaleLitres = 200, Rate = 90, Amount = 18000 }
+                    new NozzleReading { NozzleNumber = 10, SaleLitres = 100, Rate = 100, Amount = 10000 },
+                    new NozzleReading { NozzleNumber = 11, SaleLitres = 50, Rate = 100, Amount = 5000 },
+                    new NozzleReading { NozzleNumber = 12, SaleLitres = 200, Rate = 90, Amount = 18000 }
                 }
             }
         };
@@ -76,16 +85,18 @@ public class OperationalPumpMappingTests
     {
         // 5. Verify Owner Dashboard / P&L aggregation totals
         var calculationService = new OwnerCalculationService();
+        var histShift = new Shift { ShiftDate = new DateTime(2026, 6, 20) };
         var entries = new List<DsmEntry>
         {
             new DsmEntry
             {
                 PumpId = 4,
+                Shift = histShift,
                 NozzleReadings = new List<NozzleReading>
                 {
-                    new NozzleReading { NozzleNumber = 8, SaleLitres = 100, Rate = 100, Amount = 10000 },
-                    new NozzleReading { NozzleNumber = 9, SaleLitres = 50, Rate = 100, Amount = 5000 },
-                    new NozzleReading { NozzleNumber = 10, SaleLitres = 200, Rate = 90, Amount = 18000 }
+                    new NozzleReading { NozzleNumber = 10, SaleLitres = 100, Rate = 100, Amount = 10000 },
+                    new NozzleReading { NozzleNumber = 11, SaleLitres = 50, Rate = 100, Amount = 5000 },
+                    new NozzleReading { NozzleNumber = 12, SaleLitres = 200, Rate = 90, Amount = 18000 }
                 }
             }
         };

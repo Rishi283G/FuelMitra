@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
@@ -23,4 +24,7 @@ public class Creditor
     public bool IsActive { get; set; } = true;
 
     public DateTime CreatedAt { get; set; } = DateTime.Now;
+
+    // Navigation
+    public ICollection<DebtorVehicle> Vehicles { get; set; } = new List<DebtorVehicle>();
 }

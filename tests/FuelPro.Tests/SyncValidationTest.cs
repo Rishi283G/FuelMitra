@@ -28,6 +28,8 @@ public class SyncValidationTest
     [Fact]
     public async Task Run_EndToEndSyncValidation()
     {
+        FuelPro.UI.App.EnsureLegacyDatabaseCompatibility(_dbPath);
+
         // 1. Setup DI container representing the application context
         var services = new ServiceCollection();
         services.AddDbContext<FuelProDbContext>(options =>

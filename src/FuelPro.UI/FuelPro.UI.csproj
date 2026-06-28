@@ -82,6 +82,18 @@
     <EmbeddedResource Include="Printing\CardSettlementPrintTemplate.html">
       <LogicalName>FuelPro.UI.Printing.CardSettlementPrintTemplate.html</LogicalName>
     </EmbeddedResource>
+    <Content Include="Printing\DebtorLedgerPrintTemplate.html">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <EmbeddedResource Include="Printing\DebtorLedgerPrintTemplate.html">
+      <LogicalName>FuelPro.UI.Printing.DebtorLedgerPrintTemplate.html</LogicalName>
+    </EmbeddedResource>
+    <Content Include="Printing\GenericGridPrintTemplate.html">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <EmbeddedResource Include="Printing\GenericGridPrintTemplate.html">
+      <LogicalName>FuelPro.UI.Printing.GenericGridPrintTemplate.html</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <ItemGroup>

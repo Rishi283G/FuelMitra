@@ -18,8 +18,12 @@ public class FuelProfitDetail
     public double MsIIMargin { get; set; }
     public double MsIIProfit { get; set; }
 
-    public double TotalLitres => HsdLitres + MsILitres + MsIILitres;
-    public double TotalFuelProfit => HsdProfit + MsIProfit + MsIIProfit;
+    public double CngLitres { get; set; }
+    public double CngMargin { get; set; }
+    public double CngProfit { get; set; }
+
+    public double TotalLitres => HsdLitres + MsILitres + MsIILitres + CngLitres;
+    public double TotalFuelProfit => HsdProfit + MsIProfit + MsIIProfit + CngProfit;
 }
 
 public class ProductProfitDetail
@@ -49,6 +53,7 @@ public class FinancialCalculationResult
     public double GrossProfit => FuelProfit.TotalFuelProfit + OilProfit.TotalProfit + DefProfit.TotalProfit;
 
     public double TotalExpenses { get; set; }
+    public double ManagerExpenses { get; set; }
     public double TotalDsmSalaries { get; set; }
 
     public double DsmBaseSalaries { get; set; }
@@ -56,7 +61,24 @@ public class FinancialCalculationResult
     public double ShortRecoveries { get; set; }
     public double OwnerOuterExpenses { get; set; }
 
-    public double NetProfit => GrossProfit - TotalExpenses - DsmBaseSalaries - SalaryAdjustments + ShortRecoveries - OwnerOuterExpenses;
+    // Pump Expenses (Owner added - local only)
+    public double PumpRent { get; set; }
+    public double PumpSalary { get; set; }
+    public double PumpTripSheetLoss { get; set; }
+    public double PumpDsmShort { get; set; }
+    public double PumpBankingExpenses { get; set; }
+    public double PumpBpclPortalExpenses { get; set; }
+    public double PumpFuelAndTravel { get; set; }
+    public double PumpOilPurchase { get; set; }
+    public double PumpRepairsAndMaintenance { get; set; }
+    public double PumpElectricity { get; set; }
+    public double PumpOfficeExpenses { get; set; }
+    public double PumpPrintingExpense { get; set; }
+    public double PumpOtherAmount { get; set; }
+    public double TotalPumpExpenses => PumpRent + PumpSalary + PumpTripSheetLoss + PumpDsmShort + PumpBankingExpenses + PumpBpclPortalExpenses + PumpFuelAndTravel + PumpOilPurchase + PumpRepairsAndMaintenance + PumpElectricity + PumpOfficeExpenses + PumpPrintingExpense + PumpOtherAmount;
+
+    // Net profit subtracts all expenses (both PWA outer expenses and local detailed pump expenses)
+    public double NetProfit => GrossProfit - TotalExpenses - DsmBaseSalaries - SalaryAdjustments + ShortRecoveries - OwnerOuterExpenses - TotalPumpExpenses;
 }
 
 public class DsmSalaryRowDto
@@ -71,6 +93,9 @@ public class DsmSalaryRowDto
     public double ShortRecovery { get; set; }
     public double AdvancePaid { get; set; }
     public double OtherAdjustments { get; set; }
+    public double PersonalDebtorDeduction { get; set; }
+    public double PendingAdvanceDeduction { get; set; }
+    public double RemainingPendingAdvance { get; set; }
     public string Remarks { get; set; } = string.Empty;
     public double NetSalary { get; set; }
 }
@@ -107,4 +132,5 @@ public interface IFinancialCalculationService
     Task<List<DsmSalaryRowDto>> CalculateDsmSalariesAsync(int year, int month);
     Task<OilDefStockReportDto> GenerateStockReportAsync(int year, int month);
     Task SaveDsmSalaryAdjustmentsAsync(int year, int month, List<DsmSalaryRowDto> rows);
+    Task DeleteDsmSalaryAdjustmentAsync(int year, int month, string dsmName);
 }

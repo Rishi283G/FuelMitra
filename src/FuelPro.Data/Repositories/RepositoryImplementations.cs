@@ -344,6 +344,7 @@ public class DsmEntryRepository : IDsmEntryRepository
                 .Include(e => e.TestingEntries)
                 .Include(e => e.Expenses)
                 .Include(e => e.CashDenominations)
+                .Include(e => e.PersonalDebtors)
                 .Include(e => e.Shift)
                 .FirstOrDefaultAsync(e => e.DsmEntryId == dsmEntryId);
 
@@ -370,6 +371,7 @@ public class DsmEntryRepository : IDsmEntryRepository
                 .Include(e => e.TestingEntries)
                 .Include(e => e.Expenses)
                 .Include(e => e.CashDenominations)
+                .Include(e => e.PersonalDebtors)
                 .Where(e => e.ShiftId == shiftId)
                 .OrderBy(e => e.CreatedAt)
                 .ToListAsync();
@@ -587,7 +589,7 @@ public class NozzleReadingRepository : INozzleReadingRepository
         }
     }
 
-    public async Task<Result<Dictionary<int, double>>> GetPreviousShiftClosingsAsync(DateTime date, string shiftType, int pumpId)
+    public async Task<Result<Dictionary<int, double>>> GetPreviousShiftClosingsAsync(DateTime date, string shiftType, int pumpId, int? currentDsmEntryId = null)
     {
         try
         {
@@ -598,13 +600,16 @@ public class NozzleReadingRepository : INozzleReadingRepository
                 .Where(r => r.DsmEntry != null
                     && r.DsmEntry.PumpId == pumpId
                     && r.DsmEntry.Shift != null
+                    && (currentDsmEntryId == null || r.DsmEntryId != currentDsmEntryId.Value)
                     && (r.DsmEntry.Shift.ShiftDate < targetDate || 
-                       (r.DsmEntry.Shift.ShiftDate == targetDate && r.DsmEntry.Shift.ShiftType.CompareTo(shiftType) < 0)))
+                       (r.DsmEntry.Shift.ShiftDate == targetDate && r.DsmEntry.Shift.ShiftType.CompareTo(shiftType) < 0) ||
+                       (r.DsmEntry.Shift.ShiftDate == targetDate && r.DsmEntry.Shift.ShiftType == shiftType && (currentDsmEntryId == null || r.DsmEntryId < currentDsmEntryId.Value))))
                 .GroupBy(r => r.NozzleNumber)
                 .Select(g => new { 
                     NozzleNumber = g.Key, 
                     Closing = g.OrderByDescending(x => x.DsmEntry!.Shift!.ShiftDate)
                                .ThenByDescending(x => x.DsmEntry!.Shift!.ShiftType)
+                               .ThenByDescending(x => x.DsmEntryId)
                                .ThenByDescending(x => x.NozzleReadingId)
                                .Select(x => x.ClosingReading)
                                .FirstOrDefault() 
@@ -1138,7 +1143,22 @@ public class DsmProfileRepository : IDsmProfileRepository
     {
         try
         {
-            _context.DsmProfiles.Update(profile);
+            var nameConflict = await _context.DsmProfiles
+                .AnyAsync(p => p.DsmProfileId != profile.DsmProfileId && p.DsmName.ToLower() == profile.DsmName.ToLower());
+            if (nameConflict)
+            {
+                return Result.Fail("A DSM profile with this name already exists.");
+            }
+
+            var tracked = _context.DsmProfiles.Local.FirstOrDefault(p => p.DsmProfileId == profile.DsmProfileId);
+            if (tracked != null)
+            {
+                _context.Entry(tracked).CurrentValues.SetValues(profile);
+            }
+            else
+            {
+                _context.DsmProfiles.Update(profile);
+            }
             await _context.SaveChangesAsync();
             return Result.Ok();
         }
@@ -1463,6 +1483,24 @@ public class CreditorRepository : ICreditorRepository
         }
     }
 
+    public async Task<Result<List<Creditor>>> GetAllActiveWithVehiclesAsync()
+    {
+        try
+        {
+            var items = await _context.Creditors
+                .Include(c => c.Vehicles.Where(v => v.IsActive))
+                .Where(c => c.IsActive)
+                .OrderBy(c => c.Name)
+                .ToListAsync();
+            return Result<List<Creditor>>.Ok(items);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to get active creditors with vehicles");
+            return Result<List<Creditor>>.Fail($"Failed to load creditors: {ex.Message}");
+        }
+    }
+
     public async Task<Result<Creditor>> AddAsync(Creditor creditor)
     {
         try
@@ -1497,7 +1535,22 @@ public class CreditorRepository : ICreditorRepository
     {
         try
         {
-            _context.Creditors.Update(creditor);
+            var nameConflict = await _context.Creditors
+                .AnyAsync(c => c.CreditorId != creditor.CreditorId && c.Name.ToLower() == creditor.Name.ToLower() && c.IsActive);
+            if (nameConflict)
+            {
+                return Result.Fail("A creditor with this name already exists.");
+            }
+
+            var tracked = _context.Creditors.Local.FirstOrDefault(c => c.CreditorId == creditor.CreditorId);
+            if (tracked != null)
+            {
+                _context.Entry(tracked).CurrentValues.SetValues(creditor);
+            }
+            else
+            {
+                _context.Creditors.Update(creditor);
+            }
             await _context.SaveChangesAsync();
             return Result.Ok();
         }
@@ -1526,5 +1579,254 @@ public class CreditorRepository : ICreditorRepository
         }
     }
 }
+
+public class PumpExpenseRepository : IPumpExpenseRepository
+{
+    private readonly FuelProDbContext _context;
+    private readonly ILogger _logger = Log.ForContext<PumpExpenseRepository>();
+
+    public PumpExpenseRepository(FuelProDbContext context) => _context = context;
+
+    public async Task<Result<List<PumpExpense>>> GetByDateRangeAsync(DateTime startDate, DateTime endDate)
+    {
+        try
+        {
+            var list = await _context.PumpExpenses
+                .Where(e => e.ExpenseDate >= startDate.Date && e.ExpenseDate <= endDate.Date)
+                .OrderBy(e => e.ExpenseDate)
+                .ToListAsync();
+            return Result<List<PumpExpense>>.Ok(list);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to get pump expenses by date range");
+            return Result<List<PumpExpense>>.Fail($"Failed to load pump expenses: {ex.Message}");
+        }
+    }
+
+    public async Task<Result<PumpExpense>> GetByDateAsync(DateTime date)
+    {
+        try
+        {
+            var item = await _context.PumpExpenses
+                .FirstOrDefaultAsync(e => e.ExpenseDate == date.Date);
+            return item != null 
+                ? Result<PumpExpense>.Ok(item) 
+                : Result<PumpExpense>.Fail("No expense entry for this date.");
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to get pump expense by date");
+            return Result<PumpExpense>.Fail($"Failed to load pump expense: {ex.Message}");
+        }
+    }
+
+    public async Task<Result<PumpExpense>> AddOrUpdateAsync(PumpExpense expense)
+    {
+        try
+        {
+            var existing = await _context.PumpExpenses
+                .FirstOrDefaultAsync(e => e.ExpenseDate == expense.ExpenseDate.Date);
+
+            if (existing != null)
+            {
+                existing.Rent = expense.Rent;
+                existing.Salary = expense.Salary;
+                existing.TripSheetLoss = expense.TripSheetLoss;
+                existing.DsmShort = expense.DsmShort;
+                existing.BankingExpenses = expense.BankingExpenses;
+                existing.BpclPortalExpenses = expense.BpclPortalExpenses;
+                existing.FuelAndTravel = expense.FuelAndTravel;
+                existing.OilPurchase = expense.OilPurchase;
+                existing.RepairsAndMaintenance = expense.RepairsAndMaintenance;
+                existing.ElectricityExpenses = expense.ElectricityExpenses;
+                existing.OfficeExpenses = expense.OfficeExpenses;
+                existing.PrintingExpense = expense.PrintingExpense;
+                existing.OtherDescription = expense.OtherDescription;
+                existing.OtherAmount = expense.OtherAmount;
+                existing.Remarks = expense.Remarks;
+                
+                _context.PumpExpenses.Update(existing);
+                await _context.SaveChangesAsync();
+                return Result<PumpExpense>.Ok(existing);
+            }
+            else
+            {
+                expense.ExpenseDate = expense.ExpenseDate.Date;
+                expense.CreatedAt = DateTime.Now;
+                _context.PumpExpenses.Add(expense);
+                await _context.SaveChangesAsync();
+                return Result<PumpExpense>.Ok(expense);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to save pump expense");
+            return Result<PumpExpense>.Fail($"Failed to save pump expense: {ex.Message}");
+        }
+    }
+
+    public async Task<Result> DeleteAsync(int id)
+    {
+        try
+        {
+            var existing = await _context.PumpExpenses.FindAsync(id);
+            if (existing != null)
+            {
+                _context.PumpExpenses.Remove(existing);
+                await _context.SaveChangesAsync();
+            }
+            return Result.Ok();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to delete pump expense");
+            return Result.Fail($"Failed to delete: {ex.Message}");
+        }
+    }
+}
+
+public class DebtorVehicleRepository : IDebtorVehicleRepository
+{
+    private readonly FuelProDbContext _context;
+    private readonly ILogger _logger = Log.ForContext<DebtorVehicleRepository>();
+
+    public DebtorVehicleRepository(FuelProDbContext context) => _context = context;
+
+    public async Task<Result<List<DebtorVehicle>>> GetByCreditorIdAsync(int creditorId)
+    {
+        try
+        {
+            var vehicles = await _context.DebtorVehicles
+                .Where(v => v.CreditorId == creditorId && v.IsActive)
+                .OrderBy(v => v.VehicleNumber)
+                .ToListAsync();
+            return Result<List<DebtorVehicle>>.Ok(vehicles);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to get vehicles for creditor {Id}", creditorId);
+            return Result<List<DebtorVehicle>>.Fail($"Failed to load vehicles: {ex.Message}");
+        }
+    }
+
+    public async Task<Result<DebtorVehicle>> AddAsync(DebtorVehicle vehicle)
+    {
+        try
+        {
+            vehicle.CreatedAt = DateTime.Now;
+            _context.DebtorVehicles.Add(vehicle);
+            await _context.SaveChangesAsync();
+            return Result<DebtorVehicle>.Ok(vehicle);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to add vehicle for creditor {Id}", vehicle.CreditorId);
+            return Result<DebtorVehicle>.Fail($"Failed to add vehicle: {ex.Message}");
+        }
+    }
+
+    public async Task<Result> DeleteAsync(int debtorVehicleId)
+    {
+        try
+        {
+            var vehicle = await _context.DebtorVehicles.FindAsync(debtorVehicleId);
+            if (vehicle == null) return Result.Fail("Vehicle not found");
+            vehicle.IsActive = false;
+            await _context.SaveChangesAsync();
+            return Result.Ok();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to delete vehicle {Id}", debtorVehicleId);
+            return Result.Fail($"Failed to delete vehicle: {ex.Message}");
+        }
+    }
+
+    public async Task<Result> UpdateVehicleNumberAsync(int vehicleId, string vehicleNumber)
+    {
+        try
+        {
+            var vehicle = await _context.DebtorVehicles.FindAsync(vehicleId);
+            if (vehicle == null) return Result.Fail("Vehicle not found");
+            vehicle.VehicleNumber = vehicleNumber;
+            await _context.SaveChangesAsync();
+            return Result.Ok();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to update vehicle {Id}", vehicleId);
+            return Result.Fail($"Failed to update vehicle: {ex.Message}");
+        }
+    }
+}
+
+public class DsmPersonalDebtorRepository : IDsmPersonalDebtorRepository
+{
+    private readonly FuelProDbContext _context;
+    private readonly ILogger _logger = Log.ForContext<DsmPersonalDebtorRepository>();
+
+    public DsmPersonalDebtorRepository(FuelProDbContext context)
+    {
+        _context = context;
+    }
+
+    public async Task<Result<List<DsmPersonalDebtor>>> GetByDsmEntryIdAsync(int dsmEntryId)
+    {
+        try
+        {
+            var list = await _context.DsmPersonalDebtors
+                .Where(d => d.DsmEntryId == dsmEntryId)
+                .ToListAsync();
+            return Result<List<DsmPersonalDebtor>>.Ok(list);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to get personal debtors for entry {EntryId}", dsmEntryId);
+            return Result<List<DsmPersonalDebtor>>.Fail(ex.Message);
+        }
+    }
+
+    public async Task<Result> SavePersonalDebtorsAsync(int dsmEntryId, List<DsmPersonalDebtor> personalDebtors)
+    {
+        try
+        {
+            // 1. Remove existing ones
+            var existing = await _context.DsmPersonalDebtors
+                .Where(d => d.DsmEntryId == dsmEntryId)
+                .ToListAsync();
+            _context.DsmPersonalDebtors.RemoveRange(existing);
+
+            // 2. Set Entry ID and DsmName / Date / Time
+            var entry = await _context.DsmEntries.FindAsync(dsmEntryId);
+            if (entry != null)
+            {
+                foreach (var pd in personalDebtors)
+                {
+                    pd.DsmEntryId = dsmEntryId;
+                    pd.DsmName = entry.DsmName;
+                    
+                    // Fetch shift date if needed
+                    var shift = await _context.Shifts.FindAsync(entry.ShiftId);
+                    if (shift != null)
+                    {
+                        pd.Date = shift.ShiftDate;
+                    }
+                }
+            }
+
+            // 3. Add new ones
+            _context.DsmPersonalDebtors.AddRange(personalDebtors);
+            await _context.SaveChangesAsync();
+            return Result.Ok();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to save personal debtors for entry {EntryId}", dsmEntryId);
+            return Result.Fail($"Failed to save personal debtors: {ex.Message}");
+        }
+    }
+}
+
 
 

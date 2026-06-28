@@ -1,10 +1,17 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using FuelPro.Core.DTOs;
 using FuelPro.Core.Models;
 using FuelPro.Core.Repositories;
 using FuelPro.Core.Services;
+using FuelPro.UI.Printing;
 using Microsoft.Extensions.DependencyInjection;
+using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
+using System.Threading.Tasks;
+using System.Windows;
 
 namespace FuelPro.UI.ViewModels;
 
@@ -15,6 +22,8 @@ public partial class CollectionSummaryViewModel : ObservableObject
 {
     private readonly IDsmEntryRepository _dsmEntryRepo;
     private readonly IOwnerCalculationService _ownerCalcService;
+    private readonly PrintService _printService;
+    private readonly ExcelExportService _excelExportService;
 
     [ObservableProperty] private DateTime _startDate = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
     [ObservableProperty] private DateTime _endDate = DateTime.Today;
@@ -36,6 +45,8 @@ public partial class CollectionSummaryViewModel : ObservableObject
     {
         _dsmEntryRepo = App.Services.GetRequiredService<IDsmEntryRepository>();
         _ownerCalcService = App.Services.GetRequiredService<IOwnerCalculationService>();
+        _printService = App.Services.GetRequiredService<PrintService>();
+        _excelExportService = App.Services.GetRequiredService<ExcelExportService>();
         _ = LoadAsync();
     }
 
@@ -91,7 +102,113 @@ public partial class CollectionSummaryViewModel : ObservableObject
             GrandTotal = TotalCashDeposit + TotalCashInHand + TotalPhonePe + TotalPhonePeCard
                          + TotalCreditCard + TotalPetroCard + TotalDebit;
         }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to load Collection Summary data");
+            MessageBox.Show($"Failed to load collection summary: {ex.Message}", "Load Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
         finally { IsLoading = false; }
+    }
+
+    [RelayCommand]
+    private void Print()
+    {
+        try
+        {
+            var summaryCards = new List<GenericGridPrintCard>
+            {
+                new() { Label = "Grand Total Collection", Value = "₹" + GrandTotal.ToString("N2"), Highlight = true },
+                new() { Label = "Total Bank Cash", Value = "₹" + TotalCashDeposit.ToString("N2"), Highlight = false },
+                new() { Label = "Total Cash in Hand", Value = "₹" + TotalCashInHand.ToString("N2"), Highlight = false }
+            };
+
+            var headers = new List<string> { "Date", "Bank Cash", "Cash In Hand", "PhonePe", "PhonePe Card", "PineLabs Card", "Petro Card", "Debitors", "Day Total" };
+            var rows = new List<List<string>>();
+
+            foreach (var row in DayRows)
+            {
+                rows.Add(new List<string>
+                {
+                    row.DateDisplay,
+                    "₹" + row.CashDeposit.ToString("N2"),
+                    "₹" + row.CashInHand.ToString("N2"),
+                    "₹" + row.PhonePe.ToString("N2"),
+                    "₹" + row.PhonePeCard.ToString("N2"),
+                    "₹" + row.CreditCard.ToString("N2"),
+                    "₹" + row.PetroCard.ToString("N2"),
+                    "₹" + row.Debit.ToString("N2"),
+                    "₹" + row.DayTotal.ToString("N2")
+                });
+            }
+
+            var printData = new GenericGridPrintData
+            {
+                Title = "Collection Summary Statement",
+                Subtitle = $"Date Range: {StartDate:dd-MMM-yyyy} to {EndDate:dd-MMM-yyyy}",
+                SummaryCards = summaryCards,
+                Headers = headers,
+                Rows = rows,
+                ShowSignatures = true
+            };
+
+            _printService.PrintGenericGrid(printData);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to print Collection Summary report");
+            MessageBox.Show($"Print failed: {ex.Message}", "Print Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    [RelayCommand]
+    private async Task ExportExcelAsync()
+    {
+        try
+        {
+            var summaryCards = new List<GenericGridPrintCard>
+            {
+                new() { Label = "Grand Total Collection", Value = "₹" + GrandTotal.ToString("N2"), Highlight = true },
+                new() { Label = "Total Bank Cash", Value = "₹" + TotalCashDeposit.ToString("N2"), Highlight = false },
+                new() { Label = "Total Cash in Hand", Value = "₹" + TotalCashInHand.ToString("N2"), Highlight = false }
+            };
+
+            var headers = new List<string> { "Date", "Bank Cash", "Cash In Hand", "PhonePe", "PhonePe Card", "PineLabs Card", "Petro Card", "Debitors", "Day Total" };
+            var rows = new List<List<string>>();
+
+            foreach (var row in DayRows)
+            {
+                rows.Add(new List<string>
+                {
+                    row.DateDisplay,
+                    "₹" + row.CashDeposit.ToString("N2"),
+                    "₹" + row.CashInHand.ToString("N2"),
+                    "₹" + row.PhonePe.ToString("N2"),
+                    "₹" + row.PhonePeCard.ToString("N2"),
+                    "₹" + row.CreditCard.ToString("N2"),
+                    "₹" + row.PetroCard.ToString("N2"),
+                    "₹" + row.Debit.ToString("N2"),
+                    "₹" + row.DayTotal.ToString("N2")
+                });
+            }
+
+            var printData = new GenericGridPrintData
+            {
+                Title = "Collection Summary Statement",
+                Subtitle = $"Date Range: {StartDate:dd-MMM-yyyy} to {EndDate:dd-MMM-yyyy}",
+                SummaryCards = summaryCards,
+                Headers = headers,
+                Rows = rows,
+                ShowSignatures = true
+            };
+
+            var path = await _excelExportService.ExportGenericGridAsync(printData, "CollectionSummary");
+            MessageBox.Show($"Report exported successfully to:\n{path}", "Export Success", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to export Collection Summary to Excel");
+            MessageBox.Show($"Export failed: {ex.Message}", "Export Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 }
 

@@ -8,12 +8,14 @@ public class DsmSheetPrintData
 {
     // Header
     public string StationName   { get; set; } = string.Empty;
-    public string CompanyName   { get; set; } = "PyroSync";
+    public string CompanyName   { get; set; } = "VKD Petroleum";
     public string Date          { get; set; } = string.Empty; // "10/06/2026"
     public string Shift         { get; set; } = string.Empty; // "A", "B", "C"
     public string DsmName       { get; set; } = string.Empty;
     public string PumpNo        { get; set; } = string.Empty;
     public string PrintedAt     { get; set; } = string.Empty; // timestamp
+    public string StartTime     { get; set; } = string.Empty;
+    public string EndTime       { get; set; } = string.Empty;
 
     // Section 2 — Nozzle Readings
     public List<DsmNozzlePrintRow> NozzleRows { get; set; } = new();
@@ -40,6 +42,20 @@ public class DsmSheetPrintData
 
     // Section 8 — Reconciliation
     public DsmReconciliationPrintBlock Reconciliation { get; set; } = new();
+
+    // Section 9 — Personal Debtors
+    public List<DsmPersonalDebtorPrintRow> PersonalDebtors { get; set; } = new();
+    public double TotalPersonalDebtors { get; set; }
+}
+
+public class DsmPersonalDebtorPrintRow
+{
+    public string FuelProduct { get; set; } = string.Empty;
+    public string Remarks     { get; set; } = string.Empty;
+    public string PaymentMethod { get; set; } = string.Empty;
+    public double Amount      { get; set; }
+    public string CardTid     { get; set; } = string.Empty;
+    public string CardBatch   { get; set; } = string.Empty;
 }
 
 public class DsmNozzlePrintRow

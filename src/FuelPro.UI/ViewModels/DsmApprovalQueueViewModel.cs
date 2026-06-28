@@ -30,6 +30,7 @@ public class DsmPendingSubmission : ObservableObject
     public DateTime SubmittedAt { get; set; }
     public string Notes { get; set; } = string.Empty;
     public string? AttachmentUrl { get; set; }
+    public string MetadataJson { get; set; } = string.Empty;
 
     public string TitleDisplay => $"{DsmName} - Pump {PumpId} - Shift {ShiftType}";
     public string ShiftDateDisplay => ShiftDate.ToString("dd MMM yyyy");
@@ -172,7 +173,8 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                         ShiftType = item.ShiftType,
                         SubmittedAt = submittedAt,
                         Notes = item.Notes ?? "",
-                        AttachmentUrl = item.AttachmentUrl
+                        AttachmentUrl = item.AttachmentUrl,
+                        MetadataJson = item.Metadata != null ? JsonConvert.SerializeObject(item.Metadata) : ""
                     });
                 }
                 
@@ -404,22 +406,197 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                 IsManualOpeningOverride = n.HasContinuityError
             }).ToList();
 
+            // Initialize payment fields from metadata
+            double cashDeposit = CashAmount;
+            double upiMorning = 0;
+            double upiNight = 0;
+            double upiCardMorning = 0;
+            double upiCardNight = 0;
+            double creditCardMorning = 0;
+            double creditCardNight = 0;
+            double petroCard = 0;
+            double others = 0;
+
+            string? cardTid = null;
+            string? cardBatch = null;
+            string? phonePeTid = null;
+            string? phonePeBatch = null;
+            string? petroCardTid = null;
+            string? petroCardBatch = null;
+
+            bool isNight = string.Equals(SelectedSubmission.ShiftType, "B", StringComparison.OrdinalIgnoreCase);
+
+            if (!string.IsNullOrEmpty(SelectedSubmission.MetadataJson))
+            {
+                try
+                {
+                    var metadata = JsonConvert.DeserializeObject<dynamic>(SelectedSubmission.MetadataJson);
+                    if (metadata != null && metadata.cardSwipeDetails != null)
+                    {
+                        foreach (var swipe in metadata.cardSwipeDetails)
+                        {
+                            string mode = swipe.mode ?? "";
+                            double amount = (double)(swipe.amount ?? 0.0);
+                            string tid = swipe.tid ?? "";
+                            string batch = swipe.batch ?? "";
+
+                            if (mode.Contains("PhonePe Card", StringComparison.OrdinalIgnoreCase))
+                            {
+                                if (isNight) upiCardNight += amount;
+                                else upiCardMorning += amount;
+                                phonePeTid = tid;
+                                phonePeBatch = batch;
+                            }
+                            else if (mode.Contains("PhonePe", StringComparison.OrdinalIgnoreCase))
+                            {
+                                if (isNight) upiNight += amount;
+                                else upiMorning += amount;
+                                phonePeTid = tid;
+                                phonePeBatch = batch;
+                            }
+                            else if (mode.Contains("Petro", StringComparison.OrdinalIgnoreCase))
+                            {
+                                petroCard += amount;
+                                petroCardTid = tid;
+                                petroCardBatch = batch;
+                            }
+                            else
+                            {
+                                // Credit Card / Pinelabs Card / etc.
+                                if (isNight) creditCardNight += amount;
+                                else creditCardMorning += amount;
+                                cardTid = tid;
+                                cardBatch = batch;
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error(ex, "Failed to parse cardSwipeDetails from metadata JSON");
+                }
+            }
+
+            // Fallbacks for backward compatibility / plain amount inputs
+            if (upiMorning == 0 && upiNight == 0 && UpiAmount > 0)
+            {
+                if (isNight) upiNight = UpiAmount;
+                else upiMorning = UpiAmount;
+            }
+            if (creditCardMorning == 0 && creditCardNight == 0 && CardAmount > 0)
+            {
+                if (isNight) creditCardNight = CardAmount;
+                else creditCardMorning = CardAmount;
+            }
+
             var payment = new PaymentCollection
             {
-                PhonePeMorning = UpiAmount,
-                PhonePeNight = 0,
-                PhonePeCardMorning = 0,
-                PhonePeCardNight = 0,
-                CreditCardMorning = CardAmount,
-                CreditCardNight = 0,
-                PetroCard = 0,
-                Others = 0,
-                CashDeposit = CashAmount
+                CashDeposit = cashDeposit,
+                PhonePeMorning = upiMorning,
+                PhonePeNight = upiNight,
+                PhonePeCardMorning = upiCardMorning,
+                PhonePeCardNight = upiCardNight,
+                CreditCardMorning = creditCardMorning,
+                CreditCardNight = creditCardNight,
+                PetroCard = petroCard,
+                Others = others,
+                CardTid = cardTid,
+                CardBatch = cardBatch,
+                PhonePeTid = phonePeTid,
+                PhonePeBatch = phonePeBatch,
+                PetroCardTid = petroCardTid,
+                PetroCardBatch = petroCardBatch
             };
 
-            var debitModels = CreditAmount > 0 
-                ? new List<DebitEntry> { new() { DebtorName = "DSM PWA Credit", Amount = CreditAmount } }
-                : new List<DebitEntry>();
+            // Parse Debtor Entries
+            var debitModels = new List<DebitEntry>();
+            if (!string.IsNullOrEmpty(SelectedSubmission.MetadataJson))
+            {
+                try
+                {
+                    var metadata = JsonConvert.DeserializeObject<dynamic>(SelectedSubmission.MetadataJson);
+                    if (metadata != null && metadata.debtorEntries != null)
+                    {
+                        foreach (var dbEntry in metadata.debtorEntries)
+                        {
+                            string debtorName = dbEntry.debtorName ?? "";
+                            double amount = (double)(dbEntry.amount ?? 0.0);
+                            string vehNo = dbEntry.vehicleNumber ?? "";
+                            string time = dbEntry.time ?? "";
+
+                            debitModels.Add(new DebitEntry
+                            {
+                                DebtorName = debtorName,
+                                Amount = amount,
+                                VehicleNumber = string.IsNullOrEmpty(vehNo) ? null : vehNo,
+                                EntryTime = string.IsNullOrEmpty(time) ? null : time,
+                                PaymentMethod = "Credit"
+                            });
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error(ex, "Failed to parse debtorEntries from metadata JSON");
+                }
+            }
+
+            // Fallback for CreditAmount if no debtor entries were parsed
+            if (debitModels.Count == 0 && CreditAmount > 0)
+            {
+                debitModels.Add(new DebitEntry
+                {
+                    DebtorName = "DSM PWA Credit",
+                    Amount = CreditAmount,
+                    PaymentMethod = "Credit"
+                });
+            }
+
+            // Parse Personal Debtors
+            var personalDebtors = new List<DsmPersonalDebtor>();
+            if (!string.IsNullOrEmpty(SelectedSubmission.MetadataJson))
+            {
+                try
+                {
+                    var metadata = JsonConvert.DeserializeObject<dynamic>(SelectedSubmission.MetadataJson);
+                    if (metadata != null && metadata.personalDebtors != null)
+                    {
+                        foreach (var pd in metadata.personalDebtors)
+                        {
+                            double amount = (double)(pd.amount ?? 0.0);
+                            string fuelProduct = pd.fuelProduct ?? "";
+                            string remarks = pd.remarks ?? "";
+                            string paymentMethod = pd.paymentMethod ?? "Cash";
+                            string tid = pd.tid ?? "";
+                            string batch = pd.batch ?? "";
+
+                            personalDebtors.Add(new DsmPersonalDebtor
+                            {
+                                DsmName = SelectedSubmission.DsmName,
+                                Date = SelectedSubmission.ShiftDate,
+                                Time = DateTime.Now.ToString("hh:mm tt"),
+                                Amount = amount,
+                                FuelProduct = string.IsNullOrEmpty(fuelProduct) ? null : fuelProduct,
+                                Remarks = string.IsNullOrEmpty(remarks) ? null : remarks,
+                                PaymentMethod = paymentMethod,
+                                CardTid = string.IsNullOrEmpty(tid) ? null : tid,
+                                CardBatch = string.IsNullOrEmpty(batch) ? null : batch,
+                                Denom500 = (int)(pd.denom500 ?? 0),
+                                Denom200 = (int)(pd.denom200 ?? 0),
+                                Denom100 = (int)(pd.denom100 ?? 0),
+                                Denom50 = (int)(pd.denom50 ?? 0),
+                                Denom20 = (int)(pd.denom20 ?? 0),
+                                Denom10 = (int)(pd.denom10 ?? 0),
+                                Coins = (int)(pd.coins ?? 0)
+                            });
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error(ex, "Failed to parse personalDebtors from metadata JSON");
+                }
+            }
 
             var expenseModels = ExpenseAmount > 0
                 ? new List<Expense> { new() { Description = string.IsNullOrEmpty(ExpenseNotes) ? "DSM PWA Expense" : ExpenseNotes, Amount = ExpenseAmount } }
@@ -444,7 +621,8 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                 debitModels,
                 testingModels,
                 expenseModels,
-                cashModels
+                cashModels,
+                personalDebtors: personalDebtors
             );
 
             if (!localSaveResult.Success)

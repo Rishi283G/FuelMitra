@@ -49,7 +49,7 @@ public interface INozzleReadingRepository
 {
     Task<Result<List<NozzleReading>>> GetByDsmEntryIdAsync(int dsmEntryId);
     Task<Result> SaveReadingsAsync(int dsmEntryId, List<NozzleReading> readings);
-    Task<Result<Dictionary<int, double>>> GetPreviousShiftClosingsAsync(DateTime date, string shiftType, int pumpId);
+    Task<Result<Dictionary<int, double>>> GetPreviousShiftClosingsAsync(DateTime date, string shiftType, int pumpId, int? currentDsmEntryId = null);
 }
 
 public interface IPaymentRepository
@@ -104,9 +104,18 @@ public interface ICreditorRepository
 {
     Task<Result<List<Creditor>>> GetAllAsync();
     Task<Result<List<Creditor>>> GetAllActiveAsync();
+    Task<Result<List<Creditor>>> GetAllActiveWithVehiclesAsync();
     Task<Result<Creditor>> AddAsync(Creditor creditor);
     Task<Result> UpdateAsync(Creditor creditor);
     Task<Result> SoftDeleteAsync(int creditorId);
+}
+
+public interface IDebtorVehicleRepository
+{
+    Task<Result<List<DebtorVehicle>>> GetByCreditorIdAsync(int creditorId);
+    Task<Result<DebtorVehicle>> AddAsync(DebtorVehicle vehicle);
+    Task<Result> DeleteAsync(int debtorVehicleId);
+    Task<Result> UpdateVehicleNumberAsync(int vehicleId, string vehicleNumber);
 }
 
 public interface IDsmProfileRepository
@@ -135,4 +144,18 @@ public interface IAgsImportRepository
     Task<Result<AgsDailySummary>> SaveDailySummaryAsync(AgsDailySummary summary);
     Task<Result<AgsDailySummary?>> GetDailySummaryAsync(DateTime date);
     Task<Result<List<AgsShiftImport>>> GetImportHistoryAsync(int count = 30);
+}
+
+public interface IPumpExpenseRepository
+{
+    Task<Result<List<PumpExpense>>> GetByDateRangeAsync(DateTime startDate, DateTime endDate);
+    Task<Result<PumpExpense>> GetByDateAsync(DateTime date);
+    Task<Result<PumpExpense>> AddOrUpdateAsync(PumpExpense expense);
+    Task<Result> DeleteAsync(int id);
+}
+
+public interface IDsmPersonalDebtorRepository
+{
+    Task<Result<List<DsmPersonalDebtor>>> GetByDsmEntryIdAsync(int dsmEntryId);
+    Task<Result> SavePersonalDebtorsAsync(int dsmEntryId, List<DsmPersonalDebtor> personalDebtors);
 }

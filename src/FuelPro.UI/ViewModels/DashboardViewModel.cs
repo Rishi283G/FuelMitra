@@ -231,12 +231,11 @@ public partial class DashboardViewModel : ObservableObject
 
             MorningShift = AggregateShiftSummary(shifts, entries, otherCashList, shiftExpenses, "A");
             AfternoonShift = AggregateShiftSummary(shifts, entries, otherCashList, shiftExpenses, "B");
-            NightShift = AggregateShiftSummary(shifts, entries, otherCashList, shiftExpenses, "C");
+            NightShift = null;
 
             TodayTotalSale = 0;
             TodayTotalLitres = (MorningShift?.TotalHsdLitres ?? 0) + (MorningShift?.TotalMsILitres ?? 0) + (MorningShift?.TotalMsIILitres ?? 0)
-                + (AfternoonShift?.TotalHsdLitres ?? 0) + (AfternoonShift?.TotalMsILitres ?? 0) + (AfternoonShift?.TotalMsIILitres ?? 0)
-                + (NightShift?.TotalHsdLitres ?? 0) + (NightShift?.TotalMsILitres ?? 0) + (NightShift?.TotalMsIILitres ?? 0);
+                + (AfternoonShift?.TotalHsdLitres ?? 0) + (AfternoonShift?.TotalMsILitres ?? 0) + (AfternoonShift?.TotalMsIILitres ?? 0);
             TodayTotalCash = 0;
             TodayTotalDigital = 0;
             TodayCollection = 0;
@@ -672,27 +671,22 @@ public partial class DashboardViewModel : ObservableObject
                 {
                     AgsShiftBHsd += hsd; AgsShiftBMsI += msI; AgsShiftBMsII += msII; AgsShiftBTotal += (hsd + msI + msII);
                 }
-                else if (s.ShiftType == "C")
-                {
-                    AgsShiftCHsd += hsd; AgsShiftCMsI += msI; AgsShiftCMsII += msII; AgsShiftCTotal += (hsd + msI + msII);
-                }
             }
 
-            // Nozzle summary (all 28)
+            // Nozzle summary
             NozzleDaySummaries.Clear();
 
             foreach (var nozzleInfo in PumpConfiguration.AllNozzles)
             {
                 int n = nozzleInfo.NozzleNumber;
                 int p = nozzleInfo.PumpId;
-                double shiftA = 0, shiftB = 0, shiftC = 0;
+                double shiftA = 0, shiftB = 0;
                 foreach (var shift in allShifts)
                 {
                     var nozzleReading = shift.NozzleReadings.FirstOrDefault(r => r.NozzleNumber == n && r.PumpNumber == p);
                     if (nozzleReading == null) continue;
                     if (shift.ShiftType == "A") shiftA += nozzleReading.NetSaleLitres;
                     else if (shift.ShiftType == "B") shiftB += nozzleReading.NetSaleLitres;
-                    else if (shift.ShiftType == "C") shiftC += nozzleReading.NetSaleLitres;
                 }
 
                 NozzleDaySummaries.Add(new NozzleDaySummaryRow
@@ -702,20 +696,20 @@ public partial class DashboardViewModel : ObservableObject
                     PumpNumber   = p,
                     ShiftALitres = shiftA,
                     ShiftBLitres = shiftB,
-                    ShiftCLitres = shiftC,
-                    DayTotal     = shiftA + shiftB + shiftC,
+                    ShiftCLitres = 0,
+                    DayTotal     = shiftA + shiftB,
                 });
             }
 
             if (StartDate.Date == EndDate.Date)
             {
-                AgsStatusLabel = allShifts.Count == 3
-                    ? $"{StartDate:dd-MMM-yyyy} — All 3 shifts imported"
-                    : $"{StartDate:dd-MMM-yyyy} — {allShifts.Count}/3 shifts imported (partial)";
+                AgsStatusLabel = allShifts.Count == 2
+                    ? $"{StartDate:dd-MMM-yyyy} — All 2 shifts imported"
+                    : $"{StartDate:dd-MMM-yyyy} — {allShifts.Count}/2 shifts imported (partial)";
             }
             else
             {
-                var totalExpected = totalDays * 3;
+                var totalExpected = totalDays * 2;
                 AgsStatusLabel = allShifts.Count == totalExpected
                     ? $"{StartDate:dd-MMM-yyyy} to {EndDate:dd-MMM-yyyy} — All {allShifts.Count} shifts imported"
                     : $"{StartDate:dd-MMM-yyyy} to {EndDate:dd-MMM-yyyy} — {allShifts.Count}/{totalExpected} shifts imported (partial)";

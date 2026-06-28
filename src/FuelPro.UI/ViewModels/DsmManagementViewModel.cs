@@ -45,7 +45,7 @@ public partial class DsmManagementViewModel : ObservableObject
     public ObservableCollection<DsmPumpAssignment> PumpAssignments { get; } = new();
     public ObservableCollection<DsmUser> ActiveDsmOptions { get; } = new();
     public ObservableCollection<int> PumpOptions { get; } = new();
-    public string[] ShiftOptions { get; } = { "A", "B", "C" };
+    public string[] ShiftOptions { get; } = { "A", "B" };
 
     [ObservableProperty] private DsmUser? _selectedDsmUser;
     [ObservableProperty] private int? _selectedPumpId;

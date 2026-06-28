@@ -28,6 +28,9 @@ export interface DraftSubmission {
   createdAt: string;
   status: 'draft' | 'queued' | 'submitted' | 'failed';
   errorMessage?: string;
+  cardSwipeDetails?: { mode: string; amount: number; tid: string; batch: string; }[];
+  debtorEntries?: { debtorName: string; amount: number; vehicleNumber?: string; time: string; }[];
+  personalDebtors?: { amount: number; fuelProduct?: string; remarks?: string; paymentMethod: string; tid?: string; batch?: string; denom500?: number; denom200?: number; denom100?: number; denom50?: number; denom20?: number; denom10?: number; coins?: number; }[];
 }
 
 export interface CachedSubmission {

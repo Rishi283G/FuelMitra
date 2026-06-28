@@ -56,6 +56,12 @@
         <DataTemplate DataType="{x:Type vm:CardSettlementViewModel}">
             <views:CardSettlementView/>
         </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:DebtorManagementViewModel}">
+            <views:DebtorManagementView/>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:PumpExpensesViewModel}">
+            <views:PumpExpensesView/>
+        </DataTemplate>
     </Window.Resources>
 
     <materialDesign:DialogHost Identifier="RootDialog">
@@ -317,6 +323,40 @@
                             </Style>
                         </Button.Style>
                         <materialDesign:PackIcon Kind="CreditCardCheck" Width="24" Height="24"/>
+                    </Button>
+
+                    <!-- Debtor Management -->
+                    <Button Command="{Binding NavigateToDebtorManagementCommand}" ToolTip="Debtor Management" Margin="0,3">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
+                                <Setter Property="Foreground" Value="White" />
+                                <Setter Property="Opacity" Value="0.5" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding SelectedNavIndex}" Value="14">
+                                        <Setter Property="Opacity" Value="1" />
+                                        <Setter Property="Background" Value="#33FFFFFF" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                        <materialDesign:PackIcon Kind="AccountMultiple" Width="24" Height="24"/>
+                    </Button>
+
+                    <!-- Pump Expenses -->
+                    <Button Command="{Binding NavigateToPumpExpensesCommand}" ToolTip="Pump Expenses" Margin="0,3">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
+                                <Setter Property="Foreground" Value="White" />
+                                <Setter Property="Opacity" Value="0.5" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding SelectedNavIndex}" Value="15">
+                                        <Setter Property="Opacity" Value="1" />
+                                        <Setter Property="Background" Value="#33FFFFFF" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                        <materialDesign:PackIcon Kind="CashRegister" Width="24" Height="24"/>
                     </Button>
                 </StackPanel>
             </Border>

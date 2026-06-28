@@ -24,6 +24,8 @@ public partial class NozzleReadingRow : ObservableObject
 
     [ObservableProperty] private int _nozzleNumber;
     [ObservableProperty] private string _fuelType = "";
+    public string FuelTypeLabel => FuelPro.Core.Common.FuelTypeExtensions.ToFriendlyLabel(FuelType);
+    public string UnitLabel => FuelPro.Core.Common.FuelTypeExtensions.GetUnitLabel(FuelType);
     [ObservableProperty] private double? _autoOpeningReading;
     [ObservableProperty] private double? _openingReading;
     [ObservableProperty] private double? _closingReading;
@@ -60,10 +62,55 @@ public partial class NozzleReadingRow : ObservableObject
 public partial class DebitRow : ObservableObject
 {
     public Action? OnRowChanged { get; set; }
+    private readonly IEnumerable<Creditor> _creditors;
 
     [ObservableProperty] private string _debtorName = "";
     [ObservableProperty] private string? _chequeNo;
     [ObservableProperty] private double? _amount;
+    [ObservableProperty] private string? _vehicleNumber;
+    [ObservableProperty] private string _paymentMethod = "Credit";
+
+    // Card fields
+    [ObservableProperty] private string? _cardTid;
+    [ObservableProperty] private string? _cardBatch;
+
+    // Cash denomination fields
+    [ObservableProperty] private int? _denom500;
+    [ObservableProperty] private int? _denom200;
+    [ObservableProperty] private int? _denom100;
+    [ObservableProperty] private int? _denom50;
+    [ObservableProperty] private int? _denom20;
+    [ObservableProperty] private int? _denom10;
+    [ObservableProperty] private int? _coins;
+
+    public ObservableCollection<string> AvailableVehicles { get; } = new();
+
+    public DebitRow()
+    {
+        _creditors = new List<Creditor>();
+    }
+
+    public DebitRow(IEnumerable<Creditor> creditors, Action? onRowChanged = null)
+    {
+        _creditors = creditors;
+        OnRowChanged = onRowChanged;
+    }
+
+    partial void OnDebtorNameChanged(string value)
+    {
+        AvailableVehicles.Clear();
+        VehicleNumber = null;
+        if (string.IsNullOrWhiteSpace(value)) return;
+
+        var creditor = _creditors.FirstOrDefault(c => string.Equals(c.Name, value, StringComparison.OrdinalIgnoreCase));
+        if (creditor != null && creditor.Vehicles != null)
+        {
+            foreach (var v in creditor.Vehicles.Where(x => x.IsActive))
+            {
+                AvailableVehicles.Add(v.VehicleNumber);
+            }
+        }
+    }
 
     partial void OnAmountChanged(double? value) => OnRowChanged?.Invoke();
 }
@@ -133,6 +180,33 @@ public partial class CashDenomRow : ObservableObject
     }
 }
 
+public partial class PersonalDebtorRow : ObservableObject
+{
+    public Action? OnRowChanged { get; set; }
+
+    [ObservableProperty] private int _dsmPersonalDebtorId;
+    [ObservableProperty] private string _time = string.Empty;
+    [ObservableProperty] private double? _amount;
+    [ObservableProperty] private string _fuelProduct = "MS-II";
+    [ObservableProperty] private string _remarks = string.Empty;
+    [ObservableProperty] private string _paymentMethod = "Cash";
+    [ObservableProperty] private string _cardTid = string.Empty;
+    [ObservableProperty] private string _cardBatch = string.Empty;
+    [ObservableProperty] private int? _denom500;
+    [ObservableProperty] private int? _denom200;
+    [ObservableProperty] private int? _denom100;
+    [ObservableProperty] private int? _denom50;
+    [ObservableProperty] private int? _denom20;
+    [ObservableProperty] private int? _denom10;
+    [ObservableProperty] private int? _coins;
+
+    public string[] FuelProducts { get; } = { "MS-I", "MS-II", "HSD" };
+    public string[] PaymentMethods { get; } = { "Cash", "PhonePe", "PetroCard", "Others" };
+
+    partial void OnAmountChanged(double? value) => OnRowChanged?.Invoke();
+    partial void OnPaymentMethodChanged(string value) => OnRowChanged?.Invoke();
+}
+
 public partial class DsmEntryViewModel : ObservableObject
 {
     private readonly DsmEntryService _dsmService;
@@ -154,6 +228,8 @@ public partial class DsmEntryViewModel : ObservableObject
     [ObservableProperty] private string _statusMessage = "";
     [ObservableProperty] private bool _isSaving;
     [ObservableProperty] private int? _editingEntryId;
+    [ObservableProperty] private string _startTime = "08:00 AM";
+    [ObservableProperty] private string _endTime = "08:00 PM";
 
     // Nozzle readings
     public ObservableCollection<NozzleReadingRow> NozzleReadings { get; } = new();
@@ -182,6 +258,7 @@ public partial class DsmEntryViewModel : ObservableObject
     // Dynamic sections
     public ObservableCollection<DebitRow> Debits { get; } = new();
     public ObservableCollection<ExpenseRow> Expenses { get; } = new();
+    public ObservableCollection<PersonalDebtorRow> PersonalDebtors { get; } = new();
 
     // Testing
     public ObservableCollection<TestingRow> TestingRows { get; } = new();
@@ -208,7 +285,8 @@ public partial class DsmEntryViewModel : ObservableObject
     public ObservableCollection<string> DsmOptions { get; } = new();
     public ObservableCollection<Creditor> Creditors { get; } = new();
 
-    public string[] ShiftOptions { get; } = { "A", "B", "C" };
+    private bool _isEditing;
+    public string[] ShiftOptions { get; } = { "A", "B" };
     public ObservableCollection<PumpDisplayItem> PumpOptions { get; } = new();
     public ObservableCollection<PumpDisplayItem> ConnectablePumpOptions { get; } = new();
 
@@ -250,28 +328,70 @@ public partial class DsmEntryViewModel : ObservableObject
         if (value != null)
         {
             RefreshConnectablePumpOptions();
-            LoadNozzlesForPump();
+            if (!_isEditing) LoadNozzlesForPump();
         }
     }
 
     partial void OnSelectedDateChanged(DateTime value)
     {
         ReloadPumpOptions();
-        LoadNozzlesForPump();
+        if (!_isEditing) LoadNozzlesForPump();
     }
-    partial void OnSelectedShiftChanged(string value) => LoadNozzlesForPump();
-    partial void OnDsmNameChanged(string value) => _ = RefreshConnectedPumpGrossSalesAsync();
-    partial void OnSelectedConnectedPumpChanged(PumpDisplayItem? value) => _ = RefreshConnectedPumpGrossSalesAsync();
 
-    private async void LoadNozzlesForPump()
+    partial void OnSelectedShiftChanged(string value)
     {
+        if (!_isEditing) LoadNozzlesForPump();
+    }
+    partial void OnDsmNameChanged(string value) => _ = RefreshConnectedPumpGrossSalesAsync();
+    partial void OnSelectedConnectedPumpChanged(PumpDisplayItem? value)
+    {
+        _ = RefreshConnectedPumpGrossSalesAsync();
+        if (!_isEditing) LoadNozzlesForPump();
+    }
+
+    private void LoadNozzlesForPump()
+    {
+        _ = LoadNozzlesForPumpAsync();
+    }
+
+    private async Task LoadNozzlesForPumpAsync()
+    {
+        // Capture entered values to restore later
+        var tempReadings = new Dictionary<int, (double? Opening, double? Closing, double? Rate, bool Override)>();
+        if (!_isEditing)
+        {
+            foreach (var r in NozzleReadings)
+            {
+                tempReadings[r.NozzleNumber] = (r.OpeningReading, r.ClosingReading, r.Rate, r.IsManualOpeningOverride);
+            }
+        }
+
         NozzleReadings.Clear();
         OpeningWarnings.Clear();
         if (SelectedPump == null) return;
-        var nozzles = PumpConfiguration.GetNozzlesForPump(SelectedPump.PumpId, SelectedDate);
-        var (hsdRate, msIRate, msIIRate) = await _dsmService.GetCurrentRatesAsync();
+
+        var primaryNozzles = PumpConfiguration.GetNozzlesForPump(SelectedPump.PumpId, SelectedDate);
+        var connectedNozzles = SelectedConnectedPump != null
+            ? PumpConfiguration.GetNozzlesForPump(SelectedConnectedPump.PumpId, SelectedDate)
+            : Array.Empty<int>();
+        var nozzles = primaryNozzles.Concat(connectedNozzles).ToList();
+
+        var (hsdRate, msIRate, msIIRate, cngRate) = await _dsmService.GetCurrentRatesAsync();
+        
+        // Fetch previous shift closings for primary pump
         var previousResult = await _nozzleRepository.GetPreviousShiftClosingsAsync(SelectedDate, SelectedShift, SelectedPump.PumpId);
         var previousClosings = previousResult.Success ? previousResult.Data! : new Dictionary<int, double>();
+
+        // Fetch previous shift closings for connected pump if active
+        var connectedPreviousClosings = new Dictionary<int, double>();
+        if (SelectedConnectedPump != null)
+        {
+            var connPrevResult = await _nozzleRepository.GetPreviousShiftClosingsAsync(SelectedDate, SelectedShift, SelectedConnectedPump.PumpId);
+            if (connPrevResult.Success && connPrevResult.Data != null)
+            {
+                connectedPreviousClosings = connPrevResult.Data;
+            }
+        }
 
         var currentShiftImport = await GetShiftImportAsync(SelectedDate, SelectedShift);
         var currentAgsReadings = currentShiftImport?.NozzleReadings
@@ -288,12 +408,16 @@ public partial class DsmEntryViewModel : ObservableObject
         var currentShiftAutoFilledCount = 0;
         foreach (var n in nozzles)
         {
-            var fuelType = PumpConfiguration.GetFuelType(SelectedPump.PumpId, n, SelectedDate);
+            var nozzlePumpId = PumpConfiguration.GetPumpIdForNozzle(n, SelectedDate);
+            if (nozzlePumpId == 0) nozzlePumpId = SelectedPump.PumpId;
+
+            var fuelType = PumpConfiguration.GetFuelType(nozzlePumpId, n, SelectedDate);
             var rate = fuelType switch
             {
                 FuelType.HSD => hsdRate,
                 FuelType.MS_I => msIRate,
                 FuelType.MS_II => msIIRate,
+                FuelType.CNG => cngRate,
                 _ => msIRate
             };
 
@@ -302,11 +426,15 @@ public partial class DsmEntryViewModel : ObservableObject
                 : null;
             AgsNozzleReading? currentAgsRow = null;
             var hasCurrentAgs = currentAgsReadings != null && currentAgsReadings.TryGetValue(n, out currentAgsRow);
-            var hasPreviousDsm = previousClosings.TryGetValue(n, out var previousDsmClosing);
+            
+            var hasPreviousDsm = previousClosings.TryGetValue(n, out var previousDsmClosing)
+                || connectedPreviousClosings.TryGetValue(n, out previousDsmClosing);
+
             double? openingReading = (hasCurrentAgs ? currentAgsRow?.OpeningReading : null)
                                      ?? openingFromAgsPreviousShift
                                      ?? (hasPreviousDsm ? previousDsmClosing : null);
             double? closingReading = hasCurrentAgs ? currentAgsRow?.ClosingReading : null;
+
             if (hasCurrentAgs && openingReading.HasValue && closingReading.HasValue)
             {
                 currentShiftAutoFilledCount++;
@@ -316,6 +444,14 @@ public partial class DsmEntryViewModel : ObservableObject
             string openingWarning = hasAutoOpening
                 ? ""
                 : $"No AGS/continuity opening found for Nozzle {n}. Please enter opening manually.";
+
+            // Restore temp reading if available
+            if (tempReadings.TryGetValue(n, out var temp))
+            {
+                if (temp.Opening.HasValue) openingReading = temp.Opening;
+                if (temp.Closing.HasValue) closingReading = temp.Closing;
+                if (temp.Rate.HasValue) rate = temp.Rate.Value;
+            }
 
             NozzleReadings.Add(new NozzleReadingRow
             {
@@ -341,8 +477,8 @@ public partial class DsmEntryViewModel : ObservableObject
         }
         else if (currentAgsReadings != null)
         {
-            OpeningWarnings.Add($"Loaded AGS readings for {SelectedDate:dd-MMM-yyyy} Shift {SelectedShift}; auto-filled {currentShiftAutoFilledCount}/{nozzles.Count()} nozzle rows for Pump {SelectedPump.PumpId}.");
-            AgsImportStatusText = $"AGS import loaded for {SelectedDate:dd-MMM-yyyy} Shift {SelectedShift}: {currentShiftAutoFilledCount}/{nozzles.Count()} nozzle rows auto-filled for Pump {SelectedPump.PumpId}.";
+            OpeningWarnings.Add($"Loaded AGS readings for {SelectedDate:dd-MMM-yyyy} Shift {SelectedShift}; auto-filled {currentShiftAutoFilledCount}/{nozzles.Count} nozzle rows.");
+            AgsImportStatusText = $"AGS import loaded for {SelectedDate:dd-MMM-yyyy} Shift {SelectedShift}: {currentShiftAutoFilledCount}/{nozzles.Count} nozzle rows auto-filled.";
             if (previousShiftType != null && previousShiftImport == null)
             {
                 OpeningWarnings.Add($"No AGS import found for previous Shift {previousShiftType} on {SelectedDate:dd-MMM-yyyy}; continuity fallback applied.");
@@ -350,10 +486,11 @@ public partial class DsmEntryViewModel : ObservableObject
         }
 
         UpdateTestingVisibility();
-        RebuildTestingRows(hsdRate, msIRate, msIIRate);
+        RebuildTestingRows(hsdRate, msIRate, msIIRate, cngRate);
         await RefreshConnectedPumpGrossSalesAsync();
         RecalculateAll();
     }
+
 
     private void ReloadPumpOptions()
     {
@@ -480,7 +617,7 @@ public partial class DsmEntryViewModel : ObservableObject
         ShowHsdTesting = true;
     }
 
-    private void RebuildTestingRows(double hsdRate, double msIRate, double msIIRate)
+    private void RebuildTestingRows(double hsdRate, double msIRate, double msIIRate, double cngRate)
     {
         TestingRows.Clear();
 
@@ -500,7 +637,18 @@ public partial class DsmEntryViewModel : ObservableObject
             Rate = NozzleReadings.FirstOrDefault(n => n.FuelType == "HSD")?.Rate ?? hsdRate,
             OnRowChanged = RecalculateAll
         });
+
+        if (NozzleReadings.Any(n => n.FuelType == "CNG"))
+        {
+            TestingRows.Add(new TestingRow
+            {
+                FuelType = "CNG",
+                Rate = NozzleReadings.FirstOrDefault(n => n.FuelType == "CNG")?.Rate ?? cngRate,
+                OnRowChanged = RecalculateAll
+            });
+        }
     }
+
 
     private List<TestingEntry> BuildTestingModels()
     {
@@ -528,7 +676,7 @@ public partial class DsmEntryViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void AddDebit() => Debits.Add(new DebitRow { OnRowChanged = RecalculateAll });
+    private void AddDebit() => Debits.Add(new DebitRow(Creditors, RecalculateAll));
 
     [RelayCommand]
     private void RemoveDebit(DebitRow? row) { if (row != null) Debits.Remove(row); RecalculateAll(); }
@@ -538,6 +686,12 @@ public partial class DsmEntryViewModel : ObservableObject
 
     [RelayCommand]
     private void RemoveExpense(ExpenseRow? row) { if (row != null) Expenses.Remove(row); RecalculateAll(); }
+
+    [RelayCommand]
+    private void AddPersonalDebtor() => PersonalDebtors.Add(new PersonalDebtorRow { OnRowChanged = RecalculateAll, Time = DateTime.Now.ToString("HH:mm") });
+
+    [RelayCommand]
+    private void RemovePersonalDebtor(PersonalDebtorRow? row) { if (row != null) PersonalDebtors.Remove(row); RecalculateAll(); }
 
     [RelayCommand]
     private async Task SaveEntryAsync()
@@ -579,7 +733,23 @@ public partial class DsmEntryViewModel : ObservableObject
             };
 
             var debitModels = Debits.Where(d => !string.IsNullOrWhiteSpace(d.DebtorName))
-                .Select(d => new DebitEntry { DebtorName = d.DebtorName, Amount = d.Amount ?? 0, ChequeNo = d.ChequeNo }).ToList();
+                .Select(d => new DebitEntry 
+                { 
+                    DebtorName = d.DebtorName, 
+                    Amount = d.Amount ?? 0, 
+                    ChequeNo = d.ChequeNo,
+                    VehicleNumber = d.VehicleNumber,
+                    PaymentMethod = d.PaymentMethod,
+                    CardTid = d.CardTid,
+                    CardBatch = d.CardBatch,
+                    Denom500 = d.Denom500 ?? 0,
+                    Denom200 = d.Denom200 ?? 0,
+                    Denom100 = d.Denom100 ?? 0,
+                    Denom50 = d.Denom50 ?? 0,
+                    Denom20 = d.Denom20 ?? 0,
+                    Denom10 = d.Denom10 ?? 0,
+                    Coins = d.Coins ?? 0
+                }).ToList();
 
             var testingModels = BuildTestingModels();
 
@@ -596,11 +766,37 @@ public partial class DsmEntryViewModel : ObservableObject
                     Denom10 = Cash2.Denom10 ?? 0, Coins = Cash2.Coins ?? 0, TotalAmount = Cash2.TotalAmount }
             };
 
+            var personalDebtorModels = PersonalDebtors.Select((pd, index) => new DsmPersonalDebtor
+            {
+                Id = pd.DsmPersonalDebtorId,
+                DsmEntryId = EditingEntryId,
+                DsmName = DsmName,
+                Date = SelectedDate,
+                Time = string.IsNullOrWhiteSpace(pd.Time) ? DateTime.Now.ToString("HH:mm") : pd.Time,
+                Amount = pd.Amount ?? 0,
+                FuelProduct = pd.FuelProduct,
+                Remarks = pd.Remarks,
+                PaymentMethod = pd.PaymentMethod,
+                Denom500 = pd.Denom500 ?? 0,
+                Denom200 = pd.Denom200 ?? 0,
+                Denom100 = pd.Denom100 ?? 0,
+                Denom50 = pd.Denom50 ?? 0,
+                Denom20 = pd.Denom20 ?? 0,
+                Denom10 = pd.Denom10 ?? 0,
+                Coins = pd.Coins ?? 0,
+                CardTid = pd.CardTid,
+                CardBatch = pd.CardBatch,
+                SequenceNumber = index
+            }).ToList();
+
             var result = await _dsmService.SaveCompleteEntryAsync(
                 SelectedDate, SelectedShift, DsmName, SelectedPump.PumpId,
                 nozzleModels, payment, debitModels, testingModels, expenseModels, cashModels,
                 SelectedConnectedPump?.PumpId,
-                EditingEntryId);
+                EditingEntryId,
+                StartTime,
+                EndTime,
+                personalDebtorModels);
 
             if (result.Success)
             {
@@ -630,6 +826,8 @@ public partial class DsmEntryViewModel : ObservableObject
     {
         DsmName = "";
         EditingEntryId = null;
+        StartTime = "08:00 AM";
+        EndTime = "08:00 PM";
         PhonePeCardMorning = PhonePeCardNight = PhonePeMorning = PhonePeNight = CreditCardMorning = CreditCardNight = PetroCard = Others = CashDeposit = null;
         SelectedConnectedPump = null;
         ConnectedPumpGrossSales = 0;
@@ -637,6 +835,7 @@ public partial class DsmEntryViewModel : ObservableObject
         TestingRows.Clear();
         Debits.Clear();
         Expenses.Clear();
+        PersonalDebtors.Clear();
         Cash1 = new CashDenomRow { CashType = "Cash1", OnTotalChanged = RecalculateAll };
         Cash2 = new CashDenomRow { CashType = "Cash2", OnTotalChanged = RecalculateAll };
         LoadNozzlesForPump();
@@ -646,7 +845,7 @@ public partial class DsmEntryViewModel : ObservableObject
     [RelayCommand]
     private async Task EditEntryAsync(int dsmEntryId)
     {
-
+        _isEditing = true;
         try
         {
             var repo = App.Services.GetRequiredService<IDsmEntryRepository>();
@@ -659,24 +858,55 @@ public partial class DsmEntryViewModel : ObservableObject
 
             var entry = fullResult.Data;
 
+            // Set shift details first
+            if (entry.Shift != null)
+            {
+                SelectedDate = entry.Shift.ShiftDate;
+                SelectedShift = entry.Shift.ShiftType;
+            }
+
             // Populate header
             EditingEntryId = entry.DsmEntryId;
             DsmName = entry.DsmName;
+            StartTime = string.IsNullOrEmpty(entry.StartTime) ? "08:00 AM" : entry.StartTime;
+            EndTime = string.IsNullOrEmpty(entry.EndTime) ? "08:00 PM" : entry.EndTime;
 
             // Find matching pump
             var pumpMatch = PumpOptions.FirstOrDefault(p => p.PumpId == entry.PumpId);
             if (pumpMatch != null) SelectedPump = pumpMatch;
 
             // Connected pump
+            DsmEntry? connectedEntry = null;
             if (entry.ConnectedPumpId.HasValue)
             {
                 var connMatch = ConnectablePumpOptions.FirstOrDefault(p => p.PumpId == entry.ConnectedPumpId.Value);
                 SelectedConnectedPump = connMatch;
+
+                var shiftId = entry.ShiftId;
+                var entriesResult = await App.Services.GetRequiredService<IDsmEntryRepository>()
+                    .GetEntriesForShiftAsync(shiftId);
+                if (entriesResult.Success && entriesResult.Data != null)
+                {
+                    var rawConn = entriesResult.Data.FirstOrDefault(e =>
+                        e.PumpId == entry.ConnectedPumpId.Value
+                        && string.Equals(e.DsmName, entry.DsmName, StringComparison.OrdinalIgnoreCase));
+                    if (rawConn != null)
+                    {
+                        var fullConnected = await repo.GetFullEntryAsync(rawConn.DsmEntryId);
+                        if (fullConnected.Success && fullConnected.Data != null)
+                        {
+                            connectedEntry = fullConnected.Data;
+                        }
+                    }
+                }
             }
             else
             {
                 SelectedConnectedPump = null;
             }
+
+            // Explicitly load and await nozzles loading
+            await LoadNozzlesForPumpAsync();
 
             // Populate payment
             PhonePeCardMorning = entry.PaymentCollection?.PhonePeCardMorning;
@@ -693,6 +923,11 @@ public partial class DsmEntryViewModel : ObservableObject
             foreach (var nozzleRow in NozzleReadings)
             {
                 var savedReading = entry.NozzleReadings.FirstOrDefault(n => n.NozzleNumber == nozzleRow.NozzleNumber);
+                if (savedReading == null && connectedEntry != null)
+                {
+                    savedReading = connectedEntry.NozzleReadings.FirstOrDefault(n => n.NozzleNumber == nozzleRow.NozzleNumber);
+                }
+
                 if (savedReading != null)
                 {
                     nozzleRow.OpeningReading = savedReading.OpeningReading;
@@ -705,13 +940,24 @@ public partial class DsmEntryViewModel : ObservableObject
             Debits.Clear();
             foreach (var debit in entry.DebitEntries)
             {
-                Debits.Add(new DebitRow
+                var row = new DebitRow(Creditors, RecalculateAll)
                 {
                     DebtorName = debit.DebtorName,
                     ChequeNo = debit.ChequeNo,
                     Amount = debit.Amount,
-                    OnRowChanged = RecalculateAll
-                });
+                    VehicleNumber = debit.VehicleNumber,
+                    PaymentMethod = string.IsNullOrEmpty(debit.PaymentMethod) ? "Credit" : debit.PaymentMethod,
+                    CardTid = debit.CardTid,
+                    CardBatch = debit.CardBatch,
+                    Denom500 = debit.Denom500,
+                    Denom200 = debit.Denom200,
+                    Denom100 = debit.Denom100,
+                    Denom50 = debit.Denom50,
+                    Denom20 = debit.Denom20,
+                    Denom10 = debit.Denom10,
+                    Coins = debit.Coins
+                };
+                Debits.Add(row);
             }
 
             // Populate expenses
@@ -728,7 +974,7 @@ public partial class DsmEntryViewModel : ObservableObject
 
             // Populate testing rows
             TestingRows.Clear();
-            var (hsdRate, msIRate, msIIRate) = await _dsmService.GetCurrentRatesAsync();
+            var (hsdRate, msIRate, msIIRate, cngRate) = await _dsmService.GetCurrentRatesAsync();
             foreach (var testEntry in entry.TestingEntries)
             {
                 TestingRows.Add(new TestingRow
@@ -749,6 +995,10 @@ public partial class DsmEntryViewModel : ObservableObject
             if (!TestingRows.Any(t => t.FuelType == "HSD"))
             {
                 TestingRows.Add(new TestingRow { FuelType = "HSD", Rate = NozzleReadings.FirstOrDefault(n => n.FuelType == "HSD")?.Rate ?? hsdRate, OnRowChanged = RecalculateAll });
+            }
+            if (NozzleReadings.Any(n => n.FuelType == "CNG") && !TestingRows.Any(t => t.FuelType == "CNG"))
+            {
+                TestingRows.Add(new TestingRow { FuelType = "CNG", Rate = NozzleReadings.FirstOrDefault(n => n.FuelType == "CNG")?.Rate ?? cngRate, OnRowChanged = RecalculateAll });
             }
 
             // Populate cash denominations
@@ -782,6 +1032,34 @@ public partial class DsmEntryViewModel : ObservableObject
                 OnTotalChanged = RecalculateAll
             };
 
+            // Populate personal debtors
+            PersonalDebtors.Clear();
+            if (entry.PersonalDebtors != null)
+            {
+                foreach (var pd in entry.PersonalDebtors)
+                {
+                    PersonalDebtors.Add(new PersonalDebtorRow
+                    {
+                        DsmPersonalDebtorId = pd.Id,
+                        Time = pd.Time,
+                        Amount = pd.Amount,
+                        FuelProduct = pd.FuelProduct ?? "MS-II",
+                        Remarks = pd.Remarks ?? "",
+                        PaymentMethod = pd.PaymentMethod,
+                        CardTid = pd.CardTid ?? "",
+                        CardBatch = pd.CardBatch ?? "",
+                        Denom500 = pd.Denom500,
+                        Denom200 = pd.Denom200,
+                        Denom100 = pd.Denom100,
+                        Denom50 = pd.Denom50,
+                        Denom20 = pd.Denom20,
+                        Denom10 = pd.Denom10,
+                        Coins = pd.Coins,
+                        OnRowChanged = RecalculateAll
+                    });
+                }
+            }
+
             RecalculateAll();
             StatusMessage = $"📝 Editing entry for {DsmName} on Pump {entry.PumpId}";
         }
@@ -789,7 +1067,12 @@ public partial class DsmEntryViewModel : ObservableObject
         {
             StatusMessage = $"❌ Failed to load entry for editing: {ex.Message}";
         }
+        finally
+        {
+            _isEditing = false;
+        }
     }
+
 
     [RelayCommand]
     private async Task LoadShiftEntriesAsync()
@@ -813,7 +1096,7 @@ public partial class DsmEntryViewModel : ObservableObject
             foreach (var profile in result.Data!) DsmOptions.Add(profile.DsmName);
         }
 
-        var creditorsResult = await _creditorRepo.GetAllActiveAsync();
+        var creditorsResult = await _creditorRepo.GetAllActiveWithVehiclesAsync();
         Creditors.Clear();
         if (creditorsResult.Success)
         {
@@ -995,6 +1278,16 @@ public partial class DsmEntryViewModel : ObservableObject
             Mismatch        = Difference
         };
 
+        var personalDebtorPrintRows = PersonalDebtors.Select(pd => new DsmPersonalDebtorPrintRow
+        {
+            FuelProduct = pd.FuelProduct,
+            Remarks = pd.Remarks,
+            PaymentMethod = pd.PaymentMethod,
+            Amount = pd.Amount ?? 0,
+            CardTid = pd.CardTid,
+            CardBatch = pd.CardBatch
+        }).ToList();
+
         var printData = new DsmSheetPrintData
         {
             StationName  = stationName,
@@ -1004,6 +1297,8 @@ public partial class DsmEntryViewModel : ObservableObject
             DsmName      = DsmName,
             PumpNo       = SelectedPump?.DisplayText ?? "",
             PrintedAt    = DateTime.Now.ToString("dd/MM/yyyy HH:mm"),
+            StartTime    = StartTime,
+            EndTime      = EndTime,
             NozzleRows   = nozzleRows,
             TotalLitres  = TotalLitres,
             GrossSales   = GrossSales,
@@ -1015,7 +1310,9 @@ public partial class DsmEntryViewModel : ObservableObject
             TotalExpenses = Expenses.Sum(e => e.Amount ?? 0),
             Testing      = testing,
             TotalTesting = TestingRows.Sum(t => t.Amount),
-            Reconciliation = recon
+            Reconciliation = recon,
+            PersonalDebtors = personalDebtorPrintRows,
+            TotalPersonalDebtors = PersonalDebtors.Sum(pd => pd.Amount ?? 0)
         };
 
         _printService.PrintDsmSheet(printData);

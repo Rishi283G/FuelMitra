@@ -41,7 +41,7 @@ public partial class CardSettlementViewModel : ObservableObject
     [ObservableProperty] private double _phonePeTotal;
     [ObservableProperty] private double _petroCardTotal;
 
-    public string[] ShiftOptions { get; } = { "A", "B", "C" };
+    public string[] ShiftOptions { get; } = { "A", "B" };
 
     public ObservableCollection<CardSettlementItem> CardPayments { get; } = new();
     public ObservableCollection<CardSettlementItem> PhonePePayments { get; } = new();
@@ -79,80 +79,121 @@ public partial class CardSettlementViewModel : ObservableObject
 
         try
         {
-            var shiftResult = await _shiftRepo.GetShiftAsync(SelectedDate, SelectedShift);
-            if (!shiftResult.Success || shiftResult.Data == null)
+            // 1. Fetch previous day's last shift (Last Night)
+            var prevDate = SelectedDate.AddDays(-1);
+            var prevShiftsResult = await _shiftRepo.GetShiftsByDateRangeAsync(prevDate, prevDate);
+            var prevShifts = prevShiftsResult.Success && prevShiftsResult.Data != null 
+                ? prevShiftsResult.Data.OrderBy(s => s.ShiftType).ToList() 
+                : new List<Shift>();
+            var prevLastShift = prevShifts.LastOrDefault();
+
+            // 2. Fetch today's shifts (Today First & Second Shifts)
+            var todayShiftsResult = await _shiftRepo.GetShiftsByDateRangeAsync(SelectedDate, SelectedDate);
+            var todayShifts = todayShiftsResult.Success && todayShiftsResult.Data != null 
+                ? todayShiftsResult.Data.OrderBy(s => s.ShiftType).ToList() 
+                : new List<Shift>();
+
+            var allShiftsToLoad = new List<(Shift Shift, string Label)>();
+            if (prevLastShift != null)
             {
-                StatusMessage = "No shift found for this date and shift.";
+                allShiftsToLoad.Add((prevLastShift, "Last Night"));
+            }
+            foreach (var s in todayShifts)
+            {
+                string label = s.ShiftType == "A" ? "1st Shift" : "2nd Shift";
+                allShiftsToLoad.Add((s, label));
+            }
+
+            if (allShiftsToLoad.Count == 0)
+            {
+                StatusMessage = "No shifts found for today or yesterday.";
                 return;
             }
 
-            _currentShift = shiftResult.Data;
-            IsShiftLocked = _currentShift.IsLocked;
+            // Set current shift context for locking check (use today's primary shift A or first available)
+            _currentShift = todayShifts.FirstOrDefault() ?? prevLastShift;
+            IsShiftLocked = todayShifts.Any(s => s.IsLocked);
 
-            var entriesResult = await _dsmRepo.GetEntriesForShiftAsync(_currentShift.ShiftId);
-            if (!entriesResult.Success || entriesResult.Data == null || entriesResult.Data.Count == 0)
+            foreach (var item in allShiftsToLoad)
             {
-                StatusMessage = "No DSM entries found for this date and shift.";
-                return;
-            }
-
-            var entries = entriesResult.Data.OrderBy(e => e.PumpId).ToList();
-
-            foreach (var entry in entries)
-            {
-                var pc = entry.PaymentCollection ?? new PaymentCollection { DsmEntryId = entry.DsmEntryId };
-                pc.DsmEntry = entry; // backlink
-
-                // Card payments
-                var cardAmount = pc.CreditCardMorning + pc.CreditCardNight;
-                if (cardAmount > 0)
+                var entriesResult = await _dsmRepo.GetEntriesForShiftAsync(item.Shift.ShiftId);
+                if (entriesResult.Success && entriesResult.Data != null)
                 {
-                    CardPayments.Add(new CardSettlementItem
+                    var entries = entriesResult.Data.OrderBy(e => e.PumpId).ToList();
+                    foreach (var entry in entries)
                     {
-                        RomanIndex = ToRoman(entry.PumpId),
-                        DsmName = entry.DsmName,
-                        Amount = cardAmount,
-                        Tid = pc.CardTid,
-                        Batch = pc.CardBatch,
-                        PaymentCollection = pc
-                    });
-                }
+                        var pc = entry.PaymentCollection;
+                        if (pc == null) continue;
 
-                // PhonePe payments
-                var phonePeAmount = pc.PhonePeMorning + pc.PhonePeNight + pc.PhonePeCardMorning + pc.PhonePeCardNight;
-                if (phonePeAmount > 0)
-                {
-                    PhonePePayments.Add(new CardSettlementItem
-                    {
-                        RomanIndex = ToRoman(entry.PumpId),
-                        DsmName = entry.DsmName,
-                        Amount = phonePeAmount,
-                        Tid = pc.PhonePeTid,
-                        Batch = pc.PhonePeBatch,
-                        PaymentCollection = pc
-                    });
-                }
+                        pc.DsmEntry = entry; // backlink
 
-                // PetroCard payments
-                var petroAmount = pc.PetroCard;
-                if (petroAmount > 0)
-                {
-                    PetroCardPayments.Add(new CardSettlementItem
-                    {
-                        RomanIndex = ToRoman(entry.PumpId),
-                        DsmName = entry.DsmName,
-                        Amount = petroAmount,
-                        Tid = pc.PetroCardTid,
-                        Batch = pc.PetroCardBatch,
-                        PaymentCollection = pc
-                    });
+                        // For last night shift or today's 2nd shift, load Night payments. 
+                        // For 1st shift, load Morning payments.
+                        double cardAmount = 0;
+                        double phonePeAmount = 0;
+                        double petroAmount = 0;
+
+                        if (item.Label == "Last Night" || item.Shift.ShiftType != "A")
+                        {
+                            cardAmount = pc.CreditCardNight;
+                            phonePeAmount = pc.PhonePeNight + pc.PhonePeCardNight;
+                        }
+                        else
+                        {
+                            cardAmount = pc.CreditCardMorning;
+                            phonePeAmount = pc.PhonePeMorning + pc.PhonePeCardMorning;
+                        }
+                        petroAmount = pc.PetroCard; // PetroCard is daily
+
+                        // 1. Credit Cards
+                        if (cardAmount > 0)
+                        {
+                            CardPayments.Add(new CardSettlementItem
+                            {
+                                RomanIndex = ToRoman(entry.PumpId),
+                                DsmName = $"{entry.DsmName} ({item.Label})",
+                                Amount = cardAmount,
+                                Tid = pc.CardTid ?? string.Empty,
+                                Batch = pc.CardBatch ?? string.Empty,
+                                PaymentCollection = pc
+                            });
+                        }
+
+                        // 2. PhonePe / Digital
+                        if (phonePeAmount > 0)
+                        {
+                            PhonePePayments.Add(new CardSettlementItem
+                            {
+                                RomanIndex = ToRoman(entry.PumpId),
+                                DsmName = $"{entry.DsmName} ({item.Label})",
+                                Amount = phonePeAmount,
+                                Tid = pc.PhonePeTid ?? string.Empty,
+                                Batch = pc.PhonePeBatch ?? string.Empty,
+                                PaymentCollection = pc
+                            });
+                        }
+
+                        // 3. PetroCard
+                        if (petroAmount > 0)
+                        {
+                            PetroCardPayments.Add(new CardSettlementItem
+                            {
+                                RomanIndex = ToRoman(entry.PumpId),
+                                DsmName = $"{entry.DsmName} ({item.Label})",
+                                Amount = petroAmount,
+                                Tid = pc.PetroCardTid ?? string.Empty,
+                                Batch = pc.PetroCardBatch ?? string.Empty,
+                                PaymentCollection = pc
+                            });
+                        }
+                    }
                 }
             }
 
             HasData = CardPayments.Count > 0 || PhonePePayments.Count > 0 || PetroCardPayments.Count > 0;
             if (!HasData)
             {
-                StatusMessage = "No card, PhonePe, or Petro Card payments found for this shift.";
+                StatusMessage = "No card, PhonePe, or Petro Card payments found for these shifts.";
             }
 
             RecalculateTotals();
@@ -187,43 +228,40 @@ public partial class CardSettlementViewModel : ObservableObject
     [RelayCommand]
     private async Task SaveAsync()
     {
-        if (_currentShift == null) return;
-
         if (IsShiftLocked)
         {
-            MessageBox.Show("This shift is locked. Changes cannot be saved.", "Shift Locked", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show("Shifts are locked. Changes cannot be saved.", "Shift Locked", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
         try
         {
-            // No shift level POS total needed anymore
-
-            // Sync payment collections
+            // Gather all payment collections to save
             var uniqueCollections = CardPayments.Select(x => x.PaymentCollection)
                 .Concat(PhonePePayments.Select(x => x.PaymentCollection))
                 .Concat(PetroCardPayments.Select(x => x.PaymentCollection))
-                .GroupBy(x => x.DsmEntryId)
+                .GroupBy(x => x.PaymentId)
                 .Select(g => g.First())
                 .ToList();
 
             foreach (var pc in uniqueCollections)
             {
-                var cardItem = CardPayments.FirstOrDefault(x => x.PaymentCollection.DsmEntryId == pc.DsmEntryId);
+                // Sync TID/Batch from edited lists back to model
+                var cardItem = CardPayments.FirstOrDefault(x => x.PaymentCollection.PaymentId == pc.PaymentId);
                 if (cardItem != null)
                 {
                     pc.CardTid = cardItem.Tid;
                     pc.CardBatch = cardItem.Batch;
                 }
 
-                var phonePeItem = PhonePePayments.FirstOrDefault(x => x.PaymentCollection.DsmEntryId == pc.DsmEntryId);
+                var phonePeItem = PhonePePayments.FirstOrDefault(x => x.PaymentCollection.PaymentId == pc.PaymentId);
                 if (phonePeItem != null)
                 {
                     pc.PhonePeTid = phonePeItem.Tid;
                     pc.PhonePeBatch = phonePeItem.Batch;
                 }
 
-                var petroItem = PetroCardPayments.FirstOrDefault(x => x.PaymentCollection.DsmEntryId == pc.DsmEntryId);
+                var petroItem = PetroCardPayments.FirstOrDefault(x => x.PaymentCollection.PaymentId == pc.PaymentId);
                 if (petroItem != null)
                 {
                     pc.PetroCardTid = petroItem.Tid;
@@ -233,12 +271,12 @@ public partial class CardSettlementViewModel : ObservableObject
                 var saveResult = await _paymentRepo.SavePaymentAsync(pc);
                 if (!saveResult.Success)
                 {
-                    MessageBox.Show($"Failed to save payments for salesperson: {saveResult.Error}", "Save Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    MessageBox.Show($"Failed to save payments: {saveResult.Error}", "Save Error", MessageBoxButton.OK, MessageBoxImage.Error);
                     return;
                 }
             }
 
-            MessageBox.Show("Card settlement saved successfully.", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show("Card & digital settlement saved successfully.", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
             await LoadShiftDataAsync();
         }
         catch (Exception ex)

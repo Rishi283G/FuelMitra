@@ -127,6 +127,10 @@
             return Number(val).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " L";
         }
 
+        function formatKg(val) {
+            return Number(val).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " Kg";
+        }
+
         function formatQty(val) {
             return Number(val).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         }
@@ -134,33 +138,39 @@
         function renderData() {
             if (!data || !data.startDate) return;
 
-            document.getElementById('stationName').innerText = data.stationName || "PyroSync";
+            document.getElementById('stationName').innerText = data.stationName || "Mitali Service Station";
             document.getElementById('dateRange').innerText = `${data.startDate} to ${data.endDate}`;
 
             // Fuel Table
             const fuelBody = document.getElementById('fuelBody');
             fuelBody.innerHTML = `
                 <tr>
-                    <td>MS1 / Diesel (HSD)</td>
+                    <td>Diesel</td>
                     <td class="text-right">${formatLitres(data.fuelProfit.hsdLitres)}</td>
                     <td class="text-right">₹${data.fuelProfit.hsdMargin.toFixed(2)}</td>
                     <td class="text-right">${formatCurrency(data.fuelProfit.hsdProfit)}</td>
                 </tr>
                 <tr>
-                    <td>MS-I (Petrol)</td>
+                    <td>Petrol</td>
                     <td class="text-right">${formatLitres(data.fuelProfit.msILitres)}</td>
                     <td class="text-right">₹${data.fuelProfit.msIMargin.toFixed(2)}</td>
                     <td class="text-right">${formatCurrency(data.fuelProfit.msIProfit)}</td>
                 </tr>
                 <tr>
-                    <td>MS-II (Power Petrol)</td>
+                    <td>Power</td>
                     <td class="text-right">${formatLitres(data.fuelProfit.msIILitres)}</td>
                     <td class="text-right">₹${data.fuelProfit.msIIMargin.toFixed(2)}</td>
                     <td class="text-right">${formatCurrency(data.fuelProfit.msIIProfit)}</td>
                 </tr>
+                <tr>
+                    <td>CNG</td>
+                    <td class="text-right">${formatKg(data.fuelProfit.cngLitres || 0)}</td>
+                    <td class="text-right">₹${(data.fuelProfit.cngMargin || 0).toFixed(2)}</td>
+                    <td class="text-right">${formatCurrency(data.fuelProfit.cngProfit || 0)}</td>
+                </tr>
                 <tr class="total-row">
                     <td>Total Fuel</td>
-                    <td class="text-right">${formatLitres(data.fuelProfit.totalLitres)}</td>
+                    <td class="text-right">${formatQty(data.fuelProfit.totalLitres)} (Qty)</td>
                     <td class="text-right">-</td>
                     <td class="text-right">${formatCurrency(data.fuelProfit.totalFuelProfit)}</td>
                 </tr>
@@ -220,7 +230,24 @@
             document.getElementById('grossProfitText').innerText = formatCurrency(data.grossProfit);
             document.getElementById('operatingExpensesText').innerText = formatCurrency(data.totalExpenses);
             document.getElementById('dsmSalariesText').innerText = formatCurrency(data.totalDsmSalaries);
-            document.getElementById('ownerOuterExpensesText').innerText = formatCurrency(data.ownerOuterExpenses || 0);
+            document.getElementById('pumpExpensesText').innerText = "-" + formatCurrency(data.totalPumpExpenses || 0);
+
+            // Pump Expenses Block
+            const pumpExpenseBody = document.getElementById('pumpExpenseBody');
+            pumpExpenseBody.innerHTML = `
+                <tr><td>Rent</td><td class="text-right">${formatCurrency(data.pumpRent || 0)}</td></tr>
+                <tr><td>Staff Salary</td><td class="text-right">${formatCurrency(data.pumpSalary || 0)}</td></tr>
+                <tr><td>Trip Sheet Loss</td><td class="text-right">${formatCurrency(data.pumpTripSheetLoss || 0)}</td></tr>
+                <tr><td>DSM Short</td><td class="text-right">${formatCurrency(data.pumpDsmShort || 0)}</td></tr>
+                <tr><td>Banking Expenses</td><td class="text-right">${formatCurrency(data.pumpBankingExpenses || 0)}</td></tr>
+                <tr><td>BPCL Portal Expenses</td><td class="text-right">${formatCurrency(data.pumpBpclPortalExpenses || 0)}</td></tr>
+                <tr><td>Used Fuel</td><td class="text-right">${formatCurrency(data.pumpUsedFuel || 0)}</td></tr>
+                <tr><td>Oil Purchase</td><td class="text-right">${formatCurrency(data.pumpOilPurchase || 0)}</td></tr>
+                <tr class="total-row">
+                    <td>Total Owner Pump Expenses</td>
+                    <td class="text-right">${formatCurrency(data.totalPumpExpenses || 0)}</td>
+                </tr>
+            `;
             
             const netProfitCell = document.getElementById('netProfitText');
             netProfitCell.innerText = formatCurrency(data.netProfit);
@@ -252,7 +279,7 @@
     <div class="header">
         <div style="display: flex; align-items: center; justify-content: center; gap: 15px;">
             <img id="logo" style="display: none; height: 50px;" src="" alt="logo" />
-            <h1 id="stationName">PyroSync</h1>
+            <h1 id="stationName">Mitali Service Station</h1>
         </div>
         <p>Monthly Profit & Loss Statement</p>
         <p id="dateRange">01-Jun-2026 to 30-Jun-2026</p>
@@ -304,7 +331,20 @@
         </tbody>
     </table>
 
-    <div class="section-title">4. Financial Summary</div>
+    <div class="section-title">4. Owner Pump Expenses (Deductions)</div>
+    <table>
+        <thead>
+            <tr>
+                <th>Expense Category</th>
+                <th class="text-right">Amount</th>
+            </tr>
+        </thead>
+        <tbody id="pumpExpenseBody">
+            <!-- Row data injected -->
+        </tbody>
+    </table>
+
+    <div class="section-title">5. Financial Summary</div>
     <div class="summary-card">
         <table>
             <tr>
@@ -320,8 +360,8 @@
                 <td class="text-right" id="dsmSalariesText" style="color: #7b1fa2;">-₹0.00</td>
             </tr>
             <tr>
-                <td style="color: #c62828;">Less: Owner Outer Expenses:</td>
-                <td class="text-right" id="ownerOuterExpensesText" style="color: #c62828;">-₹0.00</td>
+                <td style="color: #c62828;">Less: Total Owner Pump Expenses:</td>
+                <td class="text-right" id="pumpExpensesText" style="color: #c62828;">-₹0.00</td>
             </tr>
             <tr style="border-top: 2px solid #00695C; font-size: 16px;">
                 <td style="font-weight: bold; padding-top: 10px;">Net Operating Profit / Loss:</td>

@@ -128,9 +128,7 @@
                                                  Style="{StaticResource MaterialDesignRadioButton}"
                                                  Margin="0,0,12,0"
                                                  Checked="ShiftRadio_Checked"/>
-                                    <RadioButton Content="Shift C" GroupName="AgsShift" Tag="C"
-                                                 Style="{StaticResource MaterialDesignRadioButton}"
-                                                 Checked="ShiftRadio_Checked"/>
+
                                 </StackPanel>
                             </StackPanel>
 
@@ -358,16 +356,26 @@
                                 <DataGridTextColumn Header="MS-II (L)" Binding="{Binding TotalMsIILitres, StringFormat=N0}" Width="85"/>
                                 <DataGridTextColumn Header="Imported At"
                                                     Binding="{Binding ImportedAt, StringFormat=dd-MMM hh:mm tt}" Width="130"/>
-                                <DataGridTemplateColumn Header="Action" Width="100">
+                                <DataGridTemplateColumn Header="Action" Width="180">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
-                                            <Button Command="{Binding DataContext.ReimportCommand,
-                                                        RelativeSource={RelativeSource AncestorType=DataGrid}}"
-                                                    CommandParameter="{Binding}"
-                                                    Style="{StaticResource MaterialDesignOutlinedButton}"
-                                                    Padding="8,2" FontSize="11">
-                                                Re-import
-                                            </Button>
+                                            <StackPanel Orientation="Horizontal">
+                                                <Button Command="{Binding DataContext.ReimportCommand,
+                                                            RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                        CommandParameter="{Binding}"
+                                                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                                                        Padding="8,2" FontSize="11" Margin="0,0,4,0">
+                                                    Re-import
+                                                </Button>
+                                                <Button Command="{Binding DataContext.DeleteImportCommand,
+                                                            RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                        CommandParameter="{Binding}"
+                                                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                                                        BorderBrush="Red" Foreground="Red"
+                                                        Padding="8,2" FontSize="11">
+                                                    Delete
+                                                </Button>
+                                            </StackPanel>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>

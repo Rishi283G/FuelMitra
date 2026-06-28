@@ -44,5 +44,6 @@ public class OwnerCalculationResult
     public double HsdLitres { get; set; }
     public double MsILitres { get; set; }
     public double MsIILitres { get; set; }
-    public double TotalLitres => HsdLitres + MsILitres + MsIILitres;
+    public double CngLitres { get; set; }
+    public double TotalLitres => HsdLitres + MsILitres + MsIILitres + CngLitres;
 }

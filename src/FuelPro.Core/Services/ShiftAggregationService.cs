@@ -48,6 +48,7 @@ public class ShiftAggregationService : IShiftAggregationService
                     CreditCardMorning = entry.PaymentCollection?.CreditCardMorning ?? 0,
                     CreditCardNight = entry.PaymentCollection?.CreditCardNight ?? 0,
                     PetroCard = entry.PaymentCollection?.PetroCard ?? 0,
+                    Others = entry.PaymentCollection?.Others ?? 0,
                     CashDeposit = cash1 + (entry.PaymentCollection?.CashDeposit ?? 0),
                     Debit = totalDebit,
                     Expenses = totalExpenses,
@@ -81,6 +82,7 @@ public class ShiftAggregationService : IShiftAggregationService
             CreditCardMorning = rows.Sum(r => r.CreditCardMorning),
             CreditCardNight = rows.Sum(r => r.CreditCardNight),
             PetroCard = rows.Sum(r => r.PetroCard),
+            Others = rows.Sum(r => r.Others),
             CashDeposit = rows.Sum(r => r.CashDeposit),
             Debit = rows.Sum(r => r.Debit),
             Expenses = rows.Sum(r => r.Expenses),
@@ -273,7 +275,7 @@ public class ShiftAggregationService : IShiftAggregationService
     /// TABLE F — Builds reconciliation line items.
     /// </summary>
     public List<ReconciliationRowDto> BuildReconciliationRows(
-        double msTesting, double hsdTesting, double phonePeCardMorning, double phonePeCardNight, double phonePeMorning, double phonePeNight, double petroCard,
+        double msTesting, double hsdTesting, double cngTesting, double phonePeCardMorning, double phonePeCardNight, double phonePeMorning, double phonePeNight, double petroCard,
         double debit, double creditCardMorning, double creditCardNight, double bankCash, double cashInHand,
         double expenses)
     {
@@ -281,6 +283,7 @@ public class ShiftAggregationService : IShiftAggregationService
         {
             new() { Description = "MS Testing", Amount = msTesting },
             new() { Description = "HSD Testing", Amount = hsdTesting },
+            new() { Description = "CNG Testing", Amount = cngTesting },
             new() { Description = "Phone Pe Card (Morning)", Amount = phonePeCardMorning },
             new() { Description = "Phone Pe Card (Night)", Amount = phonePeCardNight },
             new() { Description = "Phone Pe (Morning)", Amount = phonePeMorning },

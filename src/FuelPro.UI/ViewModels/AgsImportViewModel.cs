@@ -270,6 +270,54 @@ public partial class AgsImportViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private async Task DeleteImportAsync(AgsImportHistoryDto dto)
+    {
+        if (dto == null) return;
+
+        var result = MessageBox.Show(
+            $"Are you sure you want to delete the imported report for date {dto.ImportDate:dd-MMM-yyyy} Shift {dto.ShiftType}?\nThis action cannot be undone.",
+            "Confirm Delete",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (result != MessageBoxResult.Yes) return;
+
+        try
+        {
+            IsBusy = true;
+            BusyMessage = "Deleting import…";
+
+            var deleteResult = await _repo.SoftDeleteShiftImportAsync(dto.AgsShiftImportId);
+            if (!deleteResult.Success)
+            {
+                StatusMessage = $"Delete failed: {deleteResult.Error}";
+                return;
+            }
+
+            // Re-aggregate daily summary for that date
+            var shiftsResult = await _repo.GetShiftsForDateAsync(dto.ImportDate);
+            if (shiftsResult.Success)
+            {
+                var summary = _aggregationService.Aggregate(dto.ImportDate, shiftsResult.Data!);
+                await _repo.SaveDailySummaryAsync(summary);
+            }
+
+            StatusMessage = $"✅ Shift {dto.ShiftType} import for {dto.ImportDate:dd-MMM-yyyy} has been deleted.";
+            await LoadHistoryAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to delete import {Id}", dto.AgsShiftImportId);
+            StatusMessage = $"Delete error: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+
+    [RelayCommand]
     private async Task LoadHistoryAsync()
     {
         try

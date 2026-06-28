@@ -61,6 +61,7 @@ public class FinancialCalculationService : IFinancialCalculationService
                 "HSD" => 3.0,
                 "MS-I" => 4.0,
                 "MS-II" => 4.0,
+                "CNG" => 2.5,
                 _ => 0.0
             };
         }
@@ -91,6 +92,11 @@ public class FinancialCalculationService : IFinancialCalculationService
                         result.FuelProfit.MsIILitres += nr.SaleLitres;
                         result.FuelProfit.MsIIProfit += profit;
                     }
+                    else if (ft == "CNG")
+                    {
+                        result.FuelProfit.CngLitres += nr.SaleLitres;
+                        result.FuelProfit.CngProfit += profit;
+                    }
                 }
             }
         }
@@ -105,6 +111,9 @@ public class FinancialCalculationService : IFinancialCalculationService
         result.FuelProfit.MsIIMargin = result.FuelProfit.MsIILitres > 0 
             ? result.FuelProfit.MsIIProfit / result.FuelProfit.MsIILitres 
             : GetMargin("MS-II", endDate);
+        result.FuelProfit.CngMargin = result.FuelProfit.CngLitres > 0 
+            ? result.FuelProfit.CngProfit / result.FuelProfit.CngLitres 
+            : GetMargin("CNG", endDate);
 
         // 4. Calculate Oil & DEF Profit by aggregating daily logs and purchases directly (using ProductMaster)
         result.OilProfit = await CalculateProductProfitForCategoryAsync("Oil", startDate, endDate);
@@ -114,6 +123,7 @@ public class FinancialCalculationService : IFinancialCalculationService
         double entryExpenses = shifts.SelectMany(s => s.DsmEntries).SelectMany(e => e.Expenses).Sum(ex => ex.Amount);
         double shiftExpenses = shifts.SelectMany(s => s.Expenses).Sum(ex => ex.Amount);
         result.TotalExpenses = entryExpenses + shiftExpenses;
+        result.ManagerExpenses = entryExpenses + shiftExpenses;
 
         // 6. Calculate Total DSM Salary costs and components in range (prorated by month overlap)
         double totalSalaryCost = 0;
@@ -152,6 +162,25 @@ public class FinancialCalculationService : IFinancialCalculationService
         result.SalaryAdjustments = Math.Round(adjustments, 2);
         result.ShortRecoveries = Math.Round(recoveries, 2);
 
+        // 7. Calculate Pump Expenses (Owner added) in range
+        var pumpExps = await _dbContext.PumpExpenses
+            .Where(e => e.ExpenseDate >= startDate.Date && e.ExpenseDate <= endDate.Date)
+            .ToListAsync();
+
+        result.PumpRent = Math.Round(pumpExps.Sum(e => e.Rent), 2);
+        result.PumpSalary = Math.Round(pumpExps.Sum(e => e.Salary), 2);
+        result.PumpTripSheetLoss = Math.Round(pumpExps.Sum(e => e.TripSheetLoss), 2);
+        result.PumpDsmShort = Math.Round(pumpExps.Sum(e => e.DsmShort), 2);
+        result.PumpBankingExpenses = Math.Round(pumpExps.Sum(e => e.BankingExpenses), 2);
+        result.PumpBpclPortalExpenses = Math.Round(pumpExps.Sum(e => e.BpclPortalExpenses), 2);
+        result.PumpFuelAndTravel = Math.Round(pumpExps.Sum(e => e.FuelAndTravel), 2);
+        result.PumpOilPurchase = Math.Round(pumpExps.Sum(e => e.OilPurchase), 2);
+        result.PumpRepairsAndMaintenance = Math.Round(pumpExps.Sum(e => e.RepairsAndMaintenance), 2);
+        result.PumpElectricity = Math.Round(pumpExps.Sum(e => e.ElectricityExpenses), 2);
+        result.PumpOfficeExpenses = Math.Round(pumpExps.Sum(e => e.OfficeExpenses), 2);
+        result.PumpPrintingExpense = Math.Round(pumpExps.Sum(e => e.PrintingExpense), 2);
+        result.PumpOtherAmount = Math.Round(pumpExps.Sum(e => e.OtherAmount), 2);
+
         // Fetch local-only Owner Outer Expenses in range
         var outerExpSum = await _dbContext.OuterExpenses
             .Where(e => e.ExpenseDate >= startDate.Date && e.ExpenseDate <= endDate.Date)
@@ -186,6 +215,10 @@ public class FinancialCalculationService : IFinancialCalculationService
         // Fetch salary adjustments
         var adjustments = await _dbContext.DsmSalaryAdjustments
             .Where(a => a.Year == year && a.Month == month)
+            .ToListAsync();
+
+        var allPersonalDebtors = await _dbContext.DsmPersonalDebtors
+            .Where(d => d.Date.Year == year && d.Date.Month == month)
             .ToListAsync();
 
         var rows = new List<DsmSalaryRowDto>();
@@ -249,7 +282,29 @@ public class FinancialCalculationService : IFinancialCalculationService
                 earnedBase = baseSalary * uniqueDaysWorked;
             }
 
-            var netSalary = earnedBase - shortRecovery + otherAdjustments - advancePaid;
+            var personalDebtorDeduction = allPersonalDebtors
+                .Where(d => string.Equals(d.DsmName, name, StringComparison.OrdinalIgnoreCase))
+                .Sum(d => d.Amount - d.RepaidAmount);
+
+            // Compute automatic Pending Advance deduction
+            double pendingAdvanceDeduction = 0.0;
+            double remainingPendingAdvance = 0.0;
+
+            if (profile != null)
+            {
+                if (adj != null && adj.PendingAdvanceDeduction > 0)
+                {
+                    pendingAdvanceDeduction = adj.PendingAdvanceDeduction;
+                    remainingPendingAdvance = profile.PendingAdvance;
+                }
+                else if (profile.PendingAdvance > 0)
+                {
+                    pendingAdvanceDeduction = Math.Min(profile.MonthlyAdvanceDeduction, profile.PendingAdvance);
+                    remainingPendingAdvance = Math.Max(0.0, profile.PendingAdvance - pendingAdvanceDeduction);
+                }
+            }
+
+            var netSalary = earnedBase - shortRecovery + otherAdjustments - advancePaid - personalDebtorDeduction - pendingAdvanceDeduction;
 
             rows.Add(new DsmSalaryRowDto
             {
@@ -263,6 +318,9 @@ public class FinancialCalculationService : IFinancialCalculationService
                 ShortRecovery = Math.Round(shortRecovery, 2),
                 AdvancePaid = Math.Round(advancePaid, 2),
                 OtherAdjustments = Math.Round(otherAdjustments, 2),
+                PersonalDebtorDeduction = Math.Round(personalDebtorDeduction, 2),
+                PendingAdvanceDeduction = Math.Round(pendingAdvanceDeduction, 2),
+                RemainingPendingAdvance = Math.Round(remainingPendingAdvance, 2),
                 Remarks = remarks,
                 NetSalary = Math.Round(netSalary, 2)
             });
@@ -445,30 +503,93 @@ public class FinancialCalculationService : IFinancialCalculationService
             .ToListAsync();
 
         foreach (var row in rows)
+        {
+            var adj = existingAdjustments.FirstOrDefault(a => string.Equals(a.DsmName, row.DsmName, StringComparison.OrdinalIgnoreCase));
+            
+            // Track pending advance deductions in DsmProfile
+            var profile = await _dbContext.DsmProfiles.FirstOrDefaultAsync(p => string.Equals(p.DsmName, row.DsmName, StringComparison.OrdinalIgnoreCase));
+            if (profile != null)
             {
-                var adj = existingAdjustments.FirstOrDefault(a => string.Equals(a.DsmName, row.DsmName, StringComparison.OrdinalIgnoreCase));
-                if (adj != null)
+                var previousDeduction = adj?.PendingAdvanceDeduction ?? 0.0;
+                var netChange = row.PendingAdvanceDeduction - previousDeduction;
+                if (netChange != 0)
                 {
-                    adj.AdvancePaid = row.AdvancePaid;
-                    adj.OtherAdjustments = row.OtherAdjustments;
-                    adj.Remarks = row.Remarks;
-                    _dbContext.Entry(adj).State = EntityState.Modified;
-                }
-                else
-                {
-                    var newAdj = new DsmSalaryAdjustment
-                    {
-                        DsmName = row.DsmName,
-                        Year = year,
-                        Month = month,
-                        AdvancePaid = row.AdvancePaid,
-                        OtherAdjustments = row.OtherAdjustments,
-                        Remarks = row.Remarks
-                    };
-                    _dbContext.DsmSalaryAdjustments.Add(newAdj);
+                    profile.PendingAdvance = Math.Max(0.0, profile.PendingAdvance - netChange);
+                    _dbContext.Entry(profile).State = EntityState.Modified;
                 }
             }
 
+            if (adj != null)
+            {
+                adj.AdvancePaid = row.AdvancePaid;
+                adj.OtherAdjustments = row.OtherAdjustments;
+                adj.PendingAdvanceDeduction = row.PendingAdvanceDeduction;
+                adj.Remarks = row.Remarks;
+                _dbContext.Entry(adj).State = EntityState.Modified;
+            }
+            else
+            {
+                var newAdj = new DsmSalaryAdjustment
+                {
+                    DsmName = row.DsmName,
+                    Year = year,
+                    Month = month,
+                    AdvancePaid = row.AdvancePaid,
+                    OtherAdjustments = row.OtherAdjustments,
+                    PendingAdvanceDeduction = row.PendingAdvanceDeduction,
+                    Remarks = row.Remarks
+                };
+                _dbContext.DsmSalaryAdjustments.Add(newAdj);
+            }
+
+            // Repay personal debtors logged in the month through salary deduction
+            if (row.PersonalDebtorDeduction > 0)
+            {
+                var outstandingDebtors = await _dbContext.DsmPersonalDebtors
+                    .Where(d => d.Date.Year == year && d.Date.Month == month && string.Equals(d.DsmName, row.DsmName, StringComparison.OrdinalIgnoreCase) && d.RepaidAmount < d.Amount)
+                    .ToListAsync();
+
+                foreach (var debtor in outstandingDebtors)
+                {
+                    var unpaid = debtor.Amount - debtor.RepaidAmount;
+                    if (unpaid <= 0) continue;
+
+                    var repayment = new DsmPersonalDebtorRepayment
+                    {
+                        DsmPersonalDebtorId = debtor.Id,
+                        Date = new DateTime(year, month, DateTime.DaysInMonth(year, month)),
+                        Amount = unpaid,
+                        PaymentMethod = "Payroll",
+                        Source = "OwnerPayroll",
+                        CreatedAt = DateTime.Now
+                    };
+                    _dbContext.DsmPersonalDebtorRepayments.Add(repayment);
+
+                    debtor.RepaidAmount = debtor.Amount;
+                    _dbContext.Entry(debtor).State = EntityState.Modified;
+                }
+            }
+        }
+
         await _dbContext.SaveChangesAsync();
+    }
+
+    public async Task DeleteDsmSalaryAdjustmentAsync(int year, int month, string dsmName)
+    {
+        var adj = await _dbContext.DsmSalaryAdjustments
+            .FirstOrDefaultAsync(a => a.Year == year && a.Month == month && string.Equals(a.DsmName, dsmName, StringComparison.OrdinalIgnoreCase));
+        if (adj != null)
+        {
+            // Refund the deducted pending advance back to profile
+            var profile = await _dbContext.DsmProfiles.FirstOrDefaultAsync(p => string.Equals(p.DsmName, dsmName, StringComparison.OrdinalIgnoreCase));
+            if (profile != null && adj.PendingAdvanceDeduction > 0)
+            {
+                profile.PendingAdvance += adj.PendingAdvanceDeduction;
+                _dbContext.Entry(profile).State = EntityState.Modified;
+            }
+
+            _dbContext.DsmSalaryAdjustments.Remove(adj);
+            await _dbContext.SaveChangesAsync();
+        }
     }
 }

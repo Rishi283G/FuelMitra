@@ -54,13 +54,46 @@ public class ExportService
                 downloadsPath = AppDomain.CurrentDomain.BaseDirectory;
             }
 
-            var filePath = Path.Combine(downloadsPath, $"FuelPro_DailyPerformance_{startDate:yyyyMMdd}_to_{endDate:yyyyMMdd}.csv");
+            var filePath = Path.Combine(downloadsPath, $"FuelPro_DailyPerformance_{startDate:yyyyMMdd}_to_{endDate:yyyyMMdd}.xlsx");
 
-            using var writer = new StreamWriter(filePath, false, Encoding.UTF8);
-            await writer.WriteLineAsync("FuelPro Daily Performance Summary Report");
-            await writer.WriteLineAsync($"Period: {startDate:dd MMM yyyy} to {endDate:dd MMM yyyy}");
-            await writer.WriteLineAsync();
-            await writer.WriteLineAsync("Date,Gross Sales,Total Litres,Collection,Mismatch,Cash,PhonePe,Credit Card,Petro Card,Debits,Expenses");
+            using var workbook = new ClosedXML.Excel.XLWorkbook();
+            var worksheet = workbook.Worksheets.Add("Daily Performance");
+            worksheet.ShowGridLines = true;
+
+            int row = 1;
+
+            // Title Block
+            worksheet.Cell(row, 1).Value = "FuelPro Daily Performance Summary Report";
+            worksheet.Cell(row, 1).Style.Font.Bold = true;
+            worksheet.Cell(row, 1).Style.Font.FontSize = 14;
+            worksheet.Cell(row, 1).Style.Font.FontColor = ClosedXML.Excel.XLColor.White;
+            worksheet.Cell(row, 1).Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.FromHtml("#1a3a6b");
+            worksheet.Cell(row, 1).Style.Alignment.Horizontal = ClosedXML.Excel.XLAlignmentHorizontalValues.Center;
+            worksheet.Range(row, 1, row, 11).Merge();
+            row++;
+
+            worksheet.Cell(row, 1).Value = $"Period: {startDate:dd MMM yyyy} to {endDate:dd MMM yyyy}";
+            worksheet.Cell(row, 1).Style.Font.Italic = true;
+            worksheet.Cell(row, 1).Style.Font.FontSize = 10;
+            worksheet.Cell(row, 1).Style.Font.FontColor = ClosedXML.Excel.XLColor.White;
+            worksheet.Cell(row, 1).Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.FromHtml("#0f4c81");
+            worksheet.Cell(row, 1).Style.Alignment.Horizontal = ClosedXML.Excel.XLAlignmentHorizontalValues.Center;
+            worksheet.Range(row, 1, row, 11).Merge();
+            row += 2;
+
+            // Headers
+            string[] headers = { "Date", "Gross Sales", "Total Litres", "Collection", "Mismatch", "Cash", "PhonePe", "PineLabs Card", "Petro Card", "Debits", "Expenses" };
+            for (int i = 0; i < headers.Length; i++)
+            {
+                var cell = worksheet.Cell(row, i + 1);
+                cell.Value = headers[i];
+                cell.Style.Font.Bold = true;
+                cell.Style.Font.FontColor = ClosedXML.Excel.XLColor.White;
+                cell.Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.FromHtml("#1a3a6b");
+                cell.Style.Alignment.Horizontal = ClosedXML.Excel.XLAlignmentHorizontalValues.Center;
+                cell.Style.Border.OutsideBorder = ClosedXML.Excel.XLBorderStyleValues.Thin;
+            }
+            row++;
 
             var byDay = entries.GroupBy(e => e.Shift != null ? e.Shift.ShiftDate.Date : DateTime.Today);
 
@@ -94,25 +127,44 @@ public class ExportService
                     debits += (double)calc.TotalCreditors;
                     expenses += entry.Expenses.Sum(x => x.Amount);
 
-                    phonePe += (entry.PaymentCollection?.PhonePe ?? 0);
+                    phonePe += (entry.PaymentCollection?.PhonePe ?? 0) + (entry.PaymentCollection?.PhonePeCardMorning ?? 0) + (entry.PaymentCollection?.PhonePeCardNight ?? 0);
                     creditCard += (entry.PaymentCollection?.CreditCard ?? 0);
                     petroCard += (entry.PaymentCollection?.PetroCard ?? 0);
                     cash += cash1 + cash2 + (entry.PaymentCollection?.CashDeposit ?? 0);
                     litres += entry.NozzleReadings.Sum(r => r.SaleLitres);
                 }
 
-                // Add shift expenses
                 var dayShiftIds = shifts.Where(s => s.ShiftDate.Date == dayGroup.Key).Select(s => s.ShiftId).ToList();
                 expenses += shiftExpenses.Where(e => e.ShiftId.HasValue && dayShiftIds.Contains(e.ShiftId.Value)).Sum(e => e.Amount);
 
-                await writer.WriteLineAsync($"{dayGroup.Key:dd/MM/yyyy},{sale},{litres},{collection},{collection - sale},{cash},{phonePe},{creditCard},{petroCard},{debits},{expenses}");
+                worksheet.Cell(row, 1).Value = dayGroup.Key.ToString("dd/MM/yyyy");
+                worksheet.Cell(row, 2).Value = sale;
+                worksheet.Cell(row, 3).Value = litres;
+                worksheet.Cell(row, 4).Value = collection;
+                worksheet.Cell(row, 5).Value = collection - sale;
+                worksheet.Cell(row, 6).Value = cash;
+                worksheet.Cell(row, 7).Value = phonePe;
+                worksheet.Cell(row, 8).Value = creditCard;
+                worksheet.Cell(row, 9).Value = petroCard;
+                worksheet.Cell(row, 10).Value = debits;
+                worksheet.Cell(row, 11).Value = expenses;
+
+                worksheet.Cell(row, 1).Style.Alignment.Horizontal = ClosedXML.Excel.XLAlignmentHorizontalValues.Center;
+                for (int col = 2; col <= 11; col++)
+                {
+                    worksheet.Cell(row, col).Style.NumberFormat.Format = "#,##0.00";
+                }
+                row++;
             }
+
+            worksheet.Columns().AdjustToContents();
+            workbook.SaveAs(filePath);
 
             return Result<string>.Ok(filePath);
         }
         catch (Exception ex)
         {
-            _logger.Error(ex, "CSV Daily data export failed");
+            _logger.Error(ex, "Excel Daily data export failed");
             return Result<string>.Fail($"Export failed: {ex.Message}");
         }
     }
@@ -159,6 +211,7 @@ public class ExportService
             writer.WriteLine($"HSD,{calc.HsdLitres},{calc.HsdRate},{calc.HsdAmount}");
             writer.WriteLine($"MS-I,{calc.MsILitres},{calc.MsIRate},{calc.MsIAmount}");
             writer.WriteLine($"MS-II,{calc.MsIILitres},{calc.MsIIRate},{calc.MsIIAmount}");
+            writer.WriteLine($"CNG,{calc.CngLitres},{calc.CngRate},{calc.CngAmount}");
             writer.WriteLine($"Total,{calc.TotalLitres},,{calc.TotalFuelSaleAmount}");
             writer.WriteLine();
 

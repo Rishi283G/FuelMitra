@@ -13,9 +13,10 @@ public class Setting
 
     public double MsIRate { get; set; } = 103.81;
     public double MsIIRate { get; set; } = 103.81;
+    public double CngRate { get; set; } = 85.0;
 
     [MaxLength(300)]
-    public string PumpStationName { get; set; } = "Shree Mahakaleshwar Petroleum";
+    public string PumpStationName { get; set; } = "Mitali Service Station";
 
     [NotMapped]
     public string StationDisplayName

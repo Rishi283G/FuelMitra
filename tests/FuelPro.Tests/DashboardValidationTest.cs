@@ -15,6 +15,7 @@ using FuelPro.Data.Repositories;
 using FuelPro.Data.Services;
 using FuelPro.Sync;
 using FuelPro.UI;
+using FuelPro.UI.Printing;
 using FuelPro.UI.ViewModels;
 using Xunit;
 
@@ -33,6 +34,8 @@ public class DashboardValidationTest
     [Fact]
     public async Task Run_DashboardAndProfitLossValidation()
     {
+        FuelPro.UI.App.EnsureLegacyDatabaseCompatibility(_dbPath);
+
         // Ensure WPF Application object exists for Dispatcher.Invoke calls in ViewModels
         if (System.Windows.Application.Current == null)
         {
@@ -65,6 +68,8 @@ public class DashboardValidationTest
         services.AddTransient<ICreditorRepaymentRepository, CreditorRepaymentRepository>();
         services.AddTransient<IAgsImportRepository, AgsImportRepository>();
         services.AddTransient<ICreditorRepository, CreditorRepository>();
+        services.AddTransient<IPumpExpenseRepository, PumpExpenseRepository>();
+        services.AddTransient<IDebtorVehicleRepository, DebtorVehicleRepository>();
 
         // Services
         services.AddSingleton<AuthService>();
@@ -77,9 +82,22 @@ public class DashboardValidationTest
         services.AddScoped<IShiftAggregationService, ShiftAggregationService>();
         services.AddScoped<IShiftOtherCashRepository, ShiftOtherCashRepository>();
         services.AddScoped<IShiftFuelRateRepository, ShiftFuelRateRepository>();
+        services.AddTransient<PrintService>();
+        services.AddTransient<ExcelExportService>();
+        services.AddTransient<IAuditLogService, AuditLogService>();
+        services.AddTransient<IDayLockService, DayLockService>();
+        services.AddTransient<ExportService>();
+        services.AddSingleton<DraftService>();
+        services.AddTransient<IAgsImportService, AgsImportService>();
+        services.AddTransient<IAgsDailyAggregationService, AgsDailyAggregationService>();
+        services.AddTransient<AgsImportValidator>();
 
         services.AddSingleton<SyncConfigService>();
         services.AddSingleton<SyncEngine>();
+        services.AddSingleton<DsmSubmissionPollingService>();
+        services.AddTransient<DsmAuthAdminService>();
+        services.AddTransient<SupabaseDsmService>();
+        services.AddTransient<DsmEntryService>();
 
         // ViewModels
         services.AddTransient<OwnerDashboardViewModel>();

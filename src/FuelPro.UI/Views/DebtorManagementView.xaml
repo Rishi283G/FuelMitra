@@ -1,0 +1,597 @@
+<UserControl x:Class="FuelPro.UI.Views.DebtorManagementView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             xmlns:converters="clr-namespace:FuelPro.UI.Converters"
+             xmlns:viewmodels="clr-namespace:FuelPro.UI.ViewModels"
+             mc:Ignorable="d" 
+             d:DataContext="{d:DesignInstance Type=viewmodels:DebtorManagementViewModel}"
+             d:DesignHeight="750" d:DesignWidth="1100">
+
+    <UserControl.Resources>
+        <converters:IndianCurrencyConverter x:Key="CurrencyConverter" />
+        <converters:BoolToVisibilityConverter x:Key="BoolToVis" />
+        <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis" />
+        <converters:InverseBoolConverter x:Key="InverseBool" />
+
+        <Style TargetType="materialDesign:Card" x:Key="SectionCard">
+            <Setter Property="Margin" Value="0,0,0,16" />
+            <Setter Property="Padding" Value="16" />
+            <Setter Property="Background" Value="{DynamicResource MaterialDesign.Brush.Surface}" />
+            <Setter Property="UniformCornerRadius" Value="8" />
+        </Style>
+
+        <Style TargetType="TextBlock" x:Key="SectionTitle">
+            <Setter Property="FontSize" Value="18" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{DynamicResource MaterialDesign.Brush.Primary}" />
+            <Setter Property="Margin" Value="0,0,0,12" />
+        </Style>
+
+        <Style TargetType="DataGrid" BasedOn="{StaticResource MaterialDesignDataGrid}">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{DynamicResource MaterialDesign.Brush.Divider}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="HorizontalGridLinesBrush" Value="{DynamicResource MaterialDesign.Brush.Divider}" />
+            <Setter Property="VerticalGridLinesBrush" Value="{DynamicResource MaterialDesign.Brush.Divider}" />
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Background="{DynamicResource MaterialDesign.Brush.Background}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- TOP HEADER -->
+        <materialDesign:Card Grid.Row="0" Margin="16" Padding="16" UniformCornerRadius="8" materialDesign:ElevationAssist.Elevation="Dp2">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Orientation="Horizontal" Grid.Column="0">
+                    <materialDesign:PackIcon Kind="AccountMultiple" Width="28" Height="28" VerticalAlignment="Center" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" Margin="0,0,10,0"/>
+                    <TextBlock Text="Debtor Management" FontSize="22" FontWeight="Bold" VerticalAlignment="Center" />
+                </StackPanel>
+
+                <Button Grid.Column="2" Content="Refresh Directory" Command="{Binding LoadDataCommand}" Style="{StaticResource MaterialDesignOutlinedButton}"/>
+            </Grid>
+        </materialDesign:Card>
+
+        <!-- MAIN CONTAINER -->
+        <TabControl Grid.Row="1" Margin="16,0,16,16" materialDesign:ColorZoneAssist.Mode="Standard" SelectedIndex="{Binding SelectedTabIndex}">
+            
+            <!-- TAB 1: DEBTOR DIRECTORY & REPAYMENTS -->
+            <TabItem Header="Debtors &amp; Repayments">
+                <Grid Margin="0,16,0,0">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="6*"/>
+                            <ColumnDefinition Width="4*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Left: Debtors Directory Grid -->
+                        <materialDesign:Card Grid.Column="0" Style="{StaticResource SectionCard}" Margin="0,0,8,0">
+                            <DockPanel LastChildFill="True">
+                                <TextBlock DockPanel.Dock="Top" Text="Debtors Directory" Style="{StaticResource SectionTitle}"/>
+                                
+                                <DataGrid ItemsSource="{Binding Debtors}" SelectedItem="{Binding SelectedDebtor}" AutoGenerateColumns="False" IsReadOnly="True" VerticalScrollBarVisibility="Auto">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Debtor Name" Binding="{Binding Name}" Width="2.5*" FontWeight="SemiBold"/>
+                                        <DataGridTextColumn Header="Phone" Binding="{Binding Phone}" Width="2*"/>
+                                        <DataGridTextColumn Header="Total Debt" Binding="{Binding TotalDebt, Converter={StaticResource CurrencyConverter}}" Width="2*"/>
+                                        <DataGridTextColumn Header="Total Repaid" Binding="{Binding TotalRepayment, Converter={StaticResource CurrencyConverter}}" Width="2*" Foreground="Green"/>
+                                        <DataGridTextColumn Header="Outstanding Balance" Binding="{Binding OutstandingBalance, Converter={StaticResource CurrencyConverter}}" Width="2.5*" FontWeight="Bold" Foreground="Red"/>
+                                        
+                                        <DataGridTemplateColumn Width="Auto">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <Button Command="{Binding DataContext.EditDebtorCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                                CommandParameter="{Binding}"
+                                                                Style="{StaticResource MaterialDesignIconForegroundButton}" ToolTip="Edit Profile" Margin="0,0,4,0">
+                                                            <materialDesign:PackIcon Kind="Pencil" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" />
+                                                        </Button>
+                                                        <Button Command="{Binding DataContext.DeleteDebtorCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                                CommandParameter="{Binding}"
+                                                                Style="{StaticResource MaterialDesignIconForegroundButton}" ToolTip="Delete Debtor">
+                                                            <materialDesign:PackIcon Kind="Delete" Foreground="Red" />
+                                                        </Button>
+                                                    </StackPanel>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </DockPanel>
+                        </materialDesign:Card>
+
+                        <!-- Right: Add Debtor, Log Repayment, & Manage Vehicles Panels -->
+                        <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" Margin="8,0,0,0">
+                            <StackPanel Margin="0,0,4,0">
+                                
+                                <!-- Panel A: Add/Edit Debtor -->
+                                <materialDesign:Card Style="{StaticResource SectionCard}">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding DebtorFormTitle}" Style="{StaticResource SectionTitle}"/>
+                                        
+                                        <TextBox Text="{Binding NewDebtorName, UpdateSourceTrigger=PropertyChanged}" materialDesign:HintAssist.Hint="Debtor Name" Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,0,12"/>
+                                        <TextBox Text="{Binding NewDebtorPhone, UpdateSourceTrigger=PropertyChanged}" materialDesign:HintAssist.Hint="Phone Number (Optional)" Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,0,12"/>
+                                        
+                                        <!-- Edit Fields (Visible only during edit) -->
+                                        <StackPanel Visibility="{Binding IsEditingDebtor, Converter={StaticResource BoolToVis}}" Margin="0,0,0,12">
+                                            <TextBox Text="{Binding EditTotalDebt, UpdateSourceTrigger=LostFocus, StringFormat=F2}" 
+                                                     materialDesign:HintAssist.Hint="Total Debt Amount (₹)" 
+                                                     Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,0,12"/>
+                                            <TextBox Text="{Binding EditRepaidAmount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" 
+                                                     materialDesign:HintAssist.Hint="Repaid Amount (₹)" 
+                                                     Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,0,12"/>
+                                            <TextBlock Margin="0,0,0,12" FontWeight="SemiBold">
+                                                <Run Text="Outstanding Balance: "/>
+                                                <Run Text="{Binding EditOutstandingBalance, Mode=OneWay, Converter={StaticResource CurrencyConverter}}" Foreground="Red"/>
+                                            </TextBlock>
+                                            <TextBox Text="{Binding EditEntryDetails, UpdateSourceTrigger=PropertyChanged}" 
+                                                     materialDesign:HintAssist.Hint="Adjustment Details / Reason" 
+                                                     Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                                        </StackPanel>
+
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                 <ColumnDefinition Width="*"/>
+                                                 <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Button Grid.Column="0" Content="{Binding DebtorButtonContent}" Command="{Binding SaveDebtorCommand}" Style="{StaticResource MaterialDesignRaisedButton}" Margin="0,0,8,0"/>
+                                            <Button Grid.Column="1" Content="Cancel" Command="{Binding CancelEditDebtorCommand}" Style="{StaticResource MaterialDesignFlatButton}" Visibility="{Binding IsEditingDebtor, Converter={StaticResource BoolToVis}}"/>
+                                        </Grid>
+                                        <TextBlock Text="{Binding DebtorStatusMessage}" Margin="0,8,0,0" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                    </StackPanel>
+                                </materialDesign:Card>
+
+                                <!-- Panel B: Log Repayment -->
+                                <materialDesign:Card Style="{StaticResource SectionCard}">
+                                    <StackPanel>
+                                        <TextBlock Text="Log Repayment" Style="{StaticResource SectionTitle}"/>
+                                        
+                                        <ComboBox ItemsSource="{Binding DebtorsList}" SelectedValue="{Binding SelectedDebtorName, UpdateSourceTrigger=PropertyChanged}" SelectedValuePath="Name" DisplayMemberPath="Name" IsEditable="True" materialDesign:HintAssist.Hint="Select Debtor" Style="{StaticResource MaterialDesignOutlinedComboBox}" Margin="0,0,0,12"/>
+                                        
+                                        <Grid Margin="0,0,0,12">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="12"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <ComboBox Grid.Column="0" ItemsSource="{Binding PaymentModes}" SelectedItem="{Binding SelectedPaymentMode}" materialDesign:HintAssist.Hint="Payment Mode" Style="{StaticResource MaterialDesignOutlinedComboBox}"/>
+                                            <DatePicker Grid.Column="2" SelectedDate="{Binding RepaymentDate}" materialDesign:HintAssist.Hint="Repayment Date" Style="{StaticResource MaterialDesignOutlinedDatePicker}"/>
+                                        </Grid>
+
+                                        <TextBox Text="{Binding ChequeNumber, UpdateSourceTrigger=PropertyChanged}" materialDesign:HintAssist.Hint="Cheque / Ref No." Margin="0,0,0,12">
+                                            <TextBox.Style>
+                                                <Style TargetType="TextBox" BasedOn="{StaticResource MaterialDesignOutlinedTextBox}">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding SelectedPaymentMode}" Value="Cheque">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBox.Style>
+                                        </TextBox>
+
+                                        <TextBox Text="{Binding RepaymentAmount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" materialDesign:HintAssist.Hint="Amount Received (₹)" Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,0,16"/>
+
+                                         <!-- Card TID/Batch (visible for digital/card payments) -->
+                                         <Grid Margin="0,0,0,12">
+                                             <Grid.Style>
+                                                 <Style TargetType="Grid">
+                                                     <Setter Property="Visibility" Value="Collapsed" />
+                                                     <Style.Triggers>
+                                                         <DataTrigger Binding="{Binding SelectedPaymentMode}" Value="PhonePe">
+                                                             <Setter Property="Visibility" Value="Visible" />
+                                                         </DataTrigger>
+                                                         <DataTrigger Binding="{Binding SelectedPaymentMode}" Value="PineLabs Card">
+                                                             <Setter Property="Visibility" Value="Visible" />
+                                                         </DataTrigger>
+                                                         <DataTrigger Binding="{Binding SelectedPaymentMode}" Value="Bank Transfer">
+                                                             <Setter Property="Visibility" Value="Visible" />
+                                                         </DataTrigger>
+                                                         <DataTrigger Binding="{Binding SelectedPaymentMode}" Value="Others">
+                                                             <Setter Property="Visibility" Value="Visible" />
+                                                         </DataTrigger>
+                                                     </Style.Triggers>
+                                                 </Style>
+                                             </Grid.Style>
+                                             <Grid.ColumnDefinitions>
+                                                 <ColumnDefinition Width="*"/>
+                                                 <ColumnDefinition Width="12"/>
+                                                 <ColumnDefinition Width="*"/>
+                                             </Grid.ColumnDefinitions>
+                                             <TextBox Grid.Column="0" Text="{Binding CardTid, UpdateSourceTrigger=PropertyChanged}" materialDesign:HintAssist.Hint="Card TID" Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                                             <TextBox Grid.Column="2" Text="{Binding CardBatch, UpdateSourceTrigger=PropertyChanged}" materialDesign:HintAssist.Hint="Card Batch No." Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                                         </Grid>
+
+                                         <!-- Cash Denominations (visible for Cash payments) -->
+                                         <Grid Margin="0,0,0,12">
+                                             <Grid.Style>
+                                                 <Style TargetType="Grid">
+                                                     <Setter Property="Visibility" Value="Collapsed" />
+                                                     <Style.Triggers>
+                                                         <DataTrigger Binding="{Binding SelectedPaymentMode}" Value="Cash">
+                                                             <Setter Property="Visibility" Value="Visible" />
+                                                         </DataTrigger>
+                                                     </Style.Triggers>
+                                                 </Style>
+                                             </Grid.Style>
+                                             <Grid.RowDefinitions>
+                                                 <RowDefinition Height="Auto"/>
+                                                 <RowDefinition Height="4"/>
+                                                 <RowDefinition Height="Auto"/>
+                                             </Grid.RowDefinitions>
+                                             <Grid.ColumnDefinitions>
+                                                 <ColumnDefinition Width="*"/>
+                                                 <ColumnDefinition Width="4"/>
+                                                 <ColumnDefinition Width="*"/>
+                                                 <ColumnDefinition Width="4"/>
+                                                 <ColumnDefinition Width="*"/>
+                                                 <ColumnDefinition Width="4"/>
+                                                 <ColumnDefinition Width="*"/>
+                                             </Grid.ColumnDefinitions>
+                                             
+                                             <TextBox Grid.Row="0" Grid.Column="0" Text="{Binding Denom500, UpdateSourceTrigger=PropertyChanged}" materialDesign:HintAssist.Hint="500 x" Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                                             <TextBox Grid.Row="0" Grid.Column="2" Text="{Binding Denom200, UpdateSourceTrigger=PropertyChanged}" materialDesign:HintAssist.Hint="200 x" Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                                             <TextBox Grid.Row="0" Grid.Column="4" Text="{Binding Denom100, UpdateSourceTrigger=PropertyChanged}" materialDesign:HintAssist.Hint="100 x" Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                                             <TextBox Grid.Row="0" Grid.Column="6" Text="{Binding Denom50, UpdateSourceTrigger=PropertyChanged}" materialDesign:HintAssist.Hint="50 x" Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                                             
+                                             <TextBox Grid.Row="2" Grid.Column="0" Text="{Binding Denom20, UpdateSourceTrigger=PropertyChanged}" materialDesign:HintAssist.Hint="20 x" Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                                             <TextBox Grid.Row="2" Grid.Column="2" Text="{Binding Denom10, UpdateSourceTrigger=PropertyChanged}" materialDesign:HintAssist.Hint="10 x" Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                                             <TextBox Grid.Row="2" Grid.Column="4" Grid.ColumnSpan="3" Text="{Binding Coins, UpdateSourceTrigger=PropertyChanged}" materialDesign:HintAssist.Hint="Coins" Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                                         </Grid>
+
+                                        <Button Content="Log Repayment" Command="{Binding AddRepaymentCommand}" Style="{StaticResource MaterialDesignRaisedButton}"/>
+                                        <TextBlock Text="{Binding RepaymentStatus}" Margin="0,8,0,0" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                    </StackPanel>
+                                </materialDesign:Card>
+
+                                <!-- Panel C: Manage Vehicles -->
+                                <materialDesign:Card Style="{StaticResource SectionCard}" Visibility="{Binding IsDebtorSelected, Converter={StaticResource BoolToVis}}">
+                                    <StackPanel>
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                            <TextBlock Text="Vehicles for " Style="{StaticResource SectionTitle}" Margin="0"/>
+                                            <TextBlock Text="{Binding SelectedDebtor.Name}" Style="{StaticResource SectionTitle}" FontWeight="Bold" Margin="0"/>
+                                        </StackPanel>
+                                        
+                                        <Grid Margin="0,0,0,12">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBox Grid.Column="0" Text="{Binding NewVehicleNumber, UpdateSourceTrigger=PropertyChanged}" materialDesign:HintAssist.Hint="Add Vehicle (e.g. MH-12-AB-1234)" Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,8,0"/>
+                                            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                                <Button Content="{Binding VehicleButtonContent}" Command="{Binding AddVehicleCommand}" Style="{StaticResource MaterialDesignRaisedButton}" Margin="0,0,4,0"/>
+                                                <Button Content="Cancel" Command="{Binding CancelEditVehicleCommand}" Style="{StaticResource MaterialDesignFlatButton}" Visibility="{Binding IsEditingVehicle, Converter={StaticResource BoolToVis}}" Height="32" Padding="4,0"/>
+                                            </StackPanel>
+                                        </Grid>
+                                        
+                                        <TextBlock Text="{Binding VehicleStatusMessage}" Margin="0,0,0,8" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" HorizontalAlignment="Center"/>
+                                        
+                                        <DataGrid ItemsSource="{Binding SelectedDebtorVehicles}" AutoGenerateColumns="False" IsReadOnly="True" MaxHeight="200" VerticalScrollBarVisibility="Auto" HeadersVisibility="None" BorderThickness="0">
+                                            <DataGrid.Columns>
+                                                <DataGridTextColumn Binding="{Binding VehicleNumber}" Width="*" FontWeight="SemiBold"/>
+                                                <DataGridTemplateColumn Width="Auto">
+                                                    <DataGridTemplateColumn.CellTemplate>
+                                                        <DataTemplate>
+                                                            <StackPanel Orientation="Horizontal">
+                                                                <Button Command="{Binding DataContext.StartEditVehicleCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                                        CommandParameter="{Binding}"
+                                                                        Style="{StaticResource MaterialDesignIconForegroundButton}" ToolTip="Edit Vehicle" Padding="0" Height="24" Width="24" Margin="0,0,4,0">
+                                                                    <materialDesign:PackIcon Kind="Pencil" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" Width="16" Height="16"/>
+                                                                </Button>
+                                                                <Button Command="{Binding DataContext.DeleteVehicleCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                                        CommandParameter="{Binding}"
+                                                                        Style="{StaticResource MaterialDesignIconForegroundButton}" ToolTip="Delete Vehicle" Padding="0" Height="24" Width="24">
+                                                                    <materialDesign:PackIcon Kind="Delete" Foreground="Red" Width="16" Height="16"/>
+                                                                </Button>
+                                                            </StackPanel>
+                                                        </DataTemplate>
+                                                    </DataGridTemplateColumn.CellTemplate>
+                                                </DataGridTemplateColumn>
+                                            </DataGrid.Columns>
+                                        </DataGrid>
+                                    </StackPanel>
+                                </materialDesign:Card>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+                </Grid>
+            </TabItem>
+
+            <!-- TAB 2: ACCOUNT STATEMENT (LEDGER) -->
+            <TabItem Header="Account Statements (Ledger)">
+                <Grid Margin="0,16,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- TOP FILTER BAR -->
+                    <materialDesign:Card Grid.Row="0" Style="{StaticResource SectionCard}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="3*"/>
+                                <ColumnDefinition Width="2*"/>
+                                <ColumnDefinition Width="2*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <ComboBox Grid.Column="0" ItemsSource="{Binding DebtorsList}" SelectedValue="{Binding LedgerDebtorName, UpdateSourceTrigger=PropertyChanged}" SelectedValuePath="Name" DisplayMemberPath="Name" IsEditable="True" materialDesign:HintAssist.Hint="Select Debtor for Ledger" Style="{StaticResource MaterialDesignOutlinedComboBox}" Margin="0,0,12,0"/>
+                            
+                            <DatePicker Grid.Column="1" SelectedDate="{Binding LedgerStartDate}" materialDesign:HintAssist.Hint="Start Date" Style="{StaticResource MaterialDesignOutlinedDatePicker}" Margin="0,0,12,0"/>
+                            <DatePicker Grid.Column="2" SelectedDate="{Binding LedgerEndDate}" materialDesign:HintAssist.Hint="End Date" Style="{StaticResource MaterialDesignOutlinedDatePicker}" Margin="0,0,12,0"/>
+
+                            <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
+                                <Button Content="Generate Ledger" Command="{Binding LoadLedgerCommand}" Style="{StaticResource MaterialDesignRaisedButton}" Margin="0,0,8,0"/>
+                                <Button Content="Print Ledger" Command="{Binding PrintLedgerCommand}" Style="{StaticResource MaterialDesignOutlinedButton}" IsEnabled="{Binding LedgerTransactions.Count}" Margin="0,0,8,0"/>
+                                <Button Content="Export Excel" Command="{Binding ExportLedgerExcelCommand}" Style="{StaticResource MaterialDesignOutlinedButton}" IsEnabled="{Binding LedgerTransactions.Count}" Margin="0,0,8,0"/>
+                                <Button Content="WhatsApp Share" Command="{Binding ShareOnWhatsAppCommand}" Style="{StaticResource MaterialDesignOutlinedButton}" IsEnabled="{Binding LedgerTransactions.Count}"/>
+                            </StackPanel>
+                        </Grid>
+                    </materialDesign:Card>
+
+                    <!-- MIDDLE SECTION -->
+                    <Grid Grid.Row="1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Left: DataGrid Card -->
+                        <materialDesign:Card Grid.Column="0" Style="{StaticResource SectionCard}" Margin="0,0,8,0">
+                            <DockPanel LastChildFill="True">
+                                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,10">
+                                    <TextBlock Text="Statement of Account — " Style="{StaticResource SectionTitle}" Margin="0"/>
+                                    <TextBlock Text="{Binding LedgerDebtorName}" Style="{StaticResource SectionTitle}" FontWeight="Bold" Margin="0"/>
+                                    <TextBlock Text="  " Style="{StaticResource SectionTitle}" Margin="0"/>
+                                    <TextBlock Text="{Binding LedgerStatus}" Foreground="Red" FontSize="13" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                                </StackPanel>
+
+                                <DataGrid ItemsSource="{Binding LedgerTransactions}" AutoGenerateColumns="False" IsReadOnly="True" VerticalScrollBarVisibility="Auto">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat={}{0:dd-MMM-yyyy}}" Width="1.5*">
+                                            <DataGridTextColumn.ElementStyle>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="HorizontalAlignment" Value="Center" />
+                                                </Style>
+                                            </DataGridTextColumn.ElementStyle>
+                                        </DataGridTextColumn>
+                                        <DataGridTextColumn Header="Particulars / Transaction Details" Binding="{Binding Description}" Width="4*"/>
+                                        <DataGridTextColumn Header="Debit (Debts)" Binding="{Binding Debit, Converter={StaticResource CurrencyConverter}}" Width="2*" Foreground="Red" FontWeight="SemiBold"/>
+                                        <DataGridTextColumn Header="Credit (Payments)" Binding="{Binding Credit, Converter={StaticResource CurrencyConverter}}" Width="2*" Foreground="Green" FontWeight="SemiBold"/>
+                                        <DataGridTextColumn Header="Running Balance" Binding="{Binding RunningBalance, Converter={StaticResource CurrencyConverter}}" Width="2.5*" FontWeight="Bold"/>
+
+                                        <DataGridTemplateColumn Width="Auto">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <Button Command="{Binding DataContext.StartEditTransactionCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                            CommandParameter="{Binding}"
+                                                            Style="{StaticResource MaterialDesignIconForegroundButton}" ToolTip="Edit Transaction" 
+                                                            Visibility="{Binding CanEdit, Converter={StaticResource BoolToVis}}" Height="24" Width="24" Padding="0">
+                                                        <materialDesign:PackIcon Kind="Pencil" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" Width="16" Height="16" />
+                                                    </Button>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </DockPanel>
+                        </materialDesign:Card>
+
+                        <!-- Right: Edit Transaction Card -->
+                        <materialDesign:Card Grid.Column="1" Width="300" Padding="16" Margin="8,0,0,16"
+                                             Visibility="{Binding IsEditingTransaction, Converter={StaticResource BoolToVis}}"
+                                             UniformCornerRadius="8" materialDesign:ElevationAssist.Elevation="Dp3">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <StackPanel>
+                                    <TextBlock Text="Edit Transaction" Style="{StaticResource SectionTitle}"/>
+
+                                    <TextBox Text="{Binding EditTxAmount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" 
+                                             materialDesign:HintAssist.Hint="Amount (₹)" 
+                                             Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,0,12"/>
+
+                                    <TextBox Text="{Binding EditTxSlipNumber, UpdateSourceTrigger=PropertyChanged}" 
+                                             materialDesign:HintAssist.Hint="Slip Number" 
+                                             Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,0,12"/>
+
+                                    <TextBox Text="{Binding EditTxVehicleNumber, UpdateSourceTrigger=PropertyChanged}" 
+                                             materialDesign:HintAssist.Hint="Vehicle Number" 
+                                             Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,0,12"/>
+
+                                    <TextBox Text="{Binding EditTxRemarks, UpdateSourceTrigger=PropertyChanged}" 
+                                             materialDesign:HintAssist.Hint="Remarks" 
+                                             Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,0,16"
+                                             TextWrapping="Wrap" AcceptsReturn="True" Height="60"/>
+
+                                    <!-- Justification Reason (Required for Owner) -->
+                                    <TextBox Text="{Binding EditReason, UpdateSourceTrigger=PropertyChanged}" 
+                                             materialDesign:HintAssist.Hint="Justification Reason (Required)" 
+                                             Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,0,16"
+                                             Visibility="{Binding IsOwner, Converter={StaticResource BoolToVis}}"/>
+
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Button Grid.Column="0" Content="Save" Command="{Binding SaveTransactionEditCommand}" Style="{StaticResource MaterialDesignRaisedButton}" Margin="0,0,4,0"/>
+                                        <Button Grid.Column="1" Content="Cancel" Command="{Binding CancelEditTransactionCommand}" Style="{StaticResource MaterialDesignOutlinedButton}" Margin="4,0,0,0"/>
+                                    </Grid>
+
+                                    <TextBlock Text="{Binding EditTxStatusMessage}" Margin="0,8,0,0" Foreground="Red" FontSize="12" TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </materialDesign:Card>
+                    </Grid>
+
+                    <!-- BOTTOM SUMMARY FOOTER -->
+                    <materialDesign:Card Grid.Row="2" Margin="0,8,0,0" Padding="12" UniformCornerRadius="6" Background="{DynamicResource MaterialDesign.Brush.Primary.Light}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="1.2*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0" Orientation="Horizontal" HorizontalAlignment="Center">
+                                <TextBlock Text="Opening: " Foreground="White" FontSize="14" Opacity="0.8"/>
+                                <TextBlock Text="{Binding LedgerOpeningBalance, Converter={StaticResource CurrencyConverter}}" Foreground="White" FontSize="15" FontWeight="Bold"/>
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center">
+                                <TextBlock Text="Total Debts (+): " Foreground="White" FontSize="14" Opacity="0.8"/>
+                                <TextBlock Text="{Binding LedgerTotalDebt, Converter={StaticResource CurrencyConverter}}" Foreground="White" FontSize="15" FontWeight="Bold"/>
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Center">
+                                <TextBlock Text="Total Repaid (-): " Foreground="White" FontSize="14" Opacity="0.8"/>
+                                <TextBlock Text="{Binding LedgerTotalRepayments, Converter={StaticResource CurrencyConverter}}" Foreground="White" FontSize="15" FontWeight="Bold"/>
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="3" Orientation="Horizontal" HorizontalAlignment="Center">
+                                <TextBlock Text="Net Outstanding: " Foreground="White" FontSize="14" Opacity="0.8"/>
+                                <TextBlock Text="{Binding LedgerOutstandingBalance, Converter={StaticResource CurrencyConverter}}" Foreground="White" FontSize="16" FontWeight="Bold"/>
+                            </StackPanel>
+                        </Grid>
+                    </materialDesign:Card>
+
+                </Grid>
+            </TabItem>
+
+            <!-- TAB 3: FINANCIAL SUMMARY -->
+            <TabItem Header="Financial Summary" Visibility="{Binding IsOwner, Converter={StaticResource BoolToVis}}">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="24,16">
+                        <!-- Header / Control Row -->
+                        <Grid Margin="0,0,0,16">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="Finance" Width="28" Height="28" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                <TextBlock Text="Financial Summary" FontSize="20" FontWeight="Bold" VerticalAlignment="Center"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                <DatePicker SelectedDate="{Binding FinancialStartDate}" materialDesign:HintAssist.Hint="Start Date" Style="{StaticResource MaterialDesignOutlinedDatePicker}" Width="140" Margin="0,0,8,0" Height="48"/>
+                                <DatePicker SelectedDate="{Binding FinancialEndDate}" materialDesign:HintAssist.Hint="End Date" Style="{StaticResource MaterialDesignOutlinedDatePicker}" Width="140" Margin="0,0,8,0" Height="48"/>
+                                <Button Command="{Binding PrintFinancialSummaryCommand}" Style="{StaticResource MaterialDesignIconButton}" ToolTip="Print Financial Summary" Width="40" Height="40" Margin="0,0,4,0">
+                                    <materialDesign:PackIcon Kind="Printer" Width="20" Height="20"/>
+                                </Button>
+                                <Button Command="{Binding ExportFinancialSummaryExcelCommand}" Style="{StaticResource MaterialDesignIconButton}" ToolTip="Export to Excel" Width="40" Height="40">
+                                    <materialDesign:PackIcon Kind="FileExcel" Width="20" Height="20"/>
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+                        <ProgressBar IsIndeterminate="{Binding IsFinancialLoading}" Visibility="{Binding IsFinancialLoading, Converter={StaticResource BoolToVis}}" Style="{StaticResource MaterialDesignLinearProgressBar}" Margin="0,0,0,8"/>
+
+                        <!-- Financial Position KPI Row -->
+                        <UniformGrid Columns="4" Margin="0,0,0,16">
+                            <materialDesign:Card Margin="4" Padding="12" UniformCornerRadius="8" materialDesign:ElevationAssist.Elevation="Dp2">
+                                <StackPanel>
+                                    <TextBlock Text="Bank Cash Position" FontSize="11" Opacity="0.5"/>
+                                    <TextBlock Text="{Binding TotalBankCash, Converter={StaticResource CurrencyConverter}}" FontSize="16" FontWeight="Bold" Foreground="#1565C0"/>
+                                </StackPanel>
+                            </materialDesign:Card>
+                            <materialDesign:Card Margin="4" Padding="12" UniformCornerRadius="8" materialDesign:ElevationAssist.Elevation="Dp2">
+                                <StackPanel>
+                                    <TextBlock Text="Cash in Hand" FontSize="11" Opacity="0.5"/>
+                                    <TextBlock Text="{Binding TotalCashInHand, Converter={StaticResource CurrencyConverter}}" FontSize="16" FontWeight="Bold" Foreground="#2E7D32"/>
+                                </StackPanel>
+                            </materialDesign:Card>
+                            <materialDesign:Card Margin="4" Padding="12" UniformCornerRadius="8" materialDesign:ElevationAssist.Elevation="Dp2">
+                                <StackPanel>
+                                    <TextBlock Text="Digital Collections" FontSize="11" Opacity="0.5"/>
+                                    <TextBlock Text="{Binding TotalDigitalPayments, Converter={StaticResource CurrencyConverter}}" FontSize="16" FontWeight="Bold" Foreground="#F57F17"/>
+                                </StackPanel>
+                            </materialDesign:Card>
+                            <materialDesign:Card Margin="4" Padding="12" UniformCornerRadius="8" materialDesign:ElevationAssist.Elevation="Dp2">
+                                <StackPanel>
+                                    <TextBlock Text="Net Cash Position" FontSize="11" Opacity="0.5"/>
+                                    <TextBlock Text="{Binding NetCashPosition, Converter={StaticResource CurrencyConverter}}" FontSize="16" FontWeight="Bold" Foreground="#00695C"/>
+                                </StackPanel>
+                            </materialDesign:Card>
+                        </UniformGrid>
+
+                        <!-- Outstanding Balances row -->
+                        <UniformGrid Columns="3" Margin="0,0,0,24">
+                            <materialDesign:Card Margin="4" Padding="12" UniformCornerRadius="6">
+                                <StackPanel>
+                                    <TextBlock Text="Total Period Expenses" FontSize="11" Opacity="0.5"/>
+                                    <TextBlock Text="{Binding TotalExpenses, Converter={StaticResource CurrencyConverter}}" FontSize="16" FontWeight="SemiBold" Foreground="#C62828"/>
+                                </StackPanel>
+                            </materialDesign:Card>
+                            <materialDesign:Card Margin="4" Padding="12" UniformCornerRadius="6">
+                                <StackPanel>
+                                    <TextBlock Text="Total Debtor Repayments" FontSize="11" Opacity="0.5"/>
+                                    <TextBlock Text="{Binding TotalCreditorRepayments, Converter={StaticResource CurrencyConverter}}" FontSize="16" FontWeight="SemiBold" Foreground="#004D40"/>
+                                </StackPanel>
+                            </materialDesign:Card>
+                            <materialDesign:Card Margin="4" Padding="12" UniformCornerRadius="6">
+                                <StackPanel>
+                                    <TextBlock Text="Outstanding Debtor Debits" FontSize="11" Opacity="0.5"/>
+                                    <TextBlock Text="{Binding TotalDebitorsOutstanding, Converter={StaticResource CurrencyConverter}}" FontSize="16" FontWeight="SemiBold" Foreground="#E65100"/>
+                                </StackPanel>
+                            </materialDesign:Card>
+                        </UniformGrid>
+
+                        <!-- Debits and Repayments Log side-by-side -->
+                        <Grid Margin="0,0,0,16">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="16" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <!-- Left Column: Debtor Debit Logs -->
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Debtor Debit Logs" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                                <DataGrid ItemsSource="{Binding DebtorLogs}" AutoGenerateColumns="False" IsReadOnly="True"
+                                          materialDesign:DataGridAssist.CellPadding="12 8" CanUserSortColumns="True" MaxHeight="400">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat='{}{0:dd MMM yyyy}'}" Width="110"/>
+                                        <DataGridTextColumn Header="Debtor Name" Binding="{Binding DebtorName}" Width="*"/>
+                                        <DataGridTextColumn Header="DSM Name" Binding="{Binding DsmName}" Width="100"/>
+                                        <DataGridTextColumn Header="Cheque No" Binding="{Binding ChequeNo}" Width="100"/>
+                                        <DataGridTextColumn Header="Amount" Binding="{Binding Amount, Converter={StaticResource CurrencyConverter}}" Width="110"/>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </StackPanel>
+
+                            <!-- Right Column: Debtor Repayments Log -->
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="Debtor Repayments Log" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                                <DataGrid ItemsSource="{Binding Repayments}" AutoGenerateColumns="False" IsReadOnly="True"
+                                          materialDesign:DataGridAssist.CellPadding="12 8" CanUserSortColumns="True" MaxHeight="400">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Repayment Date" Binding="{Binding RepaymentDate, StringFormat='{}{0:dd MMM yyyy}'}" Width="110"/>
+                                        <DataGridTextColumn Header="Debtor Name" Binding="{Binding CreditorName}" Width="*"/>
+                                        <DataGridTextColumn Header="Payment Mode" Binding="{Binding PaymentMode}" Width="100"/>
+                                        <DataGridTextColumn Header="Cheque / Ref No" Binding="{Binding ChequeNo}" Width="100"/>
+                                        <DataGridTextColumn Header="Amount" Binding="{Binding Amount, Converter={StaticResource CurrencyConverter}}" Width="110"/>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+        </TabControl>
+    </Grid>
+</UserControl>

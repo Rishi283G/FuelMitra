@@ -77,9 +77,14 @@ public partial class App : Application
             var credentialService = scope.ServiceProvider.GetRequiredService<ICredentialFileService>();
             
             // Create legacy tables FIRST so SeedData can safely ALTER/query them
-            EnsureLegacyDatabaseCompatibility();
+            EnsureLegacyDatabaseCompatibility(DbPath);
             
             await SeedData.InitializeAsync(context, credentialService);
+            
+            // Initialize PumpConfiguration from Database
+            var pumpMappings = await context.PumpMappings.ToListAsync();
+            FuelPro.Core.Common.PumpConfiguration.InitializeFromDb(pumpMappings);
+            Log.Information("Initialized PumpConfiguration with {Count} pump mappings from database", pumpMappings.Count);
             
             var recalcMigration = scope.ServiceProvider.GetRequiredService<RecalculationMigrationService>();
             await recalcMigration.RunIfNeededAsync();
@@ -127,9 +132,9 @@ public partial class App : Application
         base.OnStartup(e);
     }
 
-    private static void EnsureLegacyDatabaseCompatibility()
+    public static void EnsureLegacyDatabaseCompatibility(string dbPath)
     {
-        using var connection = new SqliteConnection($"Data Source={DbPath}");
+        using var connection = new SqliteConnection($"Data Source={dbPath}");
         connection.Open();
 
         // Guard: skip column additions for tables that don't exist yet (e.g. fresh install)
@@ -139,6 +144,40 @@ public partial class App : Application
         EnsureColumnExists(connection, "PaymentCollections", "CashDeposit", "ALTER TABLE PaymentCollections ADD COLUMN CashDeposit REAL NOT NULL DEFAULT 0.0;");
         EnsureColumnExists(connection, "DsmEntries", "ConnectedPumpId", "ALTER TABLE DsmEntries ADD COLUMN ConnectedPumpId INTEGER NULL;");
         EnsureColumnExists(connection, "DsmEntries", "ReconciledToPumpId", "ALTER TABLE DsmEntries ADD COLUMN ReconciledToPumpId INTEGER NULL;");
+
+        // Phase 3 additions: DsmEntry Start/End times
+        EnsureColumnExists(connection, "DsmEntries", "StartTime", "ALTER TABLE DsmEntries ADD COLUMN StartTime TEXT NULL;");
+        EnsureColumnExists(connection, "DsmEntries", "EndTime", "ALTER TABLE DsmEntries ADD COLUMN EndTime TEXT NULL;");
+
+        // DsmProfiles Pending Advance tracking columns
+        EnsureColumnExists(connection, "DsmProfiles", "PendingAdvance", "ALTER TABLE DsmProfiles ADD COLUMN PendingAdvance REAL NOT NULL DEFAULT 0.0;");
+        EnsureColumnExists(connection, "DsmProfiles", "MonthlyAdvanceDeduction", "ALTER TABLE DsmProfiles ADD COLUMN MonthlyAdvanceDeduction REAL NOT NULL DEFAULT 0.0;");
+        EnsureColumnExists(connection, "DsmSalaryAdjustments", "PendingAdvanceDeduction", "ALTER TABLE DsmSalaryAdjustments ADD COLUMN PendingAdvanceDeduction REAL NOT NULL DEFAULT 0.0;");
+
+        // Phase 3 additions: DebitEntry additional tracking columns
+        EnsureColumnExists(connection, "DebitEntries", "Fuel", "ALTER TABLE DebitEntries ADD COLUMN Fuel TEXT NULL;");
+        EnsureColumnExists(connection, "DebitEntries", "EntryTime", "ALTER TABLE DebitEntries ADD COLUMN EntryTime TEXT NULL;");
+        EnsureColumnExists(connection, "DebitEntries", "PaymentMethod", "ALTER TABLE DebitEntries ADD COLUMN PaymentMethod TEXT NOT NULL DEFAULT 'Credit';");
+        EnsureColumnExists(connection, "DebitEntries", "CardTid", "ALTER TABLE DebitEntries ADD COLUMN CardTid TEXT NULL;");
+        EnsureColumnExists(connection, "DebitEntries", "CardBatch", "ALTER TABLE DebitEntries ADD COLUMN CardBatch TEXT NULL;");
+        EnsureColumnExists(connection, "DebitEntries", "Denom500", "ALTER TABLE DebitEntries ADD COLUMN Denom500 INTEGER NOT NULL DEFAULT 0;");
+        EnsureColumnExists(connection, "DebitEntries", "Denom200", "ALTER TABLE DebitEntries ADD COLUMN Denom200 INTEGER NOT NULL DEFAULT 0;");
+        EnsureColumnExists(connection, "DebitEntries", "Denom100", "ALTER TABLE DebitEntries ADD COLUMN Denom100 INTEGER NOT NULL DEFAULT 0;");
+        EnsureColumnExists(connection, "DebitEntries", "Denom50", "ALTER TABLE DebitEntries ADD COLUMN Denom50 INTEGER NOT NULL DEFAULT 0;");
+        EnsureColumnExists(connection, "DebitEntries", "Denom20", "ALTER TABLE DebitEntries ADD COLUMN Denom20 INTEGER NOT NULL DEFAULT 0;");
+        EnsureColumnExists(connection, "DebitEntries", "Denom10", "ALTER TABLE DebitEntries ADD COLUMN Denom10 INTEGER NOT NULL DEFAULT 0;");
+        EnsureColumnExists(connection, "DebitEntries", "Coins", "ALTER TABLE DebitEntries ADD COLUMN Coins INTEGER NOT NULL DEFAULT 0;");
+
+        // Phase 3 additions: CreditorRepayments details
+        EnsureColumnExists(connection, "CreditorRepayments", "CardTid", "ALTER TABLE CreditorRepayments ADD COLUMN CardTid TEXT NULL;");
+        EnsureColumnExists(connection, "CreditorRepayments", "CardBatch", "ALTER TABLE CreditorRepayments ADD COLUMN CardBatch TEXT NULL;");
+        EnsureColumnExists(connection, "CreditorRepayments", "Denom500", "ALTER TABLE CreditorRepayments ADD COLUMN Denom500 INTEGER NOT NULL DEFAULT 0;");
+        EnsureColumnExists(connection, "CreditorRepayments", "Denom200", "ALTER TABLE CreditorRepayments ADD COLUMN Denom200 INTEGER NOT NULL DEFAULT 0;");
+        EnsureColumnExists(connection, "CreditorRepayments", "Denom100", "ALTER TABLE CreditorRepayments ADD COLUMN Denom100 INTEGER NOT NULL DEFAULT 0;");
+        EnsureColumnExists(connection, "CreditorRepayments", "Denom50", "ALTER TABLE CreditorRepayments ADD COLUMN Denom50 INTEGER NOT NULL DEFAULT 0;");
+        EnsureColumnExists(connection, "CreditorRepayments", "Denom20", "ALTER TABLE CreditorRepayments ADD COLUMN Denom20 INTEGER NOT NULL DEFAULT 0;");
+        EnsureColumnExists(connection, "CreditorRepayments", "Denom10", "ALTER TABLE CreditorRepayments ADD COLUMN Denom10 INTEGER NOT NULL DEFAULT 0;");
+        EnsureColumnExists(connection, "CreditorRepayments", "Coins", "ALTER TABLE CreditorRepayments ADD COLUMN Coins INTEGER NOT NULL DEFAULT 0;");
 
         using var cmd = connection.CreateCommand();
 
@@ -220,16 +259,10 @@ public partial class App : Application
         EnsureColumnExists(connection, "PaymentCollections", "PhonePeMorning", "ALTER TABLE PaymentCollections ADD COLUMN PhonePeMorning REAL NOT NULL DEFAULT 0.0");
         EnsureColumnExists(connection, "PaymentCollections", "PhonePeNight", "ALTER TABLE PaymentCollections ADD COLUMN PhonePeNight REAL NOT NULL DEFAULT 0.0");
         
-        // Note: PhonePe was always a [NotMapped] computed property, never a DB column.
-        // No data migration needed for PhonePe split.
-
         // Feature 5: PhonePe Card Split
         EnsureColumnExists(connection, "PaymentCollections", "PhonePeCardMorning", "ALTER TABLE PaymentCollections ADD COLUMN PhonePeCardMorning REAL NOT NULL DEFAULT 0.0");
         EnsureColumnExists(connection, "PaymentCollections", "PhonePeCardNight", "ALTER TABLE PaymentCollections ADD COLUMN PhonePeCardNight REAL NOT NULL DEFAULT 0.0");
         
-        // Note: PhonePeCard was always a [NotMapped] computed property, never a DB column.
-        // No data migration needed for PhonePeCard split.
-
         // Feature 3: IsReconciled for Creditor Return Tracker
         EnsureColumnExists(connection, "DsmEntries", "IsReconciled", "ALTER TABLE DsmEntries ADD COLUMN IsReconciled INTEGER NOT NULL DEFAULT 0");
 
@@ -389,7 +422,76 @@ public partial class App : Application
             Log.Information("Created OilDefDailyLogs table");
         }
 
-        // AGS tables are now handled via EF Core Migrations.
+        // Phase 3 additions: DsmPersonalDebtors table
+        cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='DsmPersonalDebtors'";
+        var dsmPersonalDebtorsExists = cmd.ExecuteScalar() != null;
+        if (!dsmPersonalDebtorsExists)
+        {
+            cmd.CommandText = @"
+                CREATE TABLE ""DsmPersonalDebtors"" (
+                    ""Id"" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    ""SyncGuid"" TEXT NOT NULL,
+                    ""DsmEntryId"" INTEGER NULL,
+                    ""DsmName"" TEXT NOT NULL,
+                    ""Date"" TEXT NOT NULL,
+                    ""Time"" TEXT NOT NULL,
+                    ""Amount"" REAL NOT NULL,
+                    ""FuelProduct"" TEXT NULL,
+                    ""Remarks"" TEXT NULL,
+                    ""PaymentMethod"" TEXT NOT NULL,
+                    ""Denom500"" INTEGER NOT NULL,
+                    ""Denom200"" INTEGER NOT NULL,
+                    ""Denom100"" INTEGER NOT NULL,
+                    ""Denom50"" INTEGER NOT NULL,
+                    ""Denom20"" INTEGER NOT NULL,
+                    ""Denom10"" INTEGER NOT NULL,
+                    ""Coins"" INTEGER NOT NULL,
+                    ""CardTid"" TEXT NULL,
+                    ""CardBatch"" TEXT NULL,
+                    ""SequenceNumber"" INTEGER NOT NULL,
+                    ""RepaidAmount"" REAL NOT NULL,
+                    ""CreatedAt"" TEXT NOT NULL,
+                    CONSTRAINT ""FK_DsmPersonalDebtors_DsmEntries_DsmEntryId"" FOREIGN KEY (""DsmEntryId"") REFERENCES ""DsmEntries"" (""DsmEntryId"") ON DELETE SET NULL
+                );";
+            cmd.ExecuteNonQuery();
+            cmd.CommandText = "CREATE UNIQUE INDEX \"IX_DsmPersonalDebtors_SyncGuid\" ON \"DsmPersonalDebtors\" (\"SyncGuid\");";
+            cmd.ExecuteNonQuery();
+            Log.Information("Created DsmPersonalDebtors table");
+        }
+
+        // Check if DsmPersonalDebtorRepayments exists
+        cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='DsmPersonalDebtorRepayments'";
+        var dsmPersonalDebtorRepaymentsExists = cmd.ExecuteScalar() != null;
+        if (!dsmPersonalDebtorRepaymentsExists)
+        {
+            cmd.CommandText = @"
+                CREATE TABLE ""DsmPersonalDebtorRepayments"" (
+                    ""Id"" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                    ""SyncGuid"" TEXT NOT NULL,
+                    ""DsmPersonalDebtorId"" INTEGER NOT NULL,
+                    ""ShiftId"" INTEGER NULL,
+                    ""Date"" TEXT NOT NULL,
+                    ""Amount"" REAL NOT NULL,
+                    ""PaymentMethod"" TEXT NOT NULL,
+                    ""Denom500"" INTEGER NOT NULL,
+                    ""Denom200"" INTEGER NOT NULL,
+                    ""Denom100"" INTEGER NOT NULL,
+                    ""Denom50"" INTEGER NOT NULL,
+                    ""Denom20"" INTEGER NOT NULL,
+                    ""Denom10"" INTEGER NOT NULL,
+                    ""Coins"" INTEGER NOT NULL,
+                    ""CardTid"" TEXT NULL,
+                    ""CardBatch"" TEXT NULL,
+                    ""Source"" TEXT NOT NULL,
+                    ""CreatedAt"" TEXT NOT NULL,
+                    CONSTRAINT ""FK_DsmPersonalDebtorRepayments_DsmPersonalDebtors_DsmPersonalDebtorId"" FOREIGN KEY (""DsmPersonalDebtorId"") REFERENCES ""DsmPersonalDebtors"" (""Id"") ON DELETE CASCADE,
+                    CONSTRAINT ""FK_DsmPersonalDebtorRepayments_Shifts_ShiftId"" FOREIGN KEY (""ShiftId"") REFERENCES ""Shifts"" (""ShiftId"") ON DELETE SET NULL
+                );";
+            cmd.ExecuteNonQuery();
+            cmd.CommandText = "CREATE UNIQUE INDEX \"IX_DsmPersonalDebtorRepayments_SyncGuid\" ON \"DsmPersonalDebtorRepayments\" (\"SyncGuid\");";
+            cmd.ExecuteNonQuery();
+            Log.Information("Created DsmPersonalDebtorRepayments table");
+        }
     }
 
     private static bool TableExists(SqliteConnection connection, string tableName)
@@ -443,6 +545,9 @@ public partial class App : Application
         services.AddTransient<ICreditorRepaymentRepository, CreditorRepaymentRepository>();
         services.AddTransient<IAgsImportRepository, AgsImportRepository>();
         services.AddTransient<ICreditorRepository, CreditorRepository>();
+        services.AddTransient<IPumpExpenseRepository, PumpExpenseRepository>();
+        services.AddTransient<IDebtorVehicleRepository, DebtorVehicleRepository>();
+        services.AddTransient<IDsmPersonalDebtorRepository, DsmPersonalDebtorRepository>();
 
         // Services
         services.AddSingleton<AuthService>();
@@ -463,6 +568,9 @@ public partial class App : Application
         services.AddTransient<IAgsDailyAggregationService, AgsDailyAggregationService>();
         services.AddTransient<AgsImportValidator>();
         services.AddTransient<PrintService>();
+        services.AddTransient<ExcelExportService>();
+        services.AddTransient<IAuditLogService, AuditLogService>();
+        services.AddTransient<IDayLockService, DayLockService>();
         
         // Sync Services
         services.AddSingleton<FuelPro.Sync.SyncConfigService>();
@@ -480,6 +588,8 @@ public partial class App : Application
         services.AddTransient<CardSettlementViewModel>();
         services.AddTransient<AgsImportViewModel>();
         services.AddTransient<OilDefDailyLogViewModel>();
+        services.AddTransient<DebtorManagementViewModel>();
+        services.AddTransient<PumpExpensesViewModel>();
 
         // Owner ViewModels
         services.AddTransient<OwnerMainWindowViewModel>();

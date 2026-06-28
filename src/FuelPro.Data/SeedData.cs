@@ -1,5 +1,8 @@
 using System;
 using System.IO;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using FuelPro.Core.Models;
 using FuelPro.Core.Services;
@@ -11,6 +14,7 @@ namespace FuelPro.Data;
 /// <summary>
 /// Seeds default data on first run: manager user, owner user, and default settings.
 /// Also migrates legacy "Admin" role to "Manager".
+/// Creates any tables missing from EF migrations for fresh installs.
 /// </summary>
 public static class SeedData
 {
@@ -35,6 +39,9 @@ public static class SeedData
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE PaymentCollections ADD COLUMN PhonePeCardMorning REAL NOT NULL DEFAULT 0.0;"); } catch { }
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE PaymentCollections ADD COLUMN PhonePeCardNight REAL NOT NULL DEFAULT 0.0;"); } catch { }
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE DsmEntries ADD COLUMN IsReconciled INTEGER NOT NULL DEFAULT 0;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE DsmProfiles ADD COLUMN PendingAdvance REAL NOT NULL DEFAULT 0.0;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE DsmProfiles ADD COLUMN MonthlyAdvanceDeduction REAL NOT NULL DEFAULT 0.0;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE DsmSalaryAdjustments ADD COLUMN PendingAdvanceDeduction REAL NOT NULL DEFAULT 0.0;"); } catch { }
 
         // Dynamically execute SQLite schema updates for ProductMaster
         try
@@ -54,8 +61,6 @@ public static class SeedData
         {
             Log.Error(ex, "Failed to create ProductMasters table");
         }
-
-
 
         // Add ProductId, OverrideSaleRate, AdjustmentQuantity, AdjustmentType to OilDefDailyLogs
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE OilDefDailyLogs ADD COLUMN ProductId INTEGER NOT NULL DEFAULT 0;"); } catch { }
@@ -111,11 +116,26 @@ public static class SeedData
         try { await context.Database.ExecuteSqlRawAsync("DROP INDEX IF EXISTS IX_SyncIdMappings_TableName_RemoteId;"); } catch { }
         try { await context.Database.ExecuteSqlRawAsync("CREATE UNIQUE INDEX IF NOT EXISTS IX_SyncIdMappings_TableName_RemoteGuid ON SyncIdMappings (TableName, RemoteGuid);"); } catch { }
 
-        // Add StationId and MachineId columns to SyncChangeLogs if not present
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE SyncChangeLogs ADD COLUMN StationId TEXT NULL;"); } catch { }
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE SyncChangeLogs ADD COLUMN MachineId TEXT NULL;"); } catch { }
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE SyncChangeLogs ADD COLUMN SyncGuid TEXT NULL;"); } catch { }
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE SyncChangeLogs ADD COLUMN RecordGuid TEXT NULL;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE Settings ADD COLUMN CngRate REAL NOT NULL DEFAULT 85.0;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE DsmProfiles ADD COLUMN MobileNumber TEXT NULL;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE DebitEntries ADD COLUMN SlipNumber TEXT NULL;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE DebitEntries ADD COLUMN Remarks TEXT NULL;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE DebitEntries ADD COLUMN CreatedAt TEXT NULL;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE DebitEntries ADD COLUMN VehicleNumber TEXT NULL;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE DebitEntries ADD COLUMN PaymentMethod TEXT NOT NULL DEFAULT 'Credit';"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE DebitEntries ADD COLUMN CardTid TEXT NULL;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE DebitEntries ADD COLUMN CardBatch TEXT NULL;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE DebitEntries ADD COLUMN Denom500 INTEGER NOT NULL DEFAULT 0;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE DebitEntries ADD COLUMN Denom200 INTEGER NOT NULL DEFAULT 0;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE DebitEntries ADD COLUMN Denom100 INTEGER NOT NULL DEFAULT 0;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE DebitEntries ADD COLUMN Denom50 INTEGER NOT NULL DEFAULT 0;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE DebitEntries ADD COLUMN Denom20 INTEGER NOT NULL DEFAULT 0;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE DebitEntries ADD COLUMN Denom10 INTEGER NOT NULL DEFAULT 0;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE DebitEntries ADD COLUMN Coins INTEGER NOT NULL DEFAULT 0;"); } catch { }
 
         // Create OuterExpenses table if it does not exist
         try
@@ -134,6 +154,175 @@ public static class SeedData
         {
             Log.Error(ex, "Failed to create OuterExpenses table");
         }
+
+        // Creditors
+        try
+        {
+            await context.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE IF NOT EXISTS Creditors (
+                    CreditorId INTEGER PRIMARY KEY AUTOINCREMENT,
+                    Name TEXT NOT NULL,
+                    Phone TEXT NULL,
+                    IsActive INTEGER NOT NULL DEFAULT 1,
+                    CreatedAt TEXT NOT NULL
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS IX_Creditors_Name ON Creditors (Name);
+            ");
+        }
+        catch (Exception ex) { Log.Error(ex, "Failed to create Creditors table"); }
+
+        // DebtorVehicles
+        try
+        {
+            await context.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE IF NOT EXISTS DebtorVehicles (
+                    DebtorVehicleId INTEGER PRIMARY KEY AUTOINCREMENT,
+                    CreditorId INTEGER NOT NULL,
+                    VehicleNumber TEXT NOT NULL,
+                    IsActive INTEGER NOT NULL DEFAULT 1,
+                    CreatedAt TEXT NOT NULL,
+                    FOREIGN KEY (CreditorId) REFERENCES Creditors (CreditorId) ON DELETE CASCADE
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS IX_DebtorVehicles_CreditorId_VehicleNumber ON DebtorVehicles (CreditorId, VehicleNumber);
+            ");
+        }
+        catch (Exception ex) { Log.Error(ex, "Failed to create DebtorVehicles table"); }
+
+        // AuditLogs
+        try
+        {
+            await context.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE IF NOT EXISTS AuditLogs (
+                    AuditLogId INTEGER PRIMARY KEY AUTOINCREMENT,
+                    TableName TEXT NOT NULL,
+                    RecordId INTEGER NOT NULL,
+                    Action TEXT NOT NULL,
+                    FieldName TEXT,
+                    OldValue TEXT,
+                    NewValue TEXT,
+                    ModifiedBy TEXT NOT NULL,
+                    ModifiedAt TEXT NOT NULL,
+                    Reason TEXT
+                );
+            ");
+        }
+        catch (Exception ex) { Log.Error(ex, "Failed to create AuditLogs table"); }
+
+        // DayLocks
+        try
+        {
+            await context.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE IF NOT EXISTS DayLocks (
+                    DayLockId INTEGER PRIMARY KEY AUTOINCREMENT,
+                    LockDate TEXT NOT NULL,
+                    LockedAt TEXT NOT NULL,
+                    LockedBy TEXT NOT NULL,
+                    IsLocked INTEGER NOT NULL DEFAULT 1,
+                    UnlockedAt TEXT,
+                    UnlockedBy TEXT,
+                    UnlockReason TEXT
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS IX_DayLocks_LockDate ON DayLocks (LockDate);
+            ");
+        }
+        catch (Exception ex) { Log.Error(ex, "Failed to create DayLocks table"); }
+
+        // SoftwareVersionHistories
+        try
+        {
+            await context.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE IF NOT EXISTS SoftwareVersionHistories (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    Version TEXT NOT NULL,
+                    BuildConfiguration TEXT,
+                    MachineName TEXT,
+                    DeployedAt TEXT NOT NULL,
+                    Notes TEXT
+                );
+            ");
+        }
+        catch (Exception ex) { Log.Error(ex, "Failed to create SoftwareVersionHistories table"); }
+
+        // PumpMappings
+        try
+        {
+            await context.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE IF NOT EXISTS PumpMappings (
+                    PumpMappingId INTEGER PRIMARY KEY AUTOINCREMENT,
+                    PumpId INTEGER NOT NULL,
+                    NozzleNumber INTEGER NOT NULL,
+                    FuelType TEXT NOT NULL,
+                    TankName TEXT NOT NULL,
+                    IsActive INTEGER NOT NULL DEFAULT 1,
+                    CreatedAt TEXT NOT NULL
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS IX_PumpMappings_PumpId_NozzleNumber ON PumpMappings (PumpId, NozzleNumber);
+            ");
+        }
+        catch (Exception ex) { Log.Error(ex, "Failed to create PumpMappings table"); }
+
+        // ExpenseCategories
+        try
+        {
+            await context.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE IF NOT EXISTS ExpenseCategories (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    Name TEXT NOT NULL,
+                    IsActive INTEGER NOT NULL DEFAULT 1,
+                    CreatedAt TEXT NOT NULL
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS IX_ExpenseCategories_Name ON ExpenseCategories (Name);
+            ");
+        }
+        catch (Exception ex) { Log.Error(ex, "Failed to create ExpenseCategories table"); }
+
+        // PumpExpenses
+        try
+        {
+            await context.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE IF NOT EXISTS PumpExpenses (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ExpenseDate TEXT NOT NULL,
+                    Rent REAL NOT NULL DEFAULT 0.0,
+                    Salary REAL NOT NULL DEFAULT 0.0,
+                    TripSheetLoss REAL NOT NULL DEFAULT 0.0,
+                    DsmShort REAL NOT NULL DEFAULT 0.0,
+                    BankingExpenses REAL NOT NULL DEFAULT 0.0,
+                    BpclPortalExpenses REAL NOT NULL DEFAULT 0.0,
+                    FuelAndTravel REAL NOT NULL DEFAULT 0.0,
+                    OilPurchase REAL NOT NULL DEFAULT 0.0,
+                    RepairsAndMaintenance REAL NOT NULL DEFAULT 0.0,
+                    ElectricityExpenses REAL NOT NULL DEFAULT 0.0,
+                    OfficeExpenses REAL NOT NULL DEFAULT 0.0,
+                    PrintingExpense REAL NOT NULL DEFAULT 0.0,
+                    OtherDescription TEXT NOT NULL DEFAULT '',
+                    OtherAmount REAL NOT NULL DEFAULT 0.0,
+                    Remarks TEXT NOT NULL DEFAULT '',
+                    CreatedAt TEXT NOT NULL
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS IX_PumpExpenses_ExpenseDate ON PumpExpenses (ExpenseDate);
+            ");
+        }
+        catch (Exception ex) { Log.Error(ex, "Failed to create PumpExpenses table"); }
+
+        // PumpExpenseCategoryItems
+        try
+        {
+            await context.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE IF NOT EXISTS PumpExpenseCategoryItems (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    PumpExpenseId INTEGER NOT NULL,
+                    CategoryId INTEGER NOT NULL,
+                    Amount REAL NOT NULL,
+                    Remarks TEXT NOT NULL DEFAULT '',
+                    CreatedAt TEXT NOT NULL,
+                    FOREIGN KEY (PumpExpenseId) REFERENCES PumpExpenses (Id) ON DELETE CASCADE,
+                    FOREIGN KEY (CategoryId) REFERENCES ExpenseCategories (Id) ON DELETE RESTRICT
+                );
+                CREATE INDEX IF NOT EXISTS IX_PumpExpenseCategoryItems_PumpExpenseId ON PumpExpenseCategoryItems (PumpExpenseId);
+            ");
+        }
+        catch (Exception ex) { Log.Error(ex, "Failed to create PumpExpenseCategoryItems table"); }
 
         // Seed default products
         if (!await context.ProductMasters.AnyAsync())
@@ -272,18 +461,98 @@ public static class SeedData
                 HsdRate = 90.35,
                 MsIRate = 103.81,
                 MsIIRate = 103.81,
-                PumpStationName = "Shree Mahakaleshwar Petroleum",
+                CngRate = 85.0,
+                PumpStationName = "Mitali Service Station",
                 LastUpdated = DateTime.Now
             };
             context.Settings.Add(defaultSettings);
         }
-        else if (settings.PumpStationName == "VKD Petroleum" || string.IsNullOrWhiteSpace(settings.PumpStationName))
+        else
         {
-            settings.PumpStationName = "Shree Mahakaleshwar Petroleum";
+            settings.PumpStationName = "Mitali Service Station";
             context.Entry(settings).State = EntityState.Modified;
+        }
+
+        // Seed PumpMappings if empty, or if count/structure doesn't match the new global 6-pump/12-nozzle layout
+        // Also re-seed if the old sequential mapping is detected (nozzle 2 on Pump 1 = wrong)
+        bool needsReseed = !await context.PumpMappings.AnyAsync() || 
+                           await context.PumpMappings.CountAsync() != 12 ||
+                           await context.PumpMappings.AnyAsync(m => m.PumpId > 6) ||
+                           await context.PumpMappings.AnyAsync(m => m.PumpId == 1 && m.NozzleNumber == 2); // old sequential layout
+        if (needsReseed)
+        {
+            if (await context.PumpMappings.AnyAsync())
+            {
+                context.PumpMappings.RemoveRange(context.PumpMappings);
+                await context.SaveChangesAsync();
+                Log.Information("Cleared legacy PumpMappings table to re-seed with correct interleaved nozzle layout.");
+            }
+
+            var mappings = new List<PumpMapping>();
+            var now = DateTime.Now;
+
+            // Pump 1: Nozzle 1 (MS-II/Petrol, Tank 2), Nozzle 3 (HSD/Diesel, Tank 3)
+            mappings.Add(new PumpMapping { PumpId = 1, NozzleNumber = 1, FuelType = "MS-II", TankName = "Tank 2", CreatedAt = now });
+            mappings.Add(new PumpMapping { PumpId = 1, NozzleNumber = 3, FuelType = "HSD", TankName = "Tank 3", CreatedAt = now });
+
+            // Pump 2: Nozzle 2 (MS-II/Petrol, Tank 2), Nozzle 4 (HSD/Diesel, Tank 3)
+            mappings.Add(new PumpMapping { PumpId = 2, NozzleNumber = 2, FuelType = "MS-II", TankName = "Tank 2", CreatedAt = now });
+            mappings.Add(new PumpMapping { PumpId = 2, NozzleNumber = 4, FuelType = "HSD", TankName = "Tank 3", CreatedAt = now });
+
+            // Pump 3: Nozzle 5 (MS-I/Petrol, Tank 1), Nozzle 7 (HSD/Diesel, Tank 3)
+            mappings.Add(new PumpMapping { PumpId = 3, NozzleNumber = 5, FuelType = "MS-I", TankName = "Tank 1", CreatedAt = now });
+            mappings.Add(new PumpMapping { PumpId = 3, NozzleNumber = 7, FuelType = "HSD", TankName = "Tank 3", CreatedAt = now });
+
+            // Pump 4: Nozzle 6 (MS-I/Petrol, Tank 1), Nozzle 8 (HSD/Diesel, Tank 3)
+            mappings.Add(new PumpMapping { PumpId = 4, NozzleNumber = 6, FuelType = "MS-I", TankName = "Tank 1", CreatedAt = now });
+            mappings.Add(new PumpMapping { PumpId = 4, NozzleNumber = 8, FuelType = "HSD", TankName = "Tank 3", CreatedAt = now });
+
+            // Pump 5: Nozzle 9 (MS-II/Petrol, Tank 2), Nozzle 11 (HSD/Diesel, Tank 3)
+            mappings.Add(new PumpMapping { PumpId = 5, NozzleNumber = 9, FuelType = "MS-II", TankName = "Tank 2", CreatedAt = now });
+            mappings.Add(new PumpMapping { PumpId = 5, NozzleNumber = 11, FuelType = "HSD", TankName = "Tank 3", CreatedAt = now });
+
+            // Pump 6: Nozzle 10 (MS-II/Petrol, Tank 2), Nozzle 12 (HSD/Diesel, Tank 3)
+            mappings.Add(new PumpMapping { PumpId = 6, NozzleNumber = 10, FuelType = "MS-II", TankName = "Tank 2", CreatedAt = now });
+            mappings.Add(new PumpMapping { PumpId = 6, NozzleNumber = 12, FuelType = "HSD", TankName = "Tank 3", CreatedAt = now });
+
+            context.PumpMappings.AddRange(mappings);
+            await context.SaveChangesAsync();
+            Log.Information("Seeded 6-pump mapping with interleaved nozzle numbers for Mitali Service Station");
+        }
+
+        // Seed SoftwareVersionHistory entry
+        try
+        {
+            var currentVersion = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "1.0.0";
+            var buildConfig = "Release";
+#if DEBUG
+            buildConfig = "Debug";
+#endif
+            var lastVersion = await context.SoftwareVersionHistories
+                .OrderByDescending(v => v.DeployedAt)
+                .FirstOrDefaultAsync();
+
+            if (lastVersion == null || lastVersion.Version != currentVersion)
+            {
+                var newVersion = new SoftwareVersionHistory
+                {
+                    Version = currentVersion,
+                    BuildConfiguration = buildConfig,
+                    MachineName = Environment.MachineName,
+                    DeployedAt = DateTime.Now,
+                    Notes = lastVersion == null
+                        ? "Initial PyroSync_Max deployment"
+                        : $"Upgrade from {lastVersion.Version} to {currentVersion}"
+                };
+                context.SoftwareVersionHistories.Add(newVersion);
+                Log.Information("Logged new version history: {Version}", currentVersion);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Failed to record software version history");
         }
 
         await context.SaveChangesAsync();
     }
 }
-

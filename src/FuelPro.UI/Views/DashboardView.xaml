@@ -177,7 +177,7 @@
             <TextBlock Text="Shift Breakdown" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,12"
                        Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}"/>
 
-            <UniformGrid Columns="3" Margin="0,0,0,16">
+            <UniformGrid Columns="2" Margin="0,0,0,16">
                 <!-- Morning Shift -->
                 <materialDesign:Card Margin="0,0,8,0" Padding="20" UniformCornerRadius="12"
                                      materialDesign:ElevationAssist.Elevation="Dp3">
@@ -205,13 +205,13 @@
                     </StackPanel>
                 </materialDesign:Card>
 
-                <!-- Afternoon Shift -->
-                <materialDesign:Card Margin="4,0,4,0" Padding="20" UniformCornerRadius="12"
+                <!-- Night Shift -->
+                <materialDesign:Card Margin="8,0,0,0" Padding="20" UniformCornerRadius="12"
                                      materialDesign:ElevationAssist.Elevation="Dp3">
                     <StackPanel>
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
-                            <materialDesign:PackIcon Kind="WeatherPartlyCloudy" Width="24" Height="24" Foreground="#FF9800"/>
-                            <TextBlock Text="Shift B — Afternoon" FontSize="16" FontWeight="SemiBold" Margin="8,0"/>
+                            <materialDesign:PackIcon Kind="WeatherNight" Width="24" Height="24" Foreground="#3F51B5"/>
+                            <TextBlock Text="Shift B — Night" FontSize="16" FontWeight="SemiBold" Margin="8,0"/>
                         </StackPanel>
                         <Grid>
                             <Grid.ColumnDefinitions>
@@ -231,34 +231,7 @@
                         </Grid>
                     </StackPanel>
                 </materialDesign:Card>
-
-                <!-- Night Shift -->
-                <materialDesign:Card Margin="8,0,0,0" Padding="20" UniformCornerRadius="12"
-                                     materialDesign:ElevationAssist.Elevation="Dp3">
-                    <StackPanel>
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
-                            <materialDesign:PackIcon Kind="WeatherNight" Width="24" Height="24" Foreground="#3F51B5"/>
-                            <TextBlock Text="Shift C — Night" FontSize="16" FontWeight="SemiBold" Margin="8,0"/>
-                        </StackPanel>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/><ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <Grid.RowDefinitions>
-                                <RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/>
-                            </Grid.RowDefinitions>
-                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Entries:" Opacity="0.6"/>
-                            <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding NightShift.TotalDsmEntries}" FontWeight="SemiBold"/>
-                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Sale:" Opacity="0.6"/>
-                            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding NightShift.TotalFuelSale, Converter={StaticResource CurrencyConv}}" FontWeight="SemiBold"/>
-                            <TextBlock Grid.Row="2" Grid.Column="0" Text="Cash:" Opacity="0.6"/>
-                            <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding NightShift.TotalCash, Converter={StaticResource CurrencyConv}}" FontWeight="SemiBold"/>
-                            <TextBlock Grid.Row="3" Grid.Column="0" Text="Debit:" Opacity="0.6"/>
-                            <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding NightShift.TotalDebit, Converter={StaticResource CurrencyConv}}" FontWeight="SemiBold"/>
-                        </Grid>
-                    </StackPanel>
-                </materialDesign:Card>
-            </UniformGrid>
+            </UniformGrid>mGrid>
 
             <!-- Bottom Section: Debtors and Repayments -->
             <Grid Margin="0,0,0,24">
@@ -464,7 +437,6 @@
                                 <DataGridTextColumn Header="Fuel" Binding="{Binding FuelType}" Width="60"/>
                                 <DataGridTextColumn Header="Shift A (L)" Binding="{Binding ShiftALitres, StringFormat=N2}" Width="90"/>
                                 <DataGridTextColumn Header="Shift B (L)" Binding="{Binding ShiftBLitres, StringFormat=N2}" Width="90"/>
-                                <DataGridTextColumn Header="Shift C (L)" Binding="{Binding ShiftCLitres, StringFormat=N2}" Width="90"/>
                                 <DataGridTextColumn Header="Day Total (L)" Binding="{Binding DayTotal, StringFormat=N2}" Width="100" FontWeight="Bold"/>
                             </DataGrid.Columns>
                         </DataGrid>

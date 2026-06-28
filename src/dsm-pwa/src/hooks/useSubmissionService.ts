@@ -40,6 +40,11 @@ export function useSubmissionService() {
         Notes: draft.notes || null,
         AttachmentUrl: draft.attachmentUrl || null,
         SubmittedAt: new Date().toISOString(),
+        Metadata: {
+          cardSwipeDetails: draft.cardSwipeDetails || [],
+          debtorEntries: draft.debtorEntries || [],
+          personalDebtors: draft.personalDebtors || []
+        }
       });
 
       if (subError) {

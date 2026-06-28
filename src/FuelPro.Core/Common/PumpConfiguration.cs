@@ -1,30 +1,27 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using FuelPro.Core.Models;
+
 namespace FuelPro.Core.Common;
 
 /// <summary>
-/// Hardcoded pump-to-nozzle mapping and fuel type rules.
-/// Loaded once, immutable configuration.
+/// Database-driven pump-to-nozzle mapping and fuel type rules.
+/// Replaces the hardcoded PumpConfiguration dictionaries.
 /// </summary>
 public static class PumpConfiguration
 {
-    public static readonly DateTime MigrationCutoffDate = new(2026, 6, 14);
+    public static readonly DateTime Legacy4PumpCutoffDate = new(2026, 6, 14);
+    public static readonly DateTime Legacy22PumpCutoffDate = new(2026, 6, 28);
 
     /// <summary>
     /// Operational Pump ID → list of nozzle numbers assigned to that pump.
+    /// Dynamically populated from Database.
     /// </summary>
-    public static readonly Dictionary<int, int[]> PumpNozzleMapping = new()
-    {
-        { 1, new[] { 1, 2 } },
-        { 2, new[] { 3, 4 } },
-        { 3, new[] { 5, 6, 7 } },
-        { 4, new[] { 8, 9, 10 } },
-        { 5, new[] { 11, 12, 13 } },
-        { 6, new[] { 14, 15, 16 } },
-        { 7, new[] { 17, 18 } },
-        { 8, new[] { 19, 20 } }
-    };
+    public static readonly Dictionary<int, int[]> PumpNozzleMapping = new();
 
     /// <summary>
-    /// Historical Pump ID → list of nozzle numbers assigned to that pump.
+    /// Historical Pump ID → list of nozzle numbers assigned to that pump (legacy 4-pump).
     /// </summary>
     private static readonly Dictionary<int, int[]> HistoricalPumpNozzleMapping = new()
     {
@@ -35,49 +32,13 @@ public static class PumpConfiguration
     };
 
     /// <summary>
-    /// Exact (PumpId, NozzleNumber) to FuelType mapping for current 8 operational pumps.
+    /// Exact (PumpId, NozzleNumber) to FuelType mapping.
+    /// Dynamically populated from Database.
     /// </summary>
-    private static readonly Dictionary<(int PumpId, int NozzleNumber), FuelType> NozzleFuelMap = new()
-    {
-        // Pump 1
-        { (1, 1), FuelType.MS_I },
-        { (1, 2), FuelType.MS_II },
-
-        // Pump 2
-        { (2, 3), FuelType.MS_I },
-        { (2, 4), FuelType.MS_II },
-
-        // Pump 3
-        { (3, 5), FuelType.MS_I },
-        { (3, 6), FuelType.MS_II },
-        { (3, 7), FuelType.HSD },
-
-        // Pump 4
-        { (4, 8), FuelType.MS_I },
-        { (4, 9), FuelType.MS_II },
-        { (4, 10), FuelType.HSD },
-
-        // Pump 5
-        { (5, 11), FuelType.MS_I },
-        { (5, 12), FuelType.MS_II },
-        { (5, 13), FuelType.HSD },
-
-        // Pump 6
-        { (6, 14), FuelType.MS_I },
-        { (6, 15), FuelType.MS_II },
-        { (6, 16), FuelType.HSD },
-
-        // Pump 7
-        { (7, 17), FuelType.HSD },
-        { (7, 18), FuelType.HSD },
-
-        // Pump 8
-        { (8, 19), FuelType.HSD },
-        { (8, 20), FuelType.HSD }
-    };
+    private static readonly Dictionary<(int PumpId, int NozzleNumber), FuelType> NozzleFuelMap = new();
 
     /// <summary>
-    /// Historical (PumpId, NozzleNumber) to FuelType mapping for physical machines.
+    /// Historical (PumpId, NozzleNumber) to FuelType mapping for legacy 4-pump layout.
     /// </summary>
     private static readonly Dictionary<(int PumpId, int NozzleNumber), FuelType> HistoricalNozzleFuelMap = new()
     {
@@ -111,43 +72,184 @@ public static class PumpConfiguration
     };
 
     /// <summary>
+    /// Legacy 22-pump layout nozzle mappings.
+    /// </summary>
+    private static readonly Dictionary<int, int[]> Legacy22PumpNozzleMapping = new();
+    private static readonly Dictionary<(int PumpId, int NozzleNumber), FuelType> Legacy22NozzleFuelMap = new();
+
+    /// <summary>
     /// Expose all defined nozzles.
     /// </summary>
-    public static readonly List<(int PumpId, int NozzleNumber)> AllNozzles = NozzleFuelMap.Keys.ToList();
+    public static List<(int PumpId, int NozzleNumber)> AllNozzles => NozzleFuelMap.Keys.ToList();
+
+    static PumpConfiguration()
+    {
+        // 1. Initialize Legacy 22-pump mappings for historical retrieval
+        int nozzle22 = 1;
+        for (int pump = 1; pump <= 8; pump++)
+        {
+            Legacy22PumpNozzleMapping[pump] = new[] { nozzle22, nozzle22 + 1, nozzle22 + 2 };
+            Legacy22NozzleFuelMap[(pump, nozzle22++)] = FuelType.MS_I;
+            Legacy22NozzleFuelMap[(pump, nozzle22++)] = FuelType.MS_II;
+            Legacy22NozzleFuelMap[(pump, nozzle22++)] = FuelType.HSD;
+        }
+        for (int pump = 9; pump <= 10; pump++)
+        {
+            Legacy22PumpNozzleMapping[pump] = new[] { nozzle22, nozzle22 + 1 };
+            Legacy22NozzleFuelMap[(pump, nozzle22++)] = FuelType.MS_I;
+            Legacy22NozzleFuelMap[(pump, nozzle22++)] = FuelType.MS_II;
+        }
+        for (int pump = 11; pump <= 12; pump++)
+        {
+            Legacy22PumpNozzleMapping[pump] = new[] { nozzle22, nozzle22 + 1 };
+            Legacy22NozzleFuelMap[(pump, nozzle22++)] = FuelType.MS_I;
+            Legacy22NozzleFuelMap[(pump, nozzle22++)] = FuelType.MS_II;
+        }
+        for (int pump = 13; pump <= 16; pump++)
+        {
+            Legacy22PumpNozzleMapping[pump] = new[] { nozzle22, nozzle22 + 1 };
+            Legacy22NozzleFuelMap[(pump, nozzle22++)] = FuelType.MS_I;
+            Legacy22NozzleFuelMap[(pump, nozzle22++)] = FuelType.MS_II;
+        }
+        for (int pump = 17; pump <= 18; pump++)
+        {
+            Legacy22PumpNozzleMapping[pump] = new[] { nozzle22, nozzle22 + 1 };
+            Legacy22NozzleFuelMap[(pump, nozzle22++)] = FuelType.MS_I;
+            Legacy22NozzleFuelMap[(pump, nozzle22++)] = FuelType.HSD;
+        }
+        for (int pump = 19; pump <= 22; pump++)
+        {
+            Legacy22PumpNozzleMapping[pump] = new[] { nozzle22 };
+            Legacy22NozzleFuelMap[(pump, nozzle22++)] = FuelType.CNG;
+        }
+
+        // 2. Set up default 6-pump mappings as active fallback
+        var defaultMappings = new List<PumpMapping>();
+        var now = DateTime.Now;
+
+        // Pump 1: Nozzle 1 (MS-II/Petrol, Tank 2), Nozzle 3 (HSD/Diesel, Tank 3)
+        defaultMappings.Add(new PumpMapping { PumpId = 1, NozzleNumber = 1, FuelType = "MS-II", TankName = "Tank 2", CreatedAt = now });
+        defaultMappings.Add(new PumpMapping { PumpId = 1, NozzleNumber = 3, FuelType = "HSD", TankName = "Tank 3", CreatedAt = now });
+
+        // Pump 2: Nozzle 2 (MS-II/Petrol, Tank 2), Nozzle 4 (HSD/Diesel, Tank 3)
+        defaultMappings.Add(new PumpMapping { PumpId = 2, NozzleNumber = 2, FuelType = "MS-II", TankName = "Tank 2", CreatedAt = now });
+        defaultMappings.Add(new PumpMapping { PumpId = 2, NozzleNumber = 4, FuelType = "HSD", TankName = "Tank 3", CreatedAt = now });
+
+        // Pump 3: Nozzle 5 (MS-I/Petrol, Tank 1), Nozzle 7 (HSD/Diesel, Tank 3)
+        defaultMappings.Add(new PumpMapping { PumpId = 3, NozzleNumber = 5, FuelType = "MS-I", TankName = "Tank 1", CreatedAt = now });
+        defaultMappings.Add(new PumpMapping { PumpId = 3, NozzleNumber = 7, FuelType = "HSD", TankName = "Tank 3", CreatedAt = now });
+
+        // Pump 4: Nozzle 6 (MS-I/Petrol, Tank 1), Nozzle 8 (HSD/Diesel, Tank 3)
+        defaultMappings.Add(new PumpMapping { PumpId = 4, NozzleNumber = 6, FuelType = "MS-I", TankName = "Tank 1", CreatedAt = now });
+        defaultMappings.Add(new PumpMapping { PumpId = 4, NozzleNumber = 8, FuelType = "HSD", TankName = "Tank 3", CreatedAt = now });
+
+        // Pump 5: Nozzle 9 (MS-II/Petrol, Tank 2), Nozzle 11 (HSD/Diesel, Tank 3)
+        defaultMappings.Add(new PumpMapping { PumpId = 5, NozzleNumber = 9, FuelType = "MS-II", TankName = "Tank 2", CreatedAt = now });
+        defaultMappings.Add(new PumpMapping { PumpId = 5, NozzleNumber = 11, FuelType = "HSD", TankName = "Tank 3", CreatedAt = now });
+
+        // Pump 6: Nozzle 10 (MS-II/Petrol, Tank 2), Nozzle 12 (HSD/Diesel, Tank 3)
+        defaultMappings.Add(new PumpMapping { PumpId = 6, NozzleNumber = 10, FuelType = "MS-II", TankName = "Tank 2", CreatedAt = now });
+        defaultMappings.Add(new PumpMapping { PumpId = 6, NozzleNumber = 12, FuelType = "HSD", TankName = "Tank 3", CreatedAt = now });
+
+        InitializeFromDb(defaultMappings);
+    }
+
+    public static void InitializeFromDb(List<PumpMapping> mappings)
+    {
+        var active = mappings.Where(m => m.IsActive).ToList();
+        
+        PumpNozzleMapping.Clear();
+        NozzleFuelMap.Clear();
+
+        foreach (var m in active)
+        {
+            var cleanFuelType = m.FuelType.Replace("-", "_");
+            if (Enum.TryParse<FuelType>(cleanFuelType, out var fuelType))
+            {
+                NozzleFuelMap[(m.PumpId, m.NozzleNumber)] = fuelType;
+            }
+
+            if (!PumpNozzleMapping.ContainsKey(m.PumpId))
+            {
+                PumpNozzleMapping[m.PumpId] = new[] { m.NozzleNumber };
+            }
+            else
+            {
+                var list = PumpNozzleMapping[m.PumpId].ToList();
+                list.Add(m.NozzleNumber);
+                PumpNozzleMapping[m.PumpId] = list.OrderBy(n => n).ToArray();
+            }
+        }
+
+        TotalPumps = PumpNozzleMapping.Keys.DefaultIfEmpty(0).Max();
+        TotalNozzles = active.Count;
+    }
+
+    public static int GetPumpIdForNozzle(int nozzleNumber, DateTime? date = null)
+    {
+        if (date.HasValue)
+        {
+            if (date.Value.Date < Legacy4PumpCutoffDate)
+            {
+                var match = HistoricalNozzleFuelMap.Keys.FirstOrDefault(k => k.NozzleNumber == nozzleNumber);
+                return match != default ? match.PumpId : 0;
+            }
+            else if (date.Value.Date < Legacy22PumpCutoffDate)
+            {
+                var match = Legacy22NozzleFuelMap.Keys.FirstOrDefault(k => k.NozzleNumber == nozzleNumber);
+                return match != default ? match.PumpId : 0;
+            }
+        }
+
+        var activeMatch = NozzleFuelMap.Keys.FirstOrDefault(k => k.NozzleNumber == nozzleNumber);
+        if (activeMatch != default)
+            return activeMatch.PumpId;
+
+        // Try falling back to legacy 22-pump then 4-pump
+        var legacy22Match = Legacy22NozzleFuelMap.Keys.FirstOrDefault(k => k.NozzleNumber == nozzleNumber);
+        if (legacy22Match != default)
+            return legacy22Match.PumpId;
+
+        var histMatch = HistoricalNozzleFuelMap.Keys.FirstOrDefault(k => k.NozzleNumber == nozzleNumber);
+        return histMatch != default ? histMatch.PumpId : 0;
+    }
 
     public static FuelType GetFuelType(int pumpId, int nozzleNumber, DateTime? date = null)
     {
-        var isHistorical = date.HasValue && date.Value.Date < MigrationCutoffDate;
-        if (isHistorical)
+        var actualPumpId = GetPumpIdForNozzle(nozzleNumber, date);
+        if (actualPumpId == 0)
         {
-            if (HistoricalNozzleFuelMap.TryGetValue((pumpId, nozzleNumber), out var historicalFuelType))
-                return historicalFuelType;
-
-            // Historical fallback to prevent crash and preserve correct classification of old records
-            if (nozzleNumber == 1 || nozzleNumber == 2 || nozzleNumber == 7 || nozzleNumber == 8)
-                return FuelType.HSD;
-            
-            if (nozzleNumber == 3 || nozzleNumber == 4 || nozzleNumber == 9 || nozzleNumber == 10 || 
-                nozzleNumber == 13 || nozzleNumber == 14 || nozzleNumber == 17 || nozzleNumber == 18 || 
-                nozzleNumber == 23 || nozzleNumber == 24 || nozzleNumber == 27 || nozzleNumber == 28)
-            {
-                return FuelType.MS_II;
-            }
-
-            return FuelType.MS_I;
+            actualPumpId = pumpId;
         }
 
-        // For current/new records, avoid fallback logic and throw exception on invalid mapping
-        if (NozzleFuelMap.TryGetValue((pumpId, nozzleNumber), out var fuelType))
+        if (date.HasValue)
+        {
+            if (date.Value.Date < Legacy4PumpCutoffDate)
+            {
+                if (HistoricalNozzleFuelMap.TryGetValue((actualPumpId, nozzleNumber), out var historicalFuelType))
+                    return historicalFuelType;
+            }
+            else if (date.Value.Date < Legacy22PumpCutoffDate)
+            {
+                if (Legacy22NozzleFuelMap.TryGetValue((actualPumpId, nozzleNumber), out var legacy22FuelType))
+                    return legacy22FuelType;
+            }
+        }
+
+        if (NozzleFuelMap.TryGetValue((actualPumpId, nozzleNumber), out var fuelType))
             return fuelType;
 
-        throw new ArgumentException($"Invalid operational pump and nozzle mapping: Pump {pumpId}, Nozzle {nozzleNumber}");
+        if (Legacy22NozzleFuelMap.TryGetValue((actualPumpId, nozzleNumber), out var fallback22Type))
+            return fallback22Type;
+
+        if (HistoricalNozzleFuelMap.TryGetValue((actualPumpId, nozzleNumber), out var fallback4Type))
+            return fallback4Type;
+
+        return FuelType.MS_I;
     }
 
     /// <summary>
-    /// Returns the canonical display name ("HSD", "MS-I", "MS-II") for a pump ID and nozzle number.
-    /// Use this instead of the stored FuelType string to ensure old DB records
-    /// are classified correctly even if they were saved with a stale mapping.
+    /// Returns the canonical display name ("HSD", "MS-I", "MS-II", "CNG") for a pump ID and nozzle number.
     /// </summary>
     public static string GetFuelTypeDisplayName(int pumpId, int nozzleNumber, DateTime? date = null)
         => GetFuelType(pumpId, nozzleNumber, date).ToDisplayName();
@@ -157,20 +259,34 @@ public static class PumpConfiguration
     /// </summary>
     public static int[] GetNozzlesForPump(int pumpId, DateTime? date = null)
     {
-        var isHistorical = date.HasValue && date.Value.Date < MigrationCutoffDate;
-        var map = isHistorical ? HistoricalPumpNozzleMapping : PumpNozzleMapping;
-        return map.TryGetValue(pumpId, out var nozzles)
-            ? nozzles
-            : Array.Empty<int>();
+        if (date.HasValue)
+        {
+            if (date.Value.Date < Legacy4PumpCutoffDate)
+            {
+                return HistoricalPumpNozzleMapping.TryGetValue(pumpId, out var nozzles) ? nozzles : Array.Empty<int>();
+            }
+            else if (date.Value.Date < Legacy22PumpCutoffDate)
+            {
+                return Legacy22PumpNozzleMapping.TryGetValue(pumpId, out var nozzles) ? nozzles : Array.Empty<int>();
+            }
+        }
+
+        return PumpNozzleMapping.TryGetValue(pumpId, out var nozzlesActive) ? nozzlesActive : Array.Empty<int>();
     }
 
     /// <summary>
-    /// Get display items for pump dropdown: "Pump 1 : 1, 2, 3, 4"
+    /// Get display items for pump dropdown: "Pump 1 : 1, 2, 3"
     /// </summary>
     public static List<PumpDisplayItem> GetPumpDisplayItems(DateTime? date = null)
     {
-        var isHistorical = date.HasValue && date.Value.Date < MigrationCutoffDate;
-        var map = isHistorical ? HistoricalPumpNozzleMapping : PumpNozzleMapping;
+        var map = PumpNozzleMapping;
+        if (date.HasValue)
+        {
+            if (date.Value.Date < Legacy4PumpCutoffDate)
+                map = HistoricalPumpNozzleMapping;
+            else if (date.Value.Date < Legacy22PumpCutoffDate)
+                map = Legacy22PumpNozzleMapping;
+        }
         return map
             .OrderBy(p => p.Key)
             .Select(p => new PumpDisplayItem
@@ -184,12 +300,12 @@ public static class PumpConfiguration
     /// <summary>
     /// Total number of pumps.
     /// </summary>
-    public const int TotalPumps = 8;
+    public static int TotalPumps { get; private set; } = 6;
 
     /// <summary>
     /// Total number of nozzles.
     /// </summary>
-    public const int TotalNozzles = 20;
+    public static int TotalNozzles { get; private set; } = 12;
 
     /// <summary>
     /// Denomination values for cash counting.
@@ -201,9 +317,9 @@ public static class PumpConfiguration
     /// </summary>
     public static readonly Dictionary<string, string> Tanks = new()
     {
-        { "Tank 1", "HSD" },
-        { "Tank 2", "MS (MS-I)" },
-        { "Tank 3", "MS (MS-II)" }
+        { "Tank 1", "MS" },
+        { "Tank 2", "MS" },
+        { "Tank 3", "HSD" }
     };
 }
 

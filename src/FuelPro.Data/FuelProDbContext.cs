@@ -7,7 +7,24 @@ namespace FuelPro.Data;
 
 public class FuelProDbContext : DbContext
 {
-    public FuelProDbContext(DbContextOptions<FuelProDbContext> options) : base(options) { }
+    public static string? ConnectionString { get; set; }
+
+    public FuelProDbContext(DbContextOptions<FuelProDbContext> options) : base(options)
+    {
+        foreach (var extension in options.Extensions)
+        {
+            var prop = extension.GetType().GetProperty("ConnectionString");
+            if (prop != null)
+            {
+                var val = prop.GetValue(extension) as string;
+                if (!string.IsNullOrEmpty(val))
+                {
+                    ConnectionString = val;
+                    break;
+                }
+            }
+        }
+    }
 
     public DbSet<User> Users => Set<User>();
     public DbSet<Shift> Shifts => Set<Shift>();
@@ -39,6 +56,16 @@ public class FuelProDbContext : DbContext
     public DbSet<DsmDevice> DsmDevices => Set<DsmDevice>();
     public DbSet<DsmApprovalAudit> DsmApprovalAudits => Set<DsmApprovalAudit>();
     public DbSet<DsmAttendance> DsmAttendance => Set<DsmAttendance>();
+    public DbSet<DebtorVehicle> DebtorVehicles => Set<DebtorVehicle>();
+    public DbSet<PumpExpense> PumpExpenses => Set<PumpExpense>();
+    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DbSet<DayLock> DayLocks => Set<DayLock>();
+    public DbSet<SoftwareVersionHistory> SoftwareVersionHistories => Set<SoftwareVersionHistory>();
+    public DbSet<PumpMapping> PumpMappings => Set<PumpMapping>();
+    public DbSet<ExpenseCategory> ExpenseCategories => Set<ExpenseCategory>();
+    public DbSet<PumpExpenseCategoryItem> PumpExpenseCategoryItems => Set<PumpExpenseCategoryItem>();
+    public DbSet<DsmPersonalDebtor> DsmPersonalDebtors => Set<DsmPersonalDebtor>();
+    public DbSet<DsmPersonalDebtorRepayment> DsmPersonalDebtorRepayments => Set<DsmPersonalDebtorRepayment>();
 
     // AGS Import
     public DbSet<AgsShiftImport> AgsShiftImports => Set<AgsShiftImport>();
@@ -121,6 +148,18 @@ public class FuelProDbContext : DbContext
         {
             entity.HasIndex(e => e.Name).IsUnique();
             entity.Property(e => e.IsActive).HasDefaultValue(true);
+
+            entity.HasMany(e => e.Vehicles)
+                  .WithOne(v => v.Creditor)
+                  .HasForeignKey(v => v.CreditorId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // DebtorVehicle
+        modelBuilder.Entity<DebtorVehicle>(entity =>
+        {
+            entity.HasIndex(e => new { e.CreditorId, e.VehicleNumber }).IsUnique();
+            entity.Property(e => e.IsActive).HasDefaultValue(true);
         });
 
         // DebitEntry
@@ -172,7 +211,34 @@ public class FuelProDbContext : DbContext
             entity.Property(e => e.HsdRate).HasDefaultValue(90.35);
             entity.Property(e => e.MsIRate).HasDefaultValue(103.81);
             entity.Property(e => e.MsIIRate).HasDefaultValue(103.81);
-            entity.Property(e => e.PumpStationName).HasDefaultValue("PyroSync");
+            entity.Property(e => e.CngRate).HasDefaultValue(85.0);
+            entity.Property(e => e.PumpStationName).HasDefaultValue("Mitali Service Station");
+        });
+
+        // PumpExpense
+        modelBuilder.Entity<PumpExpense>(entity =>
+        {
+            entity.HasIndex(e => e.ExpenseDate).IsUnique();
+        });
+
+        // PumpExpenseCategoryItem
+        modelBuilder.Entity<PumpExpenseCategoryItem>(entity =>
+        {
+            entity.HasOne(e => e.PumpExpense)
+                  .WithMany()
+                  .HasForeignKey(e => e.PumpExpenseId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Category)
+                  .WithMany()
+                  .HasForeignKey(e => e.CategoryId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // DayLock
+        modelBuilder.Entity<DayLock>(entity =>
+        {
+            entity.HasIndex(e => e.LockDate).IsUnique();
         });
 
         modelBuilder.Entity<AppMeta>(entity =>
@@ -289,6 +355,34 @@ public class FuelProDbContext : DbContext
                   .OnDelete(DeleteBehavior.Cascade);
 
             entity.HasIndex(e => new { e.DsmUserId, e.AttendanceDate, e.ShiftType }).IsUnique();
+        });
+
+        // DsmPersonalDebtor
+        modelBuilder.Entity<DsmPersonalDebtor>(entity =>
+        {
+            entity.HasOne(e => e.DsmEntry)
+                  .WithMany(d => d.PersonalDebtors)
+                  .HasForeignKey(e => e.DsmEntryId)
+                  .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasIndex(e => e.SyncGuid).IsUnique();
+            entity.HasIndex(e => new { e.DsmName, e.Date });
+        });
+
+        // DsmPersonalDebtorRepayment
+        modelBuilder.Entity<DsmPersonalDebtorRepayment>(entity =>
+        {
+            entity.HasOne(e => e.DsmPersonalDebtor)
+                  .WithMany()
+                  .HasForeignKey(e => e.DsmPersonalDebtorId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Shift)
+                  .WithMany()
+                  .HasForeignKey(e => e.ShiftId)
+                  .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasIndex(e => e.SyncGuid).IsUnique();
         });
     }
 

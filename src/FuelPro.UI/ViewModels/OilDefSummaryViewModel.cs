@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FuelPro.Core.Models;
 using FuelPro.Core.Services;
+using FuelPro.Core.DTOs;
 using FuelPro.Data;
 using FuelPro.UI.Printing;
 using Microsoft.EntityFrameworkCore;
@@ -24,6 +25,7 @@ public partial class OilDefSummaryViewModel : ObservableObject
     private readonly FuelProDbContext _dbContext;
     private readonly IFinancialCalculationService _financialCalcService;
     private readonly PrintService _printService;
+    private readonly ExcelExportService _excelExportService;
     private readonly System.Threading.SemaphoreSlim _dbLock = new(1, 1);
     private bool _isApplyingPreset;
 
@@ -56,6 +58,9 @@ public partial class OilDefSummaryViewModel : ObservableObject
     [ObservableProperty] private double _totalProfit;
     [ObservableProperty] private double _totalAdjustmentLoss;
 
+    // Product-wise breakdown
+    public ObservableCollection<OilDefProductSummaryRow> ProductBreakdownRows { get; } = new();
+
     // Adjustment (damage/loss) details
     public ObservableCollection<AdjustmentSummaryRow> AdjustmentRows { get; } = new();
 
@@ -66,6 +71,7 @@ public partial class OilDefSummaryViewModel : ObservableObject
     {
         _dbContext = App.Services.GetRequiredService<FuelProDbContext>();
         _financialCalcService = App.Services.GetRequiredService<IFinancialCalculationService>();
+        _excelExportService = App.Services.GetRequiredService<ExcelExportService>();
         _printService = new PrintService();
 
         // Wire Sync Status to trigger auto-reload
@@ -175,6 +181,9 @@ public partial class OilDefSummaryViewModel : ObservableObject
 
             // Load recent sales logs
             await LoadRecentSalesAsync();
+
+            // Load product breakdown
+            await LoadProductBreakdownAsync();
         }
         catch (Exception ex)
         {
@@ -375,6 +384,147 @@ public partial class OilDefSummaryViewModel : ObservableObject
             IsLoading = false;
         }
     }
+
+    private async Task LoadProductBreakdownAsync()
+    {
+        ProductBreakdownRows.Clear();
+        try
+        {
+            var products = await _dbContext.ProductMasters.Where(p => p.IsActive).ToListAsync();
+            
+            foreach (var product in products)
+            {
+                // opening
+                var lastLogBefore = await _dbContext.OilDefDailyLogs
+                    .Where(l => l.ProductId == product.Id && l.LogDate < StartDate.Date)
+                    .OrderByDescending(l => l.LogDate)
+                    .FirstOrDefaultAsync();
+                double opening = lastLogBefore?.RemainingStock ?? 
+                                 (await _dbContext.OilDefInventories
+                                     .Where(i => i.ProductId == product.Id && i.Year == StartDate.Year && i.Month == StartDate.Month)
+                                     .Select(i => (double?)i.OpeningStock)
+                                     .FirstOrDefaultAsync()) ?? 0.0;
+
+                // closing
+                var lastLogInRange = await _dbContext.OilDefDailyLogs
+                    .Where(l => l.ProductId == product.Id && l.LogDate >= StartDate.Date && l.LogDate <= EndDate.Date)
+                    .OrderByDescending(l => l.LogDate)
+                    .FirstOrDefaultAsync();
+                double closing = lastLogInRange?.RemainingStock ?? opening;
+
+                // purchases
+                var purchases = await _dbContext.OilDefPurchases
+                    .Where(p => p.ProductId == product.Id && p.PurchaseDate >= StartDate.Date && p.PurchaseDate <= EndDate.Date)
+                    .ToListAsync();
+                double pQty = purchases.Sum(p => p.Quantity);
+                double pVal = purchases.Sum(p => p.TotalCost);
+
+                double avgCost = 0.0;
+                if (pQty > 0)
+                {
+                    avgCost = pVal / pQty;
+                }
+                else
+                {
+                    var lastPurchase = await _dbContext.OilDefPurchases
+                        .Where(p => p.ProductId == product.Id && p.PurchaseDate < StartDate.Date)
+                        .OrderByDescending(p => p.PurchaseDate)
+                        .FirstOrDefaultAsync();
+                    avgCost = lastPurchase?.UnitPrice ?? product.DefaultSaleRate * 0.8;
+                }
+
+                // sales
+                var logs = await _dbContext.OilDefDailyLogs
+                    .Where(l => l.ProductId == product.Id && l.LogDate >= StartDate.Date && l.LogDate <= EndDate.Date)
+                    .ToListAsync();
+                double sQty = logs.Sum(l => l.SoldQuantity);
+                double sVal = logs.Sum(l => l.SoldQuantity * (l.OverrideSaleRate ?? product.DefaultSaleRate));
+
+                double profit = sVal - (sQty * avgCost);
+
+                ProductBreakdownRows.Add(new OilDefProductSummaryRow
+                {
+                    ProductName = product.ProductName,
+                    Category = product.Category,
+                    Unit = product.Unit,
+                    OpeningStock = opening,
+                    PurchasedQty = pQty,
+                    PurchaseValue = pVal,
+                    SoldQty = sQty,
+                    SalesValue = sVal,
+                    ClosingStock = closing,
+                    Profit = profit
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to load product breakdown");
+        }
+    }
+
+    [RelayCommand]
+    private async Task ExportExcelAsync()
+    {
+        try
+        {
+            IsLoading = true;
+            var settings = await _dbContext.Settings.FirstOrDefaultAsync();
+            var stationName = settings?.StationDisplayName ?? "Shree Mahakaleshwar Petroleum";
+
+            var data = new GenericGridPrintData
+            {
+                Title = stationName,
+                Subtitle = $"Oil & DEF Product-wise Summary: {PeriodLabel}",
+                Headers = new List<string> { "Product Name", "Category", "Unit", "Opening Stock", "Purchased Qty", "Purchase Value", "Sold Qty", "Sales Value", "Closing Stock", "Profit" },
+                SummaryCards = new List<GenericGridPrintCard>
+                {
+                    new() { Label = "Total Sales Revenue", Value = $"₹{TotalSalesRevenue:N2}", Highlight = true },
+                    new() { Label = "Total Profit", Value = $"₹{TotalProfit:N2}", Highlight = false },
+                    new() { Label = "Estimated Adjustment Loss", Value = $"₹{TotalAdjustmentLoss:N2}", Highlight = false }
+                },
+                Rows = ProductBreakdownRows.Select(r => new List<string>
+                {
+                    r.ProductName,
+                    r.Category,
+                    r.Unit,
+                    r.OpeningStock.ToString("N2"),
+                    r.PurchasedQty.ToString("N2"),
+                    $"₹{r.PurchaseValue:N2}",
+                    r.SoldQty.ToString("N2"),
+                    $"₹{r.SalesValue:N2}",
+                    r.ClosingStock.ToString("N2"),
+                    $"₹{r.Profit:N2}"
+                }).ToList()
+            };
+
+            var filePath = await _excelExportService.ExportGenericGridAsync(data, "Oil_DEF_Summary");
+            MessageBox.Show($"Exported successfully to:\n{filePath}", "Export Excel", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to export Oil & DEF summary to Excel");
+            MessageBox.Show($"Failed to export: {ex.Message}", "Export Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+}
+
+public class OilDefProductSummaryRow
+{
+    public string ProductName { get; set; } = string.Empty;
+    public string Category { get; set; } = string.Empty;
+    public string Unit { get; set; } = string.Empty;
+    public double OpeningStock { get; set; }
+    public double PurchasedQty { get; set; }
+    public double PurchaseValue { get; set; }
+    public double SoldQty { get; set; }
+    public double SalesValue { get; set; }
+    public double ClosingStock { get; set; }
+    public double Profit { get; set; }
 }
 
 /// <summary>

@@ -1,13 +1,17 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using FuelPro.Core.DTOs;
 using FuelPro.Core.Models;
 using FuelPro.Core.Repositories;
+using FuelPro.Core.Services;
+using FuelPro.UI.Printing;
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Windows;
 
 namespace FuelPro.UI.ViewModels;
 
@@ -16,6 +20,8 @@ public partial class ExpenseAnalysisViewModel : ObservableObject
     private readonly IShiftRepository _shiftRepo;
     private readonly IDsmEntryRepository _dsmEntryRepo;
     private readonly IExpenseRepository _expenseRepo;
+    private readonly PrintService _printService;
+    private readonly ExcelExportService _excelExportService;
 
     [ObservableProperty] private DateTime _startDate = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
     [ObservableProperty] private DateTime _endDate = DateTime.Today;
@@ -33,6 +39,8 @@ public partial class ExpenseAnalysisViewModel : ObservableObject
         _shiftRepo = App.Services.GetRequiredService<IShiftRepository>();
         _dsmEntryRepo = App.Services.GetRequiredService<IDsmEntryRepository>();
         _expenseRepo = App.Services.GetRequiredService<IExpenseRepository>();
+        _printService = App.Services.GetRequiredService<PrintService>();
+        _excelExportService = App.Services.GetRequiredService<ExcelExportService>();
         _ = LoadAsync();
     }
 
@@ -137,6 +145,97 @@ public partial class ExpenseAnalysisViewModel : ObservableObject
         foreach (var group in grouped)
         {
             GroupedExpenses.Add(group);
+        }
+    }
+
+    [RelayCommand]
+    private void Print()
+    {
+        try
+        {
+            var summaryCards = new List<GenericGridPrintCard>
+            {
+                new() { Label = "Total Expenses", Value = "₹" + TotalExpensesAmount.ToString("N2"), Highlight = true }
+            };
+
+            var headers = new List<string> { "Date", "Shift", "Source", "Description / Purpose", "Amount" };
+            var rows = new List<List<string>>();
+
+            foreach (var row in ItemizedExpenses)
+            {
+                rows.Add(new List<string>
+                {
+                    row.Date.ToString("dd-MMM-yyyy"),
+                    row.ShiftType,
+                    row.Source,
+                    row.Description,
+                    "₹" + row.Amount.ToString("N2")
+                });
+            }
+
+            var printData = new GenericGridPrintData
+            {
+                Title = "Expense Analysis Report",
+                Subtitle = $"Date Range: {StartDate:dd-MMM-yyyy} to {EndDate:dd-MMM-yyyy}" + 
+                           (string.IsNullOrWhiteSpace(SearchText) ? "" : $" (Filtered by: '{SearchText}')"),
+                SummaryCards = summaryCards,
+                Headers = headers,
+                Rows = rows,
+                ShowSignatures = true
+            };
+
+            _printService.PrintGenericGrid(printData);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to print Expense Analysis report");
+            MessageBox.Show($"Print failed: {ex.Message}", "Print Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    [RelayCommand]
+    private async Task ExportExcelAsync()
+    {
+        try
+        {
+            var summaryCards = new List<GenericGridPrintCard>
+            {
+                new() { Label = "Total Expenses", Value = "₹" + TotalExpensesAmount.ToString("N2"), Highlight = true }
+            };
+
+            var headers = new List<string> { "Date", "Shift", "Source", "Description / Purpose", "Amount" };
+            var rows = new List<List<string>>();
+
+            foreach (var row in ItemizedExpenses)
+            {
+                rows.Add(new List<string>
+                {
+                    row.Date.ToString("dd-MMM-yyyy"),
+                    row.ShiftType,
+                    row.Source,
+                    row.Description,
+                    "₹" + row.Amount.ToString("N2")
+                });
+            }
+
+            var printData = new GenericGridPrintData
+            {
+                Title = "Expense Analysis Report",
+                Subtitle = $"Date Range: {StartDate:dd-MMM-yyyy} to {EndDate:dd-MMM-yyyy}" + 
+                           (string.IsNullOrWhiteSpace(SearchText) ? "" : $" (Filtered by: '{SearchText}')"),
+                SummaryCards = summaryCards,
+                Headers = headers,
+                Rows = rows,
+                ShowSignatures = true
+            };
+
+            var path = await _excelExportService.ExportGenericGridAsync(printData, "ExpenseAnalysis");
+            MessageBox.Show($"Report exported successfully to:\n{path}", "Export Success", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to export Expense Analysis to Excel");
+            MessageBox.Show($"Export failed: {ex.Message}", "Export Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 }

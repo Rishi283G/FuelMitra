@@ -22,6 +22,7 @@ public partial class DayTotalViewModel : ObservableObject
     private readonly IShiftFuelRateRepository _fuelRateRepo;
     private readonly IShiftAggregationService _aggregation;
     private readonly ILogger _logger = Log.ForContext<DayTotalViewModel>();
+    private List<DsmEntry> _allEntries = new();
 
     [ObservableProperty] private DateTime _selectedDate = DateTime.Today;
     [ObservableProperty] private DateTime _startDate = DateTime.Today;
@@ -41,11 +42,15 @@ public partial class DayTotalViewModel : ObservableObject
     [ObservableProperty] private double _totalMsILitres;
     [ObservableProperty] private double _totalMsIILitres;
     [ObservableProperty] private double _totalMsLitres;
+    [ObservableProperty] private double _totalCngLitres;
 
     // TABLE 2: Collections
+    [ObservableProperty] private double _phonePeMorningTotal;
+    [ObservableProperty] private double _phonePeNightTotal;
     [ObservableProperty] private double _phonePeTotal;
     [ObservableProperty] private double _phonePeCardMorningTotal;
     [ObservableProperty] private double _phonePeCardNightTotal;
+    [ObservableProperty] private double _phonePeCardTotal;
     [ObservableProperty] private double _creditCardMorningTotal;
     [ObservableProperty] private double _creditCardNightTotal;
     [ObservableProperty] private double _creditCardTotal;
@@ -55,6 +60,15 @@ public partial class DayTotalViewModel : ObservableObject
     [ObservableProperty] private double _totalDigital;
     [ObservableProperty] private double _totalCash;
     [ObservableProperty] private double _totalDigitalAndCash;
+
+    // Simplified splits
+    [ObservableProperty] private double _splitCash;
+    [ObservableProperty] private double _splitPhonePe;
+    [ObservableProperty] private double _splitUpi;
+    [ObservableProperty] private double _splitPineLabsCard;
+    [ObservableProperty] private double _splitCredit;
+    [ObservableProperty] private double _splitOther;
+    [ObservableProperty] private double _othersTotal;
 
     // TABLE 3: Creditors / Debtors
     [ObservableProperty] private ObservableCollection<DebitRegisterRowDto> _creditorRows = new();
@@ -174,6 +188,7 @@ public partial class DayTotalViewModel : ObservableObject
 
             var entriesResult = await _dsmRepo.GetEntriesForDateRangeAsync(StartDate, EndDate);
             var allEntries = entriesResult.Success && entriesResult.Data != null ? entriesResult.Data : new List<DsmEntry>();
+            _allEntries = allEntries;
 
             var shiftsResult = await _shiftRepo.GetShiftsByDateRangeAsync(StartDate, EndDate);
             var shifts = shiftsResult.Success && shiftsResult.Data != null ? shiftsResult.Data : new List<Shift>();
@@ -207,9 +222,12 @@ public partial class DayTotalViewModel : ObservableObject
             // 2. Collections (using DsmSummaryRows)
             var summaryRows = _aggregation.BuildDsmSummaryRows(allEntries);
             var totalsRow = _aggregation.BuildDsmSummaryTotalRow(summaryRows);
-            PhonePeTotal = totalsRow.PhonePe;
+            PhonePeMorningTotal = totalsRow.PhonePeMorning;
+            PhonePeNightTotal = totalsRow.PhonePeNight;
+            PhonePeTotal = PhonePeMorningTotal + PhonePeNightTotal;
             PhonePeCardMorningTotal = totalsRow.PhonePeCardMorning;
             PhonePeCardNightTotal = totalsRow.PhonePeCardNight;
+            PhonePeCardTotal = PhonePeCardMorningTotal + PhonePeCardNightTotal;
             CreditCardMorningTotal = totalsRow.CreditCardMorning;
             CreditCardNightTotal = totalsRow.CreditCardNight;
             CreditCardTotal = CreditCardMorningTotal + CreditCardNightTotal;
@@ -230,6 +248,14 @@ public partial class DayTotalViewModel : ObservableObject
             CreditorRows = new ObservableCollection<DebitRegisterRowDto>(creditors);
             CreditorsTotal = creditors.Sum(r => r.Amount);
 
+            SplitCash = BankCashTotal + CashInHandTotal;
+            SplitPhonePe = PhonePeTotal;
+            SplitUpi = PhonePeCardTotal;
+            SplitPineLabsCard = CreditCardTotal;
+            SplitCredit = CreditorsTotal;
+            SplitOther = PetroCardTotal + totalsRow.Others;
+            OthersTotal = totalsRow.Others;
+
             // 4. Expenses
             var expenses = _aggregation.BuildExpenseRows(allEntries, allExpenses);
             ExpenseRows = new ObservableCollection<ExpenseRegisterRowDto>(expenses);
@@ -238,7 +264,8 @@ public partial class DayTotalViewModel : ObservableObject
             // 5. Final Day Reconciliation
             var msTesting = allEntries.SelectMany(e => e.TestingEntries).Where(t => t.FuelType == "MS").Sum(t => t.Amount);
             var hsdTesting = allEntries.SelectMany(e => e.TestingEntries).Where(t => t.FuelType == "HSD").Sum(t => t.Amount);
-            var totalTesting = msTesting + hsdTesting;
+            var cngTesting = allEntries.SelectMany(e => e.TestingEntries).Where(t => t.FuelType == "CNG").Sum(t => t.Amount);
+            var totalTesting = msTesting + hsdTesting + cngTesting;
 
             double totalDsmShort = 0;
             var mismatchGroups = allEntries.GroupBy(e => new { e.ShiftId, e.DsmName, GroupPumpId = e.ReconciledToPumpId ?? e.PumpId });
@@ -330,6 +357,7 @@ public partial class DayTotalViewModel : ObservableObject
         TotalHsdLitres = nozzleRows.Where(r => r.FuelType == "HSD").Sum(r => r.NetSaleLitres);
         TotalMsILitres = nozzleRows.Where(r => r.FuelType == "MS-I").Sum(r => r.NetSaleLitres);
         TotalMsIILitres = nozzleRows.Where(r => r.FuelType == "MS-II").Sum(r => r.NetSaleLitres);
+        TotalCngLitres = nozzleRows.Where(r => r.FuelType == "CNG").Sum(r => r.NetSaleLitres);
         TotalMsLitres = TotalMsILitres + TotalMsIILitres;
         TotalDayFuelSaleAmount = nozzleRows.Sum(r => r.Amount);
     }
@@ -338,10 +366,10 @@ public partial class DayTotalViewModel : ObservableObject
     {
         NozzleSaleRows.Clear();
         TotalDayLitres = 0;
-        TotalHsdLitres = TotalMsILitres = TotalMsIILitres = TotalMsLitres = 0;
+        TotalHsdLitres = TotalMsILitres = TotalMsIILitres = TotalMsLitres = TotalCngLitres = 0;
         TotalDayFuelSaleAmount = 0;
-        
-        PhonePeTotal = PhonePeCardMorningTotal = PhonePeCardNightTotal = CreditCardMorningTotal = CreditCardNightTotal = CreditCardTotal = PetroCardTotal = BankCashTotal = CashInHandTotal = TotalDigital = TotalCash = TotalDigitalAndCash = 0;
+
+        PhonePeMorningTotal = PhonePeNightTotal = PhonePeTotal = PhonePeCardMorningTotal = PhonePeCardNightTotal = PhonePeCardTotal = CreditCardMorningTotal = CreditCardNightTotal = CreditCardTotal = PetroCardTotal = BankCashTotal = CashInHandTotal = TotalDigital = TotalCash = TotalDigitalAndCash = OthersTotal = 0;
         
         CreditorRows.Clear(); CreditorsTotal = 0;
         ExpenseRows.Clear(); ExpensesTotal = 0;
@@ -356,29 +384,45 @@ public partial class DayTotalViewModel : ObservableObject
     private List<NozzleGroupDto> BuildNozzleGroupsForDay(List<AgsShiftImport> dayShifts)
     {
         var groups = new List<NozzleGroupDto>();
-        if (dayShifts == null || dayShifts.Count == 0)
+        
+        var sortedShifts = dayShifts?.OrderBy(s => s.ImportDate).ThenBy(s => s.ShiftType).ToList() ?? new List<AgsShiftImport>();
+        var lastShift = sortedShifts.LastOrDefault();
+
+        var hsdTank = lastShift?.TankStocks?.FirstOrDefault(t => t.FuelType == "HSD");
+        var msITank = lastShift?.TankStocks?.FirstOrDefault(t => t.FuelType == "MS-I");
+        var msIITank = lastShift?.TankStocks?.FirstOrDefault(t => t.FuelType == "MS-II");
+
+        // Aggregate manual readings from _allEntries
+        var manualReadings = new Dictionary<int, (double Opening, double Closing, double Sale)>();
+        if (_allEntries != null)
         {
-            return BuildNozzleGroups(null);
+            foreach (var group in _allEntries.SelectMany(e => e.NozzleReadings).GroupBy(r => r.NozzleNumber))
+            {
+                var sorted = group.OrderBy(r => r.OpeningReading).ToList();
+                var opening = sorted.FirstOrDefault()?.OpeningReading ?? 0.0;
+                var closing = group.OrderByDescending(r => r.ClosingReading).FirstOrDefault()?.ClosingReading ?? 0.0;
+                var sale = group.Sum(r => r.SaleLitres);
+                manualReadings[group.Key] = (opening, closing, sale);
+            }
         }
 
-        var allReadings = dayShifts.SelectMany(s => s.NozzleReadings).ToList();
-        
-        var sortedShifts = dayShifts.OrderBy(s => s.ImportDate).ThenBy(s => s.ShiftType).ToList();
-        var firstShift = sortedShifts.First();
-        var lastShift = sortedShifts.Last();
-
-        var firstHsdTank = firstShift.TankStocks.FirstOrDefault(t => t.FuelType == "HSD");
-        var lastHsdTank = lastShift.TankStocks.FirstOrDefault(t => t.FuelType == "HSD");
-        
-        var firstMsITank = firstShift.TankStocks.FirstOrDefault(t => t.FuelType == "MS-I");
-        var lastMsITank = lastShift.TankStocks.FirstOrDefault(t => t.FuelType == "MS-I");
-        
-        var firstMsIITank = firstShift.TankStocks.FirstOrDefault(t => t.FuelType == "MS-II");
-        var lastMsIITank = lastShift.TankStocks.FirstOrDefault(t => t.FuelType == "MS-II");
+        var allAgsReadings = sortedShifts.SelectMany(s => s.NozzleReadings).ToList();
 
         NozzleDisplayItem CreateItem(int num, string fuelType)
         {
-            var nozzleReadings = allReadings.Where(r => r.NozzleNumber == num).ToList();
+            if (manualReadings.TryGetValue(num, out var mr))
+            {
+                return new NozzleDisplayItem
+                {
+                    NozzleNumber = num,
+                    FuelType = fuelType,
+                    OpeningReading = mr.Opening,
+                    ClosingReading = mr.Closing,
+                    SaleLitres = mr.Sale,
+                    HasReading = true
+                };
+            }
+            var nozzleReadings = allAgsReadings.Where(r => r.NozzleNumber == num).ToList();
             if (nozzleReadings.Count > 0)
             {
                 var op = nozzleReadings.Min(r => r.OpeningReading);
@@ -405,41 +449,38 @@ public partial class DayTotalViewModel : ObservableObject
             };
         }
 
-        // HSD Group
+        // HSD Group (Diesel)
         var hsdGroup = new NozzleGroupDto
         {
-            GroupName = "HSD (Tank 3)",
-            FuelType = "HSD",
-            Dip = lastHsdTank?.ClosingDipMM ?? 0,
-            Stock = lastHsdTank?.ClosingStockLitres ?? 0
+            GroupName = "Diesel (Tank 3)",
+            FuelType = "Diesel",
+            Dip = hsdTank?.ClosingDipMM ?? 0,
+            Stock = hsdTank?.ClosingStockLitres ?? 0
         };
-        hsdGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(1, "HSD"), CreateItem(2, "HSD"), CreateItem(7, "HSD"), CreateItem(8, "HSD") });
-        hsdGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(3, "HSD"), CreateItem(4, "HSD"), CreateItem(9, "HSD"), CreateItem(10, "HSD") });
+        hsdGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(3, "Diesel"), CreateItem(4, "Diesel"), CreateItem(7, "Diesel"), CreateItem(8, "Diesel") });
+        hsdGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(11, "Diesel"), CreateItem(12, "Diesel") });
         groups.Add(hsdGroup);
 
-        // MS-II Group
+        // MS-II Group (Petrol Tank 2)
         var msIIGroup = new NozzleGroupDto
         {
-            GroupName = "MS-II (Tank 2)",
-            FuelType = "MS-II",
-            Dip = lastMsIITank?.ClosingDipMM ?? 0,
-            Stock = lastMsIITank?.ClosingStockLitres ?? 0
+            GroupName = "Petrol (Tank 2)",
+            FuelType = "Petrol",
+            Dip = msIITank?.ClosingDipMM ?? 0,
+            Stock = msIITank?.ClosingStockLitres ?? 0
         };
-        msIIGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(13, "MS-II"), CreateItem(14, "MS-II"), CreateItem(17, "MS-II"), CreateItem(18, "MS-II") });
-        msIIGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(21, "MS-II"), CreateItem(22, "MS-II"), CreateItem(25, "MS-II"), CreateItem(26, "MS-II") });
+        msIIGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(1, "Petrol"), CreateItem(2, "Petrol"), CreateItem(9, "Petrol"), CreateItem(10, "Petrol") });
         groups.Add(msIIGroup);
 
-        // MS-I Group
+        // MS-I Group (Petrol Tank 1)
         var msIGroup = new NozzleGroupDto
         {
-            GroupName = "MS-I (Tank 1)",
-            FuelType = "MS-I",
-            Dip = lastMsITank?.ClosingDipMM ?? 0,
-            Stock = lastMsITank?.ClosingStockLitres ?? 0
+            GroupName = "Petrol (Tank 1)",
+            FuelType = "Petrol",
+            Dip = msITank?.ClosingDipMM ?? 0,
+            Stock = msITank?.ClosingStockLitres ?? 0
         };
-        msIGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(5, "MS-I"), CreateItem(6, "MS-I"), CreateItem(11, "MS-I"), CreateItem(12, "MS-I") });
-        msIGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(15, "MS-I"), CreateItem(16, "MS-I"), CreateItem(19, "MS-I"), CreateItem(20, "MS-I") });
-        msIGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(23, "MS-I"), CreateItem(24, "MS-I"), CreateItem(27, "MS-I"), CreateItem(28, "MS-I") });
+        msIGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(5, "Petrol"), CreateItem(6, "Petrol") });
         groups.Add(msIGroup);
 
         return groups;
@@ -456,8 +497,34 @@ public partial class DayTotalViewModel : ObservableObject
         var msITank = import?.TankStocks?.FirstOrDefault(t => t.FuelType == "MS-I");
         var msIITank = import?.TankStocks?.FirstOrDefault(t => t.FuelType == "MS-II");
 
+        // Aggregate manual readings from _allEntries
+        var manualReadings = new Dictionary<int, (double Opening, double Closing, double Sale)>();
+        if (_allEntries != null)
+        {
+            foreach (var group in _allEntries.SelectMany(e => e.NozzleReadings).GroupBy(r => r.NozzleNumber))
+            {
+                var sorted = group.OrderBy(r => r.OpeningReading).ToList();
+                var opening = sorted.FirstOrDefault()?.OpeningReading ?? 0.0;
+                var closing = group.OrderByDescending(r => r.ClosingReading).FirstOrDefault()?.ClosingReading ?? 0.0;
+                var sale = group.Sum(r => r.SaleLitres);
+                manualReadings[group.Key] = (opening, closing, sale);
+            }
+        }
+
         NozzleDisplayItem CreateItem(int num, string fuelType)
         {
+            if (manualReadings.TryGetValue(num, out var mr))
+            {
+                return new NozzleDisplayItem
+                {
+                    NozzleNumber = num,
+                    FuelType = fuelType,
+                    OpeningReading = mr.Opening,
+                    ClosingReading = mr.Closing,
+                    SaleLitres = mr.Sale,
+                    HasReading = true
+                };
+            }
             if (readingsDict.TryGetValue(num, out var r))
             {
                 return new NozzleDisplayItem
@@ -481,41 +548,38 @@ public partial class DayTotalViewModel : ObservableObject
             };
         }
 
-        // HSD Group
+        // HSD Group (Diesel)
         var hsdGroup = new NozzleGroupDto
         {
-            GroupName = "HSD (Tank 3)",
-            FuelType = "HSD",
+            GroupName = "Diesel (Tank 3)",
+            FuelType = "Diesel",
             Dip = hsdTank?.ClosingDipMM ?? 0,
             Stock = hsdTank?.ClosingStockLitres ?? 0
         };
-        hsdGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(1, "HSD"), CreateItem(2, "HSD"), CreateItem(7, "HSD"), CreateItem(8, "HSD") });
-        hsdGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(3, "HSD"), CreateItem(4, "HSD"), CreateItem(9, "HSD"), CreateItem(10, "HSD") });
+        hsdGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(3, "Diesel"), CreateItem(4, "Diesel"), CreateItem(7, "Diesel"), CreateItem(8, "Diesel") });
+        hsdGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(11, "Diesel"), CreateItem(12, "Diesel") });
         groups.Add(hsdGroup);
 
-        // MS-II Group
+        // MS-II Group (Petrol Tank 2)
         var msIIGroup = new NozzleGroupDto
         {
-            GroupName = "MS-II (Tank 2)",
-            FuelType = "MS-II",
+            GroupName = "Petrol (Tank 2)",
+            FuelType = "Petrol",
             Dip = msIITank?.ClosingDipMM ?? 0,
             Stock = msIITank?.ClosingStockLitres ?? 0
         };
-        msIIGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(13, "MS-II"), CreateItem(14, "MS-II"), CreateItem(17, "MS-II"), CreateItem(18, "MS-II") });
-        msIIGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(21, "MS-II"), CreateItem(22, "MS-II"), CreateItem(25, "MS-II"), CreateItem(26, "MS-II") });
+        msIIGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(1, "Petrol"), CreateItem(2, "Petrol"), CreateItem(9, "Petrol"), CreateItem(10, "Petrol") });
         groups.Add(msIIGroup);
 
-        // MS-I Group
+        // MS-I Group (Petrol Tank 1)
         var msIGroup = new NozzleGroupDto
         {
-            GroupName = "MS-I (Tank 1)",
-            FuelType = "MS-I",
+            GroupName = "Petrol (Tank 1)",
+            FuelType = "Petrol",
             Dip = msITank?.ClosingDipMM ?? 0,
             Stock = msITank?.ClosingStockLitres ?? 0
         };
-        msIGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(5, "MS-I"), CreateItem(6, "MS-I"), CreateItem(11, "MS-I"), CreateItem(12, "MS-I") });
-        msIGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(15, "MS-I"), CreateItem(16, "MS-I"), CreateItem(19, "MS-I"), CreateItem(20, "MS-I") });
-        msIGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(23, "MS-I"), CreateItem(24, "MS-I"), CreateItem(27, "MS-I"), CreateItem(28, "MS-I") });
+        msIGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(5, "Petrol"), CreateItem(6, "Petrol") });
         groups.Add(msIGroup);
 
         return groups;

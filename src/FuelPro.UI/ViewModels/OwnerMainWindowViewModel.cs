@@ -137,7 +137,9 @@ public partial class OwnerMainWindowViewModel : ObservableObject
     private void NavigateToFinancialSummary()
     {
         SelectedNavIndex = 8;
-        CurrentView = App.Services.GetRequiredService<FinancialSummaryViewModel>();
+        var debtorVm = App.Services.GetRequiredService<DebtorManagementViewModel>();
+        debtorVm.SelectedTabIndex = 2; // Financial Summary tab
+        CurrentView = debtorVm;
     }
 
     [RelayCommand]
@@ -174,6 +176,23 @@ public partial class OwnerMainWindowViewModel : ObservableObject
         SelectedNavIndex = 13;
         CurrentView = App.Services.GetRequiredService<CardSettlementViewModel>();
     }
+
+    [RelayCommand]
+    private void NavigateToDebtorManagement()
+    {
+        SelectedNavIndex = 14;
+        var debtorVm = App.Services.GetRequiredService<DebtorManagementViewModel>();
+        debtorVm.SelectedTabIndex = 0; // Debtors Directory tab
+        CurrentView = debtorVm;
+    }
+
+    [RelayCommand]
+    private void NavigateToPumpExpenses()
+    {
+        SelectedNavIndex = 15;
+        CurrentView = App.Services.GetRequiredService<PumpExpensesViewModel>();
+    }
+
 
     /// <summary>
     /// Called by the sync engine to update status display.

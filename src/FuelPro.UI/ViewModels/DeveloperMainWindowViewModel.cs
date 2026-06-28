@@ -52,6 +52,11 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
     [ObservableProperty] private string _configStatusMessage = "";
     [ObservableProperty] private bool _isCloudConnected;
 
+    // Application Branding
+    [ObservableProperty] private string _applicationLogoPath = "";
+    [ObservableProperty] private string _applicationLogoDarkPath = "";
+    [ObservableProperty] private string _logoStatusMessage = "";
+
 
     // Tab 3: Diagnostics
     public ObservableCollection<TableCountDto> TableCounts { get; } = new();
@@ -220,7 +225,31 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
         SyncEnabled = settings.SyncEnabled;
         IsCloudConnected = _syncEngine.CurrentStatus.IsConnected;
 
+        // Load Application Logo Path from AppMeta
+        using (var db = _serviceProvider.GetRequiredService<FuelProDbContext>())
+        {
+            var logoMeta = await db.AppMeta.FirstOrDefaultAsync(m => m.Key == "ApplicationLogoPath");
+            if (logoMeta == null)
+            {
+                var appDataFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FuelPro");
+                ApplicationLogoPath = Path.Combine(appDataFolder, "logo_light.png");
+            }
+            else
+            {
+                ApplicationLogoPath = logoMeta.Value;
+            }
 
+            var logoDarkMeta = await db.AppMeta.FirstOrDefaultAsync(m => m.Key == "ApplicationLogoDarkPath");
+            if (logoDarkMeta == null)
+            {
+                var appDataFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FuelPro");
+                ApplicationLogoDarkPath = Path.Combine(appDataFolder, "logo_dark.png");
+            }
+            else
+            {
+                ApplicationLogoDarkPath = logoDarkMeta.Value;
+            }
+        }
     }
 
     [RelayCommand]
@@ -337,6 +366,85 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
         catch (Exception ex)
         {
             ConfigStatusMessage = $"❌ Save error: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    private async Task SaveLogoPathAsync()
+    {
+        try
+        {
+            using var db = _serviceProvider.GetRequiredService<FuelProDbContext>();
+            
+            // Save light logo
+            var logoMeta = await db.AppMeta.FirstOrDefaultAsync(m => m.Key == "ApplicationLogoPath");
+            if (logoMeta == null)
+            {
+                db.AppMeta.Add(new AppMeta { Key = "ApplicationLogoPath", Value = ApplicationLogoPath });
+            }
+            else
+            {
+                logoMeta.Value = ApplicationLogoPath;
+                db.Entry(logoMeta).State = EntityState.Modified;
+            }
+
+            // Save dark logo
+            var logoDarkMeta = await db.AppMeta.FirstOrDefaultAsync(m => m.Key == "ApplicationLogoDarkPath");
+            if (logoDarkMeta == null)
+            {
+                db.AppMeta.Add(new AppMeta { Key = "ApplicationLogoDarkPath", Value = ApplicationLogoDarkPath });
+            }
+            else
+            {
+                logoDarkMeta.Value = ApplicationLogoDarkPath;
+                db.Entry(logoDarkMeta).State = EntityState.Modified;
+            }
+
+            await db.SaveChangesAsync();
+
+            // Notify main windows to reload branding
+            if (System.Windows.Application.Current.Windows.OfType<System.Windows.Window>().FirstOrDefault(w => w is Views.MainWindow) is System.Windows.Window mw && mw.DataContext is MainWindowViewModel mwVm)
+            {
+                mwVm.RefreshBranding();
+            }
+            if (System.Windows.Application.Current.Windows.OfType<System.Windows.Window>().FirstOrDefault(w => w is Views.OwnerMainWindow) is System.Windows.Window omw && omw.DataContext is OwnerMainWindowViewModel omwVm)
+            {
+                omwVm.RefreshBranding();
+            }
+
+            LogoStatusMessage = "✅ Logo paths saved!";
+        }
+        catch (Exception ex)
+        {
+            LogoStatusMessage = $"❌ Save error: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    private void BrowseLogo()
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Select Application Light Logo",
+            Filter = "Image Files|*.png;*.jpg;*.jpeg;*.bmp;*.ico|All Files|*.*"
+        };
+        if (dialog.ShowDialog() == true)
+        {
+            ApplicationLogoPath = dialog.FileName;
+        }
+    }
+
+    [RelayCommand]
+    private void BrowseDarkLogo()
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Select Application Dark Logo",
+            Filter = "Image Files|*.png;*.jpg;*.jpeg;*.bmp;*.ico|All Files|*.*"
+        };
+        if (dialog.ShowDialog() == true)
+        {
+            ApplicationLogoDarkPath = dialog.FileName;
         }
     }
 

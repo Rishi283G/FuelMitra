@@ -101,7 +101,7 @@
         function renderData() {
             if (!data || !data.startDate) return;
 
-            document.getElementById('stationName').innerText = data.stationName || "PyroSync";
+            document.getElementById('stationName').innerText = data.stationName || "Mitali Service Station";
             document.getElementById('dateRange').innerText = `${data.startDate} to ${data.endDate}`;
 
             // Oil Products
@@ -205,7 +205,7 @@
     <div class="header">
         <div style="display: flex; align-items: center; justify-content: center; gap: 15px;">
             <img id="logo" style="display: none; height: 50px;" src="" alt="logo" />
-            <h1 id="stationName">PyroSync</h1>
+            <h1 id="stationName">Mitali Service Station</h1>
         </div>
         <p>Oil & DEF Inventory & Profit Summary Report</p>
         <p id="dateRange">01-Jun-2026 to 30-Jun-2026</p>

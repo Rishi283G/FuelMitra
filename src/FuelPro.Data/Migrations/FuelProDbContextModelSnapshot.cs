@@ -258,6 +258,54 @@ namespace FuelPro.Data.Migrations
                     b.ToTable("AppMeta");
                 });
 
+            modelBuilder.Entity("FuelPro.Core.Models.AuditLog", b =>
+                {
+                    b.Property<int>("AuditLogId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FieldName")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("ModifiedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ModifiedBy")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("NewValue")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OldValue")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("RecordId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("TableName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("AuditLogId");
+
+                    b.ToTable("AuditLogs");
+                });
+
             modelBuilder.Entity("FuelPro.Core.Models.CashDenomination", b =>
                 {
                     b.Property<int>("CashDenomId")
@@ -369,6 +417,45 @@ namespace FuelPro.Data.Migrations
                     b.ToTable("CreditorRepayments");
                 });
 
+            modelBuilder.Entity("FuelPro.Core.Models.DayLock", b =>
+                {
+                    b.Property<int>("DayLockId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsLocked")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("LockDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("LockedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LockedBy")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UnlockReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("UnlockedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UnlockedBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("DayLockId");
+
+                    b.HasIndex("LockDate")
+                        .IsUnique();
+
+                    b.ToTable("DayLocks");
+                });
+
             modelBuilder.Entity("FuelPro.Core.Models.DebitEntry", b =>
                 {
                     b.Property<int>("DebitId")
@@ -382,6 +469,9 @@ namespace FuelPro.Data.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("DebtorName")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -390,11 +480,53 @@ namespace FuelPro.Data.Migrations
                     b.Property<int>("DsmEntryId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("Remarks")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SlipNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("VehicleNumber")
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
                     b.HasKey("DebitId");
 
                     b.HasIndex("DsmEntryId");
 
                     b.ToTable("DebitEntries");
+                });
+
+            modelBuilder.Entity("FuelPro.Core.Models.DebtorVehicle", b =>
+                {
+                    b.Property<int>("DebtorVehicleId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("CreditorId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(true);
+
+                    b.Property<string>("VehicleNumber")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("DebtorVehicleId");
+
+                    b.HasIndex("CreditorId", "VehicleNumber")
+                        .IsUnique();
+
+                    b.ToTable("DebtorVehicles");
                 });
 
             modelBuilder.Entity("FuelPro.Core.Models.DsmApprovalAudit", b =>
@@ -732,6 +864,28 @@ namespace FuelPro.Data.Migrations
                     b.ToTable("Expenses");
                 });
 
+            modelBuilder.Entity("FuelPro.Core.Models.ExpenseCategory", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("ExpenseCategories");
+                });
+
             modelBuilder.Entity("FuelPro.Core.Models.FuelProfitMargin", b =>
                 {
                     b.Property<int>("Id")
@@ -951,6 +1105,12 @@ namespace FuelPro.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("CardBatch")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CardTid")
+                        .HasColumnType("TEXT");
+
                     b.Property<double>("CashDeposit")
                         .HasColumnType("REAL");
 
@@ -975,6 +1135,15 @@ namespace FuelPro.Data.Migrations
                         .HasColumnType("REAL")
                         .HasDefaultValue(0.0);
 
+                    b.Property<string>("PetroCardBatch")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PetroCardTid")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PhonePeBatch")
+                        .HasColumnType("TEXT");
+
                     b.Property<double>("PhonePeCardMorning")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("REAL")
@@ -994,6 +1163,9 @@ namespace FuelPro.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("REAL")
                         .HasDefaultValue(0.0);
+
+                    b.Property<string>("PhonePeTid")
+                        .HasColumnType("TEXT");
 
                     b.HasKey("PaymentId");
 
@@ -1035,11 +1207,148 @@ namespace FuelPro.Data.Migrations
                     b.ToTable("ProductMasters");
                 });
 
+            modelBuilder.Entity("FuelPro.Core.Models.PumpExpense", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double>("BankingExpenses")
+                        .HasColumnType("REAL");
+
+                    b.Property<double>("BpclPortalExpenses")
+                        .HasColumnType("REAL");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<double>("DsmShort")
+                        .HasColumnType("REAL");
+
+                    b.Property<double>("ElectricityExpenses")
+                        .HasColumnType("REAL");
+
+                    b.Property<DateTime>("ExpenseDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<double>("FuelAndTravel")
+                        .HasColumnType("REAL");
+
+                    b.Property<double>("OfficeExpenses")
+                        .HasColumnType("REAL");
+
+                    b.Property<double>("OilPurchase")
+                        .HasColumnType("REAL");
+
+                    b.Property<double>("OtherAmount")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("OtherDescription")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<double>("PrintingExpense")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("Remarks")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<double>("Rent")
+                        .HasColumnType("REAL");
+
+                    b.Property<double>("RepairsAndMaintenance")
+                        .HasColumnType("REAL");
+
+                    b.Property<double>("Salary")
+                        .HasColumnType("REAL");
+
+                    b.Property<double>("TripSheetLoss")
+                        .HasColumnType("REAL");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpenseDate")
+                        .IsUnique();
+
+                    b.ToTable("PumpExpenses");
+                });
+
+            modelBuilder.Entity("FuelPro.Core.Models.PumpExpenseCategoryItem", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double>("Amount")
+                        .HasColumnType("REAL");
+
+                    b.Property<int>("CategoryId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("PumpExpenseId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Remarks")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CategoryId");
+
+                    b.HasIndex("PumpExpenseId");
+
+                    b.ToTable("PumpExpenseCategoryItems");
+                });
+
+            modelBuilder.Entity("FuelPro.Core.Models.PumpMapping", b =>
+                {
+                    b.Property<int>("PumpMappingId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FuelType")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("NozzleNumber")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("PumpId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("TankName")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("PumpMappingId");
+
+                    b.ToTable("PumpMappings");
+                });
+
             modelBuilder.Entity("FuelPro.Core.Models.Setting", b =>
                 {
                     b.Property<int>("SettingId")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
+
+                    b.Property<double>("CngRate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("REAL")
+                        .HasDefaultValue(85.0);
 
                     b.Property<double>("HsdRate")
                         .ValueGeneratedOnAdd()
@@ -1076,6 +1385,11 @@ namespace FuelPro.Data.Migrations
                     b.Property<int>("ShiftId")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
+
+                    b.Property<double>("CardSettlementPosTotal")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("REAL")
+                        .HasDefaultValue(0.0);
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
@@ -1176,6 +1490,37 @@ namespace FuelPro.Data.Migrations
                     b.HasIndex("ShiftDate", "ShiftNumber");
 
                     b.ToTable("ShiftOtherCash");
+                });
+
+            modelBuilder.Entity("FuelPro.Core.Models.SoftwareVersionHistory", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("BuildConfiguration")
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("DeployedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MachineName")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Version")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("SoftwareVersionHistories");
                 });
 
             modelBuilder.Entity("FuelPro.Core.Models.SyncChangeLog", b =>
@@ -1369,6 +1714,17 @@ namespace FuelPro.Data.Migrations
                     b.Navigation("DsmEntry");
                 });
 
+            modelBuilder.Entity("FuelPro.Core.Models.DebtorVehicle", b =>
+                {
+                    b.HasOne("FuelPro.Core.Models.Creditor", "Creditor")
+                        .WithMany("Vehicles")
+                        .HasForeignKey("CreditorId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Creditor");
+                });
+
             modelBuilder.Entity("FuelPro.Core.Models.DsmAttendance", b =>
                 {
                     b.HasOne("FuelPro.Core.Models.DsmUser", "DsmUser")
@@ -1485,6 +1841,25 @@ namespace FuelPro.Data.Migrations
                     b.Navigation("DsmEntry");
                 });
 
+            modelBuilder.Entity("FuelPro.Core.Models.PumpExpenseCategoryItem", b =>
+                {
+                    b.HasOne("FuelPro.Core.Models.ExpenseCategory", "Category")
+                        .WithMany()
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("FuelPro.Core.Models.PumpExpense", "PumpExpense")
+                        .WithMany()
+                        .HasForeignKey("PumpExpenseId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Category");
+
+                    b.Navigation("PumpExpense");
+                });
+
             modelBuilder.Entity("FuelPro.Core.Models.ShiftFuelRate", b =>
                 {
                     b.HasOne("FuelPro.Core.Models.Shift", "Shift")
@@ -1521,6 +1896,11 @@ namespace FuelPro.Data.Migrations
                     b.Navigation("NozzleReadings");
 
                     b.Navigation("TankStocks");
+                });
+
+            modelBuilder.Entity("FuelPro.Core.Models.Creditor", b =>
+                {
+                    b.Navigation("Vehicles");
                 });
 
             modelBuilder.Entity("FuelPro.Core.Models.DsmEntry", b =>

@@ -13,6 +13,8 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Rashtra.Licensing;
+using FuelPro.UI.Printing;
+using FuelPro.Core.DTOs;
 
 namespace FuelPro.UI.ViewModels;
 
@@ -40,6 +42,7 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string _lastSyncTimeDisplay = "—";
     [ObservableProperty] private string _msIRate = "";
     [ObservableProperty] private string _msIIRate = "";
+    [ObservableProperty] private string _cngRate = "";
     [ObservableProperty] private string _lastUpdated = "";
     [ObservableProperty] private string _statusMessage = "";
 
@@ -57,13 +60,50 @@ public partial class SettingsViewModel : ObservableObject
     // DSM Profile Management
     public ObservableCollection<DsmProfile> DsmProfiles { get; } = new();
     [ObservableProperty] private string _newDsmName = "";
+    [ObservableProperty] private string _newDsmMobile = "";
     [ObservableProperty] private string _dsmStatusMessage = "";
 
     // Creditor Management
     public ObservableCollection<Creditor> Creditors { get; } = new();
     [ObservableProperty] private string _newCreditorName = "";
     [ObservableProperty] private string _newCreditorPhone = "";
+    [ObservableProperty] private string _newCreditorVehicleNumber = "";
     [ObservableProperty] private string _creditorStatusMessage = "";
+
+    // Creditor Vehicle Mapping
+    [ObservableProperty] private Creditor? _selectedCreditor;
+    public ObservableCollection<DebtorVehicle> SelectedCreditorVehicles { get; } = new();
+    [ObservableProperty] private string _newVehicleNumber = "";
+    [ObservableProperty] private bool _isCreditorSelected;
+
+    partial void OnSelectedCreditorChanged(Creditor? value)
+    {
+        IsCreditorSelected = value != null;
+        _ = LoadSelectedCreditorVehiclesAsync();
+    }
+
+    private async Task LoadSelectedCreditorVehiclesAsync()
+    {
+        SelectedCreditorVehicles.Clear();
+        if (SelectedCreditor == null) return;
+
+        try
+        {
+            var vehicleRepo = App.Services.GetRequiredService<IDebtorVehicleRepository>();
+            var result = await vehicleRepo.GetByCreditorIdAsync(SelectedCreditor.CreditorId);
+            if (result.Success && result.Data != null)
+            {
+                foreach (var v in result.Data)
+                {
+                    SelectedCreditorVehicles.Add(v);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to load debtor vehicles in settings");
+        }
+    }
 
     public string[] RoleOptions { get; } = { "Admin", "Operator" };
 
@@ -102,9 +142,9 @@ public partial class SettingsViewModel : ObservableObject
             HsdRate = _settings.HsdRate.ToString(CultureInfo.CurrentCulture);
             MsIRate = _settings.MsIRate.ToString(CultureInfo.CurrentCulture);
             MsIIRate = _settings.MsIIRate.ToString(CultureInfo.CurrentCulture);
+            CngRate = _settings.CngRate.ToString(CultureInfo.CurrentCulture);
             LastUpdated = _settings.LastUpdated.ToString("dd MMM yyyy hh:mm tt");
         }
-
 
         // Load Cloud Sync Settings
         var syncSettings = await _syncConfigService.GetSettingsAsync();
@@ -138,7 +178,8 @@ public partial class SettingsViewModel : ObservableObject
 
         if (!TryParseRate(HsdRate, out var hsd) ||
             !TryParseRate(MsIRate, out var ms1) ||
-            !TryParseRate(MsIIRate, out var ms2))
+            !TryParseRate(MsIIRate, out var ms2) ||
+            !TryParseRate(CngRate, out var cng))
         {
             StatusMessage = "❌ Invalid rate values. Please enter valid numbers.";
             return;
@@ -148,11 +189,11 @@ public partial class SettingsViewModel : ObservableObject
         _settings.HsdRate = hsd;
         _settings.MsIRate = ms1;
         _settings.MsIIRate = ms2;
+        _settings.CngRate = cng;
 
         var result = await _settingsRepo.SaveSettingsAsync(_settings);
         if (result.Success)
         {
-
             // Notify main windows to reload their titles and logos
             if (System.Windows.Application.Current.Windows.OfType<System.Windows.Window>().FirstOrDefault(w => w is Views.MainWindow) is System.Windows.Window mw && mw.DataContext is MainWindowViewModel mwVm)
             {
@@ -218,11 +259,16 @@ public partial class SettingsViewModel : ObservableObject
             DsmStatusMessage = "❌ DSM Name is required";
             return;
         }
-        var profile = new DsmProfile { DsmName = NewDsmName.Trim() };
+        var profile = new DsmProfile
+        {
+            DsmName = NewDsmName.Trim(),
+            MobileNumber = string.IsNullOrWhiteSpace(NewDsmMobile) ? null : NewDsmMobile.Trim()
+        };
         var result = await _dsmProfileRepo.AddAsync(profile);
         if (result.Success)
         {
             NewDsmName = "";
+            NewDsmMobile = "";
             DsmStatusMessage = "✅ DSM Profile added!";
             await LoadAsync();
         }
@@ -245,16 +291,33 @@ public partial class SettingsViewModel : ObservableObject
             CreditorStatusMessage = "❌ Debtor Name is required";
             return;
         }
-        var creditor = new Creditor 
-        { 
+        var creditor = new Creditor
+        {
             Name = NewCreditorName.Trim(),
             Phone = string.IsNullOrWhiteSpace(NewCreditorPhone) ? null : NewCreditorPhone.Trim()
         };
         var result = await _creditorRepo.AddAsync(creditor);
         if (result.Success)
         {
+            if (!string.IsNullOrWhiteSpace(NewCreditorVehicleNumber))
+            {
+                try
+                {
+                    var vehicleRepo = App.Services.GetRequiredService<IDebtorVehicleRepository>();
+                    await vehicleRepo.AddAsync(new DebtorVehicle
+                    {
+                        CreditorId = result.Data!.CreditorId,
+                        VehicleNumber = NewCreditorVehicleNumber.Trim().ToUpperInvariant(),
+                        IsActive = true,
+                        CreatedAt = DateTime.Now
+                    });
+                }
+                catch (Exception) { /* Ignored */ }
+            }
+
             NewCreditorName = "";
             NewCreditorPhone = "";
+            NewCreditorVehicleNumber = "";
             CreditorStatusMessage = "✅ Debtor added!";
             await LoadAsync();
         }
@@ -275,6 +338,72 @@ public partial class SettingsViewModel : ObservableObject
         if (creditor == null) return;
         var result = await _creditorRepo.SoftDeleteAsync(creditor.CreditorId);
         if (result.Success) await LoadAsync();
+    }
+
+    [RelayCommand]
+    private async Task AddVehicleAsync()
+    {
+        if (SelectedCreditor == null) return;
+        if (string.IsNullOrWhiteSpace(NewVehicleNumber))
+        {
+            CreditorStatusMessage = "❌ Vehicle number is required";
+            return;
+        }
+
+        try
+        {
+            var vehicleRepo = App.Services.GetRequiredService<IDebtorVehicleRepository>();
+            var vehicle = new DebtorVehicle
+            {
+                CreditorId = SelectedCreditor.CreditorId,
+                VehicleNumber = NewVehicleNumber.Trim().ToUpperInvariant(),
+                IsActive = true,
+                CreatedAt = DateTime.Now
+            };
+
+            var result = await vehicleRepo.AddAsync(vehicle);
+            if (result.Success)
+            {
+                NewVehicleNumber = "";
+                CreditorStatusMessage = "✅ Vehicle number added!";
+                await LoadSelectedCreditorVehiclesAsync();
+            }
+            else
+            {
+                CreditorStatusMessage = $"❌ {result.Error}";
+            }
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to add vehicle in settings");
+            CreditorStatusMessage = "❌ Error adding vehicle";
+        }
+    }
+
+    [RelayCommand]
+    private async Task DeleteVehicleAsync(DebtorVehicle? vehicle)
+    {
+        if (vehicle == null) return;
+
+        try
+        {
+            var vehicleRepo = App.Services.GetRequiredService<IDebtorVehicleRepository>();
+            var result = await vehicleRepo.DeleteAsync(vehicle.DebtorVehicleId);
+            if (result.Success)
+            {
+                CreditorStatusMessage = "✅ Vehicle number deleted!";
+                await LoadSelectedCreditorVehiclesAsync();
+            }
+            else
+            {
+                CreditorStatusMessage = $"❌ {result.Error}";
+            }
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to delete vehicle in settings");
+            CreditorStatusMessage = "❌ Error deleting vehicle";
+        }
     }
 
     // DSM Short Report
@@ -357,6 +486,53 @@ public partial class SettingsViewModel : ObservableObject
         else
         {
             ReportStatusMessage = $"✅ Found {DsmShortReportRows.Count} short entries.";
+        }
+    }
+
+    [RelayCommand]
+    private void PrintShortReport()
+    {
+        if (DsmShortReportRows.Count == 0)
+        {
+            System.Windows.MessageBox.Show("No report data to print. Please generate the report first.", "Short Report", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+            return;
+        }
+
+        try
+        {
+            var printService = App.Services.GetRequiredService<PrintService>();
+            var monthName = MonthOptions.FirstOrDefault(m => m.Key == SelectedReportMonthNumber).Value ?? SelectedReportMonthNumber.ToString();
+
+            var summaryCards = new List<GenericGridPrintCard>
+            {
+                new() { Label = "Total Short Amount", Value = "₹" + TotalShortAmount.ToString("N2"), Highlight = true }
+            };
+
+            var headers = new List<string> { "Date", "Shift", "Short Amount" };
+
+            var rows = DsmShortReportRows.Select(r => new List<string>
+            {
+                r.Date.ToString("dd MMM yyyy"),
+                r.ShiftType,
+                "₹" + r.ShortAmount.ToString("N2")
+            }).ToList();
+
+            var printData = new GenericGridPrintData
+            {
+                Title = "DSM Short Report",
+                Subtitle = $"DSM: {SelectedReportDsm}  |  Period: {monthName} {SelectedReportYear}",
+                SummaryCards = summaryCards,
+                Headers = headers,
+                Rows = rows,
+                ShowSignatures = true
+            };
+
+            printService.PrintGenericGrid(printData);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to print DSM Short Report");
+            System.Windows.MessageBox.Show($"Print failed: {ex.Message}", "Print Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
         }
     }
 

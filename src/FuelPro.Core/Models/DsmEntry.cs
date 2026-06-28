@@ -33,6 +33,12 @@ public class DsmEntry
     /// </summary>
     public bool IsReconciled { get; set; }
 
+    [MaxLength(50)]
+    public string? StartTime { get; set; }
+
+    [MaxLength(50)]
+    public string? EndTime { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.Now;
     public DateTime UpdatedAt { get; set; } = DateTime.Now;
 
@@ -46,4 +52,5 @@ public class DsmEntry
     public ICollection<TestingEntry> TestingEntries { get; set; } = new List<TestingEntry>();
     public ICollection<Expense> Expenses { get; set; } = new List<Expense>();
     public ICollection<CashDenomination> CashDenominations { get; set; } = new List<CashDenomination>();
+    public ICollection<DsmPersonalDebtor> PersonalDebtors { get; set; } = new List<DsmPersonalDebtor>();
 }

@@ -40,7 +40,7 @@ public class PrintService
     private string GetSerializedJsonWithLogoAndStationName(object data)
     {
         // 1. Get station name
-        string stationName = "Shree Mahakaleshwar Petroleum";
+        string stationName = "Mitali Service Station";
         try
         {
             var dbContext = App.Services?.GetService(typeof(FuelProDbContext)) as FuelProDbContext;
@@ -429,5 +429,73 @@ public class PrintService
     {
         _logger.Debug("Loading FinalCalculationPrintTemplate.html");
         return LoadNamedTemplate("FinalCalculationPrintTemplate.html");
+    }
+
+    public void PrintDebtorLedger(DebtorLedgerPrintData data)
+    {
+        try
+        {
+            var json = GetSerializedJsonWithLogoAndStationName(data);
+            var templateHtml = LoadNamedTemplate("DebtorLedgerPrintTemplate.html");
+
+            if (!templateHtml.Contains(MARKER))
+            {
+                MessageBox.Show("Debtor Ledger print template is outdated.",
+                    "Print Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            var finalHtml = templateHtml.Replace(MARKER, json);
+            var tempFile = Path.Combine(Path.GetTempPath(),
+                $"PyroSyncDebtorLedger_{DateTime.Now:yyyyMMddHHmmss}.html");
+
+            File.WriteAllText(tempFile, finalHtml, Encoding.UTF8);
+            Process.Start(new ProcessStartInfo { FileName = tempFile, UseShellExecute = true });
+
+            Task.Delay(TimeSpan.FromMinutes(5)).ContinueWith(_ =>
+            {
+                try { if (File.Exists(tempFile)) File.Delete(tempFile); } catch { }
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "PrintDebtorLedger failed");
+            MessageBox.Show($"Print failed.\n\nError: {ex.Message}",
+                "Print Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    public void PrintGenericGrid(GenericGridPrintData data)
+    {
+        try
+        {
+            var json = GetSerializedJsonWithLogoAndStationName(data);
+            var templateHtml = LoadNamedTemplate("GenericGridPrintTemplate.html");
+
+            if (!templateHtml.Contains(MARKER))
+            {
+                MessageBox.Show("Generic print template is outdated.",
+                    "Print Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            var finalHtml = templateHtml.Replace(MARKER, json);
+            var tempFile = Path.Combine(Path.GetTempPath(),
+                $"PyroSyncReport_{DateTime.Now:yyyyMMddHHmmss}.html");
+
+            File.WriteAllText(tempFile, finalHtml, Encoding.UTF8);
+            Process.Start(new ProcessStartInfo { FileName = tempFile, UseShellExecute = true });
+
+            Task.Delay(TimeSpan.FromMinutes(5)).ContinueWith(_ =>
+            {
+                try { if (File.Exists(tempFile)) File.Delete(tempFile); } catch { }
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "PrintGenericGrid failed");
+            MessageBox.Show($"Print failed.\n\nError: {ex.Message}",
+                "Print Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 }

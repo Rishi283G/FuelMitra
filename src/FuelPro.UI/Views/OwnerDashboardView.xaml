@@ -36,13 +36,33 @@
                                VerticalAlignment="Center"/>
                 </StackPanel>
 
-                <DatePicker Grid.Column="1"
-                            SelectedDate="{Binding SelectedDate}"
-                            materialDesign:HintAssist.Hint="Select Date"
-                            Style="{StaticResource MaterialDesignOutlinedDatePicker}"
-                            HorizontalAlignment="Center"
-                            Width="200"
-                            Height="48"/>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <ComboBox ItemsSource="{Binding Presets}" SelectedValue="{Binding SelectedPreset}" materialDesign:HintAssist.Hint="Preset" Style="{StaticResource MaterialDesignOutlinedComboBox}" Width="120" Margin="0,0,8,0"/>
+                    <DatePicker SelectedDate="{Binding StartDate}" materialDesign:HintAssist.Hint="Start Date" Width="130" Margin="0,0,8,0">
+                        <DatePicker.Style>
+                            <Style TargetType="DatePicker" BasedOn="{StaticResource MaterialDesignOutlinedDatePicker}">
+                                <Setter Property="IsEnabled" Value="False"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding SelectedPreset}" Value="Custom">
+                                        <Setter Property="IsEnabled" Value="True"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </DatePicker.Style>
+                    </DatePicker>
+                    <DatePicker SelectedDate="{Binding EndDate}" materialDesign:HintAssist.Hint="End Date" Width="130">
+                        <DatePicker.Style>
+                            <Style TargetType="DatePicker" BasedOn="{StaticResource MaterialDesignOutlinedDatePicker}">
+                                <Setter Property="IsEnabled" Value="False"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding SelectedPreset}" Value="Custom">
+                                        <Setter Property="IsEnabled" Value="True"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </DatePicker.Style>
+                    </DatePicker>
+                </StackPanel>
 
                 <!-- Prominent Sync Status Card -->
                 <materialDesign:Card Grid.Column="2" Padding="16,10"
@@ -121,7 +141,7 @@
                          VerticalAlignment="Bottom" Margin="0,0,0,-8"/>
 
             <!-- KPI Cards Row -->
-            <UniformGrid Grid.Row="1" Columns="4" Margin="0,0,0,16">
+            <UniformGrid Grid.Row="1" Columns="3" Margin="0,0,0,16">
                 <!-- Total Sale -->
                 <materialDesign:Card Margin="4" Padding="16" materialDesign:ElevationAssist.Elevation="Dp2"
                                      UniformCornerRadius="12">
@@ -177,6 +197,34 @@
                                    FontSize="22" FontWeight="Bold" Foreground="#C62828"/>
                     </StackPanel>
                 </materialDesign:Card>
+
+                <!-- Net Profit -->
+                <materialDesign:Card Margin="4" Padding="16" materialDesign:ElevationAssist.Elevation="Dp2"
+                                     UniformCornerRadius="12">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <materialDesign:PackIcon Kind="TrendingUp" Foreground="#00695C" Width="20" Height="20"/>
+                            <TextBlock Text="Net Profit (Range)" FontSize="12" Opacity="0.6" Margin="8,0,0,0"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <TextBlock Text="{Binding RangeNetProfit, Converter={StaticResource CurrencyConverter}}"
+                                   FontSize="22" FontWeight="Bold" Foreground="#00695C"/>
+                    </StackPanel>
+                </materialDesign:Card>
+
+                <!-- Outstanding Debtors -->
+                <materialDesign:Card Margin="4" Padding="16" materialDesign:ElevationAssist.Elevation="Dp2"
+                                     UniformCornerRadius="12">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <materialDesign:PackIcon Kind="AccountAlert" Foreground="#BF360C" Width="20" Height="20"/>
+                            <TextBlock Text="Outstanding Debtors (Lifetime)" FontSize="12" Opacity="0.6" Margin="8,0,0,0"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <TextBlock Text="{Binding OutstandingDebtors, Converter={StaticResource CurrencyConverter}}"
+                                   FontSize="22" FontWeight="Bold" Foreground="#BF360C"/>
+                    </StackPanel>
+                </materialDesign:Card>
             </UniformGrid>
 
             <!-- Fuel Breakdown Row -->
@@ -230,7 +278,7 @@
                                        FontSize="16" FontWeight="Bold"/>
                         </StackPanel>
                         <StackPanel Margin="4">
-                            <TextBlock Text="Credit Card" FontSize="11" Opacity="0.5"/>
+                            <TextBlock Text="PineLabs Card" FontSize="11" Opacity="0.5"/>
                             <TextBlock Text="{Binding TodayTotalCreditCard, Converter={StaticResource CurrencyConverter}}"
                                        FontSize="16" FontWeight="Bold"/>
                         </StackPanel>

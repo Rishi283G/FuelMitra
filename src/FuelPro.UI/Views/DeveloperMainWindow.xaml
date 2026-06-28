@@ -364,7 +364,44 @@
                             </StackPanel>
                                 </materialDesign:Card>
 
+                                <!-- Application Branding -->
+                                <materialDesign:Card Padding="24" UniformCornerRadius="12" materialDesign:ElevationAssist.Elevation="Dp2" Margin="0,16,0,0">
+                                    <StackPanel>
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                                            <materialDesign:PackIcon Kind="ImageEdit" Width="24" Height="24" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                            <TextBlock Text="Application Branding" FontSize="18" FontWeight="SemiBold" Margin="8,0"/>
+                                        </StackPanel>
 
+                                        <!-- Light Logo Path -->
+                                        <Grid Margin="0,0,0,16">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBox Grid.Column="0" Text="{Binding ApplicationLogoPath, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0"
+                                                     materialDesign:HintAssist.Hint="Application Light Logo Path" materialDesign:HintAssist.IsFloating="True"
+                                                     Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                                            <Button Grid.Column="1" Content="Browse" Command="{Binding BrowseLogoCommand}" Style="{StaticResource MaterialDesignOutlinedButton}" Height="50" Padding="16,0" VerticalAlignment="Center"/>
+                                        </Grid>
+
+                                        <!-- Dark Logo Path -->
+                                        <Grid Margin="0,0,0,16">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBox Grid.Column="0" Text="{Binding ApplicationLogoDarkPath, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0"
+                                                     materialDesign:HintAssist.Hint="Application Dark Logo Path" materialDesign:HintAssist.IsFloating="True"
+                                                     Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                                            <Button Grid.Column="1" Content="Browse" Command="{Binding BrowseDarkLogoCommand}" Style="{StaticResource MaterialDesignOutlinedButton}" Height="50" Padding="16,0" VerticalAlignment="Center"/>
+                                        </Grid>
+
+                                        <StackPanel Orientation="Horizontal">
+                                            <Button Content="Save Logo Paths" Command="{Binding SaveLogoPathCommand}" Height="40" Padding="24,0" Style="{StaticResource MaterialDesignRaisedButton}" Margin="0,0,16,0"/>
+                                            <TextBlock Text="{Binding LogoStatusMessage}" VerticalAlignment="Center" FontSize="13" FontWeight="SemiBold"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </materialDesign:Card>
                             </StackPanel>
                         </ScrollViewer>
                     </Grid>

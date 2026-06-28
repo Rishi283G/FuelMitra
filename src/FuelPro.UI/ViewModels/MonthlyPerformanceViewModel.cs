@@ -5,8 +5,12 @@ using FuelPro.Core.DTOs;
 using FuelPro.Core.Models;
 using FuelPro.Core.Repositories;
 using FuelPro.Core.Services;
+using FuelPro.UI.Printing;
 using Microsoft.Extensions.DependencyInjection;
+using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Windows;
 
 namespace FuelPro.UI.ViewModels;
 
@@ -19,6 +23,8 @@ public partial class MonthlyPerformanceViewModel : ObservableObject
     private readonly IShiftRepository _shiftRepo;
     private readonly IDsmCalculationService _calcService;
     private readonly IOwnerCalculationService _ownerCalcService;
+    private readonly PrintService _printService;
+    private readonly ExcelExportService _excelExportService;
 
     [ObservableProperty] private DateTime _selectedMonth = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
     [ObservableProperty] private bool _isLoading;
@@ -38,6 +44,8 @@ public partial class MonthlyPerformanceViewModel : ObservableObject
         _shiftRepo = App.Services.GetRequiredService<IShiftRepository>();
         _calcService = App.Services.GetRequiredService<IDsmCalculationService>();
         _ownerCalcService = App.Services.GetRequiredService<IOwnerCalculationService>();
+        _printService = App.Services.GetRequiredService<PrintService>();
+        _excelExportService = App.Services.GetRequiredService<ExcelExportService>();
         _ = LoadAsync();
     }
 
@@ -90,7 +98,113 @@ public partial class MonthlyPerformanceViewModel : ObservableObject
 
             MonthAvgDailySale = DayRows.Count > 0 ? MonthTotalSale / DayRows.Count : 0;
         }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to load Monthly Performance data");
+            MessageBox.Show($"Failed to load monthly performance: {ex.Message}", "Load Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
         finally { IsLoading = false; }
+    }
+
+    [RelayCommand]
+    private void Print()
+    {
+        try
+        {
+            var summaryCards = new List<GenericGridPrintCard>
+            {
+                new() { Label = "Total Sale", Value = "₹" + MonthTotalSale.ToString("N2"), Highlight = true },
+                new() { Label = "Total Volume", Value = MonthTotalLitres.ToString("N2") + " L", Highlight = false },
+                new() { Label = "Total Collection", Value = "₹" + MonthTotalCollection.ToString("N2"), Highlight = false },
+                new() { Label = "Avg Daily Sale", Value = "₹" + MonthAvgDailySale.ToString("N2"), Highlight = false },
+                new() { Label = "Total Entries", Value = MonthTotalEntries.ToString(), Highlight = false }
+            };
+
+            var headers = new List<string> { "Date", "Day", "DSM Entries", "Total Sales", "Volume Sold (L)", "Collection", "Mismatch" };
+            var rows = new List<List<string>>();
+
+            foreach (var row in DayRows)
+            {
+                rows.Add(new List<string>
+                {
+                    row.DateDisplay,
+                    row.DayName,
+                    row.DsmEntryCount.ToString(),
+                    "₹" + row.TotalSale.ToString("N2"),
+                    row.TotalLitres.ToString("N2") + " L",
+                    "₹" + row.TotalCollection.ToString("N2"),
+                    "₹" + row.Mismatch.ToString("N2")
+                });
+            }
+
+            var printData = new GenericGridPrintData
+            {
+                Title = "Monthly Performance Statement",
+                Subtitle = $"Selected Month: {SelectedMonth:MMMM yyyy}",
+                SummaryCards = summaryCards,
+                Headers = headers,
+                Rows = rows,
+                ShowSignatures = true
+            };
+
+            _printService.PrintGenericGrid(printData);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to print Monthly Performance report");
+            MessageBox.Show($"Print failed: {ex.Message}", "Print Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    [RelayCommand]
+    private async Task ExportExcelAsync()
+    {
+        try
+        {
+            var summaryCards = new List<GenericGridPrintCard>
+            {
+                new() { Label = "Total Sales", Value = "₹" + MonthTotalSale.ToString("N2"), Highlight = true },
+                new() { Label = "Total Volume", Value = MonthTotalLitres.ToString("N2") + " L", Highlight = false },
+                new() { Label = "Total Collection", Value = "₹" + MonthTotalCollection.ToString("N2"), Highlight = false },
+                new() { Label = "Avg Daily Sale", Value = "₹" + MonthAvgDailySale.ToString("N2"), Highlight = false },
+                new() { Label = "Total Entries", Value = MonthTotalEntries.ToString(), Highlight = false }
+            };
+
+            var headers = new List<string> { "Date", "Day", "DSM Entries", "Total Sales", "Volume Sold (L)", "Collection", "Mismatch" };
+            var rows = new List<List<string>>();
+
+            foreach (var row in DayRows)
+            {
+                rows.Add(new List<string>
+                {
+                    row.DateDisplay,
+                    row.DayName,
+                    row.DsmEntryCount.ToString(),
+                    "₹" + row.TotalSale.ToString("N2"),
+                    row.TotalLitres.ToString("N2"),
+                    "₹" + row.TotalCollection.ToString("N2"),
+                    "₹" + row.Mismatch.ToString("N2")
+                });
+            }
+
+            var printData = new GenericGridPrintData
+            {
+                Title = "Monthly Performance Statement",
+                Subtitle = $"Selected Month: {SelectedMonth:MMMM yyyy}",
+                SummaryCards = summaryCards,
+                Headers = headers,
+                Rows = rows,
+                ShowSignatures = true
+            };
+
+            var path = await _excelExportService.ExportGenericGridAsync(printData, "MonthlyPerformance");
+            MessageBox.Show($"Report exported successfully to:\n{path}", "Export Success", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to export Monthly Performance to Excel");
+            MessageBox.Show($"Export failed: {ex.Message}", "Export Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 }
 

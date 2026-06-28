@@ -25,6 +25,8 @@ public class AgsDailyAggregationService : IAgsDailyAggregationService
         summary.ShiftBImported = active.Any(s => s.ShiftType == "B");
         summary.ShiftCImported = active.Any(s => s.ShiftType == "C");
 
+
+
         // Per-nozzle day sales
         var nozzleSales = new Dictionary<int, double>();
         foreach (var nozzleInfo in PumpConfiguration.AllNozzles)
@@ -41,18 +43,18 @@ public class AgsDailyAggregationService : IAgsDailyAggregationService
 
         // Fuel-type day totals (aggregated from nozzle sales using central PumpConfiguration)
         summary.DayTotalHsdLitres  = active.SelectMany(s => s.NozzleReadings)
-            .Where(r => PumpConfiguration.GetFuelTypeDisplayName(r.PumpNumber, r.NozzleNumber, date) == "HSD")
+            .Where(r => GetFuelTypeSafe(r.PumpNumber, r.NozzleNumber, date) == "HSD")
             .Sum(r => r.NetSaleLitres);
         summary.DayTotalMsILitres  = active.SelectMany(s => s.NozzleReadings)
-            .Where(r => PumpConfiguration.GetFuelTypeDisplayName(r.PumpNumber, r.NozzleNumber, date) == "MS-I")
+            .Where(r => GetFuelTypeSafe(r.PumpNumber, r.NozzleNumber, date) == "MS-I")
             .Sum(r => r.NetSaleLitres);
         summary.DayTotalMsIILitres = active.SelectMany(s => s.NozzleReadings)
-            .Where(r => PumpConfiguration.GetFuelTypeDisplayName(r.PumpNumber, r.NozzleNumber, date) == "MS-II")
+            .Where(r => GetFuelTypeSafe(r.PumpNumber, r.NozzleNumber, date) == "MS-II")
             .Sum(r => r.NetSaleLitres);
 
-        // Tank stock: Shift A opening → Shift C closing
+        // Tank stock: Shift A opening → Shift B closing
         var shiftA = active.FirstOrDefault(s => s.ShiftType == "A");
-        var shiftC = active.FirstOrDefault(s => s.ShiftType == "C");
+        var shiftB = active.FirstOrDefault(s => s.ShiftType == "B");
 
         if (shiftA != null)
         {
@@ -60,11 +62,11 @@ public class AgsDailyAggregationService : IAgsDailyAggregationService
             summary.MsIDayOpeningStock  = shiftA.MsIOpeningStock;
             summary.MsIIDayOpeningStock = shiftA.MsIIOpeningStock;
         }
-        if (shiftC != null)
+        if (shiftB != null)
         {
-            summary.HsdDayClosingStock  = shiftC.HsdClosingStock;
-            summary.MsIDayClosingStock  = shiftC.MsIClosingStock;
-            summary.MsIIDayClosingStock = shiftC.MsIIClosingStock;
+            summary.HsdDayClosingStock  = shiftB.HsdClosingStock;
+            summary.MsIDayClosingStock  = shiftB.MsIClosingStock;
+            summary.MsIIDayClosingStock = shiftB.MsIIClosingStock;
         }
         else if (active.Any())
         {
@@ -82,9 +84,9 @@ public class AgsDailyAggregationService : IAgsDailyAggregationService
             double hsd = 0, msI = 0, msII = 0;
             if (shift.NozzleReadings != null && shift.NozzleReadings.Any())
             {
-                hsd  = shift.NozzleReadings.Where(r => PumpConfiguration.GetFuelTypeDisplayName(r.PumpNumber, r.NozzleNumber, shift.ImportDate) == "HSD"  ).Sum(r => r.NetSaleLitres);
-                msI  = shift.NozzleReadings.Where(r => PumpConfiguration.GetFuelTypeDisplayName(r.PumpNumber, r.NozzleNumber, shift.ImportDate) == "MS-I" ).Sum(r => r.NetSaleLitres);
-                msII = shift.NozzleReadings.Where(r => PumpConfiguration.GetFuelTypeDisplayName(r.PumpNumber, r.NozzleNumber, shift.ImportDate) == "MS-II").Sum(r => r.NetSaleLitres);
+                hsd  = shift.NozzleReadings.Where(r => GetFuelTypeSafe(r.PumpNumber, r.NozzleNumber, shift.ImportDate) == "HSD"  ).Sum(r => r.NetSaleLitres);
+                msI  = shift.NozzleReadings.Where(r => GetFuelTypeSafe(r.PumpNumber, r.NozzleNumber, shift.ImportDate) == "MS-I" ).Sum(r => r.NetSaleLitres);
+                msII = shift.NozzleReadings.Where(r => GetFuelTypeSafe(r.PumpNumber, r.NozzleNumber, shift.ImportDate) == "MS-II").Sum(r => r.NetSaleLitres);
             }
             else
             {
@@ -148,9 +150,9 @@ public class AgsDailyAggregationService : IAgsDailyAggregationService
             double hsd = 0, msI = 0, msII = 0;
             if (s.NozzleReadings != null && s.NozzleReadings.Any())
             {
-                hsd  = s.NozzleReadings.Where(r => PumpConfiguration.GetFuelTypeDisplayName(r.PumpNumber, r.NozzleNumber, s.ImportDate) == "HSD"  ).Sum(r => r.NetSaleLitres);
-                msI  = s.NozzleReadings.Where(r => PumpConfiguration.GetFuelTypeDisplayName(r.PumpNumber, r.NozzleNumber, s.ImportDate) == "MS-I" ).Sum(r => r.NetSaleLitres);
-                msII = s.NozzleReadings.Where(r => PumpConfiguration.GetFuelTypeDisplayName(r.PumpNumber, r.NozzleNumber, s.ImportDate) == "MS-II").Sum(r => r.NetSaleLitres);
+                hsd  = s.NozzleReadings.Where(r => GetFuelTypeSafe(r.PumpNumber, r.NozzleNumber, s.ImportDate) == "HSD"  ).Sum(r => r.NetSaleLitres);
+                msI  = s.NozzleReadings.Where(r => GetFuelTypeSafe(r.PumpNumber, r.NozzleNumber, s.ImportDate) == "MS-I" ).Sum(r => r.NetSaleLitres);
+                msII = s.NozzleReadings.Where(r => GetFuelTypeSafe(r.PumpNumber, r.NozzleNumber, s.ImportDate) == "MS-II").Sum(r => r.NetSaleLitres);
             }
             else
             {
@@ -175,5 +177,17 @@ public class AgsDailyAggregationService : IAgsDailyAggregationService
         dto.ShiftCData = MakeBreakdown("C");
 
         return dto;
+    }
+
+    private string GetFuelTypeSafe(int pumpNum, int nozzleNum, DateTime d)
+    {
+        try
+        {
+            return PumpConfiguration.GetFuelTypeDisplayName(pumpNum, nozzleNum, d);
+        }
+        catch
+        {
+            return "";
+        }
     }
 }

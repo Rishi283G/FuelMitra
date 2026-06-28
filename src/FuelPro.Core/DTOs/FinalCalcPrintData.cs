@@ -18,10 +18,20 @@ public class FinalCalcPrintData
     public decimal Cheque { get; set; }
     public decimal MsILitres { get; set; }
     public decimal MsIILitres { get; set; }
+    public decimal CngLitres { get; set; }
     public decimal GrossFuelSaleTotal { get; set; }
     public List<ExpensePrintRow> Expenses { get; set; } = new();
     public ReconciliationPrintBlock Reconciliation { get; set; } = new();
     public List<NozzleGroupDto> NozzleGroups { get; set; } = new();
+    public List<CreditorRepaymentPrintDto> SameDayRepayments { get; set; } = new();
+}
+
+public class CreditorRepaymentPrintDto
+{
+    public string DebtorName { get; set; } = string.Empty;
+    public string PaymentMode { get; set; } = string.Empty;
+    public string RefNo { get; set; } = string.Empty;
+    public decimal Amount { get; set; }
 }
 
 public class DsmPrintRow
@@ -32,6 +42,8 @@ public class DsmPrintRow
     public decimal CreditCardMorning { get; set; }
     public decimal CreditCardNight { get; set; }
     public decimal PhonePay { get; set; }
+    public decimal PhonePeMorning { get; set; }
+    public decimal PhonePeNight { get; set; }
     public decimal PhonePeCardMorning { get; set; }
     public decimal PhonePeCardNight { get; set; }
     public decimal PetroCard { get; set; }
@@ -91,6 +103,7 @@ public class ReconciliationPrintBlock
 {
     public decimal MsTesting { get; set; }
     public decimal HsdTesting { get; set; }
+    public decimal CngTesting { get; set; }
     public decimal PhonePe { get; set; }
     public decimal PhonePeCardMorning { get; set; }
     public decimal PhonePeCardNight { get; set; }

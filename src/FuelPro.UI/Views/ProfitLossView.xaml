@@ -318,6 +318,84 @@
                             </DataGrid>
                         </StackPanel>
                     </materialDesign:Card>
+
+                    <!-- Owner Pump Expenses Card -->
+                    <materialDesign:Card Padding="16" UniformCornerRadius="8" Margin="0,16,0,0" materialDesign:ElevationAssist.Elevation="Dp1">
+                        <StackPanel>
+                            <TextBlock Text="Owner Pump Expenses" FontSize="16" FontWeight="Bold" Margin="0,0,0,8" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Rent" Margin="0,4"/>
+                                <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding PumpRent, Converter={StaticResource CurrencyConverter}}" Margin="0,4"/>
+
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Salary (Office/Extra)" Margin="0,4"/>
+                                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding PumpSalary, Converter={StaticResource CurrencyConverter}}" Margin="0,4"/>
+
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="Trip Sheet Loss" Margin="0,4"/>
+                                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding PumpTripSheetLoss, Converter={StaticResource CurrencyConverter}}" Margin="0,4"/>
+
+                                <TextBlock Grid.Row="3" Grid.Column="0" Text="DSM Short" Margin="0,4"/>
+                                <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding PumpDsmShort, Converter={StaticResource CurrencyConverter}}" Margin="0,4"/>
+
+                                <TextBlock Grid.Row="4" Grid.Column="0" Text="Banking Expenses" Margin="0,4"/>
+                                <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding PumpBankingExpenses, Converter={StaticResource CurrencyConverter}}" Margin="0,4"/>
+
+                                <TextBlock Grid.Row="5" Grid.Column="0" Text="BPCL Portal Expenses" Margin="0,4"/>
+                                <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding PumpBpclPortalExpenses, Converter={StaticResource CurrencyConverter}}" Margin="0,4"/>
+
+                                <TextBlock Grid.Row="6" Grid.Column="0" Text="Fuel &amp; Travel" Margin="0,4"/>
+                                <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding PumpFuelAndTravel, Converter={StaticResource CurrencyConverter}}" Margin="0,4"/>
+
+                                <TextBlock Grid.Row="7" Grid.Column="0" Text="Oil Purchase" Margin="0,4"/>
+                                <TextBlock Grid.Row="7" Grid.Column="1" Text="{Binding PumpOilPurchase, Converter={StaticResource CurrencyConverter}}" Margin="0,4"/>
+
+                                <TextBlock Grid.Row="8" Grid.Column="0" Text="Repairs &amp; Maintenance" Margin="0,4"/>
+                                <TextBlock Grid.Row="8" Grid.Column="1" Text="{Binding PumpRepairsAndMaintenance, Converter={StaticResource CurrencyConverter}}" Margin="0,4"/>
+
+                                <TextBlock Grid.Row="9" Grid.Column="0" Text="Electricity Expenses" Margin="0,4"/>
+                                <TextBlock Grid.Row="9" Grid.Column="1" Text="{Binding PumpElectricity, Converter={StaticResource CurrencyConverter}}" Margin="0,4"/>
+
+                                <TextBlock Grid.Row="10" Grid.Column="0" Text="Office Expenses" Margin="0,4"/>
+                                <TextBlock Grid.Row="10" Grid.Column="1" Text="{Binding PumpOfficeExpenses, Converter={StaticResource CurrencyConverter}}" Margin="0,4"/>
+
+                                <TextBlock Grid.Row="11" Grid.Column="0" Text="Printing Expense" Margin="0,4"/>
+                                <TextBlock Grid.Row="11" Grid.Column="1" Text="{Binding PumpPrintingExpense, Converter={StaticResource CurrencyConverter}}" Margin="0,4"/>
+
+                                <TextBlock Grid.Row="12" Grid.Column="0" Text="Other Expense" Margin="0,4"/>
+                                <TextBlock Grid.Row="12" Grid.Column="1" Text="{Binding PumpOtherAmount, Converter={StaticResource CurrencyConverter}}" Margin="0,4"/>
+
+                                <Separator Grid.Row="13" Grid.ColumnSpan="2" Margin="0,8,0,4"/>
+                            </Grid>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Total Owner Expenses" FontWeight="Bold"/>
+                                <TextBlock Grid.Column="1" Text="{Binding TotalPumpExpenses, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" Foreground="#C62828"/>
+                            </Grid>
+                        </StackPanel>
+                    </materialDesign:Card>
                 </StackPanel>
             </Grid>
         </StackPanel>

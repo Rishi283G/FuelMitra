@@ -49,6 +49,7 @@ public partial class FinalCalculationView : UserControl
             var reconRows = vm.ReconciliationRows.ToList();
             double recMsTesting  = GetReconAmount(reconRows, "MS Testing");
             double recHsdTesting = GetReconAmount(reconRows, "HSD Testing");
+            double recCngTesting = GetReconAmount(reconRows, "CNG Testing");
             double recPhonePeCardMorning = GetReconAmount(reconRows, "Phone Pe Card (Morning)");
             double recPhonePeCardNight   = GetReconAmount(reconRows, "Phone Pe Card (Night)");
             double recPhonePeMorning = GetReconAmount(reconRows, "Phone Pe (Morning)");
@@ -65,6 +66,7 @@ public partial class FinalCalculationView : UserControl
             double printHsdLitres = 0, printHsdAmount = 0;
             double printMs1Litres = 0, printMs1Amount = 0;
             double printMs2Litres = 0, printMs2Amount = 0;
+            double printCngLitres = 0, printCngAmount = 0;
 
             foreach (var entry in vm.LoadedEntries)
             {
@@ -85,6 +87,10 @@ public partial class FinalCalculationView : UserControl
                         case "MS-II":
                             printMs2Litres += reading.SaleLitres;
                             printMs2Amount += reading.Amount;
+                            break;
+                        case "CNG":
+                            printCngLitres += reading.SaleLitres;
+                            printCngAmount += reading.Amount;
                             break;
                     }
                 }
@@ -109,9 +115,13 @@ public partial class FinalCalculationView : UserControl
                 msIILitres:               printMs2Litres,
                 msIIRate:                 vm.MsIIRate,
                 msIIAmount:               printMs2Amount,
+                cngLitres:                printCngLitres,
+                cngRate:                  vm.CngRate,
+                cngAmount:                printCngAmount,
                 otherCashTotal:           vm.OtherCashTotal,
                 reconciliationMsTesting:  recMsTesting,
                 reconciliationHsdTesting: recHsdTesting,
+                reconciliationCngTesting: recCngTesting,
                 phonePeTotal:             recPhonePeMorning + recPhonePeNight + recPhonePeCardMorning + recPhonePeCardNight,
                 phonePeMorningTotal:      recPhonePeMorning,
                 phonePeNightTotal:        recPhonePeNight,
@@ -127,7 +137,8 @@ public partial class FinalCalculationView : UserControl
                 reconciliationTotal:      vm.ReconciliationTotal,
                 grossFuelSaleTotal:       vm.GrossSaleTotal,
                 totalDsmShort:            vm.TotalDsmShort,
-                expenseRows:              vm.ExpenseRows.ToList());
+                expenseRows:              vm.ExpenseRows.ToList(),
+                sameDayRepayments:        vm.DebtorRepayments.ToList());
 
             printData.NozzleGroups = vm.NozzleGroups.ToList();
 

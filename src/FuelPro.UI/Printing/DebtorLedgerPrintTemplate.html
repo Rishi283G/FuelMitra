@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Debtor Account Ledger / Statement</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 25px;
+            color: #333;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        .header {
+            text-align: center;
+            border-bottom: 2px solid #005F73;
+            padding-bottom: 12px;
+            margin-bottom: 20px;
+        }
+        .header h1 {
+            margin: 0;
+            color: #005F73;
+            font-size: 24px;
+            font-weight: 700;
+        }
+        .header p {
+            margin: 4px 0 0 0;
+            font-size: 13px;
+            opacity: 0.8;
+            letter-spacing: 0.5px;
+        }
+        .meta-info-container {
+            display: flex;
+            justify-content: space-between;
+            background-color: #F8F9FA;
+            padding: 12px 18px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            border: 1px solid #E9ECEF;
+        }
+        .meta-group h3 {
+            margin: 0 0 4px 0;
+            font-size: 14px;
+            color: #005F73;
+        }
+        .meta-group p {
+            margin: 0;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        .kpi-container {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            margin-bottom: 24px;
+        }
+        .kpi-card {
+            background-color: #FFFFFF;
+            border: 1px solid #DEE2E6;
+            border-radius: 6px;
+            padding: 12px;
+            text-align: center;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+        .kpi-card.highlight {
+            background-color: #E0F2F1;
+            border-color: #00897B;
+        }
+        .kpi-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #6C757D;
+            margin-bottom: 4px;
+            font-weight: 600;
+        }
+        .kpi-value {
+            font-size: 18px;
+            font-weight: 700;
+            color: #212529;
+        }
+        .kpi-card.highlight .kpi-value {
+            color: #00796B;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 30px;
+        }
+        th, td {
+            border: 1px solid #DEE2E6;
+            padding: 10px 12px;
+            text-align: left;
+        }
+        th {
+            background-color: #005F73;
+            color: #FFFFFF;
+            font-weight: 600;
+            font-size: 13px;
+        }
+        .text-right {
+            text-align: right;
+        }
+        .text-center {
+            text-align: center;
+        }
+        .text-bold {
+            font-weight: bold;
+        }
+        .text-debit {
+            color: #C1121F;
+        }
+        .text-credit {
+            color: #38B000;
+        }
+        .opening-row {
+            font-style: italic;
+            background-color: #F8F9FA;
+        }
+        .closing-row {
+            font-weight: bold;
+            background-color: #E9ECEF;
+            border-top: 2px solid #005F73;
+        }
+        .print-btn {
+            display: block;
+            width: 140px;
+            margin: 10px auto 20px auto;
+            padding: 10px 16px;
+            text-align: center;
+            background-color: #005F73;
+            color: white;
+            font-weight: bold;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: background-color 0.2s;
+        }
+        .print-btn:hover {
+            background-color: #003F4C;
+        }
+        .signatures {
+            margin-top: 60px;
+            display: flex;
+            justify-content: space-between;
+            padding: 0 30px;
+        }
+        .signature-line {
+            width: 200px;
+            border-top: 1px solid #333;
+            text-align: center;
+            padding-top: 6px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        @media print {
+            .print-btn {
+                display: none;
+            }
+            body {
+                margin: 10px;
+                font-size: 12px;
+            }
+            .meta-info-container {
+                background-color: transparent !important;
+                border: 1px solid #CCC;
+            }
+            .kpi-card {
+                border: 1px solid #CCC !important;
+                box-shadow: none !important;
+            }
+            .kpi-card.highlight {
+                background-color: #F4FBFB !important;
+            }
+            th {
+                background-color: #005F73 !important;
+                color: #FFFFFF !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            .closing-row {
+                background-color: #EEE !important;
+            }
+        }
+    </style>
+    <script>
+        const data = /* INJECT_JSON_HERE */{};
+
+        function formatCurrency(val) {
+            if (val === 0) return "₹0.00";
+            return "₹" + Number(val).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        function renderData() {
+            if (!data || !data.debtorName) return;
+
+            document.getElementById('stationName').innerText = data.stationName || "Mitali Service Station";
+            document.getElementById('debtorName').innerText = data.debtorName;
+            document.getElementById('debtorPhone').innerText = data.debtorPhone || "N/A";
+            document.getElementById('dateRange').innerText = `${data.startDate} to ${data.endDate}`;
+            document.getElementById('generatedDateTime').innerText = new Date().toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+            document.getElementById('openingBalanceVal').innerText = formatCurrency(data.openingBalance);
+            document.getElementById('totalDebtVal').innerText = formatCurrency(data.totalDebt);
+            document.getElementById('totalRepaymentsVal').innerText = formatCurrency(data.totalRepayments);
+            document.getElementById('closingBalanceVal').innerText = formatCurrency(data.closingBalance);
+
+            const tableBody = document.getElementById('ledgerBody');
+            let html = '';
+
+            // Handle transactions
+            if (data.transactions && data.transactions.length > 0) {
+                data.transactions.forEach((tx, idx) => {
+                    let debitStr = tx.debit > 0 ? formatCurrency(tx.debit) : "—";
+                    let creditStr = tx.credit > 0 ? formatCurrency(tx.credit) : "—";
+                    
+                    let rowClass = "";
+                    if (tx.description === "Opening Balance") {
+                        rowClass = "opening-row";
+                        debitStr = "—";
+                        creditStr = "—";
+                    }
+
+                    html += `
+                        <tr class="${rowClass}">
+                            <td class="text-center">${tx.date}</td>
+                            <td>${tx.description}</td>
+                            <td class="text-right text-debit">${debitStr}</td>
+                            <td class="text-right text-credit">${creditStr}</td>
+                            <td class="text-right text-bold">${formatCurrency(tx.runningBalance)}</td>
+                        </tr>
+                    `;
+                });
+            } else {
+                html += `<tr><td colspan="5" class="text-center" style="opacity: 0.6; padding: 20px;">No transactions logged during this date range.</td></tr>`;
+            }
+
+            // Append Closing Summary Row
+            html += `
+                <tr class="closing-row">
+                    <td colspan="2" class="text-right">Outstanding Balance / Net Outstanding:</td>
+                    <td class="text-right text-debit">${formatCurrency(data.transactions.filter(t => t.description !== "Opening Balance").reduce((acc, t) => acc + t.debit, 0))}</td>
+                    <td class="text-right text-credit">${formatCurrency(data.transactions.filter(t => t.description !== "Opening Balance").reduce((acc, t) => acc + t.credit, 0))}</td>
+                    <td class="text-right text-bold">${formatCurrency(data.closingBalance)}</td>
+                </tr>
+            `;
+
+            tableBody.innerHTML = html;
+
+            if (data.logo) {
+                const logoImg = document.getElementById('logo');
+                if (logoImg) {
+                    logoImg.src = data.logo;
+                    logoImg.style.display = 'block';
+                }
+            }
+        }
+
+        window.onload = function() {
+            renderData();
+        };
+
+        function printDoc() {
+            window.print();
+        }
+    </script>
+</head>
+<body>
+    <button class="print-btn" onclick="printDoc()">Print Statement</button>
+    
+    <div class="header">
+        <div style="display: flex; align-items: center; justify-content: center; gap: 15px;">
+            <img id="logo" style="display: none; height: 55px;" src="" alt="logo" />
+            <h1 id="stationName">Mitali Service Station</h1>
+        </div>
+        <p>DEBTOR ACCOUNT STATEMENT / LEDGER</p>
+    </div>
+
+    <div class="meta-info-container">
+        <div class="meta-group">
+            <h3 style="color: #005F73;">Customer Profile</h3>
+            <p id="debtorName">John Doe</p>
+            <p id="debtorPhone" style="font-weight: normal; opacity: 0.85;">+91 98765 43210</p>
+        </div>
+        <div class="meta-group" style="text-align: right;">
+            <h3 style="color: #005F73;">Statement Period</h3>
+            <p id="dateRange">01-Jun-2026 to 21-Jun-2026</p>
+            <p style="font-weight: normal; opacity: 0.7; font-size: 11px; margin-top: 4px;">Generated: <span id="generatedDateTime">N/A</span></p>
+        </div>
+    </div>
+
+    <div class="kpi-container">
+        <div class="kpi-card">
+            <div class="kpi-label">Opening Balance</div>
+            <div class="kpi-value" id="openingBalanceVal">₹0.00</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">Total Debt (+)</div>
+            <div class="kpi-value text-debit" id="totalDebtVal">₹0.00</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">Total Repayments (-)</div>
+            <div class="kpi-value text-credit" id="totalRepaymentsVal">₹0.00</div>
+        </div>
+        <div class="kpi-card highlight">
+            <div class="kpi-label" style="color: #00796B;">Net Outstanding</div>
+            <div class="kpi-value" id="closingBalanceVal">₹0.00</div>
+        </div>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th style="width: 15%;" class="text-center">Date</th>
+                <th style="width: 45%;">Particulars / Transaction Details</th>
+                <th style="width: 13%;" class="text-right">Debit (Debt)</th>
+                <th style="width: 13%;" class="text-right">Credit (Repaid)</th>
+                <th style="width: 14%;" class="text-right">Running Balance</th>
+            </tr>
+        </thead>
+        <tbody id="ledgerBody">
+            <!-- Dynamic rows injected -->
+        </tbody>
+    </table>
+
+    <div class="signatures">
+        <div class="signature-line">Authorized Signatory</div>
+        <div class="signature-line">Customer Signature</div>
+    </div>
+</body>
+</html>
