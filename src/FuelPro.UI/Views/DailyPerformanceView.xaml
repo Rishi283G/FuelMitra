@@ -9,11 +9,33 @@
     </UserControl.Resources>
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Margin="24,16">
-            <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
-                <materialDesign:PackIcon Kind="CalendarToday" Width="28" Height="28" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                <TextBlock Text="Daily Performance" FontSize="24" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,24,0"/>
-                <DatePicker SelectedDate="{Binding SelectedDate}" Style="{StaticResource MaterialDesignOutlinedDatePicker}" Width="200" Height="48"/>
-            </StackPanel>
+            <Grid Margin="0,0,0,16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                    <materialDesign:PackIcon Kind="CalendarToday" Width="28" Height="28" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                    <TextBlock Text="Daily Performance" FontSize="24" FontWeight="Bold" VerticalAlignment="Center"/>
+                </StackPanel>
+                
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <DatePicker SelectedDate="{Binding SelectedDate}" Style="{StaticResource MaterialDesignOutlinedDatePicker}" Width="200" Height="48" Margin="0,0,8,0"/>
+                    <Button Command="{Binding PrintCommand}" Style="{StaticResource MaterialDesignFlatMidBgButton}" Height="48" Padding="12,0" Margin="0,0,8,0" ToolTip="Print Report">
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="Printer" Width="20" Height="20" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBlock Text="Print" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Command="{Binding ExportExcelCommand}" Style="{StaticResource MaterialDesignFlatMidBgButton}" Height="48" Padding="12,0" Background="#1B5E20" BorderBrush="#1B5E20" ToolTip="Export to Excel">
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="FileExcel" Width="20" Height="20" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBlock Text="Export" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Grid>
             <ProgressBar IsIndeterminate="{Binding IsLoading}" Visibility="{Binding IsLoading, Converter={StaticResource BooleanToVisibilityConverter}}" Style="{StaticResource MaterialDesignLinearProgressBar}" Margin="0,0,0,8"/>
             <UniformGrid Columns="4" Margin="0,0,0,16">
                 <materialDesign:Card Margin="4" Padding="12" UniformCornerRadius="8">

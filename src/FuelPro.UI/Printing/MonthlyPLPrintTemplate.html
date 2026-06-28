@@ -232,6 +232,15 @@
             document.getElementById('dsmSalariesText').innerText = formatCurrency(data.totalDsmSalaries);
             document.getElementById('pumpExpensesText').innerText = "-" + formatCurrency(data.totalPumpExpenses || 0);
 
+            const mismatchVal = data.totalMismatch || 0;
+            const mismatchEl = document.getElementById('mismatchText');
+            mismatchEl.innerText = (mismatchVal >= 0 ? "+" : "") + formatCurrency(mismatchVal);
+            if (mismatchVal >= 0) {
+                mismatchEl.style.color = '#2e7d32';
+            } else {
+                mismatchEl.style.color = '#c62828';
+            }
+
             // Pump Expenses Block
             const pumpExpenseBody = document.getElementById('pumpExpenseBody');
             pumpExpenseBody.innerHTML = `
@@ -362,6 +371,10 @@
             <tr>
                 <td style="color: #c62828;">Less: Total Owner Pump Expenses:</td>
                 <td class="text-right" id="pumpExpensesText" style="color: #c62828;">-₹0.00</td>
+            </tr>
+            <tr>
+                <td>Net Mismatch (Excess/Shortage):</td>
+                <td class="text-right" id="mismatchText" style="font-weight: 500;">₹0.00</td>
             </tr>
             <tr style="border-top: 2px solid #00695C; font-size: 16px;">
                 <td style="font-weight: bold; padding-top: 10px;">Net Operating Profit / Loss:</td>

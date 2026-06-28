@@ -364,6 +364,7 @@ public partial class ReportsViewModel : ObservableObject
                     totalDsmSalaries = financials.TotalDsmSalaries,
                     grossProfit = financials.GrossProfit,
                     ownerOuterExpenses = financials.OwnerOuterExpenses,
+                    totalMismatch = financials.TotalMismatch,
                     netProfit = financials.NetProfit
                 };
 

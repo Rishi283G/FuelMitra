@@ -91,7 +91,19 @@
                     </StackPanel>
                     
                     <DatePicker SelectedDate="{Binding StartDate}" IsEnabled="{Binding IsCustomRange}" materialDesign:HintAssist.Hint="From" Style="{StaticResource MaterialDesignOutlinedDatePicker}" Width="130" Margin="0,0,8,0" Height="48"/>
-                    <DatePicker SelectedDate="{Binding EndDate}" IsEnabled="{Binding IsCustomRange}" materialDesign:HintAssist.Hint="To" Style="{StaticResource MaterialDesignOutlinedDatePicker}" Width="130" Height="48"/>
+                    <DatePicker SelectedDate="{Binding EndDate}" IsEnabled="{Binding IsCustomRange}" materialDesign:HintAssist.Hint="To" Style="{StaticResource MaterialDesignOutlinedDatePicker}" Width="130" Margin="0,0,8,0" Height="48"/>
+                    <Button Command="{Binding PrintCommand}" Style="{StaticResource MaterialDesignFlatMidBgButton}" Height="48" Padding="12,0" Margin="0,0,8,0" ToolTip="Print P&amp;L Statement">
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="Printer" Width="20" Height="20" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBlock Text="Print" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Command="{Binding ExportExcelCommand}" Style="{StaticResource MaterialDesignFlatMidBgButton}" Height="48" Padding="12,0" Background="#1B5E20" BorderBrush="#1B5E20" ToolTip="Export to Excel">
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="FileExcel" Width="20" Height="20" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBlock Text="Export" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
                 </StackPanel>
             </Grid>
             
@@ -295,6 +307,10 @@
                             <Grid Margin="0,4">
                                 <TextBlock Text="Owner Outer Expenses" FontSize="13"/>
                                 <TextBlock Text="{Binding OwnerOuterExpenses, Converter={StaticResource CurrencyConverter}, StringFormat='-{0}'}" FontWeight="Medium" HorizontalAlignment="Right" Foreground="#C62828"/>
+                            </Grid>
+                            <Grid Margin="0,4">
+                                <TextBlock Text="Net Mismatch (Excess/Shortage)" FontSize="13"/>
+                                <TextBlock Text="{Binding TotalMismatch, Converter={StaticResource CurrencyConverter}}" FontWeight="Medium" HorizontalAlignment="Right"/>
                             </Grid>
                             
                             <Separator Margin="0,8" Background="#00695C"/>

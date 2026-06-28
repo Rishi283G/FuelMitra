@@ -62,15 +62,26 @@
                                 Width="140" Height="48"/>
                 </StackPanel>
 
-                <Button Grid.Column="1" Style="{StaticResource MaterialDesignRaisedButton}"
-                        Command="{Binding PrintReportCommand}"
-                        Background="#00695C" BorderBrush="#00695C"
-                        Height="40" Padding="16,0" VerticalAlignment="Center">
-                    <StackPanel Orientation="Horizontal">
-                        <materialDesign:PackIcon Kind="Printer" Width="18" Height="18" Margin="0,0,6,0"/>
-                        <TextBlock Text="Print Summary" VerticalAlignment="Center"/>
-                    </StackPanel>
-                </Button>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Style="{StaticResource MaterialDesignRaisedButton}"
+                            Command="{Binding PrintReportCommand}"
+                            Background="#00695C" BorderBrush="#00695C"
+                            Height="40" Padding="16,0" Margin="0,0,8,0">
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="Printer" Width="18" Height="18" Margin="0,0,6,0"/>
+                            <TextBlock Text="Print Summary" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource MaterialDesignRaisedButton}"
+                            Command="{Binding ExportExcelCommand}"
+                            Background="#1B5E20" BorderBrush="#1B5E20"
+                            Height="40" Padding="16,0">
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="FileExcel" Width="18" Height="18" Margin="0,0,6,0"/>
+                            <TextBlock Text="Export Excel" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
             </Grid>
         </materialDesign:Card>
 

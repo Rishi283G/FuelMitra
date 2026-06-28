@@ -169,7 +169,7 @@
                                             <DatePicker Grid.Column="2" SelectedDate="{Binding RepaymentDate}" materialDesign:HintAssist.Hint="Repayment Date" Style="{StaticResource MaterialDesignOutlinedDatePicker}"/>
                                         </Grid>
 
-                                        <TextBox Text="{Binding ChequeNumber, UpdateSourceTrigger=PropertyChanged}" materialDesign:HintAssist.Hint="Cheque / Ref No." Margin="0,0,0,12">
+                                        <TextBox Text="{Binding ChequeNumber, UpdateSourceTrigger=PropertyChanged}" materialDesign:HintAssist.Hint="Slip No" Margin="0,0,0,12">
                                             <TextBox.Style>
                                                 <Style TargetType="TextBox" BasedOn="{StaticResource MaterialDesignOutlinedTextBox}">
                                                     <Setter Property="Visibility" Value="Collapsed"/>
@@ -182,7 +182,46 @@
                                             </TextBox.Style>
                                         </TextBox>
 
-                                        <TextBox Text="{Binding RepaymentAmount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" materialDesign:HintAssist.Hint="Amount Received (₹)" Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,0,16"/>
+                                        <!-- Amount Received: manual entry for non-Cash modes -->
+                                        <TextBox Margin="0,0,0,16">
+                                            <TextBox.Style>
+                                                <Style TargetType="TextBox" BasedOn="{StaticResource MaterialDesignOutlinedTextBox}">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                    <Setter Property="IsEnabled" Value="True"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding SelectedPaymentMode}" Value="Cash">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBox.Style>
+                                            <TextBox.Text>
+                                                <Binding Path="RepaymentAmount" UpdateSourceTrigger="LostFocus" StringFormat="F2"/>
+                                            </TextBox.Text>
+                                            <materialDesign:HintAssist.Hint>Amount Received (₹)</materialDesign:HintAssist.Hint>
+                                        </TextBox>
+
+                                        <!-- Cash total auto-calculated from denominations (read-only display) -->
+                                        <Border Margin="0,0,0,16" BorderBrush="{DynamicResource MaterialDesign.Brush.Primary}" BorderThickness="1" CornerRadius="4" Padding="12,8">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding SelectedPaymentMode}" Value="Cash">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <StackPanel Orientation="Horizontal">
+                                                <materialDesign:PackIcon Kind="Calculator" Width="18" Height="18" VerticalAlignment="Center" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" Margin="0,0,8,0"/>
+                                                <TextBlock VerticalAlignment="Center" FontSize="14">
+                                                    <Run Text="Cash Total: ₹" FontWeight="SemiBold"/>
+                                                    <Run Text="{Binding RepaymentAmount, Mode=OneWay, StringFormat=F2}" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                                    <Run Text="  (auto-calculated from denominations)" Foreground="Gray" FontSize="11"/>
+                                                </TextBlock>
+                                            </StackPanel>
+                                        </Border>
 
                                          <!-- Card TID/Batch (visible for digital/card payments) -->
                                          <Grid Margin="0,0,0,12">
@@ -567,7 +606,7 @@
                                         <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat='{}{0:dd MMM yyyy}'}" Width="110"/>
                                         <DataGridTextColumn Header="Debtor Name" Binding="{Binding DebtorName}" Width="*"/>
                                         <DataGridTextColumn Header="DSM Name" Binding="{Binding DsmName}" Width="100"/>
-                                        <DataGridTextColumn Header="Cheque No" Binding="{Binding ChequeNo}" Width="100"/>
+                                        <DataGridTextColumn Header="Slip No" Binding="{Binding ChequeNo}" Width="100"/>
                                         <DataGridTextColumn Header="Amount" Binding="{Binding Amount, Converter={StaticResource CurrencyConverter}}" Width="110"/>
                                     </DataGrid.Columns>
                                 </DataGrid>
@@ -582,7 +621,7 @@
                                         <DataGridTextColumn Header="Repayment Date" Binding="{Binding RepaymentDate, StringFormat='{}{0:dd MMM yyyy}'}" Width="110"/>
                                         <DataGridTextColumn Header="Debtor Name" Binding="{Binding CreditorName}" Width="*"/>
                                         <DataGridTextColumn Header="Payment Mode" Binding="{Binding PaymentMode}" Width="100"/>
-                                        <DataGridTextColumn Header="Cheque / Ref No" Binding="{Binding ChequeNo}" Width="100"/>
+                                        <DataGridTextColumn Header="Slip No" Binding="{Binding ChequeNo}" Width="100"/>
                                         <DataGridTextColumn Header="Amount" Binding="{Binding Amount, Converter={StaticResource CurrencyConverter}}" Width="110"/>
                                     </DataGrid.Columns>
                                 </DataGrid>
@@ -590,6 +629,77 @@
                         </Grid>
                     </StackPanel>
                 </ScrollViewer>
+            </TabItem>
+
+            <!-- TAB 4: DSM PERSONAL DEBTORS -->
+            <TabItem Header="DSM Personal Debtors">
+                <Grid Margin="0,16,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="3*"/>
+                        <ColumnDefinition Width="5*"/>
+                        <ColumnDefinition Width="3*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Left: DSM Summary List -->
+                    <materialDesign:Card Grid.Column="0" Style="{StaticResource SectionCard}" Margin="0,0,8,0">
+                        <DockPanel LastChildFill="True">
+                            <TextBlock DockPanel.Dock="Top" Text="DSM Personal Debtor Summary" Style="{StaticResource SectionTitle}"/>
+                            <DataGrid ItemsSource="{Binding DsmPersonalDebtorsSummary}" SelectedItem="{Binding SelectedDsmPersonalDebtorSummary}" AutoGenerateColumns="False" IsReadOnly="True">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="DSM Name" Binding="{Binding DsmName}" Width="1.5*" FontWeight="SemiBold"/>
+                                    <DataGridTextColumn Header="Outstanding" Binding="{Binding Balance, Converter={StaticResource CurrencyConverter}}" Width="1*" Foreground="Red" FontWeight="Bold"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </DockPanel>
+                    </materialDesign:Card>
+
+                    <!-- Middle: Selected DSM's Debtor Entries -->
+                    <materialDesign:Card Grid.Column="1" Style="{StaticResource SectionCard}" Margin="8,0,8,0">
+                        <DockPanel LastChildFill="True">
+                            <TextBlock DockPanel.Dock="Top" Text="Borrowed Entries" Style="{StaticResource SectionTitle}"/>
+                            <DataGrid ItemsSource="{Binding SelectedDsmPersonalDebtorEntries}" SelectedItem="{Binding SelectedDsmPersonalDebtorEntry}" AutoGenerateColumns="False" IsReadOnly="False">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat='{}{0:dd-MMM-yyyy}'}" IsReadOnly="True" Width="1.2*"/>
+                                    <DataGridTextColumn Header="Amount" Binding="{Binding Amount, Converter={StaticResource CurrencyConverter}}" IsReadOnly="True" Width="1*"/>
+                                    <DataGridTextColumn Header="Repaid" Binding="{Binding RepaidAmount, Converter={StaticResource CurrencyConverter}}" IsReadOnly="True" Width="1*" Foreground="Green"/>
+                                    <DataGridCheckBoxColumn Header="Deduct Salary" Binding="{Binding DeductFromSalary, UpdateSourceTrigger=PropertyChanged}" Width="1.2*">
+                                        <DataGridCheckBoxColumn.ElementStyle>
+                                            <Style TargetType="CheckBox" BasedOn="{StaticResource MaterialDesignDataGridCheckBox}">
+                                                <Setter Property="Command" Value="{Binding DataContext.ToggleSalaryDeductionCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"/>
+                                                <Setter Property="CommandParameter" Value="{Binding}"/>
+                                            </Style>
+                                        </DataGridCheckBoxColumn.ElementStyle>
+                                    </DataGridCheckBoxColumn>
+                                    <DataGridTextColumn Header="Remarks" Binding="{Binding Remarks}" IsReadOnly="True" Width="1.5*"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </DockPanel>
+                    </materialDesign:Card>
+
+                    <!-- Right: Log Repayment Panel -->
+                    <materialDesign:Card Grid.Column="2" Style="{StaticResource SectionCard}" Margin="8,0,0,0">
+                        <StackPanel>
+                            <TextBlock Text="Record Repayment" Style="{StaticResource SectionTitle}"/>
+                            
+                            <TextBlock Text="DSM Name:" FontWeight="Bold" Margin="0,0,0,4"/>
+                            <TextBlock Text="{Binding SelectedDsmPersonalDebtorSummary.DsmName, TargetNullValue='No DSM Selected'}" FontSize="16" Margin="0,0,0,16"/>
+
+                            <TextBlock Text="Selected Entry Balance:" FontWeight="Bold" Margin="0,0,0,4"/>
+                            <TextBlock Text="{Binding SelectedDsmPersonalDebtorEntry.Amount, Converter={StaticResource CurrencyConverter}, StringFormat='Total: {0}'}" FontSize="14" Margin="0,0,0,16"/>
+
+                            <TextBox Text="{Binding PersonalRepaymentAmount, UpdateSourceTrigger=PropertyChanged}" materialDesign:HintAssist.Hint="Repayment Amount (₹)" Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,0,16"/>
+                            
+                            <DatePicker SelectedDate="{Binding PersonalRepaymentDate}" materialDesign:HintAssist.Hint="Repayment Date" Style="{StaticResource MaterialDesignOutlinedDatePicker}" Margin="0,0,0,16"/>
+                            
+                            <ComboBox SelectedValue="{Binding PersonalRepaymentPaymentMethod}" materialDesign:HintAssist.Hint="Payment Method" Style="{StaticResource MaterialDesignOutlinedComboBox}" Margin="0,0,0,16">
+                                <ComboBoxItem Content="Cash"/>
+                                <ComboBoxItem Content="Card"/>
+                            </ComboBox>
+
+                            <Button Content="Log Repayment" Command="{Binding SavePersonalRepaymentCommand}" Style="{StaticResource MaterialDesignRaisedButton}" Background="#1B5E20" BorderBrush="#1B5E20"/>
+                        </StackPanel>
+                    </materialDesign:Card>
+                </Grid>
             </TabItem>
 
         </TabControl>

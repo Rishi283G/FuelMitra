@@ -57,6 +57,8 @@ public class DsmPersonalDebtor
 
     public double RepaidAmount { get; set; }
 
+    public bool DeductFromSalary { get; set; } = true;
+
     public DateTime CreatedAt { get; set; } = DateTime.Now;
 
     [ForeignKey(nameof(DsmEntryId))]

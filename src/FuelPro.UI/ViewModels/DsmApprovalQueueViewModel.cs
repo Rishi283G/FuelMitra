@@ -426,6 +426,8 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
 
             bool isNight = string.Equals(SelectedSubmission.ShiftType, "B", StringComparison.OrdinalIgnoreCase);
 
+            bool hasCardSwipeDetails = false;
+
             if (!string.IsNullOrEmpty(SelectedSubmission.MetadataJson))
             {
                 try
@@ -433,7 +435,13 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                     var metadata = JsonConvert.DeserializeObject<dynamic>(SelectedSubmission.MetadataJson);
                     if (metadata != null && metadata.cardSwipeDetails != null)
                     {
-                        foreach (var swipe in metadata.cardSwipeDetails)
+                        var swipes = metadata.cardSwipeDetails;
+                        if (swipes.Count > 0)
+                        {
+                            hasCardSwipeDetails = true;
+                        }
+
+                        foreach (var swipe in swipes)
                         {
                             string mode = swipe.mode ?? "";
                             double amount = (double)(swipe.amount ?? 0.0);
@@ -477,16 +485,19 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                 }
             }
 
-            // Fallbacks for backward compatibility / plain amount inputs
-            if (upiMorning == 0 && upiNight == 0 && UpiAmount > 0)
+            // Fallbacks for backward compatibility / plain amount inputs (only when NO card swipe details exist)
+            if (!hasCardSwipeDetails)
             {
-                if (isNight) upiNight = UpiAmount;
-                else upiMorning = UpiAmount;
-            }
-            if (creditCardMorning == 0 && creditCardNight == 0 && CardAmount > 0)
-            {
-                if (isNight) creditCardNight = CardAmount;
-                else creditCardMorning = CardAmount;
+                if (upiMorning == 0 && upiNight == 0 && UpiAmount > 0)
+                {
+                    if (isNight) upiNight = UpiAmount;
+                    else upiMorning = UpiAmount;
+                }
+                if (creditCardMorning == 0 && creditCardNight == 0 && CardAmount > 0)
+                {
+                    if (isNight) creditCardNight = CardAmount;
+                    else creditCardMorning = CardAmount;
+                }
             }
 
             var payment = new PaymentCollection

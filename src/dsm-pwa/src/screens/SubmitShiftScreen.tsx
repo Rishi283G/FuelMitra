@@ -42,7 +42,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   // Expanded fields for Phase 3
   const [cardSwipeDetails, setCardSwipeDetails] = useState<{ mode: string; amount: number; tid: string; batch: string; }[]>([]);
   const [debtorEntries, setDebtorEntries] = useState<{ debtorName: string; amount: number; vehicleNumber?: string; time: string; }[]>([]);
-  const [personalDebtors, setPersonalDebtors] = useState<{ amount: number; fuelProduct?: string; remarks?: string; paymentMethod: string; tid?: string; batch?: string; denom500?: number; denom200?: number; denom100?: number; denom50?: number; denom20?: number; denom10?: number; coins?: number; }[]>([]);
+  const [personalDebtors, setPersonalDebtors] = useState<{ amount: number; fuelProduct?: string; remarks?: string; paymentMethod: string; }[]>([]);
 
   // Loading state for nozzle config
   const [nozzleLoading, setNozzleLoading] = useState(true);
@@ -622,49 +622,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                 </div>
                 <div className="field-group">
                   <label className="field-label">Payment Mode</label>
-                  <select
-                    id="pdebt-mode"
-                    className="field-input"
-                    defaultValue="Cash"
-                    onChange={(e) => {
-                      const mode = e.target.value;
-                      const cardDiv = document.getElementById('pdebt-card-fields');
-                      const cashDiv = document.getElementById('pdebt-cash-fields');
-                      if (cardDiv) cardDiv.style.display = (mode !== 'Cash') ? 'flex' : 'none';
-                      if (cashDiv) cashDiv.style.display = (mode === 'Cash') ? 'block' : 'none';
-                    }}
-                  >
-                    <option value="Cash">Cash</option>
-                    <option value="PhonePe">PhonePe</option>
-                    <option value="PetroCard">PetroCard</option>
-                    <option value="Others">Others</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Conditional Card Fields */}
-              <div id="pdebt-card-fields" className="field-row-2" style={{ marginTop: '8px', display: 'none' }}>
-                <div className="field-group">
-                  <label className="field-label">TID</label>
-                  <input id="pdebt-tid" type="text" className="field-input" placeholder="TID" />
-                </div>
-                <div className="field-group">
-                  <label className="field-label">Batch No.</label>
-                  <input id="pdebt-batch" type="text" className="field-input" placeholder="Batch" />
-                </div>
-              </div>
-
-              {/* Conditional Cash Fields */}
-              <div id="pdebt-cash-fields" style={{ marginTop: '8px', display: 'block' }}>
-                <label className="field-label">Cash Denominations</label>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' }}>
-                  <input id="pdebt-d500" type="number" className="field-input" placeholder="500x" style={{ padding: '4px' }} />
-                  <input id="pdebt-d200" type="number" className="field-input" placeholder="200x" style={{ padding: '4px' }} />
-                  <input id="pdebt-d100" type="number" className="field-input" placeholder="100x" style={{ padding: '4px' }} />
-                  <input id="pdebt-d50" type="number" className="field-input" placeholder="50x" style={{ padding: '4px' }} />
-                  <input id="pdebt-d20" type="number" className="field-input" placeholder="20x" style={{ padding: '4px' }} />
-                  <input id="pdebt-d10" type="number" className="field-input" placeholder="10x" style={{ padding: '4px' }} />
-                  <input id="pdebt-coins" type="number" className="field-input" placeholder="Coins" style={{ padding: '4px', gridColumn: 'span 2' }} />
+                  <div className="field-input" style={{ display: 'flex', alignItems: 'center', background: '#0f172a', color: '#94a3b8', borderRadius: '6px', padding: '0 12px', height: '42px', fontWeight: 600, letterSpacing: '0.04em' }}>Credit</div>
                 </div>
               </div>
 
@@ -676,47 +634,19 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                   const fuelProduct = (document.getElementById('pdebt-product') as HTMLSelectElement).value;
                   const amountVal = (document.getElementById('pdebt-amount') as HTMLInputElement).value;
                   const remarks = (document.getElementById('pdebt-remarks') as HTMLInputElement).value;
-                  const paymentMethod = (document.getElementById('pdebt-mode') as HTMLSelectElement).value;
-                  
+
                   if (!amountVal || Number(amountVal) <= 0) return;
-                  
-                  let entry: any = {
+
+                  setPersonalDebtors(prev => [...prev, {
                     amount: Number(amountVal),
                     fuelProduct,
                     remarks,
-                    paymentMethod
-                  };
+                    paymentMethod: 'Credit'
+                  }]);
 
-                  if (paymentMethod === 'Cash') {
-                    entry.denom500 = Number((document.getElementById('pdebt-d500') as HTMLInputElement).value) || 0;
-                    entry.denom200 = Number((document.getElementById('pdebt-d200') as HTMLInputElement).value) || 0;
-                    entry.denom100 = Number((document.getElementById('pdebt-d100') as HTMLInputElement).value) || 0;
-                    entry.denom50 = Number((document.getElementById('pdebt-d50') as HTMLInputElement).value) || 0;
-                    entry.denom20 = Number((document.getElementById('pdebt-d20') as HTMLInputElement).value) || 0;
-                    entry.denom10 = Number((document.getElementById('pdebt-d10') as HTMLInputElement).value) || 0;
-                    entry.coins = Number((document.getElementById('pdebt-coins') as HTMLInputElement).value) || 0;
-                  } else {
-                    entry.tid = (document.getElementById('pdebt-tid') as HTMLInputElement).value;
-                    entry.batch = (document.getElementById('pdebt-batch') as HTMLInputElement).value;
-                  }
-
-                  setPersonalDebtors(prev => [...prev, entry]);
-                  
                   // Clear form
                   (document.getElementById('pdebt-amount') as HTMLInputElement).value = '';
                   (document.getElementById('pdebt-remarks') as HTMLInputElement).value = '';
-                  if (paymentMethod === 'Cash') {
-                    (document.getElementById('pdebt-d500') as HTMLInputElement).value = '';
-                    (document.getElementById('pdebt-d200') as HTMLInputElement).value = '';
-                    (document.getElementById('pdebt-d100') as HTMLInputElement).value = '';
-                    (document.getElementById('pdebt-d50') as HTMLInputElement).value = '';
-                    (document.getElementById('pdebt-d20') as HTMLInputElement).value = '';
-                    (document.getElementById('pdebt-d10') as HTMLInputElement).value = '';
-                    (document.getElementById('pdebt-coins') as HTMLInputElement).value = '';
-                  } else {
-                    (document.getElementById('pdebt-tid') as HTMLInputElement).value = '';
-                    (document.getElementById('pdebt-batch') as HTMLInputElement).value = '';
-                  }
                 }}
               >
                 + Add Personal Debtor

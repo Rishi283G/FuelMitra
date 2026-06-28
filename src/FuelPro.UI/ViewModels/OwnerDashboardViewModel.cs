@@ -317,5 +317,59 @@ public partial class OwnerDashboardViewModel : ObservableObject
             MessageBox.Show($"Print failed: {ex.Message}", "Print Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
+
+    [RelayCommand]
+    private async Task ExportExcelAsync()
+    {
+        try
+        {
+            var exportService = App.Services.GetRequiredService<ExcelExportService>();
+            var summaryCards = new List<GenericGridPrintCard>
+            {
+                new() { Label = "Total Gross Sales", Value = "₹" + TodayTotalSale.ToString("N2"), Highlight = true },
+                new() { Label = "Volume Sold", Value = TodayTotalLitres.ToString("N2") + " L", Highlight = false },
+                new() { Label = "Net Collection", Value = "₹" + TodayTotalCollection.ToString("N2"), Highlight = false },
+                new() { Label = "Total Expenses", Value = "₹" + TodayTotalExpenses.ToString("N2"), Highlight = false },
+                new() { Label = "Net Mismatch", Value = "₹" + TodayTotalMismatch.ToString("N2"), Highlight = false }
+            };
+
+            var headers = new List<string> { "Category / Section", "Item Name / Description", "Value" };
+            var rows = new List<List<string>>
+            {
+                new() { "Fuel Sales Volume", "MS1 / Diesel (HSD)", TodayHsdLitres.ToString("N2") + " L" },
+                new() { "Fuel Sales Volume", "MS-I (Petrol)", TodayMsILitres.ToString("N2") + " L" },
+                new() { "Fuel Sales Volume", "MS-II (Power Petrol)", TodayMsIILitres.ToString("N2") + " L" },
+                new() { "Fuel Sales Volume", "CNG", TodayCngLitres.ToString("N2") + " L" },
+                new() { "Payment Mode Breakdown", "Cash", "₹" + TodayTotalCash.ToString("N2") },
+                new() { "Payment Mode Breakdown", "PhonePe", "₹" + TodayTotalPhonePe.ToString("N2") },
+                new() { "Payment Mode Breakdown", "PineLabs Card", "₹" + TodayTotalCreditCard.ToString("N2") },
+                new() { "Payment Mode Breakdown", "Petro Card", "₹" + TodayTotalPetroCard.ToString("N2") },
+                new() { "Payment Mode Breakdown", "Debit (Debtors)", "₹" + TodayTotalDebit.ToString("N2") }
+            };
+
+            string subtitle = StartDate.Date == EndDate.Date 
+                ? $"Statement for Date: {StartDate:dd-MMM-yyyy}" 
+                : $"Statement for Date Range: {StartDate:dd-MMM-yyyy} to {EndDate:dd-MMM-yyyy}";
+
+            var printData = new GenericGridPrintData
+            {
+                Title = "Owner Daily Dashboard Summary",
+                Subtitle = subtitle,
+                SummaryCards = summaryCards,
+                Headers = headers,
+                Rows = rows,
+                ShowSignatures = true
+            };
+
+            var path = await exportService.ExportGenericGridAsync(printData, "OwnerDashboard");
+            MessageBox.Show($"Report exported successfully to:\n{path}", "Export Success", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to export owner dashboard summary to Excel");
+            MessageBox.Show($"Export failed: {ex.Message}", "Export Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
 }
+
 

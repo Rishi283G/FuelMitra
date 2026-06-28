@@ -60,6 +60,7 @@ public class FinancialCalculationResult
     public double SalaryAdjustments { get; set; }
     public double ShortRecoveries { get; set; }
     public double OwnerOuterExpenses { get; set; }
+    public double TotalMismatch { get; set; }
 
     // Pump Expenses (Owner added - local only)
     public double PumpRent { get; set; }
@@ -77,8 +78,8 @@ public class FinancialCalculationResult
     public double PumpOtherAmount { get; set; }
     public double TotalPumpExpenses => PumpRent + PumpSalary + PumpTripSheetLoss + PumpDsmShort + PumpBankingExpenses + PumpBpclPortalExpenses + PumpFuelAndTravel + PumpOilPurchase + PumpRepairsAndMaintenance + PumpElectricity + PumpOfficeExpenses + PumpPrintingExpense + PumpOtherAmount;
 
-    // Net profit subtracts all expenses (both PWA outer expenses and local detailed pump expenses)
-    public double NetProfit => GrossProfit - TotalExpenses - DsmBaseSalaries - SalaryAdjustments + ShortRecoveries - OwnerOuterExpenses - TotalPumpExpenses;
+    // Net profit subtracts all expenses (both PWA outer expenses and local detailed pump expenses) and includes total mismatch (excess/shortage)
+    public double NetProfit => GrossProfit - TotalExpenses - DsmBaseSalaries - SalaryAdjustments + ShortRecoveries - OwnerOuterExpenses - TotalPumpExpenses + TotalMismatch;
 }
 
 public class DsmSalaryRowDto

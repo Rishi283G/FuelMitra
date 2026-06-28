@@ -227,6 +227,7 @@ public partial class ProfitLossViewModel : ObservableObject
             PumpPrintingExpense = result.PumpPrintingExpense;
             PumpOtherAmount = result.PumpOtherAmount;
             TotalPumpExpenses = result.TotalPumpExpenses;
+            TotalMismatch = result.TotalMismatch;
 
             NetProfit = result.NetProfit;
 
@@ -335,6 +336,7 @@ public partial class ProfitLossViewModel : ObservableObject
                 totalDsmSalaries = TotalDsmSalaries,
                 grossProfit = GrossProfit,
                 ownerOuterExpenses = OwnerOuterExpenses,
+                totalMismatch = TotalMismatch,
                 netProfit = NetProfit,
                 
                 // Pump Expenses properties
@@ -362,7 +364,38 @@ public partial class ProfitLossViewModel : ObservableObject
             MessageBox.Show($"Print failed: {ex.Message}", "Print Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
         }
     }
+
+    [RelayCommand]
+    private async Task ExportExcelAsync()
+    {
+        IsLoading = true;
+        try
+        {
+            var settingsRepo = App.Services.GetRequiredService<ISettingsRepository>();
+            var stationName = "PyroSync";
+            var s = await settingsRepo.GetSettingsAsync();
+            if (s.Success && s.Data != null) stationName = s.Data.PumpStationName;
+
+            var financials = await _financialCalcService.CalculateFinancialsAsync(StartDate, EndDate);
+            var expenses = ExpenseBreakdown.Select(e => (e.Category, e.Amount)).ToList();
+
+            var exportService = App.Services.GetRequiredService<ExcelExportService>();
+            var filePath = await exportService.ExportMonthlyPLAsync(stationName, StartDate, EndDate, financials, expenses);
+
+            MessageBox.Show($"Report exported successfully to:\n{filePath}", "Export Successful", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to export P&L to Excel");
+            MessageBox.Show($"Export failed: {ex.Message}", "Export Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
 }
+
 
 public class ExpenseBreakdownRow
 {

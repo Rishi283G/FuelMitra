@@ -931,14 +931,6 @@ public class SyncEngine
         {
             if (property.Name == "Id") continue;
             if (excludePk && pkProperties != null && pkProperties.Contains(property)) continue;
-            // Temporary exclusions for columns missing on remote Supabase DB until migration script is run
-            if (entity is DsmProfile && (property.Name == "MobileNumber" || property.Name == "PendingAdvance" || property.Name == "MonthlyAdvanceDeduction")) continue;
-            if (entity is DsmSalaryAdjustment && property.Name == "PendingAdvanceDeduction") continue;
-            if (entity is DsmEntry && (property.Name == "ConnectedPumpId" || property.Name == "ReconciledToPumpId" || property.Name == "StartTime" || property.Name == "EndTime" || property.Name == "IsReconciled")) continue;
-            if (entity is PaymentCollection && (property.Name == "CashDeposit" || property.Name == "PhonePeMorning" || property.Name == "PhonePeNight" || property.Name == "PhonePeCardMorning" || property.Name == "PhonePeCardNight" || property.Name == "CardTid" || property.Name == "CardBatch" || property.Name == "PhonePeTid" || property.Name == "PhonePeBatch" || property.Name == "PetroCardTid" || property.Name == "PetroCardBatch")) continue;
-            if (entity is Setting && property.Name == "CngRate") continue;
-            if (entity is DebitEntry && (property.Name == "CreatedAt" || property.Name == "UpdatedAt" || property.Name == "Remarks" || property.Name == "ChequeNo" || property.Name == "VehicleNumber" || property.Name == "SlipNumber")) continue;
-            if (entity is CreditorRepayment && property.Name == "CreatedAt") continue;
             
             values[property.Name] = entry.Property(property.Name).CurrentValue;
         }

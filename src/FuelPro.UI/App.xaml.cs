@@ -459,6 +459,27 @@ public partial class App : Application
             Log.Information("Created DsmPersonalDebtors table");
         }
 
+        // Check if DeductFromSalary column exists in DsmPersonalDebtors (Phase 3 migration)
+        cmd.CommandText = "PRAGMA table_info(DsmPersonalDebtors);";
+        var hasDeductColumn = false;
+        using (var reader = cmd.ExecuteReader())
+        {
+            while (reader.Read())
+            {
+                if (reader["name"].ToString() == "DeductFromSalary")
+                {
+                    hasDeductColumn = true;
+                    break;
+                }
+            }
+        }
+        if (!hasDeductColumn)
+        {
+            cmd.CommandText = "ALTER TABLE \"DsmPersonalDebtors\" ADD COLUMN \"DeductFromSalary\" INTEGER NOT NULL DEFAULT 1;";
+            cmd.ExecuteNonQuery();
+            Log.Information("Added DeductFromSalary column to DsmPersonalDebtors table");
+        }
+
         // Check if DsmPersonalDebtorRepayments exists
         cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='DsmPersonalDebtorRepayments'";
         var dsmPersonalDebtorRepaymentsExists = cmd.ExecuteScalar() != null;

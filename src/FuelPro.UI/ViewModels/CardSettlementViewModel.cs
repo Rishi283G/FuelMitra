@@ -306,6 +306,56 @@ public partial class CardSettlementViewModel : ObservableObject
         _printService.PrintCardSettlement(payload);
     }
 
+    [RelayCommand]
+    private async Task ExportExcelAsync()
+    {
+        try
+        {
+            var exportService = App.Services.GetRequiredService<FuelPro.Core.Services.ExcelExportService>();
+            var summaryCards = new List<FuelPro.Core.DTOs.GenericGridPrintCard>
+            {
+                new() { Label = "Total PineLabs Card", Value = "₹" + CardTotal.ToString("N2"), Highlight = false },
+                new() { Label = "Total PhonePe", Value = "₹" + PhonePeTotal.ToString("N2"), Highlight = false },
+                new() { Label = "Total Petro Card", Value = "₹" + PetroCardTotal.ToString("N2"), Highlight = false },
+                new() { Label = "Grand Total Digital", Value = "₹" + (CardTotal + PhonePeTotal + PetroCardTotal).ToString("N2"), Highlight = true }
+            };
+
+            var headers = new List<string> { "Payment Type", "Index", "DSM Name", "TID", "Batch No.", "Amount (₹)" };
+            var rows = new List<List<string>>();
+
+            foreach (var c in CardPayments)
+            {
+                rows.Add(new List<string> { "PineLabs Card", c.RomanIndex, c.DsmName, c.Tid ?? "—", c.Batch ?? "—", "₹" + c.Amount.ToString("N2") });
+            }
+            foreach (var p in PhonePePayments)
+            {
+                rows.Add(new List<string> { "PhonePe", p.RomanIndex, p.DsmName, p.Tid ?? "—", p.Batch ?? "—", "₹" + p.Amount.ToString("N2") });
+            }
+            foreach (var pc in PetroCardPayments)
+            {
+                rows.Add(new List<string> { "Petro Card", pc.RomanIndex, pc.DsmName, pc.Tid ?? "—", pc.Batch ?? "—", "₹" + pc.Amount.ToString("N2") });
+            }
+
+            var printData = new FuelPro.Core.DTOs.GenericGridPrintData
+            {
+                Title = "Card & Digital Settlement Report",
+                Subtitle = $"Date: {SelectedDate:dd-MMM-yyyy}  |  Shift: {SelectedShift}",
+                SummaryCards = summaryCards,
+                Headers = headers,
+                Rows = rows,
+                ShowSignatures = true
+            };
+
+            var path = await exportService.ExportGenericGridAsync(printData, "CardSettlement");
+            MessageBox.Show($"Report exported successfully to:\n{path}", "Export Success", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to export card settlement to Excel");
+            MessageBox.Show($"Export failed: {ex.Message}", "Export Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
     private static string ToRoman(int number)
     {
         if (number <= 0) return number.ToString();

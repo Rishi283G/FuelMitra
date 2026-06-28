@@ -159,62 +159,103 @@
                         <StackPanel>
                             <TextBlock Text="💳 Payment Collection" FontSize="16" FontWeight="SemiBold"
                                        Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}" Margin="0,0,0,12"/>
-                            <UniformGrid Columns="2" Rows="5">
-                                <TextBox Text="{Binding PhonePeCardMorning, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,0,8,12"
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <!-- Row 0: PhonePe Card -->
+                                <TextBox Grid.Row="0" Grid.Column="0" Text="{Binding PhonePeCardMorning, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,0,8,12"
                                          materialDesign:HintAssist.Hint="PhonePe Card (Morning)" materialDesign:HintAssist.IsFloating="True"
                                          Style="{StaticResource MaterialDesignOutlinedTextBox}"
                                          PreviewTextInput="DecimalTextBox_PreviewTextInput"
                                          GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"
                                          LostKeyboardFocus="DecimalTextBox_LostKeyboardFocus"/>
-                                <TextBox Text="{Binding PhonePeCardNight, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="8,0,0,12"
+                                <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding PhonePeCardNight, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="8,0,8,12"
                                          materialDesign:HintAssist.Hint="PhonePe Card (Night)" materialDesign:HintAssist.IsFloating="True"
                                          Style="{StaticResource MaterialDesignOutlinedTextBox}"
                                          PreviewTextInput="DecimalTextBox_PreviewTextInput"
                                          GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"
                                          LostKeyboardFocus="DecimalTextBox_LostKeyboardFocus"/>
-                                <TextBox Text="{Binding PhonePeMorning, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,0,8,12"
+
+                                <!-- Row 1: PhonePe / UPI -->
+                                <TextBox Grid.Row="1" Grid.Column="0" Text="{Binding PhonePeMorning, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,0,8,12"
                                          materialDesign:HintAssist.Hint="PhonePe (Morning)" materialDesign:HintAssist.IsFloating="True"
                                          Style="{StaticResource MaterialDesignOutlinedTextBox}"
                                          PreviewTextInput="DecimalTextBox_PreviewTextInput"
                                          GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"
                                          LostKeyboardFocus="DecimalTextBox_LostKeyboardFocus"/>
-                                <TextBox Text="{Binding PhonePeNight, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="8,0,0,12"
+                                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding PhonePeNight, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="8,0,8,12"
                                          materialDesign:HintAssist.Hint="PhonePe (Night)" materialDesign:HintAssist.IsFloating="True"
                                          Style="{StaticResource MaterialDesignOutlinedTextBox}"
                                          PreviewTextInput="DecimalTextBox_PreviewTextInput"
                                          GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"
                                          LostKeyboardFocus="DecimalTextBox_LostKeyboardFocus"/>
-                                <TextBox Text="{Binding CreditCardMorning, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,0,8,12"
+                                <TextBox Grid.Row="1" Grid.Column="2" Text="{Binding PhonePeTid, UpdateSourceTrigger=PropertyChanged}" Margin="8,0,8,12"
+                                         materialDesign:HintAssist.Hint="PhonePe TID" materialDesign:HintAssist.IsFloating="True"
+                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                                <TextBox Grid.Row="1" Grid.Column="3" Text="{Binding PhonePeBatch, UpdateSourceTrigger=PropertyChanged}" Margin="8,0,0,12"
+                                         materialDesign:HintAssist.Hint="PhonePe Batch No." materialDesign:HintAssist.IsFloating="True"
+                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+
+                                <!-- Row 2: PineLab Card -->
+                                <TextBox Grid.Row="2" Grid.Column="0" Text="{Binding CreditCardMorning, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,0,8,12"
                                          materialDesign:HintAssist.Hint="PineLab Card (Morning)" materialDesign:HintAssist.IsFloating="True"
                                          Style="{StaticResource MaterialDesignOutlinedTextBox}"
                                          PreviewTextInput="DecimalTextBox_PreviewTextInput"
                                          GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"
                                          LostKeyboardFocus="DecimalTextBox_LostKeyboardFocus"/>
-                                <TextBox Text="{Binding CreditCardNight, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="8,0,0,12"
+                                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding CreditCardNight, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="8,0,8,12"
                                          materialDesign:HintAssist.Hint="PineLab Card (Night)" materialDesign:HintAssist.IsFloating="True"
                                          Style="{StaticResource MaterialDesignOutlinedTextBox}"
                                          PreviewTextInput="DecimalTextBox_PreviewTextInput"
                                          GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"
                                          LostKeyboardFocus="DecimalTextBox_LostKeyboardFocus"/>
-                                <TextBox Text="{Binding PetroCard, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,0,8,12"
+                                <TextBox Grid.Row="2" Grid.Column="2" Text="{Binding CardTid, UpdateSourceTrigger=PropertyChanged}" Margin="8,0,8,12"
+                                         materialDesign:HintAssist.Hint="PineLab TID" materialDesign:HintAssist.IsFloating="True"
+                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                                <TextBox Grid.Row="2" Grid.Column="3" Text="{Binding CardBatch, UpdateSourceTrigger=PropertyChanged}" Margin="8,0,0,12"
+                                         materialDesign:HintAssist.Hint="PineLab Batch No." materialDesign:HintAssist.IsFloating="True"
+                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+
+                                <!-- Row 3: Petro Card & Cash Deposit -->
+                                <TextBox Grid.Row="3" Grid.Column="0" Text="{Binding PetroCard, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,0,8,12"
                                          materialDesign:HintAssist.Hint="Petro Card" materialDesign:HintAssist.IsFloating="True"
                                          Style="{StaticResource MaterialDesignOutlinedTextBox}"
                                          PreviewTextInput="DecimalTextBox_PreviewTextInput"
                                          GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"
                                          LostKeyboardFocus="DecimalTextBox_LostKeyboardFocus"/>
-                                <TextBox Text="{Binding CashDeposit, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="8,0,0,12"
+                                <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding PetroCardTid, UpdateSourceTrigger=PropertyChanged}" Margin="8,0,8,12"
+                                         materialDesign:HintAssist.Hint="Petro TID" materialDesign:HintAssist.IsFloating="True"
+                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                                <TextBox Grid.Row="3" Grid.Column="2" Text="{Binding PetroCardBatch, UpdateSourceTrigger=PropertyChanged}" Margin="8,0,8,12"
+                                         materialDesign:HintAssist.Hint="Petro Batch No." materialDesign:HintAssist.IsFloating="True"
+                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                                <TextBox Grid.Row="3" Grid.Column="3" Text="{Binding CashDeposit, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="8,0,0,12"
                                          materialDesign:HintAssist.Hint="Cash Deposit" materialDesign:HintAssist.IsFloating="True"
                                          Style="{StaticResource MaterialDesignOutlinedTextBox}"
                                          PreviewTextInput="DecimalTextBox_PreviewTextInput"
                                          GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"
                                          LostKeyboardFocus="DecimalTextBox_LostKeyboardFocus"/>
-                                <TextBox Text="{Binding Others, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,0,8,0"
+
+                                <!-- Row 4: Others -->
+                                <TextBox Grid.Row="4" Grid.Column="0" Text="{Binding Others, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,0,8,0"
                                          materialDesign:HintAssist.Hint="Others (Not in Total)" materialDesign:HintAssist.IsFloating="True"
                                          Style="{StaticResource MaterialDesignOutlinedTextBox}"
                                          PreviewTextInput="DecimalTextBox_PreviewTextInput"
                                          GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"
                                          LostKeyboardFocus="DecimalTextBox_LostKeyboardFocus"/>
-                            </UniformGrid>
+                            </Grid>
                         </StackPanel>
                     </materialDesign:Card>
 
@@ -304,7 +345,7 @@
                                                         <ColumnDefinition Width="*"/>
                                                     </Grid.ColumnDefinitions>
                                                     <TextBox Grid.Column="0" Text="{Binding ChequeNo, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0"
-                                                             materialDesign:HintAssist.Hint="Slip / Cheque Number"
+                                                             materialDesign:HintAssist.Hint="Slip No"
                                                              Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
                                                 </Grid>
 

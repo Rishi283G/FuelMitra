@@ -7,6 +7,7 @@ using FuelPro.Core.Repositories;
 using FuelPro.Core.Services;
 using Microsoft.Extensions.DependencyInjection;
 using System.Collections.ObjectModel;
+using FuelPro.UI.Printing;
 
 namespace FuelPro.UI.ViewModels;
 
@@ -19,6 +20,8 @@ public partial class DailyPerformanceViewModel : ObservableObject
     private readonly IDsmEntryRepository _dsmEntryRepo;
     private readonly IDsmCalculationService _calcService;
     private readonly IExpenseRepository _expenseRepo;
+    private readonly PrintService _printService;
+    private readonly ExcelExportService _excelExportService;
 
     [ObservableProperty] private DateTime _selectedDate = DateTime.Today;
     [ObservableProperty] private bool _isLoading;
@@ -42,10 +45,109 @@ public partial class DailyPerformanceViewModel : ObservableObject
         _dsmEntryRepo = App.Services.GetRequiredService<IDsmEntryRepository>();
         _calcService = App.Services.GetRequiredService<IDsmCalculationService>();
         _expenseRepo = App.Services.GetRequiredService<IExpenseRepository>();
+        _printService = App.Services.GetRequiredService<PrintService>();
+        _excelExportService = App.Services.GetRequiredService<ExcelExportService>();
         _ = LoadAsync();
     }
 
     partial void OnSelectedDateChanged(DateTime value) => _ = LoadAsync();
+
+    [RelayCommand]
+    private void Print()
+    {
+        try
+        {
+            var summaryCards = new List<GenericGridPrintCard>
+            {
+                new() { Label = "Total Sale", Value = "₹" + TotalSale.ToString("N2"), Highlight = true },
+                new() { Label = "Total Volume", Value = TotalLitres.ToString("N2") + " L", Highlight = false },
+                new() { Label = "Total Collection", Value = "₹" + TotalCollection.ToString("N2"), Highlight = false },
+                new() { Label = "Total Mismatch", Value = "₹" + TotalMismatch.ToString("N2"), Highlight = false }
+            };
+
+            var headers = new List<string> { "DSM Name", "Shifts", "Sale", "Litres", "Collection", "Mismatch" };
+            var rows = new List<List<string>>();
+
+            foreach (var row in DsmBreakdown)
+            {
+                rows.Add(new List<string>
+                {
+                    row.DsmName,
+                    row.ShiftCount.ToString(),
+                    "₹" + row.TotalSale.ToString("N2"),
+                    row.TotalLitres.ToString("N2") + " L",
+                    "₹" + row.TotalCollection.ToString("N2"),
+                    "₹" + row.Mismatch.ToString("N2")
+                });
+            }
+
+            var printData = new GenericGridPrintData
+            {
+                Title = "Daily Performance Report",
+                Subtitle = $"Date: {SelectedDate:dd-MMM-yyyy}",
+                SummaryCards = summaryCards,
+                Headers = headers,
+                Rows = rows,
+                ShowSignatures = true
+            };
+
+            _printService.PrintGenericGrid(printData);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to print daily performance report");
+            System.Windows.MessageBox.Show($"Print failed: {ex.Message}", "Print Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+        }
+    }
+
+    [RelayCommand]
+    private async Task ExportExcelAsync()
+    {
+        try
+        {
+            var summaryCards = new List<GenericGridPrintCard>
+            {
+                new() { Label = "Total Sale", Value = "₹" + TotalSale.ToString("N2"), Highlight = true },
+                new() { Label = "Total Volume", Value = TotalLitres.ToString("N2") + " L", Highlight = false },
+                new() { Label = "Total Collection", Value = "₹" + TotalCollection.ToString("N2"), Highlight = false },
+                new() { Label = "Total Mismatch", Value = "₹" + TotalMismatch.ToString("N2"), Highlight = false }
+            };
+
+            var headers = new List<string> { "DSM Name", "Shifts", "Sale", "Litres", "Collection", "Mismatch" };
+            var rows = new List<List<string>>();
+
+            foreach (var row in DsmBreakdown)
+            {
+                rows.Add(new List<string>
+                {
+                    row.DsmName,
+                    row.ShiftCount.ToString(),
+                    "₹" + row.TotalSale.ToString("N2"),
+                    row.TotalLitres.ToString("N2") + " L",
+                    "₹" + row.TotalCollection.ToString("N2"),
+                    "₹" + row.Mismatch.ToString("N2")
+                });
+            }
+
+            var printData = new GenericGridPrintData
+            {
+                Title = "Daily Performance Report",
+                Subtitle = $"Date: {SelectedDate:dd-MMM-yyyy}",
+                SummaryCards = summaryCards,
+                Headers = headers,
+                Rows = rows,
+                ShowSignatures = true
+            };
+
+            var path = await _excelExportService.ExportGenericGridAsync(printData, "DailyPerformance");
+            System.Windows.MessageBox.Show($"Report exported successfully to:\n{path}", "Export Success", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to export daily performance report to Excel");
+            System.Windows.MessageBox.Show($"Export failed: {ex.Message}", "Export Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+        }
+    }
 
     [RelayCommand]
     private async Task LoadAsync()

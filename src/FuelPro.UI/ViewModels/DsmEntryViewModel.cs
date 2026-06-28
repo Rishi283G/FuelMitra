@@ -234,7 +234,6 @@ public partial class DsmEntryViewModel : ObservableObject
     // Nozzle readings
     public ObservableCollection<NozzleReadingRow> NozzleReadings { get; } = new();
 
-    // Payment
     [ObservableProperty] private double? _phonePeCardMorning;
     [ObservableProperty] private double? _phonePeCardNight;
     [ObservableProperty] private double? _phonePeMorning;
@@ -244,6 +243,13 @@ public partial class DsmEntryViewModel : ObservableObject
     [ObservableProperty] private double? _petroCard;
     [ObservableProperty] private double? _others;
     [ObservableProperty] private double? _cashDeposit;
+
+    [ObservableProperty] private string? _cardTid;
+    [ObservableProperty] private string? _cardBatch;
+    [ObservableProperty] private string? _phonePeTid;
+    [ObservableProperty] private string? _phonePeBatch;
+    [ObservableProperty] private string? _petroCardTid;
+    [ObservableProperty] private string? _petroCardBatch;
 
     partial void OnPhonePeCardMorningChanged(double? value) => RecalculateAll();
     partial void OnPhonePeCardNightChanged(double? value) => RecalculateAll();
@@ -668,7 +674,7 @@ public partial class DsmEntryViewModel : ObservableObject
     {
         TotalLitres = NozzleReadings.Sum(n => n.SaleLitres);
         var calc = _dsmCalculationService.Calculate(BuildCalculationDto());
-        GrossSales = (double)calc.GrossSales + ConnectedPumpGrossSales;
+        GrossSales = (double)calc.GrossSales;
         TotalPaymentIn = (double)calc.TotalInDirect;
         TotalDebtors = (double)calc.TotalCreditors;
         FinalAdjusted = (double)calc.TotalCollection;
@@ -729,7 +735,13 @@ public partial class DsmEntryViewModel : ObservableObject
                 CreditCardNight = CreditCardNight ?? 0,
                 PetroCard = PetroCard ?? 0,
                 Others = Others ?? 0,
-                CashDeposit = CashDeposit ?? 0
+                CashDeposit = CashDeposit ?? 0,
+                CardTid = CardTid,
+                CardBatch = CardBatch,
+                PhonePeTid = PhonePeTid,
+                PhonePeBatch = PhonePeBatch,
+                PetroCardTid = PetroCardTid,
+                PetroCardBatch = PetroCardBatch
             };
 
             var debitModels = Debits.Where(d => !string.IsNullOrWhiteSpace(d.DebtorName))
@@ -829,6 +841,7 @@ public partial class DsmEntryViewModel : ObservableObject
         StartTime = "08:00 AM";
         EndTime = "08:00 PM";
         PhonePeCardMorning = PhonePeCardNight = PhonePeMorning = PhonePeNight = CreditCardMorning = CreditCardNight = PetroCard = Others = CashDeposit = null;
+        CardTid = CardBatch = PhonePeTid = PhonePeBatch = PetroCardTid = PetroCardBatch = null;
         SelectedConnectedPump = null;
         ConnectedPumpGrossSales = 0;
         ConnectedPumpStatus = "";
@@ -918,6 +931,13 @@ public partial class DsmEntryViewModel : ObservableObject
             PetroCard = entry.PaymentCollection?.PetroCard;
             Others = entry.PaymentCollection?.Others;
             CashDeposit = entry.PaymentCollection?.CashDeposit;
+
+            CardTid = entry.PaymentCollection?.CardTid;
+            CardBatch = entry.PaymentCollection?.CardBatch;
+            PhonePeTid = entry.PaymentCollection?.PhonePeTid;
+            PhonePeBatch = entry.PaymentCollection?.PhonePeBatch;
+            PetroCardTid = entry.PaymentCollection?.PetroCardTid;
+            PetroCardBatch = entry.PaymentCollection?.PetroCardBatch;
 
             // Populate nozzle readings (override auto-loaded ones)
             foreach (var nozzleRow in NozzleReadings)

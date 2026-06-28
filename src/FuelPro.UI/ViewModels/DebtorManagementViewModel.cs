@@ -53,6 +53,7 @@ public partial class DebtorManagementViewModel : ObservableObject
     private readonly IDsmEntryRepository _dsmRepo;
     private readonly PrintService _printService;
     private readonly ExcelExportService _excelExportService;
+    private readonly FuelProDbContext _dbContext;
     private readonly ILogger _logger = Log.ForContext<DebtorManagementViewModel>();
 
     [ObservableProperty] private bool _isLoading;
@@ -87,6 +88,45 @@ public partial class DebtorManagementViewModel : ObservableObject
     [ObservableProperty] private int? _denom10;
     [ObservableProperty] private int? _coins;
     public string[] PaymentModes { get; } = { "Cash", "PhonePe", "PineLabs Card", "Cheque", "Bank Transfer" };
+
+    // True when Cash is selected — used for XAML visibility of denomination grid vs manual amount
+    public bool IsCashPaymentMode => SelectedPaymentMode == "Cash";
+
+    partial void OnSelectedPaymentModeChanged(string value)
+    {
+        OnPropertyChanged(nameof(IsCashPaymentMode));
+        if (value == "Cash")
+        {
+            // Recalculate from existing denominations
+            RecalculateCashAmount();
+        }
+        else
+        {
+            // Clear denomination fields when switching away from Cash
+            Denom500 = null; Denom200 = null; Denom100 = null;
+            Denom50 = null; Denom20 = null; Denom10 = null; Coins = null;
+            RepaymentAmount = 0;
+        }
+    }
+
+    partial void OnDenom500Changed(int? value) { if (SelectedPaymentMode == "Cash") RecalculateCashAmount(); }
+    partial void OnDenom200Changed(int? value) { if (SelectedPaymentMode == "Cash") RecalculateCashAmount(); }
+    partial void OnDenom100Changed(int? value) { if (SelectedPaymentMode == "Cash") RecalculateCashAmount(); }
+    partial void OnDenom50Changed(int? value)  { if (SelectedPaymentMode == "Cash") RecalculateCashAmount(); }
+    partial void OnDenom20Changed(int? value)  { if (SelectedPaymentMode == "Cash") RecalculateCashAmount(); }
+    partial void OnDenom10Changed(int? value)  { if (SelectedPaymentMode == "Cash") RecalculateCashAmount(); }
+    partial void OnCoinsChanged(int? value)    { if (SelectedPaymentMode == "Cash") RecalculateCashAmount(); }
+
+    private void RecalculateCashAmount()
+    {
+        RepaymentAmount = (Denom500 ?? 0) * 500
+                        + (Denom200 ?? 0) * 200
+                        + (Denom100 ?? 0) * 100
+                        + (Denom50  ?? 0) * 50
+                        + (Denom20  ?? 0) * 20
+                        + (Denom10  ?? 0) * 10
+                        + (Coins    ?? 0) * 1;
+    }
 
     // Ledger statements
     [ObservableProperty] private string _ledgerDebtorName = "";
@@ -224,6 +264,7 @@ public partial class DebtorManagementViewModel : ObservableObject
         _dsmRepo = App.Services.GetRequiredService<IDsmEntryRepository>();
         _printService = App.Services.GetRequiredService<PrintService>();
         _excelExportService = App.Services.GetRequiredService<ExcelExportService>();
+        _dbContext = App.Services.GetRequiredService<FuelProDbContext>();
 
         _ = LoadDataAsync();
     }
@@ -234,6 +275,7 @@ public partial class DebtorManagementViewModel : ObservableObject
         IsLoading = true;
         try
         {
+            await LoadDsmPersonalDebtorsAsync();
             var creditorsRes = await _creditorRepo.GetAllActiveAsync();
             var creditors = creditorsRes.Success ? creditorsRes.Data ?? new List<Creditor>() : new List<Creditor>();
 
@@ -1351,4 +1393,188 @@ public partial class DebtorManagementViewModel : ObservableObject
             MessageBox.Show($"Export failed: {ex.Message}", "Export Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
+
+    // --- DSM Personal Debtors Section ---
+    [ObservableProperty] private ObservableCollection<DsmPersonalDebtorSummaryRow> _dsmPersonalDebtorsSummary = new();
+    [ObservableProperty] private DsmPersonalDebtorSummaryRow? _selectedDsmPersonalDebtorSummary;
+
+    [ObservableProperty] private ObservableCollection<DsmPersonalDebtor> _selectedDsmPersonalDebtorEntries = new();
+    [ObservableProperty] private DsmPersonalDebtor? _selectedDsmPersonalDebtorEntry;
+
+    [ObservableProperty] private double _personalRepaymentAmount;
+    [ObservableProperty] private string _personalRepaymentPaymentMethod = "Cash";
+    [ObservableProperty] private DateTime _personalRepaymentDate = DateTime.Today;
+    [ObservableProperty] private string _personalRepaymentRemarks = "";
+
+    partial void OnSelectedDsmPersonalDebtorSummaryChanged(DsmPersonalDebtorSummaryRow? value)
+    {
+        _ = LoadSelectedDsmPersonalDebtorEntriesAsync();
+    }
+
+    public async Task LoadDsmPersonalDebtorsAsync()
+    {
+        try
+        {
+            var debtorsList = await _dbContext.DsmPersonalDebtors.ToListAsync();
+            var repaymentsList = await _dbContext.DsmPersonalDebtorRepayments.ToListAsync();
+
+            var summary = debtorsList
+                .GroupBy(d => d.DsmName, StringComparer.OrdinalIgnoreCase)
+                .Select(g =>
+                {
+                    var dsmName = g.Key;
+                    var totalBorrowed = g.Sum(d => d.Amount);
+                    var personalDebtorIds = g.Select(d => d.Id).ToList();
+                    var totalRepaid = repaymentsList
+                        .Where(r => personalDebtorIds.Contains(r.DsmPersonalDebtorId))
+                        .Sum(r => r.Amount);
+
+                    return new DsmPersonalDebtorSummaryRow
+                    {
+                        DsmName = dsmName,
+                        TotalBorrowed = totalBorrowed,
+                        TotalRepaid = totalRepaid
+                    };
+                })
+                .Where(s => s.Balance > 0 || s.TotalBorrowed > 0)
+                .OrderBy(s => s.DsmName)
+                .ToList();
+
+            DsmPersonalDebtorsSummary.Clear();
+            foreach (var s in summary)
+            {
+                DsmPersonalDebtorsSummary.Add(s);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to load DSM personal debtors summary");
+        }
+    }
+
+    public async Task LoadSelectedDsmPersonalDebtorEntriesAsync()
+    {
+        SelectedDsmPersonalDebtorEntries.Clear();
+        SelectedDsmPersonalDebtorEntry = null;
+        PersonalRepaymentAmount = 0;
+        PersonalRepaymentRemarks = "";
+
+        if (SelectedDsmPersonalDebtorSummary == null) return;
+
+        try
+        {
+            var name = SelectedDsmPersonalDebtorSummary.DsmName;
+            var entries = await _dbContext.DsmPersonalDebtors
+                .Where(d => d.DsmName == name)
+                .OrderByDescending(d => d.Date)
+                .ToListAsync();
+
+            var repayments = await _dbContext.DsmPersonalDebtorRepayments.ToListAsync();
+
+            foreach (var e in entries)
+            {
+                e.RepaidAmount = repayments
+                    .Where(r => r.DsmPersonalDebtorId == e.Id)
+                    .Sum(r => r.Amount);
+
+                SelectedDsmPersonalDebtorEntries.Add(e);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to load DSM personal debtor entries for selection");
+        }
+    }
+
+    [RelayCommand]
+    private async Task ToggleSalaryDeductionAsync(DsmPersonalDebtor debtor)
+    {
+        if (debtor == null) return;
+        try
+        {
+            var dbEntry = await _dbContext.DsmPersonalDebtors.FindAsync(debtor.Id);
+            if (dbEntry != null)
+            {
+                dbEntry.DeductFromSalary = debtor.DeductFromSalary;
+                await _dbContext.SaveChangesAsync();
+                
+                // Let's force sync
+                var syncEngine = App.Services.GetRequiredService<FuelPro.Sync.SyncEngine>();
+                _ = syncEngine.ForceSyncAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to toggle salary deduction");
+            MessageBox.Show($"Error toggling salary deduction: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    [RelayCommand]
+    private async Task SavePersonalRepaymentAsync()
+    {
+        if (SelectedDsmPersonalDebtorEntry == null)
+        {
+            MessageBox.Show("Please select a personal debtor entry to repay.", "Selection Required", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        if (PersonalRepaymentAmount <= 0)
+        {
+            MessageBox.Show("Please enter a valid repayment amount.", "Invalid Amount", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var remaining = SelectedDsmPersonalDebtorEntry.Amount - SelectedDsmPersonalDebtorEntry.RepaidAmount;
+        if (PersonalRepaymentAmount > remaining + 0.01)
+        {
+            MessageBox.Show($"Repayment amount cannot exceed the remaining balance of ₹{remaining:N2}.", "Excess Repayment", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        try
+        {
+            var repayment = new DsmPersonalDebtorRepayment
+            {
+                DsmPersonalDebtorId = SelectedDsmPersonalDebtorEntry.Id,
+                Amount = PersonalRepaymentAmount,
+                Date = PersonalRepaymentDate,
+                PaymentMethod = PersonalRepaymentPaymentMethod,
+                Source = "OwnerPayroll",
+                Denom500 = 0,
+                Denom200 = 0,
+                Denom100 = 0,
+                Denom50 = 0,
+                Denom20 = 0,
+                Denom10 = 0,
+                Coins = 0
+            };
+
+            _dbContext.DsmPersonalDebtorRepayments.Add(repayment);
+            await _dbContext.SaveChangesAsync();
+
+            MessageBox.Show("Repayment recorded successfully.", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+
+            // Reload data
+            await LoadSelectedDsmPersonalDebtorEntriesAsync();
+            await LoadDsmPersonalDebtorsAsync();
+
+            var syncEngine = App.Services.GetRequiredService<FuelPro.Sync.SyncEngine>();
+            _ = syncEngine.ForceSyncAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to save personal debtor repayment");
+            MessageBox.Show($"Error saving repayment: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
 }
+
+public class DsmPersonalDebtorSummaryRow
+{
+    public string DsmName { get; set; } = string.Empty;
+    public double TotalBorrowed { get; set; }
+    public double TotalRepaid { get; set; }
+    public double Balance => TotalBorrowed - TotalRepaid;
+}
+

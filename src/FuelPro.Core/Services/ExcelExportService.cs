@@ -604,6 +604,7 @@ public class ExcelExportService
                 ("Total DSM Salaries Paid", financials.TotalDsmSalaries, false),
                 ("Total Operational Expenses", financials.ManagerExpenses, false),
                 ("Total Pump/Owner Expenses", financials.TotalPumpExpenses, false),
+                ("Net Mismatch (Excess/Shortage)", financials.TotalMismatch, false),
                 ("Net Profit", financials.NetProfit, true)
             };
 

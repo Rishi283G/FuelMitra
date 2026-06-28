@@ -286,7 +286,7 @@
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="Debtor Name" Binding="{Binding CreditorName}" Width="200"/>
                             <DataGridTextColumn Header="Mode" Binding="{Binding PaymentMode}" Width="120"/>
-                            <DataGridTextColumn Header="Cheque No." Binding="{Binding ChequeNo}" Width="150"/>
+                            <DataGridTextColumn Header="Slip No" Binding="{Binding ChequeNo}" Width="150"/>
                             <DataGridTextColumn Header="Amount" Binding="{Binding Amount, StringFormat=N2}" Width="120"/>
                             <DataGridTemplateColumn Header="" Width="50">
                                 <DataGridTemplateColumn.CellTemplate>

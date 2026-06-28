@@ -187,6 +187,17 @@ public class FinancialCalculationService : IFinancialCalculationService
             .SumAsync(e => e.Amount);
         result.OwnerOuterExpenses = Math.Round(outerExpSum, 2);
 
+        // Sum up mismatches from DsmEntries
+        double totalMismatch = 0;
+        foreach (var shift in shifts)
+        {
+            foreach (var entry in shift.DsmEntries)
+            {
+                totalMismatch += (double)entry.Mismatch;
+            }
+        }
+        result.TotalMismatch = Math.Round(totalMismatch, 2);
+
         return result;
     }
 
@@ -283,7 +294,7 @@ public class FinancialCalculationService : IFinancialCalculationService
             }
 
             var personalDebtorDeduction = allPersonalDebtors
-                .Where(d => string.Equals(d.DsmName, name, StringComparison.OrdinalIgnoreCase))
+                .Where(d => string.Equals(d.DsmName, name, StringComparison.OrdinalIgnoreCase) && d.DeductFromSalary)
                 .Sum(d => d.Amount - d.RepaidAmount);
 
             // Compute automatic Pending Advance deduction

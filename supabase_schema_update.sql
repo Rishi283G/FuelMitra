@@ -144,6 +144,7 @@ ALTER TABLE "PaymentCollections" ADD COLUMN IF NOT EXISTS "PetroCardTid" text NU
 ALTER TABLE "PaymentCollections" ADD COLUMN IF NOT EXISTS "PetroCardBatch" text NULL;
 
 -- Table: DebitEntries
+
 ALTER TABLE "DebitEntries" ADD COLUMN IF NOT EXISTS "Fuel" text NULL;
 ALTER TABLE "DebitEntries" ADD COLUMN IF NOT EXISTS "EntryTime" text NULL;
 ALTER TABLE "DebitEntries" ADD COLUMN IF NOT EXISTS "PaymentMethod" text NOT NULL DEFAULT 'Credit';
@@ -205,56 +206,111 @@ CREATE TABLE IF NOT EXISTS "PumpMappings" (
 );
 
 CREATE TABLE IF NOT EXISTS "AuditLogs" (
-    "Id" serial PRIMARY KEY,
-    "Action" text NOT NULL,
-    "Details" text NULL,
-    "Timestamp" timestamp with time zone NOT NULL,
+    "AuditLogId" serial PRIMARY KEY,
+    "TableName" text NOT NULL,
+    "RecordId" integer NOT NULL,
+    "Action" text NOT NULL DEFAULT 'Update',
+    "FieldName" text NULL,
+    "OldValue" text NULL,
+    "NewValue" text NULL,
+    "ModifiedBy" text NOT NULL,
+    "ModifiedAt" timestamp with time zone NOT NULL,
+    "Reason" text NULL,
     "SyncGuid" text NULL
 );
 
 CREATE TABLE IF NOT EXISTS "DayLocks" (
-    "Id" serial PRIMARY KEY,
+    "DayLockId" serial PRIMARY KEY,
     "LockDate" timestamp with time zone NOT NULL,
-    "IsLocked" boolean NOT NULL DEFAULT FALSE,
+    "LockedAt" timestamp with time zone NOT NULL,
+    "LockedBy" text NOT NULL,
+    "IsLocked" boolean NOT NULL DEFAULT TRUE,
+    "UnlockedAt" timestamp with time zone NULL,
+    "UnlockedBy" text NULL,
+    "UnlockReason" text NULL,
     "SyncGuid" text NULL
 );
 
+-- PumpExpenses: matches PumpExpense.cs model exactly (individual expense columns, not category-based)
 CREATE TABLE IF NOT EXISTS "PumpExpenses" (
     "Id" serial PRIMARY KEY,
-    "ShiftId" integer NOT NULL,
-    "ExpenseCategoryId" integer NOT NULL,
-    "Amount" float8 NOT NULL,
-    "Description" text NULL,
-    "SyncGuid" text NULL
-);
-
-CREATE TABLE IF NOT EXISTS "ExpenseCategories" (
-    "Id" serial PRIMARY KEY,
-    "Name" text NOT NULL,
-    "SyncGuid" text NULL
-);
-
-CREATE TABLE IF NOT EXISTS "PumpExpenseCategoryItems" (
-    "Id" serial PRIMARY KEY,
-    "PumpExpenseId" integer NOT NULL,
-    "ExpenseCategoryId" integer NOT NULL,
-    "Amount" float8 NOT NULL,
-    "SyncGuid" text NULL
+    "ExpenseDate" timestamp with time zone NOT NULL,
+    "Rent" float8 NOT NULL DEFAULT 0.0,
+    "Salary" float8 NOT NULL DEFAULT 0.0,
+    "TripSheetLoss" float8 NOT NULL DEFAULT 0.0,
+    "DsmShort" float8 NOT NULL DEFAULT 0.0,
+    "BankingExpenses" float8 NOT NULL DEFAULT 0.0,
+    "BpclPortalExpenses" float8 NOT NULL DEFAULT 0.0,
+    "FuelAndTravel" float8 NOT NULL DEFAULT 0.0,
+    "OilPurchase" float8 NOT NULL DEFAULT 0.0,
+    "RepairsAndMaintenance" float8 NOT NULL DEFAULT 0.0,
+    "ElectricityExpenses" float8 NOT NULL DEFAULT 0.0,
+    "OfficeExpenses" float8 NOT NULL DEFAULT 0.0,
+    "PrintingExpense" float8 NOT NULL DEFAULT 0.0,
+    "OtherDescription" text NOT NULL DEFAULT '',
+    "OtherAmount" float8 NOT NULL DEFAULT 0.0,
+    "Remarks" text NOT NULL DEFAULT '',
+    "CreatedAt" timestamp with time zone NOT NULL,
+    "SyncGuid" text NULL UNIQUE
 );
 
 CREATE TABLE IF NOT EXISTS "DsmPersonalDebtors" (
-    "Id" serial PRIMARY KEY,
-    "DsmProfileId" integer NOT NULL,
-    "DebtorName" text NOT NULL,
-    "SyncGuid" text NULL
+    "SyncGuid" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "station_id" TEXT NOT NULL,
+    "local_id" INTEGER NOT NULL,
+    "machine_id" TEXT,
+    "Id" INTEGER NULL,
+    "DsmEntryId" UUID NULL,
+    "DsmName" VARCHAR(200) NOT NULL,
+    "Date" TIMESTAMP NOT NULL,
+    "Time" VARCHAR(50) NOT NULL,
+    "Amount" DOUBLE PRECISION NOT NULL,
+    "FuelProduct" VARCHAR(100) NULL,
+    "Remarks" TEXT NULL,
+    "PaymentMethod" VARCHAR(50) NOT NULL DEFAULT 'Cash',
+    "Denom500" INTEGER NOT NULL DEFAULT 0,
+    "Denom200" INTEGER NOT NULL DEFAULT 0,
+    "Denom100" INTEGER NOT NULL DEFAULT 0,
+    "Denom50" INTEGER NOT NULL DEFAULT 0,
+    "Denom20" INTEGER NOT NULL DEFAULT 0,
+    "Denom10" INTEGER NOT NULL DEFAULT 0,
+    "Coins" INTEGER NOT NULL DEFAULT 0,
+    "CardTid" VARCHAR(100) NULL,
+    "CardBatch" VARCHAR(100) NULL,
+    "SequenceNumber" INTEGER NOT NULL DEFAULT 0,
+    "RepaidAmount" DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+    "DeductFromSalary" BOOLEAN NOT NULL DEFAULT TRUE,
+    "CreatedAt" TIMESTAMP NOT NULL DEFAULT NOW(),
+    "created_at" TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    "updated_at" TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    PRIMARY KEY ("SyncGuid")
 );
 
 CREATE TABLE IF NOT EXISTS "DsmPersonalDebtorRepayments" (
-    "Id" serial PRIMARY KEY,
-    "DsmPersonalDebtorId" integer NOT NULL,
-    "RepaymentDate" timestamp with time zone NOT NULL,
-    "Amount" float8 NOT NULL,
-    "SyncGuid" text NULL
+    "SyncGuid" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "station_id" TEXT NOT NULL,
+    "local_id" INTEGER NOT NULL,
+    "machine_id" TEXT,
+    "Id" INTEGER NULL,
+    "DsmPersonalDebtorId" UUID NOT NULL,
+    "ShiftId" UUID NULL,
+    "Date" TIMESTAMP NOT NULL,
+    "Amount" DOUBLE PRECISION NOT NULL,
+    "PaymentMethod" VARCHAR(50) NOT NULL DEFAULT 'Cash',
+    "Denom500" INTEGER NOT NULL DEFAULT 0,
+    "Denom200" INTEGER NOT NULL DEFAULT 0,
+    "Denom100" INTEGER NOT NULL DEFAULT 0,
+    "Denom50" INTEGER NOT NULL DEFAULT 0,
+    "Denom20" INTEGER NOT NULL DEFAULT 0,
+    "Denom10" INTEGER NOT NULL DEFAULT 0,
+    "Coins" INTEGER NOT NULL DEFAULT 0,
+    "CardTid" VARCHAR(100) NULL,
+    "CardBatch" VARCHAR(100) NULL,
+    "Source" VARCHAR(50) NOT NULL DEFAULT 'ManagerShiftTotal',
+    "CreatedAt" TIMESTAMP NOT NULL DEFAULT NOW(),
+    "created_at" TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    "updated_at" TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    PRIMARY KEY ("SyncGuid")
 );
 
 COMMIT;

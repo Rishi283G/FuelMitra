@@ -204,16 +204,11 @@
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="12"/>
                             <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="12"/>
-                            <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
                         <TextBox Grid.Column="0" Text="{Binding NewCreditorName, UpdateSourceTrigger=PropertyChanged}"
                                  materialDesign:HintAssist.Hint="Debtor Name (Required)" materialDesign:HintAssist.IsFloating="True"
                                  Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
-                        <TextBox Grid.Column="2" Text="{Binding NewCreditorPhone, UpdateSourceTrigger=PropertyChanged}"
-                                 materialDesign:HintAssist.Hint="Cheque No. (Optional)" materialDesign:HintAssist.IsFloating="True"
-                                 Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
-                        <TextBox Grid.Column="4" Text="{Binding NewCreditorVehicleNumber, UpdateSourceTrigger=PropertyChanged}"
+                        <TextBox Grid.Column="2" Text="{Binding NewCreditorVehicleNumber, UpdateSourceTrigger=PropertyChanged}"
                                  materialDesign:HintAssist.Hint="Vehicle No. (Optional)" materialDesign:HintAssist.IsFloating="True"
                                  Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
                     </Grid>

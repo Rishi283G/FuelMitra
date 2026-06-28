@@ -50,7 +50,7 @@
                             </Style>
                         </DatePicker.Style>
                     </DatePicker>
-                    <DatePicker SelectedDate="{Binding EndDate}" materialDesign:HintAssist.Hint="End Date" Width="130">
+                    <DatePicker SelectedDate="{Binding EndDate}" materialDesign:HintAssist.Hint="End Date" Width="130" Margin="0,0,8,0">
                         <DatePicker.Style>
                             <Style TargetType="DatePicker" BasedOn="{StaticResource MaterialDesignOutlinedDatePicker}">
                                 <Setter Property="IsEnabled" Value="False"/>
@@ -62,6 +62,18 @@
                             </Style>
                         </DatePicker.Style>
                     </DatePicker>
+                    <Button Command="{Binding PrintCommand}" Style="{StaticResource MaterialDesignFlatMidBgButton}" Height="48" Padding="12,0" Margin="0,0,8,0" ToolTip="Print Summary">
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="Printer" Width="20" Height="20" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBlock Text="Print" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Command="{Binding ExportExcelCommand}" Style="{StaticResource MaterialDesignFlatMidBgButton}" Height="48" Padding="12,0" Background="#1B5E20" BorderBrush="#1B5E20" ToolTip="Export to Excel">
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="FileExcel" Width="20" Height="20" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBlock Text="Export" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
                 </StackPanel>
 
                 <!-- Prominent Sync Status Card -->

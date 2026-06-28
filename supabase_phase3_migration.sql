@@ -114,3 +114,6 @@ CREATE OR REPLACE TRIGGER update_dsm_personal_debtor_repayments_modtime BEFORE U
 
 -- 9. Add Metadata JSONB column to DsmSubmissions
 ALTER TABLE "DsmSubmissions" ADD COLUMN IF NOT EXISTS "Metadata" JSONB NULL;
+
+-- 10. Add DeductFromSalary column to DsmPersonalDebtors
+ALTER TABLE "DsmPersonalDebtors" ADD COLUMN IF NOT EXISTS "DeductFromSalary" BOOLEAN NOT NULL DEFAULT TRUE;

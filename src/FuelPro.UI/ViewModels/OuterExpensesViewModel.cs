@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.Input;
 using FuelPro.Core.Models;
 using FuelPro.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
@@ -147,4 +148,94 @@ public partial class OuterExpensesViewModel : ObservableObject
             MessageBox.Show($"Error deleting outer expense: {ex.Message}", "PyroSync — Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
+
+    [RelayCommand]
+    private void Print()
+    {
+        try
+        {
+            var printService = App.Services.GetRequiredService<FuelPro.UI.Printing.PrintService>();
+            var summaryCards = new List<FuelPro.Core.DTOs.GenericGridPrintCard>
+            {
+                new() { Label = "Total Outer Expenses", Value = "₹" + HistoryExpenses.Sum(e => e.Amount).ToString("N2"), Highlight = true },
+                new() { Label = "Total Records", Value = HistoryExpenses.Count.ToString(), Highlight = false }
+            };
+
+            var headers = new List<string> { "Date", "Description", "Amount (₹)" };
+            var rows = new List<List<string>>();
+
+            foreach (var row in HistoryExpenses)
+            {
+                rows.Add(new List<string>
+                {
+                    row.ExpenseDate.ToString("dd-MMM-yyyy"),
+                    row.Description,
+                    "₹" + row.Amount.ToString("N2")
+                });
+            }
+
+            var printData = new FuelPro.Core.DTOs.GenericGridPrintData
+            {
+                Title = "Owner Outer Expenses Report",
+                Subtitle = $"Generated on: {DateTime.Now:dd-MMM-yyyy HH:mm}",
+                SummaryCards = summaryCards,
+                Headers = headers,
+                Rows = rows,
+                ShowSignatures = true
+            };
+
+            printService.PrintGenericGrid(printData);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to print outer expenses report");
+            MessageBox.Show($"Print failed: {ex.Message}", "Print Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    [RelayCommand]
+    private async Task ExportExcelAsync()
+    {
+        try
+        {
+            var exportService = App.Services.GetRequiredService<FuelPro.Core.Services.ExcelExportService>();
+            var summaryCards = new List<FuelPro.Core.DTOs.GenericGridPrintCard>
+            {
+                new() { Label = "Total Outer Expenses", Value = "₹" + HistoryExpenses.Sum(e => e.Amount).ToString("N2"), Highlight = true },
+                new() { Label = "Total Records", Value = HistoryExpenses.Count.ToString(), Highlight = false }
+            };
+
+            var headers = new List<string> { "Date", "Description", "Amount (₹)" };
+            var rows = new List<List<string>>();
+
+            foreach (var row in HistoryExpenses)
+            {
+                rows.Add(new List<string>
+                {
+                    row.ExpenseDate.ToString("dd-MMM-yyyy"),
+                    row.Description,
+                    "₹" + row.Amount.ToString("N2")
+                });
+            }
+
+            var printData = new FuelPro.Core.DTOs.GenericGridPrintData
+            {
+                Title = "Owner Outer Expenses Report",
+                Subtitle = $"Generated on: {DateTime.Now:dd-MMM-yyyy HH:mm}",
+                SummaryCards = summaryCards,
+                Headers = headers,
+                Rows = rows,
+                ShowSignatures = true
+            };
+
+            var path = await exportService.ExportGenericGridAsync(printData, "OuterExpenses");
+            MessageBox.Show($"Report exported successfully to:\n{path}", "Export Success", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to export outer expenses to Excel");
+            MessageBox.Show($"Export failed: {ex.Message}", "Export Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
 }
+

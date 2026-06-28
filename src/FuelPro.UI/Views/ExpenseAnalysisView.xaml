@@ -35,16 +35,29 @@
                     <DatePicker SelectedDate="{Binding EndDate}" materialDesign:HintAssist.Hint="End Date" Style="{StaticResource MaterialDesignOutlinedDatePicker}" Width="160" Height="48"/>
                 </StackPanel>
 
-                <!-- Search -->
-                <TextBox Grid.Column="2" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" Width="220"
-                         materialDesign:HintAssist.Hint="Search expenses..." materialDesign:HintAssist.IsFloating="False"
-                         materialDesign:TextFieldAssist.HasClearButton="True"
-                         Style="{StaticResource MaterialDesignOutlinedTextBox}"
-                         VerticalAlignment="Center" Height="48">
-                    <TextBox.InputBindings>
-                        <KeyBinding Key="Enter" Command="{Binding LoadCommand}"/>
-                    </TextBox.InputBindings>
-                </TextBox>
+                <!-- Search and Buttons -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" Width="220"
+                             materialDesign:HintAssist.Hint="Search expenses..." materialDesign:HintAssist.IsFloating="False"
+                             materialDesign:TextFieldAssist.HasClearButton="True"
+                             Style="{StaticResource MaterialDesignOutlinedTextBox}" Height="48" Margin="0,0,8,0">
+                        <TextBox.InputBindings>
+                            <KeyBinding Key="Enter" Command="{Binding LoadCommand}"/>
+                        </TextBox.InputBindings>
+                    </TextBox>
+                    <Button Command="{Binding PrintCommand}" Style="{StaticResource MaterialDesignFlatMidBgButton}" Height="48" Padding="12,0" Margin="0,0,8,0" ToolTip="Print Report">
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="Printer" Width="20" Height="20" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBlock Text="Print" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Command="{Binding ExportExcelCommand}" Style="{StaticResource MaterialDesignFlatMidBgButton}" Height="48" Padding="12,0" Background="#1B5E20" BorderBrush="#1B5E20" ToolTip="Export to Excel">
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="FileExcel" Width="20" Height="20" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBlock Text="Export" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
             </Grid>
 
             <!-- Loading Indicator -->
