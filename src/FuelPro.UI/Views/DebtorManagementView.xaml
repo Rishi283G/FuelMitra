@@ -664,7 +664,7 @@
                                     <DataGridTextColumn Header="Repaid" Binding="{Binding RepaidAmount, Converter={StaticResource CurrencyConverter}}" IsReadOnly="True" Width="1*" Foreground="Green"/>
                                     <DataGridCheckBoxColumn Header="Deduct Salary" Binding="{Binding DeductFromSalary, UpdateSourceTrigger=PropertyChanged}" Width="1.2*">
                                         <DataGridCheckBoxColumn.ElementStyle>
-                                            <Style TargetType="CheckBox" BasedOn="{StaticResource MaterialDesignDataGridCheckBox}">
+                                            <Style TargetType="CheckBox" BasedOn="{StaticResource {x:Type CheckBox}}">
                                                 <Setter Property="Command" Value="{Binding DataContext.ToggleSalaryDeductionCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"/>
                                                 <Setter Property="CommandParameter" Value="{Binding}"/>
                                             </Style>

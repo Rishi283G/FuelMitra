@@ -473,6 +473,19 @@ public static class SeedData
             context.Entry(settings).State = EntityState.Modified;
         }
 
+        // Seed default Supabase Sync configuration if not configured yet
+        async Task SetMetaDefaultAsync(string key, string val)
+        {
+            var existing = await context.AppMeta.FirstOrDefaultAsync(m => m.Key == key);
+            if (existing == null)
+            {
+                context.AppMeta.Add(new AppMeta { Key = key, Value = val });
+            }
+        }
+        await SetMetaDefaultAsync("Sync.SupabaseUrl", "https://rvcibryprvjbzrtwqktk.supabase.co");
+        await SetMetaDefaultAsync("Sync.SupabaseApiKey", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ2Y2licnlwcnZqYnpydHdxa3RrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEzMTIxMTcsImV4cCI6MjA5Njg4ODExN30.vMTA97993upfnOCs5ja-kxIhDSHbcx1gEQ6itNm5BBk");
+        await SetMetaDefaultAsync("Sync.IsEnabled", "true");
+
         // Seed PumpMappings if empty, or if count/structure doesn't match the new global 6-pump/12-nozzle layout
         // Also re-seed if the old sequential mapping is detected (nozzle 2 on Pump 1 = wrong)
         bool needsReseed = !await context.PumpMappings.AnyAsync() || 

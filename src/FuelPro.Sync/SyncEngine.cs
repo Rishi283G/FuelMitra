@@ -765,7 +765,11 @@ public class SyncEngine
                         {
                             if (val == null)
                             {
-                                entry.Property(prop.Name).CurrentValue = null;
+                                var isNullable = Nullable.GetUnderlyingType(prop.ClrType) != null || !prop.ClrType.IsValueType;
+                                if (isNullable)
+                                {
+                                    entry.Property(prop.Name).CurrentValue = null;
+                                }
                             }
                             else
                             {
