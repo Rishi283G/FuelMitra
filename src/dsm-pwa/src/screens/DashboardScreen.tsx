@@ -154,7 +154,7 @@ export default function DashboardScreen({ onNavigate }: DashboardProps) {
         <div className="greeting-card">
           <div className="greeting-wave">👋</div>
           <div>
-            <h1 className="greeting-title">{greeting}, {profile?.FullName.split(' ')[0]}!</h1>
+            <h1 className="greeting-title">{greeting}, {profile?.FullName?.split(' ')[0] ?? 'DSM'}!</h1>
             <p className="greeting-date">{today}</p>
             <p className="greeting-station">
               Station ID: {profile?.StationId}
