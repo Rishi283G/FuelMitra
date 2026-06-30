@@ -12,7 +12,7 @@ namespace FuelPro.Core.Common;
 public static class PumpConfiguration
 {
     public static readonly DateTime Legacy4PumpCutoffDate = new(2026, 6, 14);
-    public static readonly DateTime Legacy22PumpCutoffDate = new(2026, 6, 28);
+    public static readonly DateTime Legacy22PumpCutoffDate = new(2026, 6, 21);
 
     /// <summary>
     /// Operational Pump ID → list of nozzle numbers assigned to that pump.
@@ -127,29 +127,29 @@ public static class PumpConfiguration
         var defaultMappings = new List<PumpMapping>();
         var now = DateTime.Now;
 
-        // Pump 1: Nozzle 1 (MS-II/Petrol, Tank 2), Nozzle 3 (HSD/Diesel, Tank 3)
-        defaultMappings.Add(new PumpMapping { PumpId = 1, NozzleNumber = 1, FuelType = "MS-II", TankName = "Tank 2", CreatedAt = now });
-        defaultMappings.Add(new PumpMapping { PumpId = 1, NozzleNumber = 3, FuelType = "HSD", TankName = "Tank 3", CreatedAt = now });
+        // Pump 1: Nozzle 1 (MS-I/Petrol, MS - 20KL), Nozzle 3 (HSD/Diesel, HSD - 20KL)
+        defaultMappings.Add(new PumpMapping { PumpId = 1, NozzleNumber = 1, FuelType = "MS-I", TankName = "MS - 20KL", CreatedAt = now });
+        defaultMappings.Add(new PumpMapping { PumpId = 1, NozzleNumber = 3, FuelType = "HSD", TankName = "HSD - 20KL", CreatedAt = now });
 
-        // Pump 2: Nozzle 2 (MS-II/Petrol, Tank 2), Nozzle 4 (HSD/Diesel, Tank 3)
-        defaultMappings.Add(new PumpMapping { PumpId = 2, NozzleNumber = 2, FuelType = "MS-II", TankName = "Tank 2", CreatedAt = now });
-        defaultMappings.Add(new PumpMapping { PumpId = 2, NozzleNumber = 4, FuelType = "HSD", TankName = "Tank 3", CreatedAt = now });
+        // Pump 2: Nozzle 2 (MS-I/Petrol, MS - 20KL), Nozzle 4 (HSD/Diesel, HSD - 20KL)
+        defaultMappings.Add(new PumpMapping { PumpId = 2, NozzleNumber = 2, FuelType = "MS-I", TankName = "MS - 20KL", CreatedAt = now });
+        defaultMappings.Add(new PumpMapping { PumpId = 2, NozzleNumber = 4, FuelType = "HSD", TankName = "HSD - 20KL", CreatedAt = now });
 
-        // Pump 3: Nozzle 5 (MS-I/Petrol, Tank 1), Nozzle 7 (HSD/Diesel, Tank 3)
-        defaultMappings.Add(new PumpMapping { PumpId = 3, NozzleNumber = 5, FuelType = "MS-I", TankName = "Tank 1", CreatedAt = now });
-        defaultMappings.Add(new PumpMapping { PumpId = 3, NozzleNumber = 7, FuelType = "HSD", TankName = "Tank 3", CreatedAt = now });
+        // Pump 3: Nozzle 5 (MS-I/Petrol, MS - 20KL), Nozzle 7 (MS-II/Diesel, HSD - 20KL II)
+        defaultMappings.Add(new PumpMapping { PumpId = 3, NozzleNumber = 5, FuelType = "MS-I", TankName = "MS - 20KL", CreatedAt = now });
+        defaultMappings.Add(new PumpMapping { PumpId = 3, NozzleNumber = 7, FuelType = "MS-II", TankName = "HSD - 20KL II", CreatedAt = now });
 
-        // Pump 4: Nozzle 6 (MS-I/Petrol, Tank 1), Nozzle 8 (HSD/Diesel, Tank 3)
-        defaultMappings.Add(new PumpMapping { PumpId = 4, NozzleNumber = 6, FuelType = "MS-I", TankName = "Tank 1", CreatedAt = now });
-        defaultMappings.Add(new PumpMapping { PumpId = 4, NozzleNumber = 8, FuelType = "HSD", TankName = "Tank 3", CreatedAt = now });
+        // Pump 4: Nozzle 6 (MS-I/Petrol, MS - 20KL), Nozzle 8 (MS-II/Diesel, HSD - 20KL II)
+        defaultMappings.Add(new PumpMapping { PumpId = 4, NozzleNumber = 6, FuelType = "MS-I", TankName = "MS - 20KL", CreatedAt = now });
+        defaultMappings.Add(new PumpMapping { PumpId = 4, NozzleNumber = 8, FuelType = "MS-II", TankName = "HSD - 20KL II", CreatedAt = now });
 
-        // Pump 5: Nozzle 9 (MS-II/Petrol, Tank 2), Nozzle 11 (HSD/Diesel, Tank 3)
-        defaultMappings.Add(new PumpMapping { PumpId = 5, NozzleNumber = 9, FuelType = "MS-II", TankName = "Tank 2", CreatedAt = now });
-        defaultMappings.Add(new PumpMapping { PumpId = 5, NozzleNumber = 11, FuelType = "HSD", TankName = "Tank 3", CreatedAt = now });
+        // Pump 5: Nozzle 9 (MS-I/Petrol, MS - 20KL), Nozzle 11 (HSD/Diesel, HSD - 20KL)
+        defaultMappings.Add(new PumpMapping { PumpId = 5, NozzleNumber = 9, FuelType = "MS-I", TankName = "MS - 20KL", CreatedAt = now });
+        defaultMappings.Add(new PumpMapping { PumpId = 5, NozzleNumber = 11, FuelType = "HSD", TankName = "HSD - 20KL", CreatedAt = now });
 
-        // Pump 6: Nozzle 10 (MS-II/Petrol, Tank 2), Nozzle 12 (HSD/Diesel, Tank 3)
-        defaultMappings.Add(new PumpMapping { PumpId = 6, NozzleNumber = 10, FuelType = "MS-II", TankName = "Tank 2", CreatedAt = now });
-        defaultMappings.Add(new PumpMapping { PumpId = 6, NozzleNumber = 12, FuelType = "HSD", TankName = "Tank 3", CreatedAt = now });
+        // Pump 6: Nozzle 10 (MS-I/Petrol, MS - 20KL), Nozzle 12 (HSD/Diesel, HSD - 20KL)
+        defaultMappings.Add(new PumpMapping { PumpId = 6, NozzleNumber = 10, FuelType = "MS-I", TankName = "MS - 20KL", CreatedAt = now });
+        defaultMappings.Add(new PumpMapping { PumpId = 6, NozzleNumber = 12, FuelType = "HSD", TankName = "HSD - 20KL", CreatedAt = now });
 
         InitializeFromDb(defaultMappings);
     }
@@ -317,9 +317,9 @@ public static class PumpConfiguration
     /// </summary>
     public static readonly Dictionary<string, string> Tanks = new()
     {
-        { "Tank 1", "MS" },
-        { "Tank 2", "MS" },
-        { "Tank 3", "HSD" }
+        { "MS - 20KL", "MS" },
+        { "HSD - 20KL", "HSD" },
+        { "HSD - 20KL II", "HSD" }
     };
 }
 

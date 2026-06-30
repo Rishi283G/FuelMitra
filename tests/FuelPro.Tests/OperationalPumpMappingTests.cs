@@ -108,3 +108,4 @@ public class OperationalPumpMappingTests
         Assert.Equal(33000, result.GrossSales);
     }
 }
+

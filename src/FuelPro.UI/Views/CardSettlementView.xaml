@@ -30,8 +30,8 @@
                 </Grid.ColumnDefinitions>
                 
                 <StackPanel Grid.Column="0" Orientation="Horizontal">
-                    <materialDesign:PackIcon Kind="CreditCardCheck" Width="28" Height="28" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                    <TextBlock Text="Card &amp; Digital Settlement" FontSize="24" FontWeight="Bold" VerticalAlignment="Center"/>
+                    <materialDesign:PackIcon Kind="CardAccountDetails" Width="28" Height="28" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                    <TextBlock Text="TID Sheet" FontSize="24" FontWeight="Bold" VerticalAlignment="Center"/>
                 </StackPanel>
                 
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
@@ -70,7 +70,7 @@
                     <materialDesign:Card Margin="0,0,0,16" Padding="16" UniformCornerRadius="8" materialDesign:ElevationAssist.Elevation="Dp2">
                         <StackPanel>
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                                <TextBlock Text="I. CREDIT CARD SETTLEMENT" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                <TextBlock Text="I. CREDIT CARD" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
                                 <TextBlock Text="{Binding CardTotal, StringFormat=' (Total: ₹{0:N2})'}" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
                             </StackPanel>
                             <DataGrid ItemsSource="{Binding CardPayments}" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" SelectionMode="Single"
@@ -102,7 +102,7 @@
                     <materialDesign:Card Margin="0,0,0,16" Padding="16" UniformCornerRadius="8" materialDesign:ElevationAssist.Elevation="Dp2">
                         <StackPanel>
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                                <TextBlock Text="II. PHONEPE SETTLEMENT" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                <TextBlock Text="II. PHONEPE" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
                                 <TextBlock Text="{Binding PhonePeTotal, StringFormat=' (Total: ₹{0:N2})'}" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
                             </StackPanel>
                             <DataGrid ItemsSource="{Binding PhonePePayments}" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" SelectionMode="Single"
@@ -134,7 +134,7 @@
                     <materialDesign:Card Margin="0,0,0,16" Padding="16" UniformCornerRadius="8" materialDesign:ElevationAssist.Elevation="Dp2">
                         <StackPanel>
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                                <TextBlock Text="III. PETRO CARD SETTLEMENT" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                <TextBlock Text="III. PETRO CARD" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
                                 <TextBlock Text="{Binding PetroCardTotal, StringFormat=' (Total: ₹{0:N2})'}" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
                             </StackPanel>
                             <DataGrid ItemsSource="{Binding PetroCardPayments}" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" SelectionMode="Single"

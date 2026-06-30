@@ -71,7 +71,8 @@ public class SyncEngine
         "PumpExpenseCategoryItems",
         "DsmSalaryAdjustments",
         "DsmPersonalDebtors",
-        "DsmPersonalDebtorRepayments"
+        "DsmPersonalDebtorRepayments",
+        "PettyCashTransactions"
     };
 
     // ── FK Configuration ──────────────────────────────────────────────
@@ -130,6 +131,9 @@ public class SyncEngine
         new TableSyncConfig("DsmPersonalDebtorRepayments", new[] { 
             new FkMapping("DsmPersonalDebtorId", "DsmPersonalDebtors"), 
             new FkMapping("ShiftId", "Shifts") 
+        }),
+        new TableSyncConfig("PettyCashTransactions", new[] {
+            new FkMapping("ShiftExpenseId", "Expenses")
         })
     };
 

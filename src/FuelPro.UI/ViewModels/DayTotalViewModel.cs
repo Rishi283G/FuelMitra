@@ -87,6 +87,11 @@ public partial class DayTotalViewModel : ObservableObject
     [ObservableProperty] private double _difference;
     [ObservableProperty] private bool _isBalanced;
     [ObservableProperty] private double _totalDsmShort;
+    [ObservableProperty] private double _msTesting;
+    [ObservableProperty] private double _hsdTesting;
+    [ObservableProperty] private double _hsdTesting2;
+    [ObservableProperty] private double _cngTesting;
+    [ObservableProperty] private double _totalTesting;
 
     public DayTotalViewModel()
     {
@@ -262,10 +267,11 @@ public partial class DayTotalViewModel : ObservableObject
             ExpensesTotal = expenses.Sum(r => r.Amount);
 
             // 5. Final Day Reconciliation
-            var msTesting = allEntries.SelectMany(e => e.TestingEntries).Where(t => t.FuelType == "MS").Sum(t => t.Amount);
-            var hsdTesting = allEntries.SelectMany(e => e.TestingEntries).Where(t => t.FuelType == "HSD").Sum(t => t.Amount);
-            var cngTesting = allEntries.SelectMany(e => e.TestingEntries).Where(t => t.FuelType == "CNG").Sum(t => t.Amount);
-            var totalTesting = msTesting + hsdTesting + cngTesting;
+            MsTesting = allEntries.SelectMany(e => e.TestingEntries).Where(t => t.FuelType == "MS").Sum(t => t.Amount);
+            HsdTesting = allEntries.SelectMany(e => e.TestingEntries).Where(t => t.FuelType == "HSD" || t.FuelType == "HSD-I").Sum(t => t.Amount);
+            HsdTesting2 = allEntries.SelectMany(e => e.TestingEntries).Where(t => t.FuelType == "HSD-II").Sum(t => t.Amount);
+            CngTesting = allEntries.SelectMany(e => e.TestingEntries).Where(t => t.FuelType == "CNG").Sum(t => t.Amount);
+            TotalTesting = MsTesting + HsdTesting + HsdTesting2 + CngTesting;
 
             double totalDsmShort = 0;
             var mismatchGroups = allEntries.GroupBy(e => new { e.ShiftId, e.DsmName, GroupPumpId = e.ReconciledToPumpId ?? e.PumpId });
@@ -278,7 +284,7 @@ public partial class DayTotalViewModel : ObservableObject
                 }
             }
             TotalDsmShort = totalDsmShort;
-            ReconciliationTotalAmount = TotalDigitalAndCash + CreditorsTotal + ExpensesTotal + totalTesting + TotalDsmShort;
+            ReconciliationTotalAmount = TotalDigitalAndCash + CreditorsTotal + ExpensesTotal + TotalTesting + TotalDsmShort;
             GrossDaySaleTotal = TotalDayFuelSaleAmount;
 
             // Load AGS Nozzle readings for the day range
@@ -449,39 +455,39 @@ public partial class DayTotalViewModel : ObservableObject
             };
         }
 
-        // HSD Group (Diesel)
-        var hsdGroup = new NozzleGroupDto
+        // MS Group (Petrol MS - 20KL)
+        var msGroup = new NozzleGroupDto
         {
-            GroupName = "Diesel (Tank 3)",
-            FuelType = "Diesel",
-            Dip = hsdTank?.ClosingDipMM ?? 0,
-            Stock = hsdTank?.ClosingStockLitres ?? 0
-        };
-        hsdGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(3, "Diesel"), CreateItem(4, "Diesel"), CreateItem(7, "Diesel"), CreateItem(8, "Diesel") });
-        hsdGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(11, "Diesel"), CreateItem(12, "Diesel") });
-        groups.Add(hsdGroup);
-
-        // MS-II Group (Petrol Tank 2)
-        var msIIGroup = new NozzleGroupDto
-        {
-            GroupName = "Petrol (Tank 2)",
-            FuelType = "Petrol",
-            Dip = msIITank?.ClosingDipMM ?? 0,
-            Stock = msIITank?.ClosingStockLitres ?? 0
-        };
-        msIIGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(1, "Petrol"), CreateItem(2, "Petrol"), CreateItem(9, "Petrol"), CreateItem(10, "Petrol") });
-        groups.Add(msIIGroup);
-
-        // MS-I Group (Petrol Tank 1)
-        var msIGroup = new NozzleGroupDto
-        {
-            GroupName = "Petrol (Tank 1)",
+            GroupName = "Petrol (MS - 20KL)",
             FuelType = "Petrol",
             Dip = msITank?.ClosingDipMM ?? 0,
             Stock = msITank?.ClosingStockLitres ?? 0
         };
-        msIGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(5, "Petrol"), CreateItem(6, "Petrol") });
-        groups.Add(msIGroup);
+        msGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(1, "Petrol"), CreateItem(2, "Petrol"), CreateItem(5, "Petrol"), CreateItem(6, "Petrol") });
+        msGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(9, "Petrol"), CreateItem(10, "Petrol") });
+        groups.Add(msGroup);
+
+        // HSD - 20KL Group (Diesel HSD - 20KL)
+        var hsdGroup = new NozzleGroupDto
+        {
+            GroupName = "Diesel (HSD - 20KL)",
+            FuelType = "Diesel",
+            Dip = hsdTank?.ClosingDipMM ?? 0,
+            Stock = hsdTank?.ClosingStockLitres ?? 0
+        };
+        hsdGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(3, "Diesel"), CreateItem(4, "Diesel"), CreateItem(11, "Diesel"), CreateItem(12, "Diesel") });
+        groups.Add(hsdGroup);
+
+        // HSD - 20KL II Group (Diesel HSD - 20KL II)
+        var hsdIIGroup = new NozzleGroupDto
+        {
+            GroupName = "Diesel (HSD - 20KL II)",
+            FuelType = "Diesel",
+            Dip = msIITank?.ClosingDipMM ?? 0,
+            Stock = msIITank?.ClosingStockLitres ?? 0
+        };
+        hsdIIGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(7, "Diesel"), CreateItem(8, "Diesel") });
+        groups.Add(hsdIIGroup);
 
         return groups;
     }
@@ -548,39 +554,39 @@ public partial class DayTotalViewModel : ObservableObject
             };
         }
 
-        // HSD Group (Diesel)
-        var hsdGroup = new NozzleGroupDto
+        // MS Group (Petrol MS - 20KL)
+        var msGroup = new NozzleGroupDto
         {
-            GroupName = "Diesel (Tank 3)",
-            FuelType = "Diesel",
-            Dip = hsdTank?.ClosingDipMM ?? 0,
-            Stock = hsdTank?.ClosingStockLitres ?? 0
-        };
-        hsdGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(3, "Diesel"), CreateItem(4, "Diesel"), CreateItem(7, "Diesel"), CreateItem(8, "Diesel") });
-        hsdGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(11, "Diesel"), CreateItem(12, "Diesel") });
-        groups.Add(hsdGroup);
-
-        // MS-II Group (Petrol Tank 2)
-        var msIIGroup = new NozzleGroupDto
-        {
-            GroupName = "Petrol (Tank 2)",
-            FuelType = "Petrol",
-            Dip = msIITank?.ClosingDipMM ?? 0,
-            Stock = msIITank?.ClosingStockLitres ?? 0
-        };
-        msIIGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(1, "Petrol"), CreateItem(2, "Petrol"), CreateItem(9, "Petrol"), CreateItem(10, "Petrol") });
-        groups.Add(msIIGroup);
-
-        // MS-I Group (Petrol Tank 1)
-        var msIGroup = new NozzleGroupDto
-        {
-            GroupName = "Petrol (Tank 1)",
+            GroupName = "Petrol (MS - 20KL)",
             FuelType = "Petrol",
             Dip = msITank?.ClosingDipMM ?? 0,
             Stock = msITank?.ClosingStockLitres ?? 0
         };
-        msIGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(5, "Petrol"), CreateItem(6, "Petrol") });
-        groups.Add(msIGroup);
+        msGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(1, "Petrol"), CreateItem(2, "Petrol"), CreateItem(5, "Petrol"), CreateItem(6, "Petrol") });
+        msGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(9, "Petrol"), CreateItem(10, "Petrol") });
+        groups.Add(msGroup);
+
+        // HSD - 20KL Group (Diesel HSD - 20KL)
+        var hsdGroup = new NozzleGroupDto
+        {
+            GroupName = "Diesel (HSD - 20KL)",
+            FuelType = "Diesel",
+            Dip = hsdTank?.ClosingDipMM ?? 0,
+            Stock = hsdTank?.ClosingStockLitres ?? 0
+        };
+        hsdGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(3, "Diesel"), CreateItem(4, "Diesel"), CreateItem(11, "Diesel"), CreateItem(12, "Diesel") });
+        groups.Add(hsdGroup);
+
+        // HSD - 20KL II Group (Diesel HSD - 20KL II)
+        var hsdIIGroup = new NozzleGroupDto
+        {
+            GroupName = "Diesel (HSD - 20KL II)",
+            FuelType = "Diesel",
+            Dip = msIITank?.ClosingDipMM ?? 0,
+            Stock = msIITank?.ClosingStockLitres ?? 0
+        };
+        hsdIIGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(7, "Diesel"), CreateItem(8, "Diesel") });
+        groups.Add(hsdIIGroup);
 
         return groups;
     }

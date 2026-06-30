@@ -5,6 +5,7 @@ using FuelPro.Core.Models;
 using FuelPro.Core.Services;
 using FuelPro.Core.Repositories;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.EntityFrameworkCore;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.IO.Compression;
@@ -280,7 +281,8 @@ public partial class FinalCalculationViewModel : ObservableObject
     private void RecalcReconciliation()
     {
         var msTesting = _loadedEntries.SelectMany(e => e.TestingEntries).Where(t => t.FuelType == "MS").Sum(t => t.Amount);
-        var hsdTesting = _loadedEntries.SelectMany(e => e.TestingEntries).Where(t => t.FuelType == "HSD").Sum(t => t.Amount);
+        var hsdTesting = _loadedEntries.SelectMany(e => e.TestingEntries).Where(t => t.FuelType == "HSD" || t.FuelType == "HSD-I").Sum(t => t.Amount);
+        var hsdTesting2 = _loadedEntries.SelectMany(e => e.TestingEntries).Where(t => t.FuelType == "HSD-II").Sum(t => t.Amount);
         var cngTesting = _loadedEntries.SelectMany(e => e.TestingEntries).Where(t => t.FuelType == "CNG").Sum(t => t.Amount);
         var phonePeCardMorning = DsmSummaryRows.Sum(r => r.PhonePeCardMorning);
         var phonePeCardNight = DsmSummaryRows.Sum(r => r.PhonePeCardNight);
@@ -302,9 +304,10 @@ public partial class FinalCalculationViewModel : ObservableObject
             }
         }
         TotalDsmShort = totalDsmShort;
+        var dsmExpensesTotal = ExpenseRows.Where(r => !r.IsShiftLevel).Sum(r => r.Amount);
         var reconRows = _aggregation.BuildReconciliationRows(
-            msTesting, hsdTesting, cngTesting, phonePeCardMorning, phonePeCardNight, phonePeMorning, phonePeNight, petroCard,
-            debit, creditCardMorning, creditCardNight, Cash1Total, Cash2Total, ExpensesTotal);
+            msTesting, hsdTesting, hsdTesting2, cngTesting, phonePeCardMorning, phonePeCardNight, phonePeMorning, phonePeNight, petroCard,
+            debit, creditCardMorning, creditCardNight, Cash1Total, Cash2Total, dsmExpensesTotal);
             
         if (TotalDsmShort > 0.01)
         {
@@ -365,7 +368,32 @@ public partial class FinalCalculationViewModel : ObservableObject
         if (IsShiftLocked) { StatusMessage = "❌ Shift is locked."; return; }
         if (string.IsNullOrWhiteSpace(NewExpenseDescription)) return;
         var result = await _expenseRepo.AddShiftExpenseAsync(ShiftId, NewExpenseDescription, NewExpenseAmount);
-        if (result.Success) { NewExpenseDescription = ""; NewExpenseAmount = 0; await LoadShiftDataAsync(); }
+        if (result.Success && result.Data != null) 
+        { 
+            try
+            {
+                var db = App.Services.GetRequiredService<FuelPro.Data.FuelProDbContext>();
+                var pTx = new PettyCashTransaction
+                {
+                    Date = SelectedDate,
+                    Description = $"Shift Expense: {result.Data.Description}",
+                    Amount = -result.Data.Amount,
+                    Type = "Deduction",
+                    ShiftExpenseId = result.Data.ExpenseId,
+                    CreatedAt = DateTime.Now
+                };
+                db.PettyCashTransactions.Add(pTx);
+                await db.SaveChangesAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.Error(ex, "Failed to create petty cash deduction for expense");
+            }
+
+            NewExpenseDescription = ""; 
+            NewExpenseAmount = 0; 
+            await LoadShiftDataAsync(); 
+        }
         else StatusMessage = $"❌ {result.Error}";
     }
 
@@ -373,6 +401,22 @@ public partial class FinalCalculationViewModel : ObservableObject
     private async Task RemoveShiftExpenseAsync(int expenseId)
     {
         if (IsShiftLocked) { StatusMessage = "❌ Shift is locked."; return; }
+        
+        try
+        {
+            var db = App.Services.GetRequiredService<FuelPro.Data.FuelProDbContext>();
+            var pTx = await db.PettyCashTransactions.FirstOrDefaultAsync(t => t.ShiftExpenseId == expenseId);
+            if (pTx != null)
+            {
+                db.PettyCashTransactions.Remove(pTx);
+                await db.SaveChangesAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to remove matching petty cash transaction for expense {ExpenseId}", expenseId);
+        }
+
         var result = await _expenseRepo.DeleteExpenseAsync(expenseId);
         if (result.Success) await LoadShiftDataAsync();
         else StatusMessage = $"❌ {result.Error}";
@@ -719,39 +763,39 @@ public partial class FinalCalculationViewModel : ObservableObject
             };
         }
 
-        // HSD Group (Diesel)
-        var hsdGroup = new NozzleGroupDto
+        // MS Group (Petrol MS - 20KL)
+        var msGroup = new NozzleGroupDto
         {
-            GroupName = "Diesel (Tank 3)",
-            FuelType = "Diesel",
-            Dip = hsdTank?.ClosingDipMM ?? 0,
-            Stock = hsdTank?.ClosingStockLitres ?? 0
-        };
-        hsdGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(3, "Diesel"), CreateItem(4, "Diesel"), CreateItem(7, "Diesel"), CreateItem(8, "Diesel") });
-        hsdGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(11, "Diesel"), CreateItem(12, "Diesel") });
-        groups.Add(hsdGroup);
-
-        // MS-II Group (Petrol Tank 2)
-        var msIIGroup = new NozzleGroupDto
-        {
-            GroupName = "Petrol (Tank 2)",
-            FuelType = "Petrol",
-            Dip = msIITank?.ClosingDipMM ?? 0,
-            Stock = msIITank?.ClosingStockLitres ?? 0
-        };
-        msIIGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(1, "Petrol"), CreateItem(2, "Petrol"), CreateItem(9, "Petrol"), CreateItem(10, "Petrol") });
-        groups.Add(msIIGroup);
-
-        // MS-I Group (Petrol Tank 1)
-        var msIGroup = new NozzleGroupDto
-        {
-            GroupName = "Petrol (Tank 1)",
+            GroupName = "Petrol (MS - 20KL)",
             FuelType = "Petrol",
             Dip = msITank?.ClosingDipMM ?? 0,
             Stock = msITank?.ClosingStockLitres ?? 0
         };
-        msIGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(5, "Petrol"), CreateItem(6, "Petrol") });
-        groups.Add(msIGroup);
+        msGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(1, "Petrol"), CreateItem(2, "Petrol"), CreateItem(5, "Petrol"), CreateItem(6, "Petrol") });
+        msGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(9, "Petrol"), CreateItem(10, "Petrol") });
+        groups.Add(msGroup);
+
+        // HSD - 20KL Group (Diesel HSD - 20KL)
+        var hsdGroup = new NozzleGroupDto
+        {
+            GroupName = "Diesel (HSD - 20KL)",
+            FuelType = "Diesel",
+            Dip = hsdTank?.ClosingDipMM ?? 0,
+            Stock = hsdTank?.ClosingStockLitres ?? 0
+        };
+        hsdGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(3, "Diesel"), CreateItem(4, "Diesel"), CreateItem(11, "Diesel"), CreateItem(12, "Diesel") });
+        groups.Add(hsdGroup);
+
+        // HSD - 20KL II Group (Diesel HSD - 20KL II)
+        var hsdIIGroup = new NozzleGroupDto
+        {
+            GroupName = "Diesel (HSD - 20KL II)",
+            FuelType = "Diesel",
+            Dip = msIITank?.ClosingDipMM ?? 0,
+            Stock = msIITank?.ClosingStockLitres ?? 0
+        };
+        hsdIIGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(7, "Diesel"), CreateItem(8, "Diesel") });
+        groups.Add(hsdIIGroup);
 
         return groups;
     }

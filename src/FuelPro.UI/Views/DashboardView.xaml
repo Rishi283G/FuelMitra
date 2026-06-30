@@ -377,15 +377,15 @@
                             <TextBlock Text="Day Total Fuel Sale (Litres)" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,12"/>
                             <UniformGrid Columns="3">
                                 <StackPanel>
-                                    <TextBlock Text="HSD" Opacity="0.7"/>
+                                    <TextBlock Text="HSD - 20KL" Opacity="0.7"/>
                                     <TextBlock Text="{Binding AgsDayHsd, StringFormat={}{0:N0}}" FontSize="20" FontWeight="Bold" Foreground="#FFA000"/>
                                 </StackPanel>
                                 <StackPanel>
-                                    <TextBlock Text="MS-I" Opacity="0.7"/>
+                                    <TextBlock Text="MS - 20KL" Opacity="0.7"/>
                                     <TextBlock Text="{Binding AgsDayMsI, StringFormat={}{0:N0}}" FontSize="20" FontWeight="Bold" Foreground="#1E88E5"/>
                                 </StackPanel>
                                 <StackPanel>
-                                    <TextBlock Text="MS-II" Opacity="0.7"/>
+                                    <TextBlock Text="HSD - 20KL II" Opacity="0.7"/>
                                     <TextBlock Text="{Binding AgsDayMsII, StringFormat={}{0:N0}}" FontSize="20" FontWeight="Bold" Foreground="#43A047"/>
                                 </StackPanel>
                             </UniformGrid>
@@ -404,17 +404,17 @@
                             <TextBlock Text="Tank Stock Levels (Closing)" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,12"/>
                             <UniformGrid Columns="3">
                                 <StackPanel Margin="0,0,8,0">
-                                    <TextBlock Text="Tank 1 (HSD)" Opacity="0.7"/>
-                                    <TextBlock Text="{Binding HsdClosingStock, StringFormat={}{0:N0} L}" FontSize="16" FontWeight="Bold" Margin="0,4,0,2"/>
-                                    <ProgressBar Value="{Binding HsdLevelPct}" Maximum="100" Height="6" Foreground="#FFA000"/>
-                                </StackPanel>
-                                <StackPanel Margin="4,0,4,0">
-                                    <TextBlock Text="Tank 2 (MS-I)" Opacity="0.7"/>
+                                    <TextBlock Text="MS - 20KL (Petrol)" Opacity="0.7"/>
                                     <TextBlock Text="{Binding MsIClosingStock, StringFormat={}{0:N0} L}" FontSize="16" FontWeight="Bold" Margin="0,4,0,2"/>
                                     <ProgressBar Value="{Binding MsILevelPct}" Maximum="100" Height="6" Foreground="#1E88E5"/>
                                 </StackPanel>
+                                <StackPanel Margin="4,0,4,0">
+                                    <TextBlock Text="HSD - 20KL (Diesel)" Opacity="0.7"/>
+                                    <TextBlock Text="{Binding HsdClosingStock, StringFormat={}{0:N0} L}" FontSize="16" FontWeight="Bold" Margin="0,4,0,2"/>
+                                    <ProgressBar Value="{Binding HsdLevelPct}" Maximum="100" Height="6" Foreground="#FFA000"/>
+                                </StackPanel>
                                 <StackPanel Margin="8,0,0,0">
-                                    <TextBlock Text="Tank 3 (MS-II)" Opacity="0.7"/>
+                                    <TextBlock Text="HSD - 20KL II (Diesel)" Opacity="0.7"/>
                                     <TextBlock Text="{Binding MsIIClosingStock, StringFormat={}{0:N0} L}" FontSize="16" FontWeight="Bold" Margin="0,4,0,2"/>
                                     <ProgressBar Value="{Binding MsIILevelPct}" Maximum="100" Height="6" Foreground="#43A047"/>
                                 </StackPanel>

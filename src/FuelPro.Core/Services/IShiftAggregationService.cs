@@ -19,7 +19,7 @@ public interface IShiftAggregationService
     double GetTotalLitresByFuelType(List<NozzleReading> allReadings, string fuelType);
 
     List<ReconciliationRowDto> BuildReconciliationRows(
-        double msTesting, double hsdTesting, double cngTesting, double phonePeCardMorning, double phonePeCardNight, double phonePeMorning, double phonePeNight, double petroCard,
+        double msTesting, double hsdTesting, double hsdTesting2, double cngTesting, double phonePeCardMorning, double phonePeCardNight, double phonePeMorning, double phonePeNight, double petroCard,
         double debit, double creditCardMorning, double creditCardNight, double bankCash, double cashInHand,
         double expenses);
 

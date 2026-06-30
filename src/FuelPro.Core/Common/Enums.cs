@@ -91,26 +91,49 @@ public static class FuelTypeExtensions
     };
 
     /// <summary>
-    /// Returns the user-friendly label for UI display (e.g. "Petrol", "Power", "Diesel", "CNG").
-    /// Use this for XAML text labels, print headers, and DataGrid display columns.
+    /// Returns the user-friendly label for UI display (e.g. "Petrol", "Diesel", "CNG").
     /// </summary>
     public static string ToFriendlyLabel(this FuelType fuelType) => fuelType switch
     {
         FuelType.HSD => "Diesel",
         FuelType.MS_I => "Petrol",
-        FuelType.MS_II => "Petrol",
+        FuelType.MS_II => "Diesel",
         FuelType.CNG => "CNG",
         _ => fuelType.ToString()
     };
 
     /// <summary>
-    /// Converts a canonical display name (e.g. "MS-II") to its friendly label (e.g. "Petrol").
+    /// Converts a canonical display name (e.g. "MS-II") to its friendly label (e.g. "Diesel").
     /// </summary>
     public static string ToFriendlyLabel(string canonicalName) => canonicalName switch
     {
         "HSD" => "Diesel",
         "MS-I" => "Petrol",
-        "MS-II" => "Petrol",
+        "MS-II" => "Diesel",
+        "CNG" => "CNG",
+        _ => canonicalName
+    };
+
+    /// <summary>
+    /// Returns the tank name display for the trip sheet (e.g. "MS - 20KL", "HSD - 20KL", "HSD - 20KL II").
+    /// </summary>
+    public static string ToTankName(this FuelType fuelType) => fuelType switch
+    {
+        FuelType.HSD => "HSD - 20KL",
+        FuelType.MS_I => "MS - 20KL",
+        FuelType.MS_II => "HSD - 20KL II",
+        FuelType.CNG => "CNG",
+        _ => fuelType.ToString()
+    };
+
+    /// <summary>
+    /// Converts a canonical name string to its specific tank name display.
+    /// </summary>
+    public static string ToTankName(string canonicalName) => canonicalName switch
+    {
+        "HSD" => "HSD - 20KL",
+        "MS-I" => "MS - 20KL",
+        "MS-II" => "HSD - 20KL II",
         "CNG" => "CNG",
         _ => canonicalName
     };
