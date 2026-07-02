@@ -80,6 +80,9 @@ public partial class App : Application
             EnsureLegacyDatabaseCompatibility(DbPath);
             
             await SeedData.InitializeAsync(context, credentialService);
+
+            // Re-run compatibility check to ensure columns are added after EF Core creates the tables on fresh install
+            EnsureLegacyDatabaseCompatibility(DbPath);
             
             // Initialize PumpConfiguration from Database
             var pumpMappings = await context.PumpMappings.ToListAsync();
@@ -513,6 +516,54 @@ public partial class App : Application
             cmd.ExecuteNonQuery();
             Log.Information("Created DsmPersonalDebtorRepayments table");
         }
+
+        // PettyCashTransactions
+        cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='PettyCashTransactions'";
+        var pettyCashExists = cmd.ExecuteScalar() != null;
+        var needsRecreate = false;
+        if (pettyCashExists)
+        {
+            cmd.CommandText = "PRAGMA table_info(PettyCashTransactions);";
+            var hasShiftExpenseId = false;
+            using (var reader = cmd.ExecuteReader())
+            {
+                while (reader.Read())
+                {
+                    if (reader["name"].ToString() == "ShiftExpenseId")
+                    {
+                        hasShiftExpenseId = true;
+                        break;
+                    }
+                }
+            }
+            if (!hasShiftExpenseId)
+            {
+                needsRecreate = true;
+            }
+        }
+
+        if (!pettyCashExists || needsRecreate)
+        {
+            if (needsRecreate)
+            {
+                cmd.CommandText = "DROP TABLE IF EXISTS \"PettyCashTransactions\";";
+                cmd.ExecuteNonQuery();
+                Log.Warning("Dropped legacy PettyCashTransactions table due to schema mismatch");
+            }
+
+            cmd.CommandText = @"
+                CREATE TABLE ""PettyCashTransactions"" (
+                    ""TransactionId"" INTEGER NOT NULL CONSTRAINT ""PK_PettyCashTransactions"" PRIMARY KEY AUTOINCREMENT,
+                    ""Date"" TEXT NOT NULL,
+                    ""Description"" TEXT NOT NULL,
+                    ""Amount"" REAL NOT NULL,
+                    ""Type"" TEXT NOT NULL,
+                    ""ShiftExpenseId"" INTEGER NULL,
+                    ""CreatedAt"" TEXT NOT NULL DEFAULT (datetime('now'))
+                );";
+            cmd.ExecuteNonQuery();
+            Log.Information("Created PettyCashTransactions table");
+        }
     }
 
     private static bool TableExists(SqliteConnection connection, string tableName)
@@ -611,6 +662,7 @@ public partial class App : Application
         services.AddTransient<OilDefDailyLogViewModel>();
         services.AddTransient<DebtorManagementViewModel>();
         services.AddTransient<PumpExpensesViewModel>();
+        services.AddTransient<PettyCashViewModel>();
 
         // Owner ViewModels
         services.AddTransient<OwnerMainWindowViewModel>();
@@ -637,7 +689,7 @@ public partial class App : Application
 
 
         // Licensing
-        services.AddSingleton(new Rashtra.Licensing.LicenseManager("PSC", "PyroSync"));
+        services.AddSingleton(new Rashtra.Licensing.LicenseManager("PSC", "PyroSyncMax"));
         services.AddTransient<ActivationViewModel>();
     }
 

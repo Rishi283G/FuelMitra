@@ -35,7 +35,7 @@
             <Setter Property="Margin" Value="0,0,0,12" />
         </Style>
 
-        <Style TargetType="DataGrid" BasedOn="{StaticResource MaterialDesignDataGrid}">
+        <Style TargetType="DataGrid" BasedOn="{StaticResource {x:Type DataGrid}}">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="{DynamicResource MaterialDesign.Brush.Divider}" />
             <Setter Property="BorderThickness" Value="1" />
@@ -235,6 +235,8 @@
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
@@ -250,11 +252,20 @@
                                     <TextBlock Grid.Row="2" Grid.Column="0" Text="Total Expenses" Margin="0,4" />
                                     <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding ExpensesTotal, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" Margin="0,4" />
 
-                                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Total Testing (Petrol + Diesel)" Margin="0,4" />
-                                    <TextBlock Grid.Row="3" Grid.Column="1" Text="Included in Totals" Opacity="0.5" Margin="0,4" />
+                                    <TextBlock Grid.Row="3" Grid.Column="0" Text="MS Testing (MS - 20KL)" Margin="0,4" />
+                                    <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding MsTesting, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" Margin="0,4" />
+
+                                    <TextBlock Grid.Row="4" Grid.Column="0" Text="HSD Testing I (HSD - 20KL)" Margin="0,4" />
+                                    <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding HsdTesting, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" Margin="0,4" />
+
+                                    <TextBlock Grid.Row="5" Grid.Column="0" Text="HSD Testing II (HSD - 20KL II)" Margin="0,4" />
+                                    <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding HsdTesting2, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" Margin="0,4" />
+
+                                    <TextBlock Grid.Row="6" Grid.Column="0" Text="CNG Testing" Margin="0,4" />
+                                    <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding CngTesting, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" Margin="0,4" />
                                     
-                                    <TextBlock Grid.Row="4" Grid.Column="0" Text="Total DSM Short" Margin="0,4" FontWeight="Bold" Foreground="Red" />
-                                    <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding TotalDsmShort, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" Foreground="Red" Margin="0,4" />
+                                    <TextBlock Grid.Row="7" Grid.Column="0" Text="Total DSM Short" Margin="0,4" FontWeight="Bold" Foreground="Red" />
+                                    <TextBlock Grid.Row="7" Grid.Column="1" Text="{Binding TotalDsmShort, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" Foreground="Red" Margin="0,4" />
                                 </Grid>
                             </Border>
                             

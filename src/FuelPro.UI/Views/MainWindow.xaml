@@ -47,6 +47,9 @@
         <DataTemplate DataType="{x:Type vm:PumpExpensesViewModel}">
             <views:PumpExpensesView/>
         </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:PettyCashViewModel}">
+            <views:PettyCashView/>
+        </DataTemplate>
     </Window.Resources>
 
 
@@ -138,38 +141,21 @@
                         <materialDesign:PackIcon Kind="CalendarMonth" Width="28" Height="28"/>
                     </Button>
 
-                    <!-- Settings -->
-                    <Button Command="{Binding NavigateToSettingsCommand}" ToolTip="Settings" Margin="0,4">
+                    <!-- Debtor Management -->
+                    <Button Command="{Binding NavigateToDebtorManagementCommand}" ToolTip="Debtor Management" Margin="0,4">
                         <Button.Style>
                             <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
                                 <Setter Property="Foreground" Value="White" />
                                 <Setter Property="Opacity" Value="0.5" />
                                 <Style.Triggers>
-                                    <DataTrigger Binding="{Binding SelectedNavIndex}" Value="4">
+                                    <DataTrigger Binding="{Binding SelectedNavIndex}" Value="9">
                                         <Setter Property="Opacity" Value="1" />
                                         <Setter Property="Background" Value="#33FFFFFF" />
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
                         </Button.Style>
-                        <materialDesign:PackIcon Kind="Cog" Width="28" Height="28"/>
-                    </Button>
-
-                    <!-- AGS Import -->
-                    <Button Command="{Binding NavigateToAgsImportCommand}" ToolTip="AGS Import" Margin="0,4">
-                        <Button.Style>
-                            <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
-                                <Setter Property="Foreground" Value="White" />
-                                <Setter Property="Opacity" Value="0.5" />
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding SelectedNavIndex}" Value="5">
-                                        <Setter Property="Opacity" Value="1" />
-                                        <Setter Property="Background" Value="#33FFFFFF" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Button.Style>
-                        <materialDesign:PackIcon Kind="FileImport" Width="28" Height="28"/>
+                        <materialDesign:PackIcon Kind="AccountCash" Width="28" Height="28"/>
                     </Button>
 
                     <!-- DSM Approval Queue with Badge -->
@@ -218,7 +204,7 @@
                     </Button>
 
                     <!-- Card Settlement -->
-                    <Button Command="{Binding NavigateToCardSettlementCommand}" ToolTip="Card Settlement" Margin="0,4">
+                    <Button Command="{Binding NavigateToCardSettlementCommand}" ToolTip="TID Sheet" Margin="0,4">
                         <Button.Style>
                             <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
                                 <Setter Property="Foreground" Value="White" />
@@ -232,23 +218,6 @@
                             </Style>
                         </Button.Style>
                         <materialDesign:PackIcon Kind="CreditCardCheck" Width="28" Height="28"/>
-                    </Button>
-
-                    <!-- Debtor Management -->
-                    <Button Command="{Binding NavigateToDebtorManagementCommand}" ToolTip="Debtor Management" Margin="0,4">
-                        <Button.Style>
-                            <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
-                                <Setter Property="Foreground" Value="White" />
-                                <Setter Property="Opacity" Value="0.5" />
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding SelectedNavIndex}" Value="9">
-                                        <Setter Property="Opacity" Value="1" />
-                                        <Setter Property="Background" Value="#33FFFFFF" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Button.Style>
-                        <materialDesign:PackIcon Kind="AccountCash" Width="28" Height="28"/>
                     </Button>
 
                     <!-- Pump Expenses -->
@@ -266,6 +235,57 @@
                             </Style>
                         </Button.Style>
                         <materialDesign:PackIcon Kind="CurrencyInr" Width="28" Height="28"/>
+                    </Button>
+
+                    <!-- Petty Cash -->
+                    <Button Command="{Binding NavigateToPettyCashCommand}" ToolTip="Petty Cash" Margin="0,4">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
+                                <Setter Property="Foreground" Value="White" />
+                                <Setter Property="Opacity" Value="0.5" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding SelectedNavIndex}" Value="11">
+                                        <Setter Property="Opacity" Value="1" />
+                                        <Setter Property="Background" Value="#33FFFFFF" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                        <materialDesign:PackIcon Kind="Wallet" Width="28" Height="28"/>
+                    </Button>
+
+                    <!-- AGS Import -->
+                    <Button Command="{Binding NavigateToAgsImportCommand}" ToolTip="AGS Import" Margin="0,4">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
+                                <Setter Property="Foreground" Value="White" />
+                                <Setter Property="Opacity" Value="0.5" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding SelectedNavIndex}" Value="5">
+                                        <Setter Property="Opacity" Value="1" />
+                                        <Setter Property="Background" Value="#33FFFFFF" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                        <materialDesign:PackIcon Kind="FileImport" Width="28" Height="28"/>
+                    </Button>
+
+                    <!-- Settings -->
+                    <Button Command="{Binding NavigateToSettingsCommand}" ToolTip="Settings" Margin="0,4">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
+                                <Setter Property="Foreground" Value="White" />
+                                <Setter Property="Opacity" Value="0.5" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding SelectedNavIndex}" Value="4">
+                                        <Setter Property="Opacity" Value="1" />
+                                        <Setter Property="Background" Value="#33FFFFFF" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                        <materialDesign:PackIcon Kind="Cog" Width="28" Height="28"/>
                     </Button>
                 </StackPanel>
             </Border>

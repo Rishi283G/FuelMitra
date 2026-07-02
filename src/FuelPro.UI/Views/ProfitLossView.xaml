@@ -182,19 +182,19 @@
                                 <Separator Grid.Row="0" Grid.ColumnSpan="4" Margin="0,4,0,4" VerticalAlignment="Bottom"/>
 
                                 <!-- HSD (Diesel) Row -->
-                                <TextBlock Grid.Row="1" Grid.Column="0" Text="MS1 / Diesel (HSD)" Margin="0,8"/>
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="HSD - 20KL (Diesel)" Margin="0,8"/>
                                 <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding HsdLitres, StringFormat='{}{0:N2} L'}" Margin="0,8" TextAlignment="Right"/>
                                 <TextBlock Grid.Row="1" Grid.Column="2" Text="{Binding HsdMargin, StringFormat='{}₹{0:N2}'}" Margin="0,8" TextAlignment="Right"/>
                                 <TextBlock Grid.Row="1" Grid.Column="3" Text="{Binding HsdProfit, Converter={StaticResource CurrencyConverter}}" Margin="0,8" TextAlignment="Right" FontWeight="SemiBold"/>
 
                                 <!-- MS-I Row -->
-                                <TextBlock Grid.Row="2" Grid.Column="0" Text="MS-I (Petrol)" Margin="0,8"/>
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="MS - 20KL (Petrol)" Margin="0,8"/>
                                 <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding MsILitres, StringFormat='{}{0:N2} L'}" Margin="0,8" TextAlignment="Right"/>
                                 <TextBlock Grid.Row="2" Grid.Column="2" Text="{Binding MsIMargin, StringFormat='{}₹{0:N2}'}" Margin="0,8" TextAlignment="Right"/>
                                 <TextBlock Grid.Row="2" Grid.Column="3" Text="{Binding MsIProfit, Converter={StaticResource CurrencyConverter}}" Margin="0,8" TextAlignment="Right" FontWeight="SemiBold"/>
 
                                 <!-- MS-II Row -->
-                                <TextBlock Grid.Row="3" Grid.Column="0" Text="MS-II (Power Petrol)" Margin="0,8"/>
+                                <TextBlock Grid.Row="3" Grid.Column="0" Text="HSD - 20KL II (Diesel)" Margin="0,8"/>
                                 <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding MsIILitres, StringFormat='{}{0:N2} L'}" Margin="0,8" TextAlignment="Right"/>
                                 <TextBlock Grid.Row="3" Grid.Column="2" Text="{Binding MsIIMargin, StringFormat='{}₹{0:N2}'}" Margin="0,8" TextAlignment="Right"/>
                                 <TextBlock Grid.Row="3" Grid.Column="3" Text="{Binding MsIIProfit, Converter={StaticResource CurrencyConverter}}" Margin="0,8" TextAlignment="Right" FontWeight="SemiBold"/>

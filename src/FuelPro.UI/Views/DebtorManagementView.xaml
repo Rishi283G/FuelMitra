@@ -30,7 +30,7 @@
             <Setter Property="Margin" Value="0,0,0,12" />
         </Style>
 
-        <Style TargetType="DataGrid" BasedOn="{StaticResource MaterialDesignDataGrid}">
+        <Style TargetType="DataGrid" BasedOn="{StaticResource {x:Type DataGrid}}">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="{DynamicResource MaterialDesign.Brush.Divider}" />
             <Setter Property="BorderThickness" Value="1" />

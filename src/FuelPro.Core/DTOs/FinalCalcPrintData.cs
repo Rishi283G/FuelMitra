@@ -103,6 +103,7 @@ public class ReconciliationPrintBlock
 {
     public decimal MsTesting { get; set; }
     public decimal HsdTesting { get; set; }
+    public decimal HsdTesting2 { get; set; }
     public decimal CngTesting { get; set; }
     public decimal PhonePe { get; set; }
     public decimal PhonePeCardMorning { get; set; }

@@ -644,6 +644,16 @@ public partial class DsmEntryViewModel : ObservableObject
             OnRowChanged = RecalculateAll
         });
 
+        if (NozzleReadings.Any(n => n.FuelType == "MS-II"))
+        {
+            TestingRows.Add(new TestingRow
+            {
+                FuelType = "HSD-II",
+                Rate = NozzleReadings.FirstOrDefault(n => n.FuelType == "MS-II")?.Rate ?? msIIRate,
+                OnRowChanged = RecalculateAll
+            });
+        }
+
         if (NozzleReadings.Any(n => n.FuelType == "CNG"))
         {
             TestingRows.Add(new TestingRow
@@ -1016,6 +1026,10 @@ public partial class DsmEntryViewModel : ObservableObject
             {
                 TestingRows.Add(new TestingRow { FuelType = "HSD", Rate = NozzleReadings.FirstOrDefault(n => n.FuelType == "HSD")?.Rate ?? hsdRate, OnRowChanged = RecalculateAll });
             }
+            if (NozzleReadings.Any(n => n.FuelType == "MS-II") && !TestingRows.Any(t => t.FuelType == "HSD-II"))
+            {
+                TestingRows.Add(new TestingRow { FuelType = "HSD-II", Rate = NozzleReadings.FirstOrDefault(n => n.FuelType == "MS-II")?.Rate ?? msIIRate, OnRowChanged = RecalculateAll });
+            }
             if (NozzleReadings.Any(n => n.FuelType == "CNG") && !TestingRows.Any(t => t.FuelType == "CNG"))
             {
                 TestingRows.Add(new TestingRow { FuelType = "CNG", Rate = NozzleReadings.FirstOrDefault(n => n.FuelType == "CNG")?.Rate ?? cngRate, OnRowChanged = RecalculateAll });
@@ -1257,7 +1271,13 @@ public partial class DsmEntryViewModel : ObservableObject
             TotalDigital       = (PhonePeCardMorning ?? 0) + (PhonePeCardNight ?? 0)
                                + (PhonePeMorning ?? 0)     + (PhonePeNight ?? 0)
                                + (CreditCardMorning ?? 0)  + (CreditCardNight ?? 0)
-                               + (PetroCard ?? 0)          + (CashDeposit ?? 0)
+                               + (PetroCard ?? 0)          + (CashDeposit ?? 0),
+            CardTid            = CardTid ?? "",
+            CardBatch          = CardBatch ?? "",
+            PhonePeTid         = PhonePeTid ?? "",
+            PhonePeBatch       = PhonePeBatch ?? "",
+            PetroCardTid       = PetroCardTid ?? "",
+            PetroCardBatch     = PetroCardBatch ?? ""
         };
 
         var cashDenom = new DsmCashDenomPrintBlock

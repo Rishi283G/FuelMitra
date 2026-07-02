@@ -177,6 +177,13 @@ public partial class MainWindowViewModel : ObservableObject
         CurrentView = App.Services.GetRequiredService<PumpExpensesViewModel>();
     }
 
+    [RelayCommand]
+    private void NavigateToPettyCash()
+    {
+        SelectedNavIndex = 11;
+        CurrentView = App.Services.GetRequiredService<PettyCashViewModel>();
+    }
+
 
     public void UpdateLastSaveTime() =>
         LastSaveTime = DateTime.Now.ToString("hh:mm:ss tt");

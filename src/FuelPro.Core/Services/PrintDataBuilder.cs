@@ -31,6 +31,7 @@ public class PrintDataBuilder
         double otherCashTotal,
         double reconciliationMsTesting,
         double reconciliationHsdTesting,
+        double reconciliationHsdTesting2,
         double reconciliationCngTesting,
         double phonePeTotal,
         double phonePeMorningTotal,
@@ -134,7 +135,7 @@ public class PrintDataBuilder
             if (hsdLitres > 0 || hsdAmount > 0)
                 fuelRows.Add(new FuelSalePrintRow
                 {
-                    Description = "Diesel - 20 KL",
+                    Description = "HSD - 20KL",
                     FuelType    = "HSD",
                     TankLabel   = "20 KL",
                     Litres  = (decimal)hsdLitres,
@@ -144,9 +145,9 @@ public class PrintDataBuilder
             if (msIILitres > 0 || msIIAmount > 0)
                 fuelRows.Add(new FuelSalePrintRow
                 {
-                    Description = "Petrol (Tank 2) - 20 KL",
+                    Description = "HSD - 20KL II",
                     FuelType    = "MS-II",
-                    TankLabel   = "20 KL",
+                    TankLabel   = "20 KL II",
                     Litres  = (decimal)msIILitres,
                     Rate    = (decimal)Math.Round(msIIRate, 2),
                     Amount  = (decimal)msIIAmount
@@ -154,7 +155,7 @@ public class PrintDataBuilder
             if (msILitres > 0 || msIAmount > 0)
                 fuelRows.Add(new FuelSalePrintRow
                 {
-                    Description = "Petrol (Tank 1) - 20 KL",
+                    Description = "MS - 20KL",
                     FuelType    = "MS-I",
                     TankLabel   = "20 KL",
                     Litres  = (decimal)msILitres,
@@ -186,6 +187,7 @@ public class PrintDataBuilder
             {
                 MsTesting  = (decimal)reconciliationMsTesting,
                 HsdTesting = (decimal)reconciliationHsdTesting,
+                HsdTesting2 = (decimal)reconciliationHsdTesting2,
                 CngTesting = (decimal)reconciliationCngTesting,
                 PhonePe    = (decimal)phonePeTotal,
                 PhonePeCardMorning = (decimal)phonePeCardMorningTotal,

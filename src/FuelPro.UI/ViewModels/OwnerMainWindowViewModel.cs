@@ -193,6 +193,13 @@ public partial class OwnerMainWindowViewModel : ObservableObject
         CurrentView = App.Services.GetRequiredService<PumpExpensesViewModel>();
     }
 
+    [RelayCommand]
+    private void NavigateToPettyCash()
+    {
+        SelectedNavIndex = 16;
+        CurrentView = App.Services.GetRequiredService<PettyCashViewModel>();
+    }
+
 
     /// <summary>
     /// Called by the sync engine to update status display.

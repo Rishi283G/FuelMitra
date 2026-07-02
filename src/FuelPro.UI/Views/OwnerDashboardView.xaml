@@ -245,7 +245,7 @@
                 <materialDesign:Card Margin="4" Padding="16" materialDesign:ElevationAssist.Elevation="Dp1"
                                      UniformCornerRadius="8">
                     <StackPanel>
-                        <TextBlock Text="HSD" FontSize="14" FontWeight="SemiBold" Opacity="0.7"/>
+                        <TextBlock Text="HSD - 20KL" FontSize="14" FontWeight="SemiBold" Opacity="0.7"/>
                         <TextBlock Text="{Binding TodayHsdLitres, Converter={StaticResource LitresConverter}}"
                                    FontSize="18" FontWeight="Bold" Margin="0,4,0,0"/>
                     </StackPanel>
@@ -255,7 +255,7 @@
                 <materialDesign:Card Margin="4" Padding="16" materialDesign:ElevationAssist.Elevation="Dp1"
                                      UniformCornerRadius="8">
                     <StackPanel>
-                        <TextBlock Text="MS-I" FontSize="14" FontWeight="SemiBold" Opacity="0.7"/>
+                        <TextBlock Text="MS - 20KL" FontSize="14" FontWeight="SemiBold" Opacity="0.7"/>
                         <TextBlock Text="{Binding TodayMsILitres, Converter={StaticResource LitresConverter}}"
                                    FontSize="18" FontWeight="Bold" Margin="0,4,0,0"/>
                     </StackPanel>
@@ -265,7 +265,7 @@
                 <materialDesign:Card Margin="4" Padding="16" materialDesign:ElevationAssist.Elevation="Dp1"
                                      UniformCornerRadius="8">
                     <StackPanel>
-                        <TextBlock Text="MS-II" FontSize="14" FontWeight="SemiBold" Opacity="0.7"/>
+                        <TextBlock Text="HSD - 20KL II" FontSize="14" FontWeight="SemiBold" Opacity="0.7"/>
                         <TextBlock Text="{Binding TodayMsIILitres, Converter={StaticResource LitresConverter}}"
                                    FontSize="18" FontWeight="Bold" Margin="0,4,0,0"/>
                     </StackPanel>

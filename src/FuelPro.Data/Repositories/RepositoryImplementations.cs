@@ -18,7 +18,7 @@ public class SettingsRepository : ISettingsRepository
     {
         try
         {
-            var settings = await _context.Settings.FirstOrDefaultAsync();
+            var settings = await _context.Settings.AsNoTracking().FirstOrDefaultAsync();
             if (settings == null)
             {
                 settings = new Setting

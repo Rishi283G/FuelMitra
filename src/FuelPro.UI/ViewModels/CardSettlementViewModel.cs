@@ -15,6 +15,7 @@ public partial class CardSettlementItem : ObservableObject
     public string RomanIndex { get; set; } = string.Empty;
     public string DsmName { get; set; } = string.Empty;
     public double Amount { get; set; }
+    public string ShiftLabel { get; set; } = string.Empty; // "Morning", "Day", "Night"
     
     [ObservableProperty] private string? _tid;
     [ObservableProperty] private string? _batch;
@@ -79,29 +80,38 @@ public partial class CardSettlementViewModel : ObservableObject
 
         try
         {
-            // 1. Fetch previous day's last shift (Last Night)
+            // 1. Fetch previous day's last shift (Morning)
             var prevDate = SelectedDate.AddDays(-1);
             var prevShiftsResult = await _shiftRepo.GetShiftsByDateRangeAsync(prevDate, prevDate);
             var prevShifts = prevShiftsResult.Success && prevShiftsResult.Data != null 
                 ? prevShiftsResult.Data.OrderBy(s => s.ShiftType).ToList() 
                 : new List<Shift>();
-            var prevLastShift = prevShifts.LastOrDefault();
+            var prevLastShift = prevShifts.LastOrDefault(s => s.ShiftType == "B") 
+                ?? prevShifts.LastOrDefault(s => s.ShiftType != "A") 
+                ?? prevShifts.LastOrDefault();
 
-            // 2. Fetch today's shifts (Today First & Second Shifts)
+            // 2. Fetch today's shifts (Day & Night)
             var todayShiftsResult = await _shiftRepo.GetShiftsByDateRangeAsync(SelectedDate, SelectedDate);
             var todayShifts = todayShiftsResult.Success && todayShiftsResult.Data != null 
                 ? todayShiftsResult.Data.OrderBy(s => s.ShiftType).ToList() 
                 : new List<Shift>();
 
+            var todayFirstShift = todayShifts.FirstOrDefault(s => s.ShiftType == "A");
+            var todayLastShift = todayShifts.FirstOrDefault(s => s.ShiftType == "B") 
+                ?? todayShifts.FirstOrDefault(s => s.ShiftType != "A");
+
             var allShiftsToLoad = new List<(Shift Shift, string Label)>();
             if (prevLastShift != null)
             {
-                allShiftsToLoad.Add((prevLastShift, "Last Night"));
+                allShiftsToLoad.Add((prevLastShift, "Morning"));
             }
-            foreach (var s in todayShifts)
+            if (todayFirstShift != null)
             {
-                string label = s.ShiftType == "A" ? "1st Shift" : "2nd Shift";
-                allShiftsToLoad.Add((s, label));
+                allShiftsToLoad.Add((todayFirstShift, "Day"));
+            }
+            if (todayLastShift != null)
+            {
+                allShiftsToLoad.Add((todayLastShift, "Night"));
             }
 
             if (allShiftsToLoad.Count == 0)
@@ -111,7 +121,7 @@ public partial class CardSettlementViewModel : ObservableObject
             }
 
             // Set current shift context for locking check (use today's primary shift A or first available)
-            _currentShift = todayShifts.FirstOrDefault() ?? prevLastShift;
+            _currentShift = todayFirstShift ?? todayLastShift ?? prevLastShift;
             IsShiftLocked = todayShifts.Any(s => s.IsLocked);
 
             foreach (var item in allShiftsToLoad)
@@ -127,23 +137,28 @@ public partial class CardSettlementViewModel : ObservableObject
 
                         pc.DsmEntry = entry; // backlink
 
-                        // For last night shift or today's 2nd shift, load Night payments. 
-                        // For 1st shift, load Morning payments.
                         double cardAmount = 0;
                         double phonePeAmount = 0;
                         double petroAmount = 0;
 
-                        if (item.Label == "Last Night" || item.Shift.ShiftType != "A")
-                        {
-                            cardAmount = pc.CreditCardNight;
-                            phonePeAmount = pc.PhonePeNight + pc.PhonePeCardNight;
-                        }
-                        else
+                        if (item.Label == "Morning")
                         {
                             cardAmount = pc.CreditCardMorning;
                             phonePeAmount = pc.PhonePeMorning + pc.PhonePeCardMorning;
+                            petroAmount = 0; // PetroCard is not loaded from previous day's shift B
                         }
-                        petroAmount = pc.PetroCard; // PetroCard is daily
+                        else if (item.Label == "Day")
+                        {
+                            cardAmount = pc.CreditCardMorning;
+                            phonePeAmount = pc.PhonePeMorning + pc.PhonePeCardMorning;
+                            petroAmount = pc.PetroCard;
+                        }
+                        else if (item.Label == "Night")
+                        {
+                            cardAmount = pc.CreditCardNight;
+                            phonePeAmount = pc.PhonePeNight + pc.PhonePeCardNight;
+                            petroAmount = pc.PetroCard;
+                        }
 
                         // 1. Credit Cards
                         if (cardAmount > 0)
@@ -155,6 +170,7 @@ public partial class CardSettlementViewModel : ObservableObject
                                 Amount = cardAmount,
                                 Tid = pc.CardTid ?? string.Empty,
                                 Batch = pc.CardBatch ?? string.Empty,
+                                ShiftLabel = item.Label,
                                 PaymentCollection = pc
                             });
                         }
@@ -169,6 +185,7 @@ public partial class CardSettlementViewModel : ObservableObject
                                 Amount = phonePeAmount,
                                 Tid = pc.PhonePeTid ?? string.Empty,
                                 Batch = pc.PhonePeBatch ?? string.Empty,
+                                ShiftLabel = item.Label,
                                 PaymentCollection = pc
                             });
                         }
@@ -183,6 +200,7 @@ public partial class CardSettlementViewModel : ObservableObject
                                 Amount = petroAmount,
                                 Tid = pc.PetroCardTid ?? string.Empty,
                                 Batch = pc.PetroCardBatch ?? string.Empty,
+                                ShiftLabel = item.Label,
                                 PaymentCollection = pc
                             });
                         }
@@ -291,16 +309,28 @@ public partial class CardSettlementViewModel : ObservableObject
     {
         if (_currentShift == null) return;
 
+        double phonePeMorning = PhonePePayments.Where(p => p.ShiftLabel == "Morning").Sum(p => p.Amount);
+        double phonePeDay = PhonePePayments.Where(p => p.ShiftLabel == "Day").Sum(p => p.Amount);
+        double phonePeNight = PhonePePayments.Where(p => p.ShiftLabel == "Night").Sum(p => p.Amount);
+
+        double cardMorning = CardPayments.Where(c => c.ShiftLabel == "Morning").Sum(c => c.Amount);
+        double cardDay = CardPayments.Where(c => c.ShiftLabel == "Day").Sum(c => c.Amount);
+        double cardNight = CardPayments.Where(c => c.ShiftLabel == "Night").Sum(c => c.Amount);
+
+        double petroNight = PetroCardPayments.Where(p => p.ShiftLabel == "Night").Sum(p => p.Amount);
+        double petroDay = PetroCardPayments.Where(p => p.ShiftLabel == "Day").Sum(p => p.Amount);
+
         var payload = new
         {
-            Date = SelectedDate.ToString("yyyy-MM-dd"),
-            ShiftLabel = SelectedShift,
+            Date = SelectedDate.ToString("dd/MM/yyyy"),
             CardTotal = CardTotal,
             PhonePeTotal = PhonePeTotal,
             PetroCardTotal = PetroCardTotal,
-            Cards = CardPayments.Select(c => new { c.RomanIndex, Name = c.DsmName, c.Tid, c.Batch, c.Amount }).ToList(),
-            PhonePes = PhonePePayments.Select(p => new { p.RomanIndex, Name = p.DsmName, p.Tid, p.Batch, p.Amount }).ToList(),
-            PetroCards = PetroCardPayments.Select(pc => new { pc.RomanIndex, Name = pc.DsmName, pc.Tid, pc.Batch, pc.Amount }).ToList()
+            GrandTotal = CardTotal + PhonePeTotal + PetroCardTotal,
+            Cards = CardPayments.Select(c => new { c.Tid, c.Batch, c.Amount }).ToList(),
+            PhonePeSummary = new { Morning = phonePeMorning, Day = phonePeDay, Night = phonePeNight, Total = PhonePeTotal },
+            CardSummary = new { Morning = cardMorning, Day = cardDay, Night = cardNight, Total = CardTotal },
+            PetroSummary = new { Night = petroNight, Day = petroDay, Total = PetroCardTotal }
         };
 
         _printService.PrintCardSettlement(payload);

@@ -82,6 +82,13 @@ public class DsmPaymentPrintBlock
     public double Others              { get; set; }
     public double BankDeposit         { get; set; }
     public double TotalDigital        { get; set; }
+
+    public string CardTid             { get; set; } = string.Empty;
+    public string CardBatch           { get; set; } = string.Empty;
+    public string PhonePeTid          { get; set; } = string.Empty;
+    public string PhonePeBatch        { get; set; } = string.Empty;
+    public string PetroCardTid        { get; set; } = string.Empty;
+    public string PetroCardBatch      { get; set; } = string.Empty;
 }
 
 /// <summary>

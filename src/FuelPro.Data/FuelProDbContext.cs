@@ -66,6 +66,7 @@ public class FuelProDbContext : DbContext
     public DbSet<PumpExpenseCategoryItem> PumpExpenseCategoryItems => Set<PumpExpenseCategoryItem>();
     public DbSet<DsmPersonalDebtor> DsmPersonalDebtors => Set<DsmPersonalDebtor>();
     public DbSet<DsmPersonalDebtorRepayment> DsmPersonalDebtorRepayments => Set<DsmPersonalDebtorRepayment>();
+    public DbSet<PettyCashTransaction> PettyCashTransactions => Set<PettyCashTransaction>();
 
     // AGS Import
     public DbSet<AgsShiftImport> AgsShiftImports => Set<AgsShiftImport>();
