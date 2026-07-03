@@ -23,6 +23,7 @@ public partial class MonthlyPerformanceViewModel : ObservableObject
     private readonly IShiftRepository _shiftRepo;
     private readonly IDsmCalculationService _calcService;
     private readonly IOwnerCalculationService _ownerCalcService;
+    private readonly ITidCalculationService _tidService;
     private readonly PrintService _printService;
     private readonly ExcelExportService _excelExportService;
 
@@ -44,6 +45,7 @@ public partial class MonthlyPerformanceViewModel : ObservableObject
         _shiftRepo = App.Services.GetRequiredService<IShiftRepository>();
         _calcService = App.Services.GetRequiredService<IDsmCalculationService>();
         _ownerCalcService = App.Services.GetRequiredService<IOwnerCalculationService>();
+        _tidService = App.Services.GetRequiredService<ITidCalculationService>();
         _printService = App.Services.GetRequiredService<PrintService>();
         _excelExportService = App.Services.GetRequiredService<ExcelExportService>();
         _ = LoadAsync();
@@ -71,6 +73,8 @@ public partial class MonthlyPerformanceViewModel : ObservableObject
             MonthTotalCollection = 0;
             MonthTotalEntries = entries.Count;
 
+            var tidSheets = await _tidService.GetTidSheetsForRangeAsync(startDate, endDate);
+
             var byDay = entries.GroupBy(e =>
             {
                 var shift = e.Shift;
@@ -79,7 +83,9 @@ public partial class MonthlyPerformanceViewModel : ObservableObject
 
             foreach (var dayGroup in byDay.OrderBy(g => g.Key))
             {
-                var dayResult = _ownerCalcService.Calculate(dayGroup, Array.Empty<Expense>(), Array.Empty<ShiftOtherCash>());
+                var date = dayGroup.Key;
+                tidSheets.TryGetValue(date, out var tidSheet);
+                var dayResult = _ownerCalcService.Calculate(dayGroup, Array.Empty<Expense>(), Array.Empty<ShiftOtherCash>(), tidSheet);
 
                 DayRows.Add(new MonthDayRow
                 {

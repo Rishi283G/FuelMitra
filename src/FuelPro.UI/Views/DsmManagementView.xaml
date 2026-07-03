@@ -9,6 +9,7 @@
     <UserControl.Resources>
         <converters:InverseBoolConverter x:Key="InverseBoolConverter"/>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
+        <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
     </UserControl.Resources>
 
     <TabControl materialDesign:ColorZoneAssist.Mode="PrimaryLight" TabStripPlacement="Top" materialDesign:ElevationAssist.Elevation="Dp2" Padding="20">
@@ -142,6 +143,10 @@
                                   materialDesign:HintAssist.Hint="Select Pump" materialDesign:HintAssist.IsFloating="True"
                                   Style="{StaticResource MaterialDesignOutlinedComboBox}"/>
 
+                        <ComboBox ItemsSource="{Binding PumpOptions}" SelectedItem="{Binding SelectedConnectedPumpId}" Margin="0,0,0,12"
+                                  materialDesign:HintAssist.Hint="Connected Pump (Optional)" materialDesign:HintAssist.IsFloating="True"
+                                  Style="{StaticResource MaterialDesignOutlinedComboBox}"/>
+
                         <ComboBox ItemsSource="{Binding ShiftOptions}" SelectedItem="{Binding SelectedShift}" Margin="0,0,0,16"
                                   materialDesign:HintAssist.Hint="Select Shift" materialDesign:HintAssist.IsFloating="True"
                                   Style="{StaticResource MaterialDesignOutlinedComboBox}"/>
@@ -169,7 +174,18 @@
                                   GridLinesVisibility="Horizontal" HeadersVisibility="Column">
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="DSM Name" Binding="{Binding DsmUser.FullName}" Width="*"/>
-                                <DataGridTextColumn Header="Pump Number" Binding="{Binding PumpId, StringFormat='Pump {0}'}" Width="120"/>
+                                <DataGridTemplateColumn Header="Pumps Assigned" Width="150">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="{Binding PumpId, StringFormat='Pump {0}'}" FontWeight="SemiBold"/>
+                                                <TextBlock Text="{Binding ConnectedPumpId, StringFormat=' + Pump {0}'}" 
+                                                           FontWeight="SemiBold"
+                                                           Visibility="{Binding ConnectedPumpId, Converter={StaticResource NullToVisibilityConverter}}"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
                                 <DataGridTextColumn Header="Shift Type" Binding="{Binding ShiftType}" Width="100"/>
                                 <DataGridTextColumn Header="Assigned Date" Binding="{Binding AssignedDate, StringFormat='dd MMM yyyy'}" Width="130"/>
                                 
@@ -297,8 +313,8 @@
             </materialDesign:Card>
         </TabItem>
 
-        <!-- Tab 4: Nozzle Configuration (DSM PWA) -->
-        <TabItem Header="Nozzle Config (PWA)">
+        <!-- Tab 4: Nozzle Configuration (DSM PWA) — hidden until needed -->
+        <TabItem Header="Nozzle Config (PWA)" Visibility="Collapsed">
             <Grid Margin="0,12,0,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="340"/>

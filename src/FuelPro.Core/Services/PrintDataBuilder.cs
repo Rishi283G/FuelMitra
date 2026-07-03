@@ -221,12 +221,38 @@ public class PrintDataBuilder
                 GrossFuelSaleTotal = (decimal)grossFuelSaleTotal,
                 Expenses           = expensePrintRows,
                 Reconciliation     = rec,
-                SameDayRepayments  = (sameDayRepayments ?? new List<CreditorRepayment>()).Select(r => new CreditorRepaymentPrintDto
+                SameDayRepayments  = (sameDayRepayments ?? new List<CreditorRepayment>()).Select(r =>
                 {
-                    DebtorName = r.CreditorName,
-                    PaymentMode = r.PaymentMode,
-                    RefNo = r.ChequeNo ?? "",
-                    Amount = (decimal)r.Amount
+                    string refNo = "";
+                    if (r.PaymentMode == "PhonePe" || r.PaymentMode == "Credit Card" ||
+                        r.PaymentMode == "PineLabs Card" || r.PaymentMode == "PetroCard" ||
+                        r.PaymentMode == "Bank Transfer")
+                    {
+                        refNo = $"TID: {r.CardTid}, Batch: {r.CardBatch}";
+                    }
+                    else if (r.PaymentMode == "Cheque")
+                    {
+                        refNo = $"Chq: {r.ChequeNo}";
+                    }
+                    else if (r.PaymentMode == "Cash")
+                    {
+                        var denoms = new System.Collections.Generic.List<string>();
+                        if (r.Denom500 > 0) denoms.Add($"500×{r.Denom500}");
+                        if (r.Denom200 > 0) denoms.Add($"200×{r.Denom200}");
+                        if (r.Denom100 > 0) denoms.Add($"100×{r.Denom100}");
+                        if (r.Denom50  > 0) denoms.Add($"50×{r.Denom50}");
+                        if (r.Denom20  > 0) denoms.Add($"20×{r.Denom20}");
+                        if (r.Denom10  > 0) denoms.Add($"10×{r.Denom10}");
+                        if (r.Coins    > 0) denoms.Add($"Coins: {r.Coins}");
+                        refNo = denoms.Count > 0 ? string.Join(", ", denoms) : "Cash";
+                    }
+                    return new CreditorRepaymentPrintDto
+                    {
+                        DebtorName  = r.CreditorName,
+                        PaymentMode = r.PaymentMode,
+                        RefNo       = refNo,
+                        Amount      = (decimal)r.Amount
+                    };
                 }).ToList()
             };
         }

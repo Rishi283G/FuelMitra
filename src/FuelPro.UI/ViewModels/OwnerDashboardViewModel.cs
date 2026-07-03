@@ -29,6 +29,7 @@ public partial class OwnerDashboardViewModel : ObservableObject
     private readonly IDsmCalculationService _dsmCalculationService;
     private readonly IExpenseRepository _expenseRepo;
     private readonly IOwnerCalculationService _ownerCalcService;
+    private readonly ITidCalculationService _tidService;
     private readonly FuelPro.Sync.SyncEngine _syncEngine;
     private readonly PrintService _printService;
     private readonly IFinancialCalculationService _financialCalcService;
@@ -107,6 +108,7 @@ public partial class OwnerDashboardViewModel : ObservableObject
         _dsmCalculationService = App.Services.GetRequiredService<IDsmCalculationService>();
         _expenseRepo = App.Services.GetRequiredService<IExpenseRepository>();
         _ownerCalcService = App.Services.GetRequiredService<IOwnerCalculationService>();
+        _tidService = App.Services.GetRequiredService<ITidCalculationService>();
         _syncEngine = App.Services.GetRequiredService<FuelPro.Sync.SyncEngine>();
         _printService = App.Services.GetRequiredService<PrintService>();
         _financialCalcService = App.Services.GetRequiredService<IFinancialCalculationService>();
@@ -197,9 +199,29 @@ public partial class OwnerDashboardViewModel : ObservableObject
             var otherCashResult = await App.Services.GetRequiredService<IShiftOtherCashRepository>().GetByDateRangeAsync(StartDate.Date, EndDate.Date);
             var otherCashList = otherCashResult.Success && otherCashResult.Data != null ? otherCashResult.Data : new List<ShiftOtherCash>();
 
-            TotalDsmEntries = entries.Count;
+            var tidSheets = await _tidService.GetTidSheetsForRangeAsync(StartDate.Date, EndDate.Date);
+            var aggTidSheet = new BusinessDayTidSheet();
+            foreach (var s in tidSheets.Values)
+            {
+                aggTidSheet.PhonePeDirectMorning += s.PhonePeDirectMorning;
+                aggTidSheet.PhonePeDirectDay += s.PhonePeDirectDay;
+                aggTidSheet.PhonePeDirectNight += s.PhonePeDirectNight;
 
-            var result = _ownerCalcService.Calculate(entries, shiftExpenses, otherCashList);
+                aggTidSheet.PhonePeCardMorning += s.PhonePeCardMorning;
+                aggTidSheet.PhonePeCardDay += s.PhonePeCardDay;
+                aggTidSheet.PhonePeCardNight += s.PhonePeCardNight;
+
+                aggTidSheet.PineLabsCardMorning += s.PineLabsCardMorning;
+                aggTidSheet.PineLabsCardDay += s.PineLabsCardDay;
+                aggTidSheet.PineLabsCardNight += s.PineLabsCardNight;
+
+                aggTidSheet.PetroCardMorning += s.PetroCardMorning;
+                aggTidSheet.PetroCardDay += s.PetroCardDay;
+                aggTidSheet.PetroCardNight += s.PetroCardNight;
+            }
+
+            TotalDsmEntries = entries.Count;
+            var result = _ownerCalcService.Calculate(entries, shiftExpenses, otherCashList, aggTidSheet);
 
             TodayTotalSale = result.GrossSales;
             TodayTotalCollection = result.AdjustedCollection;

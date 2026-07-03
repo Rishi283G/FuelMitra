@@ -87,6 +87,9 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
   .rpt-ftr{padding:3px 12px;font-size:7px}
   .rpt-hdr,.tr-total td,.tr-recon-total td,.rpt-ftr,th,.kpi,.coll-item,.recon-box,.diff-ok,.diff-bad,.tr-sub td,.tr-shift td,.shift-section-header{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 }
+.tr-hint td{background:#fffbe6!important;color:#7a5500!important;font-style:italic;font-size:10px;border-bottom:1px dashed #e8c84a!important;padding:2px 7px!important}
+.tr-hint td:first-child{padding-left:18px!important}
+@media print{.tr-hint td{font-size:8.5px!important;padding:1px 3px!important}}
 </style>
 </head>
 <body>
@@ -170,11 +173,27 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
   </div>
   <hr class="div">
 
+
   <!-- SECTION 4: CREDITORS & EXPENSES -->
   <div class="g2" style="padding-top:14px">
     <div class="col">
       <div><div class="mini-hdr">Debtors Register</div>
         <table><thead><tr><th>DSM</th><th>Debtor Name</th><th>Slip No</th><th>Amount (&#8377;)</th></tr></thead><tbody id="tCred"></tbody></table>
+      </div>
+      <!-- Repayments inline below Debtors Register -->
+      <div id="secRepayments" style="display:none;">
+        <div class="mini-hdr">Additional Cash Received (Debtor Repayments)</div>
+        <table>
+          <thead>
+            <tr>
+              <th style="text-align:left;">Debtor Name</th>
+              <th>Mode</th>
+              <th>Ref / Details</th>
+              <th>Amount (&#8377;)</th>
+            </tr>
+          </thead>
+          <tbody id="tRepayments"></tbody>
+        </table>
       </div>
     </div>
     <div class="col">
@@ -378,6 +397,62 @@ function renderData(){
     div.innerHTML='<div class="coll-item-lbl">'+c.lbl+'</div><div class="coll-item-val">'+inrZ(c.val)+'</div>';
     cg.appendChild(div);
   });
+
+  // ── Debtor Repayments (inline, below Debtors Register) ──
+  var sameDayRepayments = getVal(d, 'repayments') || [];
+  var secRep = document.getElementById('secRepayments');
+  var tRep   = document.getElementById('tRepayments');
+  if (tRep && sameDayRepayments.length > 0) {
+    tRep.innerHTML = '';
+    if (secRep) secRep.style.display = 'block';
+    var repTot = 0;
+    sameDayRepayments.forEach(function(r) {
+      var mode = getVal(r, 'paymentMode') || '';
+      var refNo = '';
+      if (mode === 'PhonePe' || mode === 'Credit Card' || mode === 'PineLabs Card' || mode === 'PetroCard') {
+        refNo = 'TID: ' + (getVal(r, 'cardTid') || '') + ', Batch: ' + (getVal(r, 'cardBatch') || '');
+      } else if (mode === 'Cheque') {
+        refNo = 'Chq: ' + (getVal(r, 'chequeNo') || '');
+      } else if (mode === 'Cash') {
+        var denoms = [];
+        var d500 = getVal(r, 'denom500'); if (d500 > 0) denoms.push('500×' + d500);
+        var d200 = getVal(r, 'denom200'); if (d200 > 0) denoms.push('200×' + d200);
+        var d100 = getVal(r, 'denom100'); if (d100 > 0) denoms.push('100×' + d100);
+        var d50 = getVal(r, 'denom50');   if (d50 > 0)  denoms.push('50×' + d50);
+        var d20 = getVal(r, 'denom20');   if (d20 > 0)  denoms.push('20×' + d20);
+        var d10 = getVal(r, 'denom10');   if (d10 > 0)  denoms.push('10×' + d10);
+        var coins = getVal(r, 'coins');   if (coins > 0) denoms.push('Coins: ' + coins);
+        refNo = denoms.length > 0 ? denoms.join(', ') : 'Cash';
+      }
+      var hint = '';
+      if (mode === 'Cash')          hint = '\u2192 Added to Cash In Hand';
+      else if (mode === 'PhonePe') hint = '\u2192 Added to PhonePe collection';
+      else if (mode === 'PineLabs Card') hint = '\u2192 Added to PineLabs Card collection';
+      else if (mode === 'Credit Card')   hint = '\u2192 Added to Credit Card collection';
+      else if (mode === 'PetroCard')     hint = '\u2192 Added to PetroCard collection';
+      else if (mode === 'Bank Transfer') hint = '\u2192 Added to Bank Cash collection';
+      else if (mode === 'Cheque')        hint = '\u2139 Kept for record only (Cheque)';
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td style="text-align:left;">' + (getVal(r, 'creditorName') || '') + '</td>' +
+                     '<td>' + mode + '</td>' +
+                     '<td>' + (refNo || '\u2013') + '</td>' +
+                     '<td>' + inr(getVal(r, 'amount')) + '</td>';
+      tRep.appendChild(tr);
+      if (hint) {
+        var hintTr = document.createElement('tr');
+        hintTr.className = 'tr-hint';
+        hintTr.innerHTML = '<td colspan="4">' + hint + '</td>';
+        tRep.appendChild(hintTr);
+      }
+      if (mode !== 'Cheque') repTot += (getVal(r, 'amount') || 0);
+    });
+    var trTot = document.createElement('tr');
+    trTot.className = 'tr-total';
+    trTot.innerHTML = '<td colspan="3" style="text-align:left;">Total Additional Cash Received</td><td>' + inrZ(repTot) + '</td>';
+    tRep.appendChild(trTot);
+  } else {
+    if (secRep) secRep.style.display = 'none';
+  }
 
   // Creditors
   var ct=document.getElementById('tCred');ct.innerHTML='';var credTot=0;

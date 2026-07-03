@@ -20,6 +20,7 @@ export interface DsmUserProfile {
   FullName: string;
   MobileNumber: string;
   AssignedPump: number | null;
+  ConnectedPump: number | null;
   AssignedShift: 'A' | 'B' | 'C' | null;
   StationId: string;
 }

@@ -25,6 +25,7 @@ public partial class ReportsViewModel : ObservableObject
     private readonly ISettingsRepository _settingsRepo;
     private readonly IShiftAggregationService _aggregation;
     private readonly IFinancialCalculationService _financialCalcService;
+    private readonly ITidCalculationService _tidService;
 
     [ObservableProperty] private string _selectedReportType = "DSR"; // "DSR" or "MonthlyPL"
     [ObservableProperty] private DateTime _selectedDate = DateTime.Today;
@@ -51,6 +52,7 @@ public partial class ReportsViewModel : ObservableObject
         _settingsRepo = App.Services.GetRequiredService<ISettingsRepository>();
         _aggregation = App.Services.GetRequiredService<IShiftAggregationService>();
         _financialCalcService = App.Services.GetRequiredService<IFinancialCalculationService>();
+        _tidService = App.Services.GetRequiredService<ITidCalculationService>();
 
         // Populate Years (Current Year - 2 to Current Year + 2)
         var currYear = DateTime.Today.Year;
@@ -141,15 +143,14 @@ public partial class ReportsViewModel : ObservableObject
                 double totalMsLitres = totalMsILitres + totalMsIILitres;
 
                 // 2. Collections
-                var summaryRows = _aggregation.BuildDsmSummaryRows(entries);
-                var totalsRow = _aggregation.BuildDsmSummaryTotalRow(summaryRows);
-                var phonePeTotal = totalsRow.PhonePe;
-                var phonePeCardMorningTotal = totalsRow.PhonePeCardMorning;
-                var phonePeCardNightTotal = totalsRow.PhonePeCardNight;
-                var creditCardMorningTotal = totalsRow.CreditCardMorning;
-                var creditCardNightTotal = totalsRow.CreditCardNight;
-                var creditCardTotal = creditCardMorningTotal + creditCardNightTotal;
-                var petroCardTotal = totalsRow.PetroCard;
+                var tidSheet = _tidService.GetTidSheetAsync(SelectedDate.Date).GetAwaiter().GetResult();
+                var phonePeTotal = tidSheet.PhonePeDirectMorning + tidSheet.PhonePeDirectDay + tidSheet.PhonePeDirectNight;
+                var phonePeCardMorningTotal = tidSheet.PhonePeCardMorning + tidSheet.PhonePeCardDay;
+                var phonePeCardNightTotal = tidSheet.PhonePeCardNight;
+                var creditCardMorningTotal = tidSheet.PineLabsCardMorning + tidSheet.PineLabsCardDay;
+                var creditCardNightTotal = tidSheet.PineLabsCardNight;
+                var creditCardTotal = tidSheet.PineLabsCardTotal;
+                var petroCardTotal = tidSheet.PetroCardTotal;
 
                 var cash1Agg = _aggregation.AggregateCash(entries, "Cash1");
                 var bankCashTotal = cash1Agg.GrandTotal;
@@ -172,15 +173,28 @@ public partial class ReportsViewModel : ObservableObject
                 // 5. Testing
                 var msTesting = entries.SelectMany(e => e.TestingEntries).Where(t => t.FuelType == "MS").Sum(t => t.Amount);
                 var hsdTesting = entries.SelectMany(e => e.TestingEntries).Where(t => t.FuelType == "HSD").Sum(t => t.Amount);
-                var totalTesting = msTesting + hsdTesting;
+                var cngTesting = entries.SelectMany(e => e.TestingEntries).Where(t => t.FuelType == "CNG").Sum(t => t.Amount);
+                var totalTesting = msTesting + hsdTesting + cngTesting;
 
-                // 6. DSM Shortage
+                // 6. DSM Shortage — computed live from child collections, not stored Mismatch field
                 double totalDsmShort = 0;
                 var mismatchGroups = entries.GroupBy(e => new { e.ShiftId, e.DsmName, GroupPumpId = e.ReconciledToPumpId ?? e.PumpId });
                 foreach (var g in mismatchGroups)
                 {
-                    var sumMismatch = g.Sum(e => (double)e.Mismatch);
-                    if (sumMismatch < 0) totalDsmShort += Math.Abs(sumMismatch);
+                    var gs = g.SelectMany(e => e.NozzleReadings).Sum(n => n.Amount);
+                    var c1 = g.SelectMany(e => e.CashDenominations).Where(c => c.CashType == "Cash1").Sum(c => c.TotalAmount);
+                    var c2 = g.SelectMany(e => e.CashDenominations).Where(c => c.CashType == "Cash2").Sum(c => c.TotalAmount);
+                    var pp = g.Sum(e => (e.PaymentCollection?.PhonePeMorning ?? 0) + (e.PaymentCollection?.PhonePeNight ?? 0)
+                                     + (e.PaymentCollection?.PhonePeCardMorning ?? 0) + (e.PaymentCollection?.PhonePeCardNight ?? 0));
+                    var cc = g.Sum(e => (e.PaymentCollection?.CreditCardMorning ?? 0) + (e.PaymentCollection?.CreditCardNight ?? 0)
+                                     + (e.PaymentCollection?.PetroCardMorning ?? 0) + (e.PaymentCollection?.PetroCardNight ?? 0));
+                    var cd = g.Sum(e => e.PaymentCollection?.CashDeposit ?? 0);
+                    var totalColl = (double)(pp + cc + cd + c1 + c2)
+                                  + g.SelectMany(e => e.DebitEntries).Sum(d => d.Amount)
+                                  + g.SelectMany(e => e.TestingEntries).Sum(t => t.Amount)
+                                  + g.SelectMany(e => e.Expenses).Sum(ex => ex.Amount);
+                    var mis = totalColl - gs;
+                    if (mis < -0.01) totalDsmShort += Math.Abs(mis);
                 }
 
                 var reconciliationTotalAmount = totalDigitalAndCash + creditorsTotal + expensesTotal + totalTesting + totalDsmShort;

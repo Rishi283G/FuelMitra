@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FuelPro.Core.Models;
 using FuelPro.Core.Repositories;
+using FuelPro.Core.Services;
 using FuelPro.UI.Printing;
 using Microsoft.Extensions.DependencyInjection;
 using System.Collections.ObjectModel;
@@ -9,6 +10,13 @@ using System.Windows;
 using Serilog;
 
 namespace FuelPro.UI.ViewModels;
+
+public enum CardSettlementSlot
+{
+    Morning,
+    Day,
+    Night
+}
 
 public partial class CardSettlementItem : ObservableObject
 {
@@ -20,6 +28,8 @@ public partial class CardSettlementItem : ObservableObject
     [ObservableProperty] private string? _batch;
     
     public PaymentCollection PaymentCollection { get; set; } = null!;
+    public bool IsNightShift { get; set; }
+    public CardSettlementSlot Slot { get; set; }
 }
 
 public partial class CardSettlementViewModel : ObservableObject
@@ -28,6 +38,7 @@ public partial class CardSettlementViewModel : ObservableObject
     private readonly IDsmEntryRepository _dsmRepo;
     private readonly IPaymentRepository _paymentRepo;
     private readonly PrintService _printService;
+    private readonly ITidCalculationService _tidService;
     private readonly ILogger _logger = Log.ForContext<CardSettlementViewModel>();
 
     [ObservableProperty] private DateTime _selectedDate = DateTime.Today;
@@ -55,6 +66,7 @@ public partial class CardSettlementViewModel : ObservableObject
         _dsmRepo = App.Services.GetRequiredService<IDsmEntryRepository>();
         _paymentRepo = App.Services.GetRequiredService<IPaymentRepository>();
         _printService = App.Services.GetRequiredService<PrintService>();
+        _tidService = App.Services.GetRequiredService<ITidCalculationService>();
 
         _ = LoadShiftDataAsync();
     }
@@ -79,115 +91,78 @@ public partial class CardSettlementViewModel : ObservableObject
 
         try
         {
-            // 1. Fetch previous day's last shift (Last Night)
-            var prevDate = SelectedDate.AddDays(-1);
-            var prevShiftsResult = await _shiftRepo.GetShiftsByDateRangeAsync(prevDate, prevDate);
-            var prevShifts = prevShiftsResult.Success && prevShiftsResult.Data != null 
-                ? prevShiftsResult.Data.OrderBy(s => s.ShiftType).ToList() 
-                : new List<Shift>();
-            var prevLastShift = prevShifts.LastOrDefault();
+            // 1. Morning: yesterday Shift B
+            var prevDate = SelectedDate.Date.AddDays(-1);
+            var morningShiftRes = await _shiftRepo.GetShiftAsync(prevDate, "B");
+            
+            // 2. Day: today Shift A
+            var dayShiftRes = await _shiftRepo.GetShiftAsync(SelectedDate.Date, "A");
+            
+            // 3. Night: today Shift B
+            var nightShiftRes = await _shiftRepo.GetShiftAsync(SelectedDate.Date, "B");
 
-            // 2. Fetch today's shifts (Today First & Second Shifts)
-            var todayShiftsResult = await _shiftRepo.GetShiftsByDateRangeAsync(SelectedDate, SelectedDate);
-            var todayShifts = todayShiftsResult.Success && todayShiftsResult.Data != null 
-                ? todayShiftsResult.Data.OrderBy(s => s.ShiftType).ToList() 
-                : new List<Shift>();
+            var slotsToLoad = new List<(Shift shift, CardSettlementSlot slot, string label)>();
+            if (morningShiftRes.Success && morningShiftRes.Data != null)
+                slotsToLoad.Add((morningShiftRes.Data, CardSettlementSlot.Morning, "Morning (12am - 8am)"));
+            if (dayShiftRes.Success && dayShiftRes.Data != null)
+                slotsToLoad.Add((dayShiftRes.Data, CardSettlementSlot.Day, "Day (8am - 8pm)"));
+            if (nightShiftRes.Success && nightShiftRes.Data != null)
+                slotsToLoad.Add((nightShiftRes.Data, CardSettlementSlot.Night, "Night (8pm - 12am)"));
 
-            var allShiftsToLoad = new List<(Shift Shift, string Label)>();
-            if (prevLastShift != null)
-            {
-                allShiftsToLoad.Add((prevLastShift, "Last Night"));
-            }
-            foreach (var s in todayShifts)
-            {
-                string label = s.ShiftType == "A" ? "1st Shift" : "2nd Shift";
-                allShiftsToLoad.Add((s, label));
-            }
-
-            if (allShiftsToLoad.Count == 0)
+            if (slotsToLoad.Count == 0)
             {
                 StatusMessage = "No shifts found for today or yesterday.";
                 return;
             }
 
-            // Set current shift context for locking check (use today's primary shift A or first available)
-            _currentShift = todayShifts.FirstOrDefault() ?? prevLastShift;
-            IsShiftLocked = todayShifts.Any(s => s.IsLocked);
+            _currentShift = dayShiftRes.Data ?? nightShiftRes.Data ?? morningShiftRes.Data;
+            IsShiftLocked = slotsToLoad.Any(s => s.shift.IsLocked);
 
-            foreach (var item in allShiftsToLoad)
+            var tidSheet = await _tidService.GetTidSheetAsync(SelectedDate);
+
+            // 1. Credit Cards
+            foreach (var item in tidSheet.CardPayments)
             {
-                var entriesResult = await _dsmRepo.GetEntriesForShiftAsync(item.Shift.ShiftId);
-                if (entriesResult.Success && entriesResult.Data != null)
+                CardPayments.Add(new CardSettlementItem
                 {
-                    var entries = entriesResult.Data.OrderBy(e => e.PumpId).ToList();
-                    foreach (var entry in entries)
-                    {
-                        var pc = entry.PaymentCollection;
-                        if (pc == null) continue;
+                    RomanIndex = item.RomanIndex,
+                    DsmName = $"{item.DsmName} ({item.ShiftLabel})",
+                    Amount = item.Amount,
+                    Tid = item.Tid,
+                    Batch = item.Batch,
+                    PaymentCollection = item.PaymentCollection,
+                    Slot = ParseSlot(item.Slot)
+                });
+            }
 
-                        pc.DsmEntry = entry; // backlink
+            // 2. PhonePe
+            foreach (var item in tidSheet.PhonePePayments)
+            {
+                PhonePePayments.Add(new CardSettlementItem
+                {
+                    RomanIndex = item.RomanIndex,
+                    DsmName = $"{item.DsmName} ({item.ShiftLabel})",
+                    Amount = item.Amount,
+                    Tid = item.Tid,
+                    Batch = item.Batch,
+                    PaymentCollection = item.PaymentCollection,
+                    Slot = ParseSlot(item.Slot)
+                });
+            }
 
-                        // For last night shift or today's 2nd shift, load Night payments. 
-                        // For 1st shift, load Morning payments.
-                        double cardAmount = 0;
-                        double phonePeAmount = 0;
-                        double petroAmount = 0;
-
-                        if (item.Label == "Last Night" || item.Shift.ShiftType != "A")
-                        {
-                            cardAmount = pc.CreditCardNight;
-                            phonePeAmount = pc.PhonePeNight + pc.PhonePeCardNight;
-                        }
-                        else
-                        {
-                            cardAmount = pc.CreditCardMorning;
-                            phonePeAmount = pc.PhonePeMorning + pc.PhonePeCardMorning;
-                        }
-                        petroAmount = pc.PetroCard; // PetroCard is daily
-
-                        // 1. Credit Cards
-                        if (cardAmount > 0)
-                        {
-                            CardPayments.Add(new CardSettlementItem
-                            {
-                                RomanIndex = ToRoman(entry.PumpId),
-                                DsmName = $"{entry.DsmName} ({item.Label})",
-                                Amount = cardAmount,
-                                Tid = pc.CardTid ?? string.Empty,
-                                Batch = pc.CardBatch ?? string.Empty,
-                                PaymentCollection = pc
-                            });
-                        }
-
-                        // 2. PhonePe / Digital
-                        if (phonePeAmount > 0)
-                        {
-                            PhonePePayments.Add(new CardSettlementItem
-                            {
-                                RomanIndex = ToRoman(entry.PumpId),
-                                DsmName = $"{entry.DsmName} ({item.Label})",
-                                Amount = phonePeAmount,
-                                Tid = pc.PhonePeTid ?? string.Empty,
-                                Batch = pc.PhonePeBatch ?? string.Empty,
-                                PaymentCollection = pc
-                            });
-                        }
-
-                        // 3. PetroCard
-                        if (petroAmount > 0)
-                        {
-                            PetroCardPayments.Add(new CardSettlementItem
-                            {
-                                RomanIndex = ToRoman(entry.PumpId),
-                                DsmName = $"{entry.DsmName} ({item.Label})",
-                                Amount = petroAmount,
-                                Tid = pc.PetroCardTid ?? string.Empty,
-                                Batch = pc.PetroCardBatch ?? string.Empty,
-                                PaymentCollection = pc
-                            });
-                        }
-                    }
-                }
+            // 3. PetroCard
+            foreach (var item in tidSheet.PetroCardPayments)
+            {
+                PetroCardPayments.Add(new CardSettlementItem
+                {
+                    RomanIndex = item.RomanIndex,
+                    DsmName = $"{item.DsmName} ({item.ShiftLabel})",
+                    Amount = item.Amount,
+                    Tid = item.Tid,
+                    Batch = item.Batch,
+                    PaymentCollection = item.PaymentCollection,
+                    Slot = ParseSlot(item.Slot)
+                });
             }
 
             HasData = CardPayments.Count > 0 || PhonePePayments.Count > 0 || PetroCardPayments.Count > 0;
@@ -207,6 +182,17 @@ public partial class CardSettlementViewModel : ObservableObject
         {
             IsLoading = false;
         }
+    }
+
+    private static CardSettlementSlot ParseSlot(string slot)
+    {
+        return slot switch
+        {
+            "Morning" => CardSettlementSlot.Morning,
+            "Day" => CardSettlementSlot.Day,
+            "Night" => CardSettlementSlot.Night,
+            _ => CardSettlementSlot.Morning
+        };
     }
 
     private void RecalculateTotals()
@@ -236,7 +222,7 @@ public partial class CardSettlementViewModel : ObservableObject
 
         try
         {
-            // Gather all payment collections to save
+            // Gather unique payment collections
             var uniqueCollections = CardPayments.Select(x => x.PaymentCollection)
                 .Concat(PhonePePayments.Select(x => x.PaymentCollection))
                 .Concat(PetroCardPayments.Select(x => x.PaymentCollection))
@@ -244,30 +230,65 @@ public partial class CardSettlementViewModel : ObservableObject
                 .Select(g => g.First())
                 .ToList();
 
+            foreach (var item in CardPayments)
+            {
+                var pc = item.PaymentCollection;
+                if (item.Slot == CardSettlementSlot.Morning || item.Slot == CardSettlementSlot.Day)
+                {
+                    pc.CreditCardTidMorning = item.Tid;
+                    pc.CreditCardBatchMorning = item.Batch;
+                    pc.CardTid = item.Tid;
+                    pc.CardBatch = item.Batch;
+                }
+                else if (item.Slot == CardSettlementSlot.Night)
+                {
+                    pc.CreditCardTidNight = item.Tid;
+                    pc.CreditCardBatchNight = item.Batch;
+                    pc.CardTid = item.Tid;
+                    pc.CardBatch = item.Batch;
+                }
+            }
+
+            foreach (var item in PhonePePayments)
+            {
+                var pc = item.PaymentCollection;
+                if (item.Slot == CardSettlementSlot.Morning || item.Slot == CardSettlementSlot.Day)
+                {
+                    pc.PhonePeTidMorning = item.Tid;
+                    pc.PhonePeBatchMorning = item.Batch;
+                    pc.PhonePeTid = item.Tid;
+                    pc.PhonePeBatch = item.Batch;
+                }
+                else if (item.Slot == CardSettlementSlot.Night)
+                {
+                    pc.PhonePeTidNight = item.Tid;
+                    pc.PhonePeBatchNight = item.Batch;
+                    pc.PhonePeTid = item.Tid;
+                    pc.PhonePeBatch = item.Batch;
+                }
+            }
+
+            foreach (var item in PetroCardPayments)
+            {
+                var pc = item.PaymentCollection;
+                if (item.Slot == CardSettlementSlot.Morning || item.Slot == CardSettlementSlot.Day)
+                {
+                    pc.PetroCardTidMorning = item.Tid;
+                    pc.PetroCardBatchMorning = item.Batch;
+                    pc.PetroCardTid = item.Tid;
+                    pc.PetroCardBatch = item.Batch;
+                }
+                else if (item.Slot == CardSettlementSlot.Night)
+                {
+                    pc.PetroCardTidNight = item.Tid;
+                    pc.PetroCardBatchNight = item.Batch;
+                    pc.PetroCardTid = item.Tid;
+                    pc.PetroCardBatch = item.Batch;
+                }
+            }
+
             foreach (var pc in uniqueCollections)
             {
-                // Sync TID/Batch from edited lists back to model
-                var cardItem = CardPayments.FirstOrDefault(x => x.PaymentCollection.PaymentId == pc.PaymentId);
-                if (cardItem != null)
-                {
-                    pc.CardTid = cardItem.Tid;
-                    pc.CardBatch = cardItem.Batch;
-                }
-
-                var phonePeItem = PhonePePayments.FirstOrDefault(x => x.PaymentCollection.PaymentId == pc.PaymentId);
-                if (phonePeItem != null)
-                {
-                    pc.PhonePeTid = phonePeItem.Tid;
-                    pc.PhonePeBatch = phonePeItem.Batch;
-                }
-
-                var petroItem = PetroCardPayments.FirstOrDefault(x => x.PaymentCollection.PaymentId == pc.PaymentId);
-                if (petroItem != null)
-                {
-                    pc.PetroCardTid = petroItem.Tid;
-                    pc.PetroCardBatch = petroItem.Batch;
-                }
-
                 var saveResult = await _paymentRepo.SavePaymentAsync(pc);
                 if (!saveResult.Success)
                 {
@@ -294,13 +315,13 @@ public partial class CardSettlementViewModel : ObservableObject
         var payload = new
         {
             Date = SelectedDate.ToString("yyyy-MM-dd"),
-            ShiftLabel = SelectedShift,
+            ShiftLabel = "Combined (Morning, Day, Night)",
             CardTotal = CardTotal,
             PhonePeTotal = PhonePeTotal,
             PetroCardTotal = PetroCardTotal,
-            Cards = CardPayments.Select(c => new { c.RomanIndex, Name = c.DsmName, c.Tid, c.Batch, c.Amount }).ToList(),
-            PhonePes = PhonePePayments.Select(p => new { p.RomanIndex, Name = p.DsmName, p.Tid, p.Batch, p.Amount }).ToList(),
-            PetroCards = PetroCardPayments.Select(pc => new { pc.RomanIndex, Name = pc.DsmName, pc.Tid, pc.Batch, pc.Amount }).ToList()
+            Cards = CardPayments.Select(c => new { c.RomanIndex, Name = c.DsmName, c.Tid, c.Batch, c.Amount, Slot = c.Slot.ToString() }).ToList(),
+            PhonePes = PhonePePayments.Select(p => new { p.RomanIndex, Name = p.DsmName, p.Tid, p.Batch, p.Amount, Slot = p.Slot.ToString() }).ToList(),
+            PetroCards = PetroCardPayments.Select(pc => new { pc.RomanIndex, Name = pc.DsmName, pc.Tid, pc.Batch, pc.Amount, Slot = pc.Slot.ToString() }).ToList()
         };
 
         _printService.PrintCardSettlement(payload);
@@ -339,7 +360,7 @@ public partial class CardSettlementViewModel : ObservableObject
             var printData = new FuelPro.Core.DTOs.GenericGridPrintData
             {
                 Title = "Card & Digital Settlement Report",
-                Subtitle = $"Date: {SelectedDate:dd-MMM-yyyy}  |  Shift: {SelectedShift}",
+                Subtitle = $"Date: {SelectedDate:dd-MMM-yyyy}  |  Morning/Day/Night Settlement",
                 SummaryCards = summaryCards,
                 Headers = headers,
                 Rows = rows,

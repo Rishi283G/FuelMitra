@@ -40,5 +40,8 @@ public class CreditorRepayment
     public int Denom10 { get; set; }
     public int Coins { get; set; }
 
+    [MaxLength(50)]
+    public string? ShiftNumber { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.Now;
 }

@@ -27,6 +27,7 @@ public partial class FinalCalculationViewModel : ObservableObject
     private readonly IShiftAggregationService _aggregation;
     private readonly ICreditorRepository _creditorRepo;
     private readonly ICreditorRepaymentRepository _repaymentRepo;
+    private readonly ITidCalculationService _tidService;
     private readonly ILogger _logger = Log.ForContext<FinalCalculationViewModel>();
 
     [ObservableProperty] private DateTime _selectedDate = DateTime.Today;
@@ -128,6 +129,7 @@ public partial class FinalCalculationViewModel : ObservableObject
         _aggregation = App.Services.GetRequiredService<IShiftAggregationService>();
         _creditorRepo = App.Services.GetRequiredService<ICreditorRepository>();
         _repaymentRepo = App.Services.GetRequiredService<ICreditorRepaymentRepository>();
+        _tidService = App.Services.GetRequiredService<ITidCalculationService>();
     }
 
     partial void OnSelectedDateChanged(DateTime value) => _ = LoadShiftDataAsync();
@@ -243,8 +245,8 @@ public partial class FinalCalculationViewModel : ObservableObject
                     Amount = o.Amount,
                     IsEditable = o.IsEditable
                 }));
-            OtherCashTotal = otherCash.Sum(o => o.Amount);
-            GrandTotalSaleAmount = TotalFuelSaleAmount + OtherCashTotal;
+            OtherCashTotal = 0;
+            GrandTotalSaleAmount = TotalFuelSaleAmount;
 
             // TABLE F — Reconciliation
             RecalcReconciliation();
@@ -282,30 +284,175 @@ public partial class FinalCalculationViewModel : ObservableObject
         var msTesting = _loadedEntries.SelectMany(e => e.TestingEntries).Where(t => t.FuelType == "MS").Sum(t => t.Amount);
         var hsdTesting = _loadedEntries.SelectMany(e => e.TestingEntries).Where(t => t.FuelType == "HSD").Sum(t => t.Amount);
         var cngTesting = _loadedEntries.SelectMany(e => e.TestingEntries).Where(t => t.FuelType == "CNG").Sum(t => t.Amount);
-        var phonePeCardMorning = DsmSummaryRows.Sum(r => r.PhonePeCardMorning);
-        var phonePeCardNight = DsmSummaryRows.Sum(r => r.PhonePeCardNight);
-        var phonePeMorning = DsmSummaryRows.Sum(r => r.PhonePeMorning);
-        var phonePeNight = DsmSummaryRows.Sum(r => r.PhonePeNight);
-        var petroCard = DsmSummaryRows.Sum(r => r.PetroCard);
+        
+        var tidSheetToday = _tidService.GetTidSheetAsync(SelectedDate.Date).GetAwaiter().GetResult();
+        var tidSheetTomorrow = _tidService.GetTidSheetAsync(SelectedDate.Date.AddDays(1)).GetAwaiter().GetResult();
+
+        double phonePeCardMorning = 0;
+        double phonePeCardNight = 0;
+        double phonePeMorning = 0;
+        double phonePeNight = 0;
+        double petroCard = 0;
+        double creditCardMorning = 0;
+        double creditCardNight = 0;
+
+        if (SelectedShift == "A")
+        {
+            phonePeCardMorning = tidSheetToday.PhonePeCardDay;
+            phonePeCardNight = 0;
+            phonePeMorning = tidSheetToday.PhonePeDirectDay;
+            phonePeNight = 0;
+            petroCard = tidSheetToday.PetroCardDay;
+            creditCardMorning = tidSheetToday.PineLabsCardDay;
+            creditCardNight = 0;
+        }
+        else
+        {
+            phonePeCardMorning = tidSheetTomorrow.PhonePeCardMorning;
+            phonePeCardNight = tidSheetToday.PhonePeCardNight;
+            phonePeMorning = tidSheetTomorrow.PhonePeDirectMorning;
+            phonePeNight = tidSheetToday.PhonePeDirectNight;
+            petroCard = tidSheetTomorrow.PetroCardMorning + tidSheetToday.PetroCardNight;
+            creditCardMorning = tidSheetTomorrow.PineLabsCardMorning;
+            creditCardNight = tidSheetToday.PineLabsCardNight;
+        }
+
         var debit = CreditorsTotal;
-        var creditCardMorning = DsmSummaryRows.Sum(r => r.CreditCardMorning);
-        var creditCardNight = DsmSummaryRows.Sum(r => r.CreditCardNight);
+
+        // Repayments for this shift (already filtered by SelectedShift in LoadDebtorRepaymentsAsync)
+        double cashRepayments = 0;
+        double phonePeRepayments = 0;
+        double creditCardRepayments = 0;
+        double petroCardRepayments = 0;
+        double bankCashRepayments = 0;
+
+        foreach (var r in DebtorRepayments)
+        {
+            string mode = r.PaymentMode ?? "";
+            if (string.Equals(mode, "Cash", StringComparison.OrdinalIgnoreCase))
+            {
+                cashRepayments += r.Amount;
+            }
+            else if (string.Equals(mode, "PhonePe", StringComparison.OrdinalIgnoreCase) || 
+                     string.Equals(mode, "PhonePe UPI", StringComparison.OrdinalIgnoreCase))
+            {
+                phonePeRepayments += r.Amount;
+            }
+            else if (string.Equals(mode, "Credit Card", StringComparison.OrdinalIgnoreCase) || 
+                     string.Equals(mode, "PineLabs Card", StringComparison.OrdinalIgnoreCase) || 
+                     string.Equals(mode, "PineLab Card", StringComparison.OrdinalIgnoreCase))
+            {
+                creditCardRepayments += r.Amount;
+            }
+            else if (string.Equals(mode, "PetroCard", StringComparison.OrdinalIgnoreCase) || 
+                     string.Equals(mode, "Petro Card", StringComparison.OrdinalIgnoreCase))
+            {
+                petroCardRepayments += r.Amount;
+            }
+            else if (string.Equals(mode, "Bank Transfer", StringComparison.OrdinalIgnoreCase))
+            {
+                bankCashRepayments += r.Amount;
+            }
+        }
+
+        // Silent addition to respective fields
+        double displayCashInHand = Cash2Total + cashRepayments;
+        double displayBankCash = Cash1Total + bankCashRepayments;
+        double displayPetroCard = petroCard + petroCardRepayments;
+        
+        double displayPhonePeMorning = phonePeMorning;
+        double displayPhonePeNight = phonePeNight;
+        if (SelectedShift == "A") displayPhonePeMorning += phonePeRepayments;
+        else displayPhonePeNight += phonePeRepayments;
+
+        double displayCreditCardMorning = creditCardMorning;
+        double displayCreditCardNight = creditCardNight;
+        if (SelectedShift == "A") displayCreditCardMorning += creditCardRepayments;
+        else displayCreditCardNight += creditCardRepayments;
+
+        // Build reconciliation rows
+        var reconRows = new List<ReconciliationRowDto>();
+        reconRows.Add(new ReconciliationRowDto { Description = "MS Testing", Amount = msTesting });
+        reconRows.Add(new ReconciliationRowDto { Description = "HSD Testing", Amount = hsdTesting });
+        reconRows.Add(new ReconciliationRowDto { Description = "CNG Testing", Amount = cngTesting });
+        
+        reconRows.Add(new ReconciliationRowDto { Description = "Phone Pe Card (Morning)", Amount = phonePeCardMorning });
+        reconRows.Add(new ReconciliationRowDto { Description = "Phone Pe Card (Night)", Amount = phonePeCardNight });
+        
+        string ppMorningDesc = SelectedShift == "A" && phonePeRepayments > 0 
+            ? $"Phone Pe (Morning) (Repayment: ₹{phonePeRepayments:F0})" 
+            : "Phone Pe (Morning)";
+        reconRows.Add(new ReconciliationRowDto { Description = ppMorningDesc, Amount = displayPhonePeMorning });
+        
+        string ppNightDesc = SelectedShift == "B" && phonePeRepayments > 0 
+            ? $"Phone Pe (Night) (Repayment: ₹{phonePeRepayments:F0})" 
+            : "Phone Pe (Night)";
+        reconRows.Add(new ReconciliationRowDto { Description = ppNightDesc, Amount = displayPhonePeNight });
+        
+        string petroDesc = petroCardRepayments > 0 
+            ? $"P. Card (Repayment: ₹{petroCardRepayments:F0})" 
+            : "P. Card";
+        reconRows.Add(new ReconciliationRowDto { Description = petroDesc, Amount = displayPetroCard });
+        
+        reconRows.Add(new ReconciliationRowDto { Description = "Debit", Amount = debit });
+        
+        string ccMorningDesc = SelectedShift == "A" && creditCardRepayments > 0 
+            ? $"PineLab Card (Morning) (Repayment: ₹{creditCardRepayments:F0})" 
+            : "PineLab Card (Morning)";
+        reconRows.Add(new ReconciliationRowDto { Description = ccMorningDesc, Amount = displayCreditCardMorning });
+        
+        string ccNightDesc = SelectedShift == "B" && creditCardRepayments > 0 
+            ? $"PineLab Card (Night) (Repayment: ₹{creditCardRepayments:F0})" 
+            : "PineLab Card (Night)";
+        reconRows.Add(new ReconciliationRowDto { Description = ccNightDesc, Amount = displayCreditCardNight });
+        
+        string bankCashDesc = bankCashRepayments > 0 
+            ? $"Bank Cash (Repayment: ₹{bankCashRepayments:F0})" 
+            : "Bank Cash";
+        reconRows.Add(new ReconciliationRowDto { Description = bankCashDesc, Amount = displayBankCash });
+        
+        string cashInHandDesc = cashRepayments > 0 
+            ? $"Cash In Hand (Repayment: ₹{cashRepayments:F0})" 
+            : "Cash In Hand";
+        reconRows.Add(new ReconciliationRowDto { Description = cashInHandDesc, Amount = displayCashInHand });
+        
+        reconRows.Add(new ReconciliationRowDto { Description = "Expenses", Amount = ExpensesTotal });
 
         double totalDsmShort = 0;
         var mismatchGroups = _loadedEntries.GroupBy(e => new { e.ShiftId, e.DsmName, GroupPumpId = e.ReconciledToPumpId ?? e.PumpId });
         foreach (var g in mismatchGroups)
         {
-            var sumMismatch = g.Sum(e => (double)e.Mismatch);
-            if (sumMismatch < 0)
+            var grossSales = g.SelectMany(e => e.NozzleReadings).Sum(n => n.Amount);
+            var cash1Total = g.SelectMany(e => e.CashDenominations).Where(c => c.CashType == "Cash1").Sum(c => c.TotalAmount);
+            var cash2Total = g.SelectMany(e => e.CashDenominations).Where(c => c.CashType == "Cash2").Sum(c => c.TotalAmount);
+            var physicalCash = cash1Total + cash2Total;
+            
+            var phonePe = g.Sum(e => (e.PaymentCollection?.PhonePeMorning ?? 0) 
+                                   + (e.PaymentCollection?.PhonePeNight ?? 0) 
+                                   + (e.PaymentCollection?.PhonePeCardMorning ?? 0) 
+                                   + (e.PaymentCollection?.PhonePeCardNight ?? 0));
+                                   
+            var creditCard = g.Sum(e => (e.PaymentCollection?.CreditCardMorning ?? 0) 
+                                       + (e.PaymentCollection?.CreditCardNight ?? 0) 
+                                       + (e.PaymentCollection?.PetroCardMorning ?? 0) 
+                                       + (e.PaymentCollection?.PetroCardNight ?? 0));
+                                       
+            var cashDeposit = g.Sum(e => e.PaymentCollection?.CashDeposit ?? 0);
+            var totalInDirect = (double)(phonePe + creditCard + cashDeposit + physicalCash);
+            
+            var totalCreditors = g.SelectMany(e => e.DebitEntries).Sum(d => d.Amount);
+            var totalTesting = g.SelectMany(e => e.TestingEntries).Sum(t => t.Amount);
+            var totalExpenses = g.SelectMany(e => e.Expenses).Sum(ex => ex.Amount);
+            
+            var totalCollection = totalInDirect + totalCreditors + totalTesting + totalExpenses;
+            var mismatch = totalCollection - grossSales;
+            
+            if (mismatch < -0.01)
             {
-                totalDsmShort += Math.Abs(sumMismatch);
+                totalDsmShort += Math.Abs(mismatch);
             }
         }
         TotalDsmShort = totalDsmShort;
-        var reconRows = _aggregation.BuildReconciliationRows(
-            msTesting, hsdTesting, cngTesting, phonePeCardMorning, phonePeCardNight, phonePeMorning, phonePeNight, petroCard,
-            debit, creditCardMorning, creditCardNight, Cash1Total, Cash2Total, ExpensesTotal);
-            
         if (TotalDsmShort > 0.01)
         {
             reconRows.Add(new ReconciliationRowDto { Description = "Total DSM Short", Amount = TotalDsmShort });
@@ -314,11 +461,11 @@ public partial class FinalCalculationViewModel : ObservableObject
         ReconciliationRows = new ObservableCollection<ReconciliationRowDto>(reconRows);
         ReconciliationTotal = reconRows.Sum(r => r.Amount);
 
-        GrossSaleTotal = IncludeOtherCashInGrossSale
-            ? TotalFuelSaleAmount + OtherCashTotal
-            : TotalFuelSaleAmount;
+        // Adjust GrossSaleTotal to include repayments (excluding cheque) so they balance
+        double repaymentsReconciled = cashRepayments + phonePeRepayments + creditCardRepayments + petroCardRepayments + bankCashRepayments;
+        GrossSaleTotal = TotalFuelSaleAmount + repaymentsReconciled;
 
-        Difference = _aggregation.CalculateDifference(GrossSaleTotal, ReconciliationTotal);
+        Difference = ReconciliationTotal - GrossSaleTotal;
         IsBalanced = Math.Abs(Difference) < 0.01;
     }
 
@@ -525,7 +672,8 @@ public partial class FinalCalculationViewModel : ObservableObject
         var repaymentsRes = await _repaymentRepo.GetByDateAsync(SelectedDate.Date);
         if (repaymentsRes.Success && repaymentsRes.Data != null)
         {
-            foreach (var r in repaymentsRes.Data)
+            var filtered = repaymentsRes.Data.Where(r => string.IsNullOrEmpty(r.ShiftNumber) || r.ShiftNumber == SelectedShift);
+            foreach (var r in filtered)
             {
                 DebtorRepayments.Add(r);
             }
@@ -584,6 +732,7 @@ public partial class FinalCalculationViewModel : ObservableObject
         {
             CreditorName = NewDebtorName.Trim(),
             RepaymentDate = SelectedDate.Date,
+            ShiftNumber = SelectedShift,
             PaymentMode = NewRepaymentMode,
             ChequeNo = NewRepaymentMode == "Cheque" ? NewChequeNumber?.Trim() : null,
             Amount = NewRepaymentAmount,
@@ -719,40 +868,113 @@ public partial class FinalCalculationViewModel : ObservableObject
             };
         }
 
-        // HSD Group (Diesel)
-        var hsdGroup = new NozzleGroupDto
-        {
-            GroupName = "Diesel (Tank 3)",
-            FuelType = "Diesel",
-            Dip = hsdTank?.ClosingDipMM ?? 0,
-            Stock = hsdTank?.ClosingStockLitres ?? 0
-        };
-        hsdGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(3, "Diesel"), CreateItem(4, "Diesel"), CreateItem(7, "Diesel"), CreateItem(8, "Diesel") });
-        hsdGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(11, "Diesel"), CreateItem(12, "Diesel") });
-        groups.Add(hsdGroup);
-
-        // MS-II Group (Petrol Tank 2)
-        var msIIGroup = new NozzleGroupDto
-        {
-            GroupName = "Petrol (Tank 2)",
-            FuelType = "Petrol",
-            Dip = msIITank?.ClosingDipMM ?? 0,
-            Stock = msIITank?.ClosingStockLitres ?? 0
-        };
-        msIIGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(1, "Petrol"), CreateItem(2, "Petrol"), CreateItem(9, "Petrol"), CreateItem(10, "Petrol") });
-        groups.Add(msIIGroup);
-
-        // MS-I Group (Petrol Tank 1)
-        var msIGroup = new NozzleGroupDto
+        // Petrol (Tank 1)
+        var msGroup1 = new NozzleGroupDto
         {
             GroupName = "Petrol (Tank 1)",
             FuelType = "Petrol",
             Dip = msITank?.ClosingDipMM ?? 0,
             Stock = msITank?.ClosingStockLitres ?? 0
         };
-        msIGroup.Rows.Add(new List<NozzleDisplayItem> { CreateItem(5, "Petrol"), CreateItem(6, "Petrol") });
-        groups.Add(msIGroup);
+        msGroup1.Rows.Add(new List<NozzleDisplayItem> { CreateItem(1, "Petrol"), CreateItem(2, "Petrol"), CreateItem(5, "Petrol") });
+        msGroup1.Rows.Add(new List<NozzleDisplayItem> { CreateItem(6, "Petrol"), CreateItem(9, "Petrol"), CreateItem(10, "Petrol") });
+        groups.Add(msGroup1);
+
+        // Diesel (Tank 2)
+        var hsdGroup2 = new NozzleGroupDto
+        {
+            GroupName = "Diesel (Tank 2)",
+            FuelType = "Diesel",
+            Dip = hsdTank?.ClosingDipMM ?? 0,
+            Stock = hsdTank?.ClosingStockLitres ?? 0
+        };
+        hsdGroup2.Rows.Add(new List<NozzleDisplayItem> { CreateItem(3, "Diesel"), CreateItem(4, "Diesel") });
+        hsdGroup2.Rows.Add(new List<NozzleDisplayItem> { CreateItem(11, "Diesel"), CreateItem(12, "Diesel") });
+        groups.Add(hsdGroup2);
+
+        // Diesel (Tank 3)
+        var hsdGroup3 = new NozzleGroupDto
+        {
+            GroupName = "Diesel (Tank 3)",
+            FuelType = "Diesel",
+            Dip = msIITank?.ClosingDipMM ?? 0,
+            Stock = msIITank?.ClosingStockLitres ?? 0
+        };
+        hsdGroup3.Rows.Add(new List<NozzleDisplayItem> { CreateItem(7, "Diesel"), CreateItem(8, "Diesel") });
+        groups.Add(hsdGroup3);
 
         return groups;
+    }
+
+    [RelayCommand]
+    private async Task SaveTankStocksAsync()
+    {
+        try
+        {
+            var agsRepo = App.Services.GetRequiredService<IAgsImportRepository>();
+            var activeImportRes = await agsRepo.GetActiveShiftImportAsync(SelectedDate, SelectedShift);
+            var import = (activeImportRes.Success && activeImportRes.Data != null) ? activeImportRes.Data : null;
+
+            if (import == null)
+            {
+                // Create a manual import record
+                import = new AgsShiftImport
+                {
+                    ImportDate = SelectedDate.Date,
+                    ShiftType = SelectedShift,
+                    PdfFileName = "Manual Entry",
+                    ImportedBy = "User",
+                    IsActive = true,
+                    ImportedAt = DateTime.Now
+                };
+            }
+
+            // Ensure TankStocks is loaded
+            if (import.TankStocks == null)
+            {
+                import.TankStocks = new List<AgsTankStock>();
+            }
+
+            foreach (var g in NozzleGroups)
+            {
+                string fuelTypeInDb = g.GroupName switch
+                {
+                    string s when s.Contains("Tank 1") => "MS-I",
+                    string s when s.Contains("Tank 2") => "HSD",
+                    string s when s.Contains("Tank 3") => "MS-II",
+                    _ => g.FuelType
+                };
+
+                var tank = import.TankStocks.FirstOrDefault(t => t.FuelType == fuelTypeInDb);
+                if (tank == null)
+                {
+                    tank = new AgsTankStock
+                    {
+                        FuelType = fuelTypeInDb,
+                        TankNumber = fuelTypeInDb switch { "HSD" => 1, "MS-I" => 2, "MS-II" => 3, _ => 1 }
+                    };
+                    import.TankStocks.Add(tank);
+                }
+
+                tank.ClosingDipMM = g.Dip;
+                tank.ClosingStockLitres = g.Stock;
+            }
+
+            var saveResult = await agsRepo.SaveShiftImportAsync(import);
+            if (saveResult.Success)
+            {
+                StatusMessage = "✅ Tank stocks saved successfully!";
+                await LoadShiftDataAsync();
+            }
+            else
+            {
+                StatusMessage = $"❌ Save failed: {saveResult.Error}";
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to save tank stocks");
+            StatusMessage = $"❌ Error: {ex.Message}";
+        }
     }
 }

@@ -6,6 +6,8 @@ export interface DraftNozzleReading {
   openingReading: number;
   closingReading: number;
   rate: number;
+  pumpId?: number;
+  testing?: number;
 }
 
 export interface DraftSubmission {
@@ -20,6 +22,9 @@ export interface DraftSubmission {
   cash: number;
   upi: number;
   card: number;
+  petroCard?: number;
+  cashDeposit?: number;
+  others?: number;
   credit: number;
   expense: number;
   expenseNotes: string;
@@ -29,7 +34,25 @@ export interface DraftSubmission {
   status: 'draft' | 'queued' | 'submitted' | 'failed';
   errorMessage?: string;
   cardSwipeDetails?: { mode: string; amount: number; tid: string; batch: string; }[];
-  debtorEntries?: { debtorName: string; amount: number; vehicleNumber?: string; time: string; }[];
+  debtorEntries?: { debtorName: string; amount: number; vehicleNumber?: string; slipNumber?: string; time: string; }[];
+  phonePeMorning?: number;
+  phonePeTidMorning?: string;
+  phonePeBatchMorning?: string;
+  phonePeNight?: number;
+  phonePeTidNight?: string;
+  phonePeBatchNight?: string;
+  creditCardMorning?: number;
+  creditCardTidMorning?: string;
+  creditCardBatchMorning?: string;
+  creditCardNight?: number;
+  creditCardTidNight?: string;
+  creditCardBatchNight?: string;
+  petroCardMorning?: number;
+  petroCardTidMorning?: string;
+  petroCardBatchMorning?: string;
+  petroCardNight?: number;
+  petroCardTidNight?: string;
+  petroCardBatchNight?: string;
   personalDebtors?: { amount: number; fuelProduct?: string; remarks?: string; paymentMethod: string; tid?: string; batch?: string; denom500?: number; denom200?: number; denom100?: number; denom50?: number; denom20?: number; denom10?: number; coins?: number; }[];
 }
 

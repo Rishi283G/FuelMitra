@@ -120,7 +120,6 @@
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
 
-                            <DataGridTextColumn Header="Personal Debtors" Binding="{Binding PersonalDebtorDeduction, Converter={StaticResource CurrencyConverter}}" IsReadOnly="True" Width="1.2*" Foreground="#C62828" ElementStyle="{StaticResource MaterialDesignTextBlockRight}"/>
                             <DataGridTextColumn Header="Adv Recovery" Binding="{Binding PendingAdvanceDeduction, Converter={StaticResource CurrencyConverter}}" IsReadOnly="True" Width="1.2*" Foreground="#C62828" ElementStyle="{StaticResource MaterialDesignTextBlockRight}"/>
                             <DataGridTextColumn Header="Remaining Adv" Binding="{Binding RemainingPendingAdvance, Converter={StaticResource CurrencyConverter}}" IsReadOnly="True" Width="1.2*" ElementStyle="{StaticResource MaterialDesignTextBlockRight}"/>
                             <DataGridTextColumn Header="Net Salary" Binding="{Binding NetSalary, Converter={StaticResource CurrencyConverter}}" IsReadOnly="True" Width="1.5*" FontWeight="Bold" Foreground="#2E7D32" ElementStyle="{StaticResource MaterialDesignTextBlockRight}"/>

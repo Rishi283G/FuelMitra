@@ -78,6 +78,7 @@ public class DashboardValidationTest
         services.AddSingleton<IDsmCalculationService, DsmCalculationService>();
         services.AddSingleton<IOwnerCalculationService, OwnerCalculationService>();
         services.AddTransient<IFinancialCalculationService, FinancialCalculationService>();
+        services.AddSingleton<ITidCalculationService, TidCalculationService>();
         services.AddTransient<RecalculationMigrationService>();
         services.AddScoped<IShiftAggregationService, ShiftAggregationService>();
         services.AddScoped<IShiftOtherCashRepository, ShiftOtherCashRepository>();

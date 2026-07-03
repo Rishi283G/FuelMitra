@@ -195,19 +195,28 @@
                     <materialDesign:Card Padding="20" UniformCornerRadius="12" Margin="0,0,0,16" materialDesign:ElevationAssist.Elevation="Dp3">
                         <StackPanel>
                             <TextBlock Text="💳 Collections &amp; Short/Excess" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}" Margin="0,0,0,12"/>
-                            <UniformGrid Columns="3" Rows="3" Margin="0,0,0,12">
+                            <UniformGrid Columns="3" Rows="4" Margin="0,0,0,12">
                                 <TextBox Text="{Binding CashAmount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,0,8,12"
-                                         materialDesign:HintAssist.Hint="Cash Collection" materialDesign:HintAssist.IsFloating="True" Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                                         materialDesign:HintAssist.Hint="Cash in Hand" materialDesign:HintAssist.IsFloating="True" Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
                                 <TextBox Text="{Binding UpiAmount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="8,0,8,12"
-                                         materialDesign:HintAssist.Hint="UPI / PhonePe" materialDesign:HintAssist.IsFloating="True" Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                                         materialDesign:HintAssist.Hint="PhonePe UPI" materialDesign:HintAssist.IsFloating="True" Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
                                 <TextBox Text="{Binding CardAmount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="8,0,0,12"
-                                         materialDesign:HintAssist.Hint="Card Payments" materialDesign:HintAssist.IsFloating="True" Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                                         materialDesign:HintAssist.Hint="PineLab Card" materialDesign:HintAssist.IsFloating="True" Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+
+                                <TextBox Text="{Binding PetroCardAmount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,0,8,12"
+                                         materialDesign:HintAssist.Hint="Petro Card" materialDesign:HintAssist.IsFloating="True" Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                                <TextBox Text="{Binding CashDepositAmount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="8,0,8,12"
+                                         materialDesign:HintAssist.Hint="Cash Deposit (Bank)" materialDesign:HintAssist.IsFloating="True" Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                                <TextBox Text="{Binding OthersAmount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="8,0,0,12"
+                                         materialDesign:HintAssist.Hint="Others (Not in Total)" materialDesign:HintAssist.IsFloating="True" Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+
                                 <TextBox Text="{Binding CreditAmount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,0,8,12"
                                          materialDesign:HintAssist.Hint="Credit (Debits)" materialDesign:HintAssist.IsFloating="True" Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
                                 <TextBox Text="{Binding ExpenseAmount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="8,0,8,12"
                                          materialDesign:HintAssist.Hint="Expenses" materialDesign:HintAssist.IsFloating="True" Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
                                 <TextBox Text="{Binding ExpenseNotes, UpdateSourceTrigger=PropertyChanged}" Margin="8,0,0,12"
                                          materialDesign:HintAssist.Hint="Expense Remarks" materialDesign:HintAssist.IsFloating="True" Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+
                                 <TextBox Text="{Binding ShortAmount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,0,8,0"
                                          materialDesign:HintAssist.Hint="Short" materialDesign:HintAssist.IsFloating="True" Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
                                 <TextBox Text="{Binding ExcessAmount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="8,0,8,0"
@@ -235,6 +244,51 @@
                                     </StackPanel>
                                 </Grid>
                             </Border>
+                        </StackPanel>
+                    </materialDesign:Card>
+
+                    <!-- Debtor Entries Card -->
+                    <materialDesign:Card Padding="20" UniformCornerRadius="12" Margin="0,0,0,16" materialDesign:ElevationAssist.Elevation="Dp3">
+                        <StackPanel>
+                            <TextBlock Text="📋 Debtor Entries Log (Editable)" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}" Margin="0,0,0,12"/>
+                            <DataGrid ItemsSource="{Binding DebtorEntries}" AutoGenerateColumns="False" CanUserAddRows="True" CanUserDeleteRows="True"
+                                      HeadersVisibility="Column" GridLinesVisibility="Horizontal" materialDesign:DataGridAssist.CellPadding="12 8" materialDesign:DataGridAssist.ColumnHeaderPadding="12 8">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Debtor Name" Binding="{Binding DebtorName}" Width="2*"/>
+                                    <DataGridTextColumn Header="Vehicle No." Binding="{Binding VehicleNumber}" Width="*"/>
+                                    <DataGridTextColumn Header="Slip No." Binding="{Binding SlipNumber}" Width="*"/>
+                                    <DataGridTextColumn Header="Time" Binding="{Binding EntryTime}" Width="80"/>
+                                    <DataGridTemplateColumn Header="Amount (₹)" Width="120">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBox Text="{Binding Amount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" FontSize="14"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </StackPanel>
+                    </materialDesign:Card>
+
+                    <!-- Card Swipe Details Card -->
+                    <materialDesign:Card Padding="20" UniformCornerRadius="12" Margin="0,0,0,16" materialDesign:ElevationAssist.Elevation="Dp3">
+                        <StackPanel>
+                            <TextBlock Text="💳 Card Swipe Details (Editable)" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}" Margin="0,0,0,12"/>
+                            <DataGrid ItemsSource="{Binding CardSwipeDetails}" AutoGenerateColumns="False" CanUserAddRows="True" CanUserDeleteRows="True"
+                                      HeadersVisibility="Column" GridLinesVisibility="Horizontal" materialDesign:DataGridAssist.CellPadding="12 8" materialDesign:DataGridAssist.ColumnHeaderPadding="12 8">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Card Mode (PhonePe / PhonePe Card / PineLabs Card / PetroCard)" Binding="{Binding Mode}" Width="2*"/>
+                                    <DataGridTextColumn Header="TID" Binding="{Binding Tid}" Width="*"/>
+                                    <DataGridTextColumn Header="Batch No." Binding="{Binding Batch}" Width="*"/>
+                                    <DataGridTemplateColumn Header="Amount (₹)" Width="120">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBox Text="{Binding Amount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" FontSize="14"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                </DataGrid.Columns>
+                            </DataGrid>
                         </StackPanel>
                     </materialDesign:Card>
 

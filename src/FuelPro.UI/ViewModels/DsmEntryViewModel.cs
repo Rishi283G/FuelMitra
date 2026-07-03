@@ -240,7 +240,8 @@ public partial class DsmEntryViewModel : ObservableObject
     [ObservableProperty] private double? _phonePeNight;
     [ObservableProperty] private double? _creditCardMorning;
     [ObservableProperty] private double? _creditCardNight;
-    [ObservableProperty] private double? _petroCard;
+    [ObservableProperty] private double? _petroCardMorning;
+    [ObservableProperty] private double? _petroCardNight;
     [ObservableProperty] private double? _others;
     [ObservableProperty] private double? _cashDeposit;
 
@@ -251,20 +252,35 @@ public partial class DsmEntryViewModel : ObservableObject
     [ObservableProperty] private string? _petroCardTid;
     [ObservableProperty] private string? _petroCardBatch;
 
+    [ObservableProperty] private string? _phonePeTidMorning;
+    [ObservableProperty] private string? _phonePeBatchMorning;
+    [ObservableProperty] private string? _phonePeTidNight;
+    [ObservableProperty] private string? _phonePeBatchNight;
+
+    [ObservableProperty] private string? _creditCardTidMorning;
+    [ObservableProperty] private string? _creditCardBatchMorning;
+    [ObservableProperty] private string? _creditCardTidNight;
+    [ObservableProperty] private string? _creditCardBatchNight;
+
+    [ObservableProperty] private string? _petroCardTidMorning;
+    [ObservableProperty] private string? _petroCardBatchMorning;
+    [ObservableProperty] private string? _petroCardTidNight;
+    [ObservableProperty] private string? _petroCardBatchNight;
+
     partial void OnPhonePeCardMorningChanged(double? value) => RecalculateAll();
     partial void OnPhonePeCardNightChanged(double? value) => RecalculateAll();
     partial void OnPhonePeMorningChanged(double? value) => RecalculateAll();
     partial void OnPhonePeNightChanged(double? value) => RecalculateAll();
     partial void OnCreditCardMorningChanged(double? value) => RecalculateAll();
     partial void OnCreditCardNightChanged(double? value) => RecalculateAll();
-    partial void OnPetroCardChanged(double? value) => RecalculateAll();
+    partial void OnPetroCardMorningChanged(double? value) => RecalculateAll();
+    partial void OnPetroCardNightChanged(double? value) => RecalculateAll();
     partial void OnOthersChanged(double? value) => RecalculateAll();
     partial void OnCashDepositChanged(double? value) => RecalculateAll();
 
     // Dynamic sections
     public ObservableCollection<DebitRow> Debits { get; } = new();
     public ObservableCollection<ExpenseRow> Expenses { get; } = new();
-    public ObservableCollection<PersonalDebtorRow> PersonalDebtors { get; } = new();
 
     // Testing
     public ObservableCollection<TestingRow> TestingRows { get; } = new();
@@ -694,12 +710,6 @@ public partial class DsmEntryViewModel : ObservableObject
     private void RemoveExpense(ExpenseRow? row) { if (row != null) Expenses.Remove(row); RecalculateAll(); }
 
     [RelayCommand]
-    private void AddPersonalDebtor() => PersonalDebtors.Add(new PersonalDebtorRow { OnRowChanged = RecalculateAll, Time = DateTime.Now.ToString("HH:mm") });
-
-    [RelayCommand]
-    private void RemovePersonalDebtor(PersonalDebtorRow? row) { if (row != null) PersonalDebtors.Remove(row); RecalculateAll(); }
-
-    [RelayCommand]
     private async Task SaveEntryAsync()
     {
         var validationErrors = ValidateBeforeSave();
@@ -733,15 +743,28 @@ public partial class DsmEntryViewModel : ObservableObject
                 PhonePeNight = PhonePeNight ?? 0,
                 CreditCardMorning = CreditCardMorning ?? 0,
                 CreditCardNight = CreditCardNight ?? 0,
-                PetroCard = PetroCard ?? 0,
+                PetroCardMorning = PetroCardMorning ?? 0,
+                PetroCardNight = PetroCardNight ?? 0,
                 Others = Others ?? 0,
                 CashDeposit = CashDeposit ?? 0,
-                CardTid = CardTid,
-                CardBatch = CardBatch,
-                PhonePeTid = PhonePeTid,
-                PhonePeBatch = PhonePeBatch,
-                PetroCardTid = PetroCardTid,
-                PetroCardBatch = PetroCardBatch
+                CardTid = SelectedShift == "A" ? CreditCardTidMorning : CreditCardTidNight,
+                CardBatch = SelectedShift == "A" ? CreditCardBatchMorning : CreditCardBatchNight,
+                PhonePeTid = SelectedShift == "A" ? PhonePeTidMorning : PhonePeTidNight,
+                PhonePeBatch = SelectedShift == "A" ? PhonePeBatchMorning : PhonePeBatchNight,
+                PetroCardTid = SelectedShift == "A" ? PetroCardTidMorning : PetroCardTidNight,
+                PetroCardBatch = SelectedShift == "A" ? PetroCardBatchMorning : PetroCardBatchNight,
+                PhonePeTidMorning = PhonePeTidMorning,
+                PhonePeBatchMorning = PhonePeBatchMorning,
+                PhonePeTidNight = PhonePeTidNight,
+                PhonePeBatchNight = PhonePeBatchNight,
+                CreditCardTidMorning = CreditCardTidMorning,
+                CreditCardBatchMorning = CreditCardBatchMorning,
+                CreditCardTidNight = CreditCardTidNight,
+                CreditCardBatchNight = CreditCardBatchNight,
+                PetroCardTidMorning = PetroCardTidMorning,
+                PetroCardBatchMorning = PetroCardBatchMorning,
+                PetroCardTidNight = PetroCardTidNight,
+                PetroCardBatchNight = PetroCardBatchNight
             };
 
             var debitModels = Debits.Where(d => !string.IsNullOrWhiteSpace(d.DebtorName))
@@ -751,16 +774,7 @@ public partial class DsmEntryViewModel : ObservableObject
                     Amount = d.Amount ?? 0, 
                     ChequeNo = d.ChequeNo,
                     VehicleNumber = d.VehicleNumber,
-                    PaymentMethod = d.PaymentMethod,
-                    CardTid = d.CardTid,
-                    CardBatch = d.CardBatch,
-                    Denom500 = d.Denom500 ?? 0,
-                    Denom200 = d.Denom200 ?? 0,
-                    Denom100 = d.Denom100 ?? 0,
-                    Denom50 = d.Denom50 ?? 0,
-                    Denom20 = d.Denom20 ?? 0,
-                    Denom10 = d.Denom10 ?? 0,
-                    Coins = d.Coins ?? 0
+                    PaymentMethod = "Credit"
                 }).ToList();
 
             var testingModels = BuildTestingModels();
@@ -778,29 +792,6 @@ public partial class DsmEntryViewModel : ObservableObject
                     Denom10 = Cash2.Denom10 ?? 0, Coins = Cash2.Coins ?? 0, TotalAmount = Cash2.TotalAmount }
             };
 
-            var personalDebtorModels = PersonalDebtors.Select((pd, index) => new DsmPersonalDebtor
-            {
-                Id = pd.DsmPersonalDebtorId,
-                DsmEntryId = EditingEntryId,
-                DsmName = DsmName,
-                Date = SelectedDate,
-                Time = string.IsNullOrWhiteSpace(pd.Time) ? DateTime.Now.ToString("HH:mm") : pd.Time,
-                Amount = pd.Amount ?? 0,
-                FuelProduct = pd.FuelProduct,
-                Remarks = pd.Remarks,
-                PaymentMethod = pd.PaymentMethod,
-                Denom500 = pd.Denom500 ?? 0,
-                Denom200 = pd.Denom200 ?? 0,
-                Denom100 = pd.Denom100 ?? 0,
-                Denom50 = pd.Denom50 ?? 0,
-                Denom20 = pd.Denom20 ?? 0,
-                Denom10 = pd.Denom10 ?? 0,
-                Coins = pd.Coins ?? 0,
-                CardTid = pd.CardTid,
-                CardBatch = pd.CardBatch,
-                SequenceNumber = index
-            }).ToList();
-
             var result = await _dsmService.SaveCompleteEntryAsync(
                 SelectedDate, SelectedShift, DsmName, SelectedPump.PumpId,
                 nozzleModels, payment, debitModels, testingModels, expenseModels, cashModels,
@@ -808,7 +799,7 @@ public partial class DsmEntryViewModel : ObservableObject
                 EditingEntryId,
                 StartTime,
                 EndTime,
-                personalDebtorModels);
+                new List<DsmPersonalDebtor>());
 
             if (result.Success)
             {
@@ -840,15 +831,17 @@ public partial class DsmEntryViewModel : ObservableObject
         EditingEntryId = null;
         StartTime = "08:00 AM";
         EndTime = "08:00 PM";
-        PhonePeCardMorning = PhonePeCardNight = PhonePeMorning = PhonePeNight = CreditCardMorning = CreditCardNight = PetroCard = Others = CashDeposit = null;
+        PhonePeCardMorning = PhonePeCardNight = PhonePeMorning = PhonePeNight = CreditCardMorning = CreditCardNight = PetroCardMorning = PetroCardNight = Others = CashDeposit = null;
         CardTid = CardBatch = PhonePeTid = PhonePeBatch = PetroCardTid = PetroCardBatch = null;
+        PhonePeTidMorning = PhonePeBatchMorning = PhonePeTidNight = PhonePeBatchNight = null;
+        CreditCardTidMorning = CreditCardBatchMorning = CreditCardTidNight = CreditCardBatchNight = null;
+        PetroCardTidMorning = PetroCardBatchMorning = PetroCardTidNight = PetroCardBatchNight = null;
         SelectedConnectedPump = null;
         ConnectedPumpGrossSales = 0;
         ConnectedPumpStatus = "";
         TestingRows.Clear();
         Debits.Clear();
         Expenses.Clear();
-        PersonalDebtors.Clear();
         Cash1 = new CashDenomRow { CashType = "Cash1", OnTotalChanged = RecalculateAll };
         Cash2 = new CashDenomRow { CashType = "Cash2", OnTotalChanged = RecalculateAll };
         LoadNozzlesForPump();
@@ -928,7 +921,8 @@ public partial class DsmEntryViewModel : ObservableObject
             PhonePeNight = entry.PaymentCollection?.PhonePeNight;
             CreditCardMorning = entry.PaymentCollection?.CreditCardMorning;
             CreditCardNight = entry.PaymentCollection?.CreditCardNight;
-            PetroCard = entry.PaymentCollection?.PetroCard;
+            PetroCardMorning = entry.PaymentCollection?.PetroCardMorning;
+            PetroCardNight = entry.PaymentCollection?.PetroCardNight;
             Others = entry.PaymentCollection?.Others;
             CashDeposit = entry.PaymentCollection?.CashDeposit;
 
@@ -938,6 +932,20 @@ public partial class DsmEntryViewModel : ObservableObject
             PhonePeBatch = entry.PaymentCollection?.PhonePeBatch;
             PetroCardTid = entry.PaymentCollection?.PetroCardTid;
             PetroCardBatch = entry.PaymentCollection?.PetroCardBatch;
+            PhonePeTidMorning = entry.PaymentCollection?.PhonePeTidMorning ?? entry.PaymentCollection?.PhonePeTid;
+            PhonePeBatchMorning = entry.PaymentCollection?.PhonePeBatchMorning ?? entry.PaymentCollection?.PhonePeBatch;
+            PhonePeTidNight = entry.PaymentCollection?.PhonePeTidNight ?? entry.PaymentCollection?.PhonePeTid;
+            PhonePeBatchNight = entry.PaymentCollection?.PhonePeBatchNight ?? entry.PaymentCollection?.PhonePeBatch;
+
+            CreditCardTidMorning = entry.PaymentCollection?.CreditCardTidMorning ?? entry.PaymentCollection?.CardTid;
+            CreditCardBatchMorning = entry.PaymentCollection?.CreditCardBatchMorning ?? entry.PaymentCollection?.CardBatch;
+            CreditCardTidNight = entry.PaymentCollection?.CreditCardTidNight ?? entry.PaymentCollection?.CardTid;
+            CreditCardBatchNight = entry.PaymentCollection?.CreditCardBatchNight ?? entry.PaymentCollection?.CardBatch;
+
+            PetroCardTidMorning = entry.PaymentCollection?.PetroCardTidMorning ?? entry.PaymentCollection?.PetroCardTid;
+            PetroCardBatchMorning = entry.PaymentCollection?.PetroCardBatchMorning ?? entry.PaymentCollection?.PetroCardBatch;
+            PetroCardTidNight = entry.PaymentCollection?.PetroCardTidNight ?? entry.PaymentCollection?.PetroCardTid;
+            PetroCardBatchNight = entry.PaymentCollection?.PetroCardBatchNight ?? entry.PaymentCollection?.PetroCardBatch;
 
             // Populate nozzle readings (override auto-loaded ones)
             foreach (var nozzleRow in NozzleReadings)
@@ -1052,34 +1060,6 @@ public partial class DsmEntryViewModel : ObservableObject
                 OnTotalChanged = RecalculateAll
             };
 
-            // Populate personal debtors
-            PersonalDebtors.Clear();
-            if (entry.PersonalDebtors != null)
-            {
-                foreach (var pd in entry.PersonalDebtors)
-                {
-                    PersonalDebtors.Add(new PersonalDebtorRow
-                    {
-                        DsmPersonalDebtorId = pd.Id,
-                        Time = pd.Time,
-                        Amount = pd.Amount,
-                        FuelProduct = pd.FuelProduct ?? "MS-II",
-                        Remarks = pd.Remarks ?? "",
-                        PaymentMethod = pd.PaymentMethod,
-                        CardTid = pd.CardTid ?? "",
-                        CardBatch = pd.CardBatch ?? "",
-                        Denom500 = pd.Denom500,
-                        Denom200 = pd.Denom200,
-                        Denom100 = pd.Denom100,
-                        Denom50 = pd.Denom50,
-                        Denom20 = pd.Denom20,
-                        Denom10 = pd.Denom10,
-                        Coins = pd.Coins,
-                        OnRowChanged = RecalculateAll
-                    });
-                }
-            }
-
             RecalculateAll();
             StatusMessage = $"📝 Editing entry for {DsmName} on Pump {entry.PumpId}";
         }
@@ -1132,7 +1112,7 @@ public partial class DsmEntryViewModel : ObservableObject
             var draft = new
             {
                 SelectedDate, SelectedShift, DsmName, PumpId = SelectedPump?.PumpId ?? 1,
-                PhonePeCardMorning, PhonePeCardNight, PhonePeMorning, PhonePeNight, CreditCardMorning, CreditCardNight, PetroCard,
+                PhonePeCardMorning, PhonePeCardNight, PhonePeMorning, PhonePeNight, CreditCardMorning, CreditCardNight, PetroCardMorning, PetroCardNight,
                 TestingRows = TestingRows.Select(t => new { t.FuelType, t.Litres, t.Rate, t.Amount }).ToList()
             };
             _draftService.SaveDraft(JsonConvert.SerializeObject(draft));
@@ -1149,7 +1129,7 @@ public partial class DsmEntryViewModel : ObservableObject
             {
                 // Others is NOT included in TotalInDirect — it is informational only
                 PhonePe = (decimal)((PhonePeMorning ?? 0) + (PhonePeNight ?? 0) + (PhonePeCardMorning ?? 0) + (PhonePeCardNight ?? 0)),
-                CreditCard = (decimal)((CreditCardMorning ?? 0) + (CreditCardNight ?? 0) + (PetroCard ?? 0)),
+                CreditCard = (decimal)((CreditCardMorning ?? 0) + (CreditCardNight ?? 0) + (PetroCardMorning ?? 0) + (PetroCardNight ?? 0)),
                 CashDeposit = (decimal)(CashDeposit ?? 0),
                 PhysicalCash = (decimal)(Cash1.TotalAmount + Cash2.TotalAmount)
             },
@@ -1250,14 +1230,14 @@ public partial class DsmEntryViewModel : ObservableObject
             PhonePeNight       = PhonePeNight       ?? 0,
             CreditCardMorning  = CreditCardMorning  ?? 0,
             CreditCardNight    = CreditCardNight    ?? 0,
-            PetroCard          = PetroCard          ?? 0,
+            PetroCard          = (PetroCardMorning ?? 0) + (PetroCardNight ?? 0),
             CashDeposit        = CashDeposit        ?? 0,
             Others             = Others             ?? 0,
             BankDeposit        = Cash1.TotalAmount,
             TotalDigital       = (PhonePeCardMorning ?? 0) + (PhonePeCardNight ?? 0)
                                + (PhonePeMorning ?? 0)     + (PhonePeNight ?? 0)
                                + (CreditCardMorning ?? 0)  + (CreditCardNight ?? 0)
-                               + (PetroCard ?? 0)          + (CashDeposit ?? 0)
+                               + (PetroCardMorning ?? 0) + (PetroCardNight ?? 0) + (CashDeposit ?? 0)
         };
 
         var cashDenom = new DsmCashDenomPrintBlock
@@ -1298,15 +1278,7 @@ public partial class DsmEntryViewModel : ObservableObject
             Mismatch        = Difference
         };
 
-        var personalDebtorPrintRows = PersonalDebtors.Select(pd => new DsmPersonalDebtorPrintRow
-        {
-            FuelProduct = pd.FuelProduct,
-            Remarks = pd.Remarks,
-            PaymentMethod = pd.PaymentMethod,
-            Amount = pd.Amount ?? 0,
-            CardTid = pd.CardTid,
-            CardBatch = pd.CardBatch
-        }).ToList();
+        var personalDebtorPrintRows = new List<DsmPersonalDebtorPrintRow>();
 
         var printData = new DsmSheetPrintData
         {
@@ -1332,7 +1304,7 @@ public partial class DsmEntryViewModel : ObservableObject
             TotalTesting = TestingRows.Sum(t => t.Amount),
             Reconciliation = recon,
             PersonalDebtors = personalDebtorPrintRows,
-            TotalPersonalDebtors = PersonalDebtors.Sum(pd => pd.Amount ?? 0)
+            TotalPersonalDebtors = 0
         };
 
         _printService.PrintDsmSheet(printData);

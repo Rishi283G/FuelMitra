@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useSubmissionService } from '../hooks/useSubmissionService';
-import type { DraftNozzleReading } from '../lib/db';
+import { db, type DraftNozzleReading } from '../lib/db';
 import { supabase } from '../lib/supabase';
 import {
   ArrowLeft, Send,
@@ -14,6 +14,7 @@ interface SubmitProps {
 
 interface NozzleRow extends DraftNozzleReading {
   rowId: number;
+  isOpeningReadOnly?: boolean;
 }
 
 function todayISO() {
@@ -30,19 +31,59 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   const [shiftDate, setShiftDate] = useState(todayISO());
   const [notes, setNotes] = useState('');
   const [nozzleRows, setNozzleRows] = useState<NozzleRow[]>([]);
-  const [cash, setCash] = useState(0);
-  const [upi, setUpi] = useState(0);
-  const [card, setCard] = useState(0);
-  const [credit, setCredit] = useState(0);
+  
+  // Cash Denomination states
+  const [denom500, setDenom500] = useState<number>(0);
+  const [denom200, setDenom200] = useState<number>(0);
+  const [denom100, setDenom100] = useState<number>(0);
+  const [denom50, setDenom50] = useState<number>(0);
+  const [denom20, setDenom20] = useState<number>(0);
+  const [denom10, setDenom10] = useState<number>(0);
+  const [coins, setCoins] = useState<number>(0);
+  const cash = (denom500 * 500) + (denom200 * 200) + (denom100 * 100) + (denom50 * 50) + (denom20 * 20) + (denom10 * 10) + coins;
+
+  // Creditors & Vehicles dropdown states
+  const [creditorList, setCreditorList] = useState<{ id: string; name: string }[]>([]);
+  const [vehicleList, setVehicleList] = useState<{ creditorId: string; vehicleNumber: string }[]>([]);
+  const [selectedCreditorId, setSelectedCreditorId] = useState<string>('');
+
+  // Debtor entry adding state
+  const [newDebtorName, setNewDebtorName] = useState('');
+  const [newDebtorAmount, setNewDebtorAmount] = useState('');
+  const [newDebtorVehicle, setNewDebtorVehicle] = useState('');
+  const [newDebtorSlip, setNewDebtorSlip] = useState('');
+  const [customVehicle, setCustomVehicle] = useState(false);
+
+  const [cashDeposit, setCashDeposit] = useState(0);
+  const [others, setOthers] = useState(0);
   const [expense, setExpense] = useState(0);
   const [expenseNotes, setExpenseNotes] = useState('');
-  const [short, setShort] = useState(0);
-  const [excess, setExcess] = useState(0);
 
-  // Expanded fields for Phase 3
+  // Slot-based collections fields
+  const [phonePeMorning, setPhonePeMorning] = useState<number>(0);
+  const [phonePeTidMorning, setPhonePeTidMorning] = useState<string>('');
+  const [phonePeBatchMorning, setPhonePeBatchMorning] = useState<string>('');
+  const [phonePeNight, setPhonePeNight] = useState<number>(0);
+  const [phonePeTidNight, setPhonePeTidNight] = useState<string>('');
+  const [phonePeBatchNight, setPhonePeBatchNight] = useState<string>('');
+
+  const [creditCardMorning, setCreditCardMorning] = useState<number>(0);
+  const [creditCardTidMorning, setCreditCardTidMorning] = useState<string>('');
+  const [creditCardBatchMorning, setCreditCardBatchMorning] = useState<string>('');
+  const [creditCardNight, setCreditCardNight] = useState<number>(0);
+  const [creditCardTidNight, setCreditCardTidNight] = useState<string>('');
+  const [creditCardBatchNight, setCreditCardBatchNight] = useState<string>('');
+
+  const [petroCardMorning, setPetroCardMorning] = useState<number>(0);
+  const [petroCardTidMorning, setPetroCardTidMorning] = useState<string>('');
+  const [petroCardBatchMorning, setPetroCardBatchMorning] = useState<string>('');
+  const [petroCardNight, setPetroCardNight] = useState<number>(0);
+  const [petroCardTidNight, setPetroCardTidNight] = useState<string>('');
+  const [petroCardBatchNight, setPetroCardBatchNight] = useState<string>('');
+
+  const [debtorEntries, setDebtorEntries] = useState<{ debtorName: string; amount: number; vehicleNumber?: string; slipNumber?: string; time: string; }[]>([]);
+
   const [cardSwipeDetails, setCardSwipeDetails] = useState<{ mode: string; amount: number; tid: string; batch: string; }[]>([]);
-  const [debtorEntries, setDebtorEntries] = useState<{ debtorName: string; amount: number; vehicleNumber?: string; time: string; }[]>([]);
-  const [personalDebtors, setPersonalDebtors] = useState<{ amount: number; fuelProduct?: string; remarks?: string; paymentMethod: string; }[]>([]);
 
   // Loading state for nozzle config
   const [nozzleLoading, setNozzleLoading] = useState(true);
@@ -62,6 +103,54 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     window.addEventListener('offline', off);
     return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
   }, []);
+
+  // Load Creditors & Vehicles
+  useEffect(() => {
+    async function loadCreditors() {
+      if (!profile) return;
+      
+      const cachedCreds = localStorage.getItem('cached_creditors');
+      const cachedVehs = localStorage.getItem('cached_vehicles');
+      if (cachedCreds) {
+        setCreditorList(JSON.parse(cachedCreds));
+      }
+      if (cachedVehs) {
+        setVehicleList(JSON.parse(cachedVehs));
+      }
+
+      if (!navigator.onLine) return;
+
+      try {
+        const { data: creds, error: credsErr } = await supabase
+          .from('Creditors')
+          .select('SyncGuid, Name')
+          .eq('station_id', profile.StationId)
+          .eq('IsActive', true)
+          .order('Name', { ascending: true });
+        
+        if (!credsErr && creds) {
+          const formattedCreds = creds.map(c => ({ id: c.SyncGuid, name: c.Name }));
+          setCreditorList(formattedCreds);
+          localStorage.setItem('cached_creditors', JSON.stringify(formattedCreds));
+        }
+
+        const { data: vehs, error: vehsErr } = await supabase
+          .from('DebtorVehicles')
+          .select('CreditorId, VehicleNumber')
+          .eq('station_id', profile.StationId)
+          .eq('IsActive', true);
+
+        if (!vehsErr && vehs) {
+          const formattedVehs = vehs.map(v => ({ creditorId: v.CreditorId, vehicleNumber: v.VehicleNumber }));
+          setVehicleList(formattedVehs);
+          localStorage.setItem('cached_vehicles', JSON.stringify(formattedVehs));
+        }
+      } catch (e) {
+        console.error('Failed to load creditors/vehicles from Supabase:', e);
+      }
+    }
+    loadCreditors();
+  }, [profile]);
 
   // ── Load nozzle config from Supabase (set by manager) ───────
   async function loadNozzleConfig() {
@@ -89,34 +178,44 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         msIIRate = settingsData[0].MsIIRate ?? msIIRate;
       }
 
+      // We load nozzles of both the primary and connected pump
+      const pumpsToFetch = [pumpId];
+      if (profile.ConnectedPump) {
+        pumpsToFetch.push(profile.ConnectedPump);
+      }
+
       // Try to fetch nozzle config from Supabase PumpNozzleConfig table
       const { data: nozzleConfig, error: nozzleErr } = await supabase
         .from('PumpNozzleConfig')
-        .select('NozzleId, FuelType, SortOrder')
+        .select('NozzleId, FuelType, SortOrder, PumpId')
         .eq('StationId', profile.StationId)
-        .eq('PumpId', pumpId)
+        .in('PumpId', pumpsToFetch)
         .eq('IsActive', true)
         .order('SortOrder', { ascending: true });
 
-      let configRows: { nozzleId: number; fuelType: string }[] = [];
+      let configRows: { nozzleId: number; fuelType: string; pumpId: number }[] = [];
 
       if (!nozzleErr && nozzleConfig && nozzleConfig.length > 0) {
         // Use Supabase config
-        configRows = nozzleConfig.map((r: { NozzleId: number; FuelType: string }) => ({
+        configRows = nozzleConfig.map((r: any) => ({
           nozzleId: r.NozzleId,
           fuelType: r.FuelType,
+          pumpId: r.PumpId
         }));
       } else {
-        // Fallback: hardcoded config for this station (matches physical pump-nozzle wiring)
-        const FALLBACK_CONFIG: Record<number, { nozzleId: number; fuelType: string }[]> = {
-          1: [{ nozzleId: 1, fuelType: 'MS-II' }, { nozzleId: 2, fuelType: 'HSD' }],
-          2: [{ nozzleId: 3, fuelType: 'MS-II' }, { nozzleId: 4, fuelType: 'HSD' }],
-          3: [{ nozzleId: 5, fuelType: 'MS-I' }, { nozzleId: 6, fuelType: 'HSD' }],
-          4: [{ nozzleId: 7, fuelType: 'MS-I' }, { nozzleId: 8, fuelType: 'HSD' }],
-          5: [{ nozzleId: 9, fuelType: 'MS-II' }, { nozzleId: 10, fuelType: 'HSD' }],
-          6: [{ nozzleId: 11, fuelType: 'MS-II' }, { nozzleId: 12, fuelType: 'HSD' }],
+        const FALLBACK_CONFIG: Record<number, { nozzleId: number; fuelType: string; pumpId: number }[]> = {
+          1: [{ nozzleId: 1, fuelType: 'MS-II', pumpId: 1 }, { nozzleId: 3, fuelType: 'HSD', pumpId: 1 }],
+          2: [{ nozzleId: 2, fuelType: 'MS-II', pumpId: 2 }, { nozzleId: 4, fuelType: 'HSD', pumpId: 2 }],
+          3: [{ nozzleId: 5, fuelType: 'MS-I', pumpId: 3 }, { nozzleId: 7, fuelType: 'HSD', pumpId: 3 }],
+          4: [{ nozzleId: 6, fuelType: 'MS-I', pumpId: 4 }, { nozzleId: 8, fuelType: 'HSD', pumpId: 4 }],
+          5: [{ nozzleId: 9, fuelType: 'MS-II', pumpId: 5 }, { nozzleId: 11, fuelType: 'HSD', pumpId: 5 }],
+          6: [{ nozzleId: 10, fuelType: 'MS-II', pumpId: 6 }, { nozzleId: 12, fuelType: 'HSD', pumpId: 6 }],
         };
+        
         configRows = FALLBACK_CONFIG[pumpId] || [];
+        if (profile.ConnectedPump && FALLBACK_CONFIG[profile.ConnectedPump]) {
+          configRows = [...configRows, ...FALLBACK_CONFIG[profile.ConnectedPump]];
+        }
       }
 
       if (configRows.length === 0) {
@@ -125,18 +224,147 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         return;
       }
 
+      // Fetch previous closing readings for both pumps
+      const prevClosings: Record<number, number> = {};
+      let prevSourceDate = '';
+      let prevSourceType = 'A';
+
+      function compareShifts(dateA: string, typeA: string, dateB: string, typeB: string): number {
+        const dateCompare = dateA.localeCompare(dateB);
+        if (dateCompare !== 0) return dateCompare;
+        const rank: Record<string, number> = { A: 1, B: 2, C: 3 };
+        const rA = rank[typeA] || 0;
+        const rB = rank[typeB] || 0;
+        return rA - rB;
+      }
+
+      // 1. Fetch from approved DsmEntries + NozzleReadings in Supabase
+      try {
+        const { data: latestEntries } = await supabase
+          .from('DsmEntries')
+          .select('DsmEntryId, ShiftId, PumpId')
+          .in('PumpId', pumpsToFetch)
+          .order('DsmEntryId', { ascending: false });
+
+        if (latestEntries && latestEntries.length > 0) {
+          for (const pId of pumpsToFetch) {
+            const entry = latestEntries.find(e => e.PumpId === pId);
+            if (entry) {
+              const { data: shiftData } = await supabase
+                .from('Shifts')
+                .select('ShiftDate, ShiftType')
+                .eq('ShiftId', entry.ShiftId)
+                .limit(1);
+                
+              if (shiftData && shiftData.length > 0) {
+                const shiftDateStr = shiftData[0].ShiftDate ? shiftData[0].ShiftDate.split('T')[0] : '';
+                const shiftTypeStr = shiftData[0].ShiftType || 'A';
+                
+                const { data: approvedReadings } = await supabase
+                  .from('NozzleReadings')
+                  .select('NozzleNumber, ClosingReading')
+                  .eq('DsmEntryId', entry.DsmEntryId);
+                
+                if (approvedReadings && approvedReadings.length > 0) {
+                  approvedReadings.forEach((r: any) => {
+                    prevClosings[r.NozzleNumber] = Number(r.ClosingReading);
+                  });
+                  prevSourceDate = shiftDateStr;
+                  prevSourceType = shiftTypeStr;
+                }
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Failed to fetch from approved NozzleReadings:', e);
+      }
+
+      // 2. Fetch from DsmSubmissions + DsmSubmissionReadings in Supabase
+      try {
+        const { data: lastSubmissions } = await supabase
+          .from('DsmSubmissions')
+          .select('Id, ShiftDate, ShiftType, PumpId')
+          .in('PumpId', pumpsToFetch)
+          .order('ShiftDate', { ascending: false })
+          .order('SubmittedAt', { ascending: false });
+
+        if (lastSubmissions && lastSubmissions.length > 0) {
+          for (const pId of pumpsToFetch) {
+            const sub = lastSubmissions.find(s => s.PumpId === pId);
+            if (sub) {
+              const subDate = sub.ShiftDate ? sub.ShiftDate.split('T')[0] : '';
+              const subType = sub.ShiftType || 'A';
+
+              if (!prevSourceDate || compareShifts(subDate, subType, prevSourceDate, prevSourceType) >= 0) {
+                const { data: lastReadings } = await supabase
+                  .from('DsmSubmissionReadings')
+                  .select('NozzleId, ClosingReading')
+                  .eq('SubmissionId', sub.Id);
+                
+                if (lastReadings && lastReadings.length > 0) {
+                  lastReadings.forEach((r: any) => {
+                    if (Number(r.ClosingReading) > 0) {
+                      prevClosings[r.NozzleId] = Number(r.ClosingReading);
+                    }
+                  });
+                  prevSourceDate = subDate;
+                  prevSourceType = subType;
+                }
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Failed to fetch from pending submissions:', e);
+      }
+
+      // 3. Fallback/override with local drafts if they are more recent!
+      try {
+        const localDrafts = await db.drafts
+          .where('pumpId')
+          .anyOf(pumpsToFetch)
+          .toArray();
+
+        if (localDrafts && localDrafts.length > 0) {
+          const sortedDrafts = localDrafts.sort((a, b) => 
+            b.shiftDate.localeCompare(a.shiftDate) || b.createdAt.localeCompare(a.createdAt)
+          );
+          const mostRecentDraft = sortedDrafts[0];
+          if (mostRecentDraft && mostRecentDraft.nozzleReadings) {
+            const draftDate = mostRecentDraft.shiftDate;
+            const draftType = mostRecentDraft.shiftType;
+
+            if (!prevSourceDate || compareShifts(draftDate, draftType, prevSourceDate, prevSourceType) >= 0) {
+              mostRecentDraft.nozzleReadings.forEach(nr => {
+                if (nr.closingReading > 0) {
+                  prevClosings[nr.nozzleId] = Number(nr.closingReading);
+                }
+              });
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Failed to fetch from IndexedDB drafts:', e);
+      }
+
       const rows: NozzleRow[] = configRows.map((n, index) => {
         let rate = msIRate;
         if (n.fuelType === 'HSD') rate = hsdRate;
         else if (n.fuelType === 'MS-II') rate = msIIRate;
 
+        const prevClosing = prevClosings[n.nozzleId] || 0;
+
         return {
           rowId: index + 1,
           nozzleId: n.nozzleId,
           fuelType: n.fuelType,
-          openingReading: 0,
+          openingReading: prevClosing,
           closingReading: 0,
           rate,
+          isOpeningReadOnly: prevClosing > 0,
+          pumpId: n.pumpId,
+          testing: 0
         };
       });
 
@@ -162,7 +390,12 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
 
   // ── Computed totals ──────────────────────────────────────────
   const grossSales = nozzleRows.reduce((sum, r) => sum + Math.max(0, r.closingReading - r.openingReading) * r.rate, 0);
-  const totalCollections = cash + upi + card + credit;
+  const upiTotal = phonePeMorning + phonePeNight;
+  const cardTotal = creditCardMorning + creditCardNight;
+  const petroCardTotal = petroCardMorning + petroCardNight;
+  const creditTotal = debtorEntries.reduce((sum, d) => sum + d.amount, 0);
+  const totalTesting = nozzleRows.reduce((sum, r) => sum + (r.testing || 0) * r.rate, 0);
+  const totalCollections = cash + upiTotal + cardTotal + petroCardTotal + cashDeposit + others + creditTotal + totalTesting;
   const mismatch = totalCollections + expense - grossSales;
 
   // ── Validation ───────────────────────────────────────────────
@@ -173,10 +406,13 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       return errs;
     }
     nozzleRows.forEach((r) => {
+      const salesLtrs = r.closingReading - r.openingReading;
       if (r.closingReading < r.openingReading)
         errs.push(`Nozzle ${r.nozzleId} (${r.fuelType}): Closing (${r.closingReading}) < Opening (${r.openingReading})`);
-      if (r.openingReading < 0 || r.closingReading < 0)
-        errs.push(`Nozzle ${r.nozzleId}: Negative readings are not allowed`);
+      if (r.testing && r.testing > salesLtrs)
+        errs.push(`Nozzle ${r.nozzleId} (${r.fuelType}): Testing (${r.testing} Ltr) cannot exceed dispensed fuel (${salesLtrs.toFixed(2)} Ltr)`);
+      if (r.openingReading < 0 || r.closingReading < 0 || (r.testing || 0) < 0)
+        errs.push(`Nozzle ${r.nozzleId}: Negative values are not allowed`);
       if (r.rate <= 0)
         errs.push(`Nozzle ${r.nozzleId}: Rate must be positive`);
     });
@@ -202,6 +438,28 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     const errs = validateCollections();
     if (errs.length) { setValidationErrors(errs); return; }
     setValidationErrors([]);
+
+    const cardSwipes = [];
+    if (phonePeMorning > 0) {
+      cardSwipes.push({ mode: 'PhonePe Morning', amount: phonePeMorning, tid: phonePeTidMorning, batch: phonePeBatchMorning });
+    }
+    if (phonePeNight > 0) {
+      cardSwipes.push({ mode: 'PhonePe Night', amount: phonePeNight, tid: phonePeTidNight, batch: phonePeBatchNight });
+    }
+    if (creditCardMorning > 0) {
+      cardSwipes.push({ mode: 'PineLabs Card Morning', amount: creditCardMorning, tid: creditCardTidMorning, batch: creditCardBatchMorning });
+    }
+    if (creditCardNight > 0) {
+      cardSwipes.push({ mode: 'PineLabs Card Night', amount: creditCardNight, tid: creditCardTidNight, batch: creditCardBatchNight });
+    }
+    if (petroCardMorning > 0) {
+      cardSwipes.push({ mode: 'PetroCard Morning', amount: petroCardMorning, tid: petroCardTidMorning, batch: petroCardBatchMorning });
+    }
+    if (petroCardNight > 0) {
+      cardSwipes.push({ mode: 'PetroCard Night', amount: petroCardNight, tid: petroCardTidNight, batch: petroCardBatchNight });
+    }
+    setCardSwipeDetails(cardSwipes);
+
     setStep('review');
   }
 
@@ -210,16 +468,69 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     if (!profile) return;
     setError('');
 
+    const cardSwipes = [];
+    if (phonePeMorning > 0) {
+      cardSwipes.push({ mode: 'PhonePe Morning', amount: phonePeMorning, tid: phonePeTidMorning, batch: phonePeBatchMorning });
+    }
+    if (phonePeNight > 0) {
+      cardSwipes.push({ mode: 'PhonePe Night', amount: phonePeNight, tid: phonePeTidNight, batch: phonePeBatchNight });
+    }
+    if (creditCardMorning > 0) {
+      cardSwipes.push({ mode: 'PineLabs Card Morning', amount: creditCardMorning, tid: creditCardTidMorning, batch: creditCardBatchMorning });
+    }
+    if (creditCardNight > 0) {
+      cardSwipes.push({ mode: 'PineLabs Card Night', amount: creditCardNight, tid: creditCardTidNight, batch: creditCardBatchNight });
+    }
+    if (petroCardMorning > 0) {
+      cardSwipes.push({ mode: 'PetroCard Morning', amount: petroCardMorning, tid: petroCardTidMorning, batch: petroCardBatchMorning });
+    }
+    if (petroCardNight > 0) {
+      cardSwipes.push({ mode: 'PetroCard Night', amount: petroCardNight, tid: petroCardTidNight, batch: petroCardBatchNight });
+    }
+
     const draftData = {
       pumpId,
       shiftDate,
       shiftType: shiftType as 'A' | 'B' | 'C',
       notes,
-      nozzleReadings: nozzleRows.map(({ rowId: _r, ...rest }) => rest),
-      cash, upi, card, credit, expense, expenseNotes, short, excess,
-      cardSwipeDetails,
+      nozzleReadings: nozzleRows.map(({ rowId: _r, isOpeningReadOnly, ...rest }) => rest),
+      cash,
+      upi: upiTotal,
+      card: cardTotal,
+      petroCard: petroCardTotal,
+      cashDeposit,
+      others,
+      credit: creditTotal,
+      expense,
+      expenseNotes,
+      short: 0,
+      excess: 0,
+      cardSwipeDetails: cardSwipes,
       debtorEntries,
-      personalDebtors,
+      personalDebtors: [],
+      cashDenominations: {
+        denom500,
+        denom200,
+        denom100,
+        denom50,
+        denom20,
+        denom10,
+        coins
+      },
+      testingEntries: nozzleRows
+        .filter(r => (r.testing || 0) > 0)
+        .map(r => ({
+          nozzleId: r.nozzleId,
+          fuelType: r.fuelType,
+          amount: r.testing || 0,
+          pumpId: r.pumpId || pumpId
+        })),
+      phonePeMorning, phonePeTidMorning, phonePeBatchMorning,
+      phonePeNight, phonePeTidNight, phonePeBatchNight,
+      creditCardMorning, creditCardTidMorning, creditCardBatchMorning,
+      creditCardNight, creditCardTidNight, creditCardBatchNight,
+      petroCardMorning, petroCardTidMorning, petroCardBatchMorning,
+      petroCardNight, petroCardTidNight, petroCardBatchNight,
     };
 
     if (!online) {
@@ -350,33 +661,48 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                   <span className="nozzle-num" style={{ fontSize: '1.05rem', fontWeight: 'bold' }}>Nozzle {row.nozzleId} ({row.fuelType})</span>
                   <span style={{ fontSize: '0.85rem', color: '#94a3b8', fontWeight: '500' }}>Rate: ₹{row.rate.toFixed(2)} / L</span>
                 </div>
-                <div className="field-row-2">
-                  <div className="field-group">
-                    <label className="field-label">Opening Reading (L)</label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+                  <div className="field-group" style={{ marginBottom: '8px' }}>
+                    <label className="field-label" style={{ fontSize: '0.75rem' }}>Opening (L)</label>
                     <input
                       type="number"
                       className="field-input"
                       value={row.openingReading || ''}
                       step="0.01"
                       min="0"
+                      readOnly={row.isOpeningReadOnly}
+                      style={row.isOpeningReadOnly ? { backgroundColor: '#1e293b', color: '#64748b', border: '1px solid #334155', cursor: 'not-allowed', padding: '6px' } : { padding: '6px' }}
                       onChange={e => updateNozzle(row.rowId, 'openingReading', e.target.value)}
                     />
                   </div>
-                  <div className="field-group">
-                    <label className="field-label">Closing Reading (L)</label>
+                  <div className="field-group" style={{ marginBottom: '8px' }}>
+                    <label className="field-label" style={{ fontSize: '0.75rem' }}>Closing (L)</label>
                     <input
                       type="number"
                       className={`field-input ${row.closingReading < row.openingReading && row.closingReading > 0 ? 'input-error' : ''}`}
                       value={row.closingReading || ''}
                       step="0.01"
                       min="0"
+                      style={{ padding: '6px' }}
                       onChange={e => updateNozzle(row.rowId, 'closingReading', e.target.value)}
                     />
                   </div>
+                  <div className="field-group" style={{ marginBottom: '8px' }}>
+                    <label className="field-label" style={{ fontSize: '0.75rem' }}>Testing (L)</label>
+                    <input
+                      type="number"
+                      className="field-input"
+                      value={row.testing || ''}
+                      step="0.01"
+                      min="0"
+                      style={{ padding: '6px' }}
+                      onChange={e => updateNozzle(row.rowId, 'testing', e.target.value)}
+                    />
+                  </div>
                 </div>
-                <div className="nozzle-sale-summary">
-                  <span>Sale: {Math.max(0, row.closingReading - row.openingReading).toFixed(2)} L</span>
-                  <span>= ₹{(Math.max(0, row.closingReading - row.openingReading) * row.rate).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                <div className="nozzle-sale-summary" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#e2e8f0', marginTop: '6px' }}>
+                  <span>Net Sale: {Math.max(0, row.closingReading - row.openingReading - (row.testing || 0)).toFixed(2)} L (Dispensed: {Math.max(0, row.closingReading - row.openingReading).toFixed(2)} L)</span>
+                  <span style={{ fontWeight: 'bold' }}>= ₹{(Math.max(0, row.closingReading - row.openingReading) * row.rate).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
                 </div>
               </div>
             ))}
@@ -413,267 +739,347 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           <div className="form-section" id="step-collections">
             <h2 className="section-heading">Payment Collections</h2>
 
-            <div className="collection-grid">
-              {[
-                { id: 'cash', label: 'Cash (₹)', value: cash, setter: setCash },
-                { id: 'upi', label: 'UPI / PhonePe (₹)', value: upi, setter: setUpi },
-                { id: 'card', label: 'Card (₹)', value: card, setter: setCard },
-                { id: 'credit', label: 'Credit / Debit (₹)', value: credit, setter: setCredit },
-              ].map(({ id, label, value, setter }) => (
-                <div key={id} className="field-group">
-                  <label className="field-label" htmlFor={`col-${id}`}>{label}</label>
-                  <input
-                    id={`col-${id}`}
-                    type="number"
-                    className="field-input"
-                    value={value}
-                    step="0.01"
-                    min="0"
-                    onChange={e => setter(Number(e.target.value))}
-                  />
+            {/* Cash in Hand (Denominations) */}
+            <div className="nozzle-card" style={{ marginBottom: '16px', padding: '16px' }}>
+              <h3 style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '12px', borderBottom: '1px solid #334155', paddingBottom: '6px' }}>Cash in Hand (Denominations)</h3>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 16px', marginBottom: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ width: '45px', fontWeight: 'bold', fontSize: '0.9rem' }}>₹500 x</span>
+                  <input type="number" className="field-input" style={{ padding: '6px' }} value={denom500 || ''} min="0" onChange={e => setDenom500(Math.max(0, parseInt(e.target.value) || 0))} />
                 </div>
-              ))}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ width: '45px', fontWeight: 'bold', fontSize: '0.9rem' }}>₹200 x</span>
+                  <input type="number" className="field-input" style={{ padding: '6px' }} value={denom200 || ''} min="0" onChange={e => setDenom200(Math.max(0, parseInt(e.target.value) || 0))} />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ width: '45px', fontWeight: 'bold', fontSize: '0.9rem' }}>₹100 x</span>
+                  <input type="number" className="field-input" style={{ padding: '6px' }} value={denom100 || ''} min="0" onChange={e => setDenom100(Math.max(0, parseInt(e.target.value) || 0))} />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ width: '45px', fontWeight: 'bold', fontSize: '0.9rem' }}>₹50 x</span>
+                  <input type="number" className="field-input" style={{ padding: '6px' }} value={denom50 || ''} min="0" onChange={e => setDenom50(Math.max(0, parseInt(e.target.value) || 0))} />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ width: '45px', fontWeight: 'bold', fontSize: '0.9rem' }}>₹20 x</span>
+                  <input type="number" className="field-input" style={{ padding: '6px' }} value={denom20 || ''} min="0" onChange={e => setDenom20(Math.max(0, parseInt(e.target.value) || 0))} />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ width: '45px', fontWeight: 'bold', fontSize: '0.9rem' }}>₹10 x</span>
+                  <input type="number" className="field-input" style={{ padding: '6px' }} value={denom10 || ''} min="0" onChange={e => setDenom10(Math.max(0, parseInt(e.target.value) || 0))} />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', gridColumn: 'span 2' }}>
+                  <span style={{ fontWeight: 'bold', fontSize: '0.9rem', marginRight: '6px' }}>Coins/Other (₹)</span>
+                  <input type="number" className="field-input" style={{ padding: '6px' }} value={coins || ''} min="0" onChange={e => setCoins(Math.max(0, parseFloat(e.target.value) || 0))} />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #334155', paddingTop: '10px', marginTop: '10px', fontSize: '1rem', fontWeight: 'bold', color: '#10b981' }}>
+                <span>Total Cash:</span>
+                <span>₹{cash.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+              </div>
             </div>
 
-            <h2 className="section-heading" style={{ marginTop: '1.5rem' }}>Adjustments</h2>
-            <div className="collection-grid">
-              <div className="field-group">
-                <label className="field-label" htmlFor="col-expense">Expense (₹)</label>
-                <input id="col-expense" type="number" className="field-input" value={expense} step="0.01" min="0"
-                  onChange={e => setExpense(Number(e.target.value))} />
-              </div>
-              <div className="field-group">
-                <label className="field-label" htmlFor="col-short">Short (₹)</label>
-                <input id="col-short" type="number" className="field-input" value={short} step="0.01" min="0"
-                  onChange={e => setShort(Number(e.target.value))} />
-              </div>
-              <div className="field-group">
-                <label className="field-label" htmlFor="col-excess">Excess (₹)</label>
-                <input id="col-excess" type="number" className="field-input" value={excess} step="0.01" min="0"
-                  onChange={e => setExcess(Number(e.target.value))} />
-              </div>
-            </div>
-
-            <div className="field-group">
-              <label className="field-label" htmlFor="expense-notes">Expense Notes</label>
-              <input id="expense-notes" type="text" className="field-input" value={expenseNotes}
-                placeholder="What was the expense for?" onChange={e => setExpenseNotes(e.target.value)} />
-            </div>
-
-            {/* Card Swipe Details Section */}
-            <h2 className="section-heading" style={{ marginTop: '1.5rem' }}>Card Swipe Details</h2>
-            <div className="card-swipe-form" style={{ background: '#1e293b', padding: '12px', borderRadius: '8px', marginBottom: '12px' }}>
-              <div className="field-row-2">
+            {/* PhonePe UPI */}
+            <div className="nozzle-card" style={{ marginBottom: '16px', padding: '16px' }}>
+              <h3 style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '12px', borderBottom: '1px solid #334155', paddingBottom: '6px' }}>PhonePe UPI</h3>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '8px', marginBottom: '12px' }}>
                 <div className="field-group">
-                  <label className="field-label">Card Mode</label>
-                  <select id="swipe-mode" className="field-input" defaultValue="PhonePe Card">
-                    <option value="PhonePe Card">PhonePe Card</option>
-                    <option value="PineLabs Card">PineLabs Card</option>
-                    <option value="PetroCard">PetroCard</option>
-                  </select>
+                  <label className="field-label">Morning (₹)</label>
+                  <input type="number" className="field-input" value={phonePeMorning || ''} step="0.01" min="0" onChange={e => setPhonePeMorning(Number(e.target.value))} />
                 </div>
-                <div className="field-group">
-                  <label className="field-label">Amount (₹)</label>
-                  <input id="swipe-amount" type="number" step="0.01" className="field-input" placeholder="0.00" />
-                </div>
-              </div>
-              <div className="field-row-2" style={{ marginTop: '8px' }}>
                 <div className="field-group">
                   <label className="field-label">TID</label>
-                  <input id="swipe-tid" type="text" className="field-input" placeholder="TID" />
+                  <input type="text" className="field-input" placeholder="TID" value={phonePeTidMorning} onChange={e => setPhonePeTidMorning(e.target.value)} />
                 </div>
                 <div className="field-group">
-                  <label className="field-label">Batch No.</label>
-                  <input id="swipe-batch" type="text" className="field-input" placeholder="Batch" />
+                  <label className="field-label">Batch</label>
+                  <input type="text" className="field-input" placeholder="Batch" value={phonePeBatchMorning} onChange={e => setPhonePeBatchMorning(e.target.value)} />
                 </div>
               </div>
-              <button
-                type="button"
-                className="btn-outline"
-                style={{ marginTop: '12px', width: '100%', padding: '8px' }}
-                onClick={() => {
-                  const mode = (document.getElementById('swipe-mode') as HTMLSelectElement).value;
-                  const amountVal = (document.getElementById('swipe-amount') as HTMLInputElement).value;
-                  const tid = (document.getElementById('swipe-tid') as HTMLInputElement).value;
-                  const batch = (document.getElementById('swipe-batch') as HTMLInputElement).value;
-                  if (!amountVal || Number(amountVal) <= 0) return;
-                  setCardSwipeDetails(prev => [...prev, { mode, amount: Number(amountVal), tid, batch }]);
-                  setCard(prev => prev + Number(amountVal));
-                  (document.getElementById('swipe-amount') as HTMLInputElement).value = '';
-                  (document.getElementById('swipe-tid') as HTMLInputElement).value = '';
-                  (document.getElementById('swipe-batch') as HTMLInputElement).value = '';
-                }}
-              >
-                + Add Card Swipe
-              </button>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '8px' }}>
+                <div className="field-group">
+                  <label className="field-label">Night (₹)</label>
+                  <input type="number" className="field-input" value={phonePeNight || ''} step="0.01" min="0" onChange={e => setPhonePeNight(Number(e.target.value))} />
+                </div>
+                <div className="field-group">
+                  <label className="field-label">TID</label>
+                  <input type="text" className="field-input" placeholder="TID" value={phonePeTidNight} onChange={e => setPhonePeTidNight(e.target.value)} />
+                </div>
+                <div className="field-group">
+                  <label className="field-label">Batch</label>
+                  <input type="text" className="field-input" placeholder="Batch" value={phonePeBatchNight} onChange={e => setPhonePeBatchNight(e.target.value)} />
+                </div>
+              </div>
             </div>
 
-            {cardSwipeDetails.length > 0 && (
-              <div className="card-swipe-list" style={{ marginBottom: '16px' }}>
-                {cardSwipeDetails.map((item, idx) => (
-                  <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#0f172a', padding: '8px 12px', borderRadius: '4px', marginBottom: '4px', fontSize: '0.85rem' }}>
-                    <div>
-                      <strong>{item.mode}</strong>: ₹{item.amount.toFixed(2)} <br />
-                      <span style={{ color: '#94a3b8' }}>TID: {item.tid} | Batch: {item.batch}</span>
-                    </div>
-                    <button
-                      type="button"
-                      style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}
-                      onClick={() => {
-                        setCardSwipeDetails(prev => prev.filter((_, i) => i !== idx));
-                        setCard(prev => Math.max(0, prev - item.amount));
-                      }}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                ))}
+            {/* PineLabs Credit Card */}
+            <div className="nozzle-card" style={{ marginBottom: '16px', padding: '16px' }}>
+              <h3 style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '12px', borderBottom: '1px solid #334155', paddingBottom: '6px' }}>PineLab Credit Card</h3>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '8px', marginBottom: '12px' }}>
+                <div className="field-group">
+                  <label className="field-label">Morning (₹)</label>
+                  <input type="number" className="field-input" value={creditCardMorning || ''} step="0.01" min="0" onChange={e => setCreditCardMorning(Number(e.target.value))} />
+                </div>
+                <div className="field-group">
+                  <label className="field-label">TID</label>
+                  <input type="text" className="field-input" placeholder="TID" value={creditCardTidMorning} onChange={e => setCreditCardTidMorning(e.target.value)} />
+                </div>
+                <div className="field-group">
+                  <label className="field-label">Batch</label>
+                  <input type="text" className="field-input" placeholder="Batch" value={creditCardBatchMorning} onChange={e => setCreditCardBatchMorning(e.target.value)} />
+                </div>
               </div>
-            )}
 
-            {/* Debtor Entries Section */}
-            <h2 className="section-heading" style={{ marginTop: '1.5rem' }}>Debtor Entries Log</h2>
-            <div className="debtor-entry-form" style={{ background: '#1e293b', padding: '12px', borderRadius: '8px', marginBottom: '12px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '8px' }}>
+                <div className="field-group">
+                  <label className="field-label">Night (₹)</label>
+                  <input type="number" className="field-input" value={creditCardNight || ''} step="0.01" min="0" onChange={e => setCreditCardNight(Number(e.target.value))} />
+                </div>
+                <div className="field-group">
+                  <label className="field-label">TID</label>
+                  <input type="text" className="field-input" placeholder="TID" value={creditCardTidNight} onChange={e => setCreditCardTidNight(e.target.value)} />
+                </div>
+                <div className="field-group">
+                  <label className="field-label">Batch</label>
+                  <input type="text" className="field-input" placeholder="Batch" value={creditCardBatchNight} onChange={e => setCreditCardBatchNight(e.target.value)} />
+                </div>
+              </div>
+            </div>
+
+            {/* Petro Card */}
+            <div className="nozzle-card" style={{ marginBottom: '16px', padding: '16px' }}>
+              <h3 style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '12px', borderBottom: '1px solid #334155', paddingBottom: '6px' }}>Petro Card</h3>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '8px', marginBottom: '12px' }}>
+                <div className="field-group">
+                  <label className="field-label">Morning (₹)</label>
+                  <input type="number" className="field-input" value={petroCardMorning || ''} step="0.01" min="0" onChange={e => setPetroCardMorning(Number(e.target.value))} />
+                </div>
+                <div className="field-group">
+                  <label className="field-label">TID</label>
+                  <input type="text" className="field-input" placeholder="TID" value={petroCardTidMorning} onChange={e => setPetroCardTidMorning(e.target.value)} />
+                </div>
+                <div className="field-group">
+                  <label className="field-label">Batch</label>
+                  <input type="text" className="field-input" placeholder="Batch" value={petroCardBatchMorning} onChange={e => setPetroCardBatchMorning(e.target.value)} />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '8px' }}>
+                <div className="field-group">
+                  <label className="field-label">Night (₹)</label>
+                  <input type="number" className="field-input" value={petroCardNight || ''} step="0.01" min="0" onChange={e => setPetroCardNight(Number(e.target.value))} />
+                </div>
+                <div className="field-group">
+                  <label className="field-label">TID</label>
+                  <input type="text" className="field-input" placeholder="TID" value={petroCardTidNight} onChange={e => setPetroCardTidNight(e.target.value)} />
+                </div>
+                <div className="field-group">
+                  <label className="field-label">Batch</label>
+                  <input type="text" className="field-input" placeholder="Batch" value={petroCardBatchNight} onChange={e => setPetroCardBatchNight(e.target.value)} />
+                </div>
+              </div>
+            </div>
+
+            {/* Other Collections */}
+            <div className="nozzle-card" style={{ marginBottom: '16px', padding: '16px' }}>
+              <h3 style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '12px', borderBottom: '1px solid #334155', paddingBottom: '6px' }}>Other Collections</h3>
               <div className="field-row-2">
                 <div className="field-group">
-                  <label className="field-label">Debtor Name</label>
-                  <input id="debtor-name" type="text" className="field-input" placeholder="Name" />
+                  <label className="field-label">Cash Deposit (Bank) (₹)</label>
+                  <input
+                    type="number"
+                    className="field-input"
+                    value={cashDeposit || ''}
+                    step="0.01"
+                    min="0"
+                    onChange={e => setCashDeposit(Number(e.target.value))}
+                  />
                 </div>
                 <div className="field-group">
-                  <label className="field-label">Amount (₹)</label>
-                  <input id="debtor-amount" type="number" step="0.01" className="field-input" placeholder="0.00" />
+                  <label className="field-label">Others (Not in Total) (₹)</label>
+                  <input
+                    type="number"
+                    className="field-input"
+                    value={others || ''}
+                    step="0.01"
+                    min="0"
+                    onChange={e => setOthers(Number(e.target.value))}
+                  />
                 </div>
               </div>
-              <div className="field-row-2" style={{ marginTop: '8px' }}>
-                <div className="field-group">
-                  <label className="field-label">Vehicle No.</label>
-                  <input id="debtor-vehicle" type="text" className="field-input" placeholder="Vehicle No. (Optional)" />
-                </div>
-                <div className="field-group">
-                  <label className="field-label">Time</label>
-                  <input id="debtor-time" type="text" className="field-input" defaultValue={new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' })} />
-                </div>
-              </div>
-              <button
-                type="button"
-                className="btn-outline"
-                style={{ marginTop: '12px', width: '100%', padding: '8px' }}
-                onClick={() => {
-                  const debtorName = (document.getElementById('debtor-name') as HTMLInputElement).value;
-                  const amountVal = (document.getElementById('debtor-amount') as HTMLInputElement).value;
-                  const vehicleNumber = (document.getElementById('debtor-vehicle') as HTMLInputElement).value;
-                  const time = (document.getElementById('debtor-time') as HTMLInputElement).value;
-                  if (!debtorName || !amountVal || Number(amountVal) <= 0) return;
-                  setDebtorEntries(prev => [...prev, { debtorName, amount: Number(amountVal), vehicleNumber, time }]);
-                  setCredit(prev => prev + Number(amountVal));
-                  (document.getElementById('debtor-name') as HTMLInputElement).value = '';
-                  (document.getElementById('debtor-amount') as HTMLInputElement).value = '';
-                  (document.getElementById('debtor-vehicle') as HTMLInputElement).value = '';
-                }}
-              >
-                + Add Debtor Entry
-              </button>
             </div>
 
-            {debtorEntries.length > 0 && (
-              <div className="debtor-entry-list" style={{ marginBottom: '16px' }}>
-                {debtorEntries.map((item, idx) => (
-                  <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#0f172a', padding: '8px 12px', borderRadius: '4px', marginBottom: '4px', fontSize: '0.85rem' }}>
-                    <div>
-                      <strong>{item.debtorName}</strong>: ₹{item.amount.toFixed(2)} <br />
-                      <span style={{ color: '#94a3b8' }}>Veh: {item.vehicleNumber || 'N/A'} | Time: {item.time}</span>
-                    </div>
-                    <button
-                      type="button"
-                      style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}
-                      onClick={() => {
-                        setDebtorEntries(prev => prev.filter((_, i) => i !== idx));
-                        setCredit(prev => Math.max(0, prev - item.amount));
-                      }}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                ))}
+            {/* Adjustments (Expense only) */}
+            <div className="nozzle-card" style={{ marginBottom: '16px', padding: '16px' }}>
+              <h3 style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '12px', borderBottom: '1px solid #334155', paddingBottom: '6px' }}>Adjustments</h3>
+              <div className="field-group" style={{ marginBottom: '12px' }}>
+                <label className="field-label">Expense (₹)</label>
+                <input type="number" className="field-input" value={expense || ''} step="0.01" min="0" onChange={e => setExpense(Number(e.target.value))} />
               </div>
-            )}
-
-            {/* DSM Personal Debtors Section */}
-            <h2 className="section-heading" style={{ marginTop: '1.5rem' }}>DSM Personal Debtors</h2>
-            <div className="personal-debtor-form" style={{ background: '#1e293b', padding: '12px', borderRadius: '8px', marginBottom: '12px' }}>
-              <div className="field-row-2">
-                <div className="field-group">
-                  <label className="field-label">Fuel Product</label>
-                  <select id="pdebt-product" className="field-input" defaultValue="MS-II">
-                    <option value="MS-I">MS-I</option>
-                    <option value="MS-II">MS-II</option>
-                    <option value="HSD">HSD</option>
-                  </select>
-                </div>
-                <div className="field-group">
-                  <label className="field-label">Amount (₹)</label>
-                  <input id="pdebt-amount" type="number" step="0.01" className="field-input" placeholder="0.00" />
-                </div>
+              <div className="field-group" style={{ marginBottom: 0 }}>
+                <label className="field-label">Expense Notes</label>
+                <input
+                  type="text"
+                  className="field-input"
+                  value={expenseNotes}
+                  placeholder="What was the expense for?"
+                  onChange={e => setExpenseNotes(e.target.value)}
+                />
               </div>
-              <div className="field-row-2" style={{ marginTop: '8px' }}>
-                <div className="field-group">
-                  <label className="field-label">Remarks</label>
-                  <input id="pdebt-remarks" type="text" className="field-input" placeholder="Remarks" />
-                </div>
-                <div className="field-group">
-                  <label className="field-label">Payment Mode</label>
-                  <div className="field-input" style={{ display: 'flex', alignItems: 'center', background: '#0f172a', color: '#94a3b8', borderRadius: '6px', padding: '0 12px', height: '42px', fontWeight: 600, letterSpacing: '0.04em' }}>Credit</div>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                className="btn-outline"
-                style={{ marginTop: '12px', width: '100%', padding: '8px' }}
-                onClick={() => {
-                  const fuelProduct = (document.getElementById('pdebt-product') as HTMLSelectElement).value;
-                  const amountVal = (document.getElementById('pdebt-amount') as HTMLInputElement).value;
-                  const remarks = (document.getElementById('pdebt-remarks') as HTMLInputElement).value;
-
-                  if (!amountVal || Number(amountVal) <= 0) return;
-
-                  setPersonalDebtors(prev => [...prev, {
-                    amount: Number(amountVal),
-                    fuelProduct,
-                    remarks,
-                    paymentMethod: 'Credit'
-                  }]);
-
-                  // Clear form
-                  (document.getElementById('pdebt-amount') as HTMLInputElement).value = '';
-                  (document.getElementById('pdebt-remarks') as HTMLInputElement).value = '';
-                }}
-              >
-                + Add Personal Debtor
-              </button>
             </div>
 
-            {personalDebtors.length > 0 && (
-              <div className="personal-debtor-list" style={{ marginBottom: '16px' }}>
-                {personalDebtors.map((item, idx) => (
-                  <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#0f172a', padding: '8px 12px', borderRadius: '4px', marginBottom: '4px', fontSize: '0.85rem' }}>
-                    <div>
-                      <strong>Personal Debtor #{idx}</strong>: ₹{item.amount.toFixed(2)} ({item.fuelProduct}) <br />
-                      <span style={{ color: '#94a3b8' }}>Mode: {item.paymentMethod} | Remarks: {item.remarks || 'None'}</span>
-                    </div>
-                    <button
-                      type="button"
-                      style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}
-                      onClick={() => {
-                        setPersonalDebtors(prev => prev.filter((_, i) => i !== idx));
+            {/* Debtors Log */}
+            <div className="nozzle-card" style={{ marginBottom: '16px', padding: '16px' }}>
+              <h3 style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '12px', borderBottom: '1px solid #334155', paddingBottom: '6px' }}>Debtors (Credit/Debit)</h3>
+              
+              <div className="debtor-entry-form" style={{ background: '#0f172a', padding: '12px', borderRadius: '6px', marginBottom: '12px' }}>
+                <div className="field-row-2">
+                  <div className="field-group">
+                    <label className="field-label">Debtor Name</label>
+                    <select
+                      className="field-input"
+                      value={selectedCreditorId}
+                      onChange={e => {
+                        const val = e.target.value;
+                        setSelectedCreditorId(val);
+                        const c = creditorList.find(x => x.id === val);
+                        setNewDebtorName(c ? c.name : '');
+                        setNewDebtorVehicle('');
                       }}
                     >
-                      Delete
-                    </button>
+                      <option value="">-- Select Debtor --</option>
+                      {creditorList.map(c => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
                   </div>
-                ))}
+                  <div className="field-group">
+                    <label className="field-label">Amount (₹)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      className="field-input"
+                      placeholder="0.00"
+                      value={newDebtorAmount}
+                      onChange={e => setNewDebtorAmount(e.target.value)}
+                    />
+                  </div>
+                </div>
+                
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '10px 0 6px 0' }}>
+                  <input
+                    type="checkbox"
+                    id="custom-vehicle-check"
+                    checked={customVehicle}
+                    onChange={e => {
+                      setCustomVehicle(e.target.checked);
+                      setNewDebtorVehicle('');
+                    }}
+                  />
+                  <label htmlFor="custom-vehicle-check" style={{ fontSize: '0.85rem', fontWeight: '500', color: '#94a3b8', cursor: 'pointer' }}>
+                    Type custom vehicle number
+                  </label>
+                </div>
+
+                <div className="field-row-2">
+                  <div className="field-group">
+                    <label className="field-label">Vehicle No.</label>
+                    {customVehicle ? (
+                      <input
+                        type="text"
+                        className="field-input"
+                        placeholder="MH-12-XX-XXXX"
+                        value={newDebtorVehicle}
+                        onChange={e => setNewDebtorVehicle(e.target.value)}
+                      />
+                    ) : (
+                      <select
+                        className="field-input"
+                        value={newDebtorVehicle}
+                        onChange={e => setNewDebtorVehicle(e.target.value)}
+                        disabled={!selectedCreditorId}
+                      >
+                        <option value="">-- Select Vehicle --</option>
+                        {vehicleList
+                          .filter(v => v.creditorId === selectedCreditorId)
+                          .map((v, i) => (
+                            <option key={i} value={v.vehicleNumber}>{v.vehicleNumber}</option>
+                          ))}
+                      </select>
+                    )}
+                  </div>
+                  <div className="field-group">
+                    <label className="field-label">Slip No.</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      placeholder="Slip No."
+                      value={newDebtorSlip}
+                      onChange={e => setNewDebtorSlip(e.target.value)}
+                    />
+                  </div>
+                </div>
+                
+                <button
+                  type="button"
+                  className="btn-outline"
+                  style={{ marginTop: '12px', width: '100%', padding: '8px' }}
+                  onClick={() => {
+                    if (!newDebtorName || !newDebtorAmount || Number(newDebtorAmount) <= 0) return;
+                    
+                    const time = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
+                    setDebtorEntries(prev => [...prev, {
+                      debtorName: newDebtorName,
+                      amount: Number(newDebtorAmount),
+                      vehicleNumber: newDebtorVehicle,
+                      slipNumber: newDebtorSlip,
+                      time
+                    }]);
+                    
+                    // Reset fields
+                    setNewDebtorAmount('');
+                    setNewDebtorVehicle('');
+                    setNewDebtorSlip('');
+                    setSelectedCreditorId('');
+                    setNewDebtorName('');
+                    setCustomVehicle(false);
+                  }}
+                >
+                  + Add Debtor Entry
+                </button>
               </div>
-            )}
+
+              {debtorEntries.length > 0 && (
+                <div className="debtor-entry-list">
+                  {debtorEntries.map((item, idx) => (
+                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#0f172a', padding: '8px 12px', borderRadius: '4px', marginBottom: '4px', fontSize: '0.85rem' }}>
+                      <div>
+                        <strong>{item.debtorName}</strong>: ₹{item.amount.toFixed(2)} <br />
+                        <span style={{ color: '#94a3b8' }}>
+                          Veh: {item.vehicleNumber || 'N/A'} | Slip: {item.slipNumber || 'N/A'} | Time: {item.time}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}
+                        onClick={() => {
+                          setDebtorEntries(prev => prev.filter((_, i) => i !== idx));
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+
 
             {/* Mismatch Preview */}
             <div className={`mismatch-preview ${Math.abs(mismatch) > 500 ? 'mismatch-warn' : 'mismatch-ok'}`}>
@@ -723,27 +1129,49 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
             <div className="review-block">
               <p className="review-block-title">Nozzle Readings</p>
               {nozzleRows.map((r) => (
-                <div key={r.rowId} className="review-row">
-                  <span>Nozzle {r.nozzleId} ({r.fuelType})</span>
-                  <strong>
-                    {Math.max(0, r.closingReading - r.openingReading).toFixed(2)}L
-                    {' '}= ₹{(Math.max(0, r.closingReading - r.openingReading) * r.rate).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                  </strong>
+                <div key={r.rowId} className="review-row" style={{ flexDirection: 'column', alignItems: 'stretch', marginBottom: '8px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Nozzle {r.nozzleId} ({r.fuelType})</span>
+                    <strong>
+                      {Math.max(0, r.closingReading - r.openingReading).toFixed(2)}L
+                      {' '}= ₹{(Math.max(0, r.closingReading - r.openingReading) * r.rate).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                    </strong>
+                  </div>
+                  {(r.testing || 0) > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#94a3b8', paddingLeft: '8px', marginTop: '2px' }}>
+                      <span>└ Testing Quantity</span>
+                      <span>-{r.testing} L (₹{((r.testing || 0) * r.rate).toFixed(2)})</span>
+                    </div>
+                  )}
                 </div>
               ))}
-              <div className="review-row review-total">
+              <div className="review-row review-total" style={{ borderTop: '1px solid #334155', paddingTop: '8px', marginTop: '8px' }}>
                 <span>Gross Sales</span><strong>₹{grossSales.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
               </div>
             </div>
 
             <div className="review-block">
-              <p className="review-block-title">Collections</p>
-              {cash > 0 && <div className="review-row"><span>Cash</span><strong>₹{cash.toLocaleString('en-IN')}</strong></div>}
-              {upi > 0 && <div className="review-row"><span>UPI</span><strong>₹{upi.toLocaleString('en-IN')}</strong></div>}
-              {card > 0 && <div className="review-row"><span>Card</span><strong>₹{card.toLocaleString('en-IN')}</strong></div>}
-              {credit > 0 && <div className="review-row"><span>Credit</span><strong>₹{credit.toLocaleString('en-IN')}</strong></div>}
-              {expense > 0 && <div className="review-row"><span>Expense</span><strong>₹{expense.toLocaleString('en-IN')}</strong></div>}
-              <div className={`review-row review-total ${Math.abs(mismatch) > 500 ? 'review-warn' : ''}`}>
+              <p className="review-block-title">Collections &amp; Adjustments</p>
+              {cash > 0 && (
+                <>
+                  <div className="review-row"><span>Cash (Total)</span><strong>₹{cash.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong></div>
+                  <div style={{ fontSize: '0.8rem', color: '#94a3b8', paddingLeft: '12px', marginBottom: '8px', borderLeft: '2px solid #334155' }}>
+                    {denom500 > 0 && <div>500 x {denom500} = ₹{denom500 * 500}</div>}
+                    {denom200 > 0 && <div>200 x {denom200} = ₹{denom200 * 200}</div>}
+                    {denom100 > 0 && <div>100 x {denom100} = ₹{denom100 * 100}</div>}
+                    {denom50 > 0 && <div>50 x {denom50} = ₹{denom50 * 50}</div>}
+                    {denom20 > 0 && <div>20 x {denom20} = ₹{denom20 * 20}</div>}
+                    {denom10 > 0 && <div>10 x {denom10} = ₹{denom10 * 10}</div>}
+                    {coins > 0 && <div>Coins/Other = ₹{coins}</div>}
+                  </div>
+                </>
+              )}
+              {upiTotal > 0 && <div className="review-row"><span>UPI</span><strong>₹{upiTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong></div>}
+              {cardTotal > 0 && <div className="review-row"><span>Card</span><strong>₹{cardTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong></div>}
+              {creditTotal > 0 && <div className="review-row"><span>Credit (Debtors)</span><strong>₹{creditTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong></div>}
+              {totalTesting > 0 && <div className="review-row"><span>Testing Credit</span><strong>₹{totalTesting.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong></div>}
+              {expense > 0 && <div className="review-row"><span>Expense</span><strong>₹{expense.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong></div>}
+              <div className={`review-row review-total ${Math.abs(mismatch) > 500 ? 'review-warn' : ''}`} style={{ borderTop: '1px solid #334155', paddingTop: '8px', marginTop: '8px' }}>
                 <span>Mismatch</span><strong>₹{mismatch.toFixed(2)}</strong>
               </div>
             </div>
@@ -772,17 +1200,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
               </div>
             )}
 
-            {personalDebtors.length > 0 && (
-              <div className="review-block">
-                <p className="review-block-title">DSM Personal Debtors</p>
-                {personalDebtors.map((item, idx) => (
-                  <div key={idx} className="review-row">
-                    <span>Personal Debtor #{idx} ({item.fuelProduct}, {item.paymentMethod})</span>
-                    <strong>₹{item.amount.toFixed(2)}</strong>
-                  </div>
-                ))}
-              </div>
-            )}
+
 
             <div className="field-group">
               <label className="field-label" htmlFor="submission-notes">Notes (optional)</label>

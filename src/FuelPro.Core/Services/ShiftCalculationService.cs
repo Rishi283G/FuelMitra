@@ -15,18 +15,21 @@ public class ShiftCalculationService
     private readonly IShiftRepository _shiftRepo;
     private readonly IExpenseRepository _expenseRepo;
     private readonly IDsmCalculationService _dsmCalculationService;
+    private readonly ITidCalculationService _tidService;
     private readonly ILogger _logger = Log.ForContext<ShiftCalculationService>();
 
     public ShiftCalculationService(
         IDsmEntryRepository dsmRepo,
         IShiftRepository shiftRepo,
         IExpenseRepository expenseRepo,
-        IDsmCalculationService dsmCalculationService)
+        IDsmCalculationService dsmCalculationService,
+        ITidCalculationService tidService)
     {
         _dsmRepo = dsmRepo;
         _shiftRepo = shiftRepo;
         _expenseRepo = expenseRepo;
         _dsmCalculationService = dsmCalculationService;
+        _tidService = tidService;
     }
 
     /// <summary>
@@ -179,16 +182,43 @@ public class ShiftCalculationService
             dto.MsTesting = entries.SelectMany(e => e.TestingEntries).Where(t => t.FuelType == "MS").Sum(t => t.Amount);
             dto.HsdTesting = entries.SelectMany(e => e.TestingEntries).Where(t => t.FuelType == "HSD").Sum(t => t.Amount);
             dto.CngTesting = entries.SelectMany(e => e.TestingEntries).Where(t => t.FuelType == "CNG").Sum(t => t.Amount);
-            dto.PhonePeTotal = dto.DsmSummaryRows.Sum(r => r.PhonePeCard + r.PhonePeMorning + r.PhonePeNight);
-            dto.PhonePeCardTotal = dto.DsmSummaryRows.Sum(r => r.PhonePeCard);
-            dto.PhonePeCardMorningTotal = dto.DsmSummaryRows.Sum(r => r.PhonePeCardMorning);
-            dto.PhonePeCardNightTotal = dto.DsmSummaryRows.Sum(r => r.PhonePeCardNight);
-            dto.PhonePeMorningTotal = dto.DsmSummaryRows.Sum(r => r.PhonePeMorning);
-            dto.PhonePeNightTotal = dto.DsmSummaryRows.Sum(r => r.PhonePeNight);
-            dto.PetroCardTotal = dto.DsmSummaryRows.Sum(r => r.PetroCard);
-            dto.CreditCardMorningTotal = dto.DsmSummaryRows.Sum(r => r.CreditCardMorning);
-            dto.CreditCardNightTotal = dto.DsmSummaryRows.Sum(r => r.CreditCardNight);
-            dto.CreditCardTotal = dto.CreditCardMorningTotal + dto.CreditCardNightTotal;
+
+            var tidSheetToday = await _tidService.GetTidSheetAsync(shift.ShiftDate.Date);
+            var tidSheetTomorrow = await _tidService.GetTidSheetAsync(shift.ShiftDate.Date.AddDays(1));
+
+            if (shift.ShiftType == "A")
+            {
+                dto.PhonePeCardMorningTotal = tidSheetToday.PhonePeCardDay;
+                dto.PhonePeCardNightTotal = 0;
+                dto.PhonePeCardTotal = tidSheetToday.PhonePeCardDay;
+
+                dto.PhonePeMorningTotal = tidSheetToday.PhonePeDirectDay;
+                dto.PhonePeNightTotal = 0;
+                dto.PhonePeTotal = tidSheetToday.PhonePeDirectDay + tidSheetToday.PhonePeCardDay;
+
+                dto.PetroCardTotal = tidSheetToday.PetroCardDay;
+
+                dto.CreditCardMorningTotal = tidSheetToday.PineLabsCardDay;
+                dto.CreditCardNightTotal = 0;
+                dto.CreditCardTotal = tidSheetToday.PineLabsCardDay;
+            }
+            else
+            {
+                dto.PhonePeCardMorningTotal = tidSheetTomorrow.PhonePeCardMorning;
+                dto.PhonePeCardNightTotal = tidSheetToday.PhonePeCardNight;
+                dto.PhonePeCardTotal = tidSheetTomorrow.PhonePeCardMorning + tidSheetToday.PhonePeCardNight;
+
+                dto.PhonePeMorningTotal = tidSheetTomorrow.PhonePeDirectMorning;
+                dto.PhonePeNightTotal = tidSheetToday.PhonePeDirectNight;
+                dto.PhonePeTotal = dto.PhonePeMorningTotal + dto.PhonePeNightTotal + dto.PhonePeCardTotal;
+
+                dto.PetroCardTotal = tidSheetTomorrow.PetroCardMorning + tidSheetToday.PetroCardNight;
+
+                dto.CreditCardMorningTotal = tidSheetTomorrow.PineLabsCardMorning;
+                dto.CreditCardNightTotal = tidSheetToday.PineLabsCardNight;
+                dto.CreditCardTotal = dto.CreditCardMorningTotal + dto.CreditCardNightTotal;
+            }
+
             dto.BankCash = dto.Cash1Aggregate.GrandTotal;
             dto.CashInHand = dto.Cash2Aggregate.GrandTotal;
 

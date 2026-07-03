@@ -21,11 +21,35 @@ interface HistoryEntry {
 
 export default function HistoryScreen({ onBack }: HistoryProps) {
   const { profile } = useAuth();
-  const { fetchSubmissionHistory } = useSubmissionService();
+  const { fetchSubmissionHistory, fetchSubmissionDetails } = useSubmissionService();
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [filterStatus, setFilterStatus] = useState<'All' | 'Pending' | 'Approved' | 'Rejected'>('All');
+  
+  // Expansion state
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [details, setDetails] = useState<any>(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+
+  const toggleExpand = async (id: string) => {
+    if (expandedId === id) {
+      setExpandedId(null);
+      setDetails(null);
+      return;
+    }
+    setExpandedId(id);
+    setDetails(null);
+    setDetailsLoading(true);
+    try {
+      const data = await fetchSubmissionDetails(id);
+      setDetails(data);
+    } catch (e) {
+      console.error('Failed to load submission details:', e);
+    } finally {
+      setDetailsLoading(false);
+    }
+  };
 
   async function loadHistory() {
     if (!profile) return;
@@ -122,6 +146,8 @@ export default function HistoryScreen({ onBack }: HistoryProps) {
             key={entry.Id}
             id={`history-entry-${entry.Id}`}
             className={`history-card history-card--${entry.Status.toLowerCase()}`}
+            onClick={() => toggleExpand(entry.Id)}
+            style={{ cursor: 'pointer' }}
           >
             <div className="history-card-top">
               <div>
@@ -152,6 +178,119 @@ export default function HistoryScreen({ onBack }: HistoryProps) {
               <div className="rejection-reason">
                 <XCircle size={14} />
                 <span>{entry.RejectionReason}</span>
+              </div>
+            )}
+
+            {expandedId === entry.Id && (
+              <div className="history-card-details" onClick={e => e.stopPropagation()} style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #334155' }}>
+                {detailsLoading ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px', color: '#94a3b8' }}>
+                    <Loader2 size={16} className="spin" />
+                    <span>Loading submission details...</span>
+                  </div>
+                ) : details ? (
+                  <div>
+                    {/* Nozzle Readings */}
+                    <div style={{ marginBottom: '12px' }}>
+                      <p style={{ fontWeight: 'bold', fontSize: '0.85rem', color: '#f8fafc', marginBottom: '6px' }}>Nozzle Readings</p>
+                      {details.readings.map((r: any, idx: number) => {
+                        const testingLtr = details.submission.Metadata?.testingEntries?.find((t: any) => t.nozzleId === r.NozzleId)?.amount || 0;
+                        return (
+                          <div key={idx} style={{ display: 'flex', flexDirection: 'column', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '4px', background: '#0f172a', padding: '6px', borderRadius: '4px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#e2e8f0', fontWeight: '500' }}>
+                              <span>Nozzle {r.NozzleId} ({r.FuelType || 'Fuel'})</span>
+                              <span>{(r.ClosingReading - r.OpeningReading).toFixed(2)} L (₹{((r.ClosingReading - r.OpeningReading) * r.Rate).toFixed(2)})</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', marginTop: '2px' }}>
+                              <span>Op: {r.OpeningReading} | Cl: {r.ClosingReading}</span>
+                              {testingLtr > 0 && <span style={{ color: '#fb923c' }}>Testing: {testingLtr} L</span>}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Collections */}
+                    <div style={{ marginBottom: '12px' }}>
+                      <p style={{ fontWeight: 'bold', fontSize: '0.85rem', color: '#f8fafc', marginBottom: '6px' }}>Collections &amp; Adjustments</p>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.8rem', color: '#94a3b8' }}>
+                        {details.collection?.Cash > 0 && (
+                          <div style={{ background: '#0f172a', padding: '6px', borderRadius: '4px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#e2e8f0' }}>
+                              <span>Cash Total:</span>
+                              <strong>₹{details.collection.Cash.toLocaleString('en-IN')}</strong>
+                            </div>
+                            {details.submission.Metadata?.cashDenominations && (
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', fontSize: '0.75rem', color: '#64748b', marginTop: '4px', paddingLeft: '6px', borderLeft: '2px solid #334155' }}>
+                                {Object.entries(details.submission.Metadata.cashDenominations as Record<string, number>).map(([k, v]) => {
+                                  if (!v || v === 0) return null;
+                                  return (
+                                    <div key={k}>
+                                      {k.replace('denom', '₹')} x {String(v)}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {details.collection?.UPI > 0 && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', background: '#0f172a', padding: '6px', borderRadius: '4px' }}>
+                            <span>UPI (PhonePe):</span>
+                            <span style={{ color: '#e2e8f0' }}>₹{details.collection.UPI.toLocaleString('en-IN')}</span>
+                          </div>
+                        )}
+                        {details.collection?.Card > 0 && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', background: '#0f172a', padding: '6px', borderRadius: '4px' }}>
+                            <span>Card/Swipe:</span>
+                            <span style={{ color: '#e2e8f0' }}>₹{details.collection.Card.toLocaleString('en-IN')}</span>
+                          </div>
+                        )}
+                        {details.collection?.Credit > 0 && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', background: '#0f172a', padding: '6px', borderRadius: '4px' }}>
+                            <span>Debtors (Credit):</span>
+                            <span style={{ color: '#e2e8f0' }}>₹{details.collection.Credit.toLocaleString('en-IN')}</span>
+                          </div>
+                        )}
+                        {details.collection?.Expense > 0 && (
+                          <div style={{ background: '#0f172a', padding: '6px', borderRadius: '4px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                              <span>Expense:</span>
+                              <span style={{ color: '#f87171' }}>₹{details.collection.Expense.toLocaleString('en-IN')}</span>
+                            </div>
+                            {details.collection.ExpenseNotes && (
+                              <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>
+                                Note: {details.collection.ExpenseNotes}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Debtors List */}
+                    {details.submission.Metadata?.debtorEntries?.length > 0 && (
+                      <div style={{ marginBottom: '12px' }}>
+                        <p style={{ fontWeight: 'bold', fontSize: '0.85rem', color: '#f8fafc', marginBottom: '6px' }}>Debtor Logs</p>
+                        {details.submission.Metadata.debtorEntries.map((d: any, idx: number) => (
+                          <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#94a3b8', background: '#0f172a', padding: '6px', borderRadius: '4px', marginBottom: '4px' }}>
+                            <span>{d.debtorName} {d.vehicleNumber ? `(${d.vehicleNumber})` : ''}</span>
+                            <span style={{ color: '#e2e8f0' }}>₹{d.amount.toFixed(2)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* General Notes */}
+                    {details.submission.Notes && (
+                      <div style={{ background: '#0f172a', padding: '8px', borderRadius: '4px', fontSize: '0.8rem', color: '#94a3b8' }}>
+                        <strong style={{ color: '#e2e8f0' }}>Notes:</strong> {details.submission.Notes}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ color: '#ef4444', fontSize: '0.8rem' }}>Failed to load details.</div>
+                )}
               </div>
             )}
           </div>

@@ -49,6 +49,7 @@ public partial class DsmManagementViewModel : ObservableObject
 
     [ObservableProperty] private DsmUser? _selectedDsmUser;
     [ObservableProperty] private int? _selectedPumpId;
+    [ObservableProperty] private int? _selectedConnectedPumpId;
     [ObservableProperty] private string _selectedShift = "A";
     [ObservableProperty] private string _assignmentStatusMessage = "";
 
@@ -70,8 +71,8 @@ public partial class DsmManagementViewModel : ObservableObject
         _authAdminService = _serviceProvider.GetRequiredService<DsmAuthAdminService>();
         _supabaseDsmService = _serviceProvider.GetRequiredService<SupabaseDsmService>();
 
-        // Pump options (e.g. Pump 1 to 8)
-        for (int i = 1; i <= 8; i++) PumpOptions.Add(i);
+        // Pump options (e.g. Pump 1 to 6)
+        for (int i = 1; i <= 6; i++) PumpOptions.Add(i);
 
         _ = LoadDataAsync();
         _ = LoadAllNozzleConfigsAsync();
@@ -312,6 +313,7 @@ public partial class DsmManagementViewModel : ObservableObject
             {
                 DsmUserId = SelectedDsmUser.DsmUserId,
                 PumpId = SelectedPumpId.Value,
+                ConnectedPumpId = SelectedConnectedPumpId,
                 ShiftType = SelectedShift,
                 IsActive = true,
                 AssignedDate = DateTime.Now
@@ -319,6 +321,9 @@ public partial class DsmManagementViewModel : ObservableObject
 
             context.DsmPumpAssignments.Add(assignment);
             await context.SaveChangesAsync();
+
+            // Reset selection fields
+            SelectedConnectedPumpId = null;
 
             AssignmentStatusMessage = "✅ Assignment saved successfully.";
             await LoadDataAsync();

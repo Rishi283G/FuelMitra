@@ -22,6 +22,7 @@ public partial class CollectionSummaryViewModel : ObservableObject
 {
     private readonly IDsmEntryRepository _dsmEntryRepo;
     private readonly IOwnerCalculationService _ownerCalcService;
+    private readonly ITidCalculationService _tidService;
     private readonly PrintService _printService;
     private readonly ExcelExportService _excelExportService;
 
@@ -45,6 +46,7 @@ public partial class CollectionSummaryViewModel : ObservableObject
     {
         _dsmEntryRepo = App.Services.GetRequiredService<IDsmEntryRepository>();
         _ownerCalcService = App.Services.GetRequiredService<IOwnerCalculationService>();
+        _tidService = App.Services.GetRequiredService<ITidCalculationService>();
         _printService = App.Services.GetRequiredService<PrintService>();
         _excelExportService = App.Services.GetRequiredService<ExcelExportService>();
         _ = LoadAsync();
@@ -68,6 +70,8 @@ public partial class CollectionSummaryViewModel : ObservableObject
             TotalDebit = 0; GrandTotal = 0;
             DayRows.Clear();
 
+            var tidSheets = await _tidService.GetTidSheetsForRangeAsync(StartDate.Date, EndDate.Date);
+
             var byDay = entries.GroupBy(e =>
             {
                 var shift = e.Shift;
@@ -76,7 +80,9 @@ public partial class CollectionSummaryViewModel : ObservableObject
 
             foreach (var dayGroup in byDay.OrderBy(g => g.Key))
             {
-                var dayResult = _ownerCalcService.Calculate(dayGroup, Array.Empty<Expense>(), Array.Empty<ShiftOtherCash>());
+                var date = dayGroup.Key;
+                tidSheets.TryGetValue(date, out var tidSheet);
+                var dayResult = _ownerCalcService.Calculate(dayGroup, Array.Empty<Expense>(), Array.Empty<ShiftOtherCash>(), tidSheet);
 
                 DayRows.Add(new CollectionDayRow
                 {

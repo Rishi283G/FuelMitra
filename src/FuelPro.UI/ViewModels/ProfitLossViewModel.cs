@@ -23,6 +23,7 @@ public partial class ProfitLossViewModel : ObservableObject
     private readonly ICreditorRepaymentRepository _repaymentRepo;
     private readonly IOwnerCalculationService _ownerCalcService;
     private readonly IFinancialCalculationService _financialCalcService;
+    private readonly ITidCalculationService _tidService;
 
     [ObservableProperty] private DateTime _startDate = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
     [ObservableProperty] private DateTime _endDate = DateTime.Today;
@@ -122,6 +123,7 @@ public partial class ProfitLossViewModel : ObservableObject
         _repaymentRepo = App.Services.GetRequiredService<ICreditorRepaymentRepository>();
         _ownerCalcService = App.Services.GetRequiredService<IOwnerCalculationService>();
         _financialCalcService = App.Services.GetRequiredService<IFinancialCalculationService>();
+        _tidService = App.Services.GetRequiredService<ITidCalculationService>();
         
         // Wire Sync Status to trigger auto-reload
         var syncEngine = App.Services.GetRequiredService<FuelPro.Sync.SyncEngine>();
@@ -272,7 +274,28 @@ public partial class ProfitLossViewModel : ObservableObject
                 ? (double)repResult.Data.Sum(r => r.Amount)
                 : 0;
 
-            var calculationData = _ownerCalcService.Calculate(entries, shiftExpensesList, Array.Empty<ShiftOtherCash>());
+            var tidSheets = await _tidService.GetTidSheetsForRangeAsync(StartDate.Date, EndDate.Date);
+            var aggTidSheet = new BusinessDayTidSheet();
+            foreach (var s in tidSheets.Values)
+            {
+                aggTidSheet.PhonePeDirectMorning += s.PhonePeDirectMorning;
+                aggTidSheet.PhonePeDirectDay += s.PhonePeDirectDay;
+                aggTidSheet.PhonePeDirectNight += s.PhonePeDirectNight;
+
+                aggTidSheet.PhonePeCardMorning += s.PhonePeCardMorning;
+                aggTidSheet.PhonePeCardDay += s.PhonePeCardDay;
+                aggTidSheet.PhonePeCardNight += s.PhonePeCardNight;
+
+                aggTidSheet.PineLabsCardMorning += s.PineLabsCardMorning;
+                aggTidSheet.PineLabsCardDay += s.PineLabsCardDay;
+                aggTidSheet.PineLabsCardNight += s.PineLabsCardNight;
+
+                aggTidSheet.PetroCardMorning += s.PetroCardMorning;
+                aggTidSheet.PetroCardDay += s.PetroCardDay;
+                aggTidSheet.PetroCardNight += s.PetroCardNight;
+            }
+
+            var calculationData = _ownerCalcService.Calculate(entries, shiftExpensesList, Array.Empty<ShiftOtherCash>(), aggTidSheet);
             TotalGrossSales = calculationData.GrossSales;
             TotalCollection = calculationData.AdjustedCollection;
             TotalCreditorDebits = calculationData.Debit;

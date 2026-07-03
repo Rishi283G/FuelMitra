@@ -11,7 +11,8 @@ public class OwnerCalculationService : IOwnerCalculationService
     public OwnerCalculationResult Calculate(
         IEnumerable<DsmEntry> entries,
         IEnumerable<Expense> shiftExpenses,
-        IEnumerable<ShiftOtherCash> otherCash)
+        IEnumerable<ShiftOtherCash> otherCash,
+        BusinessDayTidSheet? tidSheet = null)
     {
         var result = new OwnerCalculationResult();
 
@@ -55,13 +56,23 @@ public class OwnerCalculationService : IOwnerCalculationService
         double totalShiftExp = shiftExpenses != null ? shiftExpenses.Sum(e => e.Amount) : 0;
         result.Expenses = entryExpenses + totalShiftExp;
 
+        // Apply business-day TID overrides if provided
+        if (tidSheet != null)
+        {
+            result.PhonePeDirect = tidSheet.PhonePeTotal;
+            result.PhonePeCard = 0;
+            result.CreditCard = tidSheet.PineLabsCardTotal;
+            result.PetroCard = tidSheet.PetroCardTotal;
+        }
+
         return result;
     }
 
     public Dictionary<DateTime, OwnerCalculationResult> CalculateByDay(
         IEnumerable<DsmEntry> entries,
         IEnumerable<Expense> shiftExpenses,
-        IEnumerable<ShiftOtherCash> otherCash)
+        IEnumerable<ShiftOtherCash> otherCash,
+        Dictionary<DateTime, BusinessDayTidSheet>? tidSheets = null)
     {
         var byDay = entries.GroupBy(e =>
         {
@@ -82,7 +93,10 @@ public class OwnerCalculationService : IOwnerCalculationService
             var dateOtherCash = otherCash?.Where(o => o.ShiftDate.Date == date)
                                 ?? Enumerable.Empty<ShiftOtherCash>();
 
-            var dayResult = Calculate(dayGroup, dateShiftExpenses, dateOtherCash);
+            BusinessDayTidSheet? tidSheet = null;
+            tidSheets?.TryGetValue(date, out tidSheet);
+
+            var dayResult = Calculate(dayGroup, dateShiftExpenses, dateOtherCash, tidSheet);
             results[date] = dayResult;
         }
 

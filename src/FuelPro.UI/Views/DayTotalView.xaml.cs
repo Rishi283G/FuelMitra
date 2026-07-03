@@ -128,6 +128,22 @@ public partial class DayTotalView : UserControl
                 dsmName     = ex.DsmName,
                 description = ex.Description,
                 amount      = ex.Amount
+            }).ToList(),
+            repayments = vm.DebtorRepayments.Select(r => new
+            {
+                creditorName = r.CreditorName,
+                paymentMode  = r.PaymentMode,
+                amount       = r.Amount,
+                chequeNo     = r.ChequeNo,
+                cardTid      = r.CardTid,
+                cardBatch    = r.CardBatch,
+                denom500     = r.Denom500,
+                denom200     = r.Denom200,
+                denom100     = r.Denom100,
+                denom50      = r.Denom50,
+                denom20      = r.Denom20,
+                denom10      = r.Denom10,
+                coins        = r.Coins
             }).ToList()
         };
 

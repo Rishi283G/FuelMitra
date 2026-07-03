@@ -19,6 +19,8 @@ public class DsmPumpAssignment
     [Required]
     public int PumpId { get; set; }
 
+    public int? ConnectedPumpId { get; set; }
+
     [Required]
     [MaxLength(10)]
     public string ShiftType { get; set; } = "A"; // 'A', 'B', 'C'

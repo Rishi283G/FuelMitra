@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 
 namespace FuelPro.Core.DTOs;
 
@@ -20,4 +21,6 @@ public class NozzleGroupDto
     public double Stock { get; set; }
     public double Density { get; set; }
     public List<List<NozzleDisplayItem>> Rows { get; set; } = new();
+
+    public IEnumerable<NozzleDisplayItem> FlatNozzles => Rows?.SelectMany(r => r) ?? Enumerable.Empty<NozzleDisplayItem>();
 }

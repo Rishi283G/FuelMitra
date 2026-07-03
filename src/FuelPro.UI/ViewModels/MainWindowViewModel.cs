@@ -127,54 +127,54 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void NavigateToSettings()
-    {
-        SelectedNavIndex = 4;
-        CurrentView = App.Services.GetRequiredService<SettingsViewModel>();
-    }
-
-    [RelayCommand]
-    private void NavigateToAgsImport()
-    {
-        SelectedNavIndex = 5;
-        CurrentView = App.Services.GetRequiredService<AgsImportViewModel>();
-    }
-
-    [RelayCommand]
-    private void NavigateToDsmApprovalQueue()
-    {
-        SelectedNavIndex = 6;
-        CurrentView = App.Services.GetRequiredService<DsmApprovalQueueViewModel>();
-    }
-
-    [RelayCommand]
-    private void NavigateToDsmManagement()
-    {
-        SelectedNavIndex = 7;
-        CurrentView = App.Services.GetRequiredService<DsmManagementViewModel>();
-    }
-
-    [RelayCommand]
-    private void NavigateToCardSettlement()
-    {
-        SelectedNavIndex = 8;
-        CurrentView = App.Services.GetRequiredService<CardSettlementViewModel>();
-    }
-
-    [RelayCommand]
     private void NavigateToDebtorManagement()
     {
-        SelectedNavIndex = 9;
+        SelectedNavIndex = 4;
         var debtorVm = App.Services.GetRequiredService<DebtorManagementViewModel>();
         debtorVm.SelectedTabIndex = 0; // Debtors Directory tab
         CurrentView = debtorVm;
     }
 
     [RelayCommand]
+    private void NavigateToDsmApprovalQueue()
+    {
+        SelectedNavIndex = 5;
+        CurrentView = App.Services.GetRequiredService<DsmApprovalQueueViewModel>();
+    }
+
+    [RelayCommand]
+    private void NavigateToDsmManagement()
+    {
+        SelectedNavIndex = 6;
+        CurrentView = App.Services.GetRequiredService<DsmManagementViewModel>();
+    }
+
+    [RelayCommand]
+    private void NavigateToCardSettlement()
+    {
+        SelectedNavIndex = 7;
+        CurrentView = App.Services.GetRequiredService<CardSettlementViewModel>();
+    }
+
+    [RelayCommand]
     private void NavigateToPumpExpenses()
     {
-        SelectedNavIndex = 10;
+        SelectedNavIndex = 8;
         CurrentView = App.Services.GetRequiredService<PumpExpensesViewModel>();
+    }
+
+    [RelayCommand]
+    private void NavigateToAgsImport()
+    {
+        SelectedNavIndex = 9;
+        CurrentView = App.Services.GetRequiredService<AgsImportViewModel>();
+    }
+
+    [RelayCommand]
+    private void NavigateToSettings()
+    {
+        SelectedNavIndex = 10;
+        CurrentView = App.Services.GetRequiredService<SettingsViewModel>();
     }
 
 

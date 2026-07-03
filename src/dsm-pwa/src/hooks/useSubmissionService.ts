@@ -43,7 +43,10 @@ export function useSubmissionService() {
         Metadata: {
           cardSwipeDetails: draft.cardSwipeDetails || [],
           debtorEntries: draft.debtorEntries || [],
-          personalDebtors: draft.personalDebtors || []
+          personalDebtors: draft.personalDebtors || [],
+          cashDenominations: (draft as any).cashDenominations || null,
+          testingEntries: (draft as any).testingEntries || [],
+          connectedPumpId: (draft as any).connectedPumpId || null
         }
       });
 
@@ -56,7 +59,7 @@ export function useSubmissionService() {
       if (draft.nozzleReadings.length > 0) {
         const readingsPayload = draft.nozzleReadings.map(r => ({
           SubmissionId: submissionId,
-          PumpId: draft.pumpId,
+          PumpId: r.pumpId || draft.pumpId,
           NozzleId: r.nozzleId,
           FuelType: r.fuelType,
           OpeningReading: r.openingReading,
@@ -93,8 +96,11 @@ export function useSubmissionService() {
         Credit: draft.credit,
         Expense: draft.expense,
         ExpenseNotes: draft.expenseNotes || null,
-        Short: draft.short,
-        Excess: draft.excess,
+        Short: 0,
+        Excess: 0,
+        PetroCard: draft.petroCard || 0,
+        CashDeposit: draft.cashDeposit || 0,
+        Others: draft.others || 0,
       });
 
       if (collError) {
@@ -151,5 +157,32 @@ export function useSubmissionService() {
     return data ?? [];
   }, []);
 
-  return { syncing, saveDraft, submitToSupabase, retryQueuedDrafts, fetchSubmissionHistory };
+  const fetchSubmissionDetails = useCallback(async (submissionId: string) => {
+    const { data: sub, error: subErr } = await supabase
+      .from('DsmSubmissions')
+      .select('Id, PumpId, ShiftDate, ShiftType, Status, SubmittedAt, Notes, Metadata')
+      .eq('Id', submissionId)
+      .single();
+
+    if (subErr || !sub) throw subErr || new Error('Submission not found');
+
+    const { data: coll } = await supabase
+      .from('DsmSubmissionCollections')
+      .select('*')
+      .eq('SubmissionId', submissionId)
+      .maybeSingle();
+
+    const { data: readings } = await supabase
+      .from('DsmSubmissionReadings')
+      .select('*')
+      .eq('SubmissionId', submissionId);
+
+    return {
+      submission: sub,
+      collection: coll || null,
+      readings: readings || []
+    };
+  }, []);
+
+  return { syncing, saveDraft, submitToSupabase, retryQueuedDrafts, fetchSubmissionHistory, fetchSubmissionDetails };
 }

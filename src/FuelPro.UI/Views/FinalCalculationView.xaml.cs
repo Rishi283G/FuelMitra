@@ -157,7 +157,7 @@ public partial class FinalCalculationView : UserControl
     // ------------------------------------------------------------------ //
 
     private static double GetReconAmount(List<ReconciliationRowDto> rows, string description)
-        => rows.FirstOrDefault(r => r.Description == description)?.Amount ?? 0;
+        => rows.FirstOrDefault(r => r.Description == description || r.Description.StartsWith(description + " ("))?.Amount ?? 0;
 
     /// <summary>
     /// Reconstructs a <see cref="CashAggregateDto"/> from the denomination display rows

@@ -70,15 +70,16 @@
                     <materialDesign:Card Margin="0,0,0,16" Padding="16" UniformCornerRadius="8" materialDesign:ElevationAssist.Elevation="Dp2">
                         <StackPanel>
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                                <TextBlock Text="I. CREDIT CARD SETTLEMENT" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                <TextBlock Text="I. CREDIT CARD SETTLEMENT — Morning / Day / Night" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
                                 <TextBlock Text="{Binding CardTotal, StringFormat=' (Total: ₹{0:N2})'}" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
                             </StackPanel>
                             <DataGrid ItemsSource="{Binding CardPayments}" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" SelectionMode="Single"
                                       materialDesign:DataGridAssist.CellPadding="8 6" HeadersVisibility="Column">
                                 <DataGrid.Columns>
                                     <DataGridTextColumn Header="No" Binding="{Binding RomanIndex}" IsReadOnly="True" Width="60"/>
-                                    <DataGridTextColumn Header="Salesperson (DSM)" Binding="{Binding DsmName}" IsReadOnly="True" Width="250"/>
-                                    <DataGridTemplateColumn Header="TID" Width="200">
+                                    <DataGridTextColumn Header="Salesperson (DSM)" Binding="{Binding DsmName}" IsReadOnly="True" Width="200"/>
+                                    <DataGridTextColumn Header="Slot" Binding="{Binding Slot}" IsReadOnly="True" Width="100"/>
+                                    <DataGridTemplateColumn Header="TID" Width="150">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <TextBox Text="{Binding Tid, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource MaterialDesignDataGridTextColumnEditingStyle}"/>
@@ -102,15 +103,16 @@
                     <materialDesign:Card Margin="0,0,0,16" Padding="16" UniformCornerRadius="8" materialDesign:ElevationAssist.Elevation="Dp2">
                         <StackPanel>
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                                <TextBlock Text="II. PHONEPE SETTLEMENT" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                <TextBlock Text="II. PHONEPE / DIGITAL SETTLEMENT — Morning / Day / Night" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
                                 <TextBlock Text="{Binding PhonePeTotal, StringFormat=' (Total: ₹{0:N2})'}" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
                             </StackPanel>
                             <DataGrid ItemsSource="{Binding PhonePePayments}" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" SelectionMode="Single"
                                       materialDesign:DataGridAssist.CellPadding="8 6" HeadersVisibility="Column">
                                 <DataGrid.Columns>
                                     <DataGridTextColumn Header="No" Binding="{Binding RomanIndex}" IsReadOnly="True" Width="60"/>
-                                    <DataGridTextColumn Header="Salesperson (DSM)" Binding="{Binding DsmName}" IsReadOnly="True" Width="250"/>
-                                    <DataGridTemplateColumn Header="TID" Width="200">
+                                    <DataGridTextColumn Header="Salesperson (DSM)" Binding="{Binding DsmName}" IsReadOnly="True" Width="200"/>
+                                    <DataGridTextColumn Header="Slot" Binding="{Binding Slot}" IsReadOnly="True" Width="100"/>
+                                    <DataGridTemplateColumn Header="TID" Width="150">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <TextBox Text="{Binding Tid, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource MaterialDesignDataGridTextColumnEditingStyle}"/>
@@ -134,15 +136,16 @@
                     <materialDesign:Card Margin="0,0,0,16" Padding="16" UniformCornerRadius="8" materialDesign:ElevationAssist.Elevation="Dp2">
                         <StackPanel>
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                                <TextBlock Text="III. PETRO CARD SETTLEMENT" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                <TextBlock Text="III. PETRO CARD SETTLEMENT — Morning / Day / Night" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
                                 <TextBlock Text="{Binding PetroCardTotal, StringFormat=' (Total: ₹{0:N2})'}" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
                             </StackPanel>
                             <DataGrid ItemsSource="{Binding PetroCardPayments}" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" SelectionMode="Single"
                                       materialDesign:DataGridAssist.CellPadding="8 6" HeadersVisibility="Column">
                                 <DataGrid.Columns>
                                     <DataGridTextColumn Header="No" Binding="{Binding RomanIndex}" IsReadOnly="True" Width="60"/>
-                                    <DataGridTextColumn Header="Salesperson (DSM)" Binding="{Binding DsmName}" IsReadOnly="True" Width="250"/>
-                                    <DataGridTemplateColumn Header="TID" Width="200">
+                                    <DataGridTextColumn Header="Salesperson (DSM)" Binding="{Binding DsmName}" IsReadOnly="True" Width="200"/>
+                                    <DataGridTextColumn Header="Slot" Binding="{Binding Slot}" IsReadOnly="True" Width="100"/>
+                                    <DataGridTemplateColumn Header="TID" Width="150">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <TextBox Text="{Binding Tid, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource MaterialDesignDataGridTextColumnEditingStyle}"/>

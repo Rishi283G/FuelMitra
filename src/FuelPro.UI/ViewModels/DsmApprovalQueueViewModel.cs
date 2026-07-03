@@ -80,6 +80,38 @@ public partial class DsmNozzleRow : ObservableObject
     }
 }
 
+public partial class DsmDebitRow : ObservableObject
+{
+    public Action? OnRowChanged { get; set; }
+    [ObservableProperty] private string _debtorName = "";
+    [ObservableProperty] private double _amount;
+    [ObservableProperty] private string? _vehicleNumber;
+    [ObservableProperty] private string? _slipNumber;
+    [ObservableProperty] private string? _entryTime;
+
+    partial void OnAmountChanged(double value) => OnRowChanged?.Invoke();
+}
+
+public partial class DsmCardSwipeRow : ObservableObject
+{
+    public Action? OnRowChanged { get; set; }
+    [ObservableProperty] private string _mode = "";
+    [ObservableProperty] private double _amount;
+    [ObservableProperty] private string _tid = "";
+    [ObservableProperty] private string _batch = "";
+
+    partial void OnAmountChanged(double value) => OnRowChanged?.Invoke();
+    partial void OnModeChanged(string value) => OnRowChanged?.Invoke();
+}
+
+public class DsmTestingRow
+{
+    public int NozzleId { get; set; }
+    public string FuelType { get; set; } = "";
+    public double Amount { get; set; }
+    public int PumpId { get; set; }
+}
+
 public partial class DsmApprovalQueueViewModel : ObservableObject
 {
     private readonly IServiceProvider _serviceProvider;
@@ -92,6 +124,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
     private readonly ILogger _logger = Log.ForContext<DsmApprovalQueueViewModel>();
 
     public ObservableCollection<DsmPendingSubmission> PendingSubmissions { get; } = new();
+    public List<DsmTestingRow> SubmissionTestingEntries { get; } = new();
     
     [ObservableProperty] private DsmPendingSubmission? _selectedSubmission;
     [ObservableProperty] private string _statusMessage = "";
@@ -102,6 +135,9 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
     [ObservableProperty] private double _cashAmount;
     [ObservableProperty] private double _upiAmount;
     [ObservableProperty] private double _cardAmount;
+    [ObservableProperty] private double _petroCardAmount;
+    [ObservableProperty] private double _cashDepositAmount;
+    [ObservableProperty] private double _othersAmount;
     [ObservableProperty] private double _creditAmount;
     [ObservableProperty] private double _expenseAmount;
     [ObservableProperty] private string _expenseNotes = "";
@@ -116,6 +152,8 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
     [ObservableProperty] private double _mismatchAmount; // Collections - GrossSales
 
     public ObservableCollection<DsmNozzleRow> NozzleReadings { get; } = new();
+    public ObservableCollection<DsmDebitRow> DebtorEntries { get; } = new();
+    public ObservableCollection<DsmCardSwipeRow> CardSwipeDetails { get; } = new();
 
     // Validations & Overrides
     [ObservableProperty] private bool _hasContinuityWarnings;
@@ -225,6 +263,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
             // 1. Fetch readings from Supabase
             var readingsResult = await _supabaseService.FetchSubmissionReadingsAsync(submission.Id);
             NozzleReadings.Clear();
+            SubmissionTestingEntries.Clear();
 
             // 2. Query continuity closings from local SQLite
             var prevResult = await _nozzleRepo.GetPreviousShiftClosingsAsync(submission.ShiftDate, submission.ShiftType, submission.PumpId);
@@ -243,10 +282,12 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                         ? prevClosing 
                         : null;
 
+                    int nozzlePumpId = r.PumpId != null ? (int)r.PumpId : (int)submission.PumpId;
+
                     var row = new DsmNozzleRow
                     {
                         NozzleId = nozzleId,
-                        FuelType = GetFuelTypeName((int)submission.PumpId, nozzleId, submission.ShiftDate),
+                        FuelType = GetFuelTypeName(nozzlePumpId, nozzleId, submission.ShiftDate),
                         OpeningReading = opening,
                         ClosingReading = closing,
                         Rate = rate,
@@ -267,6 +308,9 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                 CashAmount = coll.Cash;
                 UpiAmount = coll.UPI;
                 CardAmount = coll.Card;
+                PetroCardAmount = coll.PetroCard ?? 0.0;
+                CashDepositAmount = coll.CashDeposit ?? 0.0;
+                OthersAmount = coll.Others ?? 0.0;
                 CreditAmount = coll.Credit;
                 ExpenseAmount = coll.Expense;
                 ExpenseNotes = coll.ExpenseNotes ?? "";
@@ -275,8 +319,68 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
             }
             else
             {
-                CashAmount = UpiAmount = CardAmount = CreditAmount = ExpenseAmount = ShortAmount = ExcessAmount = 0;
+                CashAmount = UpiAmount = CardAmount = PetroCardAmount = CashDepositAmount = OthersAmount = CreditAmount = ExpenseAmount = ShortAmount = ExcessAmount = 0;
                 ExpenseNotes = "";
+            }
+
+            // 4. Parse editable collections (Debtor Entries and Card Swipe Details) from MetadataJson
+            DebtorEntries.Clear();
+            CardSwipeDetails.Clear();
+            if (!string.IsNullOrEmpty(submission.MetadataJson))
+            {
+                try
+                {
+                    var metadata = JsonConvert.DeserializeObject<dynamic>(submission.MetadataJson);
+                    if (metadata != null)
+                    {
+                        if (metadata.debtorEntries != null)
+                        {
+                            foreach (var dbEntry in metadata.debtorEntries)
+                            {
+                                DebtorEntries.Add(new DsmDebitRow
+                                {
+                                    DebtorName = dbEntry.debtorName ?? "",
+                                    Amount = (double)(dbEntry.amount ?? 0.0),
+                                    VehicleNumber = dbEntry.vehicleNumber,
+                                    SlipNumber = dbEntry.slipNumber ?? "",
+                                    EntryTime = dbEntry.time,
+                                    OnRowChanged = RecalculateTotals
+                                });
+                            }
+                        }
+                        if (metadata.cardSwipeDetails != null)
+                        {
+                            foreach (var swipe in metadata.cardSwipeDetails)
+                            {
+                                CardSwipeDetails.Add(new DsmCardSwipeRow
+                                {
+                                    Mode = swipe.mode ?? "",
+                                    Amount = (double)(swipe.amount ?? 0.0),
+                                    Tid = swipe.tid ?? "",
+                                    Batch = swipe.batch ?? "",
+                                    OnRowChanged = RecalculateTotals
+                                });
+                            }
+                        }
+                        if (metadata.testingEntries != null)
+                        {
+                            foreach (var test in metadata.testingEntries)
+                            {
+                                SubmissionTestingEntries.Add(new DsmTestingRow
+                                {
+                                    NozzleId = (int)(test.nozzleId ?? 0),
+                                    FuelType = test.fuelType ?? "",
+                                    Amount = (double)(test.amount ?? 0.0),
+                                    PumpId = (int)(test.pumpId ?? submission.PumpId)
+                                });
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error(ex, "Failed to parse metadata JSON for details view");
+                }
             }
 
             SubmissionNotes = submission.Notes;
@@ -312,11 +416,15 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
     private void RecalculateTotals()
     {
         GrossSales = NozzleReadings.Sum(r => r.Amount);
-        TotalCollections = UpiAmount + CardAmount + CashAmount + CreditAmount;
+        double totalTestingAmount = SubmissionTestingEntries.Sum(t => 
+        {
+            var nozzleRow = NozzleReadings.FirstOrDefault(n => n.NozzleId == t.NozzleId);
+            return t.Amount * (nozzleRow != null ? nozzleRow.Rate : 0.0);
+        });
+        TotalCollections = UpiAmount + CardAmount + CashAmount + CreditAmount + PetroCardAmount + CashDepositAmount + OthersAmount + totalTestingAmount;
         
         // Mismatch is computed: Collections + Expense - (GrossSales + Excess/Short)
         // Let's use the DsmCalculationService logic to keep it consistent!
-        var cash1Total = CashAmount; // directly maps to Cash
         var dto = new FuelPro.Core.DTOs.DsmEntryDto
         {
             NozzleReadings = NozzleReadings.Select(n => new FuelPro.Core.DTOs.NozzleReadingDto { Amount = (decimal)n.Amount }).ToList(),
@@ -324,12 +432,23 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
             {
                 PhonePe = (decimal)UpiAmount,
                 CreditCard = (decimal)CardAmount,
-                CashDeposit = (decimal)CashAmount,
-                PhysicalCash = 0
+                CashDeposit = (decimal)CashDepositAmount,
+                PhysicalCash = (decimal)CashAmount
             },
-            DebitEntries = new List<FuelPro.Core.DTOs.DebitEntryDto> { new() { Amount = (decimal)CreditAmount } },
+            DebitEntries = DebtorEntries.Select(d => new FuelPro.Core.DTOs.DebitEntryDto { Amount = (decimal)d.Amount }).ToList(),
             Expenses = new List<FuelPro.Core.DTOs.ExpenseDto> { new() { Amount = (decimal)ExpenseAmount } },
-            TestingEntries = new List<FuelPro.Core.DTOs.TestingEntryDto>()
+            TestingEntries = SubmissionTestingEntries.Select(t => 
+            {
+                var nozzleRow = NozzleReadings.FirstOrDefault(n => n.NozzleId == t.NozzleId);
+                decimal rate = nozzleRow != null ? (decimal)nozzleRow.Rate : 0m;
+                return new FuelPro.Core.DTOs.TestingEntryDto
+                {
+                    FuelType = t.FuelType,
+                    Litres = (decimal)t.Amount,
+                    Rate = rate,
+                    Amount = (decimal)t.Amount * rate
+                };
+            }).ToList()
         };
 
         var calc = _dsmCalculationService.Calculate(dto);
@@ -351,6 +470,15 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
             ? string.Join(Environment.NewLine, errors) 
             : "✓ Calculations and continuity are correct.";
     }
+
+    partial void OnCashAmountChanged(double value) => RecalculateTotals();
+    partial void OnUpiAmountChanged(double value) => RecalculateTotals();
+    partial void OnCardAmountChanged(double value) => RecalculateTotals();
+    partial void OnPetroCardAmountChanged(double value) => RecalculateTotals();
+    partial void OnCashDepositAmountChanged(double value) => RecalculateTotals();
+    partial void OnOthersAmountChanged(double value) => RecalculateTotals();
+    partial void OnCreditAmountChanged(double value) => RecalculateTotals();
+    partial void OnExpenseAmountChanged(double value) => RecalculateTotals();
 
     [RelayCommand]
     private async Task ApproveAsync()
@@ -406,16 +534,17 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                 IsManualOpeningOverride = n.HasContinuityError
             }).ToList();
 
-            // Initialize payment fields from metadata
-            double cashDeposit = CashAmount;
+            // Initialize payment fields from metadata and collections
+            double cashDeposit = CashDepositAmount;
             double upiMorning = 0;
             double upiNight = 0;
             double upiCardMorning = 0;
             double upiCardNight = 0;
             double creditCardMorning = 0;
             double creditCardNight = 0;
-            double petroCard = 0;
-            double others = 0;
+            double petroCardMorning = 0;
+            double petroCardNight = 0;
+            double others = OthersAmount;
 
             string? cardTid = null;
             string? cardBatch = null;
@@ -423,70 +552,110 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
             string? phonePeBatch = null;
             string? petroCardTid = null;
             string? petroCardBatch = null;
+            string? phonePeTidMorning = null;
+            string? phonePeBatchMorning = null;
+            string? phonePeTidNight = null;
+            string? phonePeBatchNight = null;
+
+            string? creditCardTidMorning = null;
+            string? creditCardBatchMorning = null;
+            string? creditCardTidNight = null;
+            string? creditCardBatchNight = null;
+            string? petroCardTidMorning = null;
+            string? petroCardBatchMorning = null;
+            string? petroCardTidNight = null;
+            string? petroCardBatchNight = null;
 
             bool isNight = string.Equals(SelectedSubmission.ShiftType, "B", StringComparison.OrdinalIgnoreCase);
 
-            bool hasCardSwipeDetails = false;
-
-            if (!string.IsNullOrEmpty(SelectedSubmission.MetadataJson))
+            foreach (var swipe in CardSwipeDetails)
             {
-                try
+                string mode = swipe.Mode ?? "";
+                double amount = swipe.Amount;
+                string tid = swipe.Tid ?? "";
+                string batch = swipe.Batch ?? "";
+
+                bool isSwipeNight = mode.Contains("Night", StringComparison.OrdinalIgnoreCase) || 
+                                    (!mode.Contains("Morning", StringComparison.OrdinalIgnoreCase) && isNight);
+
+                if (mode.Contains("PhonePe Card", StringComparison.OrdinalIgnoreCase) || 
+                    mode.Contains("PhonePe UPI", StringComparison.OrdinalIgnoreCase) || 
+                    mode.Contains("PhonePe", StringComparison.OrdinalIgnoreCase))
                 {
-                    var metadata = JsonConvert.DeserializeObject<dynamic>(SelectedSubmission.MetadataJson);
-                    if (metadata != null && metadata.cardSwipeDetails != null)
+                    // Check if it's PhonePe Card vs PhonePe UPI
+                    bool isCard = mode.Contains("Card", StringComparison.OrdinalIgnoreCase);
+                    if (isCard)
                     {
-                        var swipes = metadata.cardSwipeDetails;
-                        if (swipes.Count > 0)
+                        if (isSwipeNight)
                         {
-                            hasCardSwipeDetails = true;
+                            upiCardNight += amount;
+                            phonePeTidNight = tid;
+                            phonePeBatchNight = batch;
                         }
-
-                        foreach (var swipe in swipes)
+                        else
                         {
-                            string mode = swipe.mode ?? "";
-                            double amount = (double)(swipe.amount ?? 0.0);
-                            string tid = swipe.tid ?? "";
-                            string batch = swipe.batch ?? "";
-
-                            if (mode.Contains("PhonePe Card", StringComparison.OrdinalIgnoreCase))
-                            {
-                                if (isNight) upiCardNight += amount;
-                                else upiCardMorning += amount;
-                                phonePeTid = tid;
-                                phonePeBatch = batch;
-                            }
-                            else if (mode.Contains("PhonePe", StringComparison.OrdinalIgnoreCase))
-                            {
-                                if (isNight) upiNight += amount;
-                                else upiMorning += amount;
-                                phonePeTid = tid;
-                                phonePeBatch = batch;
-                            }
-                            else if (mode.Contains("Petro", StringComparison.OrdinalIgnoreCase))
-                            {
-                                petroCard += amount;
-                                petroCardTid = tid;
-                                petroCardBatch = batch;
-                            }
-                            else
-                            {
-                                // Credit Card / Pinelabs Card / etc.
-                                if (isNight) creditCardNight += amount;
-                                else creditCardMorning += amount;
-                                cardTid = tid;
-                                cardBatch = batch;
-                            }
+                            upiCardMorning += amount;
+                            phonePeTidMorning = tid;
+                            phonePeBatchMorning = batch;
                         }
                     }
+                    else
+                    {
+                        if (isSwipeNight)
+                        {
+                            upiNight += amount;
+                            phonePeTidNight = tid;
+                            phonePeBatchNight = batch;
+                        }
+                        else
+                        {
+                            upiMorning += amount;
+                            phonePeTidMorning = tid;
+                            phonePeBatchMorning = batch;
+                        }
+                    }
+                    phonePeTid = tid;
+                    phonePeBatch = batch;
                 }
-                catch (Exception ex)
+                else if (mode.Contains("Petro", StringComparison.OrdinalIgnoreCase))
                 {
-                    _logger.Error(ex, "Failed to parse cardSwipeDetails from metadata JSON");
+                    if (isSwipeNight)
+                    {
+                        petroCardNight += amount;
+                        petroCardTidNight = tid;
+                        petroCardBatchNight = batch;
+                    }
+                    else
+                    {
+                        petroCardMorning += amount;
+                        petroCardTidMorning = tid;
+                        petroCardBatchMorning = batch;
+                    }
+                    petroCardTid = tid;
+                    petroCardBatch = batch;
+                }
+                else
+                {
+                    // Credit Card / Pinelabs Card / etc.
+                    if (isSwipeNight)
+                    {
+                        creditCardNight += amount;
+                        creditCardTidNight = tid;
+                        creditCardBatchNight = batch;
+                    }
+                    else
+                    {
+                        creditCardMorning += amount;
+                        creditCardTidMorning = tid;
+                        creditCardBatchMorning = batch;
+                    }
+                    cardTid = tid;
+                    cardBatch = batch;
                 }
             }
 
             // Fallbacks for backward compatibility / plain amount inputs (only when NO card swipe details exist)
-            if (!hasCardSwipeDetails)
+            if (CardSwipeDetails.Count == 0)
             {
                 if (upiMorning == 0 && upiNight == 0 && UpiAmount > 0)
                 {
@@ -497,6 +666,11 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                 {
                     if (isNight) creditCardNight = CardAmount;
                     else creditCardMorning = CardAmount;
+                }
+                if (petroCardMorning == 0 && petroCardNight == 0 && PetroCardAmount > 0)
+                {
+                    if (isNight) petroCardNight = PetroCardAmount;
+                    else petroCardMorning = PetroCardAmount;
                 }
             }
 
@@ -509,50 +683,45 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                 PhonePeCardNight = upiCardNight,
                 CreditCardMorning = creditCardMorning,
                 CreditCardNight = creditCardNight,
-                PetroCard = petroCard,
+                PetroCardMorning = petroCardMorning,
+                PetroCardNight = petroCardNight,
                 Others = others,
-                CardTid = cardTid,
-                CardBatch = cardBatch,
-                PhonePeTid = phonePeTid,
-                PhonePeBatch = phonePeBatch,
-                PetroCardTid = petroCardTid,
-                PetroCardBatch = petroCardBatch
+                CardTid = isNight ? creditCardTidNight : creditCardTidMorning,
+                CardBatch = isNight ? creditCardBatchNight : creditCardBatchMorning,
+                PhonePeTid = isNight ? phonePeTidNight : phonePeTidMorning,
+                PhonePeBatch = isNight ? phonePeBatchNight : phonePeBatchMorning,
+                PetroCardTid = isNight ? petroCardTidNight : petroCardTidMorning,
+                PetroCardBatch = isNight ? petroCardBatchNight : petroCardBatchMorning,
+                PhonePeTidMorning = phonePeTidMorning,
+                PhonePeBatchMorning = phonePeBatchMorning,
+                PhonePeTidNight = phonePeTidNight,
+                PhonePeBatchNight = phonePeBatchNight,
+                CreditCardTidMorning = creditCardTidMorning,
+                CreditCardBatchMorning = creditCardBatchMorning,
+                CreditCardTidNight = creditCardTidNight,
+                CreditCardBatchNight = creditCardBatchNight,
+                PetroCardTidMorning = petroCardTidMorning,
+                PetroCardBatchMorning = petroCardBatchMorning,
+                PetroCardTidNight = petroCardTidNight,
+                PetroCardBatchNight = petroCardBatchNight
             };
 
-            // Parse Debtor Entries
+            // Build Debtor Entries
             var debitModels = new List<DebitEntry>();
-            if (!string.IsNullOrEmpty(SelectedSubmission.MetadataJson))
+            foreach (var dbEntry in DebtorEntries)
             {
-                try
+                debitModels.Add(new DebitEntry
                 {
-                    var metadata = JsonConvert.DeserializeObject<dynamic>(SelectedSubmission.MetadataJson);
-                    if (metadata != null && metadata.debtorEntries != null)
-                    {
-                        foreach (var dbEntry in metadata.debtorEntries)
-                        {
-                            string debtorName = dbEntry.debtorName ?? "";
-                            double amount = (double)(dbEntry.amount ?? 0.0);
-                            string vehNo = dbEntry.vehicleNumber ?? "";
-                            string time = dbEntry.time ?? "";
-
-                            debitModels.Add(new DebitEntry
-                            {
-                                DebtorName = debtorName,
-                                Amount = amount,
-                                VehicleNumber = string.IsNullOrEmpty(vehNo) ? null : vehNo,
-                                EntryTime = string.IsNullOrEmpty(time) ? null : time,
-                                PaymentMethod = "Credit"
-                            });
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.Error(ex, "Failed to parse debtorEntries from metadata JSON");
-                }
+                    DebtorName = dbEntry.DebtorName,
+                    Amount = dbEntry.Amount,
+                    VehicleNumber = string.IsNullOrEmpty(dbEntry.VehicleNumber) ? null : dbEntry.VehicleNumber,
+                    ChequeNo = string.IsNullOrEmpty(dbEntry.SlipNumber) ? null : dbEntry.SlipNumber,
+                    EntryTime = string.IsNullOrEmpty(dbEntry.EntryTime) ? null : dbEntry.EntryTime,
+                    PaymentMethod = "Credit"
+                });
             }
 
-            // Fallback for CreditAmount if no debtor entries were parsed
+            // Fallback for CreditAmount if no debtor entries exist
             if (debitModels.Count == 0 && CreditAmount > 0)
             {
                 debitModels.Add(new DebitEntry
@@ -609,16 +778,77 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                 }
             }
 
+            // Parse cash denominations, connected pump, and testing entries
+            int denom500 = 0, denom200 = 0, denom100 = 0, denom50 = 0, denom20 = 0, denom10 = 0, coins = 0;
+            int? connectedPumpId = null;
+            var testingModels = new List<TestingEntry>();
+
+            if (!string.IsNullOrEmpty(SelectedSubmission.MetadataJson))
+            {
+                try
+                {
+                    var metadata = JsonConvert.DeserializeObject<dynamic>(SelectedSubmission.MetadataJson);
+                    if (metadata != null)
+                    {
+                        if (metadata.cashDenominations != null)
+                        {
+                            denom500 = (int)(metadata.cashDenominations.denom500 ?? 0);
+                            denom200 = (int)(metadata.cashDenominations.denom200 ?? 0);
+                            denom100 = (int)(metadata.cashDenominations.denom100 ?? 0);
+                            denom50 = (int)(metadata.cashDenominations.denom50 ?? 0);
+                            denom20 = (int)(metadata.cashDenominations.denom20 ?? 0);
+                            denom10 = (int)(metadata.cashDenominations.denom10 ?? 0);
+                            coins = (int)(metadata.cashDenominations.coins ?? 0);
+                        }
+                        if (metadata.connectedPumpId != null)
+                        {
+                            connectedPumpId = (int?)metadata.connectedPumpId;
+                        }
+                        if (metadata.testingEntries != null)
+                        {
+                            foreach (var test in metadata.testingEntries)
+                            {
+                                int nozzleId = (int)(test.nozzleId ?? 0);
+                                var nozzleRow = nozzleModels.FirstOrDefault(n => n.NozzleNumber == nozzleId);
+                                double rate = nozzleRow != null ? nozzleRow.Rate : 0.0;
+                                double litres = (double)(test.amount ?? 0.0);
+                                testingModels.Add(new TestingEntry
+                                {
+                                    FuelType = test.fuelType ?? "",
+                                    Litres = litres,
+                                    Rate = rate,
+                                    Amount = litres * rate
+                                });
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error(ex, "Failed to parse cashDenominations/connectedPumpId/testingEntries from metadata JSON");
+                }
+            }
+
             var expenseModels = ExpenseAmount > 0
                 ? new List<Expense> { new() { Description = string.IsNullOrEmpty(ExpenseNotes) ? "DSM PWA Expense" : ExpenseNotes, Amount = ExpenseAmount } }
                 : new List<Expense>();
 
-            var testingModels = new List<TestingEntry>();
-
+            // Cash1 is Bank Deposit, Cash2 is Cash in Hand
             var cashModels = new List<CashDenomination>
             {
-                new() { CashType = "Cash1", TotalAmount = CashAmount },
-                new() { CashType = "Cash2", TotalAmount = 0 }
+                new() { CashType = "Cash1", TotalAmount = CashDepositAmount },
+                new() 
+                { 
+                    CashType = "Cash2", 
+                    TotalAmount = CashAmount,
+                    Denom500 = denom500,
+                    Denom200 = denom200,
+                    Denom100 = denom100,
+                    Denom50 = denom50,
+                    Denom20 = denom20,
+                    Denom10 = denom10,
+                    Coins = coins
+                }
             };
 
             // 3. Save locally via existing service (zero calculation redundancy!)
@@ -633,7 +863,8 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                 testingModels,
                 expenseModels,
                 cashModels,
-                personalDebtors: personalDebtors
+                connectedPumpId: connectedPumpId,
+                personalDebtors: new List<DsmPersonalDebtor>()
             );
 
             if (!localSaveResult.Success)

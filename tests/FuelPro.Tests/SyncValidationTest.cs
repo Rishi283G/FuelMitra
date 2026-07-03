@@ -159,7 +159,8 @@ public class SyncValidationTest
             PhonePeCardNight = 0.0,
             CreditCardMorning = 100.0,
             CreditCardNight = 0.0,
-            PetroCard = 0.0,
+            PetroCardMorning = 0.0,
+            PetroCardNight = 0.0,
             Others = 0.0
         };
         context.PaymentCollections.Add(testPaymentCollection);

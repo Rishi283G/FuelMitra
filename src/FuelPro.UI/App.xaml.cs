@@ -144,6 +144,7 @@ public partial class App : Application
         EnsureColumnExists(connection, "PaymentCollections", "CashDeposit", "ALTER TABLE PaymentCollections ADD COLUMN CashDeposit REAL NOT NULL DEFAULT 0.0;");
         EnsureColumnExists(connection, "DsmEntries", "ConnectedPumpId", "ALTER TABLE DsmEntries ADD COLUMN ConnectedPumpId INTEGER NULL;");
         EnsureColumnExists(connection, "DsmEntries", "ReconciledToPumpId", "ALTER TABLE DsmEntries ADD COLUMN ReconciledToPumpId INTEGER NULL;");
+        EnsureColumnExists(connection, "DsmPumpAssignments", "ConnectedPumpId", "ALTER TABLE DsmPumpAssignments ADD COLUMN ConnectedPumpId INTEGER NULL;");
 
         // Phase 3 additions: DsmEntry Start/End times
         EnsureColumnExists(connection, "DsmEntries", "StartTime", "ALTER TABLE DsmEntries ADD COLUMN StartTime TEXT NULL;");
@@ -178,6 +179,7 @@ public partial class App : Application
         EnsureColumnExists(connection, "CreditorRepayments", "Denom20", "ALTER TABLE CreditorRepayments ADD COLUMN Denom20 INTEGER NOT NULL DEFAULT 0;");
         EnsureColumnExists(connection, "CreditorRepayments", "Denom10", "ALTER TABLE CreditorRepayments ADD COLUMN Denom10 INTEGER NOT NULL DEFAULT 0;");
         EnsureColumnExists(connection, "CreditorRepayments", "Coins", "ALTER TABLE CreditorRepayments ADD COLUMN Coins INTEGER NOT NULL DEFAULT 0;");
+        EnsureColumnExists(connection, "CreditorRepayments", "ShiftNumber", "ALTER TABLE CreditorRepayments ADD COLUMN ShiftNumber TEXT NULL;");
 
         using var cmd = connection.CreateCommand();
 
@@ -273,6 +275,20 @@ public partial class App : Application
         EnsureColumnExists(connection, "PaymentCollections", "PhonePeBatch", "ALTER TABLE PaymentCollections ADD COLUMN PhonePeBatch TEXT NULL");
         EnsureColumnExists(connection, "PaymentCollections", "PetroCardTid", "ALTER TABLE PaymentCollections ADD COLUMN PetroCardTid TEXT NULL");
         EnsureColumnExists(connection, "PaymentCollections", "PetroCardBatch", "ALTER TABLE PaymentCollections ADD COLUMN PetroCardBatch TEXT NULL");
+        EnsureColumnExists(connection, "PaymentCollections", "PhonePeTidMorning", "ALTER TABLE PaymentCollections ADD COLUMN PhonePeTidMorning TEXT NULL");
+        EnsureColumnExists(connection, "PaymentCollections", "PhonePeBatchMorning", "ALTER TABLE PaymentCollections ADD COLUMN PhonePeBatchMorning TEXT NULL");
+        EnsureColumnExists(connection, "PaymentCollections", "PhonePeTidNight", "ALTER TABLE PaymentCollections ADD COLUMN PhonePeTidNight TEXT NULL");
+        EnsureColumnExists(connection, "PaymentCollections", "PhonePeBatchNight", "ALTER TABLE PaymentCollections ADD COLUMN PhonePeBatchNight TEXT NULL");
+        EnsureColumnExists(connection, "PaymentCollections", "CreditCardTidMorning", "ALTER TABLE PaymentCollections ADD COLUMN CreditCardTidMorning TEXT NULL");
+        EnsureColumnExists(connection, "PaymentCollections", "CreditCardBatchMorning", "ALTER TABLE PaymentCollections ADD COLUMN CreditCardBatchMorning TEXT NULL");
+        EnsureColumnExists(connection, "PaymentCollections", "CreditCardTidNight", "ALTER TABLE PaymentCollections ADD COLUMN CreditCardTidNight TEXT NULL");
+        EnsureColumnExists(connection, "PaymentCollections", "CreditCardBatchNight", "ALTER TABLE PaymentCollections ADD COLUMN CreditCardBatchNight TEXT NULL");
+        EnsureColumnExists(connection, "PaymentCollections", "PetroCardMorning", "ALTER TABLE PaymentCollections ADD COLUMN PetroCardMorning REAL NOT NULL DEFAULT 0.0");
+        EnsureColumnExists(connection, "PaymentCollections", "PetroCardNight", "ALTER TABLE PaymentCollections ADD COLUMN PetroCardNight REAL NOT NULL DEFAULT 0.0");
+        EnsureColumnExists(connection, "PaymentCollections", "PetroCardTidMorning", "ALTER TABLE PaymentCollections ADD COLUMN PetroCardTidMorning TEXT NULL");
+        EnsureColumnExists(connection, "PaymentCollections", "PetroCardBatchMorning", "ALTER TABLE PaymentCollections ADD COLUMN PetroCardBatchMorning TEXT NULL");
+        EnsureColumnExists(connection, "PaymentCollections", "PetroCardTidNight", "ALTER TABLE PaymentCollections ADD COLUMN PetroCardTidNight TEXT NULL");
+        EnsureColumnExists(connection, "PaymentCollections", "PetroCardBatchNight", "ALTER TABLE PaymentCollections ADD COLUMN PetroCardBatchNight TEXT NULL");
         EnsureColumnExists(connection, "Shifts", "CardSettlementPosTotal", "ALTER TABLE Shifts ADD COLUMN CardSettlementPosTotal REAL NOT NULL DEFAULT 0.0");
 
         // Cloud Sync: SyncChangeLogs Table
@@ -578,6 +594,7 @@ public partial class App : Application
         services.AddTransient<ShiftCalculationService>();
         services.AddSingleton<IDsmCalculationService, DsmCalculationService>();
         services.AddSingleton<IOwnerCalculationService, OwnerCalculationService>();
+        services.AddSingleton<ITidCalculationService, TidCalculationService>();
         services.AddTransient<IFinancialCalculationService, FinancialCalculationService>();
         services.AddTransient<RecalculationMigrationService>();
         services.AddSingleton<DraftService>();

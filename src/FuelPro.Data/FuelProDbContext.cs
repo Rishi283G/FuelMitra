@@ -128,7 +128,8 @@ public class FuelProDbContext : DbContext
             entity.Property(e => e.PhonePeNight).HasDefaultValue(0.0);
             entity.Property(e => e.CreditCardMorning).HasDefaultValue(0.0);
             entity.Property(e => e.CreditCardNight).HasDefaultValue(0.0);
-            entity.Property(e => e.PetroCard).HasDefaultValue(0.0);
+            entity.Property(e => e.PetroCardMorning).HasDefaultValue(0.0);
+            entity.Property(e => e.PetroCardNight).HasDefaultValue(0.0);
 
             entity.Property(e => e.CardTid).IsRequired(false);
             entity.Property(e => e.CardBatch).IsRequired(false);
@@ -136,11 +137,25 @@ public class FuelProDbContext : DbContext
             entity.Property(e => e.PhonePeBatch).IsRequired(false);
             entity.Property(e => e.PetroCardTid).IsRequired(false);
             entity.Property(e => e.PetroCardBatch).IsRequired(false);
+            entity.Property(e => e.PhonePeTidMorning).IsRequired(false);
+            entity.Property(e => e.PhonePeBatchMorning).IsRequired(false);
+            entity.Property(e => e.PhonePeTidNight).IsRequired(false);
+            entity.Property(e => e.PhonePeBatchNight).IsRequired(false);
+
+            entity.Property(e => e.CreditCardTidMorning).IsRequired(false);
+            entity.Property(e => e.CreditCardBatchMorning).IsRequired(false);
+            entity.Property(e => e.CreditCardTidNight).IsRequired(false);
+            entity.Property(e => e.CreditCardBatchNight).IsRequired(false);
+            entity.Property(e => e.PetroCardTidMorning).IsRequired(false);
+            entity.Property(e => e.PetroCardBatchMorning).IsRequired(false);
+            entity.Property(e => e.PetroCardTidNight).IsRequired(false);
+            entity.Property(e => e.PetroCardBatchNight).IsRequired(false);
 
             // Computed properties are ignored in EF
             entity.Ignore(e => e.PhonePe);
             entity.Ignore(e => e.PhonePeCard);
             entity.Ignore(e => e.CreditCard);
+            entity.Ignore(e => e.PetroCard);
         });
 
         // Creditor

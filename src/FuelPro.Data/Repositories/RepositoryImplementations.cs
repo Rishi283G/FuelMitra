@@ -695,7 +695,8 @@ public class PaymentRepository : IPaymentRepository
                 existing.PhonePeNight = payment.PhonePeNight;
                 existing.CreditCardMorning = payment.CreditCardMorning;
                 existing.CreditCardNight = payment.CreditCardNight;
-                existing.PetroCard   = payment.PetroCard;
+                existing.PetroCardMorning = payment.PetroCardMorning;
+                existing.PetroCardNight   = payment.PetroCardNight;
                 existing.CashDeposit = payment.CashDeposit;
                 existing.Others      = payment.Others;
                 existing.CardTid     = payment.CardTid;
@@ -704,6 +705,18 @@ public class PaymentRepository : IPaymentRepository
                 existing.PhonePeBatch = payment.PhonePeBatch;
                 existing.PetroCardTid = payment.PetroCardTid;
                 existing.PetroCardBatch = payment.PetroCardBatch;
+                existing.CreditCardTidMorning = payment.CreditCardTidMorning;
+                existing.CreditCardBatchMorning = payment.CreditCardBatchMorning;
+                existing.CreditCardTidNight = payment.CreditCardTidNight;
+                existing.CreditCardBatchNight = payment.CreditCardBatchNight;
+                existing.PetroCardTidMorning = payment.PetroCardTidMorning;
+                existing.PetroCardBatchMorning = payment.PetroCardBatchMorning;
+                existing.PetroCardTidNight = payment.PetroCardTidNight;
+                existing.PetroCardBatchNight = payment.PetroCardBatchNight;
+                existing.PhonePeTidMorning = payment.PhonePeTidMorning;
+                existing.PhonePeBatchMorning = payment.PhonePeBatchMorning;
+                existing.PhonePeTidNight = payment.PhonePeTidNight;
+                existing.PhonePeBatchNight = payment.PhonePeBatchNight;
             }
             else
             {

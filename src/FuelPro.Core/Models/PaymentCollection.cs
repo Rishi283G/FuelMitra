@@ -24,16 +24,37 @@ public class PaymentCollection
 
     public double CreditCardMorning { get; set; }
     public double CreditCardNight { get; set; }
-    public double PetroCard { get; set; }
     public double Others { get; set; }
     public double CashDeposit { get; set; }
 
+    // Legacy fields mapped/fallback
     public string? CardTid { get; set; }
     public string? CardBatch { get; set; }
     public string? PhonePeTid { get; set; }
     public string? PhonePeBatch { get; set; }
     public string? PetroCardTid { get; set; }
     public string? PetroCardBatch { get; set; }
+
+    // Shift-wise digital collections details
+    public string? CreditCardTidMorning { get; set; }
+    public string? CreditCardBatchMorning { get; set; }
+    public string? CreditCardTidNight { get; set; }
+    public string? CreditCardBatchNight { get; set; }
+
+    public double PetroCardMorning { get; set; }
+    public double PetroCardNight { get; set; }
+    public string? PetroCardTidMorning { get; set; }
+    public string? PetroCardBatchMorning { get; set; }
+    public string? PetroCardTidNight { get; set; }
+    public string? PetroCardBatchNight { get; set; }
+
+    [NotMapped]
+    public double PetroCard => PetroCardMorning + PetroCardNight;
+
+    public string? PhonePeTidMorning { get; set; }
+    public string? PhonePeBatchMorning { get; set; }
+    public string? PhonePeTidNight { get; set; }
+    public string? PhonePeBatchNight { get; set; }
 
     /// <summary>
     /// Computed total PhonePe (Morning + Night). Kept for backward compatibility.

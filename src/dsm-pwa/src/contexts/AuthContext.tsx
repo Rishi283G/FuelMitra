@@ -21,7 +21,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const { data, error } = await supabase
         .from('DsmUsers')
-        .select('SyncGuid, EmployeeCode, FullName, MobileNumber, station_id, DsmPumpAssignments(PumpId, ShiftType, IsActive)')
+        .select('SyncGuid, EmployeeCode, FullName, MobileNumber, station_id, DsmPumpAssignments(PumpId, ConnectedPumpId, ShiftType, IsActive)')
         .eq('AuthUserId', authUserId)
         .eq('IsActive', true)
         .single();
@@ -40,6 +40,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         MobileNumber: data.MobileNumber,
         StationId: data.station_id,
         AssignedPump: activeAssignment ? activeAssignment.PumpId : null,
+        ConnectedPump: activeAssignment ? activeAssignment.ConnectedPumpId : null,
         AssignedShift: activeAssignment ? activeAssignment.ShiftType : null,
       };
     } catch {
@@ -71,6 +72,75 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (!profile || !profile.id) return;
+    const dsmUserId = profile.id;
+    const stationId = profile.StationId;
+
+    async function registerDevice() {
+      let deviceId = localStorage.getItem('dsm_device_id');
+      if (!deviceId) {
+        deviceId = typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : Math.random().toString(36).substring(2) + Date.now().toString(36);
+        localStorage.setItem('dsm_device_id', deviceId);
+      }
+
+      const userAgent = navigator.userAgent;
+      let deviceName = 'PWA Client';
+      if (userAgent.indexOf('Mobi') > -1) {
+        deviceName = 'Mobile Device';
+        if (userAgent.indexOf('iPhone') > -1) deviceName = 'iPhone';
+        else if (userAgent.indexOf('Android') > -1) deviceName = 'Android Phone';
+      } else {
+        deviceName = 'Desktop Browser';
+        if (userAgent.indexOf('Macintosh') > -1) deviceName = 'Mac';
+        else if (userAgent.indexOf('Windows') > -1) deviceName = 'Windows PC';
+      }
+
+      try {
+        // Query if device exists in Supabase
+        const { data } = await supabase
+          .from('DsmDevices')
+          .select('SyncGuid')
+          .eq('DeviceId', deviceId)
+          .eq('DsmUserId', dsmUserId)
+          .maybeSingle();
+
+        const now = new Date().toISOString();
+        if (data) {
+          // Update
+          await supabase
+            .from('DsmDevices')
+            .update({
+              DeviceName: deviceName,
+              LastSeen: now,
+              LastLogin: now
+            })
+            .eq('DeviceId', deviceId)
+            .eq('DsmUserId', dsmUserId);
+        } else {
+          // Insert
+          await supabase
+            .from('DsmDevices')
+            .insert({
+              DsmUserId: dsmUserId,
+              DeviceId: deviceId,
+              DeviceName: deviceName,
+              LastLogin: now,
+              LastSeen: now,
+              station_id: stationId,
+              IsActive: true
+            });
+        }
+      } catch (err) {
+        console.error('Failed to register device:', err);
+      }
+    }
+
+    registerDevice();
+  }, [profile]);
 
   async function login(email: string, password: string): Promise<string | null> {
     const { error } = await supabase.auth.signInWithPassword({ email, password });

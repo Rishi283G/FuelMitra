@@ -9,12 +9,14 @@ public interface IOwnerCalculationService
     OwnerCalculationResult Calculate(
         IEnumerable<DsmEntry> entries,
         IEnumerable<Expense> shiftExpenses,
-        IEnumerable<ShiftOtherCash> otherCash);
+        IEnumerable<ShiftOtherCash> otherCash,
+        BusinessDayTidSheet? tidSheet = null);
 
     Dictionary<DateTime, OwnerCalculationResult> CalculateByDay(
         IEnumerable<DsmEntry> entries,
         IEnumerable<Expense> shiftExpenses,
-        IEnumerable<ShiftOtherCash> otherCash);
+        IEnumerable<ShiftOtherCash> otherCash,
+        Dictionary<DateTime, BusinessDayTidSheet>? tidSheets = null);
 
     Dictionary<string, OwnerCalculationResult> CalculateByDsm(
         IEnumerable<DsmEntry> entries);

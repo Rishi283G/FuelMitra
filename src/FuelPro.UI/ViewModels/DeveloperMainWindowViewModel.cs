@@ -504,8 +504,18 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
                 if (files.Count > 0)
                 {
                     var latestFile = files.First();
-                    var lines = File.ReadLines(latestFile).TakeLast(200);
-                    SyncLogsText = string.Join(Environment.NewLine, lines);
+                    using (var fs = new FileStream(latestFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                    using (var reader = new StreamReader(fs))
+                    {
+                        var allLines = new List<string>();
+                        while (!reader.EndOfStream)
+                        {
+                            var line = reader.ReadLine();
+                            if (line != null) allLines.Add(line);
+                        }
+                        var lines = allLines.TakeLast(200);
+                        SyncLogsText = string.Join(Environment.NewLine, lines);
+                    }
                 }
                 else
                 {

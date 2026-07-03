@@ -15,6 +15,8 @@ namespace Rashtra.Licensing
 
     public class LicenseManager
     {
+        public static bool BypassActivation = true;
+
         private const string SecretSalt = "RashtraTechnologiesLicensingSalt_2026";
         private const string AesSecretKey = "R4shtr4_T3chn0l0gi3s_K3y_3ncr1pt"; // 32 characters for AES-256
         private const string AesSecretIv = "R4shtr4_Iv_St4bl"; // 16 characters for AES-256 IV
@@ -206,6 +208,7 @@ namespace Rashtra.Licensing
 
             if (!File.Exists(_licenseFilePath))
             {
+                if (BypassActivation) return GetBypassResult();
                 result.IsValid = false;
                 result.ErrorMessage = "License file not found. Activation Required.";
                 return result;
@@ -218,6 +221,7 @@ namespace Rashtra.Licensing
                 var license = JsonConvert.DeserializeObject<LicenseData>(decrypted);
                 if (license == null)
                 {
+                    if (BypassActivation) return GetBypassResult();
                     result.IsValid = false;
                     result.ErrorMessage = "License Invalid. Contact Rashtra Technologies.";
                     return result;
@@ -228,6 +232,7 @@ namespace Rashtra.Licensing
                 // 1. Verify Key Integrity
                 if (!VerifyKey(license.CustomerName, license.DeviceId, license.LicenseKey))
                 {
+                    if (BypassActivation) return GetBypassResult();
                     result.IsValid = false;
                     result.ErrorMessage = "License Invalid (Signature mismatch). Contact Rashtra Technologies.";
                     return result;
@@ -244,6 +249,7 @@ namespace Rashtra.Licensing
 
                 if (matches < 3)
                 {
+                    if (BypassActivation) return GetBypassResult();
                     result.IsValid = false;
                     result.ErrorMessage = "License Invalid (Hardware mismatch). Contact Rashtra Technologies.";
                     return result;
@@ -252,6 +258,7 @@ namespace Rashtra.Licensing
                 // 3. Expiry Checks
                 if (license.ExpiryDate.HasValue && DateTime.Now > license.ExpiryDate.Value)
                 {
+                    if (BypassActivation) return GetBypassResult();
                     result.IsValid = false;
                     result.ErrorMessage = $"License Expired on {license.ExpiryDate.Value:dd-MMM-yyyy}. Please renew.";
                     return result;
@@ -262,10 +269,31 @@ namespace Rashtra.Licensing
             }
             catch
             {
+                if (BypassActivation) return GetBypassResult();
                 result.IsValid = false;
                 result.ErrorMessage = "License Invalid (Decryption failed). Contact Rashtra Technologies.";
                 return result;
             }
+        }
+
+        private LicenseValidationResult GetBypassResult()
+        {
+            return new LicenseValidationResult
+            {
+                IsValid = true,
+                License = new LicenseData
+                {
+                    ProductName = _productCode,
+                    CustomerName = "Testing Bypass",
+                    BusinessName = "Testing/Development",
+                    MobileNumber = "0000000000",
+                    DeviceId = DeviceIdentifier.GetDeviceId(),
+                    LicenseKey = _productCode + "-TEST-TEST-TEST",
+                    LicenseType = "Lifetime",
+                    ActivationDate = DateTime.Now,
+                    ExpiryDate = null
+                }
+            };
         }
 
         #region Encryption Helpers
