@@ -17,12 +17,6 @@ body{font-family:Arial,sans-serif;font-size:12px;color:#0f1923;background:#f0f4f
 .rpt-meta{display:flex;flex-wrap:wrap;gap:16px;font-size:11px;border-top:1px solid rgba(255,255,255,.2);padding-top:10px}
 .rpt-meta span{opacity:.8}
 .rpt-meta strong{opacity:1;margin-left:3px}
-.kpi-row{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;padding:14px 24px;border-bottom:1px solid #e4ecf2;background:#f8fafb}
-.kpi{border:1px solid #c8d4de;border-radius:7px;padding:9px 12px;background:#fff}
-.kpi-lbl{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:#5a6a7a;font-weight:600}
-.kpi-val{font-size:15px;font-weight:700;margin-top:3px;color:#0f1923;font-variant-numeric:tabular-nums}
-.kpi-val.ok{color:#00663a}
-.kpi-val.bad{color:#8a1500}
 .sec{padding:14px 24px 12px}
 .sec-title{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#1a3a6b;padding-bottom:6px;border-bottom:2px solid #1a3a6b;margin-bottom:10px;display:flex;align-items:center;gap:6px}
 .sec-title::before{content:'';display:inline-block;width:3px;height:13px;background:#1a3a6b;border-radius:2px}
@@ -39,11 +33,10 @@ tr:nth-child(even) td{background:#f8fafb}
 .b-hsd{display:inline-block;padding:1px 6px;border-radius:3px;background:#fff5eb;color:#7c3a00;font-weight:700;font-size:10px}
 .b-ms1{display:inline-block;padding:1px 6px;border-radius:3px;background:#edfaf3;color:#005c2e;font-weight:700;font-size:10px}
 .b-ms2{display:inline-block;padding:1px 6px;border-radius:3px;background:#edf3fc;color:#1a3a6b;font-weight:700;font-size:10px}
+.b-cng{display:inline-block;padding:1px 6px;border-radius:3px;background:#f3edf2;color:#5a155a;font-weight:700;font-size:10px}
 .b-a{display:inline-block;padding:1px 6px;border-radius:3px;background:#fde8ff;color:#6b006b;font-weight:700;font-size:9px}
 .b-b{display:inline-block;padding:1px 6px;border-radius:3px;background:#e8fff4;color:#006b3a;font-weight:700;font-size:9px}
-.b-c{display:inline-block;padding:1px 6px;border-radius:3px;background:#fff3e8;color:#6b3a00;font-weight:700;font-size:9px}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:0 24px 16px}
-.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;padding:0 24px 16px}
 .col{display:flex;flex-direction:column;gap:12px}
 hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
 .recon-box{border:1.5px solid #c8d4de;border-radius:7px;overflow:hidden}
@@ -57,7 +50,6 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
 .coll-item-val{font-size:14px;font-weight:700;color:#1a3a6b;margin-top:2px}
 .rpt-ftr{background:#0f1923;color:rgba(255,255,255,.65);font-size:10px;padding:9px 24px;display:flex;justify-content:space-between;align-items:center}
 .rpt-ftr strong{color:#fff}
-.shift-section-header{background:#f0f5ff;border-left:4px solid #1a3a6b;padding:5px 10px;font-weight:700;font-size:11px;color:#1a3a6b;margin:8px 0 4px}
 @media print{
   @page{size:A4 portrait;margin:5mm}
   body{background:#fff;font-size:10px}
@@ -68,33 +60,26 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
   .rpt-sub{font-size:8px}
   .day-pill{font-size:13px;padding:4px 12px}
   .rpt-meta{padding-top:4px;gap:8px;font-size:8px}
-  .kpi-row{padding:6px 12px;gap:6px}
-  .kpi{padding:5px 8px}
-  .kpi-lbl{font-size:7px}
-  .kpi-val{font-size:12px}
   .sec{padding:4px 12px 3px}
   .sec-title{font-size:8px;padding-bottom:2px;margin-bottom:3px}
   .mini-hdr{font-size:7.5px;padding:1px 4px;margin-bottom:2px}
   th{padding:2px 4px;font-size:7.5px}
   td{padding:2px 4px;font-size:10px}
   .tr-total td,.tr-recon-total td{font-size:10px}
-  .g2,.g3{gap:8px;padding:0 12px 8px}
+  .g2{gap:8px;padding:0 12px 8px}
   .coll-grid{gap:4px}
   .coll-item{padding:4px 6px}
   .coll-item-lbl{font-size:7px}
   .coll-item-val{font-size:11px}
   .diff-ok,.diff-bad{font-size:11px;padding:3px!important}
   .rpt-ftr{padding:3px 12px;font-size:7px}
-  .rpt-hdr,.tr-total td,.tr-recon-total td,.rpt-ftr,th,.kpi,.coll-item,.recon-box,.diff-ok,.diff-bad,.tr-sub td,.tr-shift td,.shift-section-header{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .rpt-hdr,.tr-total td,.tr-recon-total td,.rpt-ftr,th,.coll-item,.recon-box,.diff-ok,.diff-bad,.tr-sub td,.tr-shift td{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 }
-.tr-hint td{background:#fffbe6!important;color:#7a5500!important;font-style:italic;font-size:10px;border-bottom:1px dashed #e8c84a!important;padding:2px 7px!important}
-.tr-hint td:first-child{padding-left:18px!important}
-@media print{.tr-hint td{font-size:8.5px!important;padding:1px 3px!important}}
 </style>
 </head>
 <body>
 <div class="toolbar">
-  <span id="previewTitle">&#9981; Mitali Service Station &mdash; Day Total Report</span>
+  <span id="previewTitle">&#9981; Day Total Report</span>
   <button class="btn-print" onclick="window.print()">&#128424; Print / Save PDF</button>
 </div>
 <div class="page">
@@ -104,7 +89,7 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
         <img id="logo" style="display: none; height: 50px;" src="" alt="logo" />
         <div>
           <div class="rpt-title" id="rptTitle">MITALI SERVICE STATION</div>
-          <div class="rpt-sub">Day Total Reconciliation &mdash; Full Day (Shift A + B + C)</div>
+          <div class="rpt-sub">Day Total Reconciliation &mdash; Full Day (Shift A + B)</div>
         </div>
       </div>
       <div class="day-pill">&#128197; DAY TOTAL</div>
@@ -131,48 +116,12 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
   </div>
   <hr class="div">
 
-  <!-- TOTAL FUEL TO DIFFERENCE -->
-  <div class="kpi-section" style="padding:14px 24px;border-bottom:1px solid #e4ecf2;background:#f8fafb">
-    <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px;">
-      <div class="kpi"><div class="kpi-lbl">Diesel</div><div class="kpi-val" id="kHsdLtr">&ndash;</div></div>
-      <div class="kpi"><div class="kpi-lbl">Petrol</div><div class="kpi-val" id="kMsTotalLtr">&ndash;</div></div>
-      <div class="kpi"><div class="kpi-lbl">CNG</div><div class="kpi-val" id="kCngLtr">&ndash;</div></div>
-      <div class="kpi" style="border-color:#1a3a6b"><div class="kpi-lbl">Total Qty</div><div class="kpi-val" id="kLitres" style="color:#1a3a6b">&ndash;</div></div>
-      <div class="kpi"><div class="kpi-lbl">Total Collection</div><div class="kpi-val" id="kCollect">&ndash;</div></div>
-      <div class="kpi"><div class="kpi-lbl">Total Debtors</div><div class="kpi-val" id="kCred">&ndash;</div></div>
-      <div class="kpi"><div class="kpi-lbl">Total Expenses</div><div class="kpi-val" id="kExp">&ndash;</div></div>
-      <div class="kpi"><div class="kpi-lbl">Difference</div><div class="kpi-val" id="kDiff">&ndash;</div></div>
-    </div>
-    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;">
-      <div class="kpi"><div class="kpi-lbl">PhonePe</div><div class="kpi-val" id="kPeBox">&ndash;</div></div>
-      <div style="font-weight:bold;color:#5a6a7a">+</div>
-      <div class="kpi"><div class="kpi-lbl">PhonePe Card</div><div class="kpi-val" id="kPeCardBox">&ndash;</div></div>
-      <div style="font-weight:bold;color:#5a6a7a">+</div>
-      <div class="kpi"><div class="kpi-lbl">PineLab Card (Morning)</div><div class="kpi-val" id="kCCardMBox">&ndash;</div></div>
-      <div style="font-weight:bold;color:#5a6a7a">+</div>
-      <div class="kpi"><div class="kpi-lbl">PineLab Card (Night)</div><div class="kpi-val" id="kCCardNBox">&ndash;</div></div>
-      <div style="font-weight:bold;color:#5a6a7a">+</div>
-      <div class="kpi"><div class="kpi-lbl">Petro Card</div><div class="kpi-val" id="kPCardBox">&ndash;</div></div>
-      <div style="font-weight:bold;color:#5a6a7a">+</div>
-      <div class="kpi"><div class="kpi-lbl">Bank Cash</div><div class="kpi-val" id="kBankBox">&ndash;</div></div>
-      <div style="font-weight:bold;color:#5a6a7a">+</div>
-      <div class="kpi"><div class="kpi-lbl">Cash in Hand</div><div class="kpi-val" id="kHandBox">&ndash;</div></div>
-      <div style="font-weight:bold;color:#5a6a7a">+</div>
-      <div class="kpi"><div class="kpi-lbl">Debtors</div><div class="kpi-val" id="kCredBox">&ndash;</div></div>
-      <div style="font-weight:bold;color:#5a6a7a">+</div>
-      <div class="kpi"><div class="kpi-lbl">Expenses</div><div class="kpi-val" id="kExpBox">&ndash;</div></div>
-      <div style="font-weight:bold;font-size:18px;color:#1a3a6b;margin:0 4px">=</div>
-      <div class="kpi" style="border-color:#1a3a6b;background:#f0f5ff"><div class="kpi-lbl">Total Collection Amount</div><div class="kpi-val" id="kCollectEq" style="color:#1a3a6b">&ndash;</div></div>
-    </div>
-  </div>
-
-  <!-- SECTION 3: COLLECTIONS -->
+  <!-- SECTION 3: TOTAL DIGITAL & CASH COLLECTIONS -->
   <div class="sec">
     <div class="sec-title">3. Total Digital &amp; Cash Collections</div>
     <div class="coll-grid" id="collGrid"></div>
   </div>
   <hr class="div">
-
 
   <!-- SECTION 4: CREDITORS & EXPENSES -->
   <div class="g2" style="padding-top:14px">
@@ -180,19 +129,18 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
       <div><div class="mini-hdr">Debtors Register</div>
         <table><thead><tr><th>DSM</th><th>Debtor Name</th><th>Slip No</th><th>Amount (&#8377;)</th></tr></thead><tbody id="tCred"></tbody></table>
       </div>
-      <!-- Repayments inline below Debtors Register -->
-      <div id="secRepayments" style="display:none;">
-        <div class="mini-hdr">Additional Cash Received (Debtor Repayments)</div>
+      <div style="margin-top: 12px;"><div class="mini-hdr">Daily Sales Record (DSR) of the Day</div>
         <table>
           <thead>
             <tr>
-              <th style="text-align:left;">Debtor Name</th>
-              <th>Mode</th>
-              <th>Ref / Details</th>
-              <th>Amount (&#8377;)</th>
+              <th style="text-align: left; width: 40px;">No.</th>
+              <th style="text-align: left;">Description</th>
+              <th style="text-align: right;">Qty (L/Kg)</th>
+              <th style="text-align: right;">Rate</th>
+              <th style="text-align: right;">Amount (&#8377;)</th>
             </tr>
           </thead>
-          <tbody id="tRepayments"></tbody>
+          <tbody id="tFuel"></tbody>
         </table>
       </div>
     </div>
@@ -204,6 +152,10 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
       <!-- FINAL RECONCILIATION -->
       <div><div class="mini-hdr">Final Day Reconciliation</div>
         <div class="recon-box"><table><thead><tr><th>Description</th><th>Amount (&#8377;)</th></tr></thead><tbody>
+          <tr><td>MS Testing</td><td id="rMsTest">&ndash;</td></tr>
+          <tr><td>HSD Testing I</td><td id="rHsdTest">&ndash;</td></tr>
+          <tr><td>HSD Testing II</td><td id="rHsdTest2">&ndash;</td></tr>
+          <tr><td>CNG Testing</td><td id="rCngTest">&ndash;</td></tr>
           <tr><td>PhonePe</td><td id="rPe">&ndash;</td></tr>
           <tr><td>PhonePe Card</td><td id="rPeCard">&ndash;</td></tr>
           <tr><td>PineLab Card (Morning)</td><td id="rCCardM">&ndash;</td></tr>
@@ -223,7 +175,7 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
   </div>
 
   <div class="rpt-ftr">
-    <span id="ftrStation">Mitali Service Station &mdash; Confidential Day Total Report</span>
+    <span id="ftrStation">Confidential Day Total Report</span>
     <span id="ftrMid">&ndash;</span>
     <span>Page 1 of 1</span>
   </div>
@@ -267,32 +219,6 @@ function renderData(){
   document.getElementById('hStation').textContent=station;
   document.getElementById('hShifts').textContent='Shift A + Shift B';
   document.getElementById('hPrinted').textContent=new Date().toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
-
-  // KPI (Litres & Top Row)
-  document.getElementById('kHsdLtr').textContent=parseFloat(d.totalHsdLitres||0).toFixed(4)+' L';
-  document.getElementById('kCngLtr').textContent=parseFloat(d.totalCngLitres||0).toFixed(4)+' Kg';
-  document.getElementById('kMsTotalLtr').textContent=parseFloat(d.totalMsLitres||0).toFixed(4)+' L';
-  document.getElementById('kLitres').textContent=parseFloat(d.totalDayLitres||0).toFixed(4);
-
-  document.getElementById('kCollect').textContent=inrZ(d.reconciliationTotalAmount);
-  document.getElementById('kCred').textContent=inrZ(d.creditorsTotal);
-  document.getElementById('kExp').textContent=inrZ(d.expensesTotal);
-  var diff=d.difference||0;
-  var dEl=document.getElementById('kDiff');
-  if(Math.abs(diff)<0.01){dEl.textContent='\u2713 Balanced';dEl.className='kpi-val ok';}
-  else{dEl.textContent=inrZ(Math.abs(diff));dEl.className='kpi-val bad';}
-
-  // Day Total Breakdown row
-  document.getElementById('kPeBox').textContent=inrZ(d.phonePeTotal);
-  document.getElementById('kPeCardBox').textContent=inrZ(d.phonePeCardTotal);
-  document.getElementById('kCCardMBox').textContent=inrZ(d.creditCardMorningTotal);
-  document.getElementById('kCCardNBox').textContent=inrZ(d.creditCardNightTotal);
-  document.getElementById('kPCardBox').textContent=inrZ(d.petroCardTotal);
-  document.getElementById('kBankBox').textContent=inrZ(d.bankCashTotal);
-  document.getElementById('kHandBox').textContent=inrZ(d.cashInHandTotal);
-  document.getElementById('kCredBox').textContent=inrZ(d.creditorsTotal);
-  document.getElementById('kExpBox').textContent=inrZ(d.expensesTotal);
-  document.getElementById('kCollectEq').textContent=inrZ(d.reconciliationTotalAmount);
 
   // DSM Summary
   var tb=document.getElementById('tDsm');tb.innerHTML='';
@@ -398,62 +324,6 @@ function renderData(){
     cg.appendChild(div);
   });
 
-  // ── Debtor Repayments (inline, below Debtors Register) ──
-  var sameDayRepayments = getVal(d, 'repayments') || [];
-  var secRep = document.getElementById('secRepayments');
-  var tRep   = document.getElementById('tRepayments');
-  if (tRep && sameDayRepayments.length > 0) {
-    tRep.innerHTML = '';
-    if (secRep) secRep.style.display = 'block';
-    var repTot = 0;
-    sameDayRepayments.forEach(function(r) {
-      var mode = getVal(r, 'paymentMode') || '';
-      var refNo = '';
-      if (mode === 'PhonePe' || mode === 'Credit Card' || mode === 'PineLabs Card' || mode === 'PetroCard') {
-        refNo = 'TID: ' + (getVal(r, 'cardTid') || '') + ', Batch: ' + (getVal(r, 'cardBatch') || '');
-      } else if (mode === 'Cheque') {
-        refNo = 'Chq: ' + (getVal(r, 'chequeNo') || '');
-      } else if (mode === 'Cash') {
-        var denoms = [];
-        var d500 = getVal(r, 'denom500'); if (d500 > 0) denoms.push('500×' + d500);
-        var d200 = getVal(r, 'denom200'); if (d200 > 0) denoms.push('200×' + d200);
-        var d100 = getVal(r, 'denom100'); if (d100 > 0) denoms.push('100×' + d100);
-        var d50 = getVal(r, 'denom50');   if (d50 > 0)  denoms.push('50×' + d50);
-        var d20 = getVal(r, 'denom20');   if (d20 > 0)  denoms.push('20×' + d20);
-        var d10 = getVal(r, 'denom10');   if (d10 > 0)  denoms.push('10×' + d10);
-        var coins = getVal(r, 'coins');   if (coins > 0) denoms.push('Coins: ' + coins);
-        refNo = denoms.length > 0 ? denoms.join(', ') : 'Cash';
-      }
-      var hint = '';
-      if (mode === 'Cash')          hint = '\u2192 Added to Cash In Hand';
-      else if (mode === 'PhonePe') hint = '\u2192 Added to PhonePe collection';
-      else if (mode === 'PineLabs Card') hint = '\u2192 Added to PineLabs Card collection';
-      else if (mode === 'Credit Card')   hint = '\u2192 Added to Credit Card collection';
-      else if (mode === 'PetroCard')     hint = '\u2192 Added to PetroCard collection';
-      else if (mode === 'Bank Transfer') hint = '\u2192 Added to Bank Cash collection';
-      else if (mode === 'Cheque')        hint = '\u2139 Kept for record only (Cheque)';
-      var tr = document.createElement('tr');
-      tr.innerHTML = '<td style="text-align:left;">' + (getVal(r, 'creditorName') || '') + '</td>' +
-                     '<td>' + mode + '</td>' +
-                     '<td>' + (refNo || '\u2013') + '</td>' +
-                     '<td>' + inr(getVal(r, 'amount')) + '</td>';
-      tRep.appendChild(tr);
-      if (hint) {
-        var hintTr = document.createElement('tr');
-        hintTr.className = 'tr-hint';
-        hintTr.innerHTML = '<td colspan="4">' + hint + '</td>';
-        tRep.appendChild(hintTr);
-      }
-      if (mode !== 'Cheque') repTot += (getVal(r, 'amount') || 0);
-    });
-    var trTot = document.createElement('tr');
-    trTot.className = 'tr-total';
-    trTot.innerHTML = '<td colspan="3" style="text-align:left;">Total Additional Cash Received</td><td>' + inrZ(repTot) + '</td>';
-    tRep.appendChild(trTot);
-  } else {
-    if (secRep) secRep.style.display = 'none';
-  }
-
   // Creditors
   var ct=document.getElementById('tCred');ct.innerHTML='';var credTot=0;
   (d.creditors||[]).forEach(function(c){
@@ -463,6 +333,77 @@ function renderData(){
   });
   var ctr=document.createElement('tr');ctr.className='tr-total';
   ctr.innerHTML='<td colspan="3">TOTAL DEBTORS</td><td>'+inrZ(credTot)+'</td>';ct.appendChild(ctr);
+
+  // DSR of the Day
+  var dsr = {};
+  (d.nozzleRows || []).forEach(function(r) {
+    var type = r.fuelType;
+    if (!dsr[type]) {
+      dsr[type] = { litres: 0, amount: 0 };
+    }
+    dsr[type].litres += (r.netSaleLitres || 0);
+    dsr[type].amount += (r.amount || 0);
+  });
+
+  var tf = document.getElementById('tFuel');
+  if (tf) {
+    tf.innerHTML = '';
+    var index = 1;
+    var totalL = 0;
+    var totalA = 0;
+    
+    // Sort standard order
+    var order = ['HSD', 'HSD-I', 'HSD-II', 'MS', 'Speed', 'CNG'];
+    var keys = Object.keys(dsr).sort(function(a, b) {
+      return order.indexOf(a) - order.indexOf(b);
+    });
+
+    keys.forEach(function(type) {
+      var val = dsr[type];
+      var litres = val.litres;
+      var amount = val.amount;
+      var rate = litres > 0 ? (amount / litres) : 0;
+      
+      var badge = '';
+      var desc = '';
+      if (type === 'HSD' || type === 'HSD-I' || type === 'HSD-II') {
+        badge = '<span class="b-hsd">Diesel</span>';
+        desc = ' \u2014 20 KL';
+      } else if (type === 'MS') {
+        badge = '<span class="b-ms1">Petrol</span>';
+        desc = ' \u2014 20 KL';
+      } else if (type === 'Speed') {
+        badge = '<span class="b-ms2">Speed</span>';
+        desc = ' \u2014 20 KL';
+      } else if (type === 'CNG') {
+        badge = '<span class="b-cng">CNG</span>';
+        desc = '';
+      } else {
+        badge = '<span class="b-ms2">' + type + '</span>';
+        desc = '';
+      }
+
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td style="text-align: left;">' + index + '</td>' +
+                     '<td style="text-align: left;">' + badge + desc + '</td>' +
+                     '<td>' + litres.toFixed(4) + '</td>' +
+                     '<td>' + rate.toFixed(2) + '</td>' +
+                     '<td style="font-weight: 700;">' + inrZ(amount) + '</td>';
+      tf.appendChild(tr);
+      
+      totalL += litres;
+      totalA += amount;
+      index++;
+    });
+
+    var trTotal = document.createElement('tr');
+    trTotal.className = 'tr-total';
+    trTotal.innerHTML = '<td colspan="2" style="text-align: left; font-weight: 700;">TOTAL FUEL SALE</td>' +
+                        '<td style="font-weight: 700;">' + totalL.toFixed(4) + '</td>' +
+                        '<td>&ndash;</td>' +
+                        '<td style="font-weight: 700;">' + inrZ(totalA) + '</td>';
+    tf.appendChild(trTotal);
+  }
 
   // Expenses
   var et=document.getElementById('tExp');et.innerHTML='';var expTot=0;
@@ -475,6 +416,11 @@ function renderData(){
   etr.innerHTML='<td colspan="2">TOTAL EXPENSES</td><td>'+inrZ(expTot)+'</td>';et.appendChild(etr);
 
   // Reconciliation
+  document.getElementById('rMsTest').textContent=inrZ(d.msTesting);
+  document.getElementById('rHsdTest').textContent=inrZ(d.hsdTesting);
+  document.getElementById('rHsdTest2').textContent=inrZ(d.hsdTesting2);
+  document.getElementById('rCngTest').textContent=inrZ(d.cngTesting);
+
   document.getElementById('rPe').textContent=inrZ(d.phonePeTotal);
   document.getElementById('rPeCard').textContent=inrZ(d.phonePeCardTotal);
   document.getElementById('rCCardM').textContent=inrZ(d.creditCardMorningTotal);
@@ -487,6 +433,7 @@ function renderData(){
   document.getElementById('rTotal').textContent=inrZ(d.reconciliationTotalAmount);
   document.getElementById('rSale').textContent=inrZ(d.grossDaySaleTotal);
   document.getElementById('rTotalDsmShort').textContent=inrZ(d.totalDsmShort);
+  var diff = d.difference || 0;
   var dCell=document.getElementById('rDiff');
   if(Math.abs(diff)<0.01){dCell.textContent='\u2713  BALANCED \u2014 Difference: \u20B90.00';dCell.className='diff-ok';}
   else if(diff<0){dCell.textContent='\u26A0  SHORT \u2014 Difference: '+inrZ(Math.abs(diff));dCell.className='diff-bad';}

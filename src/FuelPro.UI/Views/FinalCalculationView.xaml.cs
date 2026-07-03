@@ -48,7 +48,8 @@ public partial class FinalCalculationView : UserControl
             // Extract reconciliation row amounts by description (no recalculation)
             var reconRows = vm.ReconciliationRows.ToList();
             double recMsTesting  = GetReconAmount(reconRows, "MS Testing");
-            double recHsdTesting = GetReconAmount(reconRows, "HSD Testing");
+            double recHsdTesting = GetReconAmount(reconRows, "HSD Testing I");
+            double recHsdTesting2 = GetReconAmount(reconRows, "HSD Testing II");
             double recCngTesting = GetReconAmount(reconRows, "CNG Testing");
             double recPhonePeCardMorning = GetReconAmount(reconRows, "Phone Pe Card (Morning)");
             double recPhonePeCardNight   = GetReconAmount(reconRows, "Phone Pe Card (Night)");
@@ -121,6 +122,7 @@ public partial class FinalCalculationView : UserControl
                 otherCashTotal:           vm.OtherCashTotal,
                 reconciliationMsTesting:  recMsTesting,
                 reconciliationHsdTesting: recHsdTesting,
+                reconciliationHsdTesting2: recHsdTesting2,
                 reconciliationCngTesting: recCngTesting,
                 phonePeTotal:             recPhonePeMorning + recPhonePeNight + recPhonePeCardMorning + recPhonePeCardNight,
                 phonePeMorningTotal:      recPhonePeMorning,

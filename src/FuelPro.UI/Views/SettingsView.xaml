@@ -35,13 +35,13 @@
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
                         <TextBox Grid.Column="0" Text="{Binding HsdRate, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0"
-                                 materialDesign:HintAssist.Hint="Diesel Rate (₹/L)" materialDesign:HintAssist.IsFloating="True"
+                                 materialDesign:HintAssist.Hint="HSD - 20KL Rate (₹/L)" materialDesign:HintAssist.IsFloating="True"
                                  Style="{StaticResource MaterialDesignOutlinedTextBox}" FontSize="16"/>
                         <TextBox Grid.Column="1" Text="{Binding MsIRate, UpdateSourceTrigger=PropertyChanged}" Margin="8,0,8,0"
-                                 materialDesign:HintAssist.Hint="Petrol Rate (₹/L)" materialDesign:HintAssist.IsFloating="True"
+                                 materialDesign:HintAssist.Hint="MS - 20KL Rate (₹/L)" materialDesign:HintAssist.IsFloating="True"
                                  Style="{StaticResource MaterialDesignOutlinedTextBox}" FontSize="16"/>
                         <TextBox Grid.Column="2" Text="{Binding MsIIRate, UpdateSourceTrigger=PropertyChanged}" Margin="8,0,8,0"
-                                 materialDesign:HintAssist.Hint="Power Rate (₹/L)" materialDesign:HintAssist.IsFloating="True"
+                                 materialDesign:HintAssist.Hint="HSD - 20KL II Rate (₹/L)" materialDesign:HintAssist.IsFloating="True"
                                  Style="{StaticResource MaterialDesignOutlinedTextBox}" FontSize="16"/>
                         <TextBox Grid.Column="3" Text="{Binding CngRate, UpdateSourceTrigger=PropertyChanged}" Margin="8,0,0,0"
                                  materialDesign:HintAssist.Hint="CNG Rate (₹/Kg)" materialDesign:HintAssist.IsFloating="True"

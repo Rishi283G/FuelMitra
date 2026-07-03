@@ -30,50 +30,38 @@ public class AgsImportService : IAgsImportService
 
     private static readonly Dictionary<string, AgsNozzleMeta> AgsNozzleMap = new(StringComparer.OrdinalIgnoreCase)
     {
-        // Operational Pump 1 (Machine 1 Side A)
+        // Operational Pump 1: Nozzle 1 (MS-I), Nozzle 3 (HSD)
         { "1|1|1", new AgsNozzleMeta(1, 1, "MS-I") },
-        { "1|1|2", new AgsNozzleMeta(2, 1, "MS-II") },
+        { "1|1|3", new AgsNozzleMeta(3, 1, "HSD") },
 
-        // Operational Pump 2 (Machine 1 Side B)
-        { "1|1|3", new AgsNozzleMeta(3, 2, "MS-I") },
-        { "1|1|4", new AgsNozzleMeta(4, 2, "MS-II") },
+        // Operational Pump 2: Nozzle 2 (MS-I), Nozzle 4 (HSD)
+        { "1|1|2", new AgsNozzleMeta(2, 2, "MS-I") },
+        { "1|1|4", new AgsNozzleMeta(4, 2, "HSD") },
 
-        // Operational Pump 3 (Machine 2 Side A)
+        // Operational Pump 3: Nozzle 5 (MS-I), Nozzle 7 (MS-II/HSD-II)
         { "1|2|1", new AgsNozzleMeta(5, 3, "MS-I") },
-        { "1|2|2", new AgsNozzleMeta(6, 3, "MS-II") },
-        { "1|2|3", new AgsNozzleMeta(7, 3, "HSD") },
+        { "1|2|3", new AgsNozzleMeta(7, 3, "MS-II") },
 
-        // Operational Pump 4 (Machine 2 Side B)
-        { "1|2|4", new AgsNozzleMeta(8, 4, "MS-I") },
-        { "1|2|5", new AgsNozzleMeta(9, 4, "MS-II") },
-        { "1|2|6", new AgsNozzleMeta(10, 4, "HSD") },
+        // Operational Pump 4: Nozzle 6 (MS-I), Nozzle 8 (MS-II/HSD-II)
+        { "1|2|2", new AgsNozzleMeta(6, 4, "MS-I") },
+        { "1|2|4", new AgsNozzleMeta(8, 4, "MS-II") },
 
-        // Operational Pump 5 (Machine 3 Side A)
-        { "2|3|1", new AgsNozzleMeta(11, 5, "MS-I") },
-        { "2|3|2", new AgsNozzleMeta(12, 5, "MS-II") },
-        { "2|3|3", new AgsNozzleMeta(13, 5, "HSD") },
+        // Operational Pump 5: Nozzle 9 (MS-I), Nozzle 11 (HSD)
+        { "1|2|5", new AgsNozzleMeta(9, 5, "MS-I") },
+        { "2|3|1", new AgsNozzleMeta(11, 5, "HSD") },
 
-        // Operational Pump 6 (Machine 3 Side B)
-        { "2|3|4", new AgsNozzleMeta(14, 6, "MS-I") },
-        { "2|3|5", new AgsNozzleMeta(15, 6, "MS-II") },
-        { "2|3|6", new AgsNozzleMeta(16, 6, "HSD") },
-
-        // Operational Pump 7 (Machine 4 Side A)
-        { "2|4|1", new AgsNozzleMeta(17, 7, "HSD") },
-        { "2|4|2", new AgsNozzleMeta(18, 7, "HSD") },
-
-        // Operational Pump 8 (Machine 4 Side B)
-        { "2|4|3", new AgsNozzleMeta(19, 8, "HSD") },
-        { "2|4|4", new AgsNozzleMeta(20, 8, "HSD") }
+        // Operational Pump 6: Nozzle 10 (MS-I), Nozzle 12 (HSD)
+        { "1|2|6", new AgsNozzleMeta(10, 6, "MS-I") },
+        { "2|3|2", new AgsNozzleMeta(12, 6, "HSD") }
     };
 
     private sealed record AgsTankMeta(int InternalTankId, string FuelType);
 
     private static readonly Dictionary<int, AgsTankMeta> AgsTankMap = new()
     {
-        { 1, new AgsTankMeta(2, "MS-I") },
+        { 1, new AgsTankMeta(1, "MS-I") },
         { 2, new AgsTankMeta(3, "MS-II") },
-        { 3, new AgsTankMeta(1, "HSD") },
+        { 3, new AgsTankMeta(2, "HSD") },
     };
 
     private static readonly Dictionary<int, string> AgsTankNumberToFuelType = new()
@@ -83,7 +71,12 @@ public class AgsImportService : IAgsImportService
         { 3, "HSD"   },
     };
 
-    private static readonly Dictionary<int, int> AgsTankNumberToTankId = new() { { 1, 2 }, { 2, 3 }, { 3, 1 } };
+    private static readonly Dictionary<int, int> AgsTankNumberToTankId = new() 
+    { 
+        { 1, 1 }, 
+        { 2, 3 }, 
+        { 3, 2 } 
+    };
 
     // ─────────────────────────────────────────────────────────────────────────
     //  Regex patterns for extracting data from AGS PDF text

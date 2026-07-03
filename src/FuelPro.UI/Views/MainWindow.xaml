@@ -47,6 +47,9 @@
         <DataTemplate DataType="{x:Type vm:PumpExpensesViewModel}">
             <views:PumpExpensesView/>
         </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:PettyCashViewModel}">
+            <views:PettyCashView/>
+        </DataTemplate>
     </Window.Resources>
 
 
@@ -201,7 +204,7 @@
                     </Button>
 
                     <!-- Card Settlement -->
-                    <Button Command="{Binding NavigateToCardSettlementCommand}" ToolTip="Card Settlement" Margin="0,4">
+                    <Button Command="{Binding NavigateToCardSettlementCommand}" ToolTip="TID Sheet" Margin="0,4">
                         <Button.Style>
                             <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
                                 <Setter Property="Foreground" Value="White" />
@@ -249,6 +252,23 @@
                             </Style>
                         </Button.Style>
                         <materialDesign:PackIcon Kind="FileImport" Width="28" Height="28"/>
+                    </Button>
+
+                    <!-- Petty Cash -->
+                    <Button Command="{Binding NavigateToPettyCashCommand}" ToolTip="Petty Cash" Margin="0,4">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
+                                <Setter Property="Foreground" Value="White" />
+                                <Setter Property="Opacity" Value="0.5" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding SelectedNavIndex}" Value="11">
+                                        <Setter Property="Opacity" Value="1" />
+                                        <Setter Property="Background" Value="#33FFFFFF" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                        <materialDesign:PackIcon Kind="Wallet" Width="28" Height="28"/>
                     </Button>
 
                     <!-- Settings -->

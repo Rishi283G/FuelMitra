@@ -171,6 +171,13 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private void NavigateToPettyCash()
+    {
+        SelectedNavIndex = 11;
+        CurrentView = App.Services.GetRequiredService<PettyCashViewModel>();
+    }
+
+    [RelayCommand]
     private void NavigateToSettings()
     {
         SelectedNavIndex = 10;

@@ -5,6 +5,7 @@ using FuelPro.Core.Models;
 using FuelPro.Core.Services;
 using FuelPro.Core.Repositories;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.EntityFrameworkCore;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.IO.Compression;
@@ -282,7 +283,8 @@ public partial class FinalCalculationViewModel : ObservableObject
     private void RecalcReconciliation()
     {
         var msTesting = _loadedEntries.SelectMany(e => e.TestingEntries).Where(t => t.FuelType == "MS").Sum(t => t.Amount);
-        var hsdTesting = _loadedEntries.SelectMany(e => e.TestingEntries).Where(t => t.FuelType == "HSD").Sum(t => t.Amount);
+        var hsdTesting = _loadedEntries.SelectMany(e => e.TestingEntries).Where(t => t.FuelType == "HSD" || t.FuelType == "HSD-I").Sum(t => t.Amount);
+        var hsdTesting2 = _loadedEntries.SelectMany(e => e.TestingEntries).Where(t => t.FuelType == "HSD-II").Sum(t => t.Amount);
         var cngTesting = _loadedEntries.SelectMany(e => e.TestingEntries).Where(t => t.FuelType == "CNG").Sum(t => t.Amount);
         
         var tidSheetToday = _tidService.GetTidSheetAsync(SelectedDate.Date).GetAwaiter().GetResult();
@@ -453,6 +455,7 @@ public partial class FinalCalculationViewModel : ObservableObject
             }
         }
         TotalDsmShort = totalDsmShort;
+
         if (TotalDsmShort > 0.01)
         {
             reconRows.Add(new ReconciliationRowDto { Description = "Total DSM Short", Amount = TotalDsmShort });
@@ -512,7 +515,32 @@ public partial class FinalCalculationViewModel : ObservableObject
         if (IsShiftLocked) { StatusMessage = "❌ Shift is locked."; return; }
         if (string.IsNullOrWhiteSpace(NewExpenseDescription)) return;
         var result = await _expenseRepo.AddShiftExpenseAsync(ShiftId, NewExpenseDescription, NewExpenseAmount);
-        if (result.Success) { NewExpenseDescription = ""; NewExpenseAmount = 0; await LoadShiftDataAsync(); }
+        if (result.Success && result.Data != null) 
+        { 
+            try
+            {
+                var db = App.Services.GetRequiredService<FuelPro.Data.FuelProDbContext>();
+                var pTx = new PettyCashTransaction
+                {
+                    Date = SelectedDate,
+                    Description = $"Shift Expense: {result.Data.Description}",
+                    Amount = -result.Data.Amount,
+                    Type = "Deduction",
+                    ShiftExpenseId = result.Data.ExpenseId,
+                    CreatedAt = DateTime.Now
+                };
+                db.PettyCashTransactions.Add(pTx);
+                await db.SaveChangesAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.Error(ex, "Failed to create petty cash deduction for expense");
+            }
+
+            NewExpenseDescription = ""; 
+            NewExpenseAmount = 0; 
+            await LoadShiftDataAsync(); 
+        }
         else StatusMessage = $"❌ {result.Error}";
     }
 
@@ -520,6 +548,22 @@ public partial class FinalCalculationViewModel : ObservableObject
     private async Task RemoveShiftExpenseAsync(int expenseId)
     {
         if (IsShiftLocked) { StatusMessage = "❌ Shift is locked."; return; }
+        
+        try
+        {
+            var db = App.Services.GetRequiredService<FuelPro.Data.FuelProDbContext>();
+            var pTx = await db.PettyCashTransactions.FirstOrDefaultAsync(t => t.ShiftExpenseId == expenseId);
+            if (pTx != null)
+            {
+                db.PettyCashTransactions.Remove(pTx);
+                await db.SaveChangesAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to remove matching petty cash transaction for expense {ExpenseId}", expenseId);
+        }
+
         var result = await _expenseRepo.DeleteExpenseAsync(expenseId);
         if (result.Success) await LoadShiftDataAsync();
         else StatusMessage = $"❌ {result.Error}";

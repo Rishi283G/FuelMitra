@@ -180,7 +180,8 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
         <div class="mini-hdr">Final Reconciliation</div>
         <div class="recon-box"><table><thead><tr><th>Description</th><th>Amount (&#8377;)</th></tr></thead><tbody>
           <tr><td>MS Testing</td><td id="rMsTest">&ndash;</td></tr>
-          <tr><td>HSD Testing</td><td id="rHsdTest">&ndash;</td></tr>
+          <tr><td>HSD Testing I</td><td id="rHsdTest">&ndash;</td></tr>
+          <tr><td>HSD Testing II</td><td id="rHsdTest2">&ndash;</td></tr>
           <tr><td>Phone Pe (Morning)</td><td id="rPhonePeM">&ndash;</td></tr>
           <tr><td>Phone Pe (Night)</td><td id="rPhonePeN">&ndash;</td></tr>
           <tr><td>Phone Pe Card (Morning)</td><td id="rPhonePeCardM">&ndash;</td></tr>
@@ -287,7 +288,7 @@ function renderData(){
   ctr.innerHTML='<td>TOTAL</td><td>\u2013</td><td>'+inrZ(credTot)+'</td>';ct.appendChild(ctr);
 
   var ft=document.getElementById('tFuel');ft.innerHTML='';
-  var badges={'HSD':'<span class="b-hsd">Diesel</span>','MS-I':'<span class="b-ms1">Petrol</span>','MS-II':'<span class="b-ms1">Petrol</span>','CNG':'<span class="b-cng">CNG</span>'};
+  var badges={'HSD':'<span class="b-hsd">Diesel</span>','MS-I':'<span class="b-ms1">Petrol</span>','MS-II':'<span class="b-hsd">Diesel</span>','CNG':'<span class="b-cng">CNG</span>'};
   var ftTotL=0,ftTotA=0;
   (d.fuelSale||[]).forEach(function(f,i){
     var tr=document.createElement('tr');var badge=badges[f.fuelType]||f.fuelType;
@@ -359,6 +360,7 @@ function renderData(){
 
   document.getElementById('rMsTest').textContent=inr(rec.msTesting);
   document.getElementById('rHsdTest').textContent=inr(rec.hsdTesting);
+  document.getElementById('rHsdTest2').textContent=inr(rec.hsdTesting2);
   document.getElementById('rPhonePeM').textContent=inr(rec.phonePeMorning);
   document.getElementById('rPhonePeN').textContent=inr(rec.phonePeNight);
   document.getElementById('rPhonePeCardM').textContent=inr(rec.phonePeCardMorning);

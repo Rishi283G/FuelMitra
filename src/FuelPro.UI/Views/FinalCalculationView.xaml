@@ -35,7 +35,7 @@
             <Setter Property="Margin" Value="0,0,0,12" />
         </Style>
 
-        <Style TargetType="DataGrid" BasedOn="{StaticResource MaterialDesignDataGrid}">
+        <Style TargetType="DataGrid" BasedOn="{StaticResource {x:Type DataGrid}}">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="{DynamicResource MaterialDesign.Brush.Divider}" />
             <Setter Property="BorderThickness" Value="1" />
@@ -293,19 +293,19 @@
                                     </Border>
 
                                     <!-- HSD -->
-                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Diesel" Padding="8" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="HSD - 20KL" Padding="8" VerticalAlignment="Center"/>
                                     <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding HsdLitres, Converter={StaticResource LitreConverter}}" Padding="8" TextAlignment="Right" VerticalAlignment="Center"/>
                                     <TextBlock Grid.Row="1" Grid.Column="2" Text="{Binding HsdRate, Converter={StaticResource CurrencyConverter}}" Padding="8" TextAlignment="Right" VerticalAlignment="Center"/>
                                     <TextBlock Grid.Row="1" Grid.Column="3" Text="{Binding HsdAmount, Converter={StaticResource CurrencyConverter}}" Padding="8" TextAlignment="Right" FontWeight="Bold" VerticalAlignment="Center"/>
 
                                     <!-- MS-I -->
-                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Petrol (Tank 1)" Padding="8" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="MS - 20KL" Padding="8" VerticalAlignment="Center"/>
                                     <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding MsILitres, Converter={StaticResource LitreConverter}}" Padding="8" TextAlignment="Right" VerticalAlignment="Center"/>
                                     <TextBlock Grid.Row="2" Grid.Column="2" Text="{Binding MsIRate, Converter={StaticResource CurrencyConverter}}" Padding="8" TextAlignment="Right" VerticalAlignment="Center"/>
                                     <TextBlock Grid.Row="2" Grid.Column="3" Text="{Binding MsIAmount, Converter={StaticResource CurrencyConverter}}" Padding="8" TextAlignment="Right" FontWeight="Bold" VerticalAlignment="Center"/>
 
                                     <!-- MS-II -->
-                                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Petrol (Tank 2)" Padding="8" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Row="3" Grid.Column="0" Text="HSD - 20KL II" Padding="8" VerticalAlignment="Center"/>
                                     <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding MsIILitres, Converter={StaticResource LitreConverter}}" Padding="8" TextAlignment="Right" VerticalAlignment="Center"/>
                                     <TextBlock Grid.Row="3" Grid.Column="2" Text="{Binding MsIIRate, Converter={StaticResource CurrencyConverter}}" Padding="8" TextAlignment="Right" VerticalAlignment="Center"/>
                                     <TextBlock Grid.Row="3" Grid.Column="3" Text="{Binding MsIIAmount, Converter={StaticResource CurrencyConverter}}" Padding="8" TextAlignment="Right" FontWeight="Bold" VerticalAlignment="Center"/>

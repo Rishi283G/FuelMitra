@@ -31,7 +31,7 @@
             <Setter Property="Margin" Value="0,0,0,10"/>
         </Style>
 
-        <Style TargetType="DataGrid" BasedOn="{StaticResource MaterialDesignDataGrid}">
+        <Style TargetType="DataGrid" BasedOn="{StaticResource {x:Type DataGrid}}">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="BorderBrush" Value="{DynamicResource MaterialDesign.Brush.Divider}"/>
@@ -192,11 +192,11 @@
 
                     <!-- Summary Totals -->
                     <UniformGrid Columns="3" Margin="0,0,0,12">
-                        <materialDesign:Card Margin="0,0,6,0" Padding="16" UniformCornerRadius="8">
+                        <materialDesign:Card Margin="0,0,3,0" Padding="16" UniformCornerRadius="8">
                             <StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                                     <Ellipse Width="10" Height="10" Fill="#FFA000" Margin="0,0,6,0"/>
-                                    <TextBlock Text="HSD" FontWeight="Bold" FontSize="12"/>
+                                    <TextBlock Text="HSD - 20KL" FontWeight="Bold" FontSize="12"/>
                                 </StackPanel>
                                 <TextBlock Text="{Binding PreviewHsdTotal, StringFormat={}{0:N0} L}"
                                            FontSize="24" FontWeight="Bold"
@@ -207,7 +207,7 @@
                             <StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                                     <Ellipse Width="10" Height="10" Fill="#1E88E5" Margin="0,0,6,0"/>
-                                    <TextBlock Text="MS-I" FontWeight="Bold" FontSize="12"/>
+                                    <TextBlock Text="MS - 20KL" FontWeight="Bold" FontSize="12"/>
                                 </StackPanel>
                                 <TextBlock Text="{Binding PreviewMsITotal, StringFormat={}{0:N0} L}"
                                            FontSize="24" FontWeight="Bold"
@@ -218,7 +218,7 @@
                             <StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                                     <Ellipse Width="10" Height="10" Fill="#43A047" Margin="0,0,6,0"/>
-                                    <TextBlock Text="MS-II" FontWeight="Bold" FontSize="12"/>
+                                    <TextBlock Text="HSD - 20KL II" FontWeight="Bold" FontSize="12"/>
                                 </StackPanel>
                                 <TextBlock Text="{Binding PreviewMsIITotal, StringFormat={}{0:N0} L}"
                                            FontSize="24" FontWeight="Bold"
@@ -351,9 +351,9 @@
                                 <DataGridTextColumn Header="Date"     Binding="{Binding ImportDate, StringFormat=dd-MMM-yyyy}" Width="100"/>
                                 <DataGridTextColumn Header="Shift"    Binding="{Binding ShiftType}" Width="55"/>
                                 <DataGridTextColumn Header="PDF File" Binding="{Binding PdfFileName}" Width="280"/>
-                                <DataGridTextColumn Header="HSD (L)"  Binding="{Binding TotalHsdLitres,  StringFormat=N0}" Width="80"/>
-                                <DataGridTextColumn Header="MS-I (L)" Binding="{Binding TotalMsILitres,  StringFormat=N0}" Width="80"/>
-                                <DataGridTextColumn Header="MS-II (L)" Binding="{Binding TotalMsIILitres, StringFormat=N0}" Width="85"/>
+                                <DataGridTextColumn Header="HSD - 20KL"  Binding="{Binding TotalHsdLitres,  StringFormat=N0}" Width="80"/>
+                                <DataGridTextColumn Header="MS - 20KL" Binding="{Binding TotalMsILitres,  StringFormat=N0}" Width="80"/>
+                                <DataGridTextColumn Header="HSD - 20KL II" Binding="{Binding TotalMsIILitres, StringFormat=N0}" Width="85"/>
                                 <DataGridTextColumn Header="Imported At"
                                                     Binding="{Binding ImportedAt, StringFormat=dd-MMM hh:mm tt}" Width="130"/>
                                 <DataGridTemplateColumn Header="Action" Width="180">

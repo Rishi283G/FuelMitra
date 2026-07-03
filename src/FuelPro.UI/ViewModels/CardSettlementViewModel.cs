@@ -23,6 +23,7 @@ public partial class CardSettlementItem : ObservableObject
     public string RomanIndex { get; set; } = string.Empty;
     public string DsmName { get; set; } = string.Empty;
     public double Amount { get; set; }
+    public string ShiftLabel { get; set; } = string.Empty; // "Morning", "Day", "Night"
     
     [ObservableProperty] private string? _tid;
     [ObservableProperty] private string? _batch;
@@ -130,6 +131,7 @@ public partial class CardSettlementViewModel : ObservableObject
                     Amount = item.Amount,
                     Tid = item.Tid,
                     Batch = item.Batch,
+                    ShiftLabel = item.ShiftLabel,
                     PaymentCollection = item.PaymentCollection,
                     Slot = ParseSlot(item.Slot)
                 });
@@ -145,6 +147,7 @@ public partial class CardSettlementViewModel : ObservableObject
                     Amount = item.Amount,
                     Tid = item.Tid,
                     Batch = item.Batch,
+                    ShiftLabel = item.ShiftLabel,
                     PaymentCollection = item.PaymentCollection,
                     Slot = ParseSlot(item.Slot)
                 });
@@ -160,6 +163,7 @@ public partial class CardSettlementViewModel : ObservableObject
                     Amount = item.Amount,
                     Tid = item.Tid,
                     Batch = item.Batch,
+                    ShiftLabel = item.ShiftLabel,
                     PaymentCollection = item.PaymentCollection,
                     Slot = ParseSlot(item.Slot)
                 });
@@ -312,16 +316,28 @@ public partial class CardSettlementViewModel : ObservableObject
     {
         if (_currentShift == null) return;
 
+        double phonePeMorning = PhonePePayments.Where(p => p.ShiftLabel == "Morning").Sum(p => p.Amount);
+        double phonePeDay = PhonePePayments.Where(p => p.ShiftLabel == "Day").Sum(p => p.Amount);
+        double phonePeNight = PhonePePayments.Where(p => p.ShiftLabel == "Night").Sum(p => p.Amount);
+
+        double cardMorning = CardPayments.Where(c => c.ShiftLabel == "Morning").Sum(c => c.Amount);
+        double cardDay = CardPayments.Where(c => c.ShiftLabel == "Day").Sum(c => c.Amount);
+        double cardNight = CardPayments.Where(c => c.ShiftLabel == "Night").Sum(c => c.Amount);
+
+        double petroNight = PetroCardPayments.Where(p => p.ShiftLabel == "Night").Sum(p => p.Amount);
+        double petroDay = PetroCardPayments.Where(p => p.ShiftLabel == "Day").Sum(p => p.Amount);
+
         var payload = new
         {
-            Date = SelectedDate.ToString("yyyy-MM-dd"),
-            ShiftLabel = "Combined (Morning, Day, Night)",
+            Date = SelectedDate.ToString("dd/MM/yyyy"),
             CardTotal = CardTotal,
             PhonePeTotal = PhonePeTotal,
             PetroCardTotal = PetroCardTotal,
-            Cards = CardPayments.Select(c => new { c.RomanIndex, Name = c.DsmName, c.Tid, c.Batch, c.Amount, Slot = c.Slot.ToString() }).ToList(),
-            PhonePes = PhonePePayments.Select(p => new { p.RomanIndex, Name = p.DsmName, p.Tid, p.Batch, p.Amount, Slot = p.Slot.ToString() }).ToList(),
-            PetroCards = PetroCardPayments.Select(pc => new { pc.RomanIndex, Name = pc.DsmName, pc.Tid, pc.Batch, pc.Amount, Slot = pc.Slot.ToString() }).ToList()
+            GrandTotal = CardTotal + PhonePeTotal + PetroCardTotal,
+            Cards = CardPayments.Select(c => new { c.Tid, c.Batch, c.Amount }).ToList(),
+            PhonePeSummary = new { Morning = phonePeMorning, Day = phonePeDay, Night = phonePeNight, Total = PhonePeTotal },
+            CardSummary = new { Morning = cardMorning, Day = cardDay, Night = cardNight, Total = CardTotal },
+            PetroSummary = new { Night = petroNight, Day = petroDay, Total = PetroCardTotal }
         };
 
         _printService.PrintCardSettlement(payload);

@@ -275,14 +275,15 @@ public class ShiftAggregationService : IShiftAggregationService
     /// TABLE F — Builds reconciliation line items.
     /// </summary>
     public List<ReconciliationRowDto> BuildReconciliationRows(
-        double msTesting, double hsdTesting, double cngTesting, double phonePeCardMorning, double phonePeCardNight, double phonePeMorning, double phonePeNight, double petroCard,
+        double msTesting, double hsdTesting, double hsdTesting2, double cngTesting, double phonePeCardMorning, double phonePeCardNight, double phonePeMorning, double phonePeNight, double petroCard,
         double debit, double creditCardMorning, double creditCardNight, double bankCash, double cashInHand,
         double expenses)
     {
         return new List<ReconciliationRowDto>
         {
             new() { Description = "MS Testing", Amount = msTesting },
-            new() { Description = "HSD Testing", Amount = hsdTesting },
+            new() { Description = "HSD Testing I", Amount = hsdTesting },
+            new() { Description = "HSD Testing II", Amount = hsdTesting2 },
             new() { Description = "CNG Testing", Amount = cngTesting },
             new() { Description = "Phone Pe Card (Morning)", Amount = phonePeCardMorning },
             new() { Description = "Phone Pe Card (Night)", Amount = phonePeCardNight },

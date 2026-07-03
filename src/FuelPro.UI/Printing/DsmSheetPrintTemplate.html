@@ -346,7 +346,7 @@ document.getElementById('metaEnd').textContent = data.endTime || '—';
 
 // Section 2 — Nozzle Readings
 const nb = document.getElementById('nozzleBody');
-const fuelLabels = {'HSD':'Diesel','MS-I':'Petrol','MS-II':'Power','CNG':'CNG'};
+const fuelLabels = {'HSD':'Diesel','MS-I':'Petrol','MS-II':'Diesel','CNG':'CNG'};
 (data.nozzleRows || []).forEach(r => {
   const friendlyFuel = fuelLabels[r.fuelType] || r.fuelType;
   const unit = r.fuelType === 'CNG' ? ' Kg' : ' L';
@@ -366,22 +366,32 @@ document.getElementById('grossSales').textContent = INR(data.grossSales);
 // Section 3 — Payment Collection
 const p = data.payments || {};
 const payRows = [
-  ['PhonePe (Morning)', p.phonePeMorning],
-  ['PhonePe (Night)', p.phonePeNight],
-  ['PhonePe Card (Morning)', p.phonePeCardMorning],
-  ['PhonePe Card (Night)', p.phonePeCardNight],
-  ['PineLab Card (Morning)', p.creditCardMorning],
-  ['PineLab Card (Night)', p.creditCardNight],
-  ['Petro Card', p.petroCard],
-  ['Cash Deposit', p.cashDeposit],
-  ['Others (Info only)', p.others],
-  ['Bank Deposit', p.bankDeposit],
+  { label: 'PhonePe (Morning)', val: p.phonePeMorning, tid: p.phonePeTid, batch: p.phonePeBatch },
+  { label: 'PhonePe (Night)', val: p.phonePeNight, tid: p.phonePeTid, batch: p.phonePeBatch },
+  { label: 'PhonePe Card (Morning)', val: p.phonePeCardMorning, tid: p.phonePeTid, batch: p.phonePeBatch },
+  { label: 'PhonePe Card (Night)', val: p.phonePeCardNight, tid: p.phonePeTid, batch: p.phonePeBatch },
+  { label: 'PineLab Card (Morning)', val: p.creditCardMorning, tid: p.cardTid, batch: p.cardBatch },
+  { label: 'PineLab Card (Night)', val: p.creditCardNight, tid: p.cardTid, batch: p.cardBatch },
+  { label: 'Petro Card', val: p.petroCard, tid: p.petroCardTid, batch: p.petroCardBatch },
+  { label: 'Cash Deposit', val: p.cashDeposit },
+  { label: 'Others (Info only)', val: p.others },
+  { label: 'Bank Deposit', val: p.bankDeposit },
 ];
 let payHtml = '<div class="payment-grid">';
-payRows.filter(r => r[1] > 0).forEach(([label, val]) => {
-  payHtml += `<div class="payment-row"><span class="payment-label">${label}</span><span class="payment-value">${INR(val)}</span></div>`;
+payRows.filter(r => r.val > 0).forEach(r => {
+  let details = '';
+  if (r.tid) {
+    details = `<span style="font-size: 8.5px; color: #666; display: block; margin-top: 1px; font-weight: normal;">TID: ${r.tid}${r.batch ? ` | Batch: ${r.batch}` : ''}</span>`;
+  }
+  payHtml += `<div class="payment-row" style="flex-direction: column; align-items: stretch; height: auto; padding: 4px 6px;">
+    <div style="display: flex; justify-content: space-between;">
+      <span class="payment-label">${r.label}</span>
+      <span class="payment-value">${INR(r.val)}</span>
+    </div>
+    ${details}
+  </div>`;
 });
-payHtml += `</div><div class="payment-row payment-total"><span class="payment-label">Total Digital Payments</span><span class="payment-value">${INR(p.totalDigital)}</span></div>`;
+payHtml += `</div><div class="payment-row payment-total" style="padding: 4px 6px;"><span class="payment-label">Total Digital Payments</span><span class="payment-value">${INR(p.totalDigital)}</span></div>`;
 document.getElementById('paymentBlock').innerHTML = payHtml;
 
 // Section 4 — Cash Denomination
