@@ -17,10 +17,6 @@ interface NozzleRow extends DraftNozzleReading {
   isOpeningReadOnly?: boolean;
 }
 
-function todayISO() {
-  return new Date().toISOString().split('T')[0];
-}
-
 export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   const { profile } = useAuth();
   const { syncing, saveDraft, submitToSupabase } = useSubmissionService();
