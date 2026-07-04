@@ -418,7 +418,8 @@ public partial class FinalCalculationViewModel : ObservableObject
             : "Cash In Hand";
         reconRows.Add(new ReconciliationRowDto { Description = cashInHandDesc, Amount = displayCashInHand });
         
-        reconRows.Add(new ReconciliationRowDto { Description = "Expenses", Amount = ExpensesTotal });
+        double dsmExpensesTotal = ExpenseRows.Where(r => !r.IsShiftLevel).Sum(r => r.Amount);
+        reconRows.Add(new ReconciliationRowDto { Description = "Expenses", Amount = dsmExpensesTotal });
 
         double totalDsmShort = 0;
         var mismatchGroups = _loadedEntries.GroupBy(e => new { e.ShiftId, e.DsmName, GroupPumpId = e.ReconciledToPumpId ?? e.PumpId });

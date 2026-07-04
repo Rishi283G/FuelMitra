@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS "DsmPumpAssignments" (
     "machine_id" TEXT,
     "DsmUserId" UUID NOT NULL REFERENCES "DsmUsers" ("SyncGuid") ON DELETE CASCADE,
     "PumpId" INTEGER NOT NULL,
+    "ConnectedPumpId" INTEGER NULL,
     "ShiftType" VARCHAR(10) NOT NULL, -- 'A', 'B', 'C'
     "IsActive" BOOLEAN NOT NULL DEFAULT TRUE,
     "AssignedDate" TIMESTAMP NOT NULL DEFAULT NOW(),

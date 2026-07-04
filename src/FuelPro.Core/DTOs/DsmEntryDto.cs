@@ -22,6 +22,8 @@ public class PaymentCollectionDto
     public decimal CreditCard { get; set; }
     public decimal CashDeposit { get; set; }
     public decimal PhysicalCash { get; set; }
+    public decimal PetroCard { get; set; }
+    public decimal Others { get; set; }
 }
 
 public class DebitEntryDto

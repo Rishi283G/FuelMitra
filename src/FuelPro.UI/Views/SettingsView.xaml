@@ -59,58 +59,6 @@
                 </StackPanel>
             </materialDesign:Card>
 
-            <!-- Cloud Sync Settings -->
-            <materialDesign:Card Padding="24" UniformCornerRadius="12" Margin="0,0,0,20"
-                                 materialDesign:ElevationAssist.Elevation="Dp3">
-                <StackPanel>
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
-                        <materialDesign:PackIcon Kind="CloudSync" Width="24" Height="24"
-                                                 Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
-                        <TextBlock Text="Cloud Sync Settings" FontSize="18" FontWeight="SemiBold" Margin="8,0"
-                                   Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}"/>
-                    </StackPanel>
-
-                    <TextBox Text="{Binding SupabaseUrl, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,16"
-                             materialDesign:HintAssist.Hint="Supabase URL" materialDesign:HintAssist.IsFloating="True"
-                             Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
-
-
-
-                    <Grid Margin="0,0,0,16">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBox Grid.Row="0" Grid.Column="0" Text="{Binding SyncStationId, Mode=OneWay}" Margin="0,0,8,0" IsReadOnly="True"
-                                 materialDesign:HintAssist.Hint="Station ID (Read-only)" materialDesign:HintAssist.IsFloating="True"
-                                 Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
-                        <Button Grid.Row="0" Grid.Column="1" Content="Copy" Command="{Binding CopyStationIdCommand}"
-                                Style="{StaticResource MaterialDesignOutlinedButton}" Height="40" Margin="0,0,8,0" VerticalAlignment="Bottom"/>
-                        <TextBox Grid.Row="0" Grid.Column="2" Text="{Binding LastSyncTimeDisplay, Mode=OneWay}" Margin="8,0,0,0" IsReadOnly="True"
-                                 materialDesign:HintAssist.Hint="Last Synced Time" materialDesign:HintAssist.IsFloating="True"
-                                 Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
-                        <TextBox Grid.Row="1" Grid.Column="0" Text="{Binding SyncMachineId, Mode=OneWay}" Margin="0,16,8,0" IsReadOnly="True"
-                                 materialDesign:HintAssist.Hint="Machine ID (Read-only)" materialDesign:HintAssist.IsFloating="True"
-                                 Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
-                    </Grid>
-
-                    <CheckBox IsChecked="{Binding SyncEnabled}" Content="Enable Cloud Synchronization" Margin="0,0,0,16"/>
-
-                    <StackPanel Orientation="Horizontal">
-                        <Button Content="Save Sync Config" Command="{Binding SaveSyncSettingsCommand}" Height="40" Padding="24,0"
-                                Style="{StaticResource MaterialDesignRaisedButton}" Margin="0,0,12,0"/>
-                        <Button Content="Sync Now" Command="{Binding ForceSyncCommand}" Height="40" Padding="24,0"
-                                Style="{StaticResource MaterialDesignOutlinedButton}" Margin="0,0,16,0"/>
-                        <TextBlock Text="{Binding SyncStatusMessage}" VerticalAlignment="Center" FontSize="14" FontWeight="SemiBold"/>
-                    </StackPanel>
-                </StackPanel>
-            </materialDesign:Card>
-
             <!-- DSM Profile Management -->
             <materialDesign:Card Padding="24" UniformCornerRadius="12" Margin="0,20,0,24"
                                  materialDesign:ElevationAssist.Elevation="Dp3">

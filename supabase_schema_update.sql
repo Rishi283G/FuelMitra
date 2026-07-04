@@ -313,4 +313,40 @@ CREATE TABLE IF NOT EXISTS "DsmPersonalDebtorRepayments" (
     PRIMARY KEY ("SyncGuid")
 );
 
+ALTER TABLE "DsmPumpAssignments" ADD COLUMN IF NOT EXISTS "ConnectedPumpId" integer NULL;
+
+-- Ensure PettyCashTransactions has all required columns for sync
+CREATE TABLE IF NOT EXISTS "PettyCashTransactions" (
+    "SyncGuid" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "station_id" TEXT NOT NULL,
+    "local_id" INTEGER NOT NULL,
+    "machine_id" TEXT,
+    "TransactionId" INTEGER NOT NULL,
+    "Date" TIMESTAMP NOT NULL,
+    "Description" TEXT NOT NULL,
+    "Amount" DOUBLE PRECISION NOT NULL,
+    "Type" VARCHAR(50) NOT NULL,
+    "ShiftExpenseId" UUID NULL,
+    "CreatedAt" TIMESTAMP NOT NULL DEFAULT NOW(),
+    "created_at" TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    "updated_at" TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    PRIMARY KEY ("SyncGuid")
+);
+
+ALTER TABLE "PettyCashTransactions" ADD COLUMN IF NOT EXISTS "SyncGuid" UUID DEFAULT gen_random_uuid();
+ALTER TABLE "PettyCashTransactions" ADD COLUMN IF NOT EXISTS "station_id" TEXT;
+ALTER TABLE "PettyCashTransactions" ADD COLUMN IF NOT EXISTS "local_id" INTEGER;
+ALTER TABLE "PettyCashTransactions" ADD COLUMN IF NOT EXISTS "machine_id" TEXT;
+ALTER TABLE "PettyCashTransactions" ADD COLUMN IF NOT EXISTS "TransactionId" INTEGER;
+ALTER TABLE "PettyCashTransactions" ADD COLUMN IF NOT EXISTS "Date" TIMESTAMP;
+ALTER TABLE "PettyCashTransactions" ADD COLUMN IF NOT EXISTS "Description" TEXT;
+ALTER TABLE "PettyCashTransactions" ADD COLUMN IF NOT EXISTS "Amount" DOUBLE PRECISION;
+ALTER TABLE "PettyCashTransactions" ADD COLUMN IF NOT EXISTS "Type" VARCHAR(50);
+-- Safely ensure ShiftExpenseId is of type UUID in case it was created as INTEGER earlier
+ALTER TABLE "PettyCashTransactions" DROP COLUMN IF EXISTS "ShiftExpenseId";
+ALTER TABLE "PettyCashTransactions" ADD COLUMN "ShiftExpenseId" UUID NULL;
+ALTER TABLE "PettyCashTransactions" ADD COLUMN IF NOT EXISTS "CreatedAt" TIMESTAMP DEFAULT NOW();
+ALTER TABLE "PettyCashTransactions" ADD COLUMN IF NOT EXISTS "created_at" TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now());
+ALTER TABLE "PettyCashTransactions" ADD COLUMN IF NOT EXISTS "updated_at" TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now());
+
 COMMIT;

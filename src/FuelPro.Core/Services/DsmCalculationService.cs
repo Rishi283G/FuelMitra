@@ -13,7 +13,8 @@ public class DsmCalculationService : IDsmCalculationService
         {
             var grossSales = dsm.NozzleReadings.Sum(x => x.Amount);
             var totalInDirect = dsm.PaymentCollection.PhonePe + dsm.PaymentCollection.CreditCard
-                + dsm.PaymentCollection.CashDeposit + dsm.PaymentCollection.PhysicalCash;
+                + dsm.PaymentCollection.CashDeposit + dsm.PaymentCollection.PhysicalCash
+                + dsm.PaymentCollection.PetroCard + dsm.PaymentCollection.Others;
             var totalCreditors = dsm.DebitEntries.Sum(x => x.Amount);
             var totalTesting = dsm.TestingEntries.Sum(x => x.Amount);
             var totalExpenses = dsm.Expenses.Sum(x => x.Amount);

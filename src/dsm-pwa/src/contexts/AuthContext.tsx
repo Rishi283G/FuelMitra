@@ -8,6 +8,7 @@ interface AuthContextType {
   loading: boolean;
   login: (email: string, password: string) => Promise<string | null>;
   logout: () => Promise<void>;
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -21,7 +22,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const { data, error } = await supabase
         .from('DsmUsers')
-        .select('SyncGuid, EmployeeCode, FullName, MobileNumber, station_id, DsmPumpAssignments(PumpId, ConnectedPumpId, ShiftType, IsActive)')
+        .select('SyncGuid, EmployeeCode, FullName, MobileNumber, station_id, DsmPumpAssignments(PumpId, ConnectedPumpId, ShiftType, AssignedDate, IsActive)')
         .eq('AuthUserId', authUserId)
         .eq('IsActive', true)
         .single();
@@ -42,6 +43,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         AssignedPump: activeAssignment ? activeAssignment.PumpId : null,
         ConnectedPump: activeAssignment ? activeAssignment.ConnectedPumpId : null,
         AssignedShift: activeAssignment ? activeAssignment.ShiftType : null,
+        AssignedDate: activeAssignment ? activeAssignment.AssignedDate : null,
       };
     } catch {
       return null;
@@ -152,8 +154,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await supabase.auth.signOut();
   }
 
+  async function refreshProfile(): Promise<void> {
+    if (user) {
+      const p = await fetchProfile(user.id);
+      setProfile(p);
+    }
+  }
+
   return (
-    <AuthContext.Provider value={{ user, profile, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, profile, loading, login, logout, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );

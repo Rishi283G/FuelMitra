@@ -433,7 +433,9 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                 PhonePe = (decimal)UpiAmount,
                 CreditCard = (decimal)CardAmount,
                 CashDeposit = (decimal)CashDepositAmount,
-                PhysicalCash = (decimal)CashAmount
+                PhysicalCash = (decimal)CashAmount,
+                PetroCard = (decimal)PetroCardAmount,
+                Others = (decimal)OthersAmount
             },
             DebitEntries = DebtorEntries.Select(d => new FuelPro.Core.DTOs.DebitEntryDto { Amount = (decimal)d.Amount }).ToList(),
             Expenses = new List<FuelPro.Core.DTOs.ExpenseDto> { new() { Amount = (decimal)ExpenseAmount } },

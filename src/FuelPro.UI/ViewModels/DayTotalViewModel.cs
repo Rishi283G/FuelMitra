@@ -373,7 +373,8 @@ public partial class DayTotalViewModel : ObservableObject
                 }
             }
             TotalDsmShort = totalDsmShort;
-            ReconciliationTotalAmount = TotalDigitalAndCash + CreditorsTotal + ExpensesTotal + TotalTesting + TotalDsmShort;
+            double dsmExpensesTotal = ExpenseRows.Where(r => !r.IsShiftLevel).Sum(r => r.Amount);
+            ReconciliationTotalAmount = TotalDigitalAndCash + CreditorsTotal + dsmExpensesTotal + TotalTesting + TotalDsmShort;
             
             double totalRepaymentsReconciled = cashRepayments + phonePeRepayments + creditCardRepayments;
             GrossDaySaleTotal = TotalDayFuelSaleAmount + totalRepaymentsReconciled;

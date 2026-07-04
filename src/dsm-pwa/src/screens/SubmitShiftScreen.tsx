@@ -28,7 +28,39 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   // Form State — pump & shift come from manager assignment, DSM cannot change them
   const pumpId = profile?.AssignedPump ?? 0;
   const shiftType = profile?.AssignedShift ?? 'A';
-  const [shiftDate, setShiftDate] = useState(todayISO());
+  const [shiftDate, setShiftDate] = useState(() => {
+    if (profile?.AssignedDate) {
+      try {
+        const d = new Date(profile.AssignedDate);
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  });
+
+  useEffect(() => {
+    if (profile?.AssignedDate) {
+      try {
+        const d = new Date(profile.AssignedDate);
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        setShiftDate(`${year}-${month}-${day}`);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  }, [profile]);
+
   const [notes, setNotes] = useState('');
   const [nozzleRows, setNozzleRows] = useState<NozzleRow[]>([]);
   
@@ -622,15 +654,10 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
             </div>
 
             <div className="field-group">
-              <label className="field-label" htmlFor="shift-date">Shift Date</label>
-              <input
-                id="shift-date"
-                type="date"
-                className="field-input"
-                value={shiftDate}
-                max={todayISO()}
-                onChange={e => setShiftDate(e.target.value)}
-              />
+              <label className="field-label">Shift Date</label>
+              <div className="field-input" style={{ background: '#1e293b', display: 'flex', alignItems: 'center', minHeight: '42px', paddingLeft: '12px', fontWeight: 'bold', color: '#f8fafc', borderRadius: '0.375rem' }}>
+                {new Date(shiftDate + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}
+              </div>
             </div>
 
             <h2 className="section-heading" style={{ marginTop: '1.5rem' }}>Nozzle Readings</h2>

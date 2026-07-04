@@ -58,6 +58,7 @@ public partial class CardSettlementViewModel : ObservableObject
     public ObservableCollection<CardSettlementItem> CardPayments { get; } = new();
     public ObservableCollection<CardSettlementItem> PhonePePayments { get; } = new();
     public ObservableCollection<CardSettlementItem> PetroCardPayments { get; } = new();
+    public ObservableCollection<BusinessDayTidSheet> PreviousTidSheets { get; } = new();
 
     private Shift? _currentShift;
 
@@ -176,6 +177,7 @@ public partial class CardSettlementViewModel : ObservableObject
             }
 
             RecalculateTotals();
+            _ = LoadHistoryLogsAsync();
         }
         catch (Exception ex)
         {
@@ -410,5 +412,37 @@ public partial class CardSettlementViewModel : ObservableObject
         if (number >= 4) return "IV" + ToRoman(number - 4);
         if (number >= 1) return "I" + ToRoman(number - 1);
         return string.Empty;
+    }
+
+    [RelayCommand]
+    public async Task LoadHistoryLogsAsync()
+    {
+        try
+        {
+            var end = DateTime.Today;
+            var start = end.AddDays(-15);
+            var sheets = await _tidService.GetTidSheetsForRangeAsync(start, end);
+            
+            PreviousTidSheets.Clear();
+            foreach (var date in sheets.Keys.OrderByDescending(d => d))
+            {
+                var sheet = sheets[date];
+                if (sheet.PhonePePayments.Count > 0 || sheet.CardPayments.Count > 0 || sheet.PetroCardPayments.Count > 0)
+                {
+                    PreviousTidSheets.Add(sheet);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to load TID history logs");
+        }
+    }
+
+    [RelayCommand]
+    private async Task SelectHistoryDateAsync(DateTime date)
+    {
+        SelectedDate = date;
+        await LoadShiftDataAsync();
     }
 }

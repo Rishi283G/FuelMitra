@@ -168,7 +168,7 @@ public partial class ReportsViewModel : ObservableObject
 
                 // 4. Expenses
                 var expenses = _aggregation.BuildExpenseRows(entries, allExpenses);
-                var expensesTotal = expenses.Sum(r => r.Amount);
+                var expensesTotal = expenses.Where(r => !r.IsShiftLevel).Sum(r => r.Amount);
 
                 // 5. Testing
                 var msTesting = entries.SelectMany(e => e.TestingEntries).Where(t => t.FuelType == "MS").Sum(t => t.Amount);

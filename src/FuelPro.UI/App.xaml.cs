@@ -592,6 +592,9 @@ public partial class App : Application
 
     private static void EnsureColumnExists(SqliteConnection connection, string tableName, string columnName, string alterSql)
     {
+        if (!TableExists(connection, tableName))
+            return;
+
         using var command = connection.CreateCommand();
         command.CommandText = $"PRAGMA table_info({tableName});";
 

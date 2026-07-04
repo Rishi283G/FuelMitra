@@ -22,6 +22,7 @@ export interface DsmUserProfile {
   AssignedPump: number | null;
   ConnectedPump: number | null;
   AssignedShift: 'A' | 'B' | 'C' | null;
+  AssignedDate: string | null;
   StationId: string;
 }
 
