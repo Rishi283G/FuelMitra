@@ -872,6 +872,44 @@ public partial class DsmEntryViewModel : ObservableObject
 
             var entry = fullResult.Data;
 
+            // If this is a connected pump entry, redirect to the primary pump entry
+            if (entry.ReconciledToPumpId.HasValue)
+            {
+                var shiftId = entry.ShiftId;
+                var entriesResult = await repo.GetEntriesForShiftAsync(shiftId);
+                if (entriesResult.Success && entriesResult.Data != null)
+                {
+                    var primaryRaw = entriesResult.Data.FirstOrDefault(e =>
+                        e.PumpId == entry.ReconciledToPumpId.Value
+                        && string.Equals(e.DsmName, entry.DsmName, StringComparison.OrdinalIgnoreCase));
+                    if (primaryRaw != null)
+                    {
+                        var fullPrimary = await repo.GetFullEntryAsync(primaryRaw.DsmEntryId);
+                        if (fullPrimary.Success && fullPrimary.Data != null)
+                        {
+                            entry = fullPrimary.Data;
+                        }
+                    }
+                }
+            }
+
+            // Self-healing: if the primary entry's ConnectedPumpId is not set, check if any entry reconciles to it
+            if (!entry.ConnectedPumpId.HasValue && !entry.ReconciledToPumpId.HasValue)
+            {
+                var shiftId = entry.ShiftId;
+                var entriesResult = await repo.GetEntriesForShiftAsync(shiftId);
+                if (entriesResult.Success && entriesResult.Data != null)
+                {
+                    var connectedRaw = entriesResult.Data.FirstOrDefault(e =>
+                        e.ReconciledToPumpId == entry.PumpId
+                        && string.Equals(e.DsmName, entry.DsmName, StringComparison.OrdinalIgnoreCase));
+                    if (connectedRaw != null)
+                    {
+                        entry.ConnectedPumpId = connectedRaw.PumpId;
+                    }
+                }
+            }
+
             // Set shift details first
             if (entry.Shift != null)
             {
@@ -903,7 +941,7 @@ public partial class DsmEntryViewModel : ObservableObject
                 {
                     var rawConn = entriesResult.Data.FirstOrDefault(e =>
                         e.PumpId == entry.ConnectedPumpId.Value
-                        && string.Equals(e.DsmName, entry.DsmName, StringComparison.OrdinalIgnoreCase));
+                        && (e.ReconciledToPumpId == entry.PumpId || string.Equals(e.DsmName, entry.DsmName, StringComparison.OrdinalIgnoreCase)));
                     if (rawConn != null)
                     {
                         var fullConnected = await repo.GetFullEntryAsync(rawConn.DsmEntryId);
@@ -923,37 +961,38 @@ public partial class DsmEntryViewModel : ObservableObject
             await LoadNozzlesForPumpAsync();
 
             // Populate payment
-            PhonePeCardMorning = entry.PaymentCollection?.PhonePeCardMorning;
-            PhonePeCardNight = entry.PaymentCollection?.PhonePeCardNight;
-            PhonePeMorning = entry.PaymentCollection?.PhonePeMorning;
-            PhonePeNight = entry.PaymentCollection?.PhonePeNight;
-            CreditCardMorning = entry.PaymentCollection?.CreditCardMorning;
-            CreditCardNight = entry.PaymentCollection?.CreditCardNight;
-            PetroCardMorning = entry.PaymentCollection?.PetroCardMorning;
-            PetroCardNight = entry.PaymentCollection?.PetroCardNight;
-            Others = entry.PaymentCollection?.Others;
-            CashDeposit = entry.PaymentCollection?.CashDeposit;
+            var paymentSource = entry.PaymentCollection ?? connectedEntry?.PaymentCollection;
+            PhonePeCardMorning = paymentSource?.PhonePeCardMorning;
+            PhonePeCardNight = paymentSource?.PhonePeCardNight;
+            PhonePeMorning = paymentSource?.PhonePeMorning;
+            PhonePeNight = paymentSource?.PhonePeNight;
+            CreditCardMorning = paymentSource?.CreditCardMorning;
+            CreditCardNight = paymentSource?.CreditCardNight;
+            PetroCardMorning = paymentSource?.PetroCardMorning;
+            PetroCardNight = paymentSource?.PetroCardNight;
+            Others = paymentSource?.Others;
+            CashDeposit = paymentSource?.CashDeposit;
 
-            CardTid = entry.PaymentCollection?.CardTid;
-            CardBatch = entry.PaymentCollection?.CardBatch;
-            PhonePeTid = entry.PaymentCollection?.PhonePeTid;
-            PhonePeBatch = entry.PaymentCollection?.PhonePeBatch;
-            PetroCardTid = entry.PaymentCollection?.PetroCardTid;
-            PetroCardBatch = entry.PaymentCollection?.PetroCardBatch;
-            PhonePeTidMorning = entry.PaymentCollection?.PhonePeTidMorning ?? entry.PaymentCollection?.PhonePeTid;
-            PhonePeBatchMorning = entry.PaymentCollection?.PhonePeBatchMorning ?? entry.PaymentCollection?.PhonePeBatch;
-            PhonePeTidNight = entry.PaymentCollection?.PhonePeTidNight ?? entry.PaymentCollection?.PhonePeTid;
-            PhonePeBatchNight = entry.PaymentCollection?.PhonePeBatchNight ?? entry.PaymentCollection?.PhonePeBatch;
+            CardTid = paymentSource?.CardTid;
+            CardBatch = paymentSource?.CardBatch;
+            PhonePeTid = paymentSource?.PhonePeTid;
+            PhonePeBatch = paymentSource?.PhonePeBatch;
+            PetroCardTid = paymentSource?.PetroCardTid;
+            PetroCardBatch = paymentSource?.PetroCardBatch;
+            PhonePeTidMorning = paymentSource?.PhonePeTidMorning ?? paymentSource?.PhonePeTid;
+            PhonePeBatchMorning = paymentSource?.PhonePeBatchMorning ?? paymentSource?.PhonePeBatch;
+            PhonePeTidNight = paymentSource?.PhonePeTidNight ?? paymentSource?.PhonePeTid;
+            PhonePeBatchNight = paymentSource?.PhonePeBatchNight ?? paymentSource?.PhonePeBatch;
 
-            CreditCardTidMorning = entry.PaymentCollection?.CreditCardTidMorning ?? entry.PaymentCollection?.CardTid;
-            CreditCardBatchMorning = entry.PaymentCollection?.CreditCardBatchMorning ?? entry.PaymentCollection?.CardBatch;
-            CreditCardTidNight = entry.PaymentCollection?.CreditCardTidNight ?? entry.PaymentCollection?.CardTid;
-            CreditCardBatchNight = entry.PaymentCollection?.CreditCardBatchNight ?? entry.PaymentCollection?.CardBatch;
+            CreditCardTidMorning = paymentSource?.CreditCardTidMorning ?? paymentSource?.CardTid;
+            CreditCardBatchMorning = paymentSource?.CreditCardBatchMorning ?? paymentSource?.CardBatch;
+            CreditCardTidNight = paymentSource?.CreditCardTidNight ?? paymentSource?.CardTid;
+            CreditCardBatchNight = paymentSource?.CreditCardBatchNight ?? paymentSource?.CardBatch;
 
-            PetroCardTidMorning = entry.PaymentCollection?.PetroCardTidMorning ?? entry.PaymentCollection?.PetroCardTid;
-            PetroCardBatchMorning = entry.PaymentCollection?.PetroCardBatchMorning ?? entry.PaymentCollection?.PetroCardBatch;
-            PetroCardTidNight = entry.PaymentCollection?.PetroCardTidNight ?? entry.PaymentCollection?.PetroCardTid;
-            PetroCardBatchNight = entry.PaymentCollection?.PetroCardBatchNight ?? entry.PaymentCollection?.PetroCardBatch;
+            PetroCardTidMorning = paymentSource?.PetroCardTidMorning ?? paymentSource?.PetroCardTid;
+            PetroCardBatchMorning = paymentSource?.PetroCardBatchMorning ?? paymentSource?.PetroCardBatch;
+            PetroCardTidNight = paymentSource?.PetroCardTidNight ?? paymentSource?.PetroCardTid;
+            PetroCardBatchNight = paymentSource?.PetroCardBatchNight ?? paymentSource?.PetroCardBatch;
 
             // Populate nozzle readings (override auto-loaded ones)
             foreach (var nozzleRow in NozzleReadings)
@@ -974,7 +1013,11 @@ public partial class DsmEntryViewModel : ObservableObject
 
             // Populate debits
             Debits.Clear();
-            foreach (var debit in entry.DebitEntries)
+            var allDebits = new List<DebitEntry>();
+            if (entry.DebitEntries != null) allDebits.AddRange(entry.DebitEntries);
+            if (connectedEntry?.DebitEntries != null) allDebits.AddRange(connectedEntry.DebitEntries);
+
+            foreach (var debit in allDebits)
             {
                 var row = new DebitRow(Creditors, RecalculateAll)
                 {
@@ -998,7 +1041,11 @@ public partial class DsmEntryViewModel : ObservableObject
 
             // Populate expenses
             Expenses.Clear();
-            foreach (var expense in entry.Expenses)
+            var allExpenses = new List<Expense>();
+            if (entry.Expenses != null) allExpenses.AddRange(entry.Expenses);
+            if (connectedEntry?.Expenses != null) allExpenses.AddRange(connectedEntry.Expenses);
+
+            foreach (var expense in allExpenses)
             {
                 Expenses.Add(new ExpenseRow
                 {
@@ -1013,7 +1060,11 @@ public partial class DsmEntryViewModel : ObservableObject
             var (hsdRate, msIRate, msIIRate, cngRate) = await _dsmService.GetCurrentRatesAsync();
             RebuildTestingRows(hsdRate, msIRate, msIIRate, cngRate);
 
-            foreach (var testEntry in entry.TestingEntries)
+            var allTesting = new List<TestingEntry>();
+            if (entry.TestingEntries != null) allTesting.AddRange(entry.TestingEntries);
+            if (connectedEntry?.TestingEntries != null) allTesting.AddRange(connectedEntry.TestingEntries);
+
+            foreach (var testEntry in allTesting)
             {
                 int? nozzleNum = int.TryParse(testEntry.FuelType, out var num) ? num : (int?)null;
                 TestingRow? match = null;
@@ -1051,7 +1102,8 @@ public partial class DsmEntryViewModel : ObservableObject
             }
 
             // Populate cash denominations
-            var cash1Data = entry.CashDenominations.FirstOrDefault(c => c.CashType == "Cash1");
+            var cash1Data = entry.CashDenominations.FirstOrDefault(c => c.CashType == "Cash1")
+                ?? connectedEntry?.CashDenominations.FirstOrDefault(c => c.CashType == "Cash1");
             Cash1 = new CashDenomRow
             {
                 CashType = "Cash1",
@@ -1066,7 +1118,8 @@ public partial class DsmEntryViewModel : ObservableObject
                 OnTotalChanged = RecalculateAll
             };
 
-            var cash2Data = entry.CashDenominations.FirstOrDefault(c => c.CashType == "Cash2");
+            var cash2Data = entry.CashDenominations.FirstOrDefault(c => c.CashType == "Cash2")
+                ?? connectedEntry?.CashDenominations.FirstOrDefault(c => c.CashType == "Cash2");
             Cash2 = new CashDenomRow
             {
                 CashType = "Cash2",

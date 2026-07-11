@@ -67,6 +67,7 @@ public class FinancialPipelineIntegrationTests : IDisposable
         services.AddTransient<ICreditorRepository, CreditorRepository>();
         services.AddTransient<IPumpExpenseRepository, PumpExpenseRepository>();
         services.AddTransient<IDebtorVehicleRepository, DebtorVehicleRepository>();
+        services.AddTransient<IDsmPersonalDebtorRepository, DsmPersonalDebtorRepository>();
         services.AddScoped<IShiftOtherCashRepository, ShiftOtherCashRepository>();
         services.AddScoped<IShiftFuelRateRepository, ShiftFuelRateRepository>();
 
@@ -93,11 +94,13 @@ public class FinancialPipelineIntegrationTests : IDisposable
         services.AddSingleton<DsmSubmissionPollingService>();
         services.AddTransient<DsmAuthAdminService>();
         services.AddTransient<SupabaseDsmService>();
+        services.AddSingleton<DraftService>();
 
         // ViewModels
         services.AddTransient<DayTotalViewModel>();
         services.AddTransient<DashboardViewModel>();
         services.AddTransient<OwnerDashboardViewModel>();
+        services.AddTransient<DsmEntryViewModel>();
 
         _serviceProvider = services.BuildServiceProvider();
 
@@ -319,6 +322,112 @@ public class FinancialPipelineIntegrationTests : IDisposable
         Assert.Equal(50, row.Debit); // Debtors from primary entry
         Assert.Equal(100, row.CashDeposit); // Cash1
         Assert.Equal(100, row.CashInHand); // Cash2
+    }
+
+    [Fact]
+    public async Task ConnectedPumpEditPipeline_LosslessReconstruction()
+    {
+        var testDate = new DateTime(2026, 7, 13);
+        
+        // 1. Seed primary and connected entries in the database
+        using (var context = _serviceProvider.GetRequiredService<FuelProDbContext>())
+        {
+            var shift = new Shift { ShiftDate = testDate, ShiftType = "A" };
+            context.Shifts.Add(shift);
+            await context.SaveChangesAsync();
+
+            var primary = new DsmEntry
+            {
+                ShiftId = shift.ShiftId,
+                DsmName = "Raviraj Gangane",
+                PumpId = 1,
+                ConnectedPumpId = 2,
+                StartTime = "08:00 AM",
+                EndTime = "08:00 PM",
+                GrossSales = 2222.24m
+            };
+            context.DsmEntries.Add(primary);
+            await context.SaveChangesAsync();
+
+            var connected = new DsmEntry
+            {
+                ShiftId = shift.ShiftId,
+                DsmName = "Raviraj Gangane",
+                PumpId = 2,
+                ReconciledToPumpId = 1,
+                StartTime = "08:00 AM",
+                EndTime = "08:00 PM",
+                GrossSales = 1038.10m
+            };
+            context.DsmEntries.Add(connected);
+            await context.SaveChangesAsync();
+
+            // Add nozzle readings
+            context.NozzleReadings.Add(new NozzleReading { DsmEntryId = primary.DsmEntryId, NozzleNumber = 1, OpeningReading = 280, ClosingReading = 284, Rate = 103.81 });
+            context.NozzleReadings.Add(new NozzleReading { DsmEntryId = primary.DsmEntryId, NozzleNumber = 3, OpeningReading = 280, ClosingReading = 300, Rate = 90.35 });
+            context.NozzleReadings.Add(new NozzleReading { DsmEntryId = connected.DsmEntryId, NozzleNumber = 2, OpeningReading = 490, ClosingReading = 500, Rate = 103.81 });
+            context.NozzleReadings.Add(new NozzleReading { DsmEntryId = connected.DsmEntryId, NozzleNumber = 4, OpeningReading = 360, ClosingReading = 380, Rate = 90.35 });
+
+            // Add Payment Collection to Primary
+            context.PaymentCollections.Add(new PaymentCollection
+            {
+                DsmEntryId = primary.DsmEntryId,
+                PhonePeMorning = 400,
+                PhonePeNight = 600,
+                PhonePeTid = "1211",
+                PhonePeBatch = "002"
+            });
+
+            // Add Cash Denominations to Primary
+            context.CashDenominations.Add(new CashDenomination { DsmEntryId = primary.DsmEntryId, CashType = "Cash1", Denom500 = 2, TotalAmount = 1000 });
+
+            // Add Debits/Expenses to Primary
+            context.DebitEntries.Add(new DebitEntry { DsmEntryId = primary.DsmEntryId, DebtorName = "Express Cargo", Amount = 150 });
+            context.Expenses.Add(new Expense { DsmEntryId = primary.DsmEntryId, Description = "Chai", Amount = 50 });
+
+            await context.SaveChangesAsync();
+        }
+
+        // 2. Resolve DsmEntryViewModel
+        var viewModel = _serviceProvider.GetRequiredService<DsmEntryViewModel>();
+        
+        // 3. Edit the Connected Pump Entry (ID = 2 in seed, but we can query it)
+        int connectedEntryId;
+        using (var context = _serviceProvider.GetRequiredService<FuelProDbContext>())
+        {
+            var connEntry = await context.DsmEntries.FirstAsync(e => e.PumpId == 2);
+            connectedEntryId = connEntry.DsmEntryId;
+        }
+
+        // Execute edit command
+        await viewModel.EditEntryCommand.ExecuteAsync(connectedEntryId);
+
+        // 4. Assertions to verify lossless reconstruction
+        Assert.Equal("Raviraj Gangane", viewModel.DsmName);
+        Assert.Equal(1, viewModel.SelectedPump?.PumpId); // Must be primary pump 1
+        Assert.Equal(2, viewModel.SelectedConnectedPump?.PumpId); // Must be connected pump 2
+
+        // Nozzles from both pumps must be loaded (nozzles 1, 3, 2, 4)
+        Assert.Equal(4, viewModel.NozzleReadings.Count);
+        
+        var nr1 = viewModel.NozzleReadings.First(n => n.NozzleNumber == 1);
+        Assert.Equal(280, nr1.OpeningReading);
+        Assert.Equal(284, nr1.ClosingReading);
+
+        var nr2 = viewModel.NozzleReadings.First(n => n.NozzleNumber == 2);
+        Assert.Equal(490, nr2.OpeningReading);
+        Assert.Equal(500, nr2.ClosingReading);
+
+        // Payments, Cash, Debits, Expenses must be loaded correctly from primary
+        Assert.Equal(400, viewModel.PhonePeMorning);
+        Assert.Equal(600, viewModel.PhonePeNight);
+        Assert.Equal("1211", viewModel.PhonePeTid);
+        Assert.Equal("002", viewModel.PhonePeBatch);
+        Assert.Equal(1000, viewModel.Cash1.TotalAmount);
+        Assert.Single(viewModel.Debits);
+        Assert.Equal(150, viewModel.Debits[0].Amount);
+        Assert.Single(viewModel.Expenses);
+        Assert.Equal(50, viewModel.Expenses[0].Amount);
     }
 
     public void Dispose()

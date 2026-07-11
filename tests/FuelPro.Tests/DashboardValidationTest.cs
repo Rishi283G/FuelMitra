@@ -72,6 +72,7 @@ public class DashboardValidationTest
         services.AddTransient<ICreditorRepository, CreditorRepository>();
         services.AddTransient<IPumpExpenseRepository, PumpExpenseRepository>();
         services.AddTransient<IDebtorVehicleRepository, DebtorVehicleRepository>();
+        services.AddTransient<IDsmPersonalDebtorRepository, DsmPersonalDebtorRepository>();
 
         // Services
         services.AddSingleton<AuthService>();
