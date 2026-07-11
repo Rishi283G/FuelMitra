@@ -72,5 +72,45 @@ public class RecalculationMigrationService
         _dbContext.AppMeta.Add(new Core.Models.AppMeta { Key = "RecalcMigrationV2Done", Value = "true" });
         await _dbContext.SaveChangesAsync();
         _logger.Information("Recalculation migration completed for {Count} entries.", updatedCount);
+
+        await RunConnectedPumpLinkRepairAsync();
+    }
+
+    private async Task RunConnectedPumpLinkRepairAsync()
+    {
+        var done = await _dbContext.AppMeta.FirstOrDefaultAsync(x => x.Key == "ConnectedPumpLinkRepairDone");
+        if (done?.Value == "true") return;
+
+        var entries = await _dbContext.DsmEntries.ToListAsync();
+        var primaryEntries = entries.Where(e => !e.ReconciledToPumpId.HasValue).ToList();
+        var connectedEntries = entries.Where(e => e.ReconciledToPumpId.HasValue).ToList();
+
+        var updatedCount = 0;
+        foreach (var primary in primaryEntries)
+        {
+            if (primary.ConnectedPumpId.HasValue) continue;
+
+            // Find if there is a connected entry in the same shift for the same DSM that reconciles to this primary pump
+            var match = connectedEntries.FirstOrDefault(c =>
+                c.ShiftId == primary.ShiftId
+                && c.ReconciledToPumpId == primary.PumpId
+                && string.Equals(c.DsmName, primary.DsmName, StringComparison.OrdinalIgnoreCase));
+
+            if (match != null)
+            {
+                primary.ConnectedPumpId = match.PumpId;
+                _dbContext.Entry(primary).State = EntityState.Modified;
+                updatedCount++;
+            }
+        }
+
+        if (updatedCount > 0)
+        {
+            await _dbContext.SaveChangesAsync();
+        }
+
+        _dbContext.AppMeta.Add(new Core.Models.AppMeta { Key = "ConnectedPumpLinkRepairDone", Value = "true" });
+        await _dbContext.SaveChangesAsync();
+        _logger.Information("Connected pump link repair migration completed. Linked {Count} primary entries.", updatedCount);
     }
 }

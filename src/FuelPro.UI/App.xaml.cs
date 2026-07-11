@@ -174,6 +174,14 @@ public partial class App : Application
             cmdOther.ExecuteNonQuery();
         }
 
+        // DsmPumpAssignments columns — must run before the guard since SyncValidationTest calls this
+        // before EF migrations create PaymentCollections/DsmEntries tables.
+        if (TableExists(connection, "DsmPumpAssignments"))
+        {
+            EnsureColumnExists(connection, "DsmPumpAssignments", "ConnectedPumpId", "ALTER TABLE DsmPumpAssignments ADD COLUMN ConnectedPumpId INTEGER NULL;");
+            EnsureColumnExists(connection, "DsmPumpAssignments", "CompletedDate", "ALTER TABLE DsmPumpAssignments ADD COLUMN CompletedDate TEXT NULL;");
+        }
+
         // Guard: skip column additions for tables that don't exist yet (e.g. fresh install)
         if (!TableExists(connection, "PaymentCollections") || !TableExists(connection, "DsmEntries"))
             return;
@@ -181,7 +189,7 @@ public partial class App : Application
         EnsureColumnExists(connection, "PaymentCollections", "CashDeposit", "ALTER TABLE PaymentCollections ADD COLUMN CashDeposit REAL NOT NULL DEFAULT 0.0;");
         EnsureColumnExists(connection, "DsmEntries", "ConnectedPumpId", "ALTER TABLE DsmEntries ADD COLUMN ConnectedPumpId INTEGER NULL;");
         EnsureColumnExists(connection, "DsmEntries", "ReconciledToPumpId", "ALTER TABLE DsmEntries ADD COLUMN ReconciledToPumpId INTEGER NULL;");
-        EnsureColumnExists(connection, "DsmPumpAssignments", "ConnectedPumpId", "ALTER TABLE DsmPumpAssignments ADD COLUMN ConnectedPumpId INTEGER NULL;");
+
 
         // Phase 3 additions: DsmEntry Start/End times
         EnsureColumnExists(connection, "DsmEntries", "StartTime", "ALTER TABLE DsmEntries ADD COLUMN StartTime TEXT NULL;");

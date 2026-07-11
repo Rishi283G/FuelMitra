@@ -167,7 +167,11 @@
                             <RowDefinition Height="*"/>
                         </Grid.RowDefinitions>
 
-                        <TextBlock Grid.Row="0" Text="Active Pump &amp; Shift Configurations" FontSize="16" FontWeight="Bold" Margin="0,0,0,12"/>
+                        <DockPanel Grid.Row="0" Margin="0,0,0,12">
+                            <TextBlock Text="Active Pump &amp; Shift Configurations" FontSize="16" FontWeight="Bold" VerticalAlignment="Center"/>
+                            <CheckBox Content="Show Completed Assignments" IsChecked="{Binding ShowCompletedAssignments}" 
+                                      HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                        </DockPanel>
 
                         <DataGrid Grid.Row="1" ItemsSource="{Binding PumpAssignments}" AutoGenerateColumns="False" IsReadOnly="True"
                                   materialDesign:DataGridAssist.CellPadding="12 8" materialDesign:DataGridAssist.ColumnHeaderPadding="12 8"
@@ -206,7 +210,7 @@
                                                 <TextBlock FontSize="11" FontWeight="Bold">
                                                     <TextBlock.Style>
                                                         <Style TargetType="TextBlock">
-                                                            <Setter Property="Text" Value="Inactive"/>
+                                                            <Setter Property="Text" Value="Completed"/>
                                                             <Setter Property="Foreground" Value="#757575"/>
                                                             <Style.Triggers>
                                                                 <DataTrigger Binding="{Binding IsActive}" Value="True">

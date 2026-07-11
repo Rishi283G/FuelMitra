@@ -1193,6 +1193,48 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
             };
 
             context.DsmApprovalAudits.Add(audit);
+
+            // 4.5. Complete the active DSM assignment automatically after successful approval
+            try
+            {
+                var dsmUser = await context.DsmUsers.FirstOrDefaultAsync(u =>
+                    u.AuthUserId == SelectedSubmission.DsmUserId ||
+                    u.FullName == SelectedSubmission.DsmName);
+
+                if (dsmUser != null)
+                {
+                    var assignment = await context.DsmPumpAssignments
+                        .FirstOrDefaultAsync(a => a.IsActive
+                            && a.DsmUserId == dsmUser.DsmUserId
+                            && a.ShiftType == SelectedSubmission.ShiftType
+                            && a.PumpId == SelectedSubmission.PumpId
+                            && a.ConnectedPumpId == connectedPumpId);
+
+                    if (assignment == null)
+                    {
+                        // Fallback to match without connected pump if exact match not found
+                        assignment = await context.DsmPumpAssignments
+                            .FirstOrDefaultAsync(a => a.IsActive
+                                && a.DsmUserId == dsmUser.DsmUserId
+                                && a.ShiftType == SelectedSubmission.ShiftType
+                                && a.PumpId == SelectedSubmission.PumpId);
+                    }
+
+                    if (assignment != null)
+                    {
+                        assignment.IsActive = false;
+                        assignment.CompletedDate = DateTime.Now;
+                        context.Entry(assignment).State = EntityState.Modified;
+                        _logger.Information("Automatically marked active assignment {AssignmentId} as Completed for DSM {DsmName} on Pump {PumpId}",
+                            assignment.DsmPumpAssignmentId, dsmUser.FullName, SelectedSubmission.PumpId);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.Error(ex, "Failed to complete active DSM assignment during approval");
+            }
+
             await context.SaveChangesAsync();
 
             // 5. Send approval notification to DSM

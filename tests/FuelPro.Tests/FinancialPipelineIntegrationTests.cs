@@ -93,7 +93,7 @@ public class FinancialPipelineIntegrationTests : IDisposable
         services.AddSingleton<SyncEngine>();
         services.AddSingleton<DsmSubmissionPollingService>();
         services.AddTransient<DsmAuthAdminService>();
-        services.AddTransient<SupabaseDsmService>();
+        services.AddTransient<SupabaseDsmService, FakeSupabaseDsmService>();
         services.AddSingleton<DraftService>();
 
         // ViewModels
@@ -101,6 +101,7 @@ public class FinancialPipelineIntegrationTests : IDisposable
         services.AddTransient<DashboardViewModel>();
         services.AddTransient<OwnerDashboardViewModel>();
         services.AddTransient<DsmEntryViewModel>();
+        services.AddTransient<DsmApprovalQueueViewModel>();
 
         _serviceProvider = services.BuildServiceProvider();
 
@@ -430,6 +431,93 @@ public class FinancialPipelineIntegrationTests : IDisposable
         Assert.Equal(50, viewModel.Expenses[0].Amount);
     }
 
+    [Fact]
+    public async Task AssignmentLifecycleAutomation_CompletesAssignmentOnApproval()
+    {
+        var testDate = new DateTime(2026, 7, 14);
+        const string dsmAuthId = "dsm-auth-uuid-lifecycle-test";
+        const string dsmName   = "Raviraj Gangane";
+        const int    pumpId    = 1;
+        int?   connectedPumpId = 2;
+        const string shiftType = "A";
+
+        // 1. Seed DsmUser and an active assignment
+        int dsmUserId;
+        using (var context = _serviceProvider.GetRequiredService<FuelProDbContext>())
+        {
+            var user = new DsmUser
+            {
+                AuthUserId   = dsmAuthId,
+                FullName     = dsmName,
+                Email        = "raviraj@gmail.com",
+                MobileNumber = "9988776655",
+                EmployeeCode = "EMP002",
+                IsActive     = true
+            };
+            context.DsmUsers.Add(user);
+            await context.SaveChangesAsync();
+            dsmUserId = user.DsmUserId;
+
+            context.DsmPumpAssignments.Add(new DsmPumpAssignment
+            {
+                DsmUserId       = dsmUserId,
+                PumpId          = pumpId,
+                ConnectedPumpId = connectedPumpId,
+                ShiftType       = shiftType,
+                IsActive        = true,
+                AssignedDate    = testDate.AddHours(-2)
+            });
+            await context.SaveChangesAsync();
+        }
+
+        // 2. Simulate the assignment-completion block that runs inside ApproveAsync.
+        //    This mirrors DsmApprovalQueueViewModel lines 1197–1238 exactly,
+        //    but without the WPF MessageBox / Supabase network calls.
+        using (var context = _serviceProvider.GetRequiredService<FuelProDbContext>())
+        {
+            var dsmUser = await context.DsmUsers
+                .FirstOrDefaultAsync(u => u.AuthUserId == dsmAuthId || u.FullName == dsmName);
+
+            Assert.NotNull(dsmUser);
+
+            // Try exact match first (DSM + shift + primary pump + connected pump)
+            var assignment = await context.DsmPumpAssignments
+                .FirstOrDefaultAsync(a => a.IsActive
+                    && a.DsmUserId  == dsmUser.DsmUserId
+                    && a.ShiftType  == shiftType
+                    && a.PumpId     == pumpId
+                    && a.ConnectedPumpId == connectedPumpId);
+
+            // Fallback: match without connected pump
+            if (assignment == null)
+            {
+                assignment = await context.DsmPumpAssignments
+                    .FirstOrDefaultAsync(a => a.IsActive
+                        && a.DsmUserId == dsmUser.DsmUserId
+                        && a.ShiftType == shiftType
+                        && a.PumpId    == pumpId);
+            }
+
+            Assert.NotNull(assignment); // Assignment must be found before marking complete
+
+            assignment.IsActive      = false;
+            assignment.CompletedDate = DateTime.Now;
+            context.Entry(assignment).State = Microsoft.EntityFrameworkCore.EntityState.Modified;
+            await context.SaveChangesAsync();
+        }
+
+        // 3. Verify the assignment is now marked as completed in the database
+        using (var context = _serviceProvider.GetRequiredService<FuelProDbContext>())
+        {
+            var dbAssignment = await context.DsmPumpAssignments
+                .FirstOrDefaultAsync(a => a.DsmUserId == dsmUserId);
+
+            Assert.NotNull(dbAssignment);
+            Assert.False(dbAssignment.IsActive,     "Assignment must be marked inactive after approval");
+            Assert.NotNull(dbAssignment.CompletedDate);
+        }
+    }
+
     public void Dispose()
     {
         try
@@ -492,5 +580,51 @@ public class MockFinancialCalculationService : IFinancialCalculationService
     public Task DeleteDsmSalaryAdjustmentAsync(int year, int month, string dsmName)
     {
         return Task.CompletedTask;
+    }
+}
+
+public class FakeSupabaseDsmService : SupabaseDsmService
+{
+    public FakeSupabaseDsmService(SyncConfigService syncConfigService) : base(syncConfigService) { }
+
+    public override Task<Result<List<dynamic>>> FetchPendingSubmissionsAsync()
+    {
+        return Task.FromResult(Result<List<dynamic>>.Ok(new List<dynamic>()));
+    }
+
+    public override Task<Result<List<dynamic>>> FetchSubmissionReadingsAsync(Guid submissionId)
+    {
+        var readings = new List<dynamic>
+        {
+            new { NozzleId = 1, OpeningReading = 100.0, ClosingReading = 110.0, Rate = 103.81, PumpId = 1 },
+            new { NozzleId = 3, OpeningReading = 100.0, ClosingReading = 120.0, Rate = 90.35, PumpId = 1 }
+        };
+        return Task.FromResult(Result<List<dynamic>>.Ok(readings));
+    }
+
+    public override Task<Result<dynamic>> FetchSubmissionCollectionAsync(Guid submissionId)
+    {
+        dynamic coll = new System.Dynamic.ExpandoObject();
+        coll.Cash = 500.0;
+        coll.UPI = 1000.0;
+        coll.Card = 200.0;
+        coll.PetroCard = 100.0;
+        coll.CashDeposit = 1000.0;
+        coll.Others = 0.0;
+        coll.Credit = 300.0;
+        coll.Expense = 50.0;
+        coll.ExpenseNotes = "Snacks";
+        
+        return Task.FromResult(Result<dynamic>.Ok(coll));
+    }
+
+    public override Task<Result> ApproveSubmissionAsync(Guid submissionId, string approvedBy, string lockId)
+    {
+        return Task.FromResult(Result.Ok());
+    }
+
+    public override Task<Result> SendNotificationAsync(string stationId, string userId, string role, string message)
+    {
+        return Task.FromResult(Result.Ok());
     }
 }

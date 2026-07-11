@@ -28,4 +28,6 @@ public class DsmPumpAssignment
     public bool IsActive { get; set; } = true;
 
     public DateTime AssignedDate { get; set; } = DateTime.Now;
+
+    public DateTime? CompletedDate { get; set; }
 }

@@ -78,6 +78,13 @@ public partial class DsmManagementViewModel : ObservableObject
         _ = LoadAllNozzleConfigsAsync();
     }
 
+    [ObservableProperty] private bool _showCompletedAssignments;
+
+    partial void OnShowCompletedAssignmentsChanged(bool value)
+    {
+        _ = LoadDataAsync();
+    }
+
     public async Task LoadDataAsync()
     {
         try
@@ -95,10 +102,19 @@ public partial class DsmManagementViewModel : ObservableObject
             }
 
             // Load Assignments
-            var assignments = await context.DsmPumpAssignments
+            var query = context.DsmPumpAssignments
                 .Include(a => a.DsmUser)
+                .AsQueryable();
+
+            if (!ShowCompletedAssignments)
+            {
+                query = query.Where(a => a.IsActive);
+            }
+
+            var assignments = await query
                 .OrderByDescending(a => a.AssignedDate)
                 .ToListAsync();
+
             PumpAssignments.Clear();
             foreach (var a in assignments)
             {

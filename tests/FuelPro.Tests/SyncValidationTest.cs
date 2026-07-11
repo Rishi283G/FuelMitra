@@ -78,6 +78,10 @@ public class SyncValidationTest
             );"); } catch { }
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE SyncIdMappings ADD COLUMN RemoteGuid TEXT NOT NULL DEFAULT '';"); } catch { }
 
+        // Ensure DsmPumpAssignments has the CompletedDate column (added in lifecycle automation)
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE DsmPumpAssignments ADD COLUMN ConnectedPumpId INTEGER NULL;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE DsmPumpAssignments ADD COLUMN CompletedDate TEXT NULL;"); } catch { }
+
         // Clean up any old change logs to ensure clean tracking metrics
         FuelProDbContext.BypassTracking = true;
         try

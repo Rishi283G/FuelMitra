@@ -44,7 +44,7 @@ public class SupabaseDsmService
         return request;
     }
 
-    public async Task<Result<List<dynamic>>> FetchPendingSubmissionsAsync()
+    public virtual async Task<Result<List<dynamic>>> FetchPendingSubmissionsAsync()
     {
         try
         {
@@ -73,7 +73,7 @@ public class SupabaseDsmService
         }
     }
 
-    public async Task<Result<List<dynamic>>> FetchApprovedSubmissionsAsync()
+    public virtual async Task<Result<List<dynamic>>> FetchApprovedSubmissionsAsync()
     {
         try
         {
@@ -101,7 +101,7 @@ public class SupabaseDsmService
         }
     }
 
-    public async Task<Result<List<dynamic>>> FetchSubmissionReadingsAsync(Guid submissionId)
+    public virtual async Task<Result<List<dynamic>>> FetchSubmissionReadingsAsync(Guid submissionId)
     {
         try
         {
@@ -126,7 +126,7 @@ public class SupabaseDsmService
         }
     }
 
-    public async Task<Result<dynamic>> FetchSubmissionCollectionAsync(Guid submissionId)
+    public virtual async Task<Result<dynamic>> FetchSubmissionCollectionAsync(Guid submissionId)
     {
         try
         {
@@ -158,7 +158,7 @@ public class SupabaseDsmService
     /// <summary>
     /// Updates status of a submission. Employs optimistic locking by checking that status is currently 'Pending'.
     /// </summary>
-    public async Task<Result> ApproveSubmissionAsync(Guid submissionId, string approvedBy, string lockId)
+    public virtual async Task<Result> ApproveSubmissionAsync(Guid submissionId, string approvedBy, string lockId)
     {
         try
         {
@@ -199,7 +199,7 @@ public class SupabaseDsmService
         }
     }
 
-    public async Task<Result> RejectSubmissionAsync(Guid submissionId, string reason)
+    public virtual async Task<Result> RejectSubmissionAsync(Guid submissionId, string reason)
     {
         try
         {
@@ -238,7 +238,7 @@ public class SupabaseDsmService
         }
     }
 
-    public async Task<Result> SendNotificationAsync(string stationId, string userId, string role, string message)
+    public virtual async Task<Result> SendNotificationAsync(string stationId, string userId, string role, string message)
     {
         try
         {
