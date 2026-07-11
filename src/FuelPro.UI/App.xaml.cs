@@ -95,9 +95,11 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "Failed to initialize database");
-            MessageBox.Show($"Database initialization failed: {ex.Message}",
-                "FuelPro — Database Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            Log.Fatal(ex, "Failed to initialize/migrate database. Application will exit.");
+            MessageBox.Show($"Database initialization or migration failed:\n\n{ex.Message}\n\nThe application will now close.",
+                "FuelPro — Database Migration Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            Shutdown();
+            return;
         }
 
         // Start Cloud Sync Engine and Polling Service
@@ -139,6 +141,38 @@ public partial class App : Application
     {
         using var connection = new SqliteConnection($"Data Source={dbPath}");
         connection.Open();
+
+        // Always ensure Creditors table exists since EF migrations assume it's there
+        using (var cmdCred = connection.CreateCommand())
+        {
+            cmdCred.CommandText = @"
+                CREATE TABLE IF NOT EXISTS ""Creditors"" (
+                    ""CreditorId"" INTEGER NOT NULL CONSTRAINT ""PK_Creditors"" PRIMARY KEY AUTOINCREMENT,
+                    ""Name"" TEXT NOT NULL,
+                    ""Phone"" TEXT NULL,
+                    ""IsActive"" INTEGER NOT NULL DEFAULT 1,
+                    ""CreatedAt"" TEXT NOT NULL
+                );";
+            cmdCred.ExecuteNonQuery();
+        }
+
+        // Always ensure ShiftOtherCash table exists since EF migrations assume it's there
+        using (var cmdOther = connection.CreateCommand())
+        {
+            cmdOther.CommandText = @"
+                CREATE TABLE IF NOT EXISTS ""ShiftOtherCash"" (
+                    ""ShiftOtherCashId"" INTEGER NOT NULL CONSTRAINT ""PK_ShiftOtherCash"" PRIMARY KEY AUTOINCREMENT,
+                    ""ShiftId"" INTEGER NULL,
+                    ""ShiftDate"" TEXT NOT NULL,
+                    ""ShiftNumber"" TEXT NOT NULL,
+                    ""Description"" TEXT NOT NULL,
+                    ""Amount"" REAL NOT NULL,
+                    ""IsEditable"" INTEGER NOT NULL DEFAULT 1,
+                    ""CreatedAt"" TEXT NOT NULL,
+                    CONSTRAINT ""FK_ShiftOtherCash_Shifts_ShiftId"" FOREIGN KEY (""ShiftId"") REFERENCES ""Shifts"" (""ShiftId"") ON DELETE SET NULL
+                );";
+            cmdOther.ExecuteNonQuery();
+        }
 
         // Guard: skip column additions for tables that don't exist yet (e.g. fresh install)
         if (!TableExists(connection, "PaymentCollections") || !TableExists(connection, "DsmEntries"))
@@ -654,10 +688,12 @@ public partial class App : Application
         services.AddSingleton<DraftService>();
         services.AddTransient<ExportService>();
         services.AddScoped<IShiftAggregationService, ShiftAggregationService>();
+        services.AddScoped<IReportService, ReportService>();
         services.AddScoped<IShiftOtherCashRepository, ShiftOtherCashRepository>();
         services.AddScoped<IShiftFuelRateRepository, ShiftFuelRateRepository>();
         services.AddTransient<IAgsImportService, AgsImportService>();
         services.AddTransient<IAgsDailyAggregationService, AgsDailyAggregationService>();
+        services.AddTransient<IAgsInventoryService, AgsInventoryService>();
         services.AddTransient<AgsImportValidator>();
         services.AddTransient<PrintService>();
         services.AddTransient<ExcelExportService>();

@@ -267,10 +267,20 @@ public partial class DashboardViewModel : ObservableObject
                     NozzleReadings = entry.NozzleReadings.Select(r => new NozzleReadingDto { Amount = (decimal)r.Amount }).ToList(),
                     PaymentCollection = new PaymentCollectionDto
                     {
-                        PhonePe = (decimal)((entry.PaymentCollection?.PhonePe ?? 0) + (entry.PaymentCollection?.PhonePeCardMorning ?? 0) + (entry.PaymentCollection?.PhonePeCardNight ?? 0)),
-                        CreditCard = (decimal)((entry.PaymentCollection?.CreditCard ?? 0) + (entry.PaymentCollection?.PetroCard ?? 0)),
-                        CashDeposit = (decimal)(cash1 + cash2 + (entry.PaymentCollection?.CashDeposit ?? 0)),
-                        PhysicalCash = 0
+                        PhonePe = (decimal)((entry.PaymentCollection?.PhonePeMorning ?? 0)
+                                            + (entry.PaymentCollection?.PhonePeDay ?? 0)
+                                            + (entry.PaymentCollection?.PhonePeNight ?? 0)
+                                            + (entry.PaymentCollection?.PhonePeCardMorning ?? 0)
+                                            + (entry.PaymentCollection?.PhonePeCardDay ?? 0)
+                                            + (entry.PaymentCollection?.PhonePeCardNight ?? 0)),
+                        CreditCard = (decimal)((entry.PaymentCollection?.CreditCardMorning ?? 0)
+                                               + (entry.PaymentCollection?.CreditCardDay ?? 0)
+                                               + (entry.PaymentCollection?.CreditCardNight ?? 0)),
+                        PetroCard = (decimal)((entry.PaymentCollection?.PetroCardMorning ?? 0)
+                                              + (entry.PaymentCollection?.PetroCardDay ?? 0)
+                                              + (entry.PaymentCollection?.PetroCardNight ?? 0)),
+                        CashDeposit = (decimal)(cash1 > 0 ? cash1 : (entry.PaymentCollection?.CashDeposit ?? 0)),
+                        PhysicalCash = (decimal)cash2
                     },
                     DebitEntries = entry.DebitEntries.Select(d => new DebitEntryDto { Amount = (decimal)d.Amount }).ToList(),
                     TestingEntries = entry.TestingEntries.Select(t => new TestingEntryDto
@@ -288,12 +298,19 @@ public partial class DashboardViewModel : ObservableObject
                 TodayCollection += (double)calc.TotalCollection;
                 TotalCreditorsToday += (double)calc.TotalCreditors;
                 
-                TodayTotalPhonePe += (entry.PaymentCollection?.PhonePe ?? 0);
-                TodayTotalPhonePeCardMorning += (entry.PaymentCollection?.PhonePeCardMorning ?? 0);
+                TodayTotalPhonePe += (entry.PaymentCollection?.PhonePeMorning ?? 0)
+                                     + (entry.PaymentCollection?.PhonePeDay ?? 0)
+                                     + (entry.PaymentCollection?.PhonePeNight ?? 0);
+                TodayTotalPhonePeCardMorning += (entry.PaymentCollection?.PhonePeCardMorning ?? 0)
+                                                + (entry.PaymentCollection?.PhonePeCardDay ?? 0);
                 TodayTotalPhonePeCardNight += (entry.PaymentCollection?.PhonePeCardNight ?? 0);
-                TodayTotalCreditCard += (entry.PaymentCollection?.CreditCard ?? 0);
-                TodayTotalPetroCard += (entry.PaymentCollection?.PetroCard ?? 0);
-                TodayTotalBankCash += cash1 + (entry.PaymentCollection?.CashDeposit ?? 0);
+                TodayTotalCreditCard += (entry.PaymentCollection?.CreditCardMorning ?? 0)
+                                         + (entry.PaymentCollection?.CreditCardDay ?? 0)
+                                         + (entry.PaymentCollection?.CreditCardNight ?? 0);
+                TodayTotalPetroCard += (entry.PaymentCollection?.PetroCardMorning ?? 0)
+                                        + (entry.PaymentCollection?.PetroCardDay ?? 0)
+                                        + (entry.PaymentCollection?.PetroCardNight ?? 0);
+                TodayTotalBankCash += cash1 > 0 ? cash1 : (entry.PaymentCollection?.CashDeposit ?? 0);
                 TodayTotalCashInHand += cash2;
                 TodayTotalExpenses += entry.Expenses.Sum(x => x.Amount);
                 
@@ -406,10 +423,20 @@ public partial class DashboardViewModel : ObservableObject
                 NozzleReadings = entry.NozzleReadings.Select(n => new NozzleReadingDto { Amount = (decimal)n.Amount }).ToList(),
                 PaymentCollection = new PaymentCollectionDto
                 {
-                    PhonePe = (decimal)((entry.PaymentCollection?.PhonePe ?? 0) + (entry.PaymentCollection?.PhonePeCard ?? 0)),
-                    CreditCard = (decimal)((entry.PaymentCollection?.CreditCard ?? 0) + (entry.PaymentCollection?.PetroCard ?? 0)),
-                    CashDeposit = (decimal)(cash1 + cash2 + (entry.PaymentCollection?.CashDeposit ?? 0)),
-                    PhysicalCash = 0
+                    PhonePe = (decimal)((entry.PaymentCollection?.PhonePeMorning ?? 0)
+                                        + (entry.PaymentCollection?.PhonePeDay ?? 0)
+                                        + (entry.PaymentCollection?.PhonePeNight ?? 0)
+                                        + (entry.PaymentCollection?.PhonePeCardMorning ?? 0)
+                                        + (entry.PaymentCollection?.PhonePeCardDay ?? 0)
+                                        + (entry.PaymentCollection?.PhonePeCardNight ?? 0)),
+                    CreditCard = (decimal)((entry.PaymentCollection?.CreditCardMorning ?? 0)
+                                           + (entry.PaymentCollection?.CreditCardDay ?? 0)
+                                           + (entry.PaymentCollection?.CreditCardNight ?? 0)),
+                    PetroCard = (decimal)((entry.PaymentCollection?.PetroCardMorning ?? 0)
+                                          + (entry.PaymentCollection?.PetroCardDay ?? 0)
+                                          + (entry.PaymentCollection?.PetroCardNight ?? 0)),
+                    CashDeposit = (decimal)(cash1 + (entry.PaymentCollection?.CashDeposit ?? 0)),
+                    PhysicalCash = (decimal)cash2
                 },
                 DebitEntries = entry.DebitEntries.Select(d => new DebitEntryDto { Amount = (decimal)d.Amount }).ToList(),
                 TestingEntries = entry.TestingEntries.Select(t => new TestingEntryDto
@@ -423,9 +450,18 @@ public partial class DashboardViewModel : ObservableObject
             totalDebit += (double)calc.TotalCreditors;
             totalExpenses += entry.Expenses.Sum(e => e.Amount);
             
-            var phonePe = (double)((entry.PaymentCollection?.PhonePe ?? 0) + (entry.PaymentCollection?.PhonePeCard ?? 0));
-            var petroCard = entry.PaymentCollection?.PetroCard ?? 0;
-            var creditCard = (double)((entry.PaymentCollection?.CreditCard ?? 0) + (entry.PaymentCollection?.CreditCardMorning ?? 0) + (entry.PaymentCollection?.CreditCardNight ?? 0));
+            var phonePe = (double)((entry.PaymentCollection?.PhonePeMorning ?? 0)
+                                   + (entry.PaymentCollection?.PhonePeDay ?? 0)
+                                   + (entry.PaymentCollection?.PhonePeNight ?? 0)
+                                   + (entry.PaymentCollection?.PhonePeCardMorning ?? 0)
+                                   + (entry.PaymentCollection?.PhonePeCardDay ?? 0)
+                                   + (entry.PaymentCollection?.PhonePeCardNight ?? 0));
+            var petroCard = (double)((entry.PaymentCollection?.PetroCardMorning ?? 0)
+                                     + (entry.PaymentCollection?.PetroCardDay ?? 0)
+                                     + (entry.PaymentCollection?.PetroCardNight ?? 0));
+            var creditCard = (double)((entry.PaymentCollection?.CreditCardMorning ?? 0)
+                                      + (entry.PaymentCollection?.CreditCardDay ?? 0)
+                                      + (entry.PaymentCollection?.CreditCardNight ?? 0));
             totalDigital += phonePe + petroCard + creditCard;
             
             totalCash += cash1 + cash2;
@@ -621,7 +657,7 @@ public partial class DashboardViewModel : ObservableObject
             }
 
             // Tank stock (Opening from earliest shift, closing from latest shift)
-            var sortedShifts = allShifts.OrderBy(s => s.ImportDate).ThenBy(s => s.ShiftType).ToList();
+            var sortedShifts = allShifts.OrderBy(s => s.ImportDate).ThenBy(s => s.ShiftType == "A").ToList();
             var firstShift = sortedShifts.FirstOrDefault();
             var lastShift = sortedShifts.LastOrDefault();
 

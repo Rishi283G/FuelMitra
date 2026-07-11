@@ -15,7 +15,7 @@ interface DashboardProps {
 
 export default function DashboardScreen({ onNavigate }: DashboardProps) {
   const { profile, logout, refreshProfile } = useAuth();
-  const { fetchSubmissionDetails } = useSubmissionService();
+  const { fetchSubmissionDetails, syncProductListAndStock, retryQueuedDrafts } = useSubmissionService();
   const [notifications, setNotifications] = useState<DsmNotification[]>([]);
   const [showNotifs, setShowNotifs] = useState(false);
   const [recentStatus, setRecentStatus] = useState<{ id: string; status: string; shiftDate: string; shiftType: string } | null>(null);
@@ -30,6 +30,7 @@ export default function DashboardScreen({ onNavigate }: DashboardProps) {
     try {
       setIsRefreshing(true);
       await refreshProfile();
+      await syncProductListAndStock();
     } catch (e) {
       console.error(e);
     } finally {
@@ -52,7 +53,13 @@ export default function DashboardScreen({ onNavigate }: DashboardProps) {
   };
 
   useEffect(() => {
-    const handleOnline = () => setOnline(true);
+    const handleOnline = () => {
+      setOnline(true);
+      if (profile) {
+        retryQueuedDrafts(profile.id, profile.StationId).catch(console.error);
+        syncProductListAndStock().catch(console.error);
+      }
+    };
     const handleOffline = () => setOnline(false);
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
@@ -60,10 +67,13 @@ export default function DashboardScreen({ onNavigate }: DashboardProps) {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, []);
+  }, [profile, retryQueuedDrafts, syncProductListAndStock]);
 
   useEffect(() => {
     if (!profile) return;
+
+    // Sync product list and stock levels
+    syncProductListAndStock();
 
     // Fetch unread notifications
     supabase

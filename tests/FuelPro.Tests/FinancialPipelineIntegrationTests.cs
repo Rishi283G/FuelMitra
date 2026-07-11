@@ -1,0 +1,387 @@
+using System;
+using System.IO;
+using System.Linq;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using FuelPro.Core.Common;
+using FuelPro.Core.Models;
+using FuelPro.Core.Models.AGS;
+using FuelPro.Core.DTOs;
+using FuelPro.Core.Repositories;
+using FuelPro.Core.Services;
+using FuelPro.Data;
+using FuelPro.Data.Repositories;
+using FuelPro.Data.Services;
+using FuelPro.Sync;
+using FuelPro.UI;
+using FuelPro.UI.Printing;
+using FuelPro.UI.ViewModels;
+using Xunit;
+
+namespace FuelPro.Tests;
+
+public class FinancialPipelineIntegrationTests : IDisposable
+{
+    private readonly string _dbPath;
+    private readonly ServiceProvider _serviceProvider;
+
+    public FinancialPipelineIntegrationTests()
+    {
+        Environment.SetEnvironmentVariable("FUELPRO_ENV", "TEST");
+        var tempDir = Path.Combine(Path.GetTempPath(), "FuelPro_Tests_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        _dbPath = Path.Combine(tempDir, "fuelPro.db");
+
+        // Ensure WPF Application object exists for ViewModels
+        if (System.Windows.Application.Current == null)
+        {
+            new System.Windows.Application();
+        }
+
+        var services = new ServiceCollection();
+        
+        services.AddDbContext<FuelProDbContext>(options =>
+            options.UseSqlite($"Data Source={_dbPath}"),
+            ServiceLifetime.Transient);
+
+        // Credentials
+        var tempFolder = Path.Combine(Path.GetTempPath(), "FuelPro_Test_" + Guid.NewGuid().ToString("N"));
+        services.AddSingleton<ICredentialFileService>(new LocalCredentialFileService(tempFolder));
+
+        // Repositories
+        services.AddTransient<ISettingsRepository, SettingsRepository>();
+        services.AddTransient<IUserRepository, UserRepository>();
+        services.AddTransient<IShiftRepository, ShiftRepository>();
+        services.AddTransient<IDsmEntryRepository, DsmEntryRepository>();
+        services.AddTransient<INozzleReadingRepository, NozzleReadingRepository>();
+        services.AddTransient<IPaymentRepository, PaymentRepository>();
+        services.AddTransient<IDebitEntryRepository, DebitEntryRepository>();
+        services.AddTransient<ITestingEntryRepository, TestingEntryRepository>();
+        services.AddTransient<IExpenseRepository, ExpenseRepository>();
+        services.AddTransient<ICashDenominationRepository, CashDenominationRepository>();
+        services.AddTransient<IDsmProfileRepository, DsmProfileRepository>();
+        services.AddTransient<ICreditorRepaymentRepository, CreditorRepaymentRepository>();
+        services.AddTransient<IAgsImportRepository, AgsImportRepository>();
+        services.AddTransient<ICreditorRepository, CreditorRepository>();
+        services.AddTransient<IPumpExpenseRepository, PumpExpenseRepository>();
+        services.AddTransient<IDebtorVehicleRepository, DebtorVehicleRepository>();
+        services.AddScoped<IShiftOtherCashRepository, ShiftOtherCashRepository>();
+        services.AddScoped<IShiftFuelRateRepository, ShiftFuelRateRepository>();
+
+        // Services
+        services.AddSingleton<AuthService>();
+        services.AddTransient<DsmEntryService>();
+        services.AddTransient<ShiftCalculationService>();
+        services.AddSingleton<IDsmCalculationService, DsmCalculationService>();
+        services.AddSingleton<IOwnerCalculationService, OwnerCalculationService>();
+        services.AddSingleton<ITidCalculationService, TidCalculationService>();
+        services.AddScoped<IShiftAggregationService, ShiftAggregationService>();
+        services.AddScoped<IReportService, ReportService>();
+        services.AddTransient<IAgsInventoryService, MockAgsInventoryService>();
+        services.AddTransient<IFinancialCalculationService, MockFinancialCalculationService>();
+        
+        services.AddTransient<PrintService>();
+        services.AddTransient<ExcelExportService>();
+        services.AddTransient<IAuditLogService, AuditLogService>();
+        services.AddTransient<IDayLockService, DayLockService>();
+
+        // Sync services (needed by OwnerDashboardViewModel)
+        services.AddSingleton<SyncConfigService>();
+        services.AddSingleton<SyncEngine>();
+        services.AddSingleton<DsmSubmissionPollingService>();
+        services.AddTransient<DsmAuthAdminService>();
+        services.AddTransient<SupabaseDsmService>();
+
+        // ViewModels
+        services.AddTransient<DayTotalViewModel>();
+        services.AddTransient<DashboardViewModel>();
+        services.AddTransient<OwnerDashboardViewModel>();
+
+        _serviceProvider = services.BuildServiceProvider();
+
+        // Initialize App static fields
+        typeof(App).GetProperty("Services")?.SetValue(null, _serviceProvider);
+        typeof(App).GetProperty("DbPath")?.SetValue(null, _dbPath);
+
+        using (var context = _serviceProvider.GetRequiredService<FuelProDbContext>())
+        {
+            context.Database.EnsureCreated();
+        }
+    }
+
+    [Fact]
+    public async Task FinancialPipeline_ProducesMatchingTotals()
+    {
+        var testDate = new DateTime(2026, 7, 11);
+
+        // 1. Seed one shift with entry containing mixed collections
+        using (var context = _serviceProvider.GetRequiredService<FuelProDbContext>())
+        {
+            var shift = new Shift
+            {
+                ShiftId = 1,
+                ShiftDate = testDate,
+                ShiftType = "A",
+                IsLocked = false
+            };
+            context.Shifts.Add(shift);
+
+            var entry = new DsmEntry
+            {
+                DsmEntryId = 1,
+                ShiftId = 1,
+                PumpId = 1,
+                DsmName = "Peter Parker"
+            };
+            context.DsmEntries.Add(entry);
+
+            // Nozzle readings (gross sale total = 3000)
+            entry.NozzleReadings.Add(new NozzleReading { NozzleNumber = 1, OpeningReading = 0, ClosingReading = 10, Rate = 100, SaleLitres = 10, Amount = 1000 });
+            entry.NozzleReadings.Add(new NozzleReading { NozzleNumber = 2, OpeningReading = 0, ClosingReading = 20, Rate = 100, SaleLitres = 20, Amount = 2000 });
+
+            // PaymentCollection (PhonePe total = 1000, PhonePeCard = 500, CreditCard = 900, PetroCard = 300, CashDeposit = 100)
+            entry.PaymentCollection = new PaymentCollection
+            {
+                PhonePeMorning = 300,
+                PhonePeDay = 200,
+                PhonePeNight = 500,
+                PhonePeCardMorning = 100,
+                PhonePeCardDay = 150,
+                PhonePeCardNight = 250,
+                CreditCardMorning = 400,
+                CreditCardDay = 300,
+                CreditCardNight = 200,
+                PetroCardMorning = 100,
+                PetroCardDay = 100,
+                PetroCardNight = 100,
+                CashDeposit = 100
+            };
+
+            // Cash denominations (Cash1 = 100, Cash2 = 100)
+            entry.CashDenominations.Add(new CashDenomination { CashType = "Cash1", Denom100 = 1, TotalAmount = 100 });
+            entry.CashDenominations.Add(new CashDenomination { CashType = "Cash2", Denom100 = 1, TotalAmount = 100 });
+
+            // Debtor / Creditor (50)
+            entry.DebitEntries.Add(new DebitEntry { DebtorName = "John Doe", Amount = 50 });
+
+            // Testing (50)
+            entry.TestingEntries.Add(new TestingEntry { FuelType = "MS", Amount = 50, Litres = 0.5 });
+
+            // Expenses (50)
+            entry.Expenses.Add(new Expense { Description = "WINE", Amount = 50 });
+
+            await context.SaveChangesAsync();
+        }
+
+        // 2. Instantiate and load all three ViewModels
+        var dayTotalVm = _serviceProvider.GetRequiredService<DayTotalViewModel>();
+        dayTotalVm.StartDate = testDate;
+        dayTotalVm.EndDate = testDate;
+        dayTotalVm.SelectedDate = testDate;
+        await (Task)dayTotalVm.GetType().GetMethod("LoadDayDataAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).Invoke(dayTotalVm, null);
+
+        var dashboardVm = _serviceProvider.GetRequiredService<DashboardViewModel>();
+        dashboardVm.StartDate = testDate;
+        dashboardVm.EndDate = testDate;
+        dashboardVm.SelectedDate = testDate;
+        await (Task)dashboardVm.GetType().GetMethod("LoadDataAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).Invoke(dashboardVm, null);
+
+        var ownerVm = _serviceProvider.GetRequiredService<OwnerDashboardViewModel>();
+        ownerVm.StartDate = testDate;
+        ownerVm.EndDate = testDate;
+        await (Task)ownerVm.GetType().GetMethod("LoadDataAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).Invoke(ownerVm, null);
+
+        // 3. Verify consistency across all three modules
+        
+        // Assert Gross Sales
+        Assert.Equal(3000, dayTotalVm.TotalDayFuelSaleAmount);
+        Assert.Equal(3000, dashboardVm.TodayTotalSale);
+        Assert.Equal(3000, ownerVm.TodayTotalSale);
+
+        // Assert PhonePe / UPI Direct Direct
+        Assert.Equal(1000, dayTotalVm.PhonePeTotal);
+        Assert.Equal(1000, dashboardVm.TodayTotalPhonePe);
+        Assert.Equal(1500, ownerVm.TodayTotalPhonePe);
+
+        // Assert PhonePe Card / UPI Card
+        Assert.Equal(500, dayTotalVm.PhonePeCardTotal);
+        Assert.Equal(500, dashboardVm.TodayTotalPhonePeCardMorning + dashboardVm.TodayTotalPhonePeCardNight);
+
+        // Assert Credit Card (PineLabs)
+        Assert.Equal(900, dayTotalVm.CreditCardTotal);
+        Assert.Equal(900, dashboardVm.TodayTotalCreditCard);
+        Assert.Equal(900, ownerVm.TodayTotalCreditCard);
+
+        // Assert Petro Card
+        Assert.Equal(300, dayTotalVm.PetroCardTotal);
+        Assert.Equal(300, dashboardVm.TodayTotalPetroCard);
+        Assert.Equal(300, ownerVm.TodayTotalPetroCard);
+
+        // Assert Cash Deposits and Cash In Hand
+        Assert.Equal(100, dayTotalVm.BankCashTotal); // Cash1 (100) or CashDeposit (100) (not double-counted)
+        Assert.Equal(100, dashboardVm.TodayTotalBankCash);
+
+        Assert.Equal(100, dayTotalVm.CashInHandTotal); // Cash2 (100)
+        Assert.Equal(100, dashboardVm.TodayTotalCashInHand);
+        
+        // OwnerDashboardViewModel combines deposits + hand cash into TodayTotalCash
+        Assert.Equal(200, ownerVm.TodayTotalCash);
+
+        // Assert Total Expenses
+        Assert.Equal(50, dayTotalVm.ExpensesTotal);
+        Assert.Equal(50, dashboardVm.TodayTotalExpenses);
+        Assert.Equal(50, ownerVm.TodayTotalExpenses);
+
+        // Assert Difference / Mismatch
+        // Total Collection = (UPI Direct) 1000 + (UPI Card) 500 + (Credit Card) 900 + (Petro Card) 300 
+        //                    + (Bank Cash) 100 + (Cash in hand) 100 + (Debtors) 50 + (Expenses) 50 + (Testing) 50
+        //                  = 3050
+        // Sales = 3000
+        // Difference = 3050 - 3000 = +50
+        Assert.Equal(50, dayTotalVm.Difference);
+        Assert.Equal(50, dashboardVm.TodayTotalMismatch);
+        Assert.Equal(50, ownerVm.TodayTotalMismatch);
+    }
+
+    [Fact]
+    public async Task ConnectedPumpAggregation_GroupsAndAggregatesCorrectly()
+    {
+        var testDate = new DateTime(2026, 7, 12);
+        var reportService = _serviceProvider.GetRequiredService<IReportService>();
+
+        var entries = new List<DsmEntry>();
+
+        // Shift
+        var shift = new Shift { ShiftId = 2, ShiftDate = testDate, ShiftType = "A" };
+
+        // Entry 1: Primary (Pump 1)
+        var primaryEntry = new DsmEntry
+        {
+            DsmEntryId = 10,
+            ShiftId = 2,
+            Shift = shift,
+            PumpId = 1,
+            ConnectedPumpId = 2,
+            DsmName = "Peter Parker",
+            GrossSales = 1000
+        };
+        primaryEntry.NozzleReadings.Add(new NozzleReading { NozzleNumber = 1, OpeningReading = 0, ClosingReading = 10, Rate = 100, SaleLitres = 10, Amount = 1000 });
+        primaryEntry.PaymentCollection = new PaymentCollection
+        {
+            PhonePeMorning = 300,
+            PhonePeDay = 200,
+            PhonePeNight = 500,
+            CashDeposit = 100
+        };
+        primaryEntry.CashDenominations.Add(new CashDenomination { CashType = "Cash1", Denom100 = 1, TotalAmount = 100 });
+        primaryEntry.CashDenominations.Add(new CashDenomination { CashType = "Cash2", Denom100 = 1, TotalAmount = 100 });
+        primaryEntry.DebitEntries.Add(new DebitEntry { DebtorName = "John Doe", Amount = 50 });
+
+        // Entry 2: Connected (Pump 2, reconciled to Pump 1)
+        var connectedEntry = new DsmEntry
+        {
+            DsmEntryId = 11,
+            ShiftId = 2,
+            Shift = shift,
+            PumpId = 2,
+            ReconciledToPumpId = 1,
+            DsmName = "Peter Parker",
+            GrossSales = 2000
+        };
+        connectedEntry.NozzleReadings.Add(new NozzleReading { NozzleNumber = 2, OpeningReading = 0, ClosingReading = 20, Rate = 100, SaleLitres = 20, Amount = 2000 });
+        connectedEntry.Expenses.Add(new Expense { Description = "WINE", Amount = 50 });
+
+        entries.Add(primaryEntry);
+        entries.Add(connectedEntry);
+
+        var report = reportService.CalculateShiftReport(
+            testDate,
+            "A",
+            entries,
+            new List<Expense>(),
+            new List<ShiftOtherCash>(),
+            new List<CreditorRepayment>(),
+            100, 100, 100, 100,
+            null, null,
+            "Test Station"
+        );
+
+        // Assertions
+        Assert.Single(report.DsmSummaryRows); // Must aggregate into exactly 1 row
+        var row = report.DsmSummaryRows[0];
+        Assert.Equal("Peter Parker", row.DsmName);
+        Assert.Equal(1, row.PumpId); // Primary pump ID
+        Assert.Equal(3000, row.GrossSales); // 1000 (primary) + 2000 (connected)
+        Assert.Equal(1000, row.PhonePe); // PhonePe total
+        Assert.Equal(50, row.Expenses); // Exp from connected entry aggregated to primary
+        Assert.Equal(50, row.Debit); // Debtors from primary entry
+        Assert.Equal(100, row.CashDeposit); // Cash1
+        Assert.Equal(100, row.CashInHand); // Cash2
+    }
+
+    public void Dispose()
+    {
+        try
+        {
+            if (File.Exists(_dbPath))
+            {
+                File.Delete(_dbPath);
+            }
+        }
+        catch { }
+    }
+}
+
+// Simple mocks to satisfy dependency injection requirements in tests
+public class MockAgsInventoryService : IAgsInventoryService
+{
+    public Task<List<NozzleGroupDto>> BuildNozzleGroupsAsync(DateTime date, string shiftType, List<DsmEntry>? loadedEntries = null)
+    {
+        return Task.FromResult(new List<NozzleGroupDto>());
+    }
+
+    public Task<Result<AgsShiftImport>> SaveAndPersistInventoryAsync(DateTime date, string shiftType, List<NozzleGroupDto> groups)
+    {
+        return Task.FromResult(Result<AgsShiftImport>.Ok(new AgsShiftImport()));
+    }
+
+    public Task<Result> PropagateInventoryCalculationsAsync(DateTime startDate, string startShiftType)
+    {
+        return Task.FromResult(Result.Ok());
+    }
+
+    public (DateTime Date, string Shift) GetPreviousShift(DateTime date, string shift)
+    {
+        return (date.AddDays(-1), "B");
+    }
+}
+
+public class MockFinancialCalculationService : IFinancialCalculationService
+{
+    public Task<FinancialCalculationResult> CalculateFinancialsAsync(DateTime startDate, DateTime endDate)
+    {
+        return Task.FromResult(new FinancialCalculationResult());
+    }
+
+    public Task<List<DsmSalaryRowDto>> CalculateDsmSalariesAsync(int year, int month)
+    {
+        return Task.FromResult(new List<DsmSalaryRowDto>());
+    }
+
+    public Task<OilDefStockReportDto> GenerateStockReportAsync(int year, int month)
+    {
+        return Task.FromResult(new OilDefStockReportDto());
+    }
+
+    public Task SaveDsmSalaryAdjustmentsAsync(int year, int month, List<DsmSalaryRowDto> rows)
+    {
+        return Task.CompletedTask;
+    }
+
+    public Task DeleteDsmSalaryAdjustmentAsync(int year, int month, string dsmName)
+    {
+        return Task.CompletedTask;
+    }
+}

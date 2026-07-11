@@ -106,12 +106,12 @@ public class PrintService
     /// Builds the temp HTML, opens in default browser for printing.
     /// Call from the UI thread.
     /// </summary>
-    public void PrintFinalCalculation(FinalCalcPrintData data)
+    public void PrintFinalCalculation(ShiftReportDto data)
     {
         try
         {
             _logger.Information("PrintFinalCalculation started for {Date} Shift {Shift}",
-                data.Date, data.ShiftLabel);
+                data.DateString, data.ShiftLabel);
 
             // STEP A: Read template
             var templateHtml = LoadTemplate();
@@ -167,7 +167,7 @@ public class PrintService
     /// <summary>
     /// Prints the Day Total report by injecting JSON into the Day Total template.
     /// </summary>
-    public void PrintDayTotal(object data)
+    public void PrintDayTotal(DayReportDto data)
     {
         try
         {

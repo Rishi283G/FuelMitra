@@ -31,11 +31,8 @@ public static class PumpConfiguration
         { 4, new[] { 17, 18, 19, 20 } }
     };
 
-    /// <summary>
-    /// Exact (PumpId, NozzleNumber) to FuelType mapping.
-    /// Dynamically populated from Database.
-    /// </summary>
     private static readonly Dictionary<(int PumpId, int NozzleNumber), FuelType> NozzleFuelMap = new();
+    private static readonly Dictionary<(int PumpId, int NozzleNumber), string> NozzleTankMap = new();
 
     /// <summary>
     /// Historical (PumpId, NozzleNumber) to FuelType mapping for legacy 4-pump layout.
@@ -160,6 +157,7 @@ public static class PumpConfiguration
         
         PumpNozzleMapping.Clear();
         NozzleFuelMap.Clear();
+        NozzleTankMap.Clear();
 
         foreach (var m in active)
         {
@@ -168,6 +166,7 @@ public static class PumpConfiguration
             {
                 NozzleFuelMap[(m.PumpId, m.NozzleNumber)] = fuelType;
             }
+            NozzleTankMap[(m.PumpId, m.NozzleNumber)] = m.TankName;
 
             if (!PumpNozzleMapping.ContainsKey(m.PumpId))
             {
@@ -183,6 +182,37 @@ public static class PumpConfiguration
 
         TotalPumps = PumpNozzleMapping.Keys.DefaultIfEmpty(0).Max();
         TotalNozzles = active.Count;
+    }
+
+    public static string GetTankName(int pumpId, int nozzleNumber, DateTime? date = null)
+    {
+        var actualPumpId = GetPumpIdForNozzle(nozzleNumber, date);
+        if (actualPumpId == 0)
+        {
+            actualPumpId = pumpId;
+        }
+
+        if (NozzleTankMap.TryGetValue((actualPumpId, nozzleNumber), out var tankName))
+            return tankName;
+
+        var fuelType = GetFuelType(actualPumpId, nozzleNumber, date);
+        return fuelType.ToTankName();
+    }
+
+    public static string GetTestingTankCategory(string fuelTypeField, int pumpId, DateTime date)
+    {
+        if (int.TryParse(fuelTypeField, out var nozzleNumber))
+        {
+            var tankName = GetTankName(pumpId, nozzleNumber, date);
+            if (tankName == "MS - 20KL") return "MS";
+            if (tankName == "HSD - 20KL") return "HSD";
+            if (tankName == "HSD - 20KL II") return "HSD-II";
+            if (tankName == "CNG") return "CNG";
+        }
+
+        if (fuelTypeField == "MS-I") return "MS";
+        if (fuelTypeField == "MS-II") return "HSD-II";
+        return fuelTypeField;
     }
 
     public static int GetPumpIdForNozzle(int nozzleNumber, DateTime? date = null)

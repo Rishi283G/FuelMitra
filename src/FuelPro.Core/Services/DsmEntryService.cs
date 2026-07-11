@@ -3,6 +3,7 @@ using FuelPro.Core.Models;
 using FuelPro.Core.Repositories;
 using FuelPro.Core.DTOs;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Serilog;
 
 namespace FuelPro.Core.Services;
@@ -12,6 +13,9 @@ namespace FuelPro.Core.Services;
 /// </summary>
 public class DsmEntryService
 {
+    public static event Action? DsmEntryChanged;
+    public static void RaiseDsmEntryChanged() => DsmEntryChanged?.Invoke();
+
     private readonly IDsmEntryRepository _dsmRepo;
     private readonly INozzleReadingRepository _nozzleRepo;
     private readonly IPaymentRepository _paymentRepo;
@@ -23,6 +27,7 @@ public class DsmEntryService
     private readonly ISettingsRepository _settingsRepo;
     private readonly IDsmCalculationService _dsmCalculationService;
     private readonly IDsmPersonalDebtorRepository _personalDebtorRepo;
+    private readonly IServiceProvider _serviceProvider;
     private readonly ILogger _logger = Log.ForContext<DsmEntryService>();
 
     public DsmEntryService(
@@ -36,7 +41,8 @@ public class DsmEntryService
         IShiftRepository shiftRepo,
         ISettingsRepository settingsRepo,
         IDsmCalculationService dsmCalculationService,
-        IDsmPersonalDebtorRepository personalDebtorRepo)
+        IDsmPersonalDebtorRepository personalDebtorRepo,
+        IServiceProvider serviceProvider)
     {
         _dsmRepo = dsmRepo;
         _nozzleRepo = nozzleRepo;
@@ -49,6 +55,7 @@ public class DsmEntryService
         _settingsRepo = settingsRepo;
         _dsmCalculationService = dsmCalculationService;
         _personalDebtorRepo = personalDebtorRepo;
+        _serviceProvider = serviceProvider;
     }
 
     /// <summary>
@@ -282,7 +289,11 @@ public class DsmEntryService
                 }
             }
 
+            // Propagate nozzle readings downstream
+            await PropagateNozzleReadingsAsync(date, shiftType);
+
             _logger.Information("DSM entry saved successfully: {DsmName} Pump {PumpId}", dsmName, pumpId);
+            RaiseDsmEntryChanged();
             return Result<DsmEntry>.Ok(savedEntry);
         }
         catch (DbUpdateException dbEx)
@@ -359,11 +370,20 @@ public class DsmEntryService
             PaymentCollection = new PaymentCollectionDto
             {
                 // Others is NOT included in TotalInDirect — it is informational only
-                PhonePe      = (decimal)((entry.PaymentCollection?.PhonePe ?? 0)
-                                       + (entry.PaymentCollection?.PhonePeCard ?? 0)),
-                CreditCard   = (decimal)((entry.PaymentCollection?.CreditCard ?? 0) + (entry.PaymentCollection?.PetroCard ?? 0)),
-                CashDeposit  = (decimal)(entry.PaymentCollection?.CashDeposit ?? 0),
-                PhysicalCash = (decimal)(cash1Total + cash2Total)
+                PhonePe      = (decimal)((entry.PaymentCollection?.PhonePeMorning ?? 0)
+                                       + (entry.PaymentCollection?.PhonePeDay ?? 0)
+                                       + (entry.PaymentCollection?.PhonePeNight ?? 0)
+                                       + (entry.PaymentCollection?.PhonePeCardMorning ?? 0)
+                                       + (entry.PaymentCollection?.PhonePeCardDay ?? 0)
+                                       + (entry.PaymentCollection?.PhonePeCardNight ?? 0)),
+                CreditCard   = (decimal)((entry.PaymentCollection?.CreditCardMorning ?? 0)
+                                       + (entry.PaymentCollection?.CreditCardDay ?? 0)
+                                       + (entry.PaymentCollection?.CreditCardNight ?? 0)),
+                PetroCard    = (decimal)((entry.PaymentCollection?.PetroCardMorning ?? 0)
+                                       + (entry.PaymentCollection?.PetroCardDay ?? 0)
+                                       + (entry.PaymentCollection?.PetroCardNight ?? 0)),
+                CashDeposit  = (decimal)(cash1Total > 0 ? cash1Total : (entry.PaymentCollection?.CashDeposit ?? 0)),
+                PhysicalCash = (decimal)cash2Total
             },
             DebitEntries   = entry.DebitEntries.Select(d => new DebitEntryDto { Amount = (decimal)d.Amount }).ToList(),
             Expenses       = entry.Expenses.Select(e => new ExpenseDto { Amount = (decimal)e.Amount }).ToList(),
@@ -376,4 +396,118 @@ public class DsmEntryService
             }).ToList()
         };
     }
+
+    public async Task<Result> PropagateNozzleReadingsAsync(DateTime startDate, string startShiftType)
+    {
+        try
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var shiftRepo = scope.ServiceProvider.GetRequiredService<IShiftRepository>();
+            var dsmRepo = scope.ServiceProvider.GetRequiredService<IDsmEntryRepository>();
+            var nozzleRepo = scope.ServiceProvider.GetRequiredService<INozzleReadingRepository>();
+
+            // Load shifts from startDate onwards (up to 30 days forward to keep it bounded)
+            var shiftsResult = await shiftRepo.GetShiftsByDateRangeAsync(startDate.Date, startDate.Date.AddDays(30));
+            if (!shiftsResult.Success || shiftsResult.Data == null) return Result.Ok();
+
+            // Sort operationally: Date ascending, then Shift B (Day) before Shift A (Night)
+            var sortedShifts = shiftsResult.Data
+                .OrderBy(s => s.ShiftDate)
+                .ThenBy(s => s.ShiftType == "A")
+                .ToList();
+
+            var startIdx = sortedShifts.FindIndex(s => s.ShiftDate.Date == startDate.Date && s.ShiftType == startShiftType);
+            if (startIdx < 0) return Result.Ok();
+
+            // Build a map of previous nozzle closings from the shift before startIdx
+            var prevClosings = new Dictionary<int, double>();
+            if (startIdx > 0)
+            {
+                var prevShift = sortedShifts[startIdx - 1];
+                var prevEntriesResult = await dsmRepo.GetEntriesForShiftAsync(prevShift.ShiftId);
+                if (prevEntriesResult.Success && prevEntriesResult.Data != null)
+                {
+                    foreach (var entry in prevEntriesResult.Data)
+                    {
+                        foreach (var r in entry.NozzleReadings)
+                        {
+                            prevClosings[r.NozzleNumber] = r.ClosingReading;
+                        }
+                    }
+                }
+            }
+
+            for (int i = startIdx; i < sortedShifts.Count; i++)
+            {
+                var currentShift = sortedShifts[i];
+                var entriesResult = await dsmRepo.GetEntriesForShiftAsync(currentShift.ShiftId);
+                if (!entriesResult.Success || entriesResult.Data == null) continue;
+
+                foreach (var entry in entriesResult.Data)
+                {
+                    bool entryChanged = false;
+                    var updatedReadings = new List<NozzleReading>();
+
+                    foreach (var reading in entry.NozzleReadings)
+                    {
+                        double newOpening = reading.OpeningReading;
+
+                        if (prevClosings.TryGetValue(reading.NozzleNumber, out var prevClosing))
+                        {
+                            newOpening = prevClosing;
+                            if (newOpening > reading.ClosingReading)
+                            {
+                                newOpening = reading.ClosingReading;
+                                _logger.Warning("Nozzle {NozzleNumber} prev closing {PrevClosing} > current closing {CurrentClosing} in {Date} {Shift}. Capping.",
+                                    reading.NozzleNumber, prevClosing, reading.ClosingReading, currentShift.ShiftDate, currentShift.ShiftType);
+                            }
+                        }
+
+                        if (Math.Abs(reading.OpeningReading - newOpening) > 0.001)
+                        {
+                            reading.OpeningReading = newOpening;
+                            reading.SaleLitres = reading.ClosingReading - reading.OpeningReading;
+                            reading.Amount = reading.SaleLitres * reading.Rate;
+                            entryChanged = true;
+                        }
+
+                        updatedReadings.Add(reading);
+                    }
+
+                    if (entryChanged)
+                    {
+                        await nozzleRepo.SaveReadingsAsync(entry.DsmEntryId, updatedReadings);
+
+                        // Re-load and recalculate totals
+                        var fullResult = await dsmRepo.GetFullEntryAsync(entry.DsmEntryId);
+                        if (fullResult.Success && fullResult.Data != null)
+                        {
+                            var calc = _dsmCalculationService.Calculate(ToCalculationDto(fullResult.Data));
+                            var connectedGross = entry.ReconciledToPumpId.HasValue ? 0m : 0m;
+                            entry.GrossSales = calc.GrossSales;
+                            entry.TotalInDirect = calc.TotalInDirect;
+                            entry.TotalCreditors = calc.TotalCreditors;
+                            entry.TotalCollection = calc.TotalCollection;
+                            entry.Mismatch = calc.TotalCollection - entry.GrossSales;
+                            await dsmRepo.SaveEntryAsync(entry);
+                        }
+                    }
+
+                    // Update prevClosings map with this entry's nozzle closings
+                    foreach (var r in updatedReadings)
+                    {
+                        prevClosings[r.NozzleNumber] = r.ClosingReading;
+                    }
+                }
+            }
+
+            return Result.Ok();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to propagate nozzle readings starting from {Date} {Shift}", startDate, startShiftType);
+            return Result.Fail($"Failed to propagate nozzle readings: {ex.Message}");
+        }
+    }
 }
+

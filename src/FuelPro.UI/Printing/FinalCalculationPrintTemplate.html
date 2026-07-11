@@ -178,26 +178,14 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
       </div>
       <div>
         <div class="mini-hdr">Final Reconciliation</div>
-        <div class="recon-box"><table><thead><tr><th>Description</th><th>Amount (&#8377;)</th></tr></thead><tbody>
-          <tr><td>MS Testing</td><td id="rMsTest">&ndash;</td></tr>
-          <tr><td>HSD Testing I</td><td id="rHsdTest">&ndash;</td></tr>
-          <tr><td>HSD Testing II</td><td id="rHsdTest2">&ndash;</td></tr>
-          <tr><td>Phone Pe (Morning)</td><td id="rPhonePeM">&ndash;</td></tr>
-          <tr><td>Phone Pe (Night)</td><td id="rPhonePeN">&ndash;</td></tr>
-          <tr><td>Phone Pe Card (Morning)</td><td id="rPhonePeCardM">&ndash;</td></tr>
-          <tr><td>Phone Pe Card (Night)</td><td id="rPhonePeCardN">&ndash;</td></tr>
-          <tr><td>P. Card (Petro Card)</td><td id="rPCard">&ndash;</td></tr>
-          <tr><td>Debit (Debtors)</td><td id="rDebit">&ndash;</td></tr>
-          <tr><td>PineLab Card (Morning)</td><td id="rCCardM">&ndash;</td></tr>
-          <tr><td>PineLab Card (Night)</td><td id="rCCardN">&ndash;</td></tr>
-          <tr><td>Bank Cash (Cash 1)</td><td id="rBank">&ndash;</td></tr>
-          <tr><td>Cash In Hand (Cash 2)</td><td id="rHand">&ndash;</td></tr>
-          <tr><td>Expenses</td><td id="rExp">&ndash;</td></tr>
-          <tr><td style="color:#8a1500; font-weight:700">Total DSM Short</td><td id="rTotalDsmShort" style="color:#8a1500; font-weight:700">&ndash;</td></tr>
+        <div class="recon-box"><table><thead><tr><th>Description</th><th>Amount (&#8377;)</th></tr></thead>
+        <tbody id="tRecon"></tbody>
+        <tfoot>
           <tr class="tr-recon-total"><td>TOTAL COLLECTION</td><td id="rTotal">&ndash;</td></tr>
-          <tr class="tr-sub"><td>Gross Fuel Sale</td><td id="rGross">&ndash;</td></tr>
+          <tr class="tr-sub"><td>Expected Gross Sale</td><td id="rGross">&ndash;</td></tr>
           <tr><td colspan="2" id="rDiff" class="diff-ok">&ndash;</td></tr>
-        </tbody></table></div>
+        </tfoot>
+        </table></div>
       </div>
     </div>
   </div>
@@ -237,117 +225,131 @@ function renderData(){
     }
   }
   document.getElementById('hShift').textContent='SHIFT '+(d.shiftLabel||'\u2013');
-  document.getElementById('hDate').textContent=d.date||'\u2013';
+  document.getElementById('hDate').textContent=d.dateString||d.date||'\u2013';
   document.getElementById('hStation').textContent=station;
-  document.getElementById('hDsms').textContent=(d.dsmEntries||[]).map(function(x){return x.dsmName;}).join(', ')||'\u2013';
+  document.getElementById('hDsms').textContent=(d.dsmSummaryRows||d.dsmEntries||[]).map(function(x){return x.dsmName;}).join(', ')||'\u2013';
   document.getElementById('hPrinted').textContent=new Date().toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
-
-  var fuelRows=d.fuelSale||[];var grossFuel=0,totalL=0;
-  fuelRows.forEach(function(f){grossFuel+=(f.amount||0);totalL+=(f.litres||0);});
-  grossFuel+=(d.otherCash||0)+(d.cheque||0);
-  var rec=d.reconciliation||{};var recTotal=rec.total||0;
-  var diff=grossFuel-recTotal;
+  var grossFuel = d.expectedCollection || 0;
+  var recTotal = d.actualCollection || 0;
+  var totalL = d.totalFuelLitres || 0;
+  var diff = d.difference || 0;
 
   document.getElementById('sGross').textContent=inrZ(grossFuel);
   document.getElementById('sCollect').textContent=inrZ(recTotal);
   document.getElementById('sLitres').textContent=parseFloat(totalL).toFixed(4)+' L';
-  document.getElementById('sCreditors').textContent=inrZ(rec.debit||0);
+  document.getElementById('sCreditors').textContent=inrZ(d.creditorsTotal||0);
   var dEl=document.getElementById('sDiff');
   if(Math.abs(diff)<0.01){dEl.textContent='\u2713 Balanced';dEl.className='stat-val ok';}
   else{dEl.textContent=inrZ(Math.abs(diff));dEl.className='stat-val bad';}
 
   var tb=document.getElementById('tDsm');tb.innerHTML='';
-  var tot={card:0,ph:0,pc:0,deb:0,exp:0,test:0,c1:0,c2:0,sale:0};
-  (d.dsmEntries||[]).forEach(function(r){
+  var tot={
+    ccM: 0, ccN: 0,
+    phcM: 0, phcN: 0,
+    phM: 0, phN: 0,
+    pc: 0, deb: 0, exp: 0, test: 0,
+    c1: 0, c2: 0, sale: 0
+  };
+  (d.dsmSummaryRows||d.dsmEntries||[]).forEach(function(r){
     var tr=document.createElement('tr');
-    tr.innerHTML='<td>'+r.dsmName+'</td><td>P-'+r.pumpNo+'</td><td>'+inr(r.cardAmount)+'</td><td>'+inr(r.phonePay)+'</td><td>'+inr(r.petroCard)+'</td><td>'+inr(r.debit)+'</td><td>'+inr(r.expenses)+'</td><td>'+inr(r.testing)+'</td><td>'+inr(r.cash1)+'</td><td>'+inr(r.cash2)+'</td><td>'+inr(r.grossSale)+'</td>';
+    var ccM = r.creditCardMorning || 0;
+    var ccN = r.creditCardNight || 0;
+    var phcM = r.phonePeCardMorning || 0;
+    var phcN = r.phonePeCardNight || 0;
+    var phM = r.phonePeMorning || r.phonePe || 0;
+    var phN = r.phonePeNight || 0;
+    var petro = r.petroCard || 0;
+    var deb = r.debit || 0;
+    var exp = r.expenses || 0;
+    var test = r.testing || 0;
+    var c1 = r.cashDeposit || r.cash1 || r.bankCash || 0;
+    var c2 = r.cashInHand || r.cash2 || 0;
+    var sale = r.grossSales || r.grossSale || 0;
+
+    tr.innerHTML='<td>'+r.dsmName+'</td>' +
+                 '<td>P-'+(r.pumpId||r.pumpNo)+'</td>' +
+                 '<td>'+inr(ccM)+'</td>' +
+                 '<td>'+inr(ccN)+'</td>' +
+                 '<td>'+inr(phcM)+'</td>' +
+                 '<td>'+inr(phcN)+'</td>' +
+                 '<td>'+inr(phM)+'</td>' +
+                 '<td>'+inr(phN)+'</td>' +
+                 '<td>'+inr(petro)+'</td>' +
+                 '<td>'+inr(deb)+'</td>' +
+                 '<td>'+inr(exp)+'</td>' +
+                 '<td>'+inr(test)+'</td>' +
+                 '<td>'+inr(c1)+'</td>' +
+                 '<td>'+inr(c2)+'</td>' +
+                 '<td>'+inr(sale)+'</td>';
     tb.appendChild(tr);
-    tot.card+=(r.cardAmount||0);tot.ph+=(r.phonePay||0);tot.pc+=(r.petroCard||0);tot.deb+=(r.debit||0);tot.exp+=(r.expenses||0);tot.test+=(r.testing||0);tot.c1+=(r.cash1||0);tot.c2+=(r.cash2||0);tot.sale+=(r.grossSale||0);
+
+    tot.ccM += ccM; tot.ccN += ccN; tot.phcM += phcM; tot.phcN += phcN; tot.phM += phM; tot.phN += phN; tot.pc += petro; tot.deb += deb; tot.exp += exp; tot.test += test; tot.c1 += c1; tot.c2 += c2; tot.sale += sale;
   });
-  if(tot.ph>0){var hlr=document.createElement('tr');hlr.className='tr-hl';hlr.innerHTML='<td colspan="3" style="font-weight:700">PhonePe Total (Pipay)</td><td style="font-weight:700">'+inrZ(tot.ph)+'</td><td colspan="7"></td>';tb.appendChild(hlr);}
+
   var tr2=document.createElement('tr');tr2.className='tr-total';
-  tr2.innerHTML='<td>TOTAL</td><td>\u2013</td><td>'+inrZ(tot.card)+'</td><td>'+inrZ(tot.ph)+'</td><td>'+inrZ(tot.pc)+'</td><td>'+inrZ(tot.deb)+'</td><td>'+inrZ(tot.exp)+'</td><td>'+inrZ(tot.test)+'</td><td>'+inrZ(tot.c1)+'</td><td>'+inrZ(tot.c2)+'</td><td>'+inrZ(tot.sale)+'</td>';
+  tr2.innerHTML='<td>TOTAL</td>' +
+                '<td>\u2013</td>' +
+                '<td>'+inrZ(tot.ccM)+'</td>' +
+                '<td>'+inrZ(tot.ccN)+'</td>' +
+                '<td>'+inrZ(tot.phcM)+'</td>' +
+                '<td>'+inrZ(tot.phcN)+'</td>' +
+                '<td>'+inrZ(tot.phM)+'</td>' +
+                '<td>'+inrZ(tot.phN)+'</td>' +
+                '<td>'+inrZ(tot.pc)+'</td>' +
+                '<td>'+inrZ(tot.deb)+'</td>' +
+                '<td>'+inrZ(tot.exp)+'</td>' +
+                '<td>'+inrZ(tot.test)+'</td>' +
+                '<td>'+inrZ(tot.c1)+'</td>' +
+                '<td>'+inrZ(tot.c2)+'</td>' +
+                '<td>'+inrZ(tot.sale)+'</td>';
   tb.appendChild(tr2);
 
   var tCash = document.getElementById('tCash'); tCash.innerHTML = '';
   var trCash1 = document.createElement('tr');
-  trCash1.innerHTML = '<td>Bank Deposit</td><td>'+inr((d.cash1||{}).total)+'</td>';
+  trCash1.innerHTML = '<td>Bank Deposit</td><td>'+inr((d.cash1||{}).grandTotal||(d.cash1||{}).total)+'</td>';
   tCash.appendChild(trCash1);
   var trCash2 = document.createElement('tr');
-  trCash2.innerHTML = '<td>Cash In Hand</td><td>'+inr((d.cash2||{}).total)+'</td>';
+  trCash2.innerHTML = '<td>Cash In Hand</td><td>'+inr((d.cash2||{}).grandTotal||(d.cash2||{}).total)+'</td>';
   tCash.appendChild(trCash2);
 
-  var ct=document.getElementById('tCred');ct.innerHTML='';var credTot=0;
-  (d.creditors||[]).forEach(function(c){
+  var ct=document.getElementById('tCred');ct.innerHTML='';var credTot=d.creditorsTotal||0;
+  (d.creditorRows||d.creditors||[]).forEach(function(c){
     var tr=document.createElement('tr');if(c.note)tr.className='tr-hl';
-    var nm=c.name+(c.note?' <em style="font-size:8px;opacity:.7">('+c.note+')</em>':'');
+    var nm=(c.debtorName||c.name)+(c.note?' <em style="font-size:8px;opacity:.7">('+c.note+')</em>':'');
     tr.innerHTML='<td>'+nm+'</td><td>'+(c.chequeNo||'\u2013')+'</td><td>'+inr(c.amount)+'</td>';
-    ct.appendChild(tr);credTot+=(c.amount||0);
+    ct.appendChild(tr);
   });
   var ctr=document.createElement('tr');ctr.className='tr-total';
   ctr.innerHTML='<td>TOTAL</td><td>\u2013</td><td>'+inrZ(credTot)+'</td>';ct.appendChild(ctr);
 
   var ft=document.getElementById('tFuel');ft.innerHTML='';
   var badges={'HSD':'<span class="b-hsd">Diesel</span>','MS-I':'<span class="b-ms1">Petrol</span>','MS-II':'<span class="b-hsd">Diesel</span>','CNG':'<span class="b-cng">CNG</span>'};
-  var ftTotL=0,ftTotA=0;
-  (d.fuelSale||[]).forEach(function(f,i){
+  var ftTotL=d.totalFuelLitres||0,ftTotA=d.totalFuelAmount||0;
+  (d.fuelSales||d.fuelSale||[]).forEach(function(f,i){
     var tr=document.createElement('tr');var badge=badges[f.fuelType]||f.fuelType;
     var unit = f.fuelType === 'CNG' ? ' Kg' : ' L';
-    tr.innerHTML='<td>'+(i+1)+'</td><td>'+badge+' \u2014 '+(f.tankLabel||'')+'</td><td>'+parseFloat(f.litres||0).toFixed(4)+unit+'</td><td>'+f.rate+'</td><td>'+inrZ(f.amount)+'</td>';
-    ft.appendChild(tr);ftTotL+=(f.litres||0);ftTotA+=(f.amount||0);
+    tr.innerHTML='<td>'+(i+1)+'</td><td>'+badge+' \u2014 '+(f.description||f.tankLabel||'')+'</td><td>'+parseFloat(f.litres||0).toFixed(4)+unit+'</td><td>'+f.rate+'</td><td>'+inrZ(f.amount)+'</td>';
+    ft.appendChild(tr);
   });
-  if(d.otherCash>0){var oc=document.createElement('tr');oc.innerHTML='<td>\u2013</td><td>Other Cash</td><td>\u2013</td><td>\u2013</td><td>'+inrZ(d.otherCash)+'</td>';ft.appendChild(oc);ftTotA+=d.otherCash;}
-  if(d.cheque>0){var ch=document.createElement('tr');ch.innerHTML='<td>\u2013</td><td>Cheque</td><td>\u2013</td><td>\u2013</td><td>'+inrZ(d.cheque)+'</td>';ft.appendChild(ch);ftTotA+=d.cheque;}
   var ftr2=document.createElement('tr');ftr2.className='tr-total';
   ftr2.innerHTML='<td colspan="2">TOTAL FUEL SALE</td><td>'+parseFloat(ftTotL).toFixed(4)+'</td><td>\u2013</td><td>'+inrZ(ftTotA)+'</td>';ft.appendChild(ftr2);
 
-  // ── Debtor Repayments (inline, below fuel table) ──
-  var sameDayRepayments = getVal(d, 'sameDayRepayments') || [];
+  var sameDayRepayments = d.debtorRepayments || d.sameDayRepayments || [];
   var secRep = document.getElementById('secRepayments');
   var tRep   = document.getElementById('tRepayments');
   if (tRep && sameDayRepayments.length > 0) {
     tRep.innerHTML = '';
     if (secRep) secRep.style.display = 'block';
-    var repTot = 0;
+    var repTot = d.debtorRepaymentsTotal || 0;
     sameDayRepayments.forEach(function(r) {
       var mode = getVal(r, 'paymentMode') || '';
-      var refNo = '';
-      if (mode === 'PhonePe' || mode === 'Credit Card' || mode === 'PineLabs Card' || mode === 'PetroCard' || mode === 'PineLab Card') {
-        refNo = 'TID: ' + (getVal(r, 'cardTid') || '') + ', Batch: ' + (getVal(r, 'cardBatch') || '');
-      } else if (mode === 'Cheque') {
-        refNo = 'Chq: ' + (getVal(r, 'chequeNo') || '');
-      } else if (mode === 'Cash') {
-        var denoms = [];
-        var d500 = getVal(r, 'denom500'); if (d500 > 0) denoms.push('500×' + d500);
-        var d200 = getVal(r, 'denom200'); if (d200 > 0) denoms.push('200×' + d200);
-        var d100 = getVal(r, 'denom100'); if (d100 > 0) denoms.push('100×' + d100);
-        var d50 = getVal(r, 'denom50');   if (d50 > 0)  denoms.push('50×' + d50);
-        var d20 = getVal(r, 'denom20');   if (d20 > 0)  denoms.push('20×' + d20);
-        var d10 = getVal(r, 'denom10');   if (d10 > 0)  denoms.push('10×' + d10);
-        var coins = getVal(r, 'coins');   if (coins > 0) denoms.push('Coins: ' + coins);
-        refNo = denoms.length > 0 ? denoms.join(', ') : 'Cash';
-      }
-      var hint = '';
-      if (mode === 'Cash')          hint = '\u2192 Added to Cash In Hand';
-      else if (mode === 'PhonePe') hint = '\u2192 Added to PhonePe collection';
-      else if (mode === 'PineLabs Card' || mode === 'Credit Card' || mode === 'PineLab Card') hint = '\u2192 Added to PineLabs Card collection';
-      else if (mode === 'PetroCard')     hint = '\u2192 Added to PetroCard collection';
-      else if (mode === 'Bank Transfer') hint = '\u2192 Added to Bank Cash collection';
-      else if (mode === 'Cheque')        hint = '\u2139 Kept for record only (Cheque)';
-      
+      var refNo = getVal(r, 'refNo') || '';
       var tr = document.createElement('tr');
-      tr.innerHTML = '<td style="text-align:left;">' + (getVal(r, 'creditorName') || getVal(r, 'debtorName') || '') + '</td>' +
+      tr.innerHTML = '<td style="text-align:left;">' + (getVal(r, 'debtorName') || getVal(r, 'creditorName') || '') + '</td>' +
                      '<td>' + mode + '</td>' +
                      '<td>' + (refNo || '\u2013') + '</td>' +
                      '<td>' + inr(getVal(r, 'amount')) + '</td>';
       tRep.appendChild(tr);
-      if (hint) {
-        var hintTr = document.createElement('tr');
-        hintTr.className = 'tr-hint';
-        hintTr.innerHTML = '<td colspan="4">' + hint + '</td>';
-        tRep.appendChild(hintTr);
-      }
-      if (mode !== 'Cheque') repTot += (getVal(r, 'amount') || 0);
     });
     var trTot = document.createElement('tr');
     trTot.className = 'tr-total';
@@ -357,22 +359,18 @@ function renderData(){
     if (secRep) secRep.style.display = 'none';
   }
 
+  var tRecon = document.getElementById('tRecon');
+  if (tRecon) {
+    tRecon.innerHTML = '';
+    (d.collectionBreakdown || []).forEach(function(c) {
+      if (c.amount > 0) {
+        var tr = document.createElement('tr');
+        tr.innerHTML = '<td>' + c.category + '</td><td>' + inr(c.amount) + '</td>';
+        tRecon.appendChild(tr);
+      }
+    });
+  }
 
-  document.getElementById('rMsTest').textContent=inr(rec.msTesting);
-  document.getElementById('rHsdTest').textContent=inr(rec.hsdTesting);
-  document.getElementById('rHsdTest2').textContent=inr(rec.hsdTesting2);
-  document.getElementById('rPhonePeM').textContent=inr(rec.phonePeMorning);
-  document.getElementById('rPhonePeN').textContent=inr(rec.phonePeNight);
-  document.getElementById('rPhonePeCardM').textContent=inr(rec.phonePeCardMorning);
-  document.getElementById('rPhonePeCardN').textContent=inr(rec.phonePeCardNight);
-  document.getElementById('rPCard').textContent=inr(rec.petroCard);
-  document.getElementById('rDebit').textContent=inr(rec.debit);
-  document.getElementById('rCCardM').textContent=inr(rec.creditCardMorning);
-  document.getElementById('rCCardN').textContent=inr(rec.creditCardNight);
-  document.getElementById('rBank').textContent=inr(rec.bankCash);
-  document.getElementById('rHand').textContent=inr(rec.cashInHand);
-  document.getElementById('rExp').textContent=inr(rec.expenses);
-  document.getElementById('rTotalDsmShort').textContent=inrZ(rec.totalDsmShort);
   document.getElementById('rTotal').textContent=inrZ(recTotal);
   document.getElementById('rGross').textContent=inrZ(grossFuel);
   var dCell=document.getElementById('rDiff');
@@ -380,16 +378,15 @@ function renderData(){
   else if(diff>0){dCell.textContent='\u26A0  SHORT \u2014 Difference: '+inrZ(diff);dCell.className='diff-bad';}
   else{dCell.textContent='\u26A0  EXCESS \u2014 Difference: '+inrZ(Math.abs(diff));dCell.className='diff-bad';}
 
-  var et=document.getElementById('tExp');et.innerHTML='';var expTot=0;
-  (d.expenses||[]).forEach(function(e){
+  var et=document.getElementById('tExp');et.innerHTML='';var expTot=d.expensesTotal||0;
+  (d.expenseRows||d.expenses||[]).forEach(function(e){
     var tr=document.createElement('tr');
-    tr.innerHTML='<td>'+e.dsmName+'</td><td>'+e.description+'</td><td>'+inr(e.amount)+'</td>';
-    et.appendChild(tr);expTot+=(e.amount||0);
+    tr.innerHTML='<td>'+(e.dsmName||'')+'</td><td>'+(e.description||'')+'</td><td>'+inr(e.amount)+'</td>';
+    et.appendChild(tr);
   });
   var etr=document.createElement('tr');etr.className='tr-total';
   etr.innerHTML='<td colspan="2">Total Expenses</td><td>'+inrZ(expTot)+'</td>';et.appendChild(etr);
 
-  // getVal helper for case-insensitive JSON key lookup
   function getVal(obj, key) {
     if (!obj) return undefined;
     var lowerKey = key.toLowerCase();
@@ -419,8 +416,23 @@ function renderData(){
       card.appendChild(header);
       
       var tankInfo = document.createElement('div');
-      tankInfo.style.cssText = 'display: flex; justify-content: space-between; margin-top: 6px; font-size: 10px; font-weight: bold; border-bottom: 1px solid #ddd; padding-bottom: 4px;';
-      tankInfo.innerHTML = '<span>Dip: ' + dip + ' mm</span><span>Stock: ' + parseFloat(stock).toFixed(2) + ' L</span>';
+      tankInfo.style.cssText = 'margin-top: 6px; font-size: 9px; border-bottom: 1px solid #ddd; padding-bottom: 4px;';
+      
+      var opening = getVal(g, 'openingStock') || 0;
+      var sales = getVal(g, 'fuelDispensed') || 0;
+      var testing = getVal(g, 'testingLitres') || 0;
+      var receipts = getVal(g, 'receipts') || 0;
+      var calculated = getVal(g, 'calculatedStock') || 0;
+
+      tankInfo.innerHTML = 
+        '<table style="width:100%; border-collapse:collapse; font-size:9.5px; line-height:1.2; margin-bottom: 4px;">' +
+        '<tr><td style="color:#555; padding:1px 0;">Opening Stock:</td><td style="text-align:right; font-weight:500; padding:1px 0;">' + parseFloat(opening).toFixed(1) + ' L</td></tr>' +
+        '<tr><td style="color:#555; padding:1px 0;">Nozzle Sales:</td><td style="text-align:right; font-weight:500; padding:1px 0;">-' + parseFloat(sales).toFixed(1) + ' L</td></tr>' +
+        '<tr><td style="color:#555; padding:1px 0;">Testing:</td><td style="text-align:right; font-weight:500; padding:1px 0;">+' + parseFloat(testing).toFixed(1) + ' L</td></tr>' +
+        '<tr><td style="color:#555; padding:1px 0;">Receipts:</td><td style="text-align:right; font-weight:500; padding:1px 0;">+' + parseFloat(receipts).toFixed(1) + ' L</td></tr>' +
+        '<tr style="border-top:1px dashed #ccc; font-weight:bold; color:#16211C;"><td style="padding:2px 0 1px 0;">Calculated:</td><td style="text-align:right; padding:2px 0 1px 0;">' + parseFloat(calculated).toFixed(1) + ' L</td></tr>' +
+        '<tr style="font-weight:bold; color:#0B6E4F;"><td style="padding:1px 0;">Actual Stock:</td><td style="text-align:right; padding:1px 0;">' + parseFloat(stock).toFixed(1) + ' L (' + dip + ' mm)</td></tr>' +
+        '</table>';
       card.appendChild(tankInfo);
       
       var table = document.createElement('table');

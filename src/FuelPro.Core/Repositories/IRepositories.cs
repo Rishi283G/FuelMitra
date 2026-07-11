@@ -144,6 +144,7 @@ public interface IAgsImportRepository
     Task<Result<AgsDailySummary>> SaveDailySummaryAsync(AgsDailySummary summary);
     Task<Result<AgsDailySummary?>> GetDailySummaryAsync(DateTime date);
     Task<Result<List<AgsShiftImport>>> GetImportHistoryAsync(int count = 30);
+    Task<Result<List<AgsShiftImport>>> GetActiveImportsFromDateAsync(DateTime startDate);
 }
 
 public interface IPumpExpenseRepository

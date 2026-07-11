@@ -52,30 +52,17 @@ public class AgsDailyAggregationService : IAgsDailyAggregationService
             .Where(r => GetFuelTypeSafe(r.PumpNumber, r.NozzleNumber, date) == "MS-II")
             .Sum(r => r.NetSaleLitres);
 
-        // Tank stock: Shift A opening → Shift B closing
+        // Tank stock: Shift B opening (starts 8:00 AM) → Shift A closing (ends 8:00 AM next day)
         var shiftA = active.FirstOrDefault(s => s.ShiftType == "A");
         var shiftB = active.FirstOrDefault(s => s.ShiftType == "B");
 
-        if (shiftA != null)
-        {
-            summary.HsdDayOpeningStock  = shiftA.HsdOpeningStock;
-            summary.MsIDayOpeningStock  = shiftA.MsIOpeningStock;
-            summary.MsIIDayOpeningStock = shiftA.MsIIOpeningStock;
-        }
-        if (shiftB != null)
-        {
-            summary.HsdDayClosingStock  = shiftB.HsdClosingStock;
-            summary.MsIDayClosingStock  = shiftB.MsIClosingStock;
-            summary.MsIIDayClosingStock = shiftB.MsIIClosingStock;
-        }
-        else if (active.Any())
-        {
-            // Use the last available shift's closing stock as best approximation
-            var lastShift = active.OrderByDescending(s => s.ShiftType).First();
-            summary.HsdDayClosingStock  = lastShift.HsdClosingStock;
-            summary.MsIDayClosingStock  = lastShift.MsIClosingStock;
-            summary.MsIIDayClosingStock = lastShift.MsIIClosingStock;
-        }
+        summary.HsdDayOpeningStock  = shiftB?.HsdOpeningStock ?? shiftA?.HsdOpeningStock ?? 0;
+        summary.MsIDayOpeningStock  = shiftB?.MsIOpeningStock ?? shiftA?.MsIOpeningStock ?? 0;
+        summary.MsIIDayOpeningStock = shiftB?.MsIIOpeningStock ?? shiftA?.MsIIOpeningStock ?? 0;
+
+        summary.HsdDayClosingStock  = shiftA?.HsdClosingStock ?? shiftB?.HsdClosingStock ?? 0;
+        summary.MsIDayClosingStock  = shiftA?.MsIClosingStock ?? shiftB?.MsIClosingStock ?? 0;
+        summary.MsIIDayClosingStock = shiftA?.MsIIClosingStock ?? shiftB?.MsIIClosingStock ?? 0;
 
         // Per-shift breakdown JSON
         var breakdown = new Dictionary<string, object>();

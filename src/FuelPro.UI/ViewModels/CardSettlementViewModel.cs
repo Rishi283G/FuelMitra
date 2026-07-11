@@ -24,6 +24,7 @@ public partial class CardSettlementItem : ObservableObject
     public string DsmName { get; set; } = string.Empty;
     public double Amount { get; set; }
     public string ShiftLabel { get; set; } = string.Empty; // "Morning", "Day", "Night"
+    public string SlotDisplaySubtitle { get; set; } = string.Empty;
     
     [ObservableProperty] private string? _tid;
     [ObservableProperty] private string? _batch;
@@ -48,6 +49,7 @@ public partial class CardSettlementViewModel : ObservableObject
     [ObservableProperty] private bool _hasData;
     [ObservableProperty] private string _statusMessage = "";
     [ObservableProperty] private bool _isShiftLocked;
+    [ObservableProperty] private BusinessDayTidSheet? _currentTidSheet;
     
     [ObservableProperty] private double _cardTotal;
     [ObservableProperty] private double _phonePeTotal;
@@ -70,7 +72,19 @@ public partial class CardSettlementViewModel : ObservableObject
         _printService = App.Services.GetRequiredService<PrintService>();
         _tidService = App.Services.GetRequiredService<ITidCalculationService>();
 
+        DsmEntryService.DsmEntryChanged += OnDsmEntryChanged;
+
         _ = LoadShiftDataAsync();
+    }
+
+    private void OnDsmEntryChanged()
+    {
+        App.Current?.Dispatcher?.InvokeAsync(async () => await LoadShiftDataAsync());
+    }
+
+    ~CardSettlementViewModel()
+    {
+        DsmEntryService.DsmEntryChanged -= OnDsmEntryChanged;
     }
 
     partial void OnSelectedDateChanged(DateTime value) => _ = LoadShiftDataAsync();
@@ -93,15 +107,15 @@ public partial class CardSettlementViewModel : ObservableObject
 
         try
         {
-            // 1. Morning: yesterday Shift B
+            // 1. Morning: yesterday Shift A
             var prevDate = SelectedDate.Date.AddDays(-1);
-            var morningShiftRes = await _shiftRepo.GetShiftAsync(prevDate, "B");
+            var morningShiftRes = await _shiftRepo.GetShiftAsync(prevDate, "A");
             
-            // 2. Day: today Shift A
-            var dayShiftRes = await _shiftRepo.GetShiftAsync(SelectedDate.Date, "A");
+            // 2. Day: today Shift B
+            var dayShiftRes = await _shiftRepo.GetShiftAsync(SelectedDate.Date, "B");
             
-            // 3. Night: today Shift B
-            var nightShiftRes = await _shiftRepo.GetShiftAsync(SelectedDate.Date, "B");
+            // 3. Night: today Shift A
+            var nightShiftRes = await _shiftRepo.GetShiftAsync(SelectedDate.Date, "A");
 
             var slotsToLoad = new List<(Shift shift, CardSettlementSlot slot, string label)>();
             if (morningShiftRes.Success && morningShiftRes.Data != null)
@@ -121,6 +135,7 @@ public partial class CardSettlementViewModel : ObservableObject
             IsShiftLocked = slotsToLoad.Any(s => s.shift.IsLocked);
 
             var tidSheet = await _tidService.GetTidSheetAsync(SelectedDate);
+            CurrentTidSheet = tidSheet;
 
             // 1. Credit Cards
             foreach (var item in tidSheet.CardPayments)
@@ -134,7 +149,8 @@ public partial class CardSettlementViewModel : ObservableObject
                     Batch = item.Batch,
                     ShiftLabel = item.ShiftLabel,
                     PaymentCollection = item.PaymentCollection,
-                    Slot = ParseSlot(item.Slot)
+                    Slot = ParseSlot(item.Slot),
+                    SlotDisplaySubtitle = item.SlotDisplaySubtitle
                 });
             }
 
@@ -150,7 +166,8 @@ public partial class CardSettlementViewModel : ObservableObject
                     Batch = item.Batch,
                     ShiftLabel = item.ShiftLabel,
                     PaymentCollection = item.PaymentCollection,
-                    Slot = ParseSlot(item.Slot)
+                    Slot = ParseSlot(item.Slot),
+                    SlotDisplaySubtitle = item.SlotDisplaySubtitle
                 });
             }
 
@@ -166,7 +183,8 @@ public partial class CardSettlementViewModel : ObservableObject
                     Batch = item.Batch,
                     ShiftLabel = item.ShiftLabel,
                     PaymentCollection = item.PaymentCollection,
-                    Slot = ParseSlot(item.Slot)
+                    Slot = ParseSlot(item.Slot),
+                    SlotDisplaySubtitle = item.SlotDisplaySubtitle
                 });
             }
 
@@ -218,174 +236,17 @@ public partial class CardSettlementViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task SaveAsync()
-    {
-        if (IsShiftLocked)
-        {
-            MessageBox.Show("Shifts are locked. Changes cannot be saved.", "Shift Locked", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-
-        try
-        {
-            // Gather unique payment collections
-            var uniqueCollections = CardPayments.Select(x => x.PaymentCollection)
-                .Concat(PhonePePayments.Select(x => x.PaymentCollection))
-                .Concat(PetroCardPayments.Select(x => x.PaymentCollection))
-                .GroupBy(x => x.PaymentId)
-                .Select(g => g.First())
-                .ToList();
-
-            foreach (var item in CardPayments)
-            {
-                var pc = item.PaymentCollection;
-                if (item.Slot == CardSettlementSlot.Morning || item.Slot == CardSettlementSlot.Day)
-                {
-                    pc.CreditCardTidMorning = item.Tid;
-                    pc.CreditCardBatchMorning = item.Batch;
-                    pc.CardTid = item.Tid;
-                    pc.CardBatch = item.Batch;
-                }
-                else if (item.Slot == CardSettlementSlot.Night)
-                {
-                    pc.CreditCardTidNight = item.Tid;
-                    pc.CreditCardBatchNight = item.Batch;
-                    pc.CardTid = item.Tid;
-                    pc.CardBatch = item.Batch;
-                }
-            }
-
-            foreach (var item in PhonePePayments)
-            {
-                var pc = item.PaymentCollection;
-                if (item.Slot == CardSettlementSlot.Morning || item.Slot == CardSettlementSlot.Day)
-                {
-                    pc.PhonePeTidMorning = item.Tid;
-                    pc.PhonePeBatchMorning = item.Batch;
-                    pc.PhonePeTid = item.Tid;
-                    pc.PhonePeBatch = item.Batch;
-                }
-                else if (item.Slot == CardSettlementSlot.Night)
-                {
-                    pc.PhonePeTidNight = item.Tid;
-                    pc.PhonePeBatchNight = item.Batch;
-                    pc.PhonePeTid = item.Tid;
-                    pc.PhonePeBatch = item.Batch;
-                }
-            }
-
-            foreach (var item in PetroCardPayments)
-            {
-                var pc = item.PaymentCollection;
-                if (item.Slot == CardSettlementSlot.Morning || item.Slot == CardSettlementSlot.Day)
-                {
-                    pc.PetroCardTidMorning = item.Tid;
-                    pc.PetroCardBatchMorning = item.Batch;
-                    pc.PetroCardTid = item.Tid;
-                    pc.PetroCardBatch = item.Batch;
-                }
-                else if (item.Slot == CardSettlementSlot.Night)
-                {
-                    pc.PetroCardTidNight = item.Tid;
-                    pc.PetroCardBatchNight = item.Batch;
-                    pc.PetroCardTid = item.Tid;
-                    pc.PetroCardBatch = item.Batch;
-                }
-            }
-
-            foreach (var pc in uniqueCollections)
-            {
-                var saveResult = await _paymentRepo.SavePaymentAsync(pc);
-                if (!saveResult.Success)
-                {
-                    MessageBox.Show($"Failed to save payments: {saveResult.Error}", "Save Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                    return;
-                }
-            }
-
-            MessageBox.Show("Card & digital settlement saved successfully.", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
-            await LoadShiftDataAsync();
-        }
-        catch (Exception ex)
-        {
-            _logger.Error(ex, "Failed to save card settlement");
-            MessageBox.Show($"Failed to save card settlement: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-    }
-
-    [RelayCommand]
-    private void Print()
-    {
-        if (_currentShift == null) return;
-
-        double phonePeMorning = PhonePePayments.Where(p => p.ShiftLabel == "Morning").Sum(p => p.Amount);
-        double phonePeDay = PhonePePayments.Where(p => p.ShiftLabel == "Day").Sum(p => p.Amount);
-        double phonePeNight = PhonePePayments.Where(p => p.ShiftLabel == "Night").Sum(p => p.Amount);
-
-        double cardMorning = CardPayments.Where(c => c.ShiftLabel == "Morning").Sum(c => c.Amount);
-        double cardDay = CardPayments.Where(c => c.ShiftLabel == "Day").Sum(c => c.Amount);
-        double cardNight = CardPayments.Where(c => c.ShiftLabel == "Night").Sum(c => c.Amount);
-
-        double petroNight = PetroCardPayments.Where(p => p.ShiftLabel == "Night").Sum(p => p.Amount);
-        double petroDay = PetroCardPayments.Where(p => p.ShiftLabel == "Day").Sum(p => p.Amount);
-
-        var payload = new
-        {
-            Date = SelectedDate.ToString("dd/MM/yyyy"),
-            CardTotal = CardTotal,
-            PhonePeTotal = PhonePeTotal,
-            PetroCardTotal = PetroCardTotal,
-            GrandTotal = CardTotal + PhonePeTotal + PetroCardTotal,
-            Cards = CardPayments.Select(c => new { c.Tid, c.Batch, c.Amount }).ToList(),
-            PhonePeSummary = new { Morning = phonePeMorning, Day = phonePeDay, Night = phonePeNight, Total = PhonePeTotal },
-            CardSummary = new { Morning = cardMorning, Day = cardDay, Night = cardNight, Total = CardTotal },
-            PetroSummary = new { Night = petroNight, Day = petroDay, Total = PetroCardTotal }
-        };
-
-        _printService.PrintCardSettlement(payload);
-    }
-
-    [RelayCommand]
     private async Task ExportExcelAsync()
     {
         try
         {
             var exportService = App.Services.GetRequiredService<FuelPro.Core.Services.ExcelExportService>();
-            var summaryCards = new List<FuelPro.Core.DTOs.GenericGridPrintCard>
-            {
-                new() { Label = "Total PineLabs Card", Value = "₹" + CardTotal.ToString("N2"), Highlight = false },
-                new() { Label = "Total PhonePe", Value = "₹" + PhonePeTotal.ToString("N2"), Highlight = false },
-                new() { Label = "Total Petro Card", Value = "₹" + PetroCardTotal.ToString("N2"), Highlight = false },
-                new() { Label = "Grand Total Digital", Value = "₹" + (CardTotal + PhonePeTotal + PetroCardTotal).ToString("N2"), Highlight = true }
-            };
+            var settingsRepo = App.Services.GetRequiredService<ISettingsRepository>();
+            var sResult = await settingsRepo.GetSettingsAsync();
+            var stationName = sResult.Success && sResult.Data != null ? sResult.Data.PumpStationName : "PyroSync";
 
-            var headers = new List<string> { "Payment Type", "Index", "DSM Name", "TID", "Batch No.", "Amount (₹)" };
-            var rows = new List<List<string>>();
-
-            foreach (var c in CardPayments)
-            {
-                rows.Add(new List<string> { "PineLabs Card", c.RomanIndex, c.DsmName, c.Tid ?? "—", c.Batch ?? "—", "₹" + c.Amount.ToString("N2") });
-            }
-            foreach (var p in PhonePePayments)
-            {
-                rows.Add(new List<string> { "PhonePe", p.RomanIndex, p.DsmName, p.Tid ?? "—", p.Batch ?? "—", "₹" + p.Amount.ToString("N2") });
-            }
-            foreach (var pc in PetroCardPayments)
-            {
-                rows.Add(new List<string> { "Petro Card", pc.RomanIndex, pc.DsmName, pc.Tid ?? "—", pc.Batch ?? "—", "₹" + pc.Amount.ToString("N2") });
-            }
-
-            var printData = new FuelPro.Core.DTOs.GenericGridPrintData
-            {
-                Title = "Card & Digital Settlement Report",
-                Subtitle = $"Date: {SelectedDate:dd-MMM-yyyy}  |  Morning/Day/Night Settlement",
-                SummaryCards = summaryCards,
-                Headers = headers,
-                Rows = rows,
-                ShowSignatures = true
-            };
-
-            var path = await exportService.ExportGenericGridAsync(printData, "CardSettlement");
+            if (CurrentTidSheet == null) return;
+            var path = await exportService.ExportTidSheetAsync(CurrentTidSheet, stationName);
             MessageBox.Show($"Report exported successfully to:\n{path}", "Export Success", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)
@@ -393,6 +254,13 @@ public partial class CardSettlementViewModel : ObservableObject
             _logger.Error(ex, "Failed to export card settlement to Excel");
             MessageBox.Show($"Export failed: {ex.Message}", "Export Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
+    }
+
+    [RelayCommand]
+    private void Print()
+    {
+        if (CurrentTidSheet == null) return;
+        _printService.PrintCardSettlement(CurrentTidSheet);
     }
 
     private static string ToRoman(int number)

@@ -220,22 +220,7 @@
                         <materialDesign:PackIcon Kind="CreditCardCheck" Width="28" Height="28"/>
                     </Button>
 
-                    <!-- Pump Expenses -->
-                    <Button Command="{Binding NavigateToPumpExpensesCommand}" ToolTip="Pump Expenses" Margin="0,4">
-                        <Button.Style>
-                            <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
-                                <Setter Property="Foreground" Value="White" />
-                                <Setter Property="Opacity" Value="0.5" />
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding SelectedNavIndex}" Value="8">
-                                        <Setter Property="Opacity" Value="1" />
-                                        <Setter Property="Background" Value="#33FFFFFF" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Button.Style>
-                        <materialDesign:PackIcon Kind="CurrencyInr" Width="28" Height="28"/>
-                    </Button>
+
 
                     <!-- AGS Import -->
                     <Button Command="{Binding NavigateToAgsImportCommand}" ToolTip="AGS Import" Margin="0,4">

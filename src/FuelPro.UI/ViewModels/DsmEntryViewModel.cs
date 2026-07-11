@@ -129,7 +129,9 @@ public partial class TestingRow : ObservableObject
 {
     public Action? OnRowChanged { get; set; }
 
+    [ObservableProperty] private int _nozzleNumber;
     [ObservableProperty] private string _fuelType = "";
+    [ObservableProperty] private string _tankName = "";
     [ObservableProperty] private double? _litres;
     [ObservableProperty] private double? _rate;
     [ObservableProperty] private double _amount;
@@ -170,13 +172,17 @@ public partial class CashDenomRow : ObservableObject
 
     private void RecalcTotal()
     {
-        var sum = (Denom500 ?? 0) * 500.0 + (Denom200 ?? 0) * 200.0 + (Denom100 ?? 0) * 100.0
-            + (Denom50 ?? 0) * 50.0 + (Denom20 ?? 0) * 20.0 + (Denom10 ?? 0) * 10.0 + (Coins ?? 0);
-        
-        if (sum > 0)
+        double sum;
+        if (CashType == "Cash1")
         {
-            TotalAmount = sum;
+            sum = (Denom500 ?? 0) * 500.0 + (Denom200 ?? 0) * 200.0 + (Denom100 ?? 0) * 100.0;
         }
+        else
+        {
+            sum = (Denom500 ?? 0) * 500.0 + (Denom200 ?? 0) * 200.0 + (Denom100 ?? 0) * 100.0
+                + (Denom50 ?? 0) * 50.0 + (Denom20 ?? 0) * 20.0 + (Denom10 ?? 0) * 10.0 + (Coins ?? 0);
+        }
+        TotalAmount = sum;
     }
 }
 
@@ -360,8 +366,20 @@ public partial class DsmEntryViewModel : ObservableObject
         if (!_isEditing) LoadNozzlesForPump();
     }
 
+    public bool IsNightShift => SelectedShift == "A";
+    public bool IsDayShift => SelectedShift == "B";
+
+    public string MorningLabel => IsDayShift ? "Day (8am - 8pm) (₹)" : "Morning (12am - 8am) (₹)";
+    public string MorningTidLabel => IsDayShift ? "Day TID" : "Morning TID";
+    public string MorningBatchLabel => IsDayShift ? "Day Batch" : "Morning Batch";
+
     partial void OnSelectedShiftChanged(string value)
     {
+        OnPropertyChanged(nameof(IsNightShift));
+        OnPropertyChanged(nameof(IsDayShift));
+        OnPropertyChanged(nameof(MorningLabel));
+        OnPropertyChanged(nameof(MorningTidLabel));
+        OnPropertyChanged(nameof(MorningBatchLabel));
         if (!_isEditing) LoadNozzlesForPump();
     }
     partial void OnDsmNameChanged(string value) => _ = RefreshConnectedPumpGrossSalesAsync();
@@ -420,8 +438,11 @@ public partial class DsmEntryViewModel : ObservableObject
             .ToDictionary(r => r.NozzleNumber, r => r);
 
         var previousShiftType = GetPreviousShiftType(SelectedShift);
+        // Operationally: Shift B (Day) predecessor is yesterday's Shift A (Night)
+        //                Shift A (Night) predecessor is same day's Shift B (Day)
+        DateTime previousShiftDate = SelectedShift == "B" ? SelectedDate.AddDays(-1) : SelectedDate;
         var previousShiftImport = previousShiftType != null
-            ? await GetShiftImportAsync(SelectedDate, previousShiftType)
+            ? await GetShiftImportAsync(previousShiftDate, previousShiftType)
             : null;
         var previousAgsClosings = previousShiftImport?.NozzleReadings
             .ToDictionary(r => r.NozzleNumber, r => r.ClosingReading)
@@ -626,7 +647,8 @@ public partial class DsmEntryViewModel : ObservableObject
         var normalized = (shiftType ?? string.Empty).Trim().ToUpperInvariant();
         return normalized switch
         {
-            "B" => "A",
+            "A" => "B",   // Night/Morning predecessor is Day shift (same calendar date)
+            "B" => "A",   // Day predecessor is Night/Morning shift (previous calendar date, handled by caller)
             "C" => "B",
             _ => null
         };
@@ -642,40 +664,15 @@ public partial class DsmEntryViewModel : ObservableObject
     private void RebuildTestingRows(double hsdRate, double msIRate, double msIIRate, double cngRate)
     {
         TestingRows.Clear();
-
-        var defaultMsRate = NozzleReadings.FirstOrDefault(n => n.FuelType.StartsWith("MS"))?.Rate
-            ?? (NozzleReadings.Any(n => n.FuelType == "MS-II") ? msIIRate : msIRate);
-
-        TestingRows.Add(new TestingRow
+        foreach (var nozzle in NozzleReadings)
         {
-            FuelType = "MS",
-            Rate = defaultMsRate,
-            OnRowChanged = RecalculateAll
-        });
-
-        TestingRows.Add(new TestingRow
-        {
-            FuelType = "HSD",
-            Rate = NozzleReadings.FirstOrDefault(n => n.FuelType == "HSD")?.Rate ?? hsdRate,
-            OnRowChanged = RecalculateAll
-        });
-
-        if (NozzleReadings.Any(n => n.FuelType == "MS-II"))
-        {
+            var tank = FuelPro.Core.Common.PumpConfiguration.GetTankName(SelectedPump?.PumpId ?? 1, nozzle.NozzleNumber, SelectedDate);
             TestingRows.Add(new TestingRow
             {
-                FuelType = "HSD-II",
-                Rate = NozzleReadings.FirstOrDefault(n => n.FuelType == "MS-II")?.Rate ?? msIIRate,
-                OnRowChanged = RecalculateAll
-            });
-        }
-
-        if (NozzleReadings.Any(n => n.FuelType == "CNG"))
-        {
-            TestingRows.Add(new TestingRow
-            {
-                FuelType = "CNG",
-                Rate = NozzleReadings.FirstOrDefault(n => n.FuelType == "CNG")?.Rate ?? cngRate,
+                NozzleNumber = nozzle.NozzleNumber,
+                FuelType = $"Nozzle {nozzle.NozzleNumber} ({nozzle.FuelTypeLabel})",
+                TankName = tank,
+                Rate = nozzle.Rate,
                 OnRowChanged = RecalculateAll
             });
         }
@@ -685,10 +682,10 @@ public partial class DsmEntryViewModel : ObservableObject
     private List<TestingEntry> BuildTestingModels()
     {
         return TestingRows
-            .Where(t => t.Amount > 0)
+            .Where(t => (t.Litres ?? 0) > 0)
             .Select(t => new TestingEntry
             {
-                FuelType = t.FuelType,
+                FuelType = t.NozzleNumber.ToString(),
                 Litres = t.Litres ?? 0,
                 Rate = t.Rate ?? 0,
                 Amount = t.Amount
@@ -748,33 +745,33 @@ public partial class DsmEntryViewModel : ObservableObject
             var payment = new PaymentCollection
             {
                 PhonePeCardMorning = PhonePeCardMorning ?? 0,
-                PhonePeCardNight = PhonePeCardNight ?? 0,
+                PhonePeCardNight = SelectedShift == "B" ? 0 : (PhonePeCardNight ?? 0),
                 PhonePeMorning = PhonePeMorning ?? 0,
-                PhonePeNight = PhonePeNight ?? 0,
+                PhonePeNight = SelectedShift == "B" ? 0 : (PhonePeNight ?? 0),
                 CreditCardMorning = CreditCardMorning ?? 0,
-                CreditCardNight = CreditCardNight ?? 0,
+                CreditCardNight = SelectedShift == "B" ? 0 : (CreditCardNight ?? 0),
                 PetroCardMorning = PetroCardMorning ?? 0,
-                PetroCardNight = PetroCardNight ?? 0,
+                PetroCardNight = SelectedShift == "B" ? 0 : (PetroCardNight ?? 0),
                 Others = Others ?? 0,
                 CashDeposit = CashDeposit ?? 0,
-                CardTid = SelectedShift == "A" ? CreditCardTidMorning : CreditCardTidNight,
-                CardBatch = SelectedShift == "A" ? CreditCardBatchMorning : CreditCardBatchNight,
-                PhonePeTid = SelectedShift == "A" ? PhonePeTidMorning : PhonePeTidNight,
-                PhonePeBatch = SelectedShift == "A" ? PhonePeBatchMorning : PhonePeBatchNight,
-                PetroCardTid = SelectedShift == "A" ? PetroCardTidMorning : PetroCardTidNight,
-                PetroCardBatch = SelectedShift == "A" ? PetroCardBatchMorning : PetroCardBatchNight,
+                CardTid = SelectedShift == "B" ? CreditCardTidMorning : CreditCardTidNight,
+                CardBatch = SelectedShift == "B" ? CreditCardBatchMorning : CreditCardBatchNight,
+                PhonePeTid = SelectedShift == "B" ? PhonePeTidMorning : PhonePeTidNight,
+                PhonePeBatch = SelectedShift == "B" ? PhonePeBatchMorning : PhonePeBatchNight,
+                PetroCardTid = SelectedShift == "B" ? PetroCardTidMorning : PetroCardTidNight,
+                PetroCardBatch = SelectedShift == "B" ? PetroCardBatchMorning : PetroCardBatchNight,
                 PhonePeTidMorning = PhonePeTidMorning,
                 PhonePeBatchMorning = PhonePeBatchMorning,
-                PhonePeTidNight = PhonePeTidNight,
-                PhonePeBatchNight = PhonePeBatchNight,
+                PhonePeTidNight = SelectedShift == "B" ? null : PhonePeTidNight,
+                PhonePeBatchNight = SelectedShift == "B" ? null : PhonePeBatchNight,
                 CreditCardTidMorning = CreditCardTidMorning,
                 CreditCardBatchMorning = CreditCardBatchMorning,
-                CreditCardTidNight = CreditCardTidNight,
-                CreditCardBatchNight = CreditCardBatchNight,
+                CreditCardTidNight = SelectedShift == "B" ? null : CreditCardTidNight,
+                CreditCardBatchNight = SelectedShift == "B" ? null : CreditCardBatchNight,
                 PetroCardTidMorning = PetroCardTidMorning,
                 PetroCardBatchMorning = PetroCardBatchMorning,
-                PetroCardTidNight = PetroCardTidNight,
-                PetroCardBatchNight = PetroCardBatchNight
+                PetroCardTidNight = SelectedShift == "B" ? null : PetroCardTidNight,
+                PetroCardBatchNight = SelectedShift == "B" ? null : PetroCardBatchNight
             };
 
             var debitModels = Debits.Where(d => !string.IsNullOrWhiteSpace(d.DebtorName))
@@ -852,6 +849,7 @@ public partial class DsmEntryViewModel : ObservableObject
         TestingRows.Clear();
         Debits.Clear();
         Expenses.Clear();
+        NozzleReadings.Clear();
         Cash1 = new CashDenomRow { CashType = "Cash1", OnTotalChanged = RecalculateAll };
         Cash2 = new CashDenomRow { CashType = "Cash2", OnTotalChanged = RecalculateAll };
         LoadNozzlesForPump();
@@ -1013,34 +1011,43 @@ public partial class DsmEntryViewModel : ObservableObject
             // Populate testing rows
             TestingRows.Clear();
             var (hsdRate, msIRate, msIIRate, cngRate) = await _dsmService.GetCurrentRatesAsync();
+            RebuildTestingRows(hsdRate, msIRate, msIIRate, cngRate);
+
             foreach (var testEntry in entry.TestingEntries)
             {
-                TestingRows.Add(new TestingRow
+                int? nozzleNum = int.TryParse(testEntry.FuelType, out var num) ? num : (int?)null;
+                TestingRow? match = null;
+                if (nozzleNum.HasValue)
                 {
-                    FuelType = testEntry.FuelType,
-                    Litres = testEntry.Litres,
-                    Rate = testEntry.Rate,
-                    OnRowChanged = RecalculateAll
-                });
-            }
-            // Ensure MS and HSD testing rows exist even if not saved
-            if (!TestingRows.Any(t => t.FuelType == "MS"))
-            {
-                var defaultMsRate = NozzleReadings.FirstOrDefault(n => n.FuelType.StartsWith("MS"))?.Rate
-                    ?? (NozzleReadings.Any(n => n.FuelType == "MS-II") ? msIIRate : msIRate);
-                TestingRows.Insert(0, new TestingRow { FuelType = "MS", Rate = defaultMsRate, OnRowChanged = RecalculateAll });
-            }
-            if (!TestingRows.Any(t => t.FuelType == "HSD"))
-            {
-                TestingRows.Add(new TestingRow { FuelType = "HSD", Rate = NozzleReadings.FirstOrDefault(n => n.FuelType == "HSD")?.Rate ?? hsdRate, OnRowChanged = RecalculateAll });
-            }
-            if (NozzleReadings.Any(n => n.FuelType == "MS-II") && !TestingRows.Any(t => t.FuelType == "HSD-II"))
-            {
-                TestingRows.Add(new TestingRow { FuelType = "HSD-II", Rate = NozzleReadings.FirstOrDefault(n => n.FuelType == "MS-II")?.Rate ?? msIIRate, OnRowChanged = RecalculateAll });
-            }
-            if (NozzleReadings.Any(n => n.FuelType == "CNG") && !TestingRows.Any(t => t.FuelType == "CNG"))
-            {
-                TestingRows.Add(new TestingRow { FuelType = "CNG", Rate = NozzleReadings.FirstOrDefault(n => n.FuelType == "CNG")?.Rate ?? cngRate, OnRowChanged = RecalculateAll });
+                    match = TestingRows.FirstOrDefault(t => t.NozzleNumber == nozzleNum.Value);
+                }
+                else
+                {
+                    // Legacy fallback mapping
+                    string canonicalFuel = testEntry.FuelType;
+                    if (canonicalFuel == "MS")
+                    {
+                        match = TestingRows.FirstOrDefault(t => t.FuelType.Contains("MS-I") || t.FuelType.Contains("MS"));
+                    }
+                    else if (canonicalFuel == "HSD")
+                    {
+                        match = TestingRows.FirstOrDefault(t => t.FuelType.Contains("HSD") && !t.FuelType.Contains("HSD-II"));
+                    }
+                    else if (canonicalFuel == "HSD-II")
+                    {
+                        match = TestingRows.FirstOrDefault(t => t.FuelType.Contains("MS-II") || t.FuelType.Contains("HSD-II"));
+                    }
+                    else if (canonicalFuel == "CNG")
+                    {
+                        match = TestingRows.FirstOrDefault(t => t.FuelType.Contains("CNG"));
+                    }
+                }
+
+                if (match != null)
+                {
+                    match.Litres = testEntry.Litres;
+                    match.Rate = testEntry.Rate;
+                }
             }
 
             // Populate cash denominations

@@ -80,21 +80,18 @@
                                         <DataGrid.Columns>
                                             <DataGridTextColumn Header="No" Binding="{Binding RomanIndex}" IsReadOnly="True" Width="60"/>
                                             <DataGridTextColumn Header="Salesperson (DSM)" Binding="{Binding DsmName}" IsReadOnly="True" Width="200"/>
-                                            <DataGridTextColumn Header="Slot" Binding="{Binding Slot}" IsReadOnly="True" Width="100"/>
-                                            <DataGridTemplateColumn Header="TID" Width="150">
+                                            <DataGridTemplateColumn Header="Slot" Width="180">
                                                 <DataGridTemplateColumn.CellTemplate>
                                                     <DataTemplate>
-                                                        <TextBox Text="{Binding Tid, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource MaterialDesignDataGridTextColumnEditingStyle}"/>
+                                                        <StackPanel Margin="2,4">
+                                                            <TextBlock Text="{Binding Slot}" FontWeight="Bold" FontSize="12"/>
+                                                            <TextBlock Text="{Binding SlotDisplaySubtitle}" FontSize="9.5" Foreground="#64766D" FontWeight="Normal" Margin="0,1,0,0"/>
+                                                        </StackPanel>
                                                     </DataTemplate>
                                                 </DataGridTemplateColumn.CellTemplate>
                                             </DataGridTemplateColumn>
-                                            <DataGridTemplateColumn Header="Batch No" Width="200">
-                                                <DataGridTemplateColumn.CellTemplate>
-                                                    <DataTemplate>
-                                                        <TextBox Text="{Binding Batch, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource MaterialDesignDataGridTextColumnEditingStyle}"/>
-                                                    </DataTemplate>
-                                                </DataGridTemplateColumn.CellTemplate>
-                                            </DataGridTemplateColumn>
+                                            <DataGridTextColumn Header="TID" Binding="{Binding Tid}" IsReadOnly="True" Width="150"/>
+                                            <DataGridTextColumn Header="Batch No" Binding="{Binding Batch}" IsReadOnly="True" Width="200"/>
                                             <DataGridTextColumn Header="Amount" Binding="{Binding Amount, Converter={StaticResource CurrencyConverter}}" IsReadOnly="True" Width="*" ElementStyle="{StaticResource RightAlignedTextBlockStyle}"/>
                                         </DataGrid.Columns>
                                     </DataGrid>
@@ -114,21 +111,18 @@
                                         <DataGrid.Columns>
                                             <DataGridTextColumn Header="No" Binding="{Binding RomanIndex}" IsReadOnly="True" Width="60"/>
                                             <DataGridTextColumn Header="Salesperson (DSM)" Binding="{Binding DsmName}" IsReadOnly="True" Width="200"/>
-                                            <DataGridTextColumn Header="Slot" Binding="{Binding Slot}" IsReadOnly="True" Width="100"/>
-                                            <DataGridTemplateColumn Header="TID" Width="150">
+                                            <DataGridTemplateColumn Header="Slot" Width="180">
                                                 <DataGridTemplateColumn.CellTemplate>
                                                     <DataTemplate>
-                                                        <TextBox Text="{Binding Tid, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource MaterialDesignDataGridTextColumnEditingStyle}"/>
+                                                        <StackPanel Margin="2,4">
+                                                            <TextBlock Text="{Binding Slot}" FontWeight="Bold" FontSize="12"/>
+                                                            <TextBlock Text="{Binding SlotDisplaySubtitle}" FontSize="9.5" Foreground="#64766D" FontWeight="Normal" Margin="0,1,0,0"/>
+                                                        </StackPanel>
                                                     </DataTemplate>
                                                 </DataGridTemplateColumn.CellTemplate>
                                             </DataGridTemplateColumn>
-                                            <DataGridTemplateColumn Header="Batch No" Width="200">
-                                                <DataGridTemplateColumn.CellTemplate>
-                                                    <DataTemplate>
-                                                        <TextBox Text="{Binding Batch, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource MaterialDesignDataGridTextColumnEditingStyle}"/>
-                                                    </DataTemplate>
-                                                </DataGridTemplateColumn.CellTemplate>
-                                            </DataGridTemplateColumn>
+                                            <DataGridTextColumn Header="TID" Binding="{Binding Tid}" IsReadOnly="True" Width="150"/>
+                                            <DataGridTextColumn Header="Batch No" Binding="{Binding Batch}" IsReadOnly="True" Width="200"/>
                                             <DataGridTextColumn Header="Amount" Binding="{Binding Amount, Converter={StaticResource CurrencyConverter}}" IsReadOnly="True" Width="*" ElementStyle="{StaticResource RightAlignedTextBlockStyle}"/>
                                         </DataGrid.Columns>
                                     </DataGrid>
@@ -148,21 +142,18 @@
                                         <DataGrid.Columns>
                                             <DataGridTextColumn Header="No" Binding="{Binding RomanIndex}" IsReadOnly="True" Width="60"/>
                                             <DataGridTextColumn Header="Salesperson (DSM)" Binding="{Binding DsmName}" IsReadOnly="True" Width="200"/>
-                                            <DataGridTextColumn Header="Slot" Binding="{Binding Slot}" IsReadOnly="True" Width="100"/>
-                                            <DataGridTemplateColumn Header="TID" Width="150">
+                                            <DataGridTemplateColumn Header="Slot" Width="180">
                                                 <DataGridTemplateColumn.CellTemplate>
                                                     <DataTemplate>
-                                                        <TextBox Text="{Binding Tid, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource MaterialDesignDataGridTextColumnEditingStyle}"/>
+                                                        <StackPanel Margin="2,4">
+                                                            <TextBlock Text="{Binding Slot}" FontWeight="Bold" FontSize="12"/>
+                                                            <TextBlock Text="{Binding SlotDisplaySubtitle}" FontSize="9.5" Foreground="#64766D" FontWeight="Normal" Margin="0,1,0,0"/>
+                                                        </StackPanel>
                                                     </DataTemplate>
                                                 </DataGridTemplateColumn.CellTemplate>
                                             </DataGridTemplateColumn>
-                                            <DataGridTemplateColumn Header="Batch No" Width="200">
-                                                <DataGridTemplateColumn.CellTemplate>
-                                                    <DataTemplate>
-                                                        <TextBox Text="{Binding Batch, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource MaterialDesignDataGridTextColumnEditingStyle}"/>
-                                                    </DataTemplate>
-                                                </DataGridTemplateColumn.CellTemplate>
-                                            </DataGridTemplateColumn>
+                                            <DataGridTextColumn Header="TID" Binding="{Binding Tid}" IsReadOnly="True" Width="150"/>
+                                            <DataGridTextColumn Header="Batch No" Binding="{Binding Batch}" IsReadOnly="True" Width="200"/>
                                             <DataGridTextColumn Header="Amount" Binding="{Binding Amount, Converter={StaticResource CurrencyConverter}}" IsReadOnly="True" Width="*" ElementStyle="{StaticResource RightAlignedTextBlockStyle}"/>
                                         </DataGrid.Columns>
                                     </DataGrid>
@@ -205,13 +196,6 @@
                 <!-- FOOTER ACTIONS -->
                 <materialDesign:Card Grid.Row="1" Padding="16" UniformCornerRadius="8" materialDesign:ElevationAssist.Elevation="Dp3" Background="#FAFAFA">
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                        <Button Command="{Binding SaveCommand}" Style="{StaticResource MaterialDesignRaisedButton}" Width="120" Height="40" Margin="0,0,12,0" Background="#2E7D32" BorderBrush="#2E7D32">
-                            <StackPanel Orientation="Horizontal">
-                                <materialDesign:PackIcon Kind="ContentSave" Width="20" Height="20" Margin="0,0,6,0"/>
-                                <TextBlock Text="Save" VerticalAlignment="Center" FontWeight="SemiBold"/>
-                            </StackPanel>
-                        </Button>
-                        
                         <Button Command="{Binding PrintCommand}" Style="{StaticResource MaterialDesignOutlinedButton}" Width="120" Height="40">
                             <StackPanel Orientation="Horizontal">
                                 <materialDesign:PackIcon Kind="Printer" Width="20" Height="20" Margin="0,0,6,0"/>

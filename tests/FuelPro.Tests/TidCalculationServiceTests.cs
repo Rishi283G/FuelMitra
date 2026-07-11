@@ -20,15 +20,15 @@ public class TidCalculationServiceTests
         var yesterday = testDate.AddDays(-1);
 
         // We create:
-        // 1. Yesterday (July 2) Shift B Morning fields:
+        // 1. Yesterday (July 2) Shift A Morning fields:
         //    - PhonePeMorning = 1000
         //    - PhonePeCardMorning = 200
         //    - CreditCardMorning = 300
         //    - PetroCardMorning = 400
-        var yesterdayShiftB = new Shift { ShiftId = 1, ShiftDate = yesterday, ShiftType = "B" };
+        var yesterdayShiftA = new Shift { ShiftId = 1, ShiftDate = yesterday, ShiftType = "A" };
         var entry1 = new DsmEntry
         {
-            Shift = yesterdayShiftB,
+            Shift = yesterdayShiftA,
             ShiftId = 1,
             PaymentCollection = new PaymentCollection
             {
@@ -39,15 +39,15 @@ public class TidCalculationServiceTests
             }
         };
 
-        // 2. Today (July 3) Shift A Morning fields (which represents Day shift collections):
+        // 2. Today (July 3) Shift B Morning fields (which represents Day shift collections):
         //    - PhonePeMorning = 5000
         //    - PhonePeCardMorning = 1200
         //    - CreditCardMorning = 1500
         //    - PetroCardMorning = 800
-        var todayShiftA = new Shift { ShiftId = 2, ShiftDate = testDate, ShiftType = "A" };
+        var todayShiftB = new Shift { ShiftId = 2, ShiftDate = testDate, ShiftType = "B" };
         var entry2 = new DsmEntry
         {
-            Shift = todayShiftA,
+            Shift = todayShiftB,
             ShiftId = 2,
             PaymentCollection = new PaymentCollection
             {
@@ -58,15 +58,15 @@ public class TidCalculationServiceTests
             }
         };
 
-        // 3. Today (July 3) Shift B Night fields:
+        // 3. Today (July 3) Shift A Night fields:
         //    - PhonePeNight = 3000
         //    - PhonePeCardNight = 500
         //    - CreditCardNight = 700
         //    - PetroCardNight = 900
-        var todayShiftB = new Shift { ShiftId = 3, ShiftDate = testDate, ShiftType = "B" };
+        var todayShiftA = new Shift { ShiftId = 3, ShiftDate = testDate, ShiftType = "A" };
         var entry3 = new DsmEntry
         {
-            Shift = todayShiftB,
+            Shift = todayShiftA,
             ShiftId = 3,
             PaymentCollection = new PaymentCollection
             {
@@ -77,7 +77,7 @@ public class TidCalculationServiceTests
             }
         };
 
-        var shifts = new List<Shift> { yesterdayShiftB, todayShiftA, todayShiftB };
+        var shifts = new List<Shift> { yesterdayShiftA, todayShiftA, todayShiftB };
         var entries = new List<DsmEntry> { entry1, entry2, entry3 };
 
         var mockShiftRepo = new MockShiftRepository(shifts);

@@ -156,12 +156,7 @@ public partial class MainWindowViewModel : ObservableObject
         CurrentView = App.Services.GetRequiredService<CardSettlementViewModel>();
     }
 
-    [RelayCommand]
-    private void NavigateToPumpExpenses()
-    {
-        SelectedNavIndex = 8;
-        CurrentView = App.Services.GetRequiredService<PumpExpensesViewModel>();
-    }
+
 
     [RelayCommand]
     private void NavigateToAgsImport()

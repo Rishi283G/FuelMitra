@@ -14,13 +14,20 @@ public class TidItemDto
     public string? Tid { get; set; }
     public string? Batch { get; set; }
     public string Slot { get; set; } = string.Empty; // "Morning", "Day", "Night"
+    [System.Text.Json.Serialization.JsonIgnore]
     public PaymentCollection PaymentCollection { get; set; } = null!;
     public string ShiftLabel { get; set; } = string.Empty;
+    public string SlotDate { get; set; } = string.Empty;
+    public string TimeWindow { get; set; } = string.Empty;
+    public string SlotDisplaySubtitle { get; set; } = string.Empty;
 }
 
 public class BusinessDayTidSheet
 {
     public DateTime Date { get; set; }
+    public string MorningBusinessDate { get; set; } = string.Empty;
+    public string DayBusinessDate { get; set; } = string.Empty;
+    public string NightBusinessDate { get; set; } = string.Empty;
     
     // PhonePe Direct
     public double PhonePeDirectMorning { get; set; }

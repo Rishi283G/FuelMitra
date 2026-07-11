@@ -82,7 +82,12 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   const [newDebtorSlip, setNewDebtorSlip] = useState('');
   const [customVehicle, setCustomVehicle] = useState(false);
 
-  const [cashDeposit, setCashDeposit] = useState(0);
+  // Cash 1 Denominations
+  const [cash1Denom500, setCash1Denom500] = useState<number>(0);
+  const [cash1Denom200, setCash1Denom200] = useState<number>(0);
+  const [cash1Denom100, setCash1Denom100] = useState<number>(0);
+  const cashDeposit = (cash1Denom500 * 500) + (cash1Denom200 * 200) + (cash1Denom100 * 100);
+
   const [others, setOthers] = useState(0);
   const [expense, setExpense] = useState(0);
   const [expenseNotes, setExpenseNotes] = useState('');
@@ -91,6 +96,9 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   const [phonePeMorning, setPhonePeMorning] = useState<number>(0);
   const [phonePeTidMorning, setPhonePeTidMorning] = useState<string>('');
   const [phonePeBatchMorning, setPhonePeBatchMorning] = useState<string>('');
+  const [phonePeDay, setPhonePeDay] = useState<number>(0);
+  const [phonePeTidDay, setPhonePeTidDay] = useState<string>('');
+  const [phonePeBatchDay, setPhonePeBatchDay] = useState<string>('');
   const [phonePeNight, setPhonePeNight] = useState<number>(0);
   const [phonePeTidNight, setPhonePeTidNight] = useState<string>('');
   const [phonePeBatchNight, setPhonePeBatchNight] = useState<string>('');
@@ -98,6 +106,9 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   const [creditCardMorning, setCreditCardMorning] = useState<number>(0);
   const [creditCardTidMorning, setCreditCardTidMorning] = useState<string>('');
   const [creditCardBatchMorning, setCreditCardBatchMorning] = useState<string>('');
+  const [creditCardDay, setCreditCardDay] = useState<number>(0);
+  const [creditCardTidDay, setCreditCardTidDay] = useState<string>('');
+  const [creditCardBatchDay, setCreditCardBatchDay] = useState<string>('');
   const [creditCardNight, setCreditCardNight] = useState<number>(0);
   const [creditCardTidNight, setCreditCardTidNight] = useState<string>('');
   const [creditCardBatchNight, setCreditCardBatchNight] = useState<string>('');
@@ -105,6 +116,9 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   const [petroCardMorning, setPetroCardMorning] = useState<number>(0);
   const [petroCardTidMorning, setPetroCardTidMorning] = useState<string>('');
   const [petroCardBatchMorning, setPetroCardBatchMorning] = useState<string>('');
+  const [petroCardDay, setPetroCardDay] = useState<number>(0);
+  const [petroCardTidDay, setPetroCardTidDay] = useState<string>('');
+  const [petroCardBatchDay, setPetroCardBatchDay] = useState<string>('');
   const [petroCardNight, setPetroCardNight] = useState<number>(0);
   const [petroCardTidNight, setPetroCardTidNight] = useState<string>('');
   const [petroCardBatchNight, setPetroCardBatchNight] = useState<string>('');
@@ -112,6 +126,30 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   const [debtorEntries, setDebtorEntries] = useState<{ debtorName: string; amount: number; vehicleNumber?: string; slipNumber?: string; time: string; }[]>([]);
 
   const [cardSwipeDetails, setCardSwipeDetails] = useState<{ mode: string; amount: number; tid: string; batch: string; }[]>([]);
+
+  // Oil & DEF Product Sales State
+  const [availableProducts, setAvailableProducts] = useState<any[]>([]);
+  const [productStocks, setProductStocks] = useState<Record<number, number>>({});
+  const [salesQuantities, setSalesQuantities] = useState<Record<number, number>>({}); // productId -> quantity
+
+  useEffect(() => {
+    async function loadProductsAndStock() {
+      try {
+        const prods = await db.products.toArray();
+        const stocks = await db.stockBalances.toArray();
+        setAvailableProducts(prods);
+        
+        const stockMap: Record<number, number> = {};
+        for (const s of stocks) {
+          stockMap[s.productId] = s.remainingStock;
+        }
+        setProductStocks(stockMap);
+      } catch (err) {
+        console.error('Failed to load products/stock from local database:', err);
+      }
+    }
+    loadProductsAndStock();
+  }, []);
 
   // Loading state for nozzle config
   const [nozzleLoading, setNozzleLoading] = useState(true);
@@ -418,13 +456,24 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
 
   // ── Computed totals ──────────────────────────────────────────
   const grossSales = nozzleRows.reduce((sum, r) => sum + Math.max(0, r.closingReading - r.openingReading) * r.rate, 0);
-  const upiTotal = phonePeMorning + phonePeNight;
-  const cardTotal = creditCardMorning + creditCardNight;
-  const petroCardTotal = petroCardMorning + petroCardNight;
+  const upiTotal = shiftType === 'B' ? phonePeDay : (phonePeMorning + phonePeNight);
+  const cardTotal = shiftType === 'B' ? creditCardDay : (creditCardMorning + creditCardNight);
+  const petroCardTotal = shiftType === 'B' ? petroCardDay : (petroCardMorning + petroCardNight);
   const creditTotal = debtorEntries.reduce((sum, d) => sum + d.amount, 0);
   const totalTesting = nozzleRows.reduce((sum, r) => sum + (r.testing || 0) * r.rate, 0);
-  const totalCollections = cash + upiTotal + cardTotal + petroCardTotal + cashDeposit + others + creditTotal + totalTesting;
-  const mismatch = totalCollections + expense - grossSales;
+
+  const shiftOilTotal = availableProducts
+    .filter(p => p.category === 'Oil')
+    .reduce((sum, p) => sum + (salesQuantities[p.id] || 0) * p.defaultSaleRate, 0);
+
+  const shiftDefTotal = availableProducts
+    .filter(p => p.category === 'DEF')
+    .reduce((sum, p) => sum + (salesQuantities[p.id] || 0) * p.defaultSaleRate, 0);
+
+  const grandProductSales = shiftOilTotal + shiftDefTotal;
+
+  const totalCollections = cash + upiTotal + cardTotal + petroCardTotal + cashDeposit + creditTotal + totalTesting;
+  const mismatch = totalCollections + expense - (grossSales + grandProductSales);
 
   // ── Validation ───────────────────────────────────────────────
   function validateReadings(): string[] {
@@ -451,6 +500,31 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     const errs: string[] = [];
     if (totalCollections < 0) errs.push('Total collections cannot be negative');
     if (Math.abs(mismatch) > 10000) errs.push(`Mismatch of ₹${mismatch.toFixed(2)} is unusually high. Please verify readings.`);
+
+    const checkSlot = (label: string, amt: number, tid: string, batch: string) => {
+      if (amt > 0) {
+        if (!tid || !tid.trim()) {
+          errs.push(`${label}: TID is required when amount is greater than 0.`);
+        }
+        if (!batch || !batch.trim()) {
+          errs.push(`${label}: Batch number is required when amount is greater than 0.`);
+        }
+      }
+    };
+
+    if (shiftType === 'B') {
+      checkSlot('PhonePe (Day)', phonePeDay, phonePeTidDay, phonePeBatchDay);
+      checkSlot('PineLabs Credit Card (Day)', creditCardDay, creditCardTidDay, creditCardBatchDay);
+      checkSlot('Petro Card (Day)', petroCardDay, petroCardTidDay, petroCardBatchDay);
+    } else {
+      checkSlot('PhonePe (Morning)', phonePeMorning, phonePeTidMorning, phonePeBatchMorning);
+      checkSlot('PhonePe (Night)', phonePeNight, phonePeTidNight, phonePeBatchNight);
+      checkSlot('PineLabs Credit Card (Morning)', creditCardMorning, creditCardTidMorning, creditCardBatchMorning);
+      checkSlot('PineLabs Credit Card (Night)', creditCardNight, creditCardTidNight, creditCardBatchNight);
+      checkSlot('Petro Card (Morning)', petroCardMorning, petroCardTidMorning, petroCardBatchMorning);
+      checkSlot('Petro Card (Night)', petroCardNight, petroCardTidNight, petroCardBatchNight);
+    }
+
     return errs;
   }
 
@@ -468,23 +542,35 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     setValidationErrors([]);
 
     const cardSwipes = [];
-    if (phonePeMorning > 0) {
-      cardSwipes.push({ mode: 'PhonePe Morning', amount: phonePeMorning, tid: phonePeTidMorning, batch: phonePeBatchMorning });
-    }
-    if (phonePeNight > 0) {
-      cardSwipes.push({ mode: 'PhonePe Night', amount: phonePeNight, tid: phonePeTidNight, batch: phonePeBatchNight });
-    }
-    if (creditCardMorning > 0) {
-      cardSwipes.push({ mode: 'PineLabs Card Morning', amount: creditCardMorning, tid: creditCardTidMorning, batch: creditCardBatchMorning });
-    }
-    if (creditCardNight > 0) {
-      cardSwipes.push({ mode: 'PineLabs Card Night', amount: creditCardNight, tid: creditCardTidNight, batch: creditCardBatchNight });
-    }
-    if (petroCardMorning > 0) {
-      cardSwipes.push({ mode: 'PetroCard Morning', amount: petroCardMorning, tid: petroCardTidMorning, batch: petroCardBatchMorning });
-    }
-    if (petroCardNight > 0) {
-      cardSwipes.push({ mode: 'PetroCard Night', amount: petroCardNight, tid: petroCardTidNight, batch: petroCardBatchNight });
+    if (shiftType === 'B') {
+      if (phonePeDay > 0) {
+        cardSwipes.push({ mode: 'PhonePe Day', amount: phonePeDay, tid: phonePeTidDay, batch: phonePeBatchDay });
+      }
+      if (creditCardDay > 0) {
+        cardSwipes.push({ mode: 'PineLabs Card Day', amount: creditCardDay, tid: creditCardTidDay, batch: creditCardBatchDay });
+      }
+      if (petroCardDay > 0) {
+        cardSwipes.push({ mode: 'PetroCard Day', amount: petroCardDay, tid: petroCardTidDay, batch: petroCardBatchDay });
+      }
+    } else {
+      if (phonePeMorning > 0) {
+        cardSwipes.push({ mode: 'PhonePe Morning', amount: phonePeMorning, tid: phonePeTidMorning, batch: phonePeBatchMorning });
+      }
+      if (phonePeNight > 0) {
+        cardSwipes.push({ mode: 'PhonePe Night', amount: phonePeNight, tid: phonePeTidNight, batch: phonePeBatchNight });
+      }
+      if (creditCardMorning > 0) {
+        cardSwipes.push({ mode: 'PineLabs Card Morning', amount: creditCardMorning, tid: creditCardTidMorning, batch: creditCardBatchMorning });
+      }
+      if (creditCardNight > 0) {
+        cardSwipes.push({ mode: 'PineLabs Card Night', amount: creditCardNight, tid: creditCardTidNight, batch: creditCardBatchNight });
+      }
+      if (petroCardMorning > 0) {
+        cardSwipes.push({ mode: 'PetroCard Morning', amount: petroCardMorning, tid: petroCardTidMorning, batch: petroCardBatchMorning });
+      }
+      if (petroCardNight > 0) {
+        cardSwipes.push({ mode: 'PetroCard Night', amount: petroCardNight, tid: petroCardTidNight, batch: petroCardBatchNight });
+      }
     }
     setCardSwipeDetails(cardSwipes);
 
@@ -497,23 +583,45 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     setError('');
 
     const cardSwipes = [];
-    if (phonePeMorning > 0) {
-      cardSwipes.push({ mode: 'PhonePe Morning', amount: phonePeMorning, tid: phonePeTidMorning, batch: phonePeBatchMorning });
-    }
-    if (phonePeNight > 0) {
-      cardSwipes.push({ mode: 'PhonePe Night', amount: phonePeNight, tid: phonePeTidNight, batch: phonePeBatchNight });
-    }
-    if (creditCardMorning > 0) {
-      cardSwipes.push({ mode: 'PineLabs Card Morning', amount: creditCardMorning, tid: creditCardTidMorning, batch: creditCardBatchMorning });
-    }
-    if (creditCardNight > 0) {
-      cardSwipes.push({ mode: 'PineLabs Card Night', amount: creditCardNight, tid: creditCardTidNight, batch: creditCardBatchNight });
-    }
-    if (petroCardMorning > 0) {
-      cardSwipes.push({ mode: 'PetroCard Morning', amount: petroCardMorning, tid: petroCardTidMorning, batch: petroCardBatchMorning });
-    }
-    if (petroCardNight > 0) {
-      cardSwipes.push({ mode: 'PetroCard Night', amount: petroCardNight, tid: petroCardTidNight, batch: petroCardBatchNight });
+    const settlementsList = [];
+    if (shiftType === 'B') {
+      if (phonePeDay > 0) {
+        cardSwipes.push({ mode: 'PhonePe Day', amount: phonePeDay, tid: phonePeTidDay, batch: phonePeBatchDay });
+        settlementsList.push({ paymentType: 'PhonePe', period: 'Day', amount: phonePeDay, tid: phonePeTidDay, batch: phonePeBatchDay, businessDate: shiftDate, operationalShift: 'B' });
+      }
+      if (creditCardDay > 0) {
+        cardSwipes.push({ mode: 'PineLabs Card Day', amount: creditCardDay, tid: creditCardTidDay, batch: creditCardBatchDay });
+        settlementsList.push({ paymentType: 'PineLabs', period: 'Day', amount: creditCardDay, tid: creditCardTidDay, batch: creditCardBatchDay, businessDate: shiftDate, operationalShift: 'B' });
+      }
+      if (petroCardDay > 0) {
+        cardSwipes.push({ mode: 'PetroCard Day', amount: petroCardDay, tid: petroCardTidDay, batch: petroCardBatchDay });
+        settlementsList.push({ paymentType: 'PetroCard', period: 'Day', amount: petroCardDay, tid: petroCardTidDay, batch: petroCardBatchDay, businessDate: shiftDate, operationalShift: 'B' });
+      }
+    } else {
+      if (phonePeMorning > 0) {
+        cardSwipes.push({ mode: 'PhonePe Morning', amount: phonePeMorning, tid: phonePeTidMorning, batch: phonePeBatchMorning });
+        settlementsList.push({ paymentType: 'PhonePe', period: 'Morning', amount: phonePeMorning, tid: phonePeTidMorning, batch: phonePeBatchMorning, businessDate: shiftDate, operationalShift: 'A' });
+      }
+      if (phonePeNight > 0) {
+        cardSwipes.push({ mode: 'PhonePe Night', amount: phonePeNight, tid: phonePeTidNight, batch: phonePeBatchNight });
+        settlementsList.push({ paymentType: 'PhonePe', period: 'Night', amount: phonePeNight, tid: phonePeTidNight, batch: phonePeBatchNight, businessDate: shiftDate, operationalShift: 'A' });
+      }
+      if (creditCardMorning > 0) {
+        cardSwipes.push({ mode: 'PineLabs Card Morning', amount: creditCardMorning, tid: creditCardTidMorning, batch: creditCardBatchMorning });
+        settlementsList.push({ paymentType: 'PineLabs', period: 'Morning', amount: creditCardMorning, tid: creditCardTidMorning, batch: creditCardBatchMorning, businessDate: shiftDate, operationalShift: 'A' });
+      }
+      if (creditCardNight > 0) {
+        cardSwipes.push({ mode: 'PineLabs Card Night', amount: creditCardNight, tid: creditCardTidNight, batch: creditCardBatchNight });
+        settlementsList.push({ paymentType: 'PineLabs', period: 'Night', amount: creditCardNight, tid: creditCardTidNight, batch: creditCardBatchNight, businessDate: shiftDate, operationalShift: 'A' });
+      }
+      if (petroCardMorning > 0) {
+        cardSwipes.push({ mode: 'PetroCard Morning', amount: petroCardMorning, tid: petroCardTidMorning, batch: petroCardBatchMorning });
+        settlementsList.push({ paymentType: 'PetroCard', period: 'Morning', amount: petroCardMorning, tid: petroCardTidMorning, batch: petroCardBatchMorning, businessDate: shiftDate, operationalShift: 'A' });
+      }
+      if (petroCardNight > 0) {
+        cardSwipes.push({ mode: 'PetroCard Night', amount: petroCardNight, tid: petroCardTidNight, batch: petroCardBatchNight });
+        settlementsList.push({ paymentType: 'PetroCard', period: 'Night', amount: petroCardNight, tid: petroCardTidNight, batch: petroCardBatchNight, businessDate: shiftDate, operationalShift: 'A' });
+      }
     }
 
     const draftData = {
@@ -534,8 +642,18 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       short: 0,
       excess: 0,
       cardSwipeDetails: cardSwipes,
+      settlements: settlementsList,
       debtorEntries,
       personalDebtors: [],
+      cash1Denominations: {
+        denom500: cash1Denom500,
+        denom200: cash1Denom200,
+        denom100: cash1Denom100,
+        denom50: 0,
+        denom20: 0,
+        denom10: 0,
+        coins: 0
+      },
       cashDenominations: {
         denom500,
         denom200,
@@ -554,11 +672,25 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           pumpId: r.pumpId || pumpId
         })),
       phonePeMorning, phonePeTidMorning, phonePeBatchMorning,
+      phonePeDay, phonePeTidDay, phonePeBatchDay,
       phonePeNight, phonePeTidNight, phonePeBatchNight,
       creditCardMorning, creditCardTidMorning, creditCardBatchMorning,
+      creditCardDay, creditCardTidDay, creditCardBatchDay,
       creditCardNight, creditCardTidNight, creditCardBatchNight,
       petroCardMorning, petroCardTidMorning, petroCardBatchMorning,
+      petroCardDay, petroCardTidDay, petroCardBatchDay,
       petroCardNight, petroCardTidNight, petroCardBatchNight,
+      oilDefSales: availableProducts
+        .filter(p => (salesQuantities[p.id] || 0) > 0)
+        .map(p => ({
+          productId: p.id,
+          productName: p.productName,
+          category: p.category,
+          unit: p.unit,
+          quantity: salesQuantities[p.id],
+          price: p.defaultSaleRate,
+          total: (salesQuantities[p.id] || 0) * p.defaultSaleRate
+        })),
     };
 
     if (!online) {
@@ -644,7 +776,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
               <div className="field-group">
                 <label className="field-label">Assigned Shift</label>
                 <div className="field-input" style={{ background: '#1e293b', display: 'flex', alignItems: 'center', minHeight: '42px', paddingLeft: '12px', fontWeight: 'bold', color: '#f8fafc', borderRadius: '0.375rem' }}>
-                  Shift {shiftType} ({shiftType === 'A' ? 'Morning' : shiftType === 'B' ? 'Afternoon' : 'Night'})
+                  Shift {shiftType} ({shiftType === 'A' ? 'Night/Morning' : 'Day'})
                 </div>
               </div>
             </div>
@@ -798,7 +930,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #334155', paddingTop: '10px', marginTop: '10px', fontSize: '1rem', fontWeight: 'bold', color: '#10b981' }}>
-                <span>Total Cash:</span>
+                <span>Total Cash 2 (Cash in Hand):</span>
                 <span>₹{cash.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
               </div>
             </div>
@@ -807,123 +939,191 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
             <div className="nozzle-card" style={{ marginBottom: '16px', padding: '16px' }}>
               <h3 style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '12px', borderBottom: '1px solid #334155', paddingBottom: '6px' }}>PhonePe UPI</h3>
               
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '8px', marginBottom: '12px' }}>
-                <div className="field-group">
-                  <label className="field-label">Morning (₹)</label>
-                  <input type="number" className="field-input" value={phonePeMorning || ''} step="0.01" min="0" onChange={e => setPhonePeMorning(Number(e.target.value))} />
+              {shiftType === 'B' ? (
+                <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '8px' }}>
+                  <div className="field-group">
+                    <label className="field-label">Day (8am - 8pm) (₹)</label>
+                    <input type="number" className="field-input" value={phonePeDay || ''} step="0.01" min="0" onChange={e => setPhonePeDay(Number(e.target.value))} />
+                  </div>
+                  <div className="field-group">
+                    <label className="field-label">TID</label>
+                    <input type="text" className="field-input" placeholder="TID" value={phonePeTidDay} onChange={e => setPhonePeTidDay(e.target.value)} />
+                  </div>
+                  <div className="field-group">
+                    <label className="field-label">Batch</label>
+                    <input type="text" className="field-input" placeholder="Batch" value={phonePeBatchDay} onChange={e => setPhonePeBatchDay(e.target.value)} />
+                  </div>
                 </div>
-                <div className="field-group">
-                  <label className="field-label">TID</label>
-                  <input type="text" className="field-input" placeholder="TID" value={phonePeTidMorning} onChange={e => setPhonePeTidMorning(e.target.value)} />
-                </div>
-                <div className="field-group">
-                  <label className="field-label">Batch</label>
-                  <input type="text" className="field-input" placeholder="Batch" value={phonePeBatchMorning} onChange={e => setPhonePeBatchMorning(e.target.value)} />
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '8px' }}>
-                <div className="field-group">
-                  <label className="field-label">Night (₹)</label>
-                  <input type="number" className="field-input" value={phonePeNight || ''} step="0.01" min="0" onChange={e => setPhonePeNight(Number(e.target.value))} />
-                </div>
-                <div className="field-group">
-                  <label className="field-label">TID</label>
-                  <input type="text" className="field-input" placeholder="TID" value={phonePeTidNight} onChange={e => setPhonePeTidNight(e.target.value)} />
-                </div>
-                <div className="field-group">
-                  <label className="field-label">Batch</label>
-                  <input type="text" className="field-input" placeholder="Batch" value={phonePeBatchNight} onChange={e => setPhonePeBatchNight(e.target.value)} />
-                </div>
-              </div>
+              ) : (
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '8px', marginBottom: '12px' }}>
+                    <div className="field-group">
+                      <label className="field-label">Morning (12am - 8am) (₹)</label>
+                      <input type="number" className="field-input" value={phonePeMorning || ''} step="0.01" min="0" onChange={e => setPhonePeMorning(Number(e.target.value))} />
+                    </div>
+                    <div className="field-group">
+                      <label className="field-label">TID</label>
+                      <input type="text" className="field-input" placeholder="TID" value={phonePeTidMorning} onChange={e => setPhonePeTidMorning(e.target.value)} />
+                    </div>
+                    <div className="field-group">
+                      <label className="field-label">Batch</label>
+                      <input type="text" className="field-input" placeholder="Batch" value={phonePeBatchMorning} onChange={e => setPhonePeBatchMorning(e.target.value)} />
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '8px' }}>
+                    <div className="field-group">
+                      <label className="field-label">Night (8pm - 12am) (₹)</label>
+                      <input type="number" className="field-input" value={phonePeNight || ''} step="0.01" min="0" onChange={e => setPhonePeNight(Number(e.target.value))} />
+                    </div>
+                    <div className="field-group">
+                      <label className="field-label">TID</label>
+                      <input type="text" className="field-input" placeholder="TID" value={phonePeTidNight} onChange={e => setPhonePeTidNight(e.target.value)} />
+                    </div>
+                    <div className="field-group">
+                      <label className="field-label">Batch</label>
+                      <input type="text" className="field-input" placeholder="Batch" value={phonePeBatchNight} onChange={e => setPhonePeBatchNight(e.target.value)} />
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* PineLabs Credit Card */}
             <div className="nozzle-card" style={{ marginBottom: '16px', padding: '16px' }}>
               <h3 style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '12px', borderBottom: '1px solid #334155', paddingBottom: '6px' }}>PineLab Credit Card</h3>
               
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '8px', marginBottom: '12px' }}>
-                <div className="field-group">
-                  <label className="field-label">Morning (₹)</label>
-                  <input type="number" className="field-input" value={creditCardMorning || ''} step="0.01" min="0" onChange={e => setCreditCardMorning(Number(e.target.value))} />
+              {shiftType === 'B' ? (
+                <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '8px' }}>
+                  <div className="field-group">
+                    <label className="field-label">Day (8am - 8pm) (₹)</label>
+                    <input type="number" className="field-input" value={creditCardDay || ''} step="0.01" min="0" onChange={e => setCreditCardDay(Number(e.target.value))} />
+                  </div>
+                  <div className="field-group">
+                    <label className="field-label">TID</label>
+                    <input type="text" className="field-input" placeholder="TID" value={creditCardTidDay} onChange={e => setCreditCardTidDay(e.target.value)} />
+                  </div>
+                  <div className="field-group">
+                    <label className="field-label">Batch</label>
+                    <input type="text" className="field-input" placeholder="Batch" value={creditCardBatchDay} onChange={e => setCreditCardBatchDay(e.target.value)} />
+                  </div>
                 </div>
-                <div className="field-group">
-                  <label className="field-label">TID</label>
-                  <input type="text" className="field-input" placeholder="TID" value={creditCardTidMorning} onChange={e => setCreditCardTidMorning(e.target.value)} />
-                </div>
-                <div className="field-group">
-                  <label className="field-label">Batch</label>
-                  <input type="text" className="field-input" placeholder="Batch" value={creditCardBatchMorning} onChange={e => setCreditCardBatchMorning(e.target.value)} />
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '8px' }}>
-                <div className="field-group">
-                  <label className="field-label">Night (₹)</label>
-                  <input type="number" className="field-input" value={creditCardNight || ''} step="0.01" min="0" onChange={e => setCreditCardNight(Number(e.target.value))} />
-                </div>
-                <div className="field-group">
-                  <label className="field-label">TID</label>
-                  <input type="text" className="field-input" placeholder="TID" value={creditCardTidNight} onChange={e => setCreditCardTidNight(e.target.value)} />
-                </div>
-                <div className="field-group">
-                  <label className="field-label">Batch</label>
-                  <input type="text" className="field-input" placeholder="Batch" value={creditCardBatchNight} onChange={e => setCreditCardBatchNight(e.target.value)} />
-                </div>
-              </div>
+              ) : (
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '8px', marginBottom: '12px' }}>
+                    <div className="field-group">
+                      <label className="field-label">Morning (12am - 8am) (₹)</label>
+                      <input type="number" className="field-input" value={creditCardMorning || ''} step="0.01" min="0" onChange={e => setCreditCardMorning(Number(e.target.value))} />
+                    </div>
+                    <div className="field-group">
+                      <label className="field-label">TID</label>
+                      <input type="text" className="field-input" placeholder="TID" value={creditCardTidMorning} onChange={e => setCreditCardTidMorning(e.target.value)} />
+                    </div>
+                    <div className="field-group">
+                      <label className="field-label">Batch</label>
+                      <input type="text" className="field-input" placeholder="Batch" value={creditCardBatchMorning} onChange={e => setCreditCardBatchMorning(e.target.value)} />
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '8px' }}>
+                    <div className="field-group">
+                      <label className="field-label">Night (8pm - 12am) (₹)</label>
+                      <input type="number" className="field-input" value={creditCardNight || ''} step="0.01" min="0" onChange={e => setCreditCardNight(Number(e.target.value))} />
+                    </div>
+                    <div className="field-group">
+                      <label className="field-label">TID</label>
+                      <input type="text" className="field-input" placeholder="TID" value={creditCardTidNight} onChange={e => setCreditCardTidNight(e.target.value)} />
+                    </div>
+                    <div className="field-group">
+                      <label className="field-label">Batch</label>
+                      <input type="text" className="field-input" placeholder="Batch" value={creditCardBatchNight} onChange={e => setCreditCardBatchNight(e.target.value)} />
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Petro Card */}
             <div className="nozzle-card" style={{ marginBottom: '16px', padding: '16px' }}>
               <h3 style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '12px', borderBottom: '1px solid #334155', paddingBottom: '6px' }}>Petro Card</h3>
               
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '8px', marginBottom: '12px' }}>
-                <div className="field-group">
-                  <label className="field-label">Morning (₹)</label>
-                  <input type="number" className="field-input" value={petroCardMorning || ''} step="0.01" min="0" onChange={e => setPetroCardMorning(Number(e.target.value))} />
+              {shiftType === 'B' ? (
+                <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '8px' }}>
+                  <div className="field-group">
+                    <label className="field-label">Day (8am - 8pm) (₹)</label>
+                    <input type="number" className="field-input" value={petroCardDay || ''} step="0.01" min="0" onChange={e => setPetroCardDay(Number(e.target.value))} />
+                  </div>
+                  <div className="field-group">
+                    <label className="field-label">TID</label>
+                    <input type="text" className="field-input" placeholder="TID" value={petroCardTidDay} onChange={e => setPetroCardTidDay(e.target.value)} />
+                  </div>
+                  <div className="field-group">
+                    <label className="field-label">Batch</label>
+                    <input type="text" className="field-input" placeholder="Batch" value={petroCardBatchDay} onChange={e => setPetroCardBatchDay(e.target.value)} />
+                  </div>
                 </div>
-                <div className="field-group">
-                  <label className="field-label">TID</label>
-                  <input type="text" className="field-input" placeholder="TID" value={petroCardTidMorning} onChange={e => setPetroCardTidMorning(e.target.value)} />
+              ) : (
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '8px', marginBottom: '12px' }}>
+                    <div className="field-group">
+                      <label className="field-label">Morning (12am - 8am) (₹)</label>
+                      <input type="number" className="field-input" value={petroCardMorning || ''} step="0.01" min="0" onChange={e => setPetroCardMorning(Number(e.target.value))} />
+                    </div>
+                    <div className="field-group">
+                      <label className="field-label">TID</label>
+                      <input type="text" className="field-input" placeholder="TID" value={petroCardTidMorning} onChange={e => setPetroCardTidMorning(e.target.value)} />
+                    </div>
+                    <div className="field-group">
+                      <label className="field-label">Batch</label>
+                      <input type="text" className="field-input" placeholder="Batch" value={petroCardBatchMorning} onChange={e => setPetroCardBatchMorning(e.target.value)} />
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '8px' }}>
+                    <div className="field-group">
+                      <label className="field-label">Night (8pm - 12am) (₹)</label>
+                      <input type="number" className="field-input" value={petroCardNight || ''} step="0.01" min="0" onChange={e => setPetroCardNight(Number(e.target.value))} />
+                    </div>
+                    <div className="field-group">
+                      <label className="field-label">TID</label>
+                      <input type="text" className="field-input" placeholder="TID" value={petroCardTidNight} onChange={e => setPetroCardTidNight(e.target.value)} />
+                    </div>
+                    <div className="field-group">
+                      <label className="field-label">Batch</label>
+                      <input type="text" className="field-input" placeholder="Batch" value={petroCardBatchNight} onChange={e => setPetroCardBatchNight(e.target.value)} />
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Cash 1 (Denominations) */}
+            <div className="nozzle-card" style={{ marginBottom: '16px', padding: '16px' }}>
+              <h3 style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '12px', borderBottom: '1px solid #334155', paddingBottom: '6px' }}>Cash 1 (Denominations)</h3>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 16px', marginBottom: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ width: '45px', fontWeight: 'bold', fontSize: '0.9rem' }}>₹500 x</span>
+                  <input type="number" className="field-input" style={{ padding: '6px' }} value={cash1Denom500 || ''} min="0" onChange={e => setCash1Denom500(Math.max(0, parseInt(e.target.value) || 0))} />
                 </div>
-                <div className="field-group">
-                  <label className="field-label">Batch</label>
-                  <input type="text" className="field-input" placeholder="Batch" value={petroCardBatchMorning} onChange={e => setPetroCardBatchMorning(e.target.value)} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ width: '45px', fontWeight: 'bold', fontSize: '0.9rem' }}>₹200 x</span>
+                  <input type="number" className="field-input" style={{ padding: '6px' }} value={cash1Denom200 || ''} min="0" onChange={e => setCash1Denom200(Math.max(0, parseInt(e.target.value) || 0))} />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ width: '45px', fontWeight: 'bold', fontSize: '0.9rem' }}>₹100 x</span>
+                  <input type="number" className="field-input" style={{ padding: '6px' }} value={cash1Denom100 || ''} min="0" onChange={e => setCash1Denom100(Math.max(0, parseInt(e.target.value) || 0))} />
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '8px' }}>
-                <div className="field-group">
-                  <label className="field-label">Night (₹)</label>
-                  <input type="number" className="field-input" value={petroCardNight || ''} step="0.01" min="0" onChange={e => setPetroCardNight(Number(e.target.value))} />
-                </div>
-                <div className="field-group">
-                  <label className="field-label">TID</label>
-                  <input type="text" className="field-input" placeholder="TID" value={petroCardTidNight} onChange={e => setPetroCardTidNight(e.target.value)} />
-                </div>
-                <div className="field-group">
-                  <label className="field-label">Batch</label>
-                  <input type="text" className="field-input" placeholder="Batch" value={petroCardBatchNight} onChange={e => setPetroCardBatchNight(e.target.value)} />
-                </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #334155', paddingTop: '10px', marginTop: '10px', fontSize: '1rem', fontWeight: 'bold', color: '#10b981' }}>
+                <span>Total Cash 1:</span>
+                <span>₹{cashDeposit.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
               </div>
             </div>
 
             {/* Other Collections */}
             <div className="nozzle-card" style={{ marginBottom: '16px', padding: '16px' }}>
               <h3 style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '12px', borderBottom: '1px solid #334155', paddingBottom: '6px' }}>Other Collections</h3>
-              <div className="field-row-2">
-                <div className="field-group">
-                  <label className="field-label">Cash Deposit (Bank) (₹)</label>
-                  <input
-                    type="number"
-                    className="field-input"
-                    value={cashDeposit || ''}
-                    step="0.01"
-                    min="0"
-                    onChange={e => setCashDeposit(Number(e.target.value))}
-                  />
-                </div>
-                <div className="field-group">
+              <div className="field-row">
+                <div className="field-group" style={{ marginBottom: 0 }}>
                   <label className="field-label">Others (Not in Total) (₹)</label>
                   <input
                     type="number"
@@ -1102,14 +1302,88 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
               )}
             </div>
 
+            {/* Oil & DEF Product Sales */}
+            {availableProducts.length > 0 && (
+              <div className="nozzle-card" style={{ marginBottom: '16px', padding: '16px' }}>
+                <h3 style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '12px', borderBottom: '1px solid #334155', paddingBottom: '6px' }}>
+                  Oil &amp; DEF Product Sales
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {availableProducts.map(p => {
+                    const stock = productStocks[p.id] || 0;
+                    const qty = salesQuantities[p.id] || 0;
+                    const total = qty * p.defaultSaleRate;
 
+                    return (
+                      <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', borderBottom: '1px solid #1e293b', paddingBottom: '8px' }}>
+                        <div style={{ flex: '1' }}>
+                          <div style={{ fontWeight: '500', fontSize: '0.9rem' }}>{p.productName}</div>
+                          <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                            Price: ₹{p.defaultSaleRate.toFixed(2)} / {p.unit} | Stock: <span style={{ color: stock > 0 ? '#4ade80' : '#f87171', fontWeight: 'bold' }}>{stock} {p.unit}</span>
+                          </div>
+                        </div>
+                        <div style={{ width: '100px' }}>
+                          <input
+                            type="number"
+                            min="0"
+                            max={stock}
+                            step="any"
+                            className="field-input"
+                            style={{ padding: '6px 8px', fontSize: '0.85rem', textAlign: 'right' }}
+                            placeholder="0"
+                            value={salesQuantities[p.id] || ''}
+                            onChange={e => {
+                              const val = parseFloat(e.target.value);
+                              const cleanVal = isNaN(val) ? 0 : val;
+                              if (cleanVal < 0) return;
+                              if (cleanVal > stock) {
+                                alert(`Cannot sell more than available stock of ${stock} ${p.unit}.`);
+                                return;
+                              }
+                              setSalesQuantities(prev => ({
+                                ...prev,
+                                [p.id]: cleanVal
+                              }));
+                            }}
+                          />
+                        </div>
+                        <div style={{ width: '80px', textAlign: 'right', fontSize: '0.9rem', fontWeight: 'bold' }}>
+                          ₹{total.toFixed(2)}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div style={{ marginTop: '12px', borderTop: '1px dashed #334155', paddingTop: '10px', fontSize: '0.85rem', color: '#94a3b8' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <span>Shift Oil Total:</span>
+                    <span>₹{shiftOilTotal.toFixed(2)}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <span>Shift DEF Total:</span>
+                    <span>₹{shiftDefTotal.toFixed(2)}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', color: '#fff', fontSize: '0.95rem', marginTop: '6px', borderTop: '1px solid #334155', paddingTop: '6px' }}>
+                    <span>Grand Product Sales:</span>
+                    <span>₹{grandProductSales.toFixed(2)}</span>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Mismatch Preview */}
             <div className={`mismatch-preview ${Math.abs(mismatch) > 500 ? 'mismatch-warn' : 'mismatch-ok'}`}>
               <div className="mismatch-row">
-                <span>Gross Sales</span>
+                <span>Gross Sales (Fuel)</span>
                 <span>₹{grossSales.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
               </div>
+              {grandProductSales > 0 && (
+                <div className="mismatch-row">
+                  <span>Product Sales (Oil/DEF)</span>
+                  <span>₹{grandProductSales.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                </div>
+              )}
               <div className="mismatch-row">
                 <span>Total Collections</span>
                 <span>₹{totalCollections.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
@@ -1146,7 +1420,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
             <div className="review-block">
               <div className="review-row"><span>Pump</span><strong>Pump {pumpId}</strong></div>
               <div className="review-row"><span>Date</span><strong>{new Date(shiftDate + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}</strong></div>
-              <div className="review-row"><span>Shift</span><strong>Shift {shiftType} ({shiftType === 'A' ? 'Morning' : shiftType === 'B' ? 'Afternoon' : 'Night'})</strong></div>
+              <div className="review-row"><span>Shift</span><strong>Shift {shiftType} ({shiftType === 'A' ? 'Night/Morning' : 'Day'})</strong></div>
             </div>
 
             <div className="review-block">
@@ -1169,7 +1443,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                 </div>
               ))}
               <div className="review-row review-total" style={{ borderTop: '1px solid #334155', paddingTop: '8px', marginTop: '8px' }}>
-                <span>Gross Sales</span><strong>₹{grossSales.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
+                <span>Gross Sales (Fuel)</span><strong>₹{grossSales.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
               </div>
             </div>
 
@@ -1223,7 +1497,24 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
               </div>
             )}
 
-
+            {/* Oil & DEF Product Sales */}
+            {availableProducts.some(p => (salesQuantities[p.id] || 0) > 0) && (
+              <div className="review-block">
+                <p className="review-block-title">Oil &amp; DEF Product Sales</p>
+                {availableProducts
+                  .filter(p => (salesQuantities[p.id] || 0) > 0)
+                  .map(p => (
+                    <div key={p.id} className="review-row">
+                      <span>{p.productName} ({salesQuantities[p.id]} {p.unit} × ₹{p.defaultSaleRate.toFixed(2)})</span>
+                      <strong>₹{((salesQuantities[p.id] || 0) * p.defaultSaleRate).toFixed(2)}</strong>
+                    </div>
+                  ))}
+                <div className="review-row review-total" style={{ borderTop: '1px solid #334155', paddingTop: '8px', marginTop: '8px' }}>
+                  <span>Product Sales Total</span>
+                  <strong>₹{grandProductSales.toFixed(2)}</strong>
+                </div>
+              </div>
+            )}
 
             <div className="field-group">
               <label className="field-label" htmlFor="submission-notes">Notes (optional)</label>

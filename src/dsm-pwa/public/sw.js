@@ -35,10 +35,26 @@ self.addEventListener('fetch', (event) => {
   if (event.request.url.includes('/rest/v1/') || event.request.url.includes('/auth/v1/')) {
     return;
   }
+  // Only handle GET requests
+  if (event.request.method !== 'GET') {
+    return;
+  }
 
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
-      return cachedResponse || fetch(event.request).catch(() => {
+      if (cachedResponse) {
+        return cachedResponse;
+      }
+      return fetch(event.request).then((response) => {
+        // Cache local static assets dynamically
+        if (response && response.status === 200 && response.type === 'basic') {
+          const responseToCache = response.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, responseToCache);
+          });
+        }
+        return response;
+      }).catch(() => {
         if (event.request.mode === 'navigate') {
           return caches.match('/index.html');
         }

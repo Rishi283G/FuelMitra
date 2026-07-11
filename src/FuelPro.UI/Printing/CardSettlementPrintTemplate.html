@@ -4,89 +4,146 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>TID Sheet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
+  :root {
+    --ink: #16211C;
+    --paper: #FFFFFF;
+    --brand: #0B6E4F;
+    --brand-dark: #073F2C;
+    --brand-soft: #E8F2EC;
+    --copper: #A5502B;
+    --copper-soft: #F5E7DF;
+    --muted: #64766D;
+    --line: #D7DED8;
+    --line-strong: #16211C;
+    --morning: #C99A1E;
+    --day: #0B6E4F;
+    --night: #38466E;
+  }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    font-family: 'Courier New', Courier, monospace;
-    font-size: 13px;
-    color: #000;
-    background: #fff;
+    font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 11.5px;
+    color: var(--ink);
+    background: #EEF1EE;
     line-height: 1.3;
+    -webkit-font-smoothing: antialiased;
+  }
+  .mono {
+    font-family: 'IBM Plex Mono', 'Courier New', monospace;
   }
 
   #toolbar {
     position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
-    background: #1B5E20; color: #fff; padding: 8px 16px;
+    background: var(--brand-dark); color: #fff; padding: 8px 16px;
     display: flex; align-items: center; gap: 12px;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-family: 'Space Grotesk', sans-serif;
   }
-  #toolbar span { font-size: 14px; font-weight: 600; flex: 1; }
+  #toolbar span { font-size: 13.5px; font-weight: 600; flex: 1; letter-spacing: 0.2px; }
   #toolbar button {
-    background: #fff; color: #1B5E20; border: none; padding: 6px 18px;
-    border-radius: 4px; font-size: 12px; font-weight: 600; cursor: pointer;
+    background: #fff; color: var(--brand-dark); border: none; padding: 5px 14px;
+    border-radius: 4px; font-size: 11.5px; font-weight: 700; cursor: pointer;
+    font-family: 'Space Grotesk', sans-serif;
   }
+  #toolbar button:hover { background: var(--brand-soft); }
 
   .page {
     width: 80mm;
     margin: 48px auto 20px;
-    padding: 12px;
-    background: #fff;
+    padding: 10px 10px 8px;
+    background: var(--paper);
     border: 1px solid #ccc;
-    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    box-shadow: 0 4px 18px rgba(11,110,79,0.10);
+    position: relative;
+  }
+
+  /* perforation notch top/bottom for the receipt feel */
+  .notches {
+    position: absolute; left: 0; right: 0; height: 6px;
+    display: flex; justify-content: space-around; overflow: hidden;
+  }
+  .notches.top { top: -3px; }
+  .notches.bottom { bottom: -3px; }
+  .notches span {
+    width: 6px; height: 6px; border-radius: 50%; background: #EEF1EE;
   }
 
   .receipt-header {
     text-align: center;
-    margin-bottom: 8px;
+    margin-bottom: 4px;
   }
+  .brand-mark {
+    width: 30px; height: 30px; border-radius: 50%;
+    background: var(--brand);
+    margin: 0 auto 4px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .brand-mark svg { width: 15px; height: 15px; }
   .receipt-logo {
-    max-height: 45px;
-    margin-bottom: 6px;
+    max-height: 36px;
+    margin-bottom: 4px;
   }
   .company {
-    font-size: 15px;
-    font-weight: bold;
-    letter-spacing: 0.5px;
+    font-size: 13.5px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    color: var(--brand-dark);
   }
   .station-info {
-    font-size: 10px;
+    font-size: 9px;
     margin-top: 2px;
     text-align: center;
+    color: var(--muted);
+    line-height: 1.35;
   }
 
   .meta-row {
     display: flex;
     justify-content: space-between;
-    font-size: 12px;
-    margin: 6px 0;
-    font-weight: bold;
+    align-items: center;
+    font-size: 10px;
+    margin: 6px 0 4px;
+    padding: 4px 6px;
+    background: var(--brand-soft);
+    border-radius: 4px;
+    color: var(--brand-dark);
   }
+  .meta-row .mono { font-weight: 600; }
+  .meta-label { color: var(--muted); font-weight: 500; margin-right: 3px; }
 
   .doc-title {
-    font-size: 13px;
-    font-weight: bold;
+    font-size: 11px;
+    font-weight: 700;
     text-align: center;
-    border: 1.5px solid #000;
-    padding: 3px 0;
-    margin: 6px 0;
-    text-transform: uppercase;
+    background: var(--ink);
+    color: #fff;
+    padding: 4px 0;
+    margin: 3px 0 6px;
+    letter-spacing: 1.5px;
+    border-radius: 3px;
   }
 
   table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 12px;
-    margin-bottom: 4px;
+    font-size: 11px;
+    margin-bottom: 2px;
   }
   th {
-    border-bottom: 1px dashed #000;
-    border-top: 1px dashed #000;
+    border-bottom: 1px solid var(--line);
     padding: 3px 0;
-    font-weight: bold;
+    font-weight: 600;
     text-align: left;
+    color: var(--muted);
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
   }
   td {
-    padding: 3px 0;
+    padding: 2.5px 0;
     vertical-align: middle;
   }
 
@@ -94,50 +151,145 @@
   .center { text-align: center; }
 
   .divider {
-    border-top: 1px dashed #000;
-    margin: 6px 0;
+    border-top: 1px dashed var(--line);
+    margin: 4px 0;
   }
   .double-divider {
-    border-top: 1.5px solid #000;
-    border-bottom: 1.5px solid #000;
-    height: 3px;
-    margin: 6px 0;
+    border-top: 2px solid var(--ink);
+    border-bottom: 2px solid var(--ink);
+    height: 4px;
+    margin: 8px 0 6px;
   }
 
   .section-header {
-    font-weight: bold;
-    text-align: center;
-    margin-top: 10px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-weight: 700;
+    margin-top: 8px;
     margin-bottom: 4px;
     text-transform: uppercase;
+    font-size: 10px;
+    letter-spacing: 0.5px;
+    color: var(--brand-dark);
+  }
+  .section-header::before {
+    content: '';
+    width: 3px; height: 11px;
+    background: var(--brand);
+    border-radius: 1.5px;
+    flex-shrink: 0;
+  }
+
+  .period-dot {
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    margin-right: 4px;
+    vertical-align: middle;
+  }
+  .dot-morning { background: var(--morning); }
+  .dot-day { background: var(--day); }
+  .dot-night { background: var(--night); }
+
+  .period-subtotal td {
+    font-weight: 700;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    background: #FAFBFA;
+    padding: 2.5px 0;
+  }
+
+  .section-total-table {
+    margin-top: 1px;
+  }
+  .section-total-table td {
+    font-weight: 700;
+    font-size: 11px;
+    padding: 4px 0;
+  }
+  .section-total-table td:last-child { color: var(--brand-dark); }
+
+  .no-txn {
+    font-style: italic;
+    text-align: center;
+    padding: 4px 0;
+    color: var(--muted);
+    font-size: 10px;
+  }
+
+  .summary-title {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+
+  .summary-table td {
+    padding: 3.5px 0;
+    font-weight: 600;
+    font-size: 11.5px;
+  }
+  .summary-table td:last-child {
+    text-align: right;
+  }
+
+  .grand-total-box {
+    margin-top: 8px;
+    background: var(--brand-dark);
+    color: #fff;
+    border-radius: 5px;
+    padding: 8px 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  .grand-total-box .gt-label {
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    opacity: 0.85;
+  }
+  .grand-total-box .gt-value {
+    font-size: 14.5px;
+    font-weight: 700;
   }
 
   .signatures {
-    margin-top: 30px;
-    font-size: 11px;
+    margin-top: 20px;
+    font-size: 9.5px;
     display: flex;
     justify-content: space-between;
+    color: var(--muted);
   }
   .sig-line {
-    border-top: 1px dashed #000;
+    border-top: 1px solid var(--ink);
     width: 30%;
     text-align: center;
     padding-top: 3px;
+    font-weight: 600;
+    color: var(--ink);
   }
 
   .print-footer {
     text-align: center;
-    font-size: 9px;
-    color: #666;
-    margin-top: 20px;
-    border-top: 1px dashed #ccc;
+    font-size: 8px;
+    color: var(--muted);
+    margin-top: 12px;
+    border-top: 1px dashed var(--line);
     padding-top: 4px;
   }
 
   @media print {
     #toolbar { display: none !important; }
-    body { margin: 0; background: #fff; }
-    .page { width: 100%; margin: 0; border: none; padding: 0; box-shadow: none; }
+    body { margin: 0; background: #fff; font-size: 10.5px; }
+    .page { width: 100%; margin: 0; border: none; padding: 2px 4px; box-shadow: none; }
+    .notches { display: none; }
+    .double-divider { margin: 8px 0 4px; }
+    .signatures { margin-top: 16px; }
     @page { size: 80mm auto; margin: 0; }
   }
 </style>
@@ -146,77 +298,61 @@
 
 <div id="toolbar">
   <span id="toolbarTitle">📋 TID Sheet</span>
-  <button onclick="window.print()">🖨️ Print</button>
-  <button onclick="window.close()">✖ Close</button>
+  <button onclick="window.print()">Print</button>
+  <button onclick="window.close()">Close</button>
 </div>
 
 <div class="page">
+  <div class="notches top"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
+
   <div class="receipt-header">
+    <div class="brand-mark" id="brandMark">
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M6 20V6a2 2 0 0 1 2-2h5a2 2 0 0 1 2 2v14" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>
+        <path d="M6 20h9" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>
+        <path d="M15 10h2a2 2 0 0 1 2 2v3.5a1.5 1.5 0 0 0 3 0V9l-2-2" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M9 9h2" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>
+      </svg>
+    </div>
     <img id="logo" class="receipt-logo" style="display: none;" src="" alt="logo" />
     <div class="company" id="headerStationName">KANDHARE PETROLEUM</div>
     <div class="station-info" id="stationSubtitle">Kandhare Nangade Surve Group</div>
   </div>
 
   <div class="meta-row">
-    <span>No. : <span id="metaNo">_______</span></span>
-    <span>Date : <span id="metaDate"></span></span>
+    <span><span class="meta-label">No.</span><span class="mono" id="metaNo">_______</span></span>
+    <span><span class="meta-label">Date</span><span class="mono" id="metaDate"></span></span>
   </div>
 
-  <div class="doc-title">TID SHEET</div>
+  <div class="doc-title">TID Sheet</div>
 
-  <!-- Cards Table -->
-  <table id="cardsTable">
-    <thead>
-      <tr>
-        <th style="width: 40%;">TID NO</th>
-        <th style="width: 35%;">BATCH NO</th>
-        <th style="width: 25%;" class="num">Amount</th>
-      </tr>
-    </thead>
-    <tbody id="cardsBody">
-      <!-- populated dynamically -->
-    </tbody>
-  </table>
+  <!-- Dynamic Sections Container -->
+  <div id="sectionsContainer"></div>
 
-  <div class="divider"></div>
+  <div class="double-divider"></div>
 
-  <!-- PHON PAY SUMMARY -->
-  <div class="section-header">PHON PAY</div>
-  <table id="phonePeTable">
-    <tbody>
-      <!-- populated dynamically -->
-    </tbody>
-  </table>
-
-  <div class="divider"></div>
-
-  <!-- CARD SUMMARY -->
-  <div class="section-header">CARD</div>
-  <table id="cardSummaryTable">
-    <tbody>
-      <!-- populated dynamically -->
-    </tbody>
-  </table>
-
-  <div class="divider"></div>
-
-  <!-- P. CARD SUMMARY -->
-  <div class="section-header">P. CARD</div>
-  <table id="petroTable">
-    <tbody>
-      <!-- populated dynamically -->
-    </tbody>
-  </table>
-
-  <div class="divider"></div>
-
-  <!-- GRAND TOTAL -->
-  <table style="font-weight: bold; font-size: 13px; margin-top: 10px;">
+  <!-- OVERALL TOTALS -->
+  <div class="summary-title">Digital Collection Summary</div>
+  <table class="summary-table mono">
     <tr>
-      <td>TOTAL</td>
-      <td class="num" id="grandTotalVal">0.00</td>
+      <td style="font-family:'Space Grotesk',sans-serif;">PineLabs Total</td>
+      <td id="overallPineLabs">0.00</td>
+    </tr>
+    <tr>
+      <td style="font-family:'Space Grotesk',sans-serif;">PhonePe Total</td>
+      <td id="overallPhonePe">0.00</td>
+    </tr>
+    <tr>
+      <td style="font-family:'Space Grotesk',sans-serif;">Petro Card Total</td>
+      <td id="overallPetro">0.00</td>
     </tr>
   </table>
+
+  <!-- GRAND TOTAL -->
+  <div class="grand-total-box">
+    <span class="gt-label">Grand Digital Total</span>
+    <span class="gt-value mono" id="grandTotalVal">0.00</span>
+  </div>
 
   <!-- Signatures -->
   <div class="signatures">
@@ -226,6 +362,8 @@
   </div>
 
   <div class="print-footer" id="printFooter"></div>
+
+  <div class="notches bottom"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
 </div>
 
 <script>
@@ -233,131 +371,191 @@ const data = /* INJECT_JSON_HERE */{};
 
 // Format function
 const fmt = (v) => {
-  if (v === undefined || v === null || v === 0) return '-';
-  // Round to nearest whole number if it has no decimal part, otherwise show 2 decimals
-  if (v % 1 === 0) return v.toFixed(0);
-  return v.toFixed(2);
+  if (v === undefined || v === null) return '0.00';
+  return v.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
 const station = data.stationName || 'Kandhare Petroleum';
-document.title = station + ' — TID Sheet';
-document.getElementById('toolbarTitle').textContent = `📋 ${station} — TID Sheet`;
-document.getElementById('headerStationName').textContent = station.toUpperCase();
+let cleanedStation = station
+  .replace(/\(KANDHARE NAGDE SURVE GROUP\)/gi, '')
+  .replace(/\(KANDHARE NAGDE GROUP\)/gi, '')
+  .replace(/KANDHARE NAGDE SURVE GROUP/gi, '')
+  .replace(/KANDHARE NAGDE GROUP/gi, '')
+  .trim();
+document.title = cleanedStation + ' — TID Sheet';
+document.getElementById('toolbarTitle').textContent = `📋 ${cleanedStation} — TID Sheet`;
+document.getElementById('headerStationName').textContent = cleanedStation.toUpperCase();
 
-if (station.toUpperCase().includes('KANDHARE')) {
-  document.getElementById('stationSubtitle').innerHTML = 
-    'Kandhare Nangade Surve Group<br/>Gat No. 119/B Jamgaon, Taluka Mulshi, Dist - Pune.<br/>Tel. : 8975549999 / 9850846783';
+if (cleanedStation.toUpperCase().includes('KANDHARE')) {
+  document.getElementById('stationSubtitle').innerHTML =
+    'Gat No. 119/B Jamgaon, Taluka Mulshi, Dist - Pune.<br/>Tel. : 8975549999 / 9850846783';
 } else {
-  document.getElementById('stationSubtitle').innerHTML = 'Fuel & Digital Settlement Sheet';
+  document.getElementById('stationSubtitle').innerHTML = 'Fuel &amp; Digital Settlement Sheet';
 }
+
+const fmtShortDate = (dateStr) => {
+  if (!dateStr) return '';
+  const parts = dateStr.split('-');
+  if (parts.length >= 2) {
+    return parts[0] + ' ' + parts[1]; // e.g. "10 Jul"
+  }
+  return dateStr;
+};
+
+const getPeriodSubtitle = (key) => {
+  if (key === 'Morning') {
+    return `${fmtShortDate(data.morningBusinessDate)} | 12:00 AM – 8:00 AM`;
+  }
+  if (key === 'Day') {
+    return `${fmtShortDate(data.dayBusinessDate)} | 8:00 AM – 8:00 PM`;
+  }
+  if (key === 'Night') {
+    return `${fmtShortDate(data.nightBusinessDate)} | 8:00 PM – 12:00 AM`;
+  }
+  return '';
+};
 
 if (data.logo) {
   const logoImg = document.getElementById('logo');
+  const mark = document.getElementById('brandMark');
   if (logoImg) {
     logoImg.src = data.logo;
     logoImg.style.display = 'block';
+    if (mark) mark.style.display = 'none';
   }
 }
 
-document.getElementById('metaDate').textContent = data.date || '';
-
-// Load Individual Cards
-const cb = document.getElementById('cardsBody');
-let cardsHtml = '';
-if (data.cards && data.cards.length > 0) {
-  data.cards.forEach(c => {
-    cardsHtml += `<tr>
-      <td>${c.tid || ''}</td>
-      <td>${c.batch || ''}</td>
-      <td class="num">${fmt(c.amount)}</td>
-    </tr>`;
-  });
-  // Add subtotal row
-  cardsHtml += `<tr style="border-top: 1px dashed #000; font-weight: bold;">
-    <td></td>
-    <td></td>
-    <td class="num">${fmt(data.cardTotal)}</td>
-  </tr>`;
-} else {
-  cardsHtml = '<tr><td colspan="3" class="center">No credit card transactions</td></tr>';
+if (data.no) {
+  document.getElementById('metaNo').textContent = data.no;
 }
-cb.innerHTML = cardsHtml;
 
-// Load PhonePe Summary
-const phonePeBody = document.querySelector('#phonePeTable tbody');
-let phonePeHtml = '';
-const pSum = data.phonePeSummary || { morning: 0, day: 0, night: 0, total: 0 };
-phonePeHtml += `<tr>
-  <td style="width: 20%;">I</td>
-  <td style="width: 60%;">${fmt(pSum.morning)}</td>
-  <td style="width: 20%;" class="num">M</td>
-</tr>`;
-phonePeHtml += `<tr>
-  <td>II</td>
-  <td>${fmt(pSum.day)}</td>
-  <td class="num"></td>
-</tr>`;
-phonePeHtml += `<tr>
-  <td>I</td>
-  <td>${fmt(pSum.night)}</td>
-  <td class="num">N</td>
-</tr>`;
-phonePeHtml += `<tr style="border-top: 1px dashed #000; font-weight: bold;">
-  <td></td>
-  <td>${fmt(pSum.total)}</td>
-  <td></td>
-</tr>`;
-phonePeBody.innerHTML = phonePeHtml;
+const printDate = data.date ? new Date(data.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
+document.getElementById('metaDate').textContent = printDate;
 
-// Load Card Summary
-const cardSummaryBody = document.querySelector('#cardSummaryTable tbody');
-let cardSummaryHtml = '';
-const cSum = data.cardSummary || { morning: 0, day: 0, night: 0, total: 0 };
-cardSummaryHtml += `<tr>
-  <td style="width: 20%;">I</td>
-  <td style="width: 60%;">${fmt(cSum.morning)}</td>
-  <td style="width: 20%;" class="num">M</td>
-</tr>`;
-cardSummaryHtml += `<tr>
-  <td>II</td>
-  <td>${fmt(cSum.day)}</td>
-  <td class="num"></td>
-</tr>`;
-cardSummaryHtml += `<tr>
-  <td>I</td>
-  <td>${fmt(cSum.night)}</td>
-  <td class="num">N</td>
-</tr>`;
-cardSummaryHtml += `<tr style="border-top: 1px dashed #000; font-weight: bold;">
-  <td></td>
-  <td>${fmt(cSum.total)}</td>
-  <td></td>
-</tr>`;
-cardSummaryBody.innerHTML = cardSummaryHtml;
+const periodDotClass = { Morning: 'dot-morning', Day: 'dot-day', Night: 'dot-night' };
 
-// Load Petro Card Summary
-const petroBody = document.querySelector('#petroTable tbody');
-let petroHtml = '';
-const petroSum = data.petroSummary || { night: 0, day: 0, total: 0 };
-petroHtml += `<tr>
-  <td style="width: 20%;">I</td>
-  <td style="width: 80%;">${fmt(petroSum.night)}</td>
-</tr>`;
-petroHtml += `<tr>
-  <td>II</td>
-  <td>${fmt(petroSum.day)}</td>
-</tr>`;
-petroHtml += `<tr style="border-top: 1px dashed #000; font-weight: bold;">
-  <td></td>
-  <td>${fmt(petroSum.total)}</td>
-</tr>`;
-petroBody.innerHTML = petroHtml;
+// Helper to render a payment type section
+const renderSection = (title, list, totalValue) => {
+  let sectionHtml = `<div class="section-header">${title}</div>`;
 
-// Grand Total
+  if (!list || list.length === 0) {
+    sectionHtml += `
+      <div class="no-txn">No transactions</div>
+      <div class="divider"></div>
+      <table class="section-total-table mono">
+        <tr>
+          <td style="font-family:'Space Grotesk',sans-serif;">${title} Total</td>
+          <td class="num">${fmt(totalValue)}</td>
+        </tr>
+      </table>
+    `;
+    return sectionHtml;
+  }
+
+  const periods = [
+    { key: 'Morning', label: 'Morning' },
+    { key: 'Day', label: 'Day' },
+    { key: 'Night', label: 'Night' }
+  ];
+
+  let hasAnyRows = false;
+  let rowsHtml = '';
+
+  periods.forEach(p => {
+    const periodItems = list.filter(item => item.slot === p.key);
+    if (periodItems.length > 0) {
+      hasAnyRows = true;
+      let periodSubtotal = 0;
+      const dotClass = periodDotClass[p.key] || 'dot-day';
+
+      periodItems.forEach(item => {
+        periodSubtotal += item.amount;
+        rowsHtml += `<tr>
+          <td>
+            <div style="font-weight: 600; display: inline-flex; align-items: center; gap: 3px; font-size: 11px;">
+              <span class="period-dot ${dotClass}"></span>${p.label}
+            </div>
+            <div style="font-size: 8.5px; color: var(--muted); font-weight: 400; padding-left: 9px; margin-top: 1px; white-space: nowrap;">
+              (${getPeriodSubtitle(p.key)})
+            </div>
+          </td>
+          <td class="mono" style="vertical-align: middle;">${item.tid || '—'}</td>
+          <td class="mono" style="vertical-align: middle;">${item.batch || '—'}</td>
+          <td class="num mono" style="vertical-align: middle;">${fmt(item.amount)}</td>
+        </tr>`;
+      });
+
+      // Subtotal row
+      rowsHtml += `<tr class="period-subtotal">
+        <td colspan="3">${p.label} Total</td>
+        <td class="num mono">${fmt(periodSubtotal)}</td>
+      </tr>`;
+    }
+  });
+
+  if (!hasAnyRows) {
+    sectionHtml += `
+      <div class="no-txn">No transactions</div>
+      <div class="divider"></div>
+      <table class="section-total-table mono">
+        <tr>
+          <td style="font-family:'Space Grotesk',sans-serif;">${title} Total</td>
+          <td class="num">${fmt(totalValue)}</td>
+        </tr>
+      </table>
+    `;
+    return sectionHtml;
+  }
+
+  sectionHtml += `
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 35%;">Period</th>
+          <th style="width: 22%;">TID</th>
+          <th style="width: 18%;">Batch No</th>
+          <th style="width: 25%;" class="num">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rowsHtml}
+      </tbody>
+    </table>
+    <div class="divider"></div>
+    <table class="section-total-table mono">
+      <tr>
+        <td style="font-family:'Space Grotesk',sans-serif;">${title} Total</td>
+        <td class="num">${fmt(totalValue)}</td>
+      </tr>
+    </table>
+  `;
+
+  return sectionHtml;
+};
+
+// Render the three sections
+const cbContainer = document.getElementById('sectionsContainer');
+let html = '';
+
+// Section 1: PineLabs Card Settlement
+html += renderSection('PineLabs Card Settlement', data.cardPayments, data.pineLabsCardTotal || 0);
+
+// Section 2: PhonePe Digital Collection
+html += renderSection('PhonePe Digital Collection', data.phonePePayments, data.phonePeTotal || 0);
+
+// Section 3: Petro Card Settlement
+html += renderSection('Petro Card Settlement', data.petroCardPayments, data.petroCardTotal || 0);
+
+cbContainer.innerHTML = html;
+
+// Overall Totals
+document.getElementById('overallPineLabs').textContent = fmt(data.pineLabsCardTotal || 0);
+document.getElementById('overallPhonePe').textContent = fmt(data.phonePeTotal || 0);
+document.getElementById('overallPetro').textContent = fmt(data.petroCardTotal || 0);
 document.getElementById('grandTotalVal').textContent = fmt(data.grandTotal || 0);
 
 document.getElementById('printFooter').textContent =
-  `${station} | TID Sheet | ${data.date} | Printed: ${new Date().toLocaleString('en-IN')}`;
+  `${cleanedStation} | TID Sheet | ${printDate} | Printed: ${new Date().toLocaleString('en-IN')}`;
 </script>
 </body>
 </html>

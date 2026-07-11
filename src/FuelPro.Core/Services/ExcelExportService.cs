@@ -717,4 +717,195 @@ public class ExcelExportService
             return filePath;
         });
     }
+
+    public async Task<string> ExportTidSheetAsync(BusinessDayTidSheet data, string stationName)
+    {
+        return await Task.Run(() =>
+        {
+            var downloadsPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
+            if (!Directory.Exists(downloadsPath))
+            {
+                downloadsPath = AppDomain.CurrentDomain.BaseDirectory;
+            }
+
+            var safePrefix = string.Concat(stationName.Split(Path.GetInvalidFileNameChars()));
+            var fileName = $"TID_Sheet_{data.Date:yyyyMMdd}_{DateTime.Now:HHmmss}.xlsx";
+            var filePath = Path.Combine(downloadsPath, fileName);
+
+            using var workbook = new XLWorkbook();
+            var worksheet = workbook.Worksheets.Add("TID Sheet");
+
+            worksheet.ShowGridLines = true;
+            int currentRow = 1;
+
+            // Title Block
+            worksheet.Cell(currentRow, 1).Value = $"{stationName.ToUpper()} - TID SHEET";
+            worksheet.Cell(currentRow, 1).Style.Font.Bold = true;
+            worksheet.Cell(currentRow, 1).Style.Font.FontSize = 16;
+            worksheet.Cell(currentRow, 1).Style.Font.FontColor = XLColor.White;
+            worksheet.Cell(currentRow, 1).Style.Fill.BackgroundColor = XLColor.FromHtml("#004D40");
+            worksheet.Cell(currentRow, 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            worksheet.Range(currentRow, 1, currentRow, 5).Merge();
+            currentRow++;
+
+            // Subtitle
+            worksheet.Cell(currentRow, 1).Value = $"Date: {data.Date:dd-MMM-yyyy} | Generated: {DateTime.Now:dd-MMM-yyyy HH:mm}";
+            worksheet.Cell(currentRow, 1).Style.Font.Italic = true;
+            worksheet.Cell(currentRow, 1).Style.Font.FontSize = 11;
+            worksheet.Cell(currentRow, 1).Style.Font.FontColor = XLColor.White;
+            worksheet.Cell(currentRow, 1).Style.Fill.BackgroundColor = XLColor.FromHtml("#00695C");
+            worksheet.Cell(currentRow, 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            worksheet.Range(currentRow, 1, currentRow, 5).Merge();
+            currentRow++;
+
+            currentRow += 2; // Blank space
+
+            // Define collection types
+            var collections = new[]
+            {
+                new { Name = "PhonePe", Items = data.PhonePePayments },
+                new { Name = "PineLabs Card", Items = data.CardPayments },
+                new { Name = "Petro Card", Items = data.PetroCardPayments }
+            };
+
+            foreach (var col in collections)
+            {
+                // Collection Type Header
+                worksheet.Cell(currentRow, 1).Value = col.Name.ToUpper();
+                worksheet.Cell(currentRow, 1).Style.Font.Bold = true;
+                worksheet.Cell(currentRow, 1).Style.Font.FontSize = 13;
+                worksheet.Cell(currentRow, 1).Style.Font.FontColor = XLColor.White;
+                worksheet.Cell(currentRow, 1).Style.Fill.BackgroundColor = XLColor.FromHtml("#1565C0");
+                worksheet.Range(currentRow, 1, currentRow, 5).Merge();
+                currentRow++;
+
+                // Table headers
+                var headers = new[] { "Business Period", "DSM Name", "TID", "Batch No.", "Amount" };
+                for (int i = 0; i < headers.Length; i++)
+                {
+                    var cell = worksheet.Cell(currentRow, i + 1);
+                    cell.Value = headers[i];
+                    cell.Style.Font.Bold = true;
+                    cell.Style.Fill.BackgroundColor = XLColor.LightGray;
+                    cell.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+                    if (i == 4) cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+                }
+                currentRow++;
+
+                // Group items by Business Period
+                var periods = new[] { "Morning", "Day", "Night" };
+                double colTotal = 0;
+
+                foreach (var period in periods)
+                {
+                    var periodItems = col.Items.Where(x => x.Slot == period).ToList();
+                    if (periodItems.Count == 0) continue;
+
+                    double periodSubtotal = 0;
+                    foreach (var item in periodItems)
+                    {
+                        worksheet.Cell(currentRow, 1).Value = period;
+                        worksheet.Cell(currentRow, 2).Value = item.DsmName;
+                        worksheet.Cell(currentRow, 3).Value = item.Tid;
+                        worksheet.Cell(currentRow, 4).Value = item.Batch;
+                        
+                        var amtCell = worksheet.Cell(currentRow, 5);
+                        amtCell.Value = item.Amount;
+                        amtCell.Style.NumberFormat.Format = "₹#,##0.00";
+                        amtCell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+
+                        for (int colIdx = 1; colIdx <= 5; colIdx++)
+                        {
+                            worksheet.Cell(currentRow, colIdx).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+                            worksheet.Cell(currentRow, colIdx).Style.Border.OutsideBorderColor = XLColor.LightGray;
+                        }
+
+                        periodSubtotal += item.Amount;
+                        currentRow++;
+                    }
+
+                    // Period Subtotal Row
+                    worksheet.Cell(currentRow, 1).Value = $"{period} Subtotal";
+                    worksheet.Cell(currentRow, 1).Style.Font.Bold = true;
+                    worksheet.Range(currentRow, 1, currentRow, 4).Merge();
+                    
+                    var subCell = worksheet.Cell(currentRow, 5);
+                    subCell.Value = periodSubtotal;
+                    subCell.Style.Font.Bold = true;
+                    subCell.Style.NumberFormat.Format = "₹#,##0.00";
+                    subCell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+
+                    for (int colIdx = 1; colIdx <= 5; colIdx++)
+                    {
+                        worksheet.Cell(currentRow, colIdx).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+                        worksheet.Cell(currentRow, colIdx).Style.Fill.BackgroundColor = XLColor.FromHtml("#E3F2FD");
+                    }
+                    currentRow++;
+
+                    colTotal += periodSubtotal;
+                }
+
+                // Collection Type Total Row
+                worksheet.Cell(currentRow, 1).Value = $"{col.Name} Total";
+                worksheet.Cell(currentRow, 1).Style.Font.Bold = true;
+                worksheet.Cell(currentRow, 1).Style.Font.FontSize = 11;
+                worksheet.Range(currentRow, 1, currentRow, 4).Merge();
+
+                var colTotalCell = worksheet.Cell(currentRow, 5);
+                colTotalCell.Value = colTotal;
+                colTotalCell.Style.Font.Bold = true;
+                colTotalCell.Style.Font.FontSize = 11;
+                colTotalCell.Style.NumberFormat.Format = "₹#,##0.00";
+                colTotalCell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+
+                for (int colIdx = 1; colIdx <= 5; colIdx++)
+                {
+                    worksheet.Cell(currentRow, colIdx).Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+                    worksheet.Cell(currentRow, colIdx).Style.Fill.BackgroundColor = XLColor.FromHtml("#BBDEFB");
+                }
+                currentRow += 2; // Blank row after collection type
+            }
+
+            // Grand Total block
+            worksheet.Cell(currentRow, 1).Value = "GRAND TOTAL DIGITAL COLLECTION";
+            worksheet.Cell(currentRow, 1).Style.Font.Bold = true;
+            worksheet.Cell(currentRow, 1).Style.Font.FontSize = 12;
+            worksheet.Range(currentRow, 1, currentRow, 4).Merge();
+
+            var grandCell = worksheet.Cell(currentRow, 5);
+            grandCell.Value = data.GrandTotal;
+            grandCell.Style.Font.Bold = true;
+            grandCell.Style.Font.FontSize = 12;
+            grandCell.Style.Font.FontColor = XLColor.White;
+            grandCell.Style.NumberFormat.Format = "₹#,##0.00";
+            grandCell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+
+            for (int colIdx = 1; colIdx <= 5; colIdx++)
+            {
+                worksheet.Cell(currentRow, colIdx).Style.Border.OutsideBorder = XLBorderStyleValues.Medium;
+                worksheet.Cell(currentRow, colIdx).Style.Fill.BackgroundColor = XLColor.FromHtml("#2E7D32");
+                if (colIdx != 5) worksheet.Cell(currentRow, colIdx).Style.Font.FontColor = XLColor.White;
+            }
+            currentRow += 3;
+
+            // Signatures
+            worksheet.Cell(currentRow, 1).Value = "Supervisor Signature";
+            worksheet.Range(currentRow, 1, currentRow, 2).Merge();
+
+            worksheet.Cell(currentRow, 4).Value = "Manager Signature";
+            worksheet.Range(currentRow, 4, currentRow, 5).Merge();
+
+            worksheet.Cell(currentRow, 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            worksheet.Cell(currentRow, 4).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            
+            worksheet.Cell(currentRow, 1).Style.Font.Italic = true;
+            worksheet.Cell(currentRow, 4).Style.Font.Italic = true;
+
+            // Auto-fit columns
+            worksheet.Columns(1, 5).AdjustToContents();
+
+            workbook.SaveAs(filePath);
+            return filePath;
+        });
+    }
 }

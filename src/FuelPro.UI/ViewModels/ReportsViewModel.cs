@@ -26,6 +26,7 @@ public partial class ReportsViewModel : ObservableObject
     private readonly IShiftAggregationService _aggregation;
     private readonly IFinancialCalculationService _financialCalcService;
     private readonly ITidCalculationService _tidService;
+    private readonly IReportService _reportService;
 
     [ObservableProperty] private string _selectedReportType = "DSR"; // "DSR" or "MonthlyPL"
     [ObservableProperty] private DateTime _selectedDate = DateTime.Today;
@@ -53,6 +54,7 @@ public partial class ReportsViewModel : ObservableObject
         _aggregation = App.Services.GetRequiredService<IShiftAggregationService>();
         _financialCalcService = App.Services.GetRequiredService<IFinancialCalculationService>();
         _tidService = App.Services.GetRequiredService<ITidCalculationService>();
+        _reportService = App.Services.GetRequiredService<IReportService>();
 
         // Populate Years (Current Year - 2 to Current Year + 2)
         var currYear = DateTime.Today.Year;
@@ -84,9 +86,6 @@ public partial class ReportsViewModel : ObservableObject
             if (SelectedReportType == "DSR")
             {
                 // DSR: Daily Sales Register (Single Day)
-                var shiftsResult = await _shiftRepo.GetShiftsByDateRangeAsync(SelectedDate, SelectedDate);
-                var shifts = shiftsResult.Success && shiftsResult.Data != null ? shiftsResult.Data : new List<Shift>();
-                
                 var entriesResult = await _dsmRepo.GetEntriesForDateRangeAsync(SelectedDate, SelectedDate);
                 var entries = entriesResult.Success && entriesResult.Data != null ? entriesResult.Data : new List<DsmEntry>();
 
@@ -97,197 +96,33 @@ public partial class ReportsViewModel : ObservableObject
                     return;
                 }
 
+                var shiftsResult = await _shiftRepo.GetShiftsByDateRangeAsync(SelectedDate, SelectedDate);
+                var shifts = shiftsResult.Success && shiftsResult.Data != null ? shiftsResult.Data : new List<Shift>();
                 var shiftIds = shifts.Select(s => s.ShiftId).ToList();
+
                 var expResult = await _expenseRepo.GetExpensesByShiftIdsAsync(shiftIds);
                 var allExpenses = expResult.Success && expResult.Data != null ? expResult.Data : new List<Expense>();
 
-                var stationName = "PyroSync";
-                var s = await _settingsRepo.GetSettingsAsync();
-                if (s.Success && s.Data != null) stationName = s.Data.PumpStationName;
+                var repaymentsRes = await App.Services.GetRequiredService<ICreditorRepaymentRepository>().GetByDateRangeAsync(SelectedDate.Date, SelectedDate.Date);
+                var repayments = repaymentsRes.Success && repaymentsRes.Data != null ? repaymentsRes.Data : new List<CreditorRepayment>();
 
-                // 1. Calculate Nozzle-wise Sale
-                var nozzleRows = new List<NozzleSummaryRowDto>();
-                var allReadings = entries.SelectMany(e => e.NozzleReadings.Select(r => new
-                {
-                    e.PumpId,
-                    Reading = r,
-                    CanonicalFuelType = PumpConfiguration.GetFuelTypeDisplayName(e.PumpId, r.NozzleNumber, SelectedDate)
-                })).ToList();
-                var pumpGroups = allReadings.GroupBy(x => new { x.PumpId, FuelType = x.CanonicalFuelType });
-                foreach (var group in pumpGroups)
-                {
-                    var opening = group.Min(x => x.Reading.OpeningReading);
-                    var closing = group.Max(x => x.Reading.ClosingReading);
-                    var grossLitres = closing - opening;
-                    var netLitres = group.Sum(x => x.Reading.SaleLitres);
-                    var amount = group.Sum(x => x.Reading.Amount);
-                    double rate = netLitres > 0 ? amount / netLitres : group.Select(x => x.Reading.Rate).FirstOrDefault();
+                var settings = await _settingsRepo.GetSettingsAsync();
+                double defaultHsd = settings.Success ? settings.Data!.HsdRate : 90.35;
+                double defaultMsI = settings.Success ? settings.Data!.MsIRate : 103.81;
+                double defaultMsII = settings.Success ? settings.Data!.MsIIRate : 103.81;
+                double defaultCng = settings.Success ? settings.Data!.CngRate : 85.0;
+                string stationName = settings.Success ? settings.Data!.PumpStationName : "PyroSync";
 
-                    nozzleRows.Add(new NozzleSummaryRowDto
-                    {
-                        PumpId = group.Key.PumpId,
-                        FuelType = group.Key.FuelType,
-                        OpeningReading = opening,
-                        ClosingReading = closing,
-                        GrossLitres = grossLitres,
-                        NetSaleLitres = netLitres,
-                        Rate = rate,
-                        Amount = amount
-                    });
-                }
-                double totalDayFuelSaleAmount = nozzleRows.Sum(r => r.Amount);
-                double totalDayLitres = nozzleRows.Sum(r => r.NetSaleLitres);
-                double totalHsdLitres = nozzleRows.Where(r => r.FuelType == "HSD").Sum(r => r.NetSaleLitres);
-                double totalMsILitres = nozzleRows.Where(r => r.FuelType == "MS-I").Sum(r => r.NetSaleLitres);
-                double totalMsIILitres = nozzleRows.Where(r => r.FuelType == "MS-II").Sum(r => r.NetSaleLitres);
-                double totalMsLitres = totalMsILitres + totalMsIILitres;
+                var report = _reportService.CalculateDayReport(
+                    SelectedDate,
+                    SelectedDate,
+                    entries,
+                    allExpenses,
+                    repayments,
+                    defaultHsd, defaultMsI, defaultMsII, defaultCng,
+                    stationName);
 
-                // 2. Collections
-                var tidSheet = _tidService.GetTidSheetAsync(SelectedDate.Date).GetAwaiter().GetResult();
-                var phonePeTotal = tidSheet.PhonePeDirectMorning + tidSheet.PhonePeDirectDay + tidSheet.PhonePeDirectNight;
-                var phonePeCardMorningTotal = tidSheet.PhonePeCardMorning + tidSheet.PhonePeCardDay;
-                var phonePeCardNightTotal = tidSheet.PhonePeCardNight;
-                var creditCardMorningTotal = tidSheet.PineLabsCardMorning + tidSheet.PineLabsCardDay;
-                var creditCardNightTotal = tidSheet.PineLabsCardNight;
-                var creditCardTotal = tidSheet.PineLabsCardTotal;
-                var petroCardTotal = tidSheet.PetroCardTotal;
-
-                var cash1Agg = _aggregation.AggregateCash(entries, "Cash1");
-                var bankCashTotal = cash1Agg.GrandTotal;
-
-                var cash2Agg = _aggregation.AggregateCash(entries, "Cash2");
-                var cashInHandTotal = cash2Agg.GrandTotal;
-
-                var totalDigital = phonePeTotal + phonePeCardMorningTotal + phonePeCardNightTotal + creditCardTotal + petroCardTotal;
-                var totalCash = bankCashTotal + cashInHandTotal;
-                var totalDigitalAndCash = totalDigital + totalCash;
-
-                // 3. Creditors
-                var creditors = _aggregation.BuildCreditorRows(entries);
-                var creditorsTotal = creditors.Sum(r => r.Amount);
-
-                // 4. Expenses
-                var expenses = _aggregation.BuildExpenseRows(entries, allExpenses);
-                var expensesTotal = expenses.Where(r => !r.IsShiftLevel).Sum(r => r.Amount);
-
-                // 5. Testing
-                var msTesting = entries.SelectMany(e => e.TestingEntries).Where(t => t.FuelType == "MS").Sum(t => t.Amount);
-                var hsdTesting = entries.SelectMany(e => e.TestingEntries).Where(t => t.FuelType == "HSD").Sum(t => t.Amount);
-                var cngTesting = entries.SelectMany(e => e.TestingEntries).Where(t => t.FuelType == "CNG").Sum(t => t.Amount);
-                var totalTesting = msTesting + hsdTesting + cngTesting;
-
-                // 6. DSM Shortage — computed live from child collections, not stored Mismatch field
-                double totalDsmShort = 0;
-                var mismatchGroups = entries.GroupBy(e => new { e.ShiftId, e.DsmName, GroupPumpId = e.ReconciledToPumpId ?? e.PumpId });
-                foreach (var g in mismatchGroups)
-                {
-                    var gs = g.SelectMany(e => e.NozzleReadings).Sum(n => n.Amount);
-                    var c1 = g.SelectMany(e => e.CashDenominations).Where(c => c.CashType == "Cash1").Sum(c => c.TotalAmount);
-                    var c2 = g.SelectMany(e => e.CashDenominations).Where(c => c.CashType == "Cash2").Sum(c => c.TotalAmount);
-                    var pp = g.Sum(e => (e.PaymentCollection?.PhonePeMorning ?? 0) + (e.PaymentCollection?.PhonePeNight ?? 0)
-                                     + (e.PaymentCollection?.PhonePeCardMorning ?? 0) + (e.PaymentCollection?.PhonePeCardNight ?? 0));
-                    var cc = g.Sum(e => (e.PaymentCollection?.CreditCardMorning ?? 0) + (e.PaymentCollection?.CreditCardNight ?? 0)
-                                     + (e.PaymentCollection?.PetroCardMorning ?? 0) + (e.PaymentCollection?.PetroCardNight ?? 0));
-                    var cd = g.Sum(e => e.PaymentCollection?.CashDeposit ?? 0);
-                    var totalColl = (double)(pp + cc + cd + c1 + c2)
-                                  + g.SelectMany(e => e.DebitEntries).Sum(d => d.Amount)
-                                  + g.SelectMany(e => e.TestingEntries).Sum(t => t.Amount)
-                                  + g.SelectMany(e => e.Expenses).Sum(ex => ex.Amount);
-                    var mis = totalColl - gs;
-                    if (mis < -0.01) totalDsmShort += Math.Abs(mis);
-                }
-
-                var reconciliationTotalAmount = totalDigitalAndCash + creditorsTotal + expensesTotal + totalTesting + totalDsmShort;
-                var grossDaySaleTotal = totalDayFuelSaleAmount;
-                var difference = reconciliationTotalAmount - grossDaySaleTotal;
-
-                // Build DSM print rows
-                var dsmPrintRows = new List<object>();
-                var entriesByShift = entries.GroupBy(e => e.ShiftId);
-                foreach (var g in entriesByShift)
-                {
-                    var shift = shifts.FirstOrDefault(s => s.ShiftId == g.Key);
-                    var shiftLabel = shift != null ? $"{shift.ShiftDate:dd/MM} {shift.ShiftType}" : "Unknown";
-                    
-                    var shiftDsmRows = _aggregation.BuildDsmSummaryRows(g.ToList());
-                    foreach (var r in shiftDsmRows)
-                    {
-                        dsmPrintRows.Add(new
-                        {
-                            shift = shiftLabel,
-                            dsmName = r.DsmName,
-                            pumpNo = r.PumpId,
-                            phonePe = r.PhonePe,
-                            phonePeCardMorning = r.PhonePeCardMorning,
-                            phonePeCardNight = r.PhonePeCardNight,
-                            phonePeCard = r.PhonePeCardMorning + r.PhonePeCardNight,
-                            creditCardMorning = r.CreditCardMorning,
-                            creditCardNight = r.CreditCardNight,
-                            creditCard = r.CreditCardMorning + r.CreditCardNight,
-                            petroCard = r.PetroCard,
-                            bankCash = r.CashDeposit,
-                            debit = r.Debit,
-                            expenses = r.Expenses,
-                            testing = r.Testing,
-                            cashInHand = r.CashInHand,
-                            grossSale = r.GrossSales,
-                            mismatch = (r.PhonePe + r.PhonePeCardMorning + r.PhonePeCardNight + r.CreditCardMorning + r.CreditCardNight + r.PetroCard + r.CashDeposit + r.Debit + r.Expenses + r.Testing + r.CashInHand) - r.GrossSales
-                        });
-                    }
-                }
-
-                var payload = new
-                {
-                    date = SelectedDate.ToString("dd-MM-yyyy"),
-                    stationName,
-                    totalFuelSaleAmount = totalDayFuelSaleAmount,
-                    totalDayLitres,
-                    totalHsdLitres,
-                    totalMsILitres,
-                    totalMsIILitres,
-                    totalMsLitres,
-                    reconciliationTotalAmount,
-                    grossDaySaleTotal,
-                    difference,
-                    totalDsmShort,
-                    creditorsTotal,
-                    expensesTotal,
-                    phonePeTotal,
-                    phonePeCardMorningTotal,
-                    phonePeCardNightTotal,
-                    creditCardMorningTotal,
-                    creditCardNightTotal,
-                    petroCardTotal,
-                    bankCashTotal,
-                    cashInHandTotal,
-                    nozzleRows = nozzleRows.Select(r => new
-                    {
-                        pumpId = r.PumpId,
-                        fuelType = r.FuelType,
-                        openingReading = r.OpeningReading,
-                        closingReading = r.ClosingReading,
-                        grossLitres = r.GrossLitres,
-                        netSaleLitres = r.NetSaleLitres,
-                        rate = r.Rate,
-                        amount = r.Amount
-                    }).ToList(),
-                    dsmEntries = dsmPrintRows,
-                    creditors = creditors.Select(c => new
-                    {
-                        dsmName = c.DsmName,
-                        debtorName = c.DebtorName,
-                        chequeNo = c.ChequeNo,
-                        amount = c.Amount
-                    }).ToList(),
-                    expenses = expenses.Select(ex => new
-                    {
-                        dsmName = ex.DsmName,
-                        description = ex.Description,
-                        amount = ex.Amount
-                    }).ToList()
-                };
-
-                new PrintService().PrintDayTotal(payload);
+                new PrintService().PrintDayTotal(report);
                 StatusMessage = "DSR Report opened in browser.";
             }
             else if (SelectedReportType == "MonthlyPL")

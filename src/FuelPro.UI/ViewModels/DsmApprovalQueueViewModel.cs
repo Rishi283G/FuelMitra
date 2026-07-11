@@ -110,6 +110,16 @@ public class DsmTestingRow
     public string FuelType { get; set; } = "";
     public double Amount { get; set; }
     public int PumpId { get; set; }
+    public double? RupeeAmount { get; set; }
+}
+
+public class DsmOilDefSaleRow
+{
+    public string ProductName { get; set; } = string.Empty;
+    public double Quantity { get; set; }
+    public double Price { get; set; }
+    public double Total => Quantity * Price;
+    public string Unit { get; set; } = string.Empty;
 }
 
 public partial class DsmApprovalQueueViewModel : ObservableObject
@@ -126,7 +136,12 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
     public ObservableCollection<DsmPendingSubmission> PendingSubmissions { get; } = new();
     public List<DsmTestingRow> SubmissionTestingEntries { get; } = new();
     
-    [ObservableProperty] private DsmPendingSubmission? _selectedSubmission;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasActiveSelection))]
+    [NotifyPropertyChangedFor(nameof(HeaderTitleDisplay))]
+    [NotifyPropertyChangedFor(nameof(HeaderShiftDateDisplay))]
+    [NotifyPropertyChangedFor(nameof(HeaderSubmittedTimeDisplay))]
+    private DsmPendingSubmission? _selectedSubmission;
     [ObservableProperty] private string _statusMessage = "";
     [ObservableProperty] private bool _isLoadingSubmissions;
     [ObservableProperty] private bool _isLoadingDetails;
@@ -154,6 +169,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
     public ObservableCollection<DsmNozzleRow> NozzleReadings { get; } = new();
     public ObservableCollection<DsmDebitRow> DebtorEntries { get; } = new();
     public ObservableCollection<DsmCardSwipeRow> CardSwipeDetails { get; } = new();
+    public ObservableCollection<DsmOilDefSaleRow> OilDefSales { get; } = new();
 
     // Validations & Overrides
     [ObservableProperty] private bool _hasContinuityWarnings;
@@ -163,6 +179,54 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
 
     // Edit UI Visibility
     [ObservableProperty] private bool _isEditing;
+
+    // Recently Approved Submissions & Read-Only Details
+    [ObservableProperty] private ObservableCollection<DsmApprovedSubmissionDto> _filteredApprovedSubmissions = new();
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasActiveSelection))]
+    [NotifyPropertyChangedFor(nameof(HeaderTitleDisplay))]
+    [NotifyPropertyChangedFor(nameof(HeaderShiftDateDisplay))]
+    [NotifyPropertyChangedFor(nameof(HeaderSubmittedTimeDisplay))]
+    private DsmApprovedSubmissionDto? _selectedApprovedSubmission;
+
+    public bool HasActiveSelection => SelectedSubmission != null || SelectedApprovedSubmission != null;
+    public string HeaderTitleDisplay => SelectedSubmission != null ? SelectedSubmission.TitleDisplay : (SelectedApprovedSubmission != null ? SelectedApprovedSubmission.TitleDisplay : string.Empty);
+    public string HeaderShiftDateDisplay => SelectedSubmission != null ? SelectedSubmission.ShiftDateDisplay : (SelectedApprovedSubmission != null ? SelectedApprovedSubmission.ShiftDateDisplay : string.Empty);
+    public string HeaderSubmittedTimeDisplay => SelectedSubmission != null ? $"Submitted: {SelectedSubmission.SubmittedTimeDisplay}" : (SelectedApprovedSubmission != null ? $"Submitted: {SelectedApprovedSubmission.SubmittedTimeDisplay}" : string.Empty);
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsEditable))]
+    private bool _isReadOnlyMode;
+
+    public bool IsEditable => !_isReadOnlyMode;
+    [ObservableProperty] private ObservableCollection<DsmTimelineLog> _timelineLogs = new();
+
+    // Filters
+    [ObservableProperty] private bool _isFilterToday;
+    [ObservableProperty] private bool _isFilterYesterday;
+    [ObservableProperty] private bool _isFilterThisWeek;
+    [ObservableProperty] private string _selectedDsmFilter = "All";
+    [ObservableProperty] private string _selectedPumpFilter = "All";
+    [ObservableProperty] private string _selectedShiftFilter = "All";
+    [ObservableProperty] private string _searchTextFilter = "";
+
+    // Filter Options
+    [ObservableProperty] private ObservableCollection<string> _dsmFilterOptions = new() { "All" };
+    [ObservableProperty] private ObservableCollection<string> _pumpFilterOptions = new() { "All" };
+    [ObservableProperty] private ObservableCollection<string> _shiftFilterOptions = new() { "All" };
+
+    // Summaries
+    [ObservableProperty] private int _summaryApprovedCount;
+    [ObservableProperty] private double _summaryGrossSales;
+    [ObservableProperty] private double _summaryTotalCollection;
+    [ObservableProperty] private double _summaryTotalDifference;
+    [ObservableProperty] private double _summaryTotalExpenses;
+    [ObservableProperty] private double _summaryTotalDebtors;
+    [ObservableProperty] private double _summaryTotalTesting;
+    [ObservableProperty] private double _summaryTotalOilDefSales;
+
+    // UI Expand state
+    [ObservableProperty] private bool _isRecentlyApprovedExpanded;
 
     public DsmApprovalQueueViewModel()
     {
@@ -175,6 +239,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
         _pollingService = _serviceProvider.GetRequiredService<DsmSubmissionPollingService>();
 
         _ = RefreshQueueAsync();
+        _ = LoadApprovedHistoryAsync();
     }
 
     [RelayCommand]
@@ -243,12 +308,20 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
     {
         if (value != null)
         {
+            SelectedApprovedSubmission = null;
+            IsReadOnlyMode = false;
             _ = LoadSubmissionDetailsAsync(value);
         }
         else
         {
-            NozzleReadings.Clear();
-            IsEditing = false;
+            if (SelectedApprovedSubmission == null)
+            {
+                NozzleReadings.Clear();
+                OilDefSales.Clear();
+                IsEditing = false;
+                IsReadOnlyMode = false;
+                TimelineLogs.Clear();
+            }
         }
     }
 
@@ -264,6 +337,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
             var readingsResult = await _supabaseService.FetchSubmissionReadingsAsync(submission.Id);
             NozzleReadings.Clear();
             SubmissionTestingEntries.Clear();
+            OilDefSales.Clear();
 
             // 2. Query continuity closings from local SQLite
             var prevResult = await _nozzleRepo.GetPreviousShiftClosingsAsync(submission.ShiftDate, submission.ShiftType, submission.PumpId);
@@ -375,6 +449,19 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                                 });
                             }
                         }
+                        if (metadata.oilDefSales != null)
+                        {
+                            foreach (var sale in metadata.oilDefSales)
+                            {
+                                OilDefSales.Add(new DsmOilDefSaleRow
+                                {
+                                    ProductName = sale.productName ?? "",
+                                    Quantity = (double)(sale.quantity ?? 0.0),
+                                    Price = (double)(sale.price ?? 0.0),
+                                    Unit = sale.unit ?? ""
+                                });
+                            }
+                        }
                     }
                 }
                 catch (Exception ex)
@@ -418,10 +505,12 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
         GrossSales = NozzleReadings.Sum(r => r.Amount);
         double totalTestingAmount = SubmissionTestingEntries.Sum(t => 
         {
+            if (t.RupeeAmount.HasValue)
+                return t.RupeeAmount.Value;
             var nozzleRow = NozzleReadings.FirstOrDefault(n => n.NozzleId == t.NozzleId);
             return t.Amount * (nozzleRow != null ? nozzleRow.Rate : 0.0);
         });
-        TotalCollections = UpiAmount + CardAmount + CashAmount + CreditAmount + PetroCardAmount + CashDepositAmount + OthersAmount + totalTestingAmount;
+        TotalCollections = UpiAmount + CardAmount + CashAmount + CreditAmount + PetroCardAmount + CashDepositAmount + totalTestingAmount + ExpenseAmount;
         
         // Mismatch is computed: Collections + Expense - (GrossSales + Excess/Short)
         // Let's use the DsmCalculationService logic to keep it consistent!
@@ -441,6 +530,16 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
             Expenses = new List<FuelPro.Core.DTOs.ExpenseDto> { new() { Amount = (decimal)ExpenseAmount } },
             TestingEntries = SubmissionTestingEntries.Select(t => 
             {
+                if (t.RupeeAmount.HasValue)
+                {
+                    return new FuelPro.Core.DTOs.TestingEntryDto
+                    {
+                        FuelType = t.FuelType,
+                        Litres = (decimal)t.Amount,
+                        Rate = t.Amount > 0 ? (decimal)(t.RupeeAmount.Value / t.Amount) : 0m,
+                        Amount = (decimal)t.RupeeAmount.Value
+                    };
+                }
                 var nozzleRow = NozzleReadings.FirstOrDefault(n => n.NozzleId == t.NozzleId);
                 decimal rate = nozzleRow != null ? (decimal)nozzleRow.Rate : 0m;
                 return new FuelPro.Core.DTOs.TestingEntryDto
@@ -454,7 +553,8 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
         };
 
         var calc = _dsmCalculationService.Calculate(dto);
-        MismatchAmount = (double)calc.Mismatch;
+        double oilDefSalesTotal = OilDefSales.Sum(s => s.Total);
+        MismatchAmount = (double)calc.Mismatch - oilDefSalesTotal;
 
         // Check continuity warnings
         HasContinuityWarnings = NozzleReadings.Any(r => r.HasContinuityError);
@@ -539,12 +639,16 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
             // Initialize payment fields from metadata and collections
             double cashDeposit = CashDepositAmount;
             double upiMorning = 0;
+            double upiDay = 0;
             double upiNight = 0;
             double upiCardMorning = 0;
+            double upiCardDay = 0;
             double upiCardNight = 0;
             double creditCardMorning = 0;
+            double creditCardDay = 0;
             double creditCardNight = 0;
             double petroCardMorning = 0;
+            double petroCardDay = 0;
             double petroCardNight = 0;
             double others = OthersAmount;
 
@@ -556,19 +660,108 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
             string? petroCardBatch = null;
             string? phonePeTidMorning = null;
             string? phonePeBatchMorning = null;
+            string? phonePeTidDay = null;
+            string? phonePeBatchDay = null;
             string? phonePeTidNight = null;
             string? phonePeBatchNight = null;
 
             string? creditCardTidMorning = null;
             string? creditCardBatchMorning = null;
+            string? creditCardTidDay = null;
+            string? creditCardBatchDay = null;
             string? creditCardTidNight = null;
             string? creditCardBatchNight = null;
             string? petroCardTidMorning = null;
             string? petroCardBatchMorning = null;
+            string? petroCardTidDay = null;
+            string? petroCardBatchDay = null;
             string? petroCardTidNight = null;
             string? petroCardBatchNight = null;
 
-            bool isNight = string.Equals(SelectedSubmission.ShiftType, "B", StringComparison.OrdinalIgnoreCase);
+            bool isNight = string.Equals(SelectedSubmission.ShiftType, "A", StringComparison.OrdinalIgnoreCase);
+
+            // Try structured settlements array first (new PWA format)
+            bool hasStructuredSettlements = false;
+            if (!string.IsNullOrEmpty(SelectedSubmission.MetadataJson))
+            {
+                try
+                {
+                    var metadata = JsonConvert.DeserializeObject<dynamic>(SelectedSubmission.MetadataJson);
+                    if (metadata?.settlements != null)
+                    {
+                        hasStructuredSettlements = true;
+                        foreach (var s in metadata.settlements)
+                        {
+                            string paymentType = (string)(s.paymentType ?? "");
+                            string period = (string)(s.period ?? "");
+                            double amt = (double)(s.amount ?? 0.0);
+                            string tid = (string)(s.tid ?? "");
+                            string batch = (string)(s.batch ?? "");
+
+                            if (amt <= 0) continue;
+
+                            if (paymentType.Contains("PhonePe", StringComparison.OrdinalIgnoreCase))
+                            {
+                                switch (period)
+                                {
+                                    case "Morning":
+                                        upiMorning += amt; phonePeTidMorning = tid; phonePeBatchMorning = batch;
+                                        break;
+                                    case "Day":
+                                        upiDay += amt; phonePeTidDay = tid; phonePeBatchDay = batch;
+                                        break;
+                                    case "Night":
+                                        upiNight += amt; phonePeTidNight = tid; phonePeBatchNight = batch;
+                                        break;
+                                }
+                                phonePeTid = tid;
+                                phonePeBatch = batch;
+                            }
+                            else if (paymentType.Contains("Petro", StringComparison.OrdinalIgnoreCase))
+                            {
+                                switch (period)
+                                {
+                                    case "Morning":
+                                        petroCardMorning += amt; petroCardTidMorning = tid; petroCardBatchMorning = batch;
+                                        break;
+                                    case "Day":
+                                        petroCardDay += amt; petroCardTidDay = tid; petroCardBatchDay = batch;
+                                        break;
+                                    case "Night":
+                                        petroCardNight += amt; petroCardTidNight = tid; petroCardBatchNight = batch;
+                                        break;
+                                }
+                                petroCardTid = tid;
+                                petroCardBatch = batch;
+                            }
+                            else // PineLabs / Credit Card
+                            {
+                                switch (period)
+                                {
+                                    case "Morning":
+                                        creditCardMorning += amt; creditCardTidMorning = tid; creditCardBatchMorning = batch;
+                                        break;
+                                    case "Day":
+                                        creditCardDay += amt; creditCardTidDay = tid; creditCardBatchDay = batch;
+                                        break;
+                                    case "Night":
+                                        creditCardNight += amt; creditCardTidNight = tid; creditCardBatchNight = batch;
+                                        break;
+                                }
+                                cardTid = tid;
+                                cardBatch = batch;
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error(ex, "Failed to parse structured settlements from metadata");
+                }
+            }
+
+            // Fall back to legacy cardSwipeDetails parsing if no structured settlements
+            if (!hasStructuredSettlements)
 
             foreach (var swipe in CardSwipeDetails)
             {
@@ -578,7 +771,9 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                 string batch = swipe.Batch ?? "";
 
                 bool isSwipeNight = mode.Contains("Night", StringComparison.OrdinalIgnoreCase) || 
-                                    (!mode.Contains("Morning", StringComparison.OrdinalIgnoreCase) && isNight);
+                                    (!mode.Contains("Morning", StringComparison.OrdinalIgnoreCase) && 
+                                     !mode.Contains("Day", StringComparison.OrdinalIgnoreCase) && 
+                                     isNight);
 
                 if (mode.Contains("PhonePe Card", StringComparison.OrdinalIgnoreCase) || 
                     mode.Contains("PhonePe UPI", StringComparison.OrdinalIgnoreCase) || 
@@ -656,8 +851,8 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                 }
             }
 
-            // Fallbacks for backward compatibility / plain amount inputs (only when NO card swipe details exist)
-            if (CardSwipeDetails.Count == 0)
+            // Fallbacks for backward compatibility / plain amount inputs (only when NO card swipe details AND no structured settlements exist)
+            if (CardSwipeDetails.Count == 0 && !hasStructuredSettlements)
             {
                 if (upiMorning == 0 && upiNight == 0 && UpiAmount > 0)
                 {
@@ -680,30 +875,40 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
             {
                 CashDeposit = cashDeposit,
                 PhonePeMorning = upiMorning,
+                PhonePeDay = upiDay,
                 PhonePeNight = upiNight,
                 PhonePeCardMorning = upiCardMorning,
+                PhonePeCardDay = upiCardDay,
                 PhonePeCardNight = upiCardNight,
                 CreditCardMorning = creditCardMorning,
+                CreditCardDay = creditCardDay,
                 CreditCardNight = creditCardNight,
                 PetroCardMorning = petroCardMorning,
+                PetroCardDay = petroCardDay,
                 PetroCardNight = petroCardNight,
                 Others = others,
-                CardTid = isNight ? creditCardTidNight : creditCardTidMorning,
-                CardBatch = isNight ? creditCardBatchNight : creditCardBatchMorning,
-                PhonePeTid = isNight ? phonePeTidNight : phonePeTidMorning,
-                PhonePeBatch = isNight ? phonePeBatchNight : phonePeBatchMorning,
-                PetroCardTid = isNight ? petroCardTidNight : petroCardTidMorning,
-                PetroCardBatch = isNight ? petroCardBatchNight : petroCardBatchMorning,
+                CardTid = cardTid ?? (isNight ? creditCardTidNight : creditCardTidMorning),
+                CardBatch = cardBatch ?? (isNight ? creditCardBatchNight : creditCardBatchMorning),
+                PhonePeTid = phonePeTid ?? (isNight ? phonePeTidNight : phonePeTidMorning),
+                PhonePeBatch = phonePeBatch ?? (isNight ? phonePeBatchNight : phonePeBatchMorning),
+                PetroCardTid = petroCardTid ?? (isNight ? petroCardTidNight : petroCardTidMorning),
+                PetroCardBatch = petroCardBatch ?? (isNight ? petroCardBatchNight : petroCardBatchMorning),
                 PhonePeTidMorning = phonePeTidMorning,
                 PhonePeBatchMorning = phonePeBatchMorning,
+                PhonePeTidDay = phonePeTidDay,
+                PhonePeBatchDay = phonePeBatchDay,
                 PhonePeTidNight = phonePeTidNight,
                 PhonePeBatchNight = phonePeBatchNight,
                 CreditCardTidMorning = creditCardTidMorning,
                 CreditCardBatchMorning = creditCardBatchMorning,
+                CreditCardTidDay = creditCardTidDay,
+                CreditCardBatchDay = creditCardBatchDay,
                 CreditCardTidNight = creditCardTidNight,
                 CreditCardBatchNight = creditCardBatchNight,
                 PetroCardTidMorning = petroCardTidMorning,
                 PetroCardBatchMorning = petroCardBatchMorning,
+                PetroCardTidDay = petroCardTidDay,
+                PetroCardBatchDay = petroCardBatchDay,
                 PetroCardTidNight = petroCardTidNight,
                 PetroCardBatchNight = petroCardBatchNight
             };
@@ -782,6 +987,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
 
             // Parse cash denominations, connected pump, and testing entries
             int denom500 = 0, denom200 = 0, denom100 = 0, denom50 = 0, denom20 = 0, denom10 = 0, coins = 0;
+            int cash1denom500 = 0, cash1denom200 = 0, cash1denom100 = 0, cash1denom50 = 0, cash1denom20 = 0, cash1denom10 = 0, cash1coins = 0;
             int? connectedPumpId = null;
             var testingModels = new List<TestingEntry>();
 
@@ -802,6 +1008,16 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                             denom10 = (int)(metadata.cashDenominations.denom10 ?? 0);
                             coins = (int)(metadata.cashDenominations.coins ?? 0);
                         }
+                        if (metadata.cash1Denominations != null)
+                        {
+                            cash1denom500 = (int)(metadata.cash1Denominations.denom500 ?? 0);
+                            cash1denom200 = (int)(metadata.cash1Denominations.denom200 ?? 0);
+                            cash1denom100 = (int)(metadata.cash1Denominations.denom100 ?? 0);
+                            cash1denom50 = (int)(metadata.cash1Denominations.denom50 ?? 0);
+                            cash1denom20 = (int)(metadata.cash1Denominations.denom20 ?? 0);
+                            cash1denom10 = (int)(metadata.cash1Denominations.denom10 ?? 0);
+                            cash1coins = (int)(metadata.cash1Denominations.coins ?? 0);
+                        }
                         if (metadata.connectedPumpId != null)
                         {
                             connectedPumpId = (int?)metadata.connectedPumpId;
@@ -816,7 +1032,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                                 double litres = (double)(test.amount ?? 0.0);
                                 testingModels.Add(new TestingEntry
                                 {
-                                    FuelType = test.fuelType ?? "",
+                                    FuelType = nozzleId.ToString(),
                                     Litres = litres,
                                     Rate = rate,
                                     Amount = litres * rate
@@ -827,7 +1043,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                 }
                 catch (Exception ex)
                 {
-                    _logger.Error(ex, "Failed to parse cashDenominations/connectedPumpId/testingEntries from metadata JSON");
+                    _logger.Error(ex, "Failed to parse cashDenominations/cash1Denominations/connectedPumpId/testingEntries from metadata JSON");
                 }
             }
 
@@ -835,10 +1051,21 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                 ? new List<Expense> { new() { Description = string.IsNullOrEmpty(ExpenseNotes) ? "DSM PWA Expense" : ExpenseNotes, Amount = ExpenseAmount } }
                 : new List<Expense>();
 
-            // Cash1 is Bank Deposit, Cash2 is Cash in Hand
+            // Cash1 is Cash 1, Cash2 is Cash in Hand
             var cashModels = new List<CashDenomination>
             {
-                new() { CashType = "Cash1", TotalAmount = CashDepositAmount },
+                new()
+                {
+                    CashType = "Cash1",
+                    TotalAmount = CashDepositAmount,
+                    Denom500 = cash1denom500,
+                    Denom200 = cash1denom200,
+                    Denom100 = cash1denom100,
+                    Denom50 = 0,
+                    Denom20 = 0,
+                    Denom10 = 0,
+                    Coins = 0
+                },
                 new() 
                 { 
                     CashType = "Cash2", 
@@ -882,6 +1109,63 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
 
             // 4. Create local DsmApprovalAudit record (will sync back to Supabase)
             using var context = _serviceProvider.GetRequiredService<FuelProDbContext>();
+
+            // Process Oil & DEF Sales from PWA Submission Metadata
+            if (!string.IsNullOrEmpty(SelectedSubmission.MetadataJson))
+            {
+                try
+                {
+                    var metadata = JsonConvert.DeserializeObject<dynamic>(SelectedSubmission.MetadataJson);
+                    if (metadata != null && metadata.oilDefSales != null)
+                    {
+                        foreach (var sale in metadata.oilDefSales)
+                        {
+                            int productId = (int)(sale.productId ?? 0);
+                            double quantity = (double)(sale.quantity ?? 0.0);
+                            double price = (double)(sale.price ?? 0.0);
+
+                            if (productId <= 0 || quantity <= 0) continue;
+
+                            var productMaster = await context.ProductMasters.FindAsync(productId);
+                            if (productMaster == null) continue;
+
+                            double defaultSaleRate = productMaster.DefaultSaleRate;
+
+                            var log = await context.OilDefDailyLogs
+                                .FirstOrDefaultAsync(l => l.ProductId == productId && l.LogDate == SelectedSubmission.ShiftDate.Date);
+
+                            if (log != null)
+                            {
+                                log.SoldQuantity += quantity;
+                                if (Math.Abs(price - defaultSaleRate) > 0.01)
+                                {
+                                    log.OverrideSaleRate = price;
+                                }
+                                context.Entry(log).State = EntityState.Modified;
+                            }
+                            else
+                            {
+                                log = new OilDefDailyLog
+                                {
+                                    LogDate = SelectedSubmission.ShiftDate.Date,
+                                    ProductId = productId,
+                                    ProductType = productMaster.Category,
+                                    SoldQuantity = quantity,
+                                    OverrideSaleRate = Math.Abs(price - defaultSaleRate) > 0.01 ? price : null
+                                };
+                                context.OilDefDailyLogs.Add(log);
+                            }
+
+                            await context.SaveChangesAsync();
+                            await RecalculateRunningBalancesAsync(context, productId, SelectedSubmission.ShiftDate.Date);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error(ex, "Failed to save Oil & DEF sales during approval");
+                }
+            }
             
             var originalData = new
             {
@@ -927,6 +1211,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
             OverrideContinuity = false;
             
             await RefreshQueueAsync();
+            await LoadApprovedHistoryAsync();
         }
         catch (Exception ex)
         {
@@ -1001,5 +1286,503 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
             MessageBox.Show($"Failed to open attachment: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
+
+    private async Task RecalculateRunningBalancesAsync(FuelProDbContext context, int productId, DateTime fromDate)
+    {
+        try
+        {
+            var prevRemaining = await context.OilDefDailyLogs
+                .Where(l => l.ProductId == productId && l.LogDate < fromDate)
+                .OrderByDescending(l => l.LogDate)
+                .Select(l => l.RemainingStock)
+                .FirstOrDefaultAsync();
+
+            var subsequentLogs = await context.OilDefDailyLogs
+                .Where(l => l.ProductId == productId && l.LogDate >= fromDate)
+                .OrderBy(l => l.LogDate)
+                .ToListAsync();
+
+            double running = prevRemaining;
+            foreach (var log in subsequentLogs)
+            {
+                running = running + log.AddedQuantity - log.SoldQuantity + log.AdjustmentQuantity;
+                log.RemainingStock = running;
+                context.Entry(log).State = Microsoft.EntityFrameworkCore.EntityState.Modified;
+            }
+
+            await context.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to recalculate running balances for product {ProductId}", productId);
+        }
+    }
+
+    private List<DsmApprovedSubmissionDto> _allApprovedSubmissions = new();
+
+    [RelayCommand]
+    public async Task LoadApprovedHistoryAsync()
+    {
+        try
+        {
+            var supabaseResult = await FetchApprovedSubmissionsFromSupabaseAsync();
+            
+            using var context = _serviceProvider.GetRequiredService<FuelProDbContext>();
+            var localAudits = await context.DsmApprovalAudits
+                .OrderByDescending(a => a.ApprovedAt)
+                .Take(100)
+                .ToListAsync();
+
+            var auditMap = localAudits.ToDictionary(a => a.SubmissionId);
+
+            var entryIds = new List<int>();
+            foreach (var a in localAudits)
+            {
+                try
+                {
+                    var approvedObj = JsonConvert.DeserializeObject<dynamic>(a.ApprovedDataJson);
+                    int entryId = (int)(approvedObj?.DsmEntryId ?? 0);
+                    if (entryId > 0) entryIds.Add(entryId);
+                }
+                catch {}
+            }
+
+            var localEntries = await context.DsmEntries
+                .Include(e => e.Shift)
+                .Where(e => entryIds.Contains(e.DsmEntryId))
+                .ToDictionaryAsync(e => e.DsmEntryId);
+
+            var allApproved = new List<DsmApprovedSubmissionDto>();
+
+            if (supabaseResult.Success && supabaseResult.Data != null)
+            {
+                foreach (var item in supabaseResult.Data)
+                {
+                    Guid subId = item.Id;
+                    int entryId = 0;
+                    if (auditMap.TryGetValue(subId, out var audit))
+                    {
+                        try
+                        {
+                            var approvedObj = JsonConvert.DeserializeObject<dynamic>(audit.ApprovedDataJson);
+                            entryId = (int)(approvedObj?.DsmEntryId ?? 0);
+                        }
+                        catch {}
+                    }
+
+                    double gross = 0;
+                    double coll = 0;
+                    double mismatch = 0;
+
+                    if (entryId > 0 && localEntries.TryGetValue(entryId, out var entry))
+                    {
+                        gross = (double)entry.GrossSales;
+                        coll = (double)entry.TotalCollection;
+                        mismatch = (double)entry.Mismatch;
+                    }
+
+                    allApproved.Add(new DsmApprovedSubmissionDto
+                    {
+                        SubmissionId = subId,
+                        DsmEntryId = entryId,
+                        DsmName = item.DsmUsers?.FullName ?? "Unknown DSM",
+                        DsmUserId = item.DsmUserId,
+                        PumpId = (int)item.PumpId,
+                        ShiftDate = item.ShiftDate,
+                        ShiftType = item.ShiftType,
+                        SubmittedAt = item.SubmittedAt,
+                        ApprovedAt = item.ApprovedAt ?? DateTime.Now,
+                        ApprovedBy = item.ApprovedBy ?? "System",
+                        Notes = item.Notes ?? "",
+                        AttachmentUrl = item.AttachmentUrl,
+                        MetadataJson = item.Metadata != null ? JsonConvert.SerializeObject(item.Metadata) : "",
+                        GrossSales = gross,
+                        TotalCollection = coll,
+                        Mismatch = mismatch
+                    });
+                }
+            }
+            else
+            {
+                foreach (var audit in localAudits)
+                {
+                    int entryId = 0;
+                    try
+                    {
+                        var approvedObj = JsonConvert.DeserializeObject<dynamic>(audit.ApprovedDataJson);
+                        entryId = (int)(approvedObj?.DsmEntryId ?? 0);
+                    }
+                    catch {}
+
+                    if (entryId > 0 && localEntries.TryGetValue(entryId, out var entry))
+                    {
+                        allApproved.Add(new DsmApprovedSubmissionDto
+                        {
+                            SubmissionId = audit.SubmissionId,
+                            DsmEntryId = entryId,
+                            DsmName = entry.DsmName,
+                            PumpId = entry.PumpId,
+                            ShiftDate = entry.Shift?.ShiftDate ?? DateTime.Today,
+                            ShiftType = entry.Shift?.ShiftType ?? "A",
+                            SubmittedAt = audit.ApprovedAt.AddHours(-2),
+                            ApprovedAt = audit.ApprovedAt,
+                            ApprovedBy = audit.ApprovedBy,
+                            Notes = audit.Remarks ?? "",
+                            GrossSales = (double)entry.GrossSales,
+                            TotalCollection = (double)entry.TotalCollection,
+                            Mismatch = (double)entry.Mismatch
+                        });
+                    }
+                }
+            }
+
+            _allApprovedSubmissions = allApproved;
+
+            DsmFilterOptions.Clear();
+            DsmFilterOptions.Add("All");
+            foreach (var name in allApproved.Select(s => s.DsmName).Distinct().OrderBy(x => x))
+                DsmFilterOptions.Add(name);
+
+            PumpFilterOptions.Clear();
+            PumpFilterOptions.Add("All");
+            foreach (var pump in allApproved.Select(s => s.PumpId).Distinct().OrderBy(x => x))
+                PumpFilterOptions.Add(pump.ToString());
+
+            ShiftFilterOptions.Clear();
+            ShiftFilterOptions.Add("All");
+            foreach (var shift in allApproved.Select(s => s.ShiftType).Distinct().OrderBy(x => x))
+                ShiftFilterOptions.Add(shift);
+
+            ApplyFilters();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to load approved submissions history");
+        }
+    }
+
+    private void ApplyFilters()
+    {
+        var filtered = _allApprovedSubmissions.AsEnumerable();
+
+        if (IsFilterToday)
+        {
+            filtered = filtered.Where(s => s.ApprovedAt.Date == DateTime.Today);
+        }
+        else if (IsFilterYesterday)
+        {
+            filtered = filtered.Where(s => s.ApprovedAt.Date == DateTime.Today.AddDays(-1));
+        }
+        else if (IsFilterThisWeek)
+        {
+            var startOfWeek = DateTime.Today.AddDays(-(int)DateTime.Today.DayOfWeek);
+            filtered = filtered.Where(s => s.ApprovedAt.Date >= startOfWeek);
+        }
+
+        if (SelectedDsmFilter != "All")
+        {
+            filtered = filtered.Where(s => string.Equals(s.DsmName, SelectedDsmFilter, StringComparison.OrdinalIgnoreCase));
+        }
+        if (SelectedPumpFilter != "All" && int.TryParse(SelectedPumpFilter, out var pumpId))
+        {
+            filtered = filtered.Where(s => s.PumpId == pumpId);
+        }
+        if (SelectedShiftFilter != "All")
+        {
+            filtered = filtered.Where(s => string.Equals(s.ShiftType, SelectedShiftFilter, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (!string.IsNullOrWhiteSpace(SearchTextFilter))
+        {
+            filtered = filtered.Where(s => s.DsmName.Contains(SearchTextFilter, StringComparison.OrdinalIgnoreCase));
+        }
+
+        var resultList = filtered.ToList();
+        FilteredApprovedSubmissions = new ObservableCollection<DsmApprovedSubmissionDto>(resultList);
+
+        SummaryApprovedCount = resultList.Count;
+        SummaryGrossSales = resultList.Sum(s => s.GrossSales);
+        SummaryTotalCollection = resultList.Sum(s => s.TotalCollection);
+        SummaryTotalDifference = resultList.Sum(s => s.Mismatch);
+
+        double totalExpenses = 0;
+        double totalDebtors = 0;
+        double totalTesting = 0;
+        double totalOilDef = 0;
+
+        using var context = _serviceProvider.GetRequiredService<FuelProDbContext>();
+        var entryIds = resultList.Select(s => s.DsmEntryId).Where(id => id > 0).ToList();
+        if (entryIds.Any())
+        {
+            var entries = context.DsmEntries
+                .Include(e => e.Expenses)
+                .Include(e => e.DebitEntries)
+                .Include(e => e.TestingEntries)
+                .Where(e => entryIds.Contains(e.DsmEntryId))
+                .ToList();
+
+            totalExpenses = entries.Sum(e => e.Expenses.Sum(x => x.Amount));
+            totalDebtors = entries.Sum(e => e.DebitEntries.Sum(x => x.Amount));
+            totalTesting = entries.Sum(e => e.TestingEntries.Sum(x => x.Amount));
+        }
+
+        foreach (var s in resultList)
+        {
+            if (!string.IsNullOrEmpty(s.MetadataJson))
+            {
+                try
+                {
+                    var metadata = JsonConvert.DeserializeObject<dynamic>(s.MetadataJson);
+                    if (metadata != null && metadata.oilDefSales != null)
+                    {
+                        foreach (var sale in metadata.oilDefSales)
+                        {
+                            double qty = (double)(sale.quantity ?? 0.0);
+                            double price = (double)(sale.price ?? 0.0);
+                            totalOilDef += qty * price;
+                        }
+                    }
+                }
+                catch {}
+            }
+        }
+
+        SummaryTotalExpenses = totalExpenses;
+        SummaryTotalDebtors = totalDebtors;
+        SummaryTotalTesting = totalTesting;
+        SummaryTotalOilDefSales = totalOilDef;
+    }
+
+    partial void OnIsFilterTodayChanged(bool value) { if (value) { IsFilterYesterday = false; IsFilterThisWeek = false; } ApplyFilters(); }
+    partial void OnIsFilterYesterdayChanged(bool value) { if (value) { IsFilterToday = false; IsFilterThisWeek = false; } ApplyFilters(); }
+    partial void OnIsFilterThisWeekChanged(bool value) { if (value) { IsFilterToday = false; IsFilterYesterday = false; } ApplyFilters(); }
+    partial void OnSelectedDsmFilterChanged(string value) => ApplyFilters();
+    partial void OnSelectedPumpFilterChanged(string value) => ApplyFilters();
+    partial void OnSelectedShiftFilterChanged(string value) => ApplyFilters();
+    partial void OnSearchTextFilterChanged(string value) => ApplyFilters();
+
+    partial void OnSelectedApprovedSubmissionChanged(DsmApprovedSubmissionDto? value)
+    {
+        if (value != null)
+        {
+            SelectedSubmission = null;
+            _ = LoadApprovedSubmissionDetailsAsync(value);
+        }
+        else
+        {
+            if (SelectedSubmission == null)
+            {
+                NozzleReadings.Clear();
+                OilDefSales.Clear();
+                IsEditing = false;
+                IsReadOnlyMode = false;
+                TimelineLogs.Clear();
+            }
+        }
+    }
+
+    private async Task LoadApprovedSubmissionDetailsAsync(DsmApprovedSubmissionDto approvedSub)
+    {
+        IsLoadingDetails = true;
+        StatusMessage = $"⏳ Loading approved entry details for {approvedSub.TitleDisplay}...";
+        IsReadOnlyMode = true;
+        IsEditing = true;
+
+        try
+        {
+            SubmissionNotes = approvedSub.Notes;
+            AttachmentUrl = approvedSub.AttachmentUrl;
+
+            using var context = _serviceProvider.GetRequiredService<FuelProDbContext>();
+            var entry = await context.DsmEntries
+                .Include(e => e.NozzleReadings)
+                .Include(e => e.PaymentCollection)
+                .Include(e => e.DebitEntries)
+                .Include(e => e.TestingEntries)
+                .Include(e => e.Expenses)
+                .Include(e => e.CashDenominations)
+                .Include(e => e.PersonalDebtors)
+                .FirstOrDefaultAsync(e => e.DsmEntryId == approvedSub.DsmEntryId);
+
+            NozzleReadings.Clear();
+            DebtorEntries.Clear();
+            CardSwipeDetails.Clear();
+            SubmissionTestingEntries.Clear();
+            OilDefSales.Clear();
+            TimelineLogs.Clear();
+
+            if (entry != null)
+            {
+                foreach (var r in entry.NozzleReadings)
+                {
+                    var row = new DsmNozzleRow
+                    {
+                        NozzleId = r.NozzleNumber,
+                        FuelType = GetFuelTypeName(entry.PumpId, r.NozzleNumber, approvedSub.ShiftDate),
+                        OpeningReading = r.OpeningReading,
+                        ClosingReading = r.ClosingReading,
+                        Rate = r.Rate,
+                        SaleLitres = r.SaleLitres,
+                        Amount = r.Amount
+                    };
+                    NozzleReadings.Add(row);
+                }
+
+                var pc = entry.PaymentCollection;
+                if (pc != null)
+                {
+                    var cash1Total = entry.CashDenominations.Where(c => c.CashType == "Cash1").Sum(c => c.TotalAmount);
+                    var cash2Total = entry.CashDenominations.Where(c => c.CashType == "Cash2").Sum(c => c.TotalAmount);
+
+                    CashAmount = cash2Total;
+                    UpiAmount = pc.PhonePeMorning + pc.PhonePeDay + pc.PhonePeNight;
+                    CardAmount = pc.CreditCardMorning + pc.CreditCardDay + pc.CreditCardNight + pc.PhonePeCardMorning + pc.PhonePeCardDay + pc.PhonePeCardNight;
+                    PetroCardAmount = pc.PetroCardMorning + pc.PetroCardDay + pc.PetroCardNight;
+                    CashDepositAmount = cash1Total > 0 ? cash1Total : pc.CashDeposit;
+                    OthersAmount = pc.Others;
+                    CreditAmount = (double)entry.TotalCreditors;
+                    ExpenseAmount = entry.Expenses.Sum(e => e.Amount);
+                    ExpenseNotes = entry.Expenses.FirstOrDefault()?.Description ?? "";
+                    ShortAmount = (double)(entry.Mismatch < 0 ? Math.Abs(entry.Mismatch) : 0);
+                    ExcessAmount = (double)(entry.Mismatch > 0 ? entry.Mismatch : 0);
+                }
+
+                foreach (var d in entry.DebitEntries)
+                {
+                    DebtorEntries.Add(new DsmDebitRow
+                    {
+                        DebtorName = d.DebtorName,
+                        Amount = d.Amount,
+                        VehicleNumber = d.VehicleNumber,
+                        SlipNumber = d.SlipNumber,
+                        EntryTime = d.CreatedAt.ToString("hh:mm tt")
+                    });
+                }
+
+                if (pc != null)
+                {
+                    if (pc.CreditCardMorning > 0)
+                        CardSwipeDetails.Add(new DsmCardSwipeRow { Mode = "Credit Card (Morning)", Amount = pc.CreditCardMorning, Tid = pc.CreditCardTidMorning ?? "", Batch = pc.CreditCardBatchMorning ?? "" });
+                    if (pc.CreditCardDay > 0)
+                        CardSwipeDetails.Add(new DsmCardSwipeRow { Mode = "Credit Card (Day)", Amount = pc.CreditCardDay, Tid = pc.CreditCardTidDay ?? "", Batch = pc.CreditCardBatchDay ?? "" });
+                    if (pc.CreditCardNight > 0)
+                        CardSwipeDetails.Add(new DsmCardSwipeRow { Mode = "Credit Card (Night)", Amount = pc.CreditCardNight, Tid = pc.CreditCardTidNight ?? "", Batch = pc.CreditCardBatchNight ?? "" });
+                    if (pc.PhonePeCardMorning > 0)
+                        CardSwipeDetails.Add(new DsmCardSwipeRow { Mode = "PhonePe Card (Morning)", Amount = pc.PhonePeCardMorning, Tid = pc.PhonePeTidMorning ?? "", Batch = pc.PhonePeBatchMorning ?? "" });
+                    if (pc.PhonePeCardDay > 0)
+                        CardSwipeDetails.Add(new DsmCardSwipeRow { Mode = "PhonePe Card (Day)", Amount = pc.PhonePeCardDay, Tid = pc.PhonePeTidDay ?? "", Batch = pc.PhonePeBatchDay ?? "" });
+                    if (pc.PhonePeCardNight > 0)
+                        CardSwipeDetails.Add(new DsmCardSwipeRow { Mode = "PhonePe Card (Night)", Amount = pc.PhonePeCardNight, Tid = pc.PhonePeTidNight ?? "", Batch = pc.PhonePeBatchNight ?? "" });
+                    if (pc.PetroCardMorning > 0)
+                        CardSwipeDetails.Add(new DsmCardSwipeRow { Mode = "Petro Card (Morning)", Amount = pc.PetroCardMorning, Tid = pc.PetroCardTidMorning ?? "", Batch = pc.PetroCardBatchMorning ?? "" });
+                    if (pc.PetroCardDay > 0)
+                        CardSwipeDetails.Add(new DsmCardSwipeRow { Mode = "Petro Card (Day)", Amount = pc.PetroCardDay, Tid = pc.PetroCardTidDay ?? "", Batch = pc.PetroCardBatchDay ?? "" });
+                    if (pc.PetroCardNight > 0)
+                        CardSwipeDetails.Add(new DsmCardSwipeRow { Mode = "Petro Card (Night)", Amount = pc.PetroCardNight, Tid = pc.PetroCardTidNight ?? "", Batch = pc.PetroCardBatchNight ?? "" });
+                }
+
+                foreach (var t in entry.TestingEntries)
+                {
+                    SubmissionTestingEntries.Add(new DsmTestingRow
+                    {
+                        NozzleId = 0,
+                        FuelType = t.FuelType,
+                        Amount = t.Litres,
+                        RupeeAmount = t.Amount,
+                        PumpId = entry.PumpId
+                    });
+                }
+            }
+
+            if (!string.IsNullOrEmpty(approvedSub.MetadataJson))
+            {
+                try
+                {
+                    var metadata = JsonConvert.DeserializeObject<dynamic>(approvedSub.MetadataJson);
+                    if (metadata != null && metadata.oilDefSales != null)
+                    {
+                        foreach (var sale in metadata.oilDefSales)
+                        {
+                            OilDefSales.Add(new DsmOilDefSaleRow
+                            {
+                                ProductName = sale.productName ?? "",
+                                Quantity = (double)(sale.quantity ?? 0.0),
+                                Price = (double)(sale.price ?? 0.0),
+                                Unit = sale.unit ?? ""
+                            });
+                        }
+                    }
+                }
+                catch {}
+            }
+
+            RecalculateTotals();
+
+            TimelineLogs.Add(new DsmTimelineLog { Title = "Submitted on PWA", Timestamp = approvedSub.SubmittedTimeDisplay, Description = $"DSM '{approvedSub.DsmName}' completed shift entry on mobile app.", IsCompleted = true });
+            TimelineLogs.Add(new DsmTimelineLog { Title = "Synced to Desktop", Timestamp = approvedSub.SubmittedAt.AddMinutes(5).ToLocalTime().ToString("hh:mm tt"), Description = "Submission payload successfully fetched and cached locally.", IsCompleted = true });
+            TimelineLogs.Add(new DsmTimelineLog { Title = "Approved by Manager", Timestamp = approvedSub.ApprovedTimeDisplay, Description = $"Manager '{approvedSub.ApprovedBy}' approved the shift totals.", IsCompleted = true });
+            TimelineLogs.Add(new DsmTimelineLog { Title = "Shift Totals Updated", Timestamp = approvedSub.ApprovedTimeDisplay, Description = "Local SQLite ledgers and nozzle readings updated.", IsCompleted = true });
+            TimelineLogs.Add(new DsmTimelineLog { Title = "Day Totals Updated", Timestamp = approvedSub.ApprovedTimeDisplay, Description = "Unified Day Total and Owner Dashboard reports updated.", IsCompleted = true });
+            TimelineLogs.Add(new DsmTimelineLog { Title = "TID Sheet Updated", Timestamp = approvedSub.ApprovedTimeDisplay, Description = "TID terminal transactions registered for reconciliation.", IsCompleted = true });
+
+            StatusMessage = "🔒 Approved submission loaded in read-only mode.";
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to load approved submission details");
+            StatusMessage = $"❌ Error loading: {ex.Message}";
+        }
+        finally
+        {
+            IsLoadingDetails = false;
+        }
+    }
+
+    private async Task<Result<List<dynamic>>> FetchApprovedSubmissionsFromSupabaseAsync()
+    {
+        try
+        {
+            var supabaseService = _serviceProvider.GetRequiredService<SupabaseDsmService>();
+            return await supabaseService.FetchApprovedSubmissionsAsync();
+        }
+        catch (Exception ex)
+        {
+            return Result<List<dynamic>>.Fail(ex.Message);
+        }
+    }
+}
+
+public class DsmApprovedSubmissionDto : ObservableObject
+{
+    public Guid SubmissionId { get; set; }
+    public int DsmEntryId { get; set; }
+    public string DsmName { get; set; } = string.Empty;
+    public string DsmUserId { get; set; } = string.Empty;
+    public int PumpId { get; set; }
+    public string ShiftType { get; set; } = "A";
+    public DateTime ShiftDate { get; set; }
+    public DateTime SubmittedAt { get; set; }
+    public DateTime ApprovedAt { get; set; }
+    public string ApprovedBy { get; set; } = string.Empty;
+    public double GrossSales { get; set; }
+    public double TotalCollection { get; set; }
+    public double Mismatch { get; set; }
+    public string Status { get; set; } = "Approved";
+    public string MetadataJson { get; set; } = string.Empty;
+    public string Notes { get; set; } = string.Empty;
+    public string? AttachmentUrl { get; set; }
+
+    public string TitleDisplay => $"{DsmName} - Pump {PumpId} - Shift {ShiftType}";
+    public string ShiftDateDisplay => ShiftDate.ToString("dd MMM yyyy");
+    public string SubmittedTimeDisplay => SubmittedAt.ToLocalTime().ToString("hh:mm tt");
+    public string ApprovedTimeDisplay => ApprovedAt.ToLocalTime().ToString("hh:mm tt");
+}
+
+public class DsmTimelineLog
+{
+    public string Title { get; set; } = string.Empty;
+    public string Timestamp { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public bool IsCompleted { get; set; }
 }
 

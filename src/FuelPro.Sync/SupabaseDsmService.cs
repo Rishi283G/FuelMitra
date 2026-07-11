@@ -73,6 +73,34 @@ public class SupabaseDsmService
         }
     }
 
+    public async Task<Result<List<dynamic>>> FetchApprovedSubmissionsAsync()
+    {
+        try
+        {
+            var settings = await _syncConfigService.GetSettingsAsync();
+            if (string.IsNullOrEmpty(settings.StationId)) return Result<List<dynamic>>.Fail("Station ID is blank.");
+
+            var endpoint = $"DsmSubmissions?select=*,DsmUsers(FullName)&StationId=eq.{settings.StationId}&Status=eq.Approved&order=ApprovedAt.desc&limit=50";
+            var request = await CreateRequestAsync(HttpMethod.Get, endpoint);
+
+            var response = await _client.SendAsync(request);
+            var content = await response.Content.ReadAsStringAsync();
+
+            if (response.IsSuccessStatusCode)
+            {
+                var list = JsonConvert.DeserializeObject<List<dynamic>>(content) ?? new List<dynamic>();
+                return Result<List<dynamic>>.Ok(list);
+            }
+
+            return Result<List<dynamic>>.Fail($"Supabase request failed: {response.StatusCode}");
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to fetch approved submissions");
+            return Result<List<dynamic>>.Fail(ex.Message);
+        }
+    }
+
     public async Task<Result<List<dynamic>>> FetchSubmissionReadingsAsync(Guid submissionId)
     {
         try

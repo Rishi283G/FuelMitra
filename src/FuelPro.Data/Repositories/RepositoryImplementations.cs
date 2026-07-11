@@ -426,6 +426,7 @@ public class DsmEntryRepository : IDsmEntryRepository
             if (entry == null) return Result.Fail("DSM Entry not found");
             _context.DsmEntries.Remove(entry);
             await _context.SaveChangesAsync();
+            FuelPro.Core.Services.DsmEntryService.RaiseDsmEntryChanged();
             return Result.Ok();
         }
         catch (Exception ex)
@@ -598,17 +599,16 @@ public class NozzleReadingRepository : INozzleReadingRepository
                 .Include(r => r.DsmEntry)
                 .ThenInclude(e => e!.Shift)
                 .Where(r => r.DsmEntry != null
-                    && r.DsmEntry.PumpId == pumpId
                     && r.DsmEntry.Shift != null
                     && (currentDsmEntryId == null || r.DsmEntryId != currentDsmEntryId.Value)
                     && (r.DsmEntry.Shift.ShiftDate < targetDate || 
-                       (r.DsmEntry.Shift.ShiftDate == targetDate && r.DsmEntry.Shift.ShiftType.CompareTo(shiftType) < 0) ||
+                       (r.DsmEntry.Shift.ShiftDate == targetDate && shiftType == "A" && r.DsmEntry.Shift.ShiftType == "B") ||
                        (r.DsmEntry.Shift.ShiftDate == targetDate && r.DsmEntry.Shift.ShiftType == shiftType && (currentDsmEntryId == null || r.DsmEntryId < currentDsmEntryId.Value))))
                 .GroupBy(r => r.NozzleNumber)
                 .Select(g => new { 
                     NozzleNumber = g.Key, 
                     Closing = g.OrderByDescending(x => x.DsmEntry!.Shift!.ShiftDate)
-                               .ThenByDescending(x => x.DsmEntry!.Shift!.ShiftType)
+                               .ThenByDescending(x => x.DsmEntry!.Shift!.ShiftType == "A")
                                .ThenByDescending(x => x.DsmEntryId)
                                .ThenByDescending(x => x.NozzleReadingId)
                                .Select(x => x.ClosingReading)
@@ -1454,6 +1454,25 @@ public class AgsImportRepository : IAgsImportRepository
         {
             _logger.Error(ex, "Failed to get AGS import history");
             return Result<List<AgsShiftImport>>.Fail($"Failed to load history: {ex.Message}");
+        }
+    }
+
+    public async Task<Result<List<AgsShiftImport>>> GetActiveImportsFromDateAsync(DateTime startDate)
+    {
+        try
+        {
+            var dateOnly = startDate.Date;
+            var records = await _context.AgsShiftImports
+                .Include(x => x.NozzleReadings)
+                .Include(x => x.TankStocks)
+                .Where(x => x.IsActive && x.ImportDate >= dateOnly)
+                .ToListAsync();
+            return Result<List<AgsShiftImport>>.Ok(records);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to get active imports from date {Date}", startDate);
+            return Result<List<AgsShiftImport>>.Fail(ex.Message);
         }
     }
 }

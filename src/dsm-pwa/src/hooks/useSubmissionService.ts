@@ -42,11 +42,14 @@ export function useSubmissionService() {
         SubmittedAt: new Date().toISOString(),
         Metadata: {
           cardSwipeDetails: draft.cardSwipeDetails || [],
+          settlements: draft.settlements || [],
           debtorEntries: draft.debtorEntries || [],
           personalDebtors: draft.personalDebtors || [],
           cashDenominations: (draft as any).cashDenominations || null,
+          cash1Denominations: (draft as any).cash1Denominations || null,
           testingEntries: (draft as any).testingEntries || [],
-          connectedPumpId: (draft as any).connectedPumpId || null
+          connectedPumpId: (draft as any).connectedPumpId || null,
+          oilDefSales: draft.oilDefSales || []
         }
       });
 
@@ -183,6 +186,61 @@ export function useSubmissionService() {
       readings: readings || []
     };
   }, []);
+  
+  const syncProductListAndStock = useCallback(async () => {
+    if (!navigator.onLine) return;
+    try {
+      // 1. Fetch active products
+      const { data: products, error: pErr } = await supabase
+        .from('ProductMasters')
+        .select('Id, ProductName, Category, Unit, DefaultSaleRate')
+        .eq('IsActive', true);
+      
+      if (pErr) throw pErr;
 
-  return { syncing, saveDraft, submitToSupabase, retryQueuedDrafts, fetchSubmissionHistory, fetchSubmissionDetails };
+      // 2. Fetch latest stock balances (remaining stock from OilDefDailyLogs)
+      const { data: logs, error: lErr } = await supabase
+        .from('OilDefDailyLogs')
+        .select('ProductId, RemainingStock, LogDate')
+        .order('LogDate', { ascending: false });
+
+      if (lErr) throw lErr;
+
+      const latestStocks: Record<number, number> = {};
+      if (logs) {
+        for (const log of logs) {
+          const prodId = log.ProductId;
+          if (latestStocks[prodId] === undefined) {
+            latestStocks[prodId] = log.RemainingStock || 0;
+          }
+        }
+      }
+
+      await db.transaction('rw', db.products, db.stockBalances, async () => {
+        await db.products.clear();
+        await db.stockBalances.clear();
+
+        if (products) {
+          for (const p of products) {
+            await db.products.put({
+              id: p.Id,
+              productName: p.ProductName,
+              category: p.Category,
+              unit: p.Unit,
+              defaultSaleRate: p.DefaultSaleRate
+            });
+
+            await db.stockBalances.put({
+              productId: p.Id,
+              remainingStock: latestStocks[p.Id] || 0
+            });
+          }
+        }
+      });
+    } catch (err) {
+      console.error('Failed to sync product list and stock:', err);
+    }
+  }, []);
+
+  return { syncing, saveDraft, submitToSupabase, retryQueuedDrafts, fetchSubmissionHistory, fetchSubmissionDetails, syncProductListAndStock };
 }

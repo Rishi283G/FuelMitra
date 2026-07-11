@@ -38,6 +38,7 @@ public class ShiftAggregationService : IShiftAggregationService
                 rows.Add(new DsmSummaryRowDto
                 {
                     DsmName = entry.DsmName,
+                    Shift = entry.Shift?.ShiftType ?? "",
                     PumpId = entry.PumpId,
                     PhonePeCard = entry.PaymentCollection?.PhonePeCard ?? 0,
                     PhonePeCardMorning = entry.PaymentCollection?.PhonePeCardMorning ?? 0,
@@ -49,7 +50,7 @@ public class ShiftAggregationService : IShiftAggregationService
                     CreditCardNight = entry.PaymentCollection?.CreditCardNight ?? 0,
                     PetroCard = entry.PaymentCollection?.PetroCard ?? 0,
                     Others = entry.PaymentCollection?.Others ?? 0,
-                    CashDeposit = cash1 + (entry.PaymentCollection?.CashDeposit ?? 0),
+                    CashDeposit = cash1 > 0 ? cash1 : (entry.PaymentCollection?.CashDeposit ?? 0),
                     Debit = totalDebit,
                     Expenses = totalExpenses,
                     Testing = totalTesting,
@@ -110,10 +111,10 @@ public class ShiftAggregationService : IShiftAggregationService
                 Total500 = denoms.Sum(d => d.Denom500),
                 Total200 = denoms.Sum(d => d.Denom200),
                 Total100 = denoms.Sum(d => d.Denom100),
-                Total50  = denoms.Sum(d => d.Denom50),
-                Total20  = denoms.Sum(d => d.Denom20),
-                Total10  = denoms.Sum(d => d.Denom10),
-                TotalCoins = denoms.Sum(d => d.Coins)
+                Total50  = cashType == "Cash1" ? 0 : denoms.Sum(d => d.Denom50),
+                Total20  = cashType == "Cash1" ? 0 : denoms.Sum(d => d.Denom20),
+                Total10  = cashType == "Cash1" ? 0 : denoms.Sum(d => d.Denom10),
+                TotalCoins = cashType == "Cash1" ? 0 : denoms.Sum(d => d.Coins)
             };
 
             double physicalTotal = denoms.Sum(d => d.TotalAmount);
@@ -122,9 +123,12 @@ public class ShiftAggregationService : IShiftAggregationService
             if (cashType == "Cash1")
             {
                 dto.CashDepositTotal = entries.Sum(e => e.PaymentCollection?.CashDeposit ?? 0);
+                dto.GrandTotal = physicalTotal > 0 ? physicalTotal : dto.CashDepositTotal;
             }
-
-            dto.GrandTotal = physicalTotal + dto.CashDepositTotal;
+            else
+            {
+                dto.GrandTotal = physicalTotal;
+            }
             return dto;
         }
         catch (Exception ex)

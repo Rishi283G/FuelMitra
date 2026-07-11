@@ -112,7 +112,7 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
   <!-- SECTION 2: DSM SUMMARY (ALL SHIFTS) -->
   <div class="sec">
     <div class="sec-title">2. DSM Summary &mdash; All Shifts</div>
-    <table><thead><tr><th>DSM Name</th><th>Shift</th><th>Pump</th><th>PhonePe</th><th>PPe Card (M)</th><th>PPe Card (N)</th><th>Cr. Card</th><th>Petro Card</th><th>Bank Cash</th><th>Debtors</th><th>Expenses</th><th>Testing</th><th>Hand Cash</th><th>Gross Sale</th><th>Mismatch</th></tr></thead><tbody id="tDsm"></tbody></table>
+    <table><thead><tr><th>DSM Name</th><th>Shift</th><th>Pump</th><th>PhonePe</th><th>PhonePe Card (M)</th><th>PhonePe Card (N)</th><th>PineLabs Card</th><th>Petro Card</th><th>Bank Cash</th><th>Debtors</th><th>Expenses</th><th>Testing</th><th>Hand Cash</th><th>Gross Sale</th><th>Mismatch</th></tr></thead><tbody id="tDsm"></tbody></table>
   </div>
   <hr class="div">
 
@@ -151,25 +151,14 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
 
       <!-- FINAL RECONCILIATION -->
       <div><div class="mini-hdr">Final Day Reconciliation</div>
-        <div class="recon-box"><table><thead><tr><th>Description</th><th>Amount (&#8377;)</th></tr></thead><tbody>
-          <tr><td>MS Testing</td><td id="rMsTest">&ndash;</td></tr>
-          <tr><td>HSD Testing I</td><td id="rHsdTest">&ndash;</td></tr>
-          <tr><td>HSD Testing II</td><td id="rHsdTest2">&ndash;</td></tr>
-          <tr><td>CNG Testing</td><td id="rCngTest">&ndash;</td></tr>
-          <tr><td>PhonePe</td><td id="rPe">&ndash;</td></tr>
-          <tr><td>PhonePe Card</td><td id="rPeCard">&ndash;</td></tr>
-          <tr><td>PineLab Card (Morning)</td><td id="rCCardM">&ndash;</td></tr>
-          <tr><td>PineLab Card (Night)</td><td id="rCCardN">&ndash;</td></tr>
-          <tr><td>Petro Card</td><td id="rPCard">&ndash;</td></tr>
-          <tr><td>Bank Cash (Cash Deposit)</td><td id="rBank">&ndash;</td></tr>
-          <tr><td>Cash In Hand</td><td id="rHand">&ndash;</td></tr>
-          <tr><td>Debtors</td><td id="rCred">&ndash;</td></tr>
-          <tr><td>Total Expenses</td><td id="rExp">&ndash;</td></tr>
-          <tr><td style="color:#8a1500; font-weight:700">Total DSM Short</td><td id="rTotalDsmShort" style="color:#8a1500; font-weight:700">&ndash;</td></tr>
+        <div class="recon-box"><table><thead><tr><th>Description</th><th>Amount (&#8377;)</th></tr></thead>
+        <tbody id="tRecon"></tbody>
+        <tfoot>
           <tr class="tr-recon-total"><td>TOTAL COLLECTION (A)</td><td id="rTotal">&ndash;</td></tr>
-          <tr class="tr-sub"><td>Total Day Sale (B)</td><td id="rSale">&ndash;</td></tr>
+          <tr class="tr-sub"><td>Expected Gross Sale (B)</td><td id="rSale">&ndash;</td></tr>
           <tr><td colspan="2" id="rDiff" class="diff-ok">&ndash;</td></tr>
-        </tbody></table></div>
+        </tfoot>
+        </table></div>
       </div>
     </div>
   </div>
@@ -191,14 +180,30 @@ function inrZ(v){
   return'\u20B9'+parseFloat(v||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
 }
 function shiftBadge(s){
-  if(s==='A')return'<span class="b-a">Shift A</span>';
-  if(s==='B')return'<span class="b-b">Shift B</span>';
-  return'<span class="b-b">Shift '+s+'</span>';
+  if(!s) return '';
+  var clean = s.replace(/^(shift)[ -]?/i, '');
+  var upper = s.toUpperCase();
+  var cleanUpper = clean.toUpperCase();
+  if(cleanUpper === 'A') return '<span class="b-a">Shift A</span>';
+  if(cleanUpper === 'B') return '<span class="b-b">Shift B</span>';
+  if(cleanUpper === 'C') return '<span class="b-b">Shift C</span>';
+  if(cleanUpper === 'I') return '<span class="b-a">Shift I</span>';
+  if(cleanUpper === 'II') return '<span class="b-b">Shift II</span>';
+  if(cleanUpper === 'III') return '<span class="b-b">Shift III</span>';
+  
+  if(upper.endsWith(' A')) return '<span class="b-a">Shift ' + clean + '</span>';
+  if(upper.endsWith(' B')) return '<span class="b-b">Shift ' + clean + '</span>';
+  if(upper.endsWith(' C')) return '<span class="b-b">Shift ' + clean + '</span>';
+  if(upper.endsWith('-I') || upper.endsWith(' I')) return '<span class="b-a">Shift ' + clean + '</span>';
+  if(upper.endsWith('-II') || upper.endsWith(' II')) return '<span class="b-b">Shift ' + clean + '</span>';
+  if(upper.endsWith('-III') || upper.endsWith(' III')) return '<span class="b-b">Shift ' + clean + '</span>';
+  
+  return '<span class="b-b">Shift ' + clean + '</span>';
 }
 
 function renderData(){
   var d=printData;
-  if(!d||!d.date){return;}
+  if(!d||(!d.dateString && !d.date)){return;}
   var station = d.stationName || 'Mitali Service Station';
   document.title = station + ' — Day Total Report';
   var rptTitle = document.getElementById('rptTitle');
@@ -215,7 +220,7 @@ function renderData(){
     }
   }
 
-  document.getElementById('hDate').textContent=d.date||'\u2013';
+  document.getElementById('hDate').textContent=d.dateString||d.date||'\u2013';
   document.getElementById('hStation').textContent=station;
   document.getElementById('hShifts').textContent='Shift A + Shift B';
   document.getElementById('hPrinted').textContent=new Date().toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
@@ -224,16 +229,39 @@ function renderData(){
   var tb=document.getElementById('tDsm');tb.innerHTML='';
   var prevShift='';
   var tot={ph:0,phcM:0,phcN:0,cc:0,pc:0,bk:0,deb:0,exp:0,test:0,c2:0,sale:0,mis:0};
-  (d.dsmEntries||[]).forEach(function(r){
+  (d.dsmSummaryRows||d.dsmEntries||[]).forEach(function(r){
     if(r.shift!==prevShift){
       var sh=document.createElement('tr');sh.className='tr-shift';
-      sh.innerHTML='<td colspan="15">'+shiftBadge(r.shift)+' &mdash; Shift '+(r.shift==='A'?'I':r.shift==='B'?'II':'III')+'</td>';
+      var suffix = '';
+      var upper = r.shift ? r.shift.toUpperCase() : '';
+      if (!upper.includes('I') && !upper.includes('II') && !upper.includes('III') && !upper.includes('1') && !upper.includes('2') && !upper.includes('3')) {
+        if (upper.endsWith(' A') || upper === 'A') suffix = ' &mdash; Shift I';
+        else if (upper.endsWith(' B') || upper === 'B') suffix = ' &mdash; Shift II';
+        else if (upper.endsWith(' C') || upper === 'C') suffix = ' &mdash; Shift III';
+      }
+      sh.innerHTML='<td colspan="15">'+shiftBadge(r.shift)+suffix+'</td>';
       tb.appendChild(sh);prevShift=r.shift;
     }
     var tr=document.createElement('tr');
-    tr.innerHTML='<td>'+r.dsmName+'</td><td>'+shiftBadge(r.shift)+'</td><td>P-'+r.pumpNo+'</td><td>'+inr(r.phonePe)+'</td><td>'+inr(r.phonePeCardMorning)+'</td><td>'+inr(r.phonePeCardNight)+'</td><td>'+inr(r.creditCard)+'</td><td>'+inr(r.petroCard)+'</td><td>'+inr(r.bankCash)+'</td><td>'+inr(r.debit)+'</td><td>'+inr(r.expenses)+'</td><td>'+inr(r.testing)+'</td><td>'+inr(r.cashInHand)+'</td><td>'+inr(r.grossSale)+'</td><td>'+inr(r.mismatch)+'</td>';
+    var ccM = r.creditCardMorning || 0;
+    var ccN = r.creditCardNight || 0;
+    var cc = ccM + ccN;
+    var phcM = r.phonePeCardMorning || 0;
+    var phcN = r.phonePeCardNight || 0;
+    var ph = r.phonePeMorning || r.phonePe || 0;
+    var phN = r.phonePeNight || 0;
+    var petro = r.petroCard || 0;
+    var deb = r.debit || 0;
+    var exp = r.expenses || 0;
+    var test = r.testing || 0;
+    var c1 = r.cashDeposit || r.cash1 || r.bankCash || 0;
+    var c2 = r.cashInHand || r.cash2 || 0;
+    var sale = r.grossSales || r.grossSale || 0;
+    var mismatch = (cc + phcM + phcN + ph + phN + petro + deb + exp + test + c1 + c2) - sale;
+
+    tr.innerHTML='<td>'+r.dsmName+'</td><td>'+shiftBadge(r.shift)+'</td><td>P-'+(r.pumpId||r.pumpNo)+'</td><td>'+inr(ph + phN)+'</td><td>'+inr(phcM)+'</td><td>'+inr(phcN)+'</td><td>'+inr(cc)+'</td><td>'+inr(petro)+'</td><td>'+inr(c1)+'</td><td>'+inr(deb)+'</td><td>'+inr(exp)+'</td><td>'+inr(test)+'</td><td>'+inr(c2)+'</td><td>'+inr(sale)+'</td><td>'+inr(mismatch)+'</td>';
     tb.appendChild(tr);
-    tot.ph+=(r.phonePe||0);tot.phcM+=(r.phonePeCardMorning||0);tot.phcN+=(r.phonePeCardNight||0);tot.cc+=(r.creditCard||0);tot.pc+=(r.petroCard||0);tot.bk+=(r.bankCash||0);tot.deb+=(r.debit||0);tot.exp+=(r.expenses||0);tot.test+=(r.testing||0);tot.c2+=(r.cashInHand||0);tot.sale+=(r.grossSale||0);tot.mis+=(r.mismatch||0);
+    tot.ph+=(ph + phN);tot.phcM+=phcM;tot.phcN+=phcN;tot.cc+=cc;tot.pc+=petro;tot.bk+=c1;tot.deb+=deb;tot.exp+=exp;tot.test+=test;tot.c2+=c2;tot.sale+=sale;tot.mis+=mismatch;
   });
   var ttr=document.createElement('tr');ttr.className='tr-total';
   ttr.innerHTML='<td>DAY TOTAL</td><td>\u2013</td><td>\u2013</td><td>'+inrZ(tot.ph)+'</td><td>'+inrZ(tot.phcM)+'</td><td>'+inrZ(tot.phcN)+'</td><td>'+inrZ(tot.cc)+'</td><td>'+inrZ(tot.pc)+'</td><td>'+inrZ(tot.bk)+'</td><td>'+inrZ(tot.deb)+'</td><td>'+inrZ(tot.exp)+'</td><td>'+inrZ(tot.test)+'</td><td>'+inrZ(tot.c2)+'</td><td>'+inrZ(tot.sale)+'</td><td>'+inrZ(tot.mis)+'</td>';
@@ -253,7 +281,7 @@ function renderData(){
   var container = document.getElementById('nozzleGroupsContainer');
   if (container) {
     container.innerHTML = '';
-    var groups = getVal(d, 'nozzleGroups') || [];
+    var groups = getVal(d, 'tankSummary') || getVal(d, 'nozzleGroups') || [];
     groups.forEach(function(g) {
       var groupName = getVal(g, 'groupName') || '';
       var dip = getVal(g, 'dip') || 0;
@@ -269,8 +297,23 @@ function renderData(){
       card.appendChild(header);
       
       var tankInfo = document.createElement('div');
-      tankInfo.style.cssText = 'display: flex; justify-content: space-between; margin-top: 6px; font-size: 10px; font-weight: bold; border-bottom: 1px solid #ddd; padding-bottom: 4px;';
-      tankInfo.innerHTML = '<span>Dip: ' + dip + ' mm</span><span>Stock: ' + parseFloat(stock).toFixed(2) + ' L</span>';
+      tankInfo.style.cssText = 'margin-top: 6px; font-size: 9px; border-bottom: 1px solid #ddd; padding-bottom: 4px;';
+      
+      var opening = getVal(g, 'openingStock') || 0;
+      var sales = getVal(g, 'fuelDispensed') || 0;
+      var testing = getVal(g, 'testingLitres') || 0;
+      var receipts = getVal(g, 'receipts') || 0;
+      var calculated = getVal(g, 'calculatedStock') || 0;
+
+      tankInfo.innerHTML = 
+        '<table style="width:100%; border-collapse:collapse; font-size:9.5px; line-height:1.2; margin-bottom: 4px;">' +
+        '<tr><td style="color:#555; padding:1px 0;">Opening Stock:</td><td style="text-align:right; font-weight:500; padding:1px 0;">' + parseFloat(opening).toFixed(1) + ' L</td></tr>' +
+        '<tr><td style="color:#555; padding:1px 0;">Nozzle Sales:</td><td style="text-align:right; font-weight:500; padding:1px 0;">-' + parseFloat(sales).toFixed(1) + ' L</td></tr>' +
+        '<tr><td style="color:#555; padding:1px 0;">Testing:</td><td style="text-align:right; font-weight:500; padding:1px 0;">+' + parseFloat(testing).toFixed(1) + ' L</td></tr>' +
+        '<tr><td style="color:#555; padding:1px 0;">Receipts:</td><td style="text-align:right; font-weight:500; padding:1px 0;">+' + parseFloat(receipts).toFixed(1) + ' L</td></tr>' +
+        '<tr style="border-top:1px dashed #ccc; font-weight:bold; color:#16211C;"><td style="padding:2px 0 1px 0;">Calculated:</td><td style="text-align:right; padding:2px 0 1px 0;">' + parseFloat(calculated).toFixed(1) + ' L</td></tr>' +
+        '<tr style="font-weight:bold; color:#0B6E4F;"><td style="padding:1px 0;">Actual Stock:</td><td style="text-align:right; padding:1px 0;">' + parseFloat(stock).toFixed(1) + ' L (' + dip + ' mm)</td></tr>' +
+        '</table>';
       card.appendChild(tankInfo);
       
       var table = document.createElement('table');
@@ -309,14 +352,27 @@ function renderData(){
   }
 
   // Collections grid
+  var breakdown = d.collectionBreakdown || [];
+  function getAmt(cat) {
+    var found = breakdown.find(function(x) { return x.category === cat; });
+    return found ? (found.amount || 0) : 0;
+  }
+  
+  var cashAmt = getAmt("Cash Deposit") + getAmt("Cash In Hand");
+  var phonePeAmt = getAmt("PhonePe Morning") + getAmt("PhonePe Night");
+  var phonePeCardAmt = getAmt("PhonePe Card Morning") + getAmt("PhonePe Card Night");
+  var pineLabsAmt = getAmt("PineLabs Morning") + getAmt("PineLabs Night");
+  var debtorsAmt = getAmt("Debtors");
+  var otherAmt = getAmt("Other Collections");
+
   var cg=document.getElementById('collGrid');cg.innerHTML='';
   var cols=[
-    {lbl:'Cash',val:d.splitCash},
-    {lbl:'PhonePe',val:d.splitPhonePe},
-    {lbl:'UPI (PhonePe Card)',val:d.splitUpi},
-    {lbl:'PineLabs Card',val:d.splitPineLabsCard},
-    {lbl:'Credit (Debtors)',val:d.splitCredit},
-    {lbl:'Other Collections',val:d.splitOther}
+    {lbl:'Cash',val:cashAmt},
+    {lbl:'PhonePe',val:phonePeAmt},
+    {lbl:'PhonePe Card',val:phonePeCardAmt},
+    {lbl:'PineLabs Card',val:pineLabsAmt},
+    {lbl:'Credit (Debtors)',val:debtorsAmt},
+    {lbl:'Other Collections',val:otherAmt}
   ];
   cols.forEach(function(c){
     var div=document.createElement('div');div.className='coll-item';
@@ -325,74 +381,37 @@ function renderData(){
   });
 
   // Creditors
-  var ct=document.getElementById('tCred');ct.innerHTML='';var credTot=0;
-  (d.creditors||[]).forEach(function(c){
+  var ct=document.getElementById('tCred');ct.innerHTML='';var credTot=d.creditorsTotal||0;
+  (d.creditorRows||d.creditors||[]).forEach(function(c){
     var tr=document.createElement('tr');
-    tr.innerHTML='<td>'+c.dsmName+'</td><td>'+c.debtorName+'</td><td>'+(c.chequeNo||'\u2013')+'</td><td>'+inr(c.amount)+'</td>';
-    ct.appendChild(tr);credTot+=(c.amount||0);
+    var nm = c.debtorName || c.name || '';
+    tr.innerHTML='<td>'+(c.dsmName||'')+'</td><td>'+nm+'</td><td>'+(c.chequeNo||'\u2013')+'</td><td>'+inr(c.amount)+'</td>';
+    ct.appendChild(tr);
   });
   var ctr=document.createElement('tr');ctr.className='tr-total';
   ctr.innerHTML='<td colspan="3">TOTAL DEBTORS</td><td>'+inrZ(credTot)+'</td>';ct.appendChild(ctr);
 
-  // DSR of the Day
-  var dsr = {};
-  (d.nozzleRows || []).forEach(function(r) {
-    var type = r.fuelType;
-    if (!dsr[type]) {
-      dsr[type] = { litres: 0, amount: 0 };
-    }
-    dsr[type].litres += (r.netSaleLitres || 0);
-    dsr[type].amount += (r.amount || 0);
-  });
-
+  // Fuel Summary
   var tf = document.getElementById('tFuel');
   if (tf) {
     tf.innerHTML = '';
     var index = 1;
-    var totalL = 0;
-    var totalA = 0;
-    
-    // Sort standard order
-    var order = ['HSD', 'HSD-I', 'HSD-II', 'MS', 'Speed', 'CNG'];
-    var keys = Object.keys(dsr).sort(function(a, b) {
-      return order.indexOf(a) - order.indexOf(b);
-    });
+    var totalL = d.totalFuelLitres||0;
+    var totalA = d.totalFuelAmount||0;
+    var fuelSales = d.fuelSales || d.nozzleRows || [];
+    var badges={'HSD':'<span class="b-hsd">Diesel</span>','MS-I':'<span class="b-ms1">Petrol</span>','MS-II':'<span class="b-hsd">Diesel</span>','CNG':'<span class="b-cng">CNG</span>'};
 
-    keys.forEach(function(type) {
-      var val = dsr[type];
-      var litres = val.litres;
-      var amount = val.amount;
-      var rate = litres > 0 ? (amount / litres) : 0;
-      
-      var badge = '';
-      var desc = '';
-      if (type === 'HSD' || type === 'HSD-I' || type === 'HSD-II') {
-        badge = '<span class="b-hsd">Diesel</span>';
-        desc = ' \u2014 20 KL';
-      } else if (type === 'MS') {
-        badge = '<span class="b-ms1">Petrol</span>';
-        desc = ' \u2014 20 KL';
-      } else if (type === 'Speed') {
-        badge = '<span class="b-ms2">Speed</span>';
-        desc = ' \u2014 20 KL';
-      } else if (type === 'CNG') {
-        badge = '<span class="b-cng">CNG</span>';
-        desc = '';
-      } else {
-        badge = '<span class="b-ms2">' + type + '</span>';
-        desc = '';
-      }
-
+    fuelSales.forEach(function(f) {
+      var badge = badges[f.fuelType]||f.fuelType;
+      var desc = f.description || '';
+      var unit = f.fuelType === 'CNG' ? ' Kg' : ' L';
       var tr = document.createElement('tr');
       tr.innerHTML = '<td style="text-align: left;">' + index + '</td>' +
-                     '<td style="text-align: left;">' + badge + desc + '</td>' +
-                     '<td>' + litres.toFixed(4) + '</td>' +
-                     '<td>' + rate.toFixed(2) + '</td>' +
-                     '<td style="font-weight: 700;">' + inrZ(amount) + '</td>';
+                     '<td style="text-align: left;">' + badge + (desc ? ' \u2014 ' + desc : '') + '</td>' +
+                     '<td>' + parseFloat(f.litres||0).toFixed(4) + unit + '</td>' +
+                     '<td>' + parseFloat(f.rate||0).toFixed(2) + '</td>' +
+                     '<td style="font-weight: 700;">' + inrZ(f.amount) + '</td>';
       tf.appendChild(tr);
-      
-      totalL += litres;
-      totalA += amount;
       index++;
     });
 
@@ -406,40 +425,37 @@ function renderData(){
   }
 
   // Expenses
-  var et=document.getElementById('tExp');et.innerHTML='';var expTot=0;
-  (d.expenses||[]).forEach(function(e){
+  var et=document.getElementById('tExp');et.innerHTML='';var expTot=d.expensesTotal||0;
+  (d.expenseRows||d.expenses||[]).forEach(function(e){
     var tr=document.createElement('tr');
-    tr.innerHTML='<td>'+e.dsmName+'</td><td>'+e.description+'</td><td>'+inr(e.amount)+'</td>';
-    et.appendChild(tr);expTot+=(e.amount||0);
+    tr.innerHTML='<td>'+(e.dsmName||'')+'</td><td>'+(e.description||'')+'</td><td>'+inr(e.amount)+'</td>';
+    et.appendChild(tr);
   });
   var etr=document.createElement('tr');etr.className='tr-total';
   etr.innerHTML='<td colspan="2">TOTAL EXPENSES</td><td>'+inrZ(expTot)+'</td>';et.appendChild(etr);
 
   // Reconciliation
-  document.getElementById('rMsTest').textContent=inrZ(d.msTesting);
-  document.getElementById('rHsdTest').textContent=inrZ(d.hsdTesting);
-  document.getElementById('rHsdTest2').textContent=inrZ(d.hsdTesting2);
-  document.getElementById('rCngTest').textContent=inrZ(d.cngTesting);
+  var tRecon = document.getElementById('tRecon');
+  if (tRecon) {
+    tRecon.innerHTML = '';
+    (d.collectionBreakdown || []).forEach(function(c) {
+      if (c.amount > 0) {
+        var tr = document.createElement('tr');
+        tr.innerHTML = '<td>' + c.category + '</td><td>' + inr(c.amount) + '</td>';
+        tRecon.appendChild(tr);
+      }
+    });
+  }
 
-  document.getElementById('rPe').textContent=inrZ(d.phonePeTotal);
-  document.getElementById('rPeCard').textContent=inrZ(d.phonePeCardTotal);
-  document.getElementById('rCCardM').textContent=inrZ(d.creditCardMorningTotal);
-  document.getElementById('rCCardN').textContent=inrZ(d.creditCardNightTotal);
-  document.getElementById('rPCard').textContent=inrZ(d.petroCardTotal);
-  document.getElementById('rBank').textContent=inrZ(d.bankCashTotal);
-  document.getElementById('rHand').textContent=inrZ(d.cashInHandTotal);
-  document.getElementById('rCred').textContent=inrZ(d.creditorsTotal);
-  document.getElementById('rExp').textContent=inrZ(d.expensesTotal);
-  document.getElementById('rTotal').textContent=inrZ(d.reconciliationTotalAmount);
-  document.getElementById('rSale').textContent=inrZ(d.grossDaySaleTotal);
-  document.getElementById('rTotalDsmShort').textContent=inrZ(d.totalDsmShort);
+  document.getElementById('rTotal').textContent=inrZ(d.actualCollection);
+  document.getElementById('rSale').textContent=inrZ(d.expectedCollection);
   var diff = d.difference || 0;
   var dCell=document.getElementById('rDiff');
   if(Math.abs(diff)<0.01){dCell.textContent='\u2713  BALANCED \u2014 Difference: \u20B90.00';dCell.className='diff-ok';}
   else if(diff<0){dCell.textContent='\u26A0  SHORT \u2014 Difference: '+inrZ(Math.abs(diff));dCell.className='diff-bad';}
   else{dCell.textContent='\u26A0  EXCESS \u2014 Difference: '+inrZ(diff);dCell.className='diff-bad';}
 
-  document.getElementById('ftrMid').innerHTML='<strong>'+d.date+'</strong> &middot; '+parseFloat(getVal(d, 'totalDayLitres')||0).toFixed(2)+' L &middot; '+inrZ(d.totalFuelSaleAmount);
+  document.getElementById('ftrMid').innerHTML='<strong>'+(d.dateString||d.date||'')+'</strong> &middot; '+parseFloat(d.totalFuelLitres||0).toFixed(2)+' L &middot; '+inrZ(d.totalFuelAmount);
 }
 renderData();
 document.addEventListener('DOMContentLoaded',renderData);

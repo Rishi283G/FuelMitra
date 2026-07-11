@@ -179,9 +179,24 @@ public class ShiftCalculationService
             dto.TotalMsDispensed = dto.MsILitres + dto.MsIILitres;
 
             // TABLE F — Final Reconciliation
-            dto.MsTesting = entries.SelectMany(e => e.TestingEntries).Where(t => t.FuelType == "MS").Sum(t => t.Amount);
-            dto.HsdTesting = entries.SelectMany(e => e.TestingEntries).Where(t => t.FuelType == "HSD").Sum(t => t.Amount);
-            dto.CngTesting = entries.SelectMany(e => e.TestingEntries).Where(t => t.FuelType == "CNG").Sum(t => t.Amount);
+            double msTesting = 0;
+            double hsdTesting = 0;
+            double cngTesting = 0;
+
+            foreach (var entry in entries)
+            {
+                foreach (var t in entry.TestingEntries)
+                {
+                    var cat = PumpConfiguration.GetTestingTankCategory(t.FuelType, entry.PumpId, shift.ShiftDate.Date);
+                    if (cat == "MS") msTesting += (double)t.Amount;
+                    else if (cat == "HSD" || cat == "HSD-II") hsdTesting += (double)t.Amount;
+                    else if (cat == "CNG") cngTesting += (double)t.Amount;
+                }
+            }
+
+            dto.MsTesting = msTesting;
+            dto.HsdTesting = hsdTesting;
+            dto.CngTesting = cngTesting;
 
             var tidSheetToday = await _tidService.GetTidSheetAsync(shift.ShiftDate.Date);
             var tidSheetTomorrow = await _tidService.GetTidSheetAsync(shift.ShiftDate.Date.AddDays(1));

@@ -29,6 +29,8 @@ public partial class FinalCalculationViewModel : ObservableObject
     private readonly ICreditorRepository _creditorRepo;
     private readonly ICreditorRepaymentRepository _repaymentRepo;
     private readonly ITidCalculationService _tidService;
+    private readonly IAgsInventoryService _inventoryService;
+    private readonly IReportService _reportService;
     private readonly ILogger _logger = Log.ForContext<FinalCalculationViewModel>();
 
     [ObservableProperty] private DateTime _selectedDate = DateTime.Today;
@@ -39,6 +41,7 @@ public partial class FinalCalculationViewModel : ObservableObject
     [ObservableProperty] private bool _isShiftLocked;
     [ObservableProperty] private int _shiftId;
     [ObservableProperty] private ObservableCollection<NozzleGroupDto> _nozzleGroups = new();
+    [ObservableProperty] private ShiftReportDto? _currentReport;
 
     // TABLE A
     [ObservableProperty] private ObservableCollection<DsmSummaryRowDto> _dsmSummaryRows = new();
@@ -101,17 +104,20 @@ public partial class FinalCalculationViewModel : ObservableObject
     [ObservableProperty] private string _newDebtorName = "";
     [ObservableProperty] private string _newRepaymentMode = "Cash";
     [ObservableProperty] private double _newRepaymentAmount;
-    [ObservableProperty] private string? _newChequeNumber = "";
+    [ObservableProperty] private string _newChequeNumber = "";
     [ObservableProperty] private string _repaymentStatusMessage = "";
-    [ObservableProperty] private string? _newCardTid = "";
-    [ObservableProperty] private string? _newCardBatch = "";
+    [ObservableProperty] private string _newCardTid = "";
+    [ObservableProperty] private string _newCardBatch = "";
+
+    // Denominations for debtor Cash repayment
     [ObservableProperty] private int? _newDenom500;
     [ObservableProperty] private int? _newDenom200;
     [ObservableProperty] private int? _newDenom100;
     [ObservableProperty] private int? _newDenom50;
     [ObservableProperty] private int? _newDenom20;
     [ObservableProperty] private int? _newDenom10;
-    [ObservableProperty] private int? _newCoins;
+    [ObservableProperty] private double? _newCoins;
+
     public string[] PaymentModes { get; } = { "Cash", "PhonePe", "Credit Card", "Cheque" };
 
     public string[] ShiftOptions { get; } = { "A", "B" };
@@ -131,6 +137,8 @@ public partial class FinalCalculationViewModel : ObservableObject
         _creditorRepo = App.Services.GetRequiredService<ICreditorRepository>();
         _repaymentRepo = App.Services.GetRequiredService<ICreditorRepaymentRepository>();
         _tidService = App.Services.GetRequiredService<ITidCalculationService>();
+        _inventoryService = App.Services.GetRequiredService<IAgsInventoryService>();
+        _reportService = App.Services.GetRequiredService<IReportService>();
     }
 
     partial void OnSelectedDateChanged(DateTime value) => _ = LoadShiftDataAsync();
@@ -167,33 +175,7 @@ public partial class FinalCalculationViewModel : ObservableObject
 
             _loadedEntries = entriesResult.Data;
 
-            // TABLE A
-            var summaryRows = _aggregation.BuildDsmSummaryRows(_loadedEntries);
-            DsmSummaryRows = new ObservableCollection<DsmSummaryRowDto>(summaryRows);
-            DsmSummaryTotals = _aggregation.BuildDsmSummaryTotalRow(summaryRows);
-
-            // TABLE B
-            var cash1Agg = _aggregation.AggregateCash(_loadedEntries, "Cash1");
-            Cash1Rows = new ObservableCollection<CashDenomDisplayRow>(cash1Agg.ToDisplayRows());
-            Cash1Total = cash1Agg.GrandTotal;
-
-            var cash2Agg = _aggregation.AggregateCash(_loadedEntries, "Cash2");
-            Cash2Rows = new ObservableCollection<CashDenomDisplayRow>(cash2Agg.ToDisplayRows());
-            Cash2Total = cash2Agg.GrandTotal;
-
-            // TABLE C
-            var creditors = _aggregation.BuildCreditorRows(_loadedEntries);
-            CreditorRows = new ObservableCollection<DebitRegisterRowDto>(creditors);
-            CreditorsTotal = creditors.Sum(r => r.Amount);
-
-            // TABLE D
-            var shiftExpensesResult = await _expenseRepo.GetByShiftIdAsync(shift.ShiftId);
-            var shiftExpenses = shiftExpensesResult.Success ? shiftExpensesResult.Data! : new List<Expense>();
-            var expenseRows = _aggregation.BuildExpenseRows(_loadedEntries, shiftExpenses);
-            ExpenseRows = new ObservableCollection<ExpenseRegisterRowDto>(expenseRows);
-            ExpensesTotal = expenseRows.Sum(r => r.Amount);
-
-            // TABLE E — Fuel
+            // Load extra shift collections, rates, and repayments
             var rateOverrides = await _fuelRateRepo.GetByShiftAsync(SelectedDate, SelectedShift);
             var rateDict = rateOverrides.Success
                 ? rateOverrides.Data!.ToDictionary(r => r.FuelType, r => r.OverrideRate)
@@ -205,68 +187,103 @@ public partial class FinalCalculationViewModel : ObservableObject
             double defaultMsII = settings.Success ? settings.Data!.MsIIRate : 103.81;
             double defaultCng = settings.Success ? settings.Data!.CngRate : 85.0;
 
-            var (hsdL, hsdA) = _aggregation.GetFuelTotals(_loadedEntries, "HSD",
-                rateDict.TryGetValue("HSD", out var hr) ? hr : null);
-            HsdLitres = hsdL;
-            HsdRate = rateDict.TryGetValue("HSD", out var hrr) ? hrr : defaultHsd;
-            HsdAmount = hsdA;
+            double hsdRate = rateDict.TryGetValue("HSD", out var hr) ? hr : defaultHsd;
+            double msIRate = rateDict.TryGetValue("MS-I", out var mr1) ? mr1 : defaultMsI;
+            double msIIRate = rateDict.TryGetValue("MS-II", out var mr2) ? mr2 : defaultMsII;
+            double cngRate = rateDict.TryGetValue("CNG", out var cr) ? cr : defaultCng;
 
-            var (msIL, msIA) = _aggregation.GetFuelTotals(_loadedEntries, "MS-I",
-                rateDict.TryGetValue("MS-I", out var mr1) ? mr1 : null);
-            MsILitres = msIL;
-            MsIRate = rateDict.TryGetValue("MS-I", out var mr1r) ? mr1r : defaultMsI;
-            MsIAmount = msIA;
+            var shiftExpensesResult = await _expenseRepo.GetByShiftIdAsync(shift.ShiftId);
+            var shiftExpenses = shiftExpensesResult.Success ? shiftExpensesResult.Data! : new List<Expense>();
 
-            var (msIIL, msIIA) = _aggregation.GetFuelTotals(_loadedEntries, "MS-II",
-                rateDict.TryGetValue("MS-II", out var mr2) ? mr2 : null);
-            MsIILitres = msIIL;
-            MsIIRate = rateDict.TryGetValue("MS-II", out var mr2r) ? mr2r : defaultMsII;
-            MsIIAmount = msIIA;
+            var otherCashResult = await _otherCashRepo.GetByShiftAsync(SelectedDate, SelectedShift);
+            var otherCash = otherCashResult.Success ? otherCashResult.Data! : new List<ShiftOtherCash>();
 
-            var (cngL, cngA) = _aggregation.GetFuelTotals(_loadedEntries, "CNG",
-                rateDict.TryGetValue("CNG", out var cr) ? cr : null);
-            CngLitres = cngL;
-            CngRate = rateDict.TryGetValue("CNG", out var crr) ? crr : defaultCng;
-            CngAmount = cngA;
+            await LoadDebtorRepaymentsAsync();
+
+            var tidSheetToday = await _tidService.GetTidSheetAsync(SelectedDate.Date);
+            var tidSheetTomorrow = await _tidService.GetTidSheetAsync(SelectedDate.Date.AddDays(1));
+            string stationName = settings.Success ? settings.Data!.PumpStationName : "PyroSync";
+
+            var report = _reportService.CalculateShiftReport(
+                SelectedDate,
+                SelectedShift,
+                _loadedEntries,
+                shiftExpenses,
+                otherCash,
+                DebtorRepayments.ToList(),
+                hsdRate, msIRate, msIIRate, cngRate,
+                tidSheetToday, tidSheetTomorrow,
+                stationName);
+
+            CurrentReport = report;
+
+            // Bind values to existing properties so UI bindings don't break
+            DsmSummaryRows = new ObservableCollection<DsmSummaryRowDto>(report.DsmSummaryRows);
+            DsmSummaryTotals = report.DsmSummaryTotals;
+
+            Cash1Rows = new ObservableCollection<CashDenomDisplayRow>(report.Cash1.ToDisplayRows(true));
+            Cash1Total = report.Cash1.GrandTotal;
+
+            Cash2Rows = new ObservableCollection<CashDenomDisplayRow>(report.Cash2.ToDisplayRows(false));
+            Cash2Total = report.Cash2.GrandTotal;
+
+            CreditorRows = new ObservableCollection<DebitRegisterRowDto>(report.CreditorRows);
+            CreditorsTotal = report.CreditorsTotal;
+
+            // Re-bind expense rows
+            ExpenseRows = new ObservableCollection<ExpenseRegisterRowDto>(report.ExpenseRows);
+            ExpensesTotal = report.ExpensesTotal;
+
+            HsdLitres = report.FuelSales.FirstOrDefault(f => f.FuelType == "HSD")?.Litres ?? 0;
+            HsdRate = report.FuelSales.FirstOrDefault(f => f.FuelType == "HSD")?.Rate ?? hsdRate;
+            HsdAmount = report.FuelSales.FirstOrDefault(f => f.FuelType == "HSD")?.Amount ?? 0;
+
+            MsILitres = report.FuelSales.FirstOrDefault(f => f.FuelType == "MS-I")?.Litres ?? 0;
+            MsIRate = report.FuelSales.FirstOrDefault(f => f.FuelType == "MS-I")?.Rate ?? msIRate;
+            MsIAmount = report.FuelSales.FirstOrDefault(f => f.FuelType == "MS-I")?.Amount ?? 0;
+
+            MsIILitres = report.FuelSales.FirstOrDefault(f => f.FuelType == "MS-II")?.Litres ?? 0;
+            MsIIRate = report.FuelSales.FirstOrDefault(f => f.FuelType == "MS-II")?.Rate ?? msIIRate;
+            MsIIAmount = report.FuelSales.FirstOrDefault(f => f.FuelType == "MS-II")?.Amount ?? 0;
+
+            CngLitres = report.FuelSales.FirstOrDefault(f => f.FuelType == "CNG")?.Litres ?? 0;
+            CngRate = report.FuelSales.FirstOrDefault(f => f.FuelType == "CNG")?.Rate ?? cngRate;
+            CngAmount = report.FuelSales.FirstOrDefault(f => f.FuelType == "CNG")?.Amount ?? 0;
 
             MsTotalLitres = MsILitres + MsIILitres;
             MsTotalAmount = MsIAmount + MsIIAmount;
 
-            TotalLitres = HsdLitres + MsILitres + MsIILitres + CngLitres;
-            TotalFuelSaleAmount = HsdAmount + MsIAmount + MsIIAmount + CngAmount;
+            TotalLitres = report.TotalFuelLitres;
+            TotalFuelSaleAmount = report.TotalFuelAmount;
+            OtherCashTotal = report.OtherCashTotal;
+            GrandTotalSaleAmount = report.GrandTotalSaleAmount;
 
-            // TABLE E — Other Cash
-            var otherCashResult = await _otherCashRepo.GetByShiftAsync(SelectedDate, SelectedShift);
-            var otherCash = otherCashResult.Success ? otherCashResult.Data! : new List<ShiftOtherCash>();
-            OtherCashRows = new ObservableCollection<OtherCashRowDto>(
-                otherCash.Select(o => new OtherCashRowDto
+            // Reconciliation rows mapping for UI
+            var reconRows = new List<ReconciliationRowDto>();
+            foreach (var category in report.CollectionBreakdown)
+            {
+                if (category.Amount > 0)
                 {
-                    ShiftOtherCashId = o.ShiftOtherCashId,
-                    Description = o.Description,
-                    Amount = o.Amount,
-                    IsEditable = o.IsEditable
-                }));
-            OtherCashTotal = 0;
-            GrandTotalSaleAmount = TotalFuelSaleAmount;
-
-            // TABLE F — Reconciliation
-            RecalcReconciliation();
-
-            await LoadDebtorRepaymentsAsync();
+                    reconRows.Add(new ReconciliationRowDto { Description = category.Category, Amount = category.Amount });
+                }
+            }
+            ReconciliationRows = new ObservableCollection<ReconciliationRowDto>(reconRows);
+            ReconciliationTotal = report.ActualCollection;
+            GrossSaleTotal = report.ExpectedCollection;
+            Difference = report.Difference;
+            IsBalanced = report.IsBalanced;
+            TotalDsmShort = report.TotalDsmShort;
 
             // Load AGS Nozzle Readings
             try
             {
-                var agsRepo = App.Services.GetRequiredService<IAgsImportRepository>();
-                var agsImportResult = await agsRepo.GetActiveShiftImportAsync(SelectedDate, SelectedShift);
-                var agsImport = (agsImportResult.Success && agsImportResult.Data != null) ? agsImportResult.Data : null;
-                var nozzleGroupsList = BuildNozzleGroups(agsImport);
+                var nozzleGroupsList = await _inventoryService.BuildNozzleGroupsAsync(SelectedDate, SelectedShift, _loadedEntries);
                 NozzleGroups = new ObservableCollection<NozzleGroupDto>(nozzleGroupsList);
+                report.NozzleGroups = nozzleGroupsList;
             }
             catch (Exception ex)
             {
                 _logger.Warning(ex, "Failed to load AGS nozzle groups for calculation");
-                NozzleGroups = new ObservableCollection<NozzleGroupDto>(BuildNozzleGroups(null));
             }
 
             HasData = true;
@@ -282,195 +299,63 @@ public partial class FinalCalculationViewModel : ObservableObject
 
     private void RecalcReconciliation()
     {
-        var msTesting = _loadedEntries.SelectMany(e => e.TestingEntries).Where(t => t.FuelType == "MS").Sum(t => t.Amount);
-        var hsdTesting = _loadedEntries.SelectMany(e => e.TestingEntries).Where(t => t.FuelType == "HSD" || t.FuelType == "HSD-I").Sum(t => t.Amount);
-        var hsdTesting2 = _loadedEntries.SelectMany(e => e.TestingEntries).Where(t => t.FuelType == "HSD-II").Sum(t => t.Amount);
-        var cngTesting = _loadedEntries.SelectMany(e => e.TestingEntries).Where(t => t.FuelType == "CNG").Sum(t => t.Amount);
-        
+        if (_loadedEntries == null || _loadedEntries.Count == 0) return;
+
+        var settings = _settingsRepo.GetSettingsAsync().GetAwaiter().GetResult();
+        string stationName = settings.Success ? settings.Data!.PumpStationName : "PyroSync";
+
+        var rateOverrides = _fuelRateRepo.GetByShiftAsync(SelectedDate, SelectedShift).GetAwaiter().GetResult();
+        var rateDict = rateOverrides.Success
+            ? rateOverrides.Data!.ToDictionary(r => r.FuelType, r => r.OverrideRate)
+            : new Dictionary<string, double>();
+
+        double defaultHsd = settings.Success ? settings.Data!.HsdRate : 90.35;
+        double defaultMsI = settings.Success ? settings.Data!.MsIRate : 103.81;
+        double defaultMsII = settings.Success ? settings.Data!.MsIIRate : 103.81;
+        double defaultCng = settings.Success ? settings.Data!.CngRate : 85.0;
+
+        double hsdRate = rateDict.TryGetValue("HSD", out var hr) ? hr : defaultHsd;
+        double msIRate = rateDict.TryGetValue("MS-I", out var mr1) ? mr1 : defaultMsI;
+        double msIIRate = rateDict.TryGetValue("MS-II", out var mr2) ? mr2 : defaultMsII;
+        double cngRate = rateDict.TryGetValue("CNG", out var cr) ? cr : defaultCng;
+
+        var shiftExpensesResult = _expenseRepo.GetByShiftIdAsync(ShiftId).GetAwaiter().GetResult();
+        var shiftExpenses = shiftExpensesResult.Success ? shiftExpensesResult.Data! : new List<Expense>();
+
+        var otherCashResult = _otherCashRepo.GetByShiftAsync(SelectedDate, SelectedShift).GetAwaiter().GetResult();
+        var otherCash = otherCashResult.Success ? otherCashResult.Data! : new List<ShiftOtherCash>();
+
         var tidSheetToday = _tidService.GetTidSheetAsync(SelectedDate.Date).GetAwaiter().GetResult();
         var tidSheetTomorrow = _tidService.GetTidSheetAsync(SelectedDate.Date.AddDays(1)).GetAwaiter().GetResult();
 
-        double phonePeCardMorning = 0;
-        double phonePeCardNight = 0;
-        double phonePeMorning = 0;
-        double phonePeNight = 0;
-        double petroCard = 0;
-        double creditCardMorning = 0;
-        double creditCardNight = 0;
+        var report = _reportService.CalculateShiftReport(
+            SelectedDate,
+            SelectedShift,
+            _loadedEntries,
+            shiftExpenses,
+            otherCash,
+            DebtorRepayments.ToList(),
+            hsdRate, msIRate, msIIRate, cngRate,
+            tidSheetToday, tidSheetTomorrow,
+            stationName);
 
-        if (SelectedShift == "A")
-        {
-            phonePeCardMorning = tidSheetToday.PhonePeCardDay;
-            phonePeCardNight = 0;
-            phonePeMorning = tidSheetToday.PhonePeDirectDay;
-            phonePeNight = 0;
-            petroCard = tidSheetToday.PetroCardDay;
-            creditCardMorning = tidSheetToday.PineLabsCardDay;
-            creditCardNight = 0;
-        }
-        else
-        {
-            phonePeCardMorning = tidSheetTomorrow.PhonePeCardMorning;
-            phonePeCardNight = tidSheetToday.PhonePeCardNight;
-            phonePeMorning = tidSheetTomorrow.PhonePeDirectMorning;
-            phonePeNight = tidSheetToday.PhonePeDirectNight;
-            petroCard = tidSheetTomorrow.PetroCardMorning + tidSheetToday.PetroCardNight;
-            creditCardMorning = tidSheetTomorrow.PineLabsCardMorning;
-            creditCardNight = tidSheetToday.PineLabsCardNight;
-        }
+        CurrentReport = report;
 
-        var debit = CreditorsTotal;
-
-        // Repayments for this shift (already filtered by SelectedShift in LoadDebtorRepaymentsAsync)
-        double cashRepayments = 0;
-        double phonePeRepayments = 0;
-        double creditCardRepayments = 0;
-        double petroCardRepayments = 0;
-        double bankCashRepayments = 0;
-
-        foreach (var r in DebtorRepayments)
-        {
-            string mode = r.PaymentMode ?? "";
-            if (string.Equals(mode, "Cash", StringComparison.OrdinalIgnoreCase))
-            {
-                cashRepayments += r.Amount;
-            }
-            else if (string.Equals(mode, "PhonePe", StringComparison.OrdinalIgnoreCase) || 
-                     string.Equals(mode, "PhonePe UPI", StringComparison.OrdinalIgnoreCase))
-            {
-                phonePeRepayments += r.Amount;
-            }
-            else if (string.Equals(mode, "Credit Card", StringComparison.OrdinalIgnoreCase) || 
-                     string.Equals(mode, "PineLabs Card", StringComparison.OrdinalIgnoreCase) || 
-                     string.Equals(mode, "PineLab Card", StringComparison.OrdinalIgnoreCase))
-            {
-                creditCardRepayments += r.Amount;
-            }
-            else if (string.Equals(mode, "PetroCard", StringComparison.OrdinalIgnoreCase) || 
-                     string.Equals(mode, "Petro Card", StringComparison.OrdinalIgnoreCase))
-            {
-                petroCardRepayments += r.Amount;
-            }
-            else if (string.Equals(mode, "Bank Transfer", StringComparison.OrdinalIgnoreCase))
-            {
-                bankCashRepayments += r.Amount;
-            }
-        }
-
-        // Silent addition to respective fields
-        double displayCashInHand = Cash2Total + cashRepayments;
-        double displayBankCash = Cash1Total + bankCashRepayments;
-        double displayPetroCard = petroCard + petroCardRepayments;
-        
-        double displayPhonePeMorning = phonePeMorning;
-        double displayPhonePeNight = phonePeNight;
-        if (SelectedShift == "A") displayPhonePeMorning += phonePeRepayments;
-        else displayPhonePeNight += phonePeRepayments;
-
-        double displayCreditCardMorning = creditCardMorning;
-        double displayCreditCardNight = creditCardNight;
-        if (SelectedShift == "A") displayCreditCardMorning += creditCardRepayments;
-        else displayCreditCardNight += creditCardRepayments;
-
-        // Build reconciliation rows
+        // Re-bind reconciliation
         var reconRows = new List<ReconciliationRowDto>();
-        reconRows.Add(new ReconciliationRowDto { Description = "MS Testing", Amount = msTesting });
-        reconRows.Add(new ReconciliationRowDto { Description = "HSD Testing", Amount = hsdTesting });
-        reconRows.Add(new ReconciliationRowDto { Description = "CNG Testing", Amount = cngTesting });
-        
-        reconRows.Add(new ReconciliationRowDto { Description = "Phone Pe Card (Morning)", Amount = phonePeCardMorning });
-        reconRows.Add(new ReconciliationRowDto { Description = "Phone Pe Card (Night)", Amount = phonePeCardNight });
-        
-        string ppMorningDesc = SelectedShift == "A" && phonePeRepayments > 0 
-            ? $"Phone Pe (Morning) (Repayment: ₹{phonePeRepayments:F0})" 
-            : "Phone Pe (Morning)";
-        reconRows.Add(new ReconciliationRowDto { Description = ppMorningDesc, Amount = displayPhonePeMorning });
-        
-        string ppNightDesc = SelectedShift == "B" && phonePeRepayments > 0 
-            ? $"Phone Pe (Night) (Repayment: ₹{phonePeRepayments:F0})" 
-            : "Phone Pe (Night)";
-        reconRows.Add(new ReconciliationRowDto { Description = ppNightDesc, Amount = displayPhonePeNight });
-        
-        string petroDesc = petroCardRepayments > 0 
-            ? $"P. Card (Repayment: ₹{petroCardRepayments:F0})" 
-            : "P. Card";
-        reconRows.Add(new ReconciliationRowDto { Description = petroDesc, Amount = displayPetroCard });
-        
-        reconRows.Add(new ReconciliationRowDto { Description = "Debit", Amount = debit });
-        
-        string ccMorningDesc = SelectedShift == "A" && creditCardRepayments > 0 
-            ? $"PineLab Card (Morning) (Repayment: ₹{creditCardRepayments:F0})" 
-            : "PineLab Card (Morning)";
-        reconRows.Add(new ReconciliationRowDto { Description = ccMorningDesc, Amount = displayCreditCardMorning });
-        
-        string ccNightDesc = SelectedShift == "B" && creditCardRepayments > 0 
-            ? $"PineLab Card (Night) (Repayment: ₹{creditCardRepayments:F0})" 
-            : "PineLab Card (Night)";
-        reconRows.Add(new ReconciliationRowDto { Description = ccNightDesc, Amount = displayCreditCardNight });
-        
-        string bankCashDesc = bankCashRepayments > 0 
-            ? $"Bank Cash (Repayment: ₹{bankCashRepayments:F0})" 
-            : "Bank Cash";
-        reconRows.Add(new ReconciliationRowDto { Description = bankCashDesc, Amount = displayBankCash });
-        
-        string cashInHandDesc = cashRepayments > 0 
-            ? $"Cash In Hand (Repayment: ₹{cashRepayments:F0})" 
-            : "Cash In Hand";
-        reconRows.Add(new ReconciliationRowDto { Description = cashInHandDesc, Amount = displayCashInHand });
-        
-        double dsmExpensesTotal = ExpenseRows.Where(r => !r.IsShiftLevel).Sum(r => r.Amount);
-        reconRows.Add(new ReconciliationRowDto { Description = "Expenses", Amount = dsmExpensesTotal });
-
-        double totalDsmShort = 0;
-        var mismatchGroups = _loadedEntries.GroupBy(e => new { e.ShiftId, e.DsmName, GroupPumpId = e.ReconciledToPumpId ?? e.PumpId });
-        foreach (var g in mismatchGroups)
+        foreach (var category in report.CollectionBreakdown)
         {
-            var grossSales = g.SelectMany(e => e.NozzleReadings).Sum(n => n.Amount);
-            var cash1Total = g.SelectMany(e => e.CashDenominations).Where(c => c.CashType == "Cash1").Sum(c => c.TotalAmount);
-            var cash2Total = g.SelectMany(e => e.CashDenominations).Where(c => c.CashType == "Cash2").Sum(c => c.TotalAmount);
-            var physicalCash = cash1Total + cash2Total;
-            
-            var phonePe = g.Sum(e => (e.PaymentCollection?.PhonePeMorning ?? 0) 
-                                   + (e.PaymentCollection?.PhonePeNight ?? 0) 
-                                   + (e.PaymentCollection?.PhonePeCardMorning ?? 0) 
-                                   + (e.PaymentCollection?.PhonePeCardNight ?? 0));
-                                   
-            var creditCard = g.Sum(e => (e.PaymentCollection?.CreditCardMorning ?? 0) 
-                                       + (e.PaymentCollection?.CreditCardNight ?? 0) 
-                                       + (e.PaymentCollection?.PetroCardMorning ?? 0) 
-                                       + (e.PaymentCollection?.PetroCardNight ?? 0));
-                                       
-            var cashDeposit = g.Sum(e => e.PaymentCollection?.CashDeposit ?? 0);
-            var totalInDirect = (double)(phonePe + creditCard + cashDeposit + physicalCash);
-            
-            var totalCreditors = g.SelectMany(e => e.DebitEntries).Sum(d => d.Amount);
-            var totalTesting = g.SelectMany(e => e.TestingEntries).Sum(t => t.Amount);
-            var totalExpenses = g.SelectMany(e => e.Expenses).Sum(ex => ex.Amount);
-            
-            var totalCollection = totalInDirect + totalCreditors + totalTesting + totalExpenses;
-            var mismatch = totalCollection - grossSales;
-            
-            if (mismatch < -0.01)
+            if (category.Amount > 0)
             {
-                totalDsmShort += Math.Abs(mismatch);
+                reconRows.Add(new ReconciliationRowDto { Description = category.Category, Amount = category.Amount });
             }
         }
-        TotalDsmShort = totalDsmShort;
-
-        if (TotalDsmShort > 0.01)
-        {
-            reconRows.Add(new ReconciliationRowDto { Description = "Total DSM Short", Amount = TotalDsmShort });
-        }
-        
         ReconciliationRows = new ObservableCollection<ReconciliationRowDto>(reconRows);
-        ReconciliationTotal = reconRows.Sum(r => r.Amount);
-
-        // Adjust GrossSaleTotal to include repayments (excluding cheque) so they balance
-        double repaymentsReconciled = cashRepayments + phonePeRepayments + creditCardRepayments + petroCardRepayments + bankCashRepayments;
-        GrossSaleTotal = TotalFuelSaleAmount + repaymentsReconciled;
-
-        Difference = ReconciliationTotal - GrossSaleTotal;
-        IsBalanced = Math.Abs(Difference) < 0.01;
+        ReconciliationTotal = report.ActualCollection;
+        GrossSaleTotal = report.ExpectedCollection;
+        Difference = report.Difference;
+        IsBalanced = report.IsBalanced;
+        TotalDsmShort = report.TotalDsmShort;
     }
 
     private void ClearAll()
@@ -607,6 +492,20 @@ public partial class FinalCalculationViewModel : ObservableObject
             $"Lock Shift {shiftLabel} for {SelectedDate:dd MMM yyyy}?\nThis cannot be undone.",
             "Confirm Lock", MessageBoxButton.YesNo, MessageBoxImage.Warning);
         if (confirm != MessageBoxResult.Yes) return;
+
+        // Auto-save tank stocks and propagate calculations before locking!
+        var saveInvRes = await _inventoryService.SaveAndPersistInventoryAsync(SelectedDate, SelectedShift, NozzleGroups.ToList());
+        if (!saveInvRes.Success)
+        {
+            StatusMessage = $"❌ Failed to save tank inventory before locking: {saveInvRes.Error}";
+            return;
+        }
+
+        var propRes = await _inventoryService.PropagateInventoryCalculationsAsync(SelectedDate, SelectedShift);
+        if (!propRes.Success)
+        {
+            _logger.Warning("Propagation failed during lock shift: {Error}", propRes.Error);
+        }
 
         var result = await _shiftRepo.LockShiftAsync(ShiftId);
         if (result.Success) { StatusMessage = "✅ Shift locked successfully!"; await LoadShiftDataAsync(); }
@@ -790,7 +689,7 @@ public partial class FinalCalculationViewModel : ObservableObject
             Denom50 = NewRepaymentMode == "Cash" ? (NewDenom50 ?? 0) : 0,
             Denom20 = NewRepaymentMode == "Cash" ? (NewDenom20 ?? 0) : 0,
             Denom10 = NewRepaymentMode == "Cash" ? (NewDenom10 ?? 0) : 0,
-            Coins = NewRepaymentMode == "Cash" ? (NewCoins ?? 0) : 0
+            Coins = NewRepaymentMode == "Cash" ? (int)(NewCoins ?? 0.0) : 0
         };
 
         var result = await _repaymentRepo.AddAsync(repayment);
@@ -851,164 +750,23 @@ public partial class FinalCalculationViewModel : ObservableObject
         _ => $"Shift {shiftType}"
     };
 
-    private List<NozzleGroupDto> BuildNozzleGroups(AgsShiftImport? import)
-    {
-        var groups = new List<NozzleGroupDto>();
-
-        var readingsDict = import?.NozzleReadings?.ToDictionary(r => r.NozzleNumber) 
-                           ?? new Dictionary<int, AgsNozzleReading>();
-
-        var hsdTank = import?.TankStocks?.FirstOrDefault(t => t.FuelType == "HSD");
-        var msITank = import?.TankStocks?.FirstOrDefault(t => t.FuelType == "MS-I");
-        var msIITank = import?.TankStocks?.FirstOrDefault(t => t.FuelType == "MS-II");
-
-        // Aggregate manual readings from loaded DSM entries
-        var manualReadings = new Dictionary<int, (double Opening, double Closing, double Sale)>();
-        if (_loadedEntries != null)
-        {
-            foreach (var group in _loadedEntries.SelectMany(e => e.NozzleReadings).GroupBy(r => r.NozzleNumber))
-            {
-                var sorted = group.OrderBy(r => r.OpeningReading).ToList();
-                var opening = sorted.FirstOrDefault()?.OpeningReading ?? 0.0;
-                var closing = group.OrderByDescending(r => r.ClosingReading).FirstOrDefault()?.ClosingReading ?? 0.0;
-                var sale = group.Sum(r => r.SaleLitres);
-                manualReadings[group.Key] = (opening, closing, sale);
-            }
-        }
-
-        NozzleDisplayItem CreateItem(int num, string fuelType)
-        {
-            if (manualReadings.TryGetValue(num, out var mr))
-            {
-                return new NozzleDisplayItem
-                {
-                    NozzleNumber = num,
-                    FuelType = fuelType,
-                    OpeningReading = mr.Opening,
-                    ClosingReading = mr.Closing,
-                    SaleLitres = mr.Sale,
-                    HasReading = true
-                };
-            }
-            if (readingsDict.TryGetValue(num, out var r))
-            {
-                return new NozzleDisplayItem
-                {
-                    NozzleNumber = num,
-                    FuelType = fuelType,
-                    OpeningReading = r.OpeningReading,
-                    ClosingReading = r.ClosingReading,
-                    SaleLitres = r.NetSaleLitres,
-                    HasReading = true
-                };
-            }
-            return new NozzleDisplayItem
-            {
-                NozzleNumber = num,
-                FuelType = fuelType,
-                OpeningReading = 0,
-                ClosingReading = 0,
-                SaleLitres = 0,
-                HasReading = false
-            };
-        }
-
-        // Petrol (Tank 1)
-        var msGroup1 = new NozzleGroupDto
-        {
-            GroupName = "Petrol (Tank 1)",
-            FuelType = "Petrol",
-            Dip = msITank?.ClosingDipMM ?? 0,
-            Stock = msITank?.ClosingStockLitres ?? 0
-        };
-        msGroup1.Rows.Add(new List<NozzleDisplayItem> { CreateItem(1, "Petrol"), CreateItem(2, "Petrol"), CreateItem(5, "Petrol") });
-        msGroup1.Rows.Add(new List<NozzleDisplayItem> { CreateItem(6, "Petrol"), CreateItem(9, "Petrol"), CreateItem(10, "Petrol") });
-        groups.Add(msGroup1);
-
-        // Diesel (Tank 2)
-        var hsdGroup2 = new NozzleGroupDto
-        {
-            GroupName = "Diesel (Tank 2)",
-            FuelType = "Diesel",
-            Dip = hsdTank?.ClosingDipMM ?? 0,
-            Stock = hsdTank?.ClosingStockLitres ?? 0
-        };
-        hsdGroup2.Rows.Add(new List<NozzleDisplayItem> { CreateItem(3, "Diesel"), CreateItem(4, "Diesel") });
-        hsdGroup2.Rows.Add(new List<NozzleDisplayItem> { CreateItem(11, "Diesel"), CreateItem(12, "Diesel") });
-        groups.Add(hsdGroup2);
-
-        // Diesel (Tank 3)
-        var hsdGroup3 = new NozzleGroupDto
-        {
-            GroupName = "Diesel (Tank 3)",
-            FuelType = "Diesel",
-            Dip = msIITank?.ClosingDipMM ?? 0,
-            Stock = msIITank?.ClosingStockLitres ?? 0
-        };
-        hsdGroup3.Rows.Add(new List<NozzleDisplayItem> { CreateItem(7, "Diesel"), CreateItem(8, "Diesel") });
-        groups.Add(hsdGroup3);
-
-        return groups;
-    }
-
     [RelayCommand]
     private async Task SaveTankStocksAsync()
     {
         try
         {
-            var agsRepo = App.Services.GetRequiredService<IAgsImportRepository>();
-            var activeImportRes = await agsRepo.GetActiveShiftImportAsync(SelectedDate, SelectedShift);
-            var import = (activeImportRes.Success && activeImportRes.Data != null) ? activeImportRes.Data : null;
-
-            if (import == null)
-            {
-                // Create a manual import record
-                import = new AgsShiftImport
-                {
-                    ImportDate = SelectedDate.Date,
-                    ShiftType = SelectedShift,
-                    PdfFileName = "Manual Entry",
-                    ImportedBy = "User",
-                    IsActive = true,
-                    ImportedAt = DateTime.Now
-                };
-            }
-
-            // Ensure TankStocks is loaded
-            if (import.TankStocks == null)
-            {
-                import.TankStocks = new List<AgsTankStock>();
-            }
-
-            foreach (var g in NozzleGroups)
-            {
-                string fuelTypeInDb = g.GroupName switch
-                {
-                    string s when s.Contains("Tank 1") => "MS-I",
-                    string s when s.Contains("Tank 2") => "HSD",
-                    string s when s.Contains("Tank 3") => "MS-II",
-                    _ => g.FuelType
-                };
-
-                var tank = import.TankStocks.FirstOrDefault(t => t.FuelType == fuelTypeInDb);
-                if (tank == null)
-                {
-                    tank = new AgsTankStock
-                    {
-                        FuelType = fuelTypeInDb,
-                        TankNumber = fuelTypeInDb switch { "HSD" => 1, "MS-I" => 2, "MS-II" => 3, _ => 1 }
-                    };
-                    import.TankStocks.Add(tank);
-                }
-
-                tank.ClosingDipMM = g.Dip;
-                tank.ClosingStockLitres = g.Stock;
-            }
-
-            var saveResult = await agsRepo.SaveShiftImportAsync(import);
+            var saveResult = await _inventoryService.SaveAndPersistInventoryAsync(SelectedDate, SelectedShift, NozzleGroups.ToList());
             if (saveResult.Success)
             {
-                StatusMessage = "✅ Tank stocks saved successfully!";
+                var propResult = await _inventoryService.PropagateInventoryCalculationsAsync(SelectedDate, SelectedShift);
+                if (propResult.Success)
+                {
+                    StatusMessage = "✅ Tank stocks saved and propagated successfully!";
+                }
+                else
+                {
+                    StatusMessage = $"⚠️ Saved, but propagation failed: {propResult.Error}";
+                }
                 await LoadShiftDataAsync();
             }
             else

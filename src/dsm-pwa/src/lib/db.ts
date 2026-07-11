@@ -10,6 +10,19 @@ export interface DraftNozzleReading {
   testing?: number;
 }
 
+export type PaymentType = 'PhonePe' | 'PineLabs' | 'PetroCard';
+export type BusinessPeriod = 'Morning' | 'Day' | 'Night';
+
+export interface SettlementEntry {
+  paymentType: PaymentType;
+  period: BusinessPeriod;
+  amount: number;
+  tid: string;
+  batch: string;
+  businessDate: string;    // YYYY-MM-DD
+  operationalShift: string; // 'A' or 'B'
+}
+
 export interface DraftSubmission {
   id?: number; // auto-increment local key
   draftId: string; // client-generated uuid
@@ -34,6 +47,7 @@ export interface DraftSubmission {
   status: 'draft' | 'queued' | 'submitted' | 'failed';
   errorMessage?: string;
   cardSwipeDetails?: { mode: string; amount: number; tid: string; batch: string; }[];
+  settlements?: SettlementEntry[];
   debtorEntries?: { debtorName: string; amount: number; vehicleNumber?: string; slipNumber?: string; time: string; }[];
   phonePeMorning?: number;
   phonePeTidMorning?: string;
@@ -54,6 +68,20 @@ export interface DraftSubmission {
   petroCardTidNight?: string;
   petroCardBatchNight?: string;
   personalDebtors?: { amount: number; fuelProduct?: string; remarks?: string; paymentMethod: string; tid?: string; batch?: string; denom500?: number; denom200?: number; denom100?: number; denom50?: number; denom20?: number; denom10?: number; coins?: number; }[];
+  oilDefSales?: { productId: number; productName: string; category: string; unit: string; quantity: number; price: number; total: number; }[];
+}
+
+export interface CachedProduct {
+  id: number;
+  productName: string;
+  category: string; // 'Oil' | 'DEF'
+  unit: string;
+  defaultSaleRate: number;
+}
+
+export interface CachedStock {
+  productId: number;
+  remainingStock: number;
 }
 
 export interface CachedSubmission {
@@ -71,6 +99,8 @@ export interface CachedSubmission {
 export class DsmDatabase extends Dexie {
   drafts!: Table<DraftSubmission>;
   submissions!: Table<CachedSubmission>;
+  products!: Table<CachedProduct>;
+  stockBalances!: Table<CachedStock>;
 
   constructor() {
     super('DsmPwaDB');
@@ -78,6 +108,20 @@ export class DsmDatabase extends Dexie {
     this.version(1).stores({
       drafts: '++id, draftId, status, shiftDate',
       submissions: '++id, remoteId, status, shiftDate',
+    });
+
+    // Version 2 to support settlements array in drafts/submissions locally
+    this.version(2).stores({
+      drafts: '++id, draftId, status, shiftDate',
+      submissions: '++id, remoteId, status, shiftDate',
+    });
+
+    // Version 3 to support products and stock balances caching locally
+    this.version(3).stores({
+      drafts: '++id, draftId, status, shiftDate',
+      submissions: '++id, remoteId, status, shiftDate',
+      products: 'id, productName, category',
+      stockBalances: 'productId'
     });
   }
 }

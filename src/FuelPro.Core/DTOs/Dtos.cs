@@ -124,6 +124,7 @@ public class FinalCalculationDto
 public class DsmSummaryRowDto
 {
     public string DsmName { get; set; } = string.Empty;
+    public string Shift { get; set; } = string.Empty;
     public int PumpId { get; set; }
     public double PhonePeCard { get; set; }
     public double PhonePeCardMorning { get; set; }
@@ -161,22 +162,26 @@ public class CashAggregateDto
     /// <summary>
     /// Returns denomination rows for display.
     /// </summary>
-    public List<CashDenomDisplayRow> ToDisplayRows()
+    public List<CashDenomDisplayRow> ToDisplayRows(bool isCash1 = false)
     {
         var rows = new List<CashDenomDisplayRow>
         {
             new() { Denomination = "₹500", TotalCount = Total500, TotalAmount = Total500 * 500.0 },
             new() { Denomination = "₹200", TotalCount = Total200, TotalAmount = Total200 * 200.0 },
-            new() { Denomination = "₹100", TotalCount = Total100, TotalAmount = Total100 * 100.0 },
-            new() { Denomination = "₹50",  TotalCount = Total50,  TotalAmount = Total50 * 50.0 },
-            new() { Denomination = "₹20",  TotalCount = Total20,  TotalAmount = Total20 * 20.0 },
-            new() { Denomination = "₹10",  TotalCount = Total10,  TotalAmount = Total10 * 10.0 },
-            new() { Denomination = "Coin", TotalCount = TotalCoins, TotalAmount = TotalCoins }
+            new() { Denomination = "₹100", TotalCount = Total100, TotalAmount = Total100 * 100.0 }
         };
 
-        if (CashDepositTotal > 0)
+        if (!isCash1)
         {
-            rows.Add(new() { Denomination = "Cash Deposit", TotalCount = 0, TotalAmount = CashDepositTotal });
+            rows.Add(new() { Denomination = "₹50",  TotalCount = Total50,  TotalAmount = Total50 * 50.0 });
+            rows.Add(new() { Denomination = "₹20",  TotalCount = Total20,  TotalAmount = Total20 * 20.0 });
+            rows.Add(new() { Denomination = "₹10",  TotalCount = Total10,  TotalAmount = Total10 * 10.0 });
+            rows.Add(new() { Denomination = "Coin", TotalCount = TotalCoins, TotalAmount = TotalCoins });
+        }
+
+        if (CashDepositTotal > 0 && Total500 == 0 && Total200 == 0 && Total100 == 0 && Total50 == 0 && Total20 == 0 && Total10 == 0 && TotalCoins == 0)
+        {
+            rows.Add(new() { Denomination = "Cash 1", TotalCount = 0, TotalAmount = CashDepositTotal });
         }
 
         return rows;

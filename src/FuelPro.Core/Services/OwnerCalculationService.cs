@@ -22,13 +22,20 @@ public class OwnerCalculationService : IOwnerCalculationService
             var cash1 = entry.CashDenominations.Where(x => x.CashType == "Cash1").Sum(x => x.TotalAmount);
             var cash2 = entry.CashDenominations.Where(x => x.CashType == "Cash2").Sum(x => x.TotalAmount);
 
-            result.CashDeposit += cash1 + (entry.PaymentCollection?.CashDeposit ?? 0);
+            result.CashDeposit += cash1 > 0 ? cash1 : (entry.PaymentCollection?.CashDeposit ?? 0);
             result.CashInHand += cash2;
-            result.PhonePeDirect += entry.PaymentCollection?.PhonePe ?? 0;
+            result.PhonePeDirect += (entry.PaymentCollection?.PhonePeMorning ?? 0)
+                                    + (entry.PaymentCollection?.PhonePeDay ?? 0)
+                                    + (entry.PaymentCollection?.PhonePeNight ?? 0);
             result.PhonePeCard += (entry.PaymentCollection?.PhonePeCardMorning ?? 0)
+                                  + (entry.PaymentCollection?.PhonePeCardDay ?? 0)
                                   + (entry.PaymentCollection?.PhonePeCardNight ?? 0);
-            result.CreditCard += entry.PaymentCollection?.CreditCard ?? 0;
-            result.PetroCard += entry.PaymentCollection?.PetroCard ?? 0;
+            result.CreditCard += (entry.PaymentCollection?.CreditCardMorning ?? 0)
+                                 + (entry.PaymentCollection?.CreditCardDay ?? 0)
+                                 + (entry.PaymentCollection?.CreditCardNight ?? 0);
+            result.PetroCard += (entry.PaymentCollection?.PetroCardMorning ?? 0)
+                                + (entry.PaymentCollection?.PetroCardDay ?? 0)
+                                + (entry.PaymentCollection?.PetroCardNight ?? 0);
             result.Debit += entry.DebitEntries.Sum(d => d.Amount);
             result.Testing += entry.TestingEntries.Sum(t => t.Amount);
             entryExpenses += entry.Expenses.Sum(e => e.Amount);
@@ -55,15 +62,6 @@ public class OwnerCalculationService : IOwnerCalculationService
 
         double totalShiftExp = shiftExpenses != null ? shiftExpenses.Sum(e => e.Amount) : 0;
         result.Expenses = entryExpenses + totalShiftExp;
-
-        // Apply business-day TID overrides if provided
-        if (tidSheet != null)
-        {
-            result.PhonePeDirect = tidSheet.PhonePeTotal;
-            result.PhonePeCard = 0;
-            result.CreditCard = tidSheet.PineLabsCardTotal;
-            result.PetroCard = tidSheet.PetroCardTotal;
-        }
 
         return result;
     }

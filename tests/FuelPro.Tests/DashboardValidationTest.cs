@@ -28,7 +28,9 @@ public class DashboardValidationTest
     public DashboardValidationTest()
     {
         Environment.SetEnvironmentVariable("FUELPRO_ENV", "TEST");
-        _dbPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FuelPro", "fuelPro.db");
+        var tempDir = Path.Combine(Path.GetTempPath(), "FuelPro_Tests_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        _dbPath = Path.Combine(tempDir, "fuelPro.db");
     }
 
     [Fact]
@@ -81,6 +83,7 @@ public class DashboardValidationTest
         services.AddSingleton<ITidCalculationService, TidCalculationService>();
         services.AddTransient<RecalculationMigrationService>();
         services.AddScoped<IShiftAggregationService, ShiftAggregationService>();
+        services.AddScoped<IReportService, ReportService>();
         services.AddScoped<IShiftOtherCashRepository, ShiftOtherCashRepository>();
         services.AddScoped<IShiftFuelRateRepository, ShiftFuelRateRepository>();
         services.AddTransient<PrintService>();
@@ -128,13 +131,10 @@ public class DashboardValidationTest
 
         var configService = serviceProvider.GetRequiredService<SyncConfigService>();
         var settings = await configService.GetSettingsAsync();
-        if (!settings.SyncEnabled || string.IsNullOrEmpty(settings.SupabaseUrl))
-        {
-            settings.SyncEnabled = true;
-            settings.SupabaseUrl = "https://rvcibryprvjbzrtwqktk.supabase.co";
-            settings.SupabaseApiKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ2Y2licnlwcnZqYnpydHdxa3RrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEzMTIxMTcsImV4cCI6MjA5Njg4ODExN30.vMTA97993upfnOCs5ja-kxIhDSHbcx1gEQ6itNm5BBk";
-            settings.StationId = "STA001";
-        }
+        settings.SyncEnabled = true;
+        settings.SupabaseUrl = "https://rvcibryprvjbzrtwqktk.supabase.co";
+        settings.SupabaseApiKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ2Y2licnlwcnZqYnpydHdxa3RrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEzMTIxMTcsImV4cCI6MjA5Njg4ODExN30.vMTA97993upfnOCs5ja-kxIhDSHbcx1gEQ6itNm5BBk";
+        settings.StationId = "STA001";
         settings.LastSyncTime = DateTime.MinValue; // reset to force pull all records
         await configService.SaveSettingsAsync(settings);
 

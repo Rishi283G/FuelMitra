@@ -34,6 +34,7 @@ public partial class OwnerDashboardViewModel : ObservableObject
     private readonly PrintService _printService;
     private readonly IFinancialCalculationService _financialCalcService;
     private readonly FuelProDbContext _dbContext;
+    private readonly IReportService _reportService;
 
     // Range-wise KPI Properties
     [ObservableProperty] private double _todayTotalSale;
@@ -113,6 +114,7 @@ public partial class OwnerDashboardViewModel : ObservableObject
         _printService = App.Services.GetRequiredService<PrintService>();
         _financialCalcService = App.Services.GetRequiredService<IFinancialCalculationService>();
         _dbContext = App.Services.GetRequiredService<FuelProDbContext>();
+        _reportService = App.Services.GetRequiredService<IReportService>();
 
         // Wire Sync Status
         _syncEngine.SyncStatusChanged += (status) =>
@@ -199,44 +201,55 @@ public partial class OwnerDashboardViewModel : ObservableObject
             var otherCashResult = await App.Services.GetRequiredService<IShiftOtherCashRepository>().GetByDateRangeAsync(StartDate.Date, EndDate.Date);
             var otherCashList = otherCashResult.Success && otherCashResult.Data != null ? otherCashResult.Data : new List<ShiftOtherCash>();
 
-            var tidSheets = await _tidService.GetTidSheetsForRangeAsync(StartDate.Date, EndDate.Date);
-            var aggTidSheet = new BusinessDayTidSheet();
-            foreach (var s in tidSheets.Values)
-            {
-                aggTidSheet.PhonePeDirectMorning += s.PhonePeDirectMorning;
-                aggTidSheet.PhonePeDirectDay += s.PhonePeDirectDay;
-                aggTidSheet.PhonePeDirectNight += s.PhonePeDirectNight;
+            var repayments = await _dbContext.CreditorRepayments
+                .Where(r => r.RepaymentDate >= StartDate.Date && r.RepaymentDate <= EndDate.Date)
+                .ToListAsync();
 
-                aggTidSheet.PhonePeCardMorning += s.PhonePeCardMorning;
-                aggTidSheet.PhonePeCardDay += s.PhonePeCardDay;
-                aggTidSheet.PhonePeCardNight += s.PhonePeCardNight;
+            var settings = await _dbContext.Settings.FirstOrDefaultAsync();
+            double defaultHsd = settings != null ? settings.HsdRate : 90.35;
+            double defaultMsI = settings != null ? settings.MsIRate : 103.81;
+            double defaultMsII = settings != null ? settings.MsIIRate : 103.81;
+            double defaultCng = settings != null ? settings.CngRate : 85.0;
+            string stationName = settings != null ? settings.PumpStationName : "Mitali Service Station";
 
-                aggTidSheet.PineLabsCardMorning += s.PineLabsCardMorning;
-                aggTidSheet.PineLabsCardDay += s.PineLabsCardDay;
-                aggTidSheet.PineLabsCardNight += s.PineLabsCardNight;
-
-                aggTidSheet.PetroCardMorning += s.PetroCardMorning;
-                aggTidSheet.PetroCardDay += s.PetroCardDay;
-                aggTidSheet.PetroCardNight += s.PetroCardNight;
-            }
+            var dayReport = _reportService.CalculateDayReport(
+                StartDate.Date,
+                EndDate.Date,
+                entries,
+                shiftExpenses,
+                repayments,
+                defaultHsd, defaultMsI, defaultMsII, defaultCng,
+                stationName);
 
             TotalDsmEntries = entries.Count;
-            var result = _ownerCalcService.Calculate(entries, shiftExpenses, otherCashList, aggTidSheet);
 
-            TodayTotalSale = result.GrossSales;
-            TodayTotalCollection = result.AdjustedCollection;
-            TodayTotalExpenses = result.Expenses;
-            TodayTotalCash = result.TotalCash;
-            TodayTotalPhonePe = result.TotalPhonePe;
-            TodayTotalCreditCard = result.CreditCard;
-            TodayTotalPetroCard = result.PetroCard;
-            TodayTotalDebit = result.Debit;
-            TodayHsdLitres = result.HsdLitres;
-            TodayMsILitres = result.MsILitres;
-            TodayMsIILitres = result.MsIILitres;
-            TodayCngLitres = result.CngLitres;
-            TodayTotalLitres = result.TotalLitres;
-            TodayTotalMismatch = result.Mismatch;
+            TodayTotalSale = dayReport.TotalFuelAmount + dayReport.OtherCashTotal + dayReport.OilDefSalesTotal;
+            TodayTotalCollection = dayReport.ActualCollection;
+            TodayTotalExpenses = dayReport.ExpensesTotal;
+
+            double cashDeposit = dayReport.CollectionBreakdown.FirstOrDefault(c => c.Category == "Cash Deposit")?.Amount ?? 0;
+            double cashInHand = dayReport.CollectionBreakdown.FirstOrDefault(c => c.Category == "Cash In Hand")?.Amount ?? 0;
+            TodayTotalCash = cashDeposit + cashInHand;
+
+            double ppMorning = dayReport.CollectionBreakdown.FirstOrDefault(c => c.Category == "PhonePe Morning")?.Amount ?? 0;
+            double ppNight = dayReport.CollectionBreakdown.FirstOrDefault(c => c.Category == "PhonePe Night")?.Amount ?? 0;
+            double ppCardMorning = dayReport.CollectionBreakdown.FirstOrDefault(c => c.Category == "PhonePe Card Morning")?.Amount ?? 0;
+            double ppCardNight = dayReport.CollectionBreakdown.FirstOrDefault(c => c.Category == "PhonePe Card Night")?.Amount ?? 0;
+            TodayTotalPhonePe = ppMorning + ppNight + ppCardMorning + ppCardNight;
+
+            double ccMorning = dayReport.CollectionBreakdown.FirstOrDefault(c => c.Category == "PineLabs Morning")?.Amount ?? 0;
+            double ccNight = dayReport.CollectionBreakdown.FirstOrDefault(c => c.Category == "PineLabs Night")?.Amount ?? 0;
+            TodayTotalCreditCard = ccMorning + ccNight;
+
+            TodayTotalPetroCard = dayReport.CollectionBreakdown.FirstOrDefault(c => c.Category == "Petro Card")?.Amount ?? 0;
+            TodayTotalDebit = dayReport.CreditorsTotal;
+
+            TodayHsdLitres = dayReport.FuelSales.FirstOrDefault(f => f.FuelType == "HSD")?.Litres ?? 0;
+            TodayMsILitres = dayReport.FuelSales.FirstOrDefault(f => f.FuelType == "MS-I")?.Litres ?? 0;
+            TodayMsIILitres = dayReport.FuelSales.FirstOrDefault(f => f.FuelType == "MS-II")?.Litres ?? 0;
+            TodayCngLitres = dayReport.FuelSales.FirstOrDefault(f => f.FuelType == "CNG")?.Litres ?? 0;
+            TodayTotalLitres = dayReport.TotalFuelLitres;
+            TodayTotalMismatch = dayReport.Difference;
 
             // Comprehensive Profit calculation from IFinancialCalculationService
             var finResult = await _financialCalcService.CalculateFinancialsAsync(StartDate.Date, EndDate.Date);
