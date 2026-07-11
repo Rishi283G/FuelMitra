@@ -126,48 +126,17 @@
     border-radius: 3px;
   }
 
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 11px;
-    margin-bottom: 2px;
+  /* ── Settlement Summary Sections ─────────────────────────── */
+  .section-block {
+    margin-bottom: 6px;
   }
-  th {
-    border-bottom: 1px solid var(--line);
-    padding: 3px 0;
-    font-weight: 600;
-    text-align: left;
-    color: var(--muted);
-    font-size: 9px;
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
-  }
-  td {
-    padding: 2.5px 0;
-    vertical-align: middle;
-  }
-
-  .num { text-align: right; }
-  .center { text-align: center; }
-
-  .divider {
-    border-top: 1px dashed var(--line);
-    margin: 4px 0;
-  }
-  .double-divider {
-    border-top: 2px solid var(--ink);
-    border-bottom: 2px solid var(--ink);
-    height: 4px;
-    margin: 8px 0 6px;
-  }
-
   .section-header {
     display: flex;
     align-items: center;
     gap: 4px;
     font-weight: 700;
     margin-top: 8px;
-    margin-bottom: 4px;
+    margin-bottom: 3px;
     text-transform: uppercase;
     font-size: 10px;
     letter-spacing: 0.5px;
@@ -181,43 +150,87 @@
     flex-shrink: 0;
   }
 
+  /* summary rows table — 2 columns: period label | amount */
+  .summary-rows {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+    margin-bottom: 1px;
+  }
+  .summary-rows td {
+    padding: 2px 0;
+    vertical-align: middle;
+  }
+  .summary-rows td:last-child {
+    text-align: right;
+    font-family: 'IBM Plex Mono', 'Courier New', monospace;
+    font-weight: 600;
+  }
+
+  /* period label with coloured dot */
   .period-dot {
     display: inline-block;
     width: 6px; height: 6px;
     border-radius: 50%;
     margin-right: 4px;
     vertical-align: middle;
+    flex-shrink: 0;
   }
   .dot-morning { background: var(--morning); }
-  .dot-day { background: var(--day); }
-  .dot-night { background: var(--night); }
+  .dot-day     { background: var(--day); }
+  .dot-night   { background: var(--night); }
 
-  .period-subtotal td {
-    font-weight: 700;
-    border-top: 1px solid var(--line);
-    border-bottom: 1px solid var(--line);
-    background: #FAFBFA;
-    padding: 2.5px 0;
+  .period-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0;
+    font-weight: 600;
+    color: var(--ink);
   }
-
-  .section-total-table {
+  .period-sub {
+    display: block;
+    font-size: 8px;
+    color: var(--muted);
+    font-weight: 400;
+    padding-left: 10px;
     margin-top: 1px;
+    white-space: nowrap;
   }
-  .section-total-table td {
+
+  /* section total row */
+  .section-total-row td {
     font-weight: 700;
     font-size: 11px;
-    padding: 4px 0;
+    padding: 3px 0 1px;
+    border-top: 1px solid var(--line);
   }
-  .section-total-table td:last-child { color: var(--brand-dark); }
+  .section-total-row td:last-child {
+    color: var(--brand-dark);
+    font-family: 'IBM Plex Mono', 'Courier New', monospace;
+    text-align: right;
+  }
 
+  /* "No transactions" placeholder */
   .no-txn {
     font-style: italic;
     text-align: center;
-    padding: 4px 0;
+    padding: 3px 0;
     color: var(--muted);
-    font-size: 10px;
+    font-size: 9.5px;
   }
 
+  .divider {
+    border-top: 1px dashed var(--line);
+    margin: 4px 0;
+  }
+  .double-divider {
+    border-top: 2px solid var(--ink);
+    border-bottom: 2px solid var(--ink);
+    height: 4px;
+    margin: 8px 0 6px;
+  }
+
+  /* ── Digital Collection Summary ──────────────────────────── */
   .summary-title {
     font-size: 10px;
     font-weight: 700;
@@ -226,14 +239,18 @@
     text-transform: uppercase;
     margin-bottom: 4px;
   }
-
+  .summary-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+  }
   .summary-table td {
     padding: 3.5px 0;
     font-weight: 600;
-    font-size: 11.5px;
   }
   .summary-table td:last-child {
     text-align: right;
+    font-family: 'IBM Plex Mono', 'Courier New', monospace;
   }
 
   .grand-total-box {
@@ -256,6 +273,7 @@
   .grand-total-box .gt-value {
     font-size: 14.5px;
     font-weight: 700;
+    font-family: 'IBM Plex Mono', 'Courier New', monospace;
   }
 
   .signatures {
@@ -324,9 +342,9 @@
     <span><span class="meta-label">Date</span><span class="mono" id="metaDate"></span></span>
   </div>
 
-  <div class="doc-title">TID Sheet</div>
+  <div class="doc-title">SETTLEMENT SUMMARY</div>
 
-  <!-- Dynamic Sections Container -->
+  <!-- Dynamic Settlement Summary Sections -->
   <div id="sectionsContainer"></div>
 
   <div class="double-divider"></div>
@@ -335,12 +353,16 @@
   <div class="summary-title">Digital Collection Summary</div>
   <table class="summary-table mono">
     <tr>
-      <td style="font-family:'Space Grotesk',sans-serif;">PineLabs Total</td>
-      <td id="overallPineLabs">0.00</td>
+      <td style="font-family:'Space Grotesk',sans-serif;">PhonePe UPI Total</td>
+      <td id="overallPhonePeDirect">0.00</td>
     </tr>
     <tr>
-      <td style="font-family:'Space Grotesk',sans-serif;">PhonePe Total</td>
-      <td id="overallPhonePe">0.00</td>
+      <td style="font-family:'Space Grotesk',sans-serif;">PhonePe Card Total</td>
+      <td id="overallPhonePeCard">0.00</td>
+    </tr>
+    <tr>
+      <td style="font-family:'Space Grotesk',sans-serif;">PineLabs Card Total</td>
+      <td id="overallPineLabs">0.00</td>
     </tr>
     <tr>
       <td style="font-family:'Space Grotesk',sans-serif;">Petro Card Total</td>
@@ -369,12 +391,25 @@
 <script>
 const data = /* INJECT_JSON_HERE */{};
 
-// Format function
+// ── Helpers ───────────────────────────────────────────────────────────────────
 const fmt = (v) => {
-  if (v === undefined || v === null) return '0.00';
-  return v.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (v === undefined || v === null || isNaN(v)) return '0.00';
+  return Number(v).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
+const fmtShortDate = (dateStr) => {
+  if (!dateStr) return '';
+  const parts = dateStr.split('-');
+  return parts.length >= 2 ? parts[0] + ' ' + parts[1] : dateStr;
+};
+
+const periodSubtitle = {
+  Morning: () => `${fmtShortDate(data.morningBusinessDate)} | 12:00 AM – 8:00 AM`,
+  Day:     () => `${fmtShortDate(data.dayBusinessDate)} | 8:00 AM – 8:00 PM`,
+  Night:   () => `${fmtShortDate(data.nightBusinessDate)} | 8:00 PM – 12:00 AM`,
+};
+
+// ── Station / header ──────────────────────────────────────────────────────────
 const station = data.stationName || 'Kandhare Petroleum';
 let cleanedStation = station
   .replace(/\(KANDHARE NAGDE SURVE GROUP\)/gi, '')
@@ -382,8 +417,9 @@ let cleanedStation = station
   .replace(/KANDHARE NAGDE SURVE GROUP/gi, '')
   .replace(/KANDHARE NAGDE GROUP/gi, '')
   .trim();
+
 document.title = cleanedStation + ' — TID Sheet';
-document.getElementById('toolbarTitle').textContent = `📋 ${cleanedStation} — TID Sheet`;
+document.getElementById('toolbarTitle').textContent = `📋 ${cleanedStation} — Settlement Summary`;
 document.getElementById('headerStationName').textContent = cleanedStation.toUpperCase();
 
 if (cleanedStation.toUpperCase().includes('KANDHARE')) {
@@ -393,169 +429,126 @@ if (cleanedStation.toUpperCase().includes('KANDHARE')) {
   document.getElementById('stationSubtitle').innerHTML = 'Fuel &amp; Digital Settlement Sheet';
 }
 
-const fmtShortDate = (dateStr) => {
-  if (!dateStr) return '';
-  const parts = dateStr.split('-');
-  if (parts.length >= 2) {
-    return parts[0] + ' ' + parts[1]; // e.g. "10 Jul"
-  }
-  return dateStr;
-};
-
-const getPeriodSubtitle = (key) => {
-  if (key === 'Morning') {
-    return `${fmtShortDate(data.morningBusinessDate)} | 12:00 AM – 8:00 AM`;
-  }
-  if (key === 'Day') {
-    return `${fmtShortDate(data.dayBusinessDate)} | 8:00 AM – 8:00 PM`;
-  }
-  if (key === 'Night') {
-    return `${fmtShortDate(data.nightBusinessDate)} | 8:00 PM – 12:00 AM`;
-  }
-  return '';
-};
-
 if (data.logo) {
   const logoImg = document.getElementById('logo');
   const mark = document.getElementById('brandMark');
-  if (logoImg) {
-    logoImg.src = data.logo;
-    logoImg.style.display = 'block';
-    if (mark) mark.style.display = 'none';
-  }
+  if (logoImg) { logoImg.src = data.logo; logoImg.style.display = 'block'; }
+  if (mark) mark.style.display = 'none';
 }
 
-if (data.no) {
-  document.getElementById('metaNo').textContent = data.no;
-}
+if (data.no) document.getElementById('metaNo').textContent = data.no;
 
-const printDate = data.date ? new Date(data.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
+const printDate = data.date
+  ? new Date(data.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+  : '';
 document.getElementById('metaDate').textContent = printDate;
 
-const periodDotClass = { Morning: 'dot-morning', Day: 'dot-day', Night: 'dot-night' };
-
-// Helper to render a payment type section
-const renderSection = (title, list, totalValue) => {
-  let sectionHtml = `<div class="section-header">${title}</div>`;
-
-  if (!list || list.length === 0) {
-    sectionHtml += `
-      <div class="no-txn">No transactions</div>
-      <div class="divider"></div>
-      <table class="section-total-table mono">
-        <tr>
-          <td style="font-family:'Space Grotesk',sans-serif;">${title} Total</td>
-          <td class="num">${fmt(totalValue)}</td>
-        </tr>
-      </table>
-    `;
-    return sectionHtml;
-  }
-
+// ── Section renderer (summary mode) ──────────────────────────────────────────
+// Renders a block with Morning / Day / Night totals only — no individual rows.
+//
+// Args:
+//   title      – section heading string
+//   morning    – morning total (number)
+//   day        – day total (number)
+//   night      – night total (number)
+//   sectionTotal – pre-computed section grand total (number)
+//
+const renderSummarySection = (title, morning, day, night, sectionTotal) => {
   const periods = [
-    { key: 'Morning', label: 'Morning' },
-    { key: 'Day', label: 'Day' },
-    { key: 'Night', label: 'Night' }
+    { key: 'Morning', value: morning, dotClass: 'dot-morning' },
+    { key: 'Day',     value: day,     dotClass: 'dot-day'     },
+    { key: 'Night',   value: night,   dotClass: 'dot-night'   },
   ];
 
-  let hasAnyRows = false;
-  let rowsHtml = '';
+  // Only render periods that have a non-zero value
+  const activePeriods = periods.filter(p => p.value > 0);
 
-  periods.forEach(p => {
-    const periodItems = list.filter(item => item.slot === p.key);
-    if (periodItems.length > 0) {
-      hasAnyRows = true;
-      let periodSubtotal = 0;
-      const dotClass = periodDotClass[p.key] || 'dot-day';
+  let html = `<div class="section-block">`;
+  html += `<div class="section-header">${title}</div>`;
 
-      periodItems.forEach(item => {
-        periodSubtotal += item.amount;
-        rowsHtml += `<tr>
-          <td>
-            <div style="font-weight: 600; display: inline-flex; align-items: center; gap: 3px; font-size: 11px;">
-              <span class="period-dot ${dotClass}"></span>${p.label}
-            </div>
-            <div style="font-size: 8.5px; color: var(--muted); font-weight: 400; padding-left: 9px; margin-top: 1px; white-space: nowrap;">
-              (${getPeriodSubtitle(p.key)})
-            </div>
-          </td>
-          <td class="mono" style="vertical-align: middle;">${item.tid || '—'}</td>
-          <td class="mono" style="vertical-align: middle;">${item.batch || '—'}</td>
-          <td class="num mono" style="vertical-align: middle;">${fmt(item.amount)}</td>
-        </tr>`;
-      });
-
-      // Subtotal row
-      rowsHtml += `<tr class="period-subtotal">
-        <td colspan="3">${p.label} Total</td>
-        <td class="num mono">${fmt(periodSubtotal)}</td>
-      </tr>`;
-    }
-  });
-
-  if (!hasAnyRows) {
-    sectionHtml += `
-      <div class="no-txn">No transactions</div>
-      <div class="divider"></div>
-      <table class="section-total-table mono">
-        <tr>
-          <td style="font-family:'Space Grotesk',sans-serif;">${title} Total</td>
-          <td class="num">${fmt(totalValue)}</td>
-        </tr>
-      </table>
-    `;
-    return sectionHtml;
+  if (activePeriods.length === 0 && sectionTotal === 0) {
+    html += `<div class="no-txn">No transactions</div>`;
+    html += `</div><div class="divider"></div>`;
+    return html;
   }
 
-  sectionHtml += `
-    <table>
-      <thead>
-        <tr>
-          <th style="width: 35%;">Period</th>
-          <th style="width: 22%;">TID</th>
-          <th style="width: 18%;">Batch No</th>
-          <th style="width: 25%;" class="num">Amount</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${rowsHtml}
-      </tbody>
-    </table>
-    <div class="divider"></div>
-    <table class="section-total-table mono">
+  html += `<table class="summary-rows">`;
+  activePeriods.forEach(p => {
+    html += `
       <tr>
-        <td style="font-family:'Space Grotesk',sans-serif;">${title} Total</td>
-        <td class="num">${fmt(totalValue)}</td>
-      </tr>
-    </table>
-  `;
+        <td>
+          <span class="period-label">
+            <span class="period-dot ${p.dotClass}"></span>${p.key}
+          </span>
+          <span class="period-sub">${periodSubtitle[p.key]()}</span>
+        </td>
+        <td>${fmt(p.value)}</td>
+      </tr>`;
+  });
 
-  return sectionHtml;
+  // Section total row
+  html += `
+    <tr class="section-total-row">
+      <td>${title} Total</td>
+      <td>${fmt(sectionTotal)}</td>
+    </tr>`;
+
+  html += `</table>`;
+  html += `</div><div class="divider"></div>`;
+  return html;
 };
 
-// Render the three sections
-const cbContainer = document.getElementById('sectionsContainer');
+// ── Build sections ────────────────────────────────────────────────────────────
+const container = document.getElementById('sectionsContainer');
 let html = '';
 
-// Section 1: PineLabs Card Settlement
-html += renderSection('PineLabs Card Settlement', data.cardPayments, data.pineLabsCardTotal || 0);
+// Section 1 — PhonePe UPI (Direct)
+html += renderSummarySection(
+  'PhonePe UPI',
+  data.phonePeDirectMorning || 0,
+  data.phonePeDirectDay     || 0,
+  data.phonePeDirectNight   || 0,
+  data.phonePeDirectTotal   || 0
+);
 
-// Section 2: PhonePe Digital Collection
-html += renderSection('PhonePe Digital Collection', data.phonePePayments, data.phonePeTotal || 0);
+// Section 2 — PhonePe Card
+html += renderSummarySection(
+  'PhonePe Card',
+  data.phonePeCardMorning || 0,
+  data.phonePeCardDay     || 0,
+  data.phonePeCardNight   || 0,
+  data.phonePeCardTotal   || 0
+);
 
-// Section 3: Petro Card Settlement
-html += renderSection('Petro Card Settlement', data.petroCardPayments, data.petroCardTotal || 0);
+// Section 3 — PineLabs Card
+html += renderSummarySection(
+  'PineLabs Card',
+  data.pineLabsCardMorning || 0,
+  data.pineLabsCardDay     || 0,
+  data.pineLabsCardNight   || 0,
+  data.pineLabsCardTotal   || 0
+);
 
-cbContainer.innerHTML = html;
+// Section 4 — Petro Card
+html += renderSummarySection(
+  'Petro Card',
+  data.petroCardMorning || 0,
+  data.petroCardDay     || 0,
+  data.petroCardNight   || 0,
+  data.petroCardTotal   || 0
+);
 
-// Overall Totals
-document.getElementById('overallPineLabs').textContent = fmt(data.pineLabsCardTotal || 0);
-document.getElementById('overallPhonePe').textContent = fmt(data.phonePeTotal || 0);
-document.getElementById('overallPetro').textContent = fmt(data.petroCardTotal || 0);
-document.getElementById('grandTotalVal').textContent = fmt(data.grandTotal || 0);
+container.innerHTML = html;
+
+// ── Overall totals bar ────────────────────────────────────────────────────────
+document.getElementById('overallPhonePeDirect').textContent = fmt(data.phonePeDirectTotal || 0);
+document.getElementById('overallPhonePeCard').textContent   = fmt(data.phonePeCardTotal   || 0);
+document.getElementById('overallPineLabs').textContent      = fmt(data.pineLabsCardTotal  || 0);
+document.getElementById('overallPetro').textContent         = fmt(data.petroCardTotal      || 0);
+document.getElementById('grandTotalVal').textContent        = fmt(data.grandTotal          || 0);
 
 document.getElementById('printFooter').textContent =
-  `${cleanedStation} | TID Sheet | ${printDate} | Printed: ${new Date().toLocaleString('en-IN')}`;
+  `${cleanedStation} | Settlement Summary | ${printDate} | Printed: ${new Date().toLocaleString('en-IN')}`;
 </script>
 </body>
 </html>
