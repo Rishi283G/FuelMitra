@@ -42,6 +42,9 @@ public static class SeedData
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE DsmProfiles ADD COLUMN PendingAdvance REAL NOT NULL DEFAULT 0.0;"); } catch { }
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE DsmProfiles ADD COLUMN MonthlyAdvanceDeduction REAL NOT NULL DEFAULT 0.0;"); } catch { }
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE DsmSalaryAdjustments ADD COLUMN PendingAdvanceDeduction REAL NOT NULL DEFAULT 0.0;"); } catch { }
+        // DsmPumpAssignment lifecycle columns (added via try-catch so existing databases are safe)
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE DsmPumpAssignments ADD COLUMN ConnectedPumpId INTEGER NULL;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE DsmPumpAssignments ADD COLUMN CompletedDate TEXT NULL;"); } catch { }
 
         // Dynamically execute SQLite schema updates for ProductMaster
         try
