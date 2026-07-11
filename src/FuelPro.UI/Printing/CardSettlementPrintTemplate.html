@@ -357,10 +357,6 @@
       <td id="overallPhonePeDirect">0.00</td>
     </tr>
     <tr>
-      <td style="font-family:'Space Grotesk',sans-serif;">PhonePe Card Total</td>
-      <td id="overallPhonePeCard">0.00</td>
-    </tr>
-    <tr>
       <td style="font-family:'Space Grotesk',sans-serif;">PineLabs Card Total</td>
       <td id="overallPineLabs">0.00</td>
     </tr>
@@ -511,15 +507,6 @@ html += renderSummarySection(
   data.phonePeDirectTotal   || 0
 );
 
-// Section 2 — PhonePe Card
-html += renderSummarySection(
-  'PhonePe Card',
-  data.phonePeCardMorning || 0,
-  data.phonePeCardDay     || 0,
-  data.phonePeCardNight   || 0,
-  data.phonePeCardTotal   || 0
-);
-
 // Section 3 — PineLabs Card
 html += renderSummarySection(
   'PineLabs Card',
@@ -542,7 +529,6 @@ container.innerHTML = html;
 
 // ── Overall totals bar ────────────────────────────────────────────────────────
 document.getElementById('overallPhonePeDirect').textContent = fmt(data.phonePeDirectTotal || 0);
-document.getElementById('overallPhonePeCard').textContent   = fmt(data.phonePeCardTotal   || 0);
 document.getElementById('overallPineLabs').textContent      = fmt(data.pineLabsCardTotal  || 0);
 document.getElementById('overallPetro').textContent         = fmt(data.petroCardTotal      || 0);
 document.getElementById('grandTotalVal').textContent        = fmt(data.grandTotal          || 0);
