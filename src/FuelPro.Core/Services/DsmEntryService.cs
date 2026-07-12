@@ -88,6 +88,13 @@ public class DsmEntryService
             // Check duplicate — but if the existing entry is an orphan from a
             // previously failed save (no PaymentCollection), treat it as the
             // entry to update rather than blocking.
+            // Pre-calculate nozzle readings SaleLitres and Amount in memory so they are available for gross sales calculations
+            foreach (var nr in nozzleReadings)
+            {
+                nr.SaleLitres = nr.ClosingReading - nr.OpeningReading;
+                nr.Amount = nr.SaleLitres * nr.Rate;
+            }
+
             // Split nozzle readings into primary and connected pump nozzles
             var primaryReadings = new List<NozzleReading>();
             var connectedReadings = new List<NozzleReading>();
@@ -330,16 +337,21 @@ public class DsmEntryService
             var entriesResult = await _dsmRepo.GetEntriesForShiftAsync(shiftId);
             if (!entriesResult.Success) return Result<List<DsmEntrySummaryDto>>.Fail(entriesResult.Error);
 
-            var summaries = entriesResult.Data!.Select(e => new DsmEntrySummaryDto
-            {
-                DsmEntryId = e.DsmEntryId,
-                DsmName = e.DsmName,
-                PumpId = e.PumpId,
-                GrossSales = (double)e.GrossSales,
-                TotalPaymentIn = (double)e.TotalCollection,
-                Difference = e.ReconciledToPumpId.HasValue ? 0 : (double)e.Mismatch,
-                CreatedAt = e.CreatedAt
-            }).ToList();
+            var summaries = entriesResult.Data!
+                .Where(e => !e.ReconciledToPumpId.HasValue)
+                .Select(e => new DsmEntrySummaryDto
+                {
+                    DsmEntryId = e.DsmEntryId,
+                    DsmName = e.DsmName,
+                    PumpId = e.PumpId,
+                    ConnectedPumpId = e.ConnectedPumpId,
+                    ReconciledToPumpId = e.ReconciledToPumpId,
+                    GrossSales = (double)e.GrossSales,
+                    TotalPaymentIn = (double)e.TotalCollection,
+                    Difference = e.ReconciledToPumpId.HasValue ? 0 : (double)e.Mismatch,
+                    CreatedAt = e.CreatedAt
+                }).ToList();
+
 
             return Result<List<DsmEntrySummaryDto>>.Ok(summaries);
         }

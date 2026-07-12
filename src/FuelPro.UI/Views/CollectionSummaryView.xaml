@@ -55,7 +55,7 @@
                 <materialDesign:Card Margin="4" Padding="12" UniformCornerRadius="8" materialDesign:ElevationAssist.Elevation="Dp2">
                     <StackPanel>
                         <TextBlock Text="Total Digital (PhonePe/Cards)" FontSize="11" Opacity="0.5"/>
-                        <TextBlock Text="{Binding GrandTotal, Converter={StaticResource CurrencyConverter}}" FontSize="16" FontWeight="Bold" Foreground="#F57F17"/>
+                        <TextBlock Text="{Binding TotalDigital, Converter={StaticResource CurrencyConverter}}" FontSize="16" FontWeight="Bold" Foreground="#F57F17"/>
                     </StackPanel>
                 </materialDesign:Card>
                 <materialDesign:Card Margin="4" Padding="12" UniformCornerRadius="8" materialDesign:ElevationAssist.Elevation="Dp2">

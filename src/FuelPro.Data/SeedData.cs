@@ -466,14 +466,14 @@ public static class SeedData
                 MsIRate = 103.81,
                 MsIIRate = 103.81,
                 CngRate = 85.0,
-                PumpStationName = "Mitali Service Station",
+                PumpStationName = "Kandhare Petroleum",
                 LastUpdated = DateTime.Now
             };
             context.Settings.Add(defaultSettings);
         }
         else
         {
-            settings.PumpStationName = "Mitali Service Station";
+            settings.PumpStationName = "Kandhare Petroleum";
             context.Entry(settings).State = EntityState.Modified;
         }
 

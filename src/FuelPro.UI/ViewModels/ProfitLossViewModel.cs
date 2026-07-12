@@ -6,6 +6,8 @@ using FuelPro.Core.Repositories;
 using FuelPro.Core.Services;
 using FuelPro.UI.Printing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.EntityFrameworkCore;
+using FuelPro.Data;
 using System;
 using System.Windows;
 using System.Collections.Generic;
@@ -32,6 +34,67 @@ public partial class ProfitLossViewModel : ObservableObject
 
     // Legacy support fields for secondary collections info
     [ObservableProperty] private double _totalGrossSales;
+
+    private static bool _savedUsePurchaseBasedProfit;
+    public bool UsePurchaseBasedProfit
+    {
+        get => _savedUsePurchaseBasedProfit;
+        set
+        {
+            if (_savedUsePurchaseBasedProfit != value)
+            {
+                _savedUsePurchaseBasedProfit = value;
+                OnPropertyChanged(nameof(UsePurchaseBasedProfit));
+                UpdateCalculatedTotals();
+                SelectedProfitTabIndex = value ? 1 : 0;
+            }
+        }
+    }
+
+    private int _selectedProfitTabIndex;
+    public int SelectedProfitTabIndex
+    {
+        get => _selectedProfitTabIndex;
+        set
+        {
+            if (SetProperty(ref _selectedProfitTabIndex, value))
+            {
+                UsePurchaseBasedProfit = value == 1;
+            }
+        }
+    }
+
+    // Purchase-based rates and profit details
+    [ObservableProperty] private double _hsdAvgSaleRate;
+    [ObservableProperty] private double _hsdAvgPurchaseRate;
+    [ObservableProperty] private double _hsdPurchaseProfit;
+
+    [ObservableProperty] private double _msIAvgSaleRate;
+    [ObservableProperty] private double _msIAvgPurchaseRate;
+    [ObservableProperty] private double _msIPurchaseProfit;
+
+    [ObservableProperty] private double _msIIAvgSaleRate;
+    [ObservableProperty] private double _msIIAvgPurchaseRate;
+    [ObservableProperty] private double _msIIPurchaseProfit;
+
+    [ObservableProperty] private double _cngAvgSaleRate;
+    [ObservableProperty] private double _cngAvgPurchaseRate;
+    [ObservableProperty] private double _cngPurchaseProfit;
+
+    [ObservableProperty] private double _totalFuelPurchaseProfit;
+
+    private double _marginFuelProfit;
+    private double _purchaseFuelProfit;
+    private double _marginGrossProfit;
+    private double _purchaseGrossProfit;
+    private double _marginNetProfit;
+    private double _purchaseNetProfit;
+
+    // Margin Edit Properties
+    [ObservableProperty] private double _editHsdMargin;
+    [ObservableProperty] private double _editMsIMargin;
+    [ObservableProperty] private double _editMsIIMargin;
+    [ObservableProperty] private double _editCngMargin;
 
     public bool IsCustomRange => SelectedPreset == "Custom";
 
@@ -133,11 +196,13 @@ public partial class ProfitLossViewModel : ObservableObject
             {
                 if (status.StatusMessage == "Synced")
                 {
+                    await LoadCurrentMarginsAsync();
                     await LoadAsync();
                 }
             });
         };
 
+        _ = LoadCurrentMarginsAsync();
         _ = LoadAsync();
     }
 
@@ -190,8 +255,25 @@ public partial class ProfitLossViewModel : ObservableObject
             CngMargin = result.FuelProfit.CngMargin;
             CngProfit = result.FuelProfit.CngProfit;
 
+            HsdAvgSaleRate = result.FuelProfit.HsdAvgSaleRate;
+            HsdAvgPurchaseRate = result.FuelProfit.HsdAvgPurchaseRate;
+            HsdPurchaseProfit = result.FuelProfit.HsdPurchaseProfit;
+
+            MsIAvgSaleRate = result.FuelProfit.MsIAvgSaleRate;
+            MsIAvgPurchaseRate = result.FuelProfit.MsIAvgPurchaseRate;
+            MsIPurchaseProfit = result.FuelProfit.MsIPurchaseProfit;
+
+            MsIIAvgSaleRate = result.FuelProfit.MsIIAvgSaleRate;
+            MsIIAvgPurchaseRate = result.FuelProfit.MsIIAvgPurchaseRate;
+            MsIIPurchaseProfit = result.FuelProfit.MsIIPurchaseProfit;
+
+            CngAvgSaleRate = result.FuelProfit.CngAvgSaleRate;
+            CngAvgPurchaseRate = result.FuelProfit.CngAvgPurchaseRate;
+            CngPurchaseProfit = result.FuelProfit.CngPurchaseProfit;
+
+            TotalFuelPurchaseProfit = result.FuelProfit.TotalPurchaseFuelProfit;
+
             TotalFuelLitres = result.FuelProfit.TotalLitres;
-            TotalFuelProfit = result.FuelProfit.TotalFuelProfit;
 
             OilSalesQty = result.OilProfit.SalesQuantity;
             OilAvgPurchasePrice = result.OilProfit.AveragePurchasePrice;
@@ -207,7 +289,6 @@ public partial class ProfitLossViewModel : ObservableObject
             DefCost = result.DefProfit.CostOfGoodsSold;
             DefProfit = result.DefProfit.TotalProfit;
 
-            GrossProfit = result.GrossProfit;
             TotalExpenses = result.TotalExpenses;
             TotalDsmSalaries = result.TotalDsmSalaries;
             DsmBaseSalaries = result.DsmBaseSalaries;
@@ -231,7 +312,18 @@ public partial class ProfitLossViewModel : ObservableObject
             TotalPumpExpenses = result.TotalPumpExpenses;
             TotalMismatch = result.TotalMismatch;
 
-            NetProfit = result.NetProfit;
+            // Save both versions for runtime toggle
+            _marginFuelProfit = result.FuelProfit.TotalFuelProfit;
+            _purchaseFuelProfit = result.FuelProfit.TotalPurchaseFuelProfit;
+
+            _marginGrossProfit = result.GrossProfit;
+            _purchaseGrossProfit = result.FuelProfit.TotalPurchaseFuelProfit + result.OilProfit.TotalProfit + result.DefProfit.TotalProfit;
+
+            _marginNetProfit = result.NetProfit;
+            _purchaseNetProfit = _purchaseGrossProfit - result.TotalExpenses - result.DsmBaseSalaries - result.SalaryAdjustments + result.ShortRecoveries - result.OwnerOuterExpenses - result.TotalPumpExpenses + result.TotalMismatch;
+            
+            UpdateCalculatedTotals();
+            SelectedProfitTabIndex = UsePurchaseBasedProfit ? 1 : 0;
 
             // Load expense breakdown
             ExpenseBreakdown.Clear();
@@ -415,6 +507,81 @@ public partial class ProfitLossViewModel : ObservableObject
         finally
         {
             IsLoading = false;
+        }
+    }
+
+    private void UpdateCalculatedTotals()
+    {
+        TotalFuelProfit = UsePurchaseBasedProfit ? _purchaseFuelProfit : _marginFuelProfit;
+        GrossProfit = UsePurchaseBasedProfit ? _purchaseGrossProfit : _marginGrossProfit;
+        NetProfit = UsePurchaseBasedProfit ? _purchaseNetProfit : _marginNetProfit;
+    }
+
+    [RelayCommand]
+    public async Task LoadCurrentMarginsAsync()
+    {
+        try
+        {
+            var db = App.Services.GetRequiredService<FuelProDbContext>();
+            var margins = await db.FuelProfitMargins
+                .OrderByDescending(m => m.EffectiveDate)
+                .ToListAsync();
+
+            EditHsdMargin = margins.FirstOrDefault(m => string.Equals(m.FuelType, "HSD", StringComparison.OrdinalIgnoreCase))?.MarginPerLitre ?? 3.0;
+            EditMsIMargin = margins.FirstOrDefault(m => string.Equals(m.FuelType, "MS-I", StringComparison.OrdinalIgnoreCase))?.MarginPerLitre ?? 4.0;
+            EditMsIIMargin = margins.FirstOrDefault(m => string.Equals(m.FuelType, "MS-II", StringComparison.OrdinalIgnoreCase))?.MarginPerLitre ?? 4.0;
+            EditCngMargin = margins.FirstOrDefault(m => string.Equals(m.FuelType, "CNG", StringComparison.OrdinalIgnoreCase))?.MarginPerLitre ?? 2.5;
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to load current fuel margins");
+        }
+    }
+
+    [RelayCommand]
+    private async Task SaveMarginsAsync()
+    {
+        try
+        {
+            var db = App.Services.GetRequiredService<FuelProDbContext>();
+            var today = DateTime.Today;
+
+            var existingMargins = await db.FuelProfitMargins
+                .Where(m => m.EffectiveDate.Date == today)
+                .ToListAsync();
+
+            void UpdateOrInsert(string fuelType, double newMargin)
+            {
+                var existing = existingMargins.FirstOrDefault(m => string.Equals(m.FuelType, fuelType, StringComparison.OrdinalIgnoreCase));
+                if (existing != null)
+                {
+                    existing.MarginPerLitre = newMargin;
+                }
+                else
+                {
+                    db.FuelProfitMargins.Add(new FuelProfitMargin
+                    {
+                        EffectiveDate = today,
+                        FuelType = fuelType,
+                        MarginPerLitre = newMargin
+                    });
+                }
+            }
+
+            UpdateOrInsert("HSD", EditHsdMargin);
+            UpdateOrInsert("MS-I", EditMsIMargin);
+            UpdateOrInsert("MS-II", EditMsIIMargin);
+            UpdateOrInsert("CNG", EditCngMargin);
+
+            await db.SaveChangesAsync();
+            MessageBox.Show("Fuel profit margins updated successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to save fuel profit margins");
+            MessageBox.Show($"Failed to save margins: {ex.Message}", "Database Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 }

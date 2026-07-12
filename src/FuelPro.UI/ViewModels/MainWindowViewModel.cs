@@ -173,6 +173,20 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private void NavigateToFuelTankerEntry()
+    {
+        SelectedNavIndex = 12;
+        CurrentView = App.Services.GetRequiredService<FuelTankerEntryViewModel>();
+    }
+
+    [RelayCommand]
+    private void NavigateToTankStockHistory()
+    {
+        SelectedNavIndex = 13;
+        CurrentView = App.Services.GetRequiredService<TankStockHistoryViewModel>();
+    }
+
+    [RelayCommand]
     private void NavigateToSettings()
     {
         SelectedNavIndex = 10;

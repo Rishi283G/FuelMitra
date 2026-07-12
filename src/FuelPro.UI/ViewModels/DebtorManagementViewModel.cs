@@ -518,6 +518,11 @@ public partial class DebtorManagementViewModel : ObservableObject
             return;
         }
 
+        // Auto-assign ShiftNumber for TID-sheet slot attribution:
+        //   before 20:00 → Shift B (Day slot on the business day)
+        //   from  20:00 → Shift A (Night slot on the business day)
+        var shiftNumber = DateTime.Now.Hour < 20 ? "B" : "A";
+
         var repayment = new CreditorRepayment
         {
             CreditorName = SelectedDebtorName.Trim(),
@@ -526,8 +531,9 @@ public partial class DebtorManagementViewModel : ObservableObject
             ChequeNo = SelectedPaymentMode == "Cheque" ? ChequeNumber?.Trim() : null,
             Amount = RepaymentAmount,
             CreatedAt = DateTime.Now,
-            CardTid = (SelectedPaymentMode == "PhonePe" || SelectedPaymentMode == "PineLabs Card" || SelectedPaymentMode == "Others" || SelectedPaymentMode == "Bank Transfer") ? CardTid?.Trim() : null,
-            CardBatch = (SelectedPaymentMode == "PhonePe" || SelectedPaymentMode == "PineLabs Card" || SelectedPaymentMode == "Others" || SelectedPaymentMode == "Bank Transfer") ? CardBatch?.Trim() : null,
+            ShiftNumber = shiftNumber,
+            CardTid = (SelectedPaymentMode == "PhonePe" || SelectedPaymentMode == "PineLabs Card" || SelectedPaymentMode == "Others") ? CardTid?.Trim() : null,
+            CardBatch = (SelectedPaymentMode == "PhonePe" || SelectedPaymentMode == "PineLabs Card" || SelectedPaymentMode == "Others") ? CardBatch?.Trim() : null,
             Denom500 = SelectedPaymentMode == "Cash" ? (Denom500 ?? 0) : 0,
             Denom200 = SelectedPaymentMode == "Cash" ? (Denom200 ?? 0) : 0,
             Denom100 = SelectedPaymentMode == "Cash" ? (Denom100 ?? 0) : 0,
@@ -1068,6 +1074,12 @@ public partial class DebtorManagementViewModel : ObservableObject
             return;
         }
 
+        if (LedgerTransactions == null || LedgerTransactions.Count == 0)
+        {
+            MessageBox.Show("No transactions to share. Please generate the ledger first.", "WhatsApp Share", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
         try
         {
             var debtorRow = Debtors.FirstOrDefault(d => d.Name.Equals(LedgerDebtorName, StringComparison.OrdinalIgnoreCase));
@@ -1085,33 +1097,91 @@ public partial class DebtorManagementViewModel : ObservableObject
                 cleanPhone = "91" + cleanPhone;
             }
 
-            var openingBalance = LedgerTransactions.FirstOrDefault()?.RunningBalance ?? 0;
-            
-            var txRows = LedgerTransactions.Where(t => t.Description != "Opening Balance").TakeLast(15).ToList();
-            var txString = "";
-            if (txRows.Any())
+            // 1. Generate Statement PDF using Edge headless rendering
+            var printRows = LedgerTransactions.Select(t => new DebtorLedgerPrintRow
             {
-                txString = "\nRecent Transactions:\n";
-                foreach (var tx in txRows)
-                {
-                    var amtStr = tx.Debit > 0 ? $"+₹{tx.Debit:N2}" : $"-₹{tx.Credit:N2}";
-                    txString += $"{tx.Date:dd/MM}: {tx.Description} -> {amtStr}\n";
-                }
+                Date = t.Date.ToString("dd-MMM-yyyy"),
+                Description = t.Description,
+                Debit = t.Debit,
+                Credit = t.Credit,
+                RunningBalance = t.RunningBalance
+            }).ToList();
+
+            var printData = new DebtorLedgerPrintData
+            {
+                DebtorName = LedgerDebtorName,
+                DebtorPhone = debtorRow?.Phone ?? "N/A",
+                StartDate = LedgerStartDate.ToString("dd-MMM-yyyy"),
+                EndDate = LedgerEndDate.ToString("dd-MMM-yyyy"),
+                OpeningBalance = LedgerTransactions.FirstOrDefault()?.RunningBalance ?? 0,
+                TotalDebt = LedgerTotalDebt,
+                TotalRepayments = LedgerTotalRepayments,
+                ClosingBalance = LedgerOutstandingBalance,
+                Transactions = printRows
+            };
+
+            var pdfPath = _printService.GenerateDebtorLedgerPdf(printData);
+
+            // 2. Copy the PDF path to Windows Clipboard as FileDropList (allowing instant paste/attachment via Ctrl+V)
+            var fileList = new System.Collections.Specialized.StringCollection { pdfPath };
+            Clipboard.SetFileDropList(fileList);
+
+            // 3. Retrieve Petrol Pump name from DB settings
+            var settings = _dbContext.Settings.FirstOrDefault();
+            var stationName = settings?.StationDisplayName ?? "Mitali Service Station";
+
+            // 4. Prefill professional message
+            var message = $"Hello {LedgerDebtorName},\n\n" +
+                          $"Please find your account statement attached for the selected period.\n\n" +
+                          $"Kindly verify the statement and contact us if you have any questions.\n\n" +
+                          $"Regards,\n" +
+                          $"{stationName}";
+
+            var escapedMsg = Uri.EscapeDataString(message);
+            bool launchedDesktop = false;
+
+            // 5. Open WhatsApp Desktop with fallback to WhatsApp Web
+            try
+            {
+                var desktopUrl = $"whatsapp://send?phone={cleanPhone}&text={escapedMsg}";
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo { FileName = desktopUrl, UseShellExecute = true });
+                launchedDesktop = true;
+            }
+            catch (Exception)
+            {
+                var webUrl = $"https://web.whatsapp.com/send?phone={cleanPhone}&text={escapedMsg}";
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo { FileName = webUrl, UseShellExecute = true });
             }
 
-            var message = $"Hello {LedgerDebtorName},\n\n" +
-                          $"Here is your Account Statement summary:\n" +
-                          $"Period: {LedgerStartDate:dd-MMM-yyyy} to {LedgerEndDate:dd-MMM-yyyy}\n" +
-                          $"Opening Balance: ₹{openingBalance:N2}\n" +
-                          $"Total Sales (Credit): ₹{LedgerTotalDebt:N2}\n" +
-                          $"Total Payments (Recovered): ₹{LedgerTotalRepayments:N2}\n" +
-                          $"Outstanding Balance: ₹{LedgerOutstandingBalance:N2}\n" +
-                          txString + "\n" +
-                          $"Thank you,\n" +
-                          $"Mitali Service Station";
+            // 6. Automated pasting and attachment send
+            _ = Task.Run(async () =>
+            {
+                // Wait for WhatsApp to open and load the chat window
+                await Task.Delay(4000);
 
-            var url = $"https://api.whatsapp.com/send?phone={cleanPhone}&text={Uri.EscapeDataString(message)}";
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo { FileName = url, UseShellExecute = true });
+                try
+                {
+                    var processes = System.Diagnostics.Process.GetProcessesByName("WhatsApp");
+                    if (processes.Length > 0)
+                    {
+                        var handle = processes[0].MainWindowHandle;
+                        if (handle != IntPtr.Zero)
+                        {
+                            SetForegroundWindow(handle);
+                        }
+                    }
+                }
+                catch { }
+
+                // Simulate Ctrl+V to paste the PDF
+                SimulateCtrlV();
+
+                // Wait for WhatsApp to render the attachment preview screen
+                await Task.Delay(1500);
+
+                // Simulate Enter key to send the attachment
+                SimulateEnter();
+            });
         }
         catch (Exception ex)
         {
@@ -1567,6 +1637,32 @@ public partial class DebtorManagementViewModel : ObservableObject
             _logger.Error(ex, "Failed to save personal debtor repayment");
             MessageBox.Show($"Error saving repayment: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, int dwExtraInfo);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    private const byte VK_CONTROL = 0x11;
+    private const byte VK_V = 0x56;
+    private const byte VK_RETURN = 0x0D;
+    private const uint KEYEVENTF_KEYUP = 0x0002;
+
+    private static void SimulateCtrlV()
+    {
+        keybd_event(VK_CONTROL, 0, 0, 0);
+        keybd_event(VK_V, 0, 0, 0);
+        keybd_event(VK_V, 0, KEYEVENTF_KEYUP, 0);
+        keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0);
+    }
+
+    private static void SimulateEnter()
+    {
+        keybd_event(VK_RETURN, 0, 0, 0);
+        keybd_event(VK_RETURN, 0, KEYEVENTF_KEYUP, 0);
     }
 }
 

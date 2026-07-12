@@ -797,7 +797,8 @@
                               PreviewMouseWheel="DataGrid_PreviewMouseWheel">
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="DSM Name" Binding="{Binding DsmName}" Width="*"/>
-                            <DataGridTextColumn Header="Pump" Binding="{Binding PumpId}" Width="80"/>
+                            <DataGridTextColumn Header="Pump" Binding="{Binding PumpDisplay}" Width="160"/>
+
                             <DataGridTextColumn Header="Gross Sales" Binding="{Binding GrossSales, StringFormat=N2}" Width="140"/>
                             <DataGridTextColumn Header="Total Collection" Binding="{Binding TotalPaymentIn, StringFormat=N2}" Width="140"/>
                             <DataGridTextColumn Header="Mismatch" Binding="{Binding Difference, StringFormat=N2}" Width="120"/>

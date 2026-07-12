@@ -9,21 +9,34 @@ public class FuelProfitDetail
     public double HsdLitres { get; set; }
     public double HsdMargin { get; set; }
     public double HsdProfit { get; set; }
+    public double HsdAvgSaleRate { get; set; }
+    public double HsdAvgPurchaseRate { get; set; }
+    public double HsdPurchaseProfit { get; set; }
 
     public double MsILitres { get; set; }
     public double MsIMargin { get; set; }
     public double MsIProfit { get; set; }
+    public double MsIAvgSaleRate { get; set; }
+    public double MsIAvgPurchaseRate { get; set; }
+    public double MsIPurchaseProfit { get; set; }
 
     public double MsIILitres { get; set; }
     public double MsIIMargin { get; set; }
     public double MsIIProfit { get; set; }
+    public double MsIIAvgSaleRate { get; set; }
+    public double MsIIAvgPurchaseRate { get; set; }
+    public double MsIIPurchaseProfit { get; set; }
 
     public double CngLitres { get; set; }
     public double CngMargin { get; set; }
     public double CngProfit { get; set; }
+    public double CngAvgSaleRate { get; set; }
+    public double CngAvgPurchaseRate { get; set; }
+    public double CngPurchaseProfit { get; set; }
 
     public double TotalLitres => HsdLitres + MsILitres + MsIILitres + CngLitres;
     public double TotalFuelProfit => HsdProfit + MsIProfit + MsIIProfit + CngProfit;
+    public double TotalPurchaseFuelProfit => HsdPurchaseProfit + MsIPurchaseProfit + MsIIPurchaseProfit + CngPurchaseProfit;
 }
 
 public class ProductProfitDetail
@@ -99,6 +112,8 @@ public class DsmSalaryRowDto
     public double RemainingPendingAdvance { get; set; }
     public string Remarks { get; set; } = string.Empty;
     public double NetSalary { get; set; }
+    public string PaymentStatus { get; set; } = "Unpaid"; // "Unpaid", "Paid", "Partial"
+    public double PaidAmount { get; set; }
 }
 
 public class OilDefStockReportDto

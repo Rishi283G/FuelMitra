@@ -81,7 +81,8 @@
             <!-- Sidebar Navigation — Distinct teal/green accent for Owner -->
             <Border Grid.Column="0" Grid.RowSpan="2"
                     Background="#00695C">
-                <StackPanel Margin="0,16,0,0">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="0,16,0,0">
                     <!-- Owner Icon -->
                     <materialDesign:PackIcon Kind="ShieldCrown" Width="36" Height="36"
                                              Foreground="White"
@@ -379,6 +380,7 @@
                         <materialDesign:PackIcon Kind="Wallet" Width="24" Height="24"/>
                     </Button>
                 </StackPanel>
+                </ScrollViewer>
             </Border>
 
             <!-- Main Content Area with Top Toolbar -->

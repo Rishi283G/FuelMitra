@@ -9,14 +9,14 @@ import { Loader2 } from 'lucide-react';
 type Screen = 'dashboard' | 'submit' | 'history';
 
 function AppContent() {
-  const { user, loading } = useAuth();
+  const { user, loading, isResetting } = useAuth();
   const [screen, setScreen] = useState<Screen>('dashboard');
 
-  if (loading) {
+  if (loading || isResetting) {
     return (
       <div className="splash">
         <Loader2 size={40} className="spin" />
-        <p>Loading PyroSync DSM...</p>
+        <p>{isResetting ? "Switching station. Resetting local database..." : "Loading PyroSync DSM..."}</p>
       </div>
     );
   }

@@ -91,9 +91,9 @@
                                  Height="32"/>
 
                         <UniformGrid Columns="3" Margin="0,2">
-                            <ToggleButton Content="Today" IsChecked="{Binding IsFilterToday}" Style="{StaticResource MaterialDesignFlatPrimaryToggleButton}" Height="28"/>
-                            <ToggleButton Content="Yesterday" IsChecked="{Binding IsFilterYesterday}" Style="{StaticResource MaterialDesignFlatPrimaryToggleButton}" Height="28"/>
-                            <ToggleButton Content="This Week" IsChecked="{Binding IsFilterThisWeek}" Style="{StaticResource MaterialDesignFlatPrimaryToggleButton}" Height="28"/>
+                            <ToggleButton Content="Today" IsChecked="{Binding IsFilterToday}" Style="{StaticResource MaterialDesignFlatPrimaryToggleButton}" FontSize="11" Padding="0" Height="28"/>
+                            <ToggleButton Content="Yesterday" IsChecked="{Binding IsFilterYesterday}" Style="{StaticResource MaterialDesignFlatPrimaryToggleButton}" FontSize="11" Padding="0" Height="28"/>
+                            <ToggleButton Content="This Wk" IsChecked="{Binding IsFilterThisWeek}" Style="{StaticResource MaterialDesignFlatPrimaryToggleButton}" FontSize="11" Padding="0" Height="28"/>
                         </UniformGrid>
 
                         <Grid Margin="0,4">

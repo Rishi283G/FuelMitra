@@ -45,7 +45,8 @@
                     </StackPanel>
 
                     <!-- Navigation Options -->
-                    <StackPanel Grid.Row="1" Margin="8,0">
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel Margin="8,0">
                         <Button Command="{Binding SelectTabCommand}" CommandParameter="0" ToolTip="User Management" Height="48" Margin="0,2" HorizontalContentAlignment="Left">
                             <Button.Style>
                                 <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignFlatMidBgButton}">
@@ -130,6 +131,7 @@
                             </StackPanel>
                         </Button>
                     </StackPanel>
+                    </ScrollViewer>
 
                     <Button Grid.Row="2" Command="{Binding ExitCommand}" Content="Exit Tools" Margin="16,0,16,24" Height="40" Style="{StaticResource MaterialDesignOutlinedButton}" Foreground="White" BorderBrush="White" Opacity="0.5"/>
                 </Grid>

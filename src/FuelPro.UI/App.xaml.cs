@@ -622,6 +622,88 @@ public partial class App : Application
             cmd.ExecuteNonQuery();
             Log.Information("Created PettyCashTransactions table");
         }
+
+        // ─── FuelTankers ──────────────────────────────────────────────────────────
+        if (!TableExists(connection, "FuelTankers"))
+        {
+            cmd.CommandText = @"
+                CREATE TABLE ""FuelTankers"" (
+                    ""FuelTankerId"" INTEGER NOT NULL CONSTRAINT ""PK_FuelTankers"" PRIMARY KEY AUTOINCREMENT,
+                    ""TankerDate"" TEXT NOT NULL,
+                    ""TankerNumber"" TEXT NULL,
+                    ""InvoiceNumber"" TEXT NOT NULL,
+                    ""FuelType"" TEXT NOT NULL,
+                    ""Quantity"" REAL NOT NULL DEFAULT 0,
+                    ""PurchaseRate"" REAL NOT NULL DEFAULT 0,
+                    ""TotalAmount"" REAL NOT NULL DEFAULT 0,
+                    ""Density"" REAL NOT NULL DEFAULT 0,
+                    ""Remarks"" TEXT NULL,
+                    ""CreatedAt"" TEXT NOT NULL DEFAULT (datetime('now')),
+                    ""UpdatedAt"" TEXT NOT NULL DEFAULT (datetime('now'))
+                );";
+            cmd.ExecuteNonQuery();
+            Log.Information("Created FuelTankers table");
+        }
+
+        // ─── TankDailyStocks ──────────────────────────────────────────────────────
+        if (!TableExists(connection, "TankDailyStocks"))
+        {
+            cmd.CommandText = @"
+                CREATE TABLE ""TankDailyStocks"" (
+                    ""Id"" INTEGER NOT NULL CONSTRAINT ""PK_TankDailyStocks"" PRIMARY KEY AUTOINCREMENT,
+                    ""Date"" TEXT NOT NULL,
+                    ""FuelType"" TEXT NOT NULL,
+                    ""OpeningStock"" REAL NOT NULL DEFAULT 0,
+                    ""DaySaleLitres"" REAL NOT NULL DEFAULT 0,
+                    ""TestingLitres"" REAL NOT NULL DEFAULT 0,
+                    ""PurchasedLitres"" REAL NOT NULL DEFAULT 0,
+                    ""ClosingStock"" REAL NOT NULL DEFAULT 0,
+                    ""DipMm"" REAL NOT NULL DEFAULT 0,
+                    ""ManualStock"" REAL NOT NULL DEFAULT 0,
+                    ""LastUpdated"" TEXT NOT NULL DEFAULT (datetime('now')),
+                    ""ShiftId"" INTEGER NULL
+                );";
+            cmd.ExecuteNonQuery();
+            Log.Information("Created TankDailyStocks table");
+        }
+
+        // ─── DsmSalaryHistories ───────────────────────────────────────────────────
+        if (!TableExists(connection, "DsmSalaryHistories"))
+        {
+            cmd.CommandText = @"
+                CREATE TABLE ""DsmSalaryHistories"" (
+                    ""DsmSalaryHistoryId"" INTEGER NOT NULL CONSTRAINT ""PK_DsmSalaryHistories"" PRIMARY KEY AUTOINCREMENT,
+                    ""DsmProfileId"" INTEGER NOT NULL,
+                    ""OldBaseSalary"" REAL NOT NULL DEFAULT 0,
+                    ""NewBaseSalary"" REAL NOT NULL DEFAULT 0,
+                    ""OldSalaryType"" TEXT NOT NULL,
+                    ""NewSalaryType"" TEXT NOT NULL,
+                    ""ChangeDate"" TEXT NOT NULL DEFAULT (datetime('now'))
+                );";
+            cmd.ExecuteNonQuery();
+            Log.Information("Created DsmSalaryHistories table");
+        }
+
+        // ─── DsmSalaryPayments ────────────────────────────────────────────────────
+        if (!TableExists(connection, "DsmSalaryPayments"))
+        {
+            cmd.CommandText = @"
+                CREATE TABLE ""DsmSalaryPayments"" (
+                    ""DsmSalaryPaymentId"" INTEGER NOT NULL CONSTRAINT ""PK_DsmSalaryPayments"" PRIMARY KEY AUTOINCREMENT,
+                    ""DsmProfileId"" INTEGER NOT NULL,
+                    ""Year"" INTEGER NOT NULL DEFAULT 0,
+                    ""Month"" INTEGER NOT NULL DEFAULT 0,
+                    ""NetSalary"" REAL NOT NULL DEFAULT 0,
+                    ""PaidAmount"" REAL NOT NULL DEFAULT 0,
+                    ""PaymentDate"" TEXT NOT NULL DEFAULT (datetime('now')),
+                    ""PaymentMode"" TEXT NOT NULL DEFAULT 'Cash',
+                    ""Remarks"" TEXT NULL,
+                    ""CreatedAt"" TEXT NOT NULL DEFAULT (datetime('now')),
+                    ""UpdatedAt"" TEXT NOT NULL DEFAULT (datetime('now'))
+                );";
+            cmd.ExecuteNonQuery();
+            Log.Information("Created DsmSalaryPayments table");
+        }
     }
 
     private static bool TableExists(SqliteConnection connection, string tableName)
@@ -681,6 +763,8 @@ public partial class App : Application
         services.AddTransient<IPumpExpenseRepository, PumpExpenseRepository>();
         services.AddTransient<IDebtorVehicleRepository, DebtorVehicleRepository>();
         services.AddTransient<IDsmPersonalDebtorRepository, DsmPersonalDebtorRepository>();
+        services.AddTransient<IFuelTankerRepository, FuelTankerRepository>();
+        services.AddTransient<ITankDailyStockRepository, TankDailyStockRepository>();
 
         // Services
         services.AddSingleton<AuthService>();
@@ -727,6 +811,8 @@ public partial class App : Application
         services.AddTransient<DebtorManagementViewModel>();
         services.AddTransient<PumpExpensesViewModel>();
         services.AddTransient<PettyCashViewModel>();
+        services.AddTransient<FuelTankerEntryViewModel>();
+        services.AddTransient<TankStockHistoryViewModel>();
 
         // Owner ViewModels
         services.AddTransient<OwnerMainWindowViewModel>();

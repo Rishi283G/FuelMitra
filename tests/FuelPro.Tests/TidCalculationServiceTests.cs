@@ -82,7 +82,8 @@ public class TidCalculationServiceTests
 
         var mockShiftRepo = new MockShiftRepository(shifts);
         var mockDsmRepo = new MockDsmEntryRepository(entries);
-        var sut = new TidCalculationService(mockShiftRepo, mockDsmRepo);
+        var mockRepaymentRepo = new MockCreditorRepaymentRepository();
+        var sut = new TidCalculationService(mockShiftRepo, mockDsmRepo, mockRepaymentRepo);
 
         // Act
         var sheet = await sut.GetTidSheetAsync(testDate);
@@ -172,5 +173,17 @@ public class TidCalculationServiceTests
         public Task<Result<List<string>>> GetDistinctDsmNamesAsync() => throw new NotImplementedException();
         public Task<Result<List<DsmEntry>>> GetEntriesForDsmAndMonthAsync(string dsmName, int year, int month) => throw new NotImplementedException();
         public Task<Result<List<DsmEntry>>> GetEntriesForMonthAsync(int year, int month) => throw new NotImplementedException();
+    }
+
+    private class MockCreditorRepaymentRepository : ICreditorRepaymentRepository
+    {
+        public Task<Result<List<CreditorRepayment>>> GetByDateAsync(DateTime date) => 
+            Task.FromResult(Result<List<CreditorRepayment>>.Ok(new List<CreditorRepayment>()));
+
+        public Task<Result<List<CreditorRepayment>>> GetByMonthAsync(int year, int month) => throw new NotImplementedException();
+        public Task<Result<CreditorRepayment>> AddAsync(CreditorRepayment repayment) => throw new NotImplementedException();
+        public Task<Result> DeleteAsync(int id) => throw new NotImplementedException();
+        public Task<Result<List<CreditorRepayment>>> GetByDateRangeAsync(DateTime startDate, DateTime endDate) => 
+            Task.FromResult(Result<List<CreditorRepayment>>.Ok(new List<CreditorRepayment>()));
     }
 }

@@ -40,7 +40,7 @@ public class PrintService
     private string GetSerializedJsonWithLogoAndStationName(object data)
     {
         // 1. Get station name
-        string stationName = "Mitali Service Station";
+        string stationName = "Kandhare Petroleum";
         try
         {
             var dbContext = App.Services?.GetService(typeof(FuelProDbContext)) as FuelProDbContext;
@@ -431,21 +431,24 @@ public class PrintService
         return LoadNamedTemplate("FinalCalculationPrintTemplate.html");
     }
 
+    public string GenerateDebtorLedgerHtml(DebtorLedgerPrintData data)
+    {
+        var json = GetSerializedJsonWithLogoAndStationName(data);
+        var templateHtml = LoadNamedTemplate("DebtorLedgerPrintTemplate.html");
+
+        if (!templateHtml.Contains(MARKER))
+        {
+            throw new InvalidOperationException("Debtor Ledger print template is outdated.");
+        }
+
+        return templateHtml.Replace(MARKER, json);
+    }
+
     public void PrintDebtorLedger(DebtorLedgerPrintData data)
     {
         try
         {
-            var json = GetSerializedJsonWithLogoAndStationName(data);
-            var templateHtml = LoadNamedTemplate("DebtorLedgerPrintTemplate.html");
-
-            if (!templateHtml.Contains(MARKER))
-            {
-                MessageBox.Show("Debtor Ledger print template is outdated.",
-                    "Print Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                return;
-            }
-
-            var finalHtml = templateHtml.Replace(MARKER, json);
+            var finalHtml = GenerateDebtorLedgerHtml(data);
             var tempFile = Path.Combine(Path.GetTempPath(),
                 $"PyroSyncDebtorLedger_{DateTime.Now:yyyyMMddHHmmss}.html");
 
@@ -463,6 +466,50 @@ public class PrintService
             MessageBox.Show($"Print failed.\n\nError: {ex.Message}",
                 "Print Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
+    }
+
+    public string GenerateDebtorLedgerPdf(DebtorLedgerPrintData data)
+    {
+        var finalHtml = GenerateDebtorLedgerHtml(data);
+        var tempHtml = Path.Combine(Path.GetTempPath(),
+            $"PyroSyncDebtorLedger_{DateTime.Now:yyyyMMddHHmmss}.html");
+
+        File.WriteAllText(tempHtml, finalHtml, Encoding.UTF8);
+
+        var tempPdf = Path.Combine(Path.GetTempPath(),
+            $"PyroSyncDebtorLedger_{DateTime.Now:yyyyMMddHHmmss}.pdf");
+
+        var edgePath = @"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe";
+        if (!File.Exists(edgePath))
+        {
+            edgePath = "msedge.exe";
+        }
+
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = edgePath,
+            Arguments = $"--headless --print-to-pdf=\"{tempPdf}\" --no-margins \"{tempHtml}\"",
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        using (var process = Process.Start(startInfo))
+        {
+            if (process != null)
+            {
+                process.WaitForExit(15000);
+            }
+        }
+
+        // Clean up temporary HTML file
+        try { if (File.Exists(tempHtml)) File.Delete(tempHtml); } catch { }
+
+        if (!File.Exists(tempPdf))
+        {
+            throw new FileNotFoundException("Failed to generate PDF. Microsoft Edge did not output a PDF file.");
+        }
+
+        return tempPdf;
     }
 
     public void PrintGenericGrid(GenericGridPrintData data)

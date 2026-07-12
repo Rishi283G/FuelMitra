@@ -188,7 +188,42 @@ public partial class CardSettlementViewModel : ObservableObject
                 });
             }
 
-            HasData = CardPayments.Count > 0 || PhonePePayments.Count > 0 || PetroCardPayments.Count > 0;
+            HasData = CardPayments.Count > 0 || PhonePePayments.Count > 0 || PetroCardPayments.Count > 0
+                   || tidSheet.DebtorPhonePeRepayments.Count > 0 || tidSheet.DebtorCardRepayments.Count > 0;
+
+            // 4. Debtor repayments — PhonePe
+            foreach (var item in tidSheet.DebtorPhonePeRepayments)
+            {
+                PhonePePayments.Add(new CardSettlementItem
+                {
+                    RomanIndex = "—",
+                    DsmName = $"[Debtor] {item.DsmName} ({item.ShiftLabel})",
+                    Amount = item.Amount,
+                    Tid = item.Tid,
+                    Batch = item.Batch,
+                    ShiftLabel = item.ShiftLabel,
+                    Slot = ParseSlot(item.Slot),
+                    SlotDisplaySubtitle = item.SlotDisplaySubtitle
+                });
+            }
+
+            // 5. Debtor repayments — PineLabs Card
+            foreach (var item in tidSheet.DebtorCardRepayments)
+            {
+                CardPayments.Add(new CardSettlementItem
+                {
+                    RomanIndex = "—",
+                    DsmName = $"[Debtor] {item.DsmName} ({item.ShiftLabel})",
+                    Amount = item.Amount,
+                    Tid = item.Tid,
+                    Batch = item.Batch,
+                    ShiftLabel = item.ShiftLabel,
+                    Slot = ParseSlot(item.Slot),
+                    SlotDisplaySubtitle = item.SlotDisplaySubtitle
+                });
+            }
+
+            HasData = HasData || CardPayments.Count > 0 || PhonePePayments.Count > 0;
             if (!HasData)
             {
                 StatusMessage = "No card, PhonePe, or Petro Card payments found for these shifts.";

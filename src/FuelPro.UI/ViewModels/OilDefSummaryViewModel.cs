@@ -67,6 +67,9 @@ public partial class OilDefSummaryViewModel : ObservableObject
     // Recent daily sales log (read-only)
     public ObservableCollection<OilDefDailyLog> RecentSalesLogs { get; } = new();
 
+    // Recent purchases registry (read-only)
+    public ObservableCollection<OilDefPurchase> RecentPurchases { get; } = new();
+
     public OilDefSummaryViewModel()
     {
         _dbContext = App.Services.GetRequiredService<FuelProDbContext>();
@@ -182,6 +185,9 @@ public partial class OilDefSummaryViewModel : ObservableObject
             // Load recent sales logs
             await LoadRecentSalesAsync();
 
+            // Load recent purchase entries
+            await LoadRecentPurchasesAsync();
+
             // Load product breakdown
             await LoadProductBreakdownAsync();
         }
@@ -253,6 +259,26 @@ public partial class OilDefSummaryViewModel : ObservableObject
         catch (Exception ex)
         {
             Serilog.Log.Error(ex, "Failed to load recent sales log");
+        }
+    }
+
+    private async Task LoadRecentPurchasesAsync()
+    {
+        RecentPurchases.Clear();
+        try
+        {
+            var purchases = await _dbContext.OilDefPurchases
+                .Include(p => p.Product)
+                .Where(p => p.PurchaseDate >= StartDate.Date && p.PurchaseDate <= EndDate.Date)
+                .OrderByDescending(p => p.PurchaseDate)
+                .Take(100)
+                .ToListAsync();
+
+            foreach (var p in purchases) RecentPurchases.Add(p);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to load recent purchases");
         }
     }
 

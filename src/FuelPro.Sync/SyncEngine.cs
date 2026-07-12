@@ -72,7 +72,10 @@ public class SyncEngine
         "DsmSalaryAdjustments",
         "DsmPersonalDebtors",
         "DsmPersonalDebtorRepayments",
-        "PettyCashTransactions"
+        "PettyCashTransactions",
+        // Tanker Management
+        "FuelTankers",
+        "TankDailyStocks"
     };
 
     // ── FK Configuration ──────────────────────────────────────────────
@@ -134,7 +137,10 @@ public class SyncEngine
         }),
         new TableSyncConfig("PettyCashTransactions", new[] {
             new FkMapping("ShiftExpenseId", "Expenses")
-        })
+        }),
+        // Tanker Management
+        new TableSyncConfig("FuelTankers", Array.Empty<FkMapping>()),
+        new TableSyncConfig("TankDailyStocks", Array.Empty<FkMapping>())
     };
 
     /// <summary>
@@ -153,8 +159,8 @@ public class SyncEngine
     public void Start()
     {
         _logger.Information("Starting background sync engine...");
-        // Run every 30 seconds, starting after 10 seconds
-        _syncTimer = new Timer(async _ => await OnTimerTickAsync(), null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(30));
+        // [TESTING] Run every 1 second, starting immediately (was: 10s delay, 30s interval)
+        _syncTimer = new Timer(async _ => await OnTimerTickAsync(), null, TimeSpan.Zero, TimeSpan.FromSeconds(1));
     }
 
     public void Stop()
@@ -215,13 +221,20 @@ public class SyncEngine
             }
             else
             {
-                // Manager/Operators push local modifications first, then pull updates
-                await PerformPushAsync(settings);
-                
-                if (shouldPull)
+                try
                 {
-                    await PerformPullAsync(settings);
-                    _lastPullTime = DateTime.Now;
+                    await PerformPushAsync(settings);
+
+                    if (shouldPull)
+                    {
+                        await PerformPullAsync(settings);
+                        _lastPullTime = DateTime.Now;
+                    }
+                }
+                catch (DbUpdateConcurrencyException ex)
+                {
+                    _logger.Warning(ex, "Concurrency conflict during sync. The changes will be retried in the next sync cycle.");
+                    UpdateStatus(settings.LastSyncTime, 0, true, "Sync paused (retrying...)");
                 }
             }
         }
@@ -257,21 +270,10 @@ public class SyncEngine
         var ignoredLogs = allPendingLogs.Where(l => !SyncedTables.Contains(l.TableName)).ToList();
         if (ignoredLogs.Count > 0)
         {
-            FuelProDbContext.BypassTracking = true;
-            try
-            {
-                foreach (var log in ignoredLogs)
-                {
-                    log.IsSynced = true;
-                    log.SyncedAt = DateTime.Now;
-                    context.Entry(log).State = EntityState.Modified;
-                }
-                await context.SaveChangesAsync();
-            }
-            finally
-            {
-                FuelProDbContext.BypassTracking = false;
-            }
+            var ignoredLogIds = ignoredLogs.Select(l => l.Id).ToList();
+            var idsCsv = string.Join(",", ignoredLogIds);
+            await context.Database.ExecuteSqlRawAsync(
+                $"UPDATE SyncChangeLogs SET IsSynced = 1, SyncedAt = '{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}' WHERE Id IN ({idsCsv})");
         }
 
         var pendingLogs = allPendingLogs.Where(l => SyncedTables.Contains(l.TableName)).ToList();
@@ -343,7 +345,7 @@ public class SyncEngine
                         { "Operation", "DELETE" },
                         { "station_id", settings.StationId },
                         { "machine_id", settings.MachineId },
-                        { "CreatedAt", del.CreatedAt.ToUniversalTime().ToString("o") }
+                        { "Timestamp", del.CreatedAt.ToUniversalTime().ToString("o") }
                     };
                     var logJson = JsonConvert.SerializeObject(new[] { logDict });
                     var logResponse = await _httpClient.SendRequestAsync(HttpMethod.Post, "SyncChangeLogs", logJson, isUpsert: true, onConflict: "SyncGuid");
@@ -522,21 +524,10 @@ public class SyncEngine
             }
 
             // Mark these log entries as synced
-            FuelProDbContext.BypassTracking = true;
-            try
-            {
-                foreach (var log in group)
-                {
-                    log.IsSynced = true;
-                    log.SyncedAt = DateTime.Now;
-                    context.Entry(log).State = EntityState.Modified;
-                }
-                await context.SaveChangesAsync();
-            }
-            finally
-            {
-                FuelProDbContext.BypassTracking = false;
-            }
+            var logIds = group.Select(l => l.Id).ToList();
+            var idsCsv = string.Join(",", logIds);
+            await context.Database.ExecuteSqlRawAsync(
+                $"UPDATE SyncChangeLogs SET IsSynced = 1, SyncedAt = '{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}' WHERE Id IN ({idsCsv})");
         }
 
         // Save any new SyncIdMappings that were created during push
@@ -577,7 +568,7 @@ public class SyncEngine
                 // Special handling for pulling delete propagation logs
                 var logQueryTime = settings.LastSyncTime.ToUniversalTime().ToString("o");
                 var logResponse = await _httpClient.SendRequestAsync(HttpMethod.Get,
-                    $"SyncChangeLogs?station_id=eq.{settings.StationId}&updated_at=gt.{logQueryTime}");
+                    $"SyncChangeLogs?station_id=eq.{settings.StationId}&Timestamp=gt.{logQueryTime}");
                 if (logResponse.IsSuccessStatusCode)
                 {
                     var logJson = await logResponse.Content.ReadAsStringAsync();
@@ -789,6 +780,28 @@ public class SyncEngine
                             if (matchedLocalEntity == null)
                             {
                                 matchedLocalEntity = await context.Set<Setting>().FirstOrDefaultAsync();
+                            }
+                        }
+                        else if (tableDef.TableName == "CashDenominations")
+                        {
+                            // CashDenominations has a UNIQUE index on (DsmEntryId, CashType).
+                            // Without this check, pulling the same record twice (or when the
+                            // SyncIdMapping is stale) would INSERT a duplicate and crash with
+                            // "UNIQUE constraint failed: CashDenominations.DsmEntryId, CashDenominations.CashType".
+                            if (dict.TryGetValue("DsmEntryId", out var dsmIdObj) && dsmIdObj != null &&
+                                dict.TryGetValue("CashType", out var cashTypeObj) && cashTypeObj != null)
+                            {
+                                int localDsmEntryId = Convert.ToInt32(dsmIdObj);
+                                string cashType = cashTypeObj.ToString()!;
+
+                                matchedLocalEntity = context.Set<CashDenomination>().Local
+                                    .FirstOrDefault(cd => cd.DsmEntryId == localDsmEntryId && cd.CashType == cashType);
+
+                                if (matchedLocalEntity == null)
+                                {
+                                    matchedLocalEntity = await context.Set<CashDenomination>()
+                                        .FirstOrDefaultAsync(cd => cd.DsmEntryId == localDsmEntryId && cd.CashType == cashType);
+                                }
                             }
                         }
 
@@ -1013,6 +1026,7 @@ public class SyncEngine
             if (property.Name == "Id") continue;
             if (excludePk && pkProperties != null && pkProperties.Contains(property)) continue;
             if (isTestEnv && tableName == "PaymentCollections" && testExcludeCols.Contains(property.Name)) continue;
+            if (tableName == "DsmPumpAssignments" && property.Name == "CompletedDate") continue;
             
             values[property.Name] = entry.Property(property.Name).CurrentValue;
         }

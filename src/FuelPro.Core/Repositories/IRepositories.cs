@@ -160,3 +160,18 @@ public interface IDsmPersonalDebtorRepository
     Task<Result<List<DsmPersonalDebtor>>> GetByDsmEntryIdAsync(int dsmEntryId);
     Task<Result> SavePersonalDebtorsAsync(int dsmEntryId, List<DsmPersonalDebtor> personalDebtors);
 }
+
+public interface IFuelTankerRepository
+{
+    Task<Result<List<FuelTanker>>> GetByDateRangeAsync(DateTime startDate, DateTime endDate);
+    Task<Result<FuelTanker>> AddAsync(FuelTanker tanker);
+    Task<Result<FuelTanker>> UpdateAsync(FuelTanker tanker);
+    Task<Result> DeleteAsync(int fuelTankerId);
+}
+
+public interface ITankDailyStockRepository
+{
+    Task<Result<List<TankDailyStock>>> GetByDateRangeAsync(DateTime startDate, DateTime endDate);
+    Task<Result<List<TankDailyStock>>> GetByDateAsync(DateTime date);
+    Task<Result<TankDailyStock>> UpsertAsync(TankDailyStock stock);
+}

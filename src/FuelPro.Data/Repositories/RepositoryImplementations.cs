@@ -637,6 +637,7 @@ public class NozzleReadingRepository : INozzleReadingRepository
             foreach (var r in readings)
             {
                 r.DsmEntryId = dsmEntryId;
+                r.DsmEntry = null;
                 if (r.ClosingReading < r.OpeningReading)
                 {
                     throw new ArgumentException("Closing cannot be less than opening");
@@ -684,6 +685,7 @@ public class PaymentRepository : IPaymentRepository
     {
         try
         {
+            payment.DsmEntry = null;
             var existing = await _context.PaymentCollections
                 .FirstOrDefaultAsync(p => p.DsmEntryId == payment.DsmEntryId);
 
@@ -764,7 +766,11 @@ public class DebitEntryRepository : IDebitEntryRepository
                 .Where(d => d.DsmEntryId == dsmEntryId).ToListAsync();
             _context.DebitEntries.RemoveRange(existing);
 
-            foreach (var d in debits) d.DsmEntryId = dsmEntryId;
+            foreach (var d in debits)
+            {
+                d.DsmEntryId = dsmEntryId;
+                d.DsmEntry = null;
+            }
             _context.DebitEntries.AddRange(debits);
             await _context.SaveChangesAsync();
             return Result.Ok();
@@ -807,7 +813,11 @@ public class TestingEntryRepository : ITestingEntryRepository
                 .Where(t => t.DsmEntryId == dsmEntryId).ToListAsync();
             _context.TestingEntries.RemoveRange(existing);
 
-            foreach (var e in entries) e.DsmEntryId = dsmEntryId;
+            foreach (var e in entries)
+            {
+                e.DsmEntryId = dsmEntryId;
+                e.DsmEntry = null;
+            }
             _context.TestingEntries.AddRange(entries);
             await _context.SaveChangesAsync();
             return Result.Ok();
@@ -865,7 +875,11 @@ public class ExpenseRepository : IExpenseRepository
                 .Where(e => e.DsmEntryId == dsmEntryId).ToListAsync();
             _context.Expenses.RemoveRange(existing);
 
-            foreach (var e in expenses) e.DsmEntryId = dsmEntryId;
+            foreach (var e in expenses)
+            {
+                e.DsmEntryId = dsmEntryId;
+                e.DsmEntry = null;
+            }
             _context.Expenses.AddRange(expenses);
             await _context.SaveChangesAsync();
             return Result.Ok();
@@ -961,14 +975,39 @@ public class CashDenominationRepository : ICashDenominationRepository
         {
             var existing = await _context.CashDenominations
                 .Where(c => c.DsmEntryId == dsmEntryId).ToListAsync();
-            _context.CashDenominations.RemoveRange(existing);
 
             foreach (var d in denominations)
             {
                 d.DsmEntryId = dsmEntryId;
+                d.DsmEntry = null;
                 d.RecalculateTotal();
+
+                var match = existing.FirstOrDefault(e => e.CashType == d.CashType);
+                if (match != null)
+                {
+                    match.Coins = d.Coins;
+                    match.Denom10 = d.Denom10;
+                    match.Denom20 = d.Denom20;
+                    match.Denom50 = d.Denom50;
+                    match.Denom100 = d.Denom100;
+                    match.Denom200 = d.Denom200;
+                    match.Denom500 = d.Denom500;
+                    match.TotalAmount = d.TotalAmount;
+                    _context.Entry(match).State = EntityState.Modified;
+                }
+                else
+                {
+                    _context.CashDenominations.Add(d);
+                }
             }
-            _context.CashDenominations.AddRange(denominations);
+
+            var passedTypes = denominations.Select(d => d.CashType).ToList();
+            var toDelete = existing.Where(e => !passedTypes.Contains(e.CashType)).ToList();
+            if (toDelete.Any())
+            {
+                _context.CashDenominations.RemoveRange(toDelete);
+            }
+
             await _context.SaveChangesAsync();
             return Result.Ok();
         }
@@ -1406,12 +1445,28 @@ public class AgsImportRepository : IAgsImportRepository
                 existing.ShiftBreakdownJson  = summary.ShiftBreakdownJson;
                 existing.LastUpdatedAt       = summary.LastUpdatedAt;
                 await _context.SaveChangesAsync();
+                try
+                {
+                    await TankDailyStockRepository.UpdateTankDailyStocksStaticAsync(_context, summary.SummaryDate.Date, existing);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Warning(ex, "Failed to update tank stocks after updating summary");
+                }
                 return Result<AgsDailySummary>.Ok(existing);
             }
             else
             {
                 _context.AgsDailySummaries.Add(summary);
                 await _context.SaveChangesAsync();
+                try
+                {
+                    await TankDailyStockRepository.UpdateTankDailyStocksStaticAsync(_context, summary.SummaryDate.Date, summary);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Warning(ex, "Failed to update tank stocks after adding summary");
+                }
                 return Result<AgsDailySummary>.Ok(summary);
             }
         }
@@ -1861,4 +1916,310 @@ public class DsmPersonalDebtorRepository : IDsmPersonalDebtorRepository
 }
 
 
+public class FuelTankerRepository : IFuelTankerRepository
+{
+    private readonly FuelProDbContext _context;
+    private readonly ILogger _logger = Log.ForContext<FuelTankerRepository>();
 
+    public FuelTankerRepository(FuelProDbContext context) => _context = context;
+
+    public async Task<Result<List<FuelTanker>>> GetByDateRangeAsync(DateTime startDate, DateTime endDate)
+    {
+        try
+        {
+            var list = await _context.FuelTankers
+                .Where(t => t.TankerDate.Date >= startDate.Date && t.TankerDate.Date <= endDate.Date)
+                .OrderByDescending(t => t.TankerDate)
+                .ToListAsync();
+            return Result<List<FuelTanker>>.Ok(list);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to get fuel tankers");
+            return Result<List<FuelTanker>>.Fail($"Failed to load tankers: {ex.Message}");
+        }
+    }
+
+    public async Task<Result<FuelTanker>> AddAsync(FuelTanker tanker)
+    {
+        try
+        {
+            _context.FuelTankers.Add(tanker);
+            await _context.SaveChangesAsync();
+            return Result<FuelTanker>.Ok(tanker);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to add fuel tanker");
+            return Result<FuelTanker>.Fail($"Failed to add tanker: {ex.Message}");
+        }
+    }
+
+    public async Task<Result<FuelTanker>> UpdateAsync(FuelTanker tanker)
+    {
+        try
+        {
+            _context.FuelTankers.Update(tanker);
+            await _context.SaveChangesAsync();
+            return Result<FuelTanker>.Ok(tanker);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to update fuel tanker");
+            return Result<FuelTanker>.Fail($"Failed to update tanker: {ex.Message}");
+        }
+    }
+
+    public async Task<Result> DeleteAsync(int fuelTankerId)
+    {
+        try
+        {
+            var tanker = await _context.FuelTankers.FindAsync(fuelTankerId);
+            if (tanker == null)
+                return Result.Fail("Tanker not found.");
+            _context.FuelTankers.Remove(tanker);
+            await _context.SaveChangesAsync();
+            return Result.Ok();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to delete fuel tanker {Id}", fuelTankerId);
+            return Result.Fail($"Failed to delete tanker: {ex.Message}");
+        }
+    }
+}
+
+public class TankDailyStockRepository : ITankDailyStockRepository
+{
+    private readonly FuelProDbContext _context;
+    private readonly ILogger _logger = Log.ForContext<TankDailyStockRepository>();
+
+    public TankDailyStockRepository(FuelProDbContext context) => _context = context;
+
+    public async Task<Result<List<TankDailyStock>>> GetByDateRangeAsync(DateTime startDate, DateTime endDate)
+    {
+        try
+        {
+            // Rebuild/backfill if TankDailyStocks table is empty but daily summaries exist
+            var hasSummaries = await _context.AgsDailySummaries.AnyAsync();
+            var hasStocks = await _context.TankDailyStocks.AnyAsync();
+            if (hasSummaries && !hasStocks)
+            {
+                _logger.Information("Rebuilding TankDailyStocks from AgsDailySummaries...");
+                var summaries = await _context.AgsDailySummaries.ToListAsync();
+                foreach (var sum in summaries)
+                {
+                    await UpdateTankDailyStocksStaticAsync(_context, sum.SummaryDate, sum);
+                }
+            }
+
+            var list = await _context.TankDailyStocks
+                .Where(s => s.Date.Date >= startDate.Date && s.Date.Date <= endDate.Date)
+                .OrderByDescending(s => s.Date)
+                .ToListAsync();
+            return Result<List<TankDailyStock>>.Ok(list);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to get tank daily stocks");
+            return Result<List<TankDailyStock>>.Fail($"Failed to load stocks: {ex.Message}");
+        }
+    }
+
+    public static async Task UpdateTankDailyStocksStaticAsync(FuelProDbContext context, DateTime date, AgsDailySummary summary)
+    {
+        try
+        {
+            var activeImports = await context.AgsShiftImports
+                .Include(i => i.TankStocks)
+                .Where(i => i.ImportDate.Date == date.Date && i.IsActive)
+                .ToListAsync();
+
+            var dsmEntries = await context.DsmEntries
+                .Include(e => e.TestingEntries)
+                .Where(e => e.Shift != null && e.Shift.ShiftDate.Date == date.Date)
+                .ToListAsync();
+
+            double msITesting = 0;
+            double hsdTesting = 0;
+            double msIITesting = 0;
+
+            foreach (var entry in dsmEntries)
+            {
+                foreach (var t in entry.TestingEntries)
+                {
+                    var cat = PumpConfiguration.GetTestingTankCategory(t.FuelType, entry.PumpId, date.Date);
+                    if (cat == "MS") msITesting += t.Litres;
+                    else if (cat == "HSD") hsdTesting += t.Litres;
+                    else if (cat == "HSD-II") msIITesting += t.Litres;
+                }
+            }
+
+            var fuelTypes = new[] { "HSD", "MS-I", "MS-II" };
+            var shiftB = activeImports.FirstOrDefault(i => i.ShiftType == "B");
+            var shiftA = activeImports.FirstOrDefault(i => i.ShiftType == "A");
+            var lastImport = shiftA ?? shiftB;
+
+            int? shiftId = null;
+            if (lastImport != null)
+            {
+                var dbShift = await context.Shifts
+                    .FirstOrDefaultAsync(s => s.ShiftDate.Date == date.Date && s.ShiftType == lastImport.ShiftType);
+                shiftId = dbShift?.ShiftId;
+            }
+
+            foreach (var ft in fuelTypes)
+            {
+                var stocks = activeImports.SelectMany(i => i.TankStocks).Where(t => t.FuelType == ft).ToList();
+
+                double opening = 0;
+                double closing = 0;
+                double sale = 0;
+                double purchased = 0;
+                double dip = 0;
+                double manual = 0;
+                double testing = ft switch
+                {
+                    "HSD" => hsdTesting,
+                    "MS-I" => msITesting,
+                    "MS-II" => msIITesting,
+                    _ => 0
+                };
+
+                if (stocks.Any())
+                {
+                    opening = shiftB?.TankStocks?.FirstOrDefault(t => t.FuelType == ft)?.OpeningStockLitres 
+                           ?? shiftA?.TankStocks?.FirstOrDefault(t => t.FuelType == ft)?.OpeningStockLitres 
+                           ?? 0;
+                    closing = shiftA?.TankStocks?.FirstOrDefault(t => t.FuelType == ft)?.ClosingStockLitres 
+                           ?? shiftB?.TankStocks?.FirstOrDefault(t => t.FuelType == ft)?.ClosingStockLitres 
+                           ?? 0;
+                    sale = stocks.Sum(t => t.FuelDispensedLitres);
+                    purchased = stocks.Sum(t => t.ReceiptLitres);
+                    dip = shiftA?.TankStocks?.FirstOrDefault(t => t.FuelType == ft)?.ClosingDipMM 
+                       ?? shiftB?.TankStocks?.FirstOrDefault(t => t.FuelType == ft)?.ClosingDipMM 
+                       ?? 0;
+                    manual = closing;
+                }
+                else
+                {
+                    // Fallback to daily summary values if TankStocks are empty
+                    opening = ft switch
+                    {
+                        "HSD" => summary.HsdDayOpeningStock,
+                        "MS-I" => summary.MsIDayOpeningStock,
+                        "MS-II" => summary.MsIIDayOpeningStock,
+                        _ => 0
+                    };
+                    closing = ft switch
+                    {
+                        "HSD" => summary.HsdDayClosingStock,
+                        "MS-I" => summary.MsIDayClosingStock,
+                        "MS-II" => summary.MsIIDayClosingStock,
+                        _ => 0
+                    };
+                    sale = ft switch
+                    {
+                        "HSD" => summary.DayTotalHsdLitres,
+                        "MS-I" => summary.DayTotalMsILitres,
+                        "MS-II" => summary.DayTotalMsIILitres,
+                        _ => 0
+                    };
+                    manual = closing;
+                }
+
+                var existingStock = await context.TankDailyStocks
+                    .FirstOrDefaultAsync(s => s.Date.Date == date.Date && s.FuelType == ft);
+
+                if (existingStock != null)
+                {
+                    existingStock.OpeningStock = opening;
+                    existingStock.DaySaleLitres = sale;
+                    existingStock.TestingLitres = testing;
+                    existingStock.PurchasedLitres = purchased;
+                    existingStock.ClosingStock = closing;
+                    existingStock.DipMm = dip;
+                    existingStock.ManualStock = manual;
+                    existingStock.ShiftId = shiftId;
+                    existingStock.LastUpdated = DateTime.Now;
+                    context.TankDailyStocks.Update(existingStock);
+                }
+                else
+                {
+                    var newStock = new TankDailyStock
+                    {
+                        Date = date.Date,
+                        FuelType = ft,
+                        OpeningStock = opening,
+                        DaySaleLitres = sale,
+                        TestingLitres = testing,
+                        PurchasedLitres = purchased,
+                        ClosingStock = closing,
+                        DipMm = dip,
+                        ManualStock = manual,
+                        ShiftId = shiftId,
+                        LastUpdated = DateTime.Now
+                    };
+                    context.TankDailyStocks.Add(newStock);
+                }
+            }
+
+            await context.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Failed to update TankDailyStocks for date {Date}", date);
+        }
+    }
+
+    public async Task<Result<List<TankDailyStock>>> GetByDateAsync(DateTime date)
+    {
+        try
+        {
+            var list = await _context.TankDailyStocks
+                .Where(s => s.Date.Date == date.Date)
+                .ToListAsync();
+            return Result<List<TankDailyStock>>.Ok(list);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to get tank daily stock for date {Date}", date);
+            return Result<List<TankDailyStock>>.Fail($"Failed to load stock: {ex.Message}");
+        }
+    }
+
+    public async Task<Result<TankDailyStock>> UpsertAsync(TankDailyStock stock)
+    {
+        try
+        {
+            var existing = await _context.TankDailyStocks
+                .FirstOrDefaultAsync(s => s.Date.Date == stock.Date.Date && s.FuelType == stock.FuelType);
+
+            if (existing != null)
+            {
+                existing.OpeningStock = stock.OpeningStock;
+                existing.DaySaleLitres = stock.DaySaleLitres;
+                existing.TestingLitres = stock.TestingLitres;
+                existing.PurchasedLitres = stock.PurchasedLitres;
+                existing.ClosingStock = stock.ClosingStock;
+                existing.DipMm = stock.DipMm;
+                existing.ManualStock = stock.ManualStock;
+                existing.LastUpdated = DateTime.Now;
+                _context.TankDailyStocks.Update(existing);
+                await _context.SaveChangesAsync();
+                return Result<TankDailyStock>.Ok(existing);
+            }
+            else
+            {
+                _context.TankDailyStocks.Add(stock);
+                await _context.SaveChangesAsync();
+                return Result<TankDailyStock>.Ok(stock);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to upsert tank daily stock");
+            return Result<TankDailyStock>.Fail($"Failed to save stock: {ex.Message}");
+        }
+    }
+}

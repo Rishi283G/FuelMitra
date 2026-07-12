@@ -1,11 +1,13 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase, type DsmUserProfile } from '../lib/supabase';
 import type { User } from '@supabase/supabase-js';
+import { resetStationData } from '../lib/stationReset';
 
 interface AuthContextType {
   user: User | null;
   profile: DsmUserProfile | null;
   loading: boolean;
+  isResetting: boolean;
   login: (email: string, password: string) => Promise<string | null>;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -17,6 +19,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<DsmUserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isResetting, setIsResetting] = useState(false);
 
   async function fetchProfile(authUserId: string): Promise<DsmUserProfile | null> {
     try {
@@ -74,6 +77,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (!profile || !profile.StationId) return;
+
+    const cachedStationId = localStorage.getItem('current_station_id');
+    if (cachedStationId !== profile.StationId) {
+      (async () => {
+        setIsResetting(true);
+        try {
+          await resetStationData(profile.StationId);
+        } catch (err) {
+          console.error('Failed to reset station data:', err);
+        } finally {
+          setIsResetting(false);
+        }
+      })();
+    }
+  }, [profile]);
 
   useEffect(() => {
     if (!profile || !profile.id) return;
@@ -162,7 +183,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, login, logout, refreshProfile }}>
+    <AuthContext.Provider value={{ user, profile, loading, isResetting, login, logout, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );

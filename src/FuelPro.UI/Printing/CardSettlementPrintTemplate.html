@@ -498,25 +498,28 @@ const renderSummarySection = (title, morning, day, night, sectionTotal) => {
 const container = document.getElementById('sectionsContainer');
 let html = '';
 
-// Section 1 — PhonePe UPI (Direct)
+// Helper: combine DSM + debtor repayment per slot
+const combined = (dsmVal, debtorVal) => (dsmVal || 0) + (debtorVal || 0);
+
+// Section 1 — PhonePe UPI (Direct + debtor repayments combined)
 html += renderSummarySection(
   'PhonePe UPI',
-  data.phonePeDirectMorning || 0,
-  data.phonePeDirectDay     || 0,
-  data.phonePeDirectNight   || 0,
-  data.phonePeDirectTotal   || 0
+  combined(data.phonePeDirectMorning, data.debtorPhonePeRepaymentMorning),
+  combined(data.phonePeDirectDay,     data.debtorPhonePeRepaymentDay),
+  combined(data.phonePeDirectNight,   data.debtorPhonePeRepaymentNight),
+  combined(data.phonePeDirectTotal,   data.debtorPhonePeRepaymentTotal)
 );
 
-// Section 3 — PineLabs Card
+// Section 3 — PineLabs Card (+ debtor repayments combined)
 html += renderSummarySection(
   'PineLabs Card',
-  data.pineLabsCardMorning || 0,
-  data.pineLabsCardDay     || 0,
-  data.pineLabsCardNight   || 0,
-  data.pineLabsCardTotal   || 0
+  combined(data.pineLabsCardMorning, data.debtorCardRepaymentMorning),
+  combined(data.pineLabsCardDay,     data.debtorCardRepaymentDay),
+  combined(data.pineLabsCardNight,   data.debtorCardRepaymentNight),
+  combined(data.pineLabsCardTotal,   data.debtorCardRepaymentTotal)
 );
 
-// Section 4 — Petro Card
+// Section 4 — Petro Card (no debtor repayments for this type)
 html += renderSummarySection(
   'Petro Card',
   data.petroCardMorning || 0,

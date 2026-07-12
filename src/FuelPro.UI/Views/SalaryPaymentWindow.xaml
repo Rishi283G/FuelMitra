@@ -1,0 +1,60 @@
+<Window x:Class="FuelPro.UI.Views.SalaryPaymentWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+        Title="Record DSM Salary Payment"
+        Width="400" Height="520"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="{DynamicResource MaterialDesign.Brush.Background}"
+        TextElement.Foreground="{DynamicResource MaterialDesign.Brush.Foreground}"
+        FontFamily="{materialDesign:MaterialDesignFont}">
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Title -->
+        <TextBlock Grid.Row="0" Text="Record Salary Payment" FontSize="20" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" Margin="0,0,0,20"/>
+
+        <!-- Form fields -->
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <!-- Employee Name -->
+                <TextBox x:Name="TxtDsmName" materialDesign:HintAssist.Hint="Employee Name" IsReadOnly="True" Style="{StaticResource MaterialDesignFloatingHintTextBox}" Margin="0,0,0,16"/>
+
+                <!-- Period -->
+                <TextBox x:Name="TxtPeriod" materialDesign:HintAssist.Hint="Payroll Period" IsReadOnly="True" Style="{StaticResource MaterialDesignFloatingHintTextBox}" Margin="0,0,0,16"/>
+
+                <!-- Net Salary -->
+                <TextBox x:Name="TxtNetSalary" materialDesign:HintAssist.Hint="Net Salary Amount (₹)" IsReadOnly="True" Style="{StaticResource MaterialDesignFloatingHintTextBox}" Margin="0,0,0,16"/>
+
+                <!-- Paid Amount -->
+                <TextBox x:Name="TxtPaidAmount" materialDesign:HintAssist.Hint="Paid Amount (₹)" Style="{StaticResource MaterialDesignFloatingHintTextBox}" Margin="0,0,0,16"/>
+
+                <!-- Payment Date -->
+                <DatePicker x:Name="DpPaymentDate" materialDesign:HintAssist.Hint="Payment Date" Style="{StaticResource MaterialDesignFloatingHintDatePicker}" Margin="0,0,0,16"/>
+
+                <!-- Payment Mode -->
+                <ComboBox x:Name="CbPaymentMode" materialDesign:HintAssist.Hint="Payment Mode" Style="{StaticResource MaterialDesignFloatingHintComboBox}" Margin="0,0,0,16">
+                    <ComboBoxItem Content="Cash" IsSelected="True"/>
+                    <ComboBoxItem Content="Bank Transfer"/>
+                    <ComboBoxItem Content="UPI"/>
+                    <ComboBoxItem Content="Cheque"/>
+                </ComboBox>
+
+                <!-- Remarks -->
+                <TextBox x:Name="TxtRemarks" materialDesign:HintAssist.Hint="Remarks (optional)" Style="{StaticResource MaterialDesignFloatingHintTextBox}" TextWrapping="Wrap" AcceptsReturn="True" Height="60" Margin="0,0,0,16"/>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Action Buttons -->
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
+            <Button Content="Cancel" Click="Cancel_Click" Style="{StaticResource MaterialDesignOutlinedButton}" Margin="0,0,12,0" Width="100"/>
+            <Button Content="Save Payment" Click="Save_Click" Style="{StaticResource MaterialDesignRaisedButton}" Width="130" Background="#2E7D32" BorderBrush="#2E7D32"/>
+        </StackPanel>
+    </Grid>
+</Window>

@@ -753,7 +753,7 @@ public partial class DsmEntryViewModel : ObservableObject
                 PetroCardMorning = PetroCardMorning ?? 0,
                 PetroCardNight = SelectedShift == "B" ? 0 : (PetroCardNight ?? 0),
                 Others = Others ?? 0,
-                CashDeposit = CashDeposit ?? 0,
+                CashDeposit = Cash1.TotalAmount,
                 CardTid = SelectedShift == "B" ? CreditCardTidMorning : CreditCardTidNight,
                 CardBatch = SelectedShift == "B" ? CreditCardBatchMorning : CreditCardBatchNight,
                 PhonePeTid = SelectedShift == "B" ? PhonePeTidMorning : PhonePeTidNight,
@@ -929,9 +929,23 @@ public partial class DsmEntryViewModel : ObservableObject
 
             // Connected pump
             DsmEntry? connectedEntry = null;
-            if (entry.ConnectedPumpId.HasValue)
+            int? targetConnectedPumpId = entry.ConnectedPumpId;
+            if (!targetConnectedPumpId.HasValue && entry.NozzleReadings != null)
             {
-                var connMatch = ConnectablePumpOptions.FirstOrDefault(p => p.PumpId == entry.ConnectedPumpId.Value);
+                foreach (var nr in entry.NozzleReadings)
+                {
+                    var nozzlePumpId = PumpConfiguration.GetPumpIdForNozzle(nr.NozzleNumber, entry.Shift?.ShiftDate ?? SelectedDate);
+                    if (nozzlePumpId != 0 && nozzlePumpId != entry.PumpId)
+                    {
+                        targetConnectedPumpId = nozzlePumpId;
+                        break;
+                    }
+                }
+            }
+
+            if (targetConnectedPumpId.HasValue)
+            {
+                var connMatch = ConnectablePumpOptions.FirstOrDefault(p => p.PumpId == targetConnectedPumpId.Value);
                 SelectedConnectedPump = connMatch;
 
                 var shiftId = entry.ShiftId;
@@ -940,7 +954,7 @@ public partial class DsmEntryViewModel : ObservableObject
                 if (entriesResult.Success && entriesResult.Data != null)
                 {
                     var rawConn = entriesResult.Data.FirstOrDefault(e =>
-                        e.PumpId == entry.ConnectedPumpId.Value
+                        e.PumpId == targetConnectedPumpId.Value
                         && (e.ReconciledToPumpId == entry.PumpId || string.Equals(e.DsmName, entry.DsmName, StringComparison.OrdinalIgnoreCase)));
                     if (rawConn != null)
                     {
@@ -1204,8 +1218,8 @@ public partial class DsmEntryViewModel : ObservableObject
                 // Others is NOT included in TotalInDirect — it is informational only
                 PhonePe = (decimal)((PhonePeMorning ?? 0) + (PhonePeNight ?? 0) + (PhonePeCardMorning ?? 0) + (PhonePeCardNight ?? 0)),
                 CreditCard = (decimal)((CreditCardMorning ?? 0) + (CreditCardNight ?? 0) + (PetroCardMorning ?? 0) + (PetroCardNight ?? 0)),
-                CashDeposit = (decimal)(CashDeposit ?? 0),
-                PhysicalCash = (decimal)(Cash1.TotalAmount + Cash2.TotalAmount)
+                CashDeposit = (decimal)Cash1.TotalAmount,
+                PhysicalCash = (decimal)Cash2.TotalAmount
             },
             DebitEntries = Debits.Select(x => new DebitEntryDto { Amount = (decimal)(x.Amount ?? 0), ChequeNo = x.ChequeNo }).ToList(),
             Expenses = Expenses.Select(x => new ExpenseDto { Amount = (decimal)(x.Amount ?? 0) }).ToList(),

@@ -75,8 +75,8 @@ public class ReportServiceTests
         Assert.Equal("Mitali Service Station", report.StationName);
         Assert.Equal(6095.85, report.ExpectedCollection - 1000); // Exclude repayments for comparison
 
-        // Verify the 16 collection categories exist
-        Assert.Equal(16, report.CollectionBreakdown.Count);
+        // Verify the 19 collection categories exist
+        Assert.Equal(19, report.CollectionBreakdown.Count);
         
         var deposit = report.CollectionBreakdown.First(c => c.Category == "Cash Deposit").Amount;
         var cashInHand = report.CollectionBreakdown.First(c => c.Category == "Cash In Hand").Amount;
@@ -99,7 +99,7 @@ public class ReportServiceTests
                 PumpId = 1,
                 GrossSales = 3000,
                 PaymentCollection = new PaymentCollection { PhonePeMorning = 500 },
-                CashDenominations = new List<CashDenomination> { new CashDenomination { CashType = "Cash2", TotalAmount = 500 } },
+                CashDenominations = new List<CashDenomination> { new CashDenomination { CashType = "Cash2", TotalAmount = 2500 } },
                 DebitEntries = new List<DebitEntry>(),
                 Expenses = new List<Expense>(),
                 TestingEntries = new List<TestingEntry>()
@@ -111,7 +111,7 @@ public class ReportServiceTests
                 PumpId = 1,
                 GrossSales = 4000,
                 PaymentCollection = new PaymentCollection { PhonePeNight = 800 },
-                CashDenominations = new List<CashDenomination> { new CashDenomination { CashType = "Cash2", TotalAmount = 1200 } },
+                CashDenominations = new List<CashDenomination> { new CashDenomination { CashType = "Cash2", TotalAmount = 3200 } },
                 DebitEntries = new List<DebitEntry>(),
                 Expenses = new List<Expense>(),
                 TestingEntries = new List<TestingEntry>()
@@ -130,7 +130,7 @@ public class ReportServiceTests
         );
 
         // Assert
-        Assert.Equal(3000, report.CollectionBreakdown.Sum(c => c.Amount)); // 500 + 800 + 500 + 1200
+        Assert.Equal(7000, report.CollectionBreakdown.Sum(c => c.Amount)); // 500 + 800 + 2500 + 3200
         Assert.Equal(7000, report.ExpectedCollection);
     }
 }

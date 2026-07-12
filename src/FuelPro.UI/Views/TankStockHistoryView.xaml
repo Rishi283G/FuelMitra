@@ -1,0 +1,96 @@
+<UserControl x:Class="FuelPro.UI.Views.TankStockHistoryView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             xmlns:converters="clr-namespace:FuelPro.UI.Converters">
+
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisConverter"/>
+        <converters:NullToVisibilityConverter x:Key="NullToVisConverter"/>
+        <converters:StringToVisibilityConverter x:Key="StringToVisConverter"/>
+    </UserControl.Resources>
+
+    <Grid Margin="24,16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,8">
+            <materialDesign:PackIcon Kind="DatabaseArrowDown" Width="28" Height="28"
+                                     Foreground="{DynamicResource MaterialDesign.Brush.Primary}"
+                                     VerticalAlignment="Center" Margin="0,0,10,0"/>
+            <TextBlock Text="Tank Stock History" FontSize="24" FontWeight="Bold" VerticalAlignment="Center"/>
+        </StackPanel>
+
+        <!-- Filters -->
+        <materialDesign:Card Grid.Row="1" Margin="0,4,0,16" Padding="12" UniformCornerRadius="8"
+                             materialDesign:ElevationAssist.Elevation="Dp1">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <ComboBox ItemsSource="{Binding Presets}" SelectedItem="{Binding SelectedPreset}"
+                          materialDesign:HintAssist.Hint="Quick Range" Width="140" Margin="0,0,12,0"
+                          Style="{StaticResource MaterialDesignOutlinedComboBox}" Height="48"/>
+                <DatePicker SelectedDate="{Binding StartDate}" materialDesign:HintAssist.Hint="From"
+                            Style="{StaticResource MaterialDesignOutlinedDatePicker}"
+                            Width="140" Margin="0,0,8,0" Height="48"/>
+                <DatePicker SelectedDate="{Binding EndDate}" materialDesign:HintAssist.Hint="To"
+                            Style="{StaticResource MaterialDesignOutlinedDatePicker}"
+                            Width="140" Margin="0,0,12,0" Height="48"/>
+                <Button Content="Refresh" Command="{Binding LoadHistoryCommand}"
+                        Style="{StaticResource MaterialDesignOutlinedButton}" Height="48" Padding="12,0"/>
+                <ProgressBar IsIndeterminate="{Binding IsLoading}"
+                             Visibility="{Binding IsLoading, Converter={StaticResource BoolToVisConverter}}"
+                             Style="{StaticResource MaterialDesignCircularProgressBar}"
+                             Width="28" Height="28" Margin="16,0,0,0"/>
+            </StackPanel>
+        </materialDesign:Card>
+
+        <!-- Status / DataGrid -->
+        <Grid Grid.Row="2">
+            <TextBlock Text="{Binding StatusMessage}"
+                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                       FontSize="14" Opacity="0.5"
+                       Visibility="{Binding StatusMessage, Converter={StaticResource StringToVisConverter}}"/>
+
+            <DataGrid ItemsSource="{Binding HistoryRows}" AutoGenerateColumns="False"
+                      CanUserAddRows="False" IsReadOnly="True"
+                      Visibility="{Binding HasData, Converter={StaticResource BoolToVisConverter}}"
+                      materialDesign:DataGridAssist.CellPadding="8 6"
+                      HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat=dd-MMM-yyyy}" Width="100"/>
+
+                    <!-- HSD -->
+                    <DataGridTextColumn Header="HSD Opening"   Binding="{Binding HsdOpening,   StringFormat=N2}" Width="100"/>
+                    <DataGridTextColumn Header="HSD Sale"      Binding="{Binding HsdSale,       StringFormat=N2}" Width="90"/>
+                    <DataGridTextColumn Header="HSD Purchased" Binding="{Binding HsdPurchased,  StringFormat=N2}" Width="110"/>
+                    <DataGridTextColumn Header="HSD Closing"   Binding="{Binding HsdClosing,    StringFormat=N2}" Width="100"/>
+                    <DataGridTextColumn Header="HSD Dip"       Binding="{Binding HsdDip,        StringFormat=N2}" Width="80"/>
+
+                    <!-- MS-I -->
+                    <DataGridTextColumn Header="MS-I Opening"   Binding="{Binding MsIOpening,   StringFormat=N2}" Width="100"/>
+                    <DataGridTextColumn Header="MS-I Sale"      Binding="{Binding MsISale,       StringFormat=N2}" Width="90"/>
+                    <DataGridTextColumn Header="MS-I Purchased" Binding="{Binding MsIPurchased,  StringFormat=N2}" Width="110"/>
+                    <DataGridTextColumn Header="MS-I Closing"   Binding="{Binding MsIClosing,    StringFormat=N2}" Width="100"/>
+                    <DataGridTextColumn Header="MS-I Dip"       Binding="{Binding MsIDip,        StringFormat=N2}" Width="80"/>
+
+                    <!-- MS-II -->
+                    <DataGridTextColumn Header="MS-II Opening"   Binding="{Binding MsIIOpening,   StringFormat=N2}" Width="100"/>
+                    <DataGridTextColumn Header="MS-II Sale"      Binding="{Binding MsIISale,       StringFormat=N2}" Width="90"/>
+                    <DataGridTextColumn Header="MS-II Purchased" Binding="{Binding MsIIPurchased,  StringFormat=N2}" Width="110"/>
+                    <DataGridTextColumn Header="MS-II Closing"   Binding="{Binding MsIIClosing,    StringFormat=N2}" Width="100"/>
+                    <DataGridTextColumn Header="MS-II Dip"       Binding="{Binding MsIIDip,        StringFormat=N2}" Width="80"/>
+
+                    <!-- CNG -->
+                    <DataGridTextColumn Header="CNG Opening"   Binding="{Binding CngOpening,   StringFormat=N2}" Width="100"/>
+                    <DataGridTextColumn Header="CNG Sale"      Binding="{Binding CngSale,       StringFormat=N2}" Width="90"/>
+                    <DataGridTextColumn Header="CNG Purchased" Binding="{Binding CngPurchased,  StringFormat=N2}" Width="110"/>
+                    <DataGridTextColumn Header="CNG Closing"   Binding="{Binding CngClosing,    StringFormat=N2}" Width="100"/>
+                    <DataGridTextColumn Header="CNG Dip"       Binding="{Binding CngDip,        StringFormat=N2}" Width="80"/>
+                </DataGrid.Columns>
+            </DataGrid>
+        </Grid>
+    </Grid>
+</UserControl>

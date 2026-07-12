@@ -159,59 +159,144 @@
                     <!-- Fuel Sales & Profit Details -->
                     <materialDesign:Card Padding="16" UniformCornerRadius="8" Margin="0,0,0,16" materialDesign:ElevationAssist.Elevation="Dp1">
                         <StackPanel>
-                            <TextBlock Text="Fuel Sales &amp; Margin Breakdown" FontSize="16" FontWeight="Bold" Margin="0,0,0,12" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
-                            <Grid>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                </Grid.RowDefinitions>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="2*"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-
-                                <!-- Table Header -->
-                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Fuel Type" FontWeight="SemiBold" FontSize="12" Opacity="0.7"/>
-                                <TextBlock Grid.Row="0" Grid.Column="1" Text="Litres Sold" FontWeight="SemiBold" FontSize="12" Opacity="0.7" TextAlignment="Right"/>
-                                <TextBlock Grid.Row="0" Grid.Column="2" Text="Avg Margin" FontWeight="SemiBold" FontSize="12" Opacity="0.7" TextAlignment="Right"/>
-                                <TextBlock Grid.Row="0" Grid.Column="3" Text="Total Profit" FontWeight="SemiBold" FontSize="12" Opacity="0.7" TextAlignment="Right"/>
-                                <Separator Grid.Row="0" Grid.ColumnSpan="4" Margin="0,4,0,4" VerticalAlignment="Bottom"/>
-
-                                <!-- HSD (Diesel) Row -->
-                                <TextBlock Grid.Row="1" Grid.Column="0" Text="HSD - 20KL (Diesel)" Margin="0,8"/>
-                                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding HsdLitres, StringFormat='{}{0:N2} L'}" Margin="0,8" TextAlignment="Right"/>
-                                <TextBlock Grid.Row="1" Grid.Column="2" Text="{Binding HsdMargin, StringFormat='{}₹{0:N2}'}" Margin="0,8" TextAlignment="Right"/>
-                                <TextBlock Grid.Row="1" Grid.Column="3" Text="{Binding HsdProfit, Converter={StaticResource CurrencyConverter}}" Margin="0,8" TextAlignment="Right" FontWeight="SemiBold"/>
-
-                                <!-- MS-I Row -->
-                                <TextBlock Grid.Row="2" Grid.Column="0" Text="MS - 20KL (Petrol)" Margin="0,8"/>
-                                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding MsILitres, StringFormat='{}{0:N2} L'}" Margin="0,8" TextAlignment="Right"/>
-                                <TextBlock Grid.Row="2" Grid.Column="2" Text="{Binding MsIMargin, StringFormat='{}₹{0:N2}'}" Margin="0,8" TextAlignment="Right"/>
-                                <TextBlock Grid.Row="2" Grid.Column="3" Text="{Binding MsIProfit, Converter={StaticResource CurrencyConverter}}" Margin="0,8" TextAlignment="Right" FontWeight="SemiBold"/>
-
-                                <!-- MS-II Row -->
-                                <TextBlock Grid.Row="3" Grid.Column="0" Text="HSD - 20KL II (Diesel)" Margin="0,8"/>
-                                <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding MsIILitres, StringFormat='{}{0:N2} L'}" Margin="0,8" TextAlignment="Right"/>
-                                <TextBlock Grid.Row="3" Grid.Column="2" Text="{Binding MsIIMargin, StringFormat='{}₹{0:N2}'}" Margin="0,8" TextAlignment="Right"/>
-                                <TextBlock Grid.Row="3" Grid.Column="3" Text="{Binding MsIIProfit, Converter={StaticResource CurrencyConverter}}" Margin="0,8" TextAlignment="Right" FontWeight="SemiBold"/>
-                            </Grid>
+                            <TextBlock Text="Fuel Sales Profit Breakdown" FontSize="16" FontWeight="Bold" Margin="0,0,0,12" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
                             
-                            <Separator Margin="0,8" Background="{DynamicResource MaterialDesign.Brush.Primary}"/>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="2*"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="Total Fuel" FontWeight="Bold"/>
-                                <TextBlock Grid.Column="1" Text="{Binding TotalFuelLitres, StringFormat='{}{0:N2} L'}" FontWeight="Bold" TextAlignment="Right"/>
-                                <TextBlock Grid.Column="3" Text="{Binding TotalFuelProfit, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" TextAlignment="Right" Foreground="#1565C0"/>
-                            </Grid>
+                            <TabControl SelectedIndex="{Binding SelectedProfitTabIndex}" materialDesign:ColorZoneAssist.Mode="Standard" BorderThickness="0">
+                                <!-- Tab 1: Margin-Based -->
+                                <TabItem Header="Margin-Based Profit">
+                                    <StackPanel Margin="0,12,0,0">
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="2*"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <!-- Table Header -->
+                                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Fuel Type" FontWeight="SemiBold" FontSize="12" Opacity="0.7"/>
+                                            <TextBlock Grid.Row="0" Grid.Column="1" Text="Qty Sold" FontWeight="SemiBold" FontSize="12" Opacity="0.7" TextAlignment="Right"/>
+                                            <TextBlock Grid.Row="0" Grid.Column="2" Text="Avg Margin" FontWeight="SemiBold" FontSize="12" Opacity="0.7" TextAlignment="Right"/>
+                                            <TextBlock Grid.Row="0" Grid.Column="3" Text="Total Profit" FontWeight="SemiBold" FontSize="12" Opacity="0.7" TextAlignment="Right"/>
+                                            <Separator Grid.Row="0" Grid.ColumnSpan="4" Margin="0,4,0,4" VerticalAlignment="Bottom"/>
+
+                                            <!-- HSD Row -->
+                                            <TextBlock Grid.Row="1" Grid.Column="0" Text="HSD - 20KL (Diesel)" Margin="0,8"/>
+                                            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding HsdLitres, StringFormat='{}{0:N2} L'}" Margin="0,8" TextAlignment="Right"/>
+                                            <TextBlock Grid.Row="1" Grid.Column="2" Text="{Binding HsdMargin, StringFormat='{}₹{0:N2}'}" Margin="0,8" TextAlignment="Right"/>
+                                            <TextBlock Grid.Row="1" Grid.Column="3" Text="{Binding HsdProfit, Converter={StaticResource CurrencyConverter}}" Margin="0,8" TextAlignment="Right" FontWeight="SemiBold"/>
+
+                                            <!-- MS-I Row -->
+                                            <TextBlock Grid.Row="2" Grid.Column="0" Text="MS - 20KL (Petrol)" Margin="0,8"/>
+                                            <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding MsILitres, StringFormat='{}{0:N2} L'}" Margin="0,8" TextAlignment="Right"/>
+                                            <TextBlock Grid.Row="2" Grid.Column="2" Text="{Binding MsIMargin, StringFormat='{}₹{0:N2}'}" Margin="0,8" TextAlignment="Right"/>
+                                            <TextBlock Grid.Row="2" Grid.Column="3" Text="{Binding MsIProfit, Converter={StaticResource CurrencyConverter}}" Margin="0,8" TextAlignment="Right" FontWeight="SemiBold"/>
+
+                                            <!-- MS-II Row -->
+                                            <TextBlock Grid.Row="3" Grid.Column="0" Text="HSD - 20KL II (Diesel)" Margin="0,8"/>
+                                            <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding MsIILitres, StringFormat='{}{0:N2} L'}" Margin="0,8" TextAlignment="Right"/>
+                                            <TextBlock Grid.Row="3" Grid.Column="2" Text="{Binding MsIIMargin, StringFormat='{}₹{0:N2}'}" Margin="0,8" TextAlignment="Right"/>
+                                            <TextBlock Grid.Row="3" Grid.Column="3" Text="{Binding MsIIProfit, Converter={StaticResource CurrencyConverter}}" Margin="0,8" TextAlignment="Right" FontWeight="SemiBold"/>
+
+                                            <!-- CNG Row -->
+                                            <TextBlock Grid.Row="4" Grid.Column="0" Text="CNG" Margin="0,8"/>
+                                            <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding CngLitres, StringFormat='{}{0:N2} Kg'}" Margin="0,8" TextAlignment="Right"/>
+                                            <TextBlock Grid.Row="4" Grid.Column="2" Text="{Binding CngMargin, StringFormat='{}₹{0:N2}'}" Margin="0,8" TextAlignment="Right"/>
+                                            <TextBlock Grid.Row="4" Grid.Column="3" Text="{Binding CngProfit, Converter={StaticResource CurrencyConverter}}" Margin="0,8" TextAlignment="Right" FontWeight="SemiBold"/>
+                                        </Grid>
+                                        <Separator Margin="0,8" Background="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="2*"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="Total Fuel" FontWeight="Bold"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding TotalFuelLitres, StringFormat='{}{0:N2} L'}" FontWeight="Bold" TextAlignment="Right"/>
+                                            <TextBlock Grid.Column="3" Text="{Binding TotalFuelProfit, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" TextAlignment="Right" Foreground="#1565C0"/>
+                                        </Grid>
+                                    </StackPanel>
+                                </TabItem>
+                                
+                                <!-- Tab 2: Purchase-Based -->
+                                <TabItem Header="Purchase-Based Profit">
+                                    <StackPanel Margin="0,12,0,0">
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="2*"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <!-- Table Header -->
+                                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Fuel Type" FontWeight="SemiBold" FontSize="12" Opacity="0.7"/>
+                                            <TextBlock Grid.Row="0" Grid.Column="1" Text="Qty Sold" FontWeight="SemiBold" FontSize="12" Opacity="0.7" TextAlignment="Right"/>
+                                            <TextBlock Grid.Row="0" Grid.Column="2" Text="Avg Sale Rate" FontWeight="SemiBold" FontSize="12" Opacity="0.7" TextAlignment="Right"/>
+                                            <TextBlock Grid.Row="0" Grid.Column="3" Text="Avg Purchase" FontWeight="SemiBold" FontSize="12" Opacity="0.7" TextAlignment="Right"/>
+                                            <TextBlock Grid.Row="0" Grid.Column="4" Text="Total Profit" FontWeight="SemiBold" FontSize="12" Opacity="0.7" TextAlignment="Right"/>
+                                            <Separator Grid.Row="0" Grid.ColumnSpan="5" Margin="0,4,0,4" VerticalAlignment="Bottom"/>
+
+                                            <!-- HSD Row -->
+                                            <TextBlock Grid.Row="1" Grid.Column="0" Text="HSD - 20KL (Diesel)" Margin="0,8"/>
+                                            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding HsdLitres, StringFormat='{}{0:N2} L'}" Margin="0,8" TextAlignment="Right"/>
+                                            <TextBlock Grid.Row="1" Grid.Column="2" Text="{Binding HsdAvgSaleRate, StringFormat='{}₹{0:N2}'}" Margin="0,8" TextAlignment="Right"/>
+                                            <TextBlock Grid.Row="1" Grid.Column="3" Text="{Binding HsdAvgPurchaseRate, StringFormat='{}₹{0:N2}'}" Margin="0,8" TextAlignment="Right"/>
+                                            <TextBlock Grid.Row="1" Grid.Column="4" Text="{Binding HsdPurchaseProfit, Converter={StaticResource CurrencyConverter}}" Margin="0,8" TextAlignment="Right" FontWeight="SemiBold"/>
+
+                                            <!-- Petrol Row -->
+                                            <TextBlock Grid.Row="2" Grid.Column="0" Text="MS - 20KL (Petrol)" Margin="0,8"/>
+                                            <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding MsILitres, StringFormat='{}{0:N2} L'}" Margin="0,8" TextAlignment="Right"/>
+                                            <TextBlock Grid.Row="2" Grid.Column="2" Text="{Binding MsIAvgSaleRate, StringFormat='{}₹{0:N2}'}" Margin="0,8" TextAlignment="Right"/>
+                                            <TextBlock Grid.Row="2" Grid.Column="3" Text="{Binding MsIAvgPurchaseRate, StringFormat='{}₹{0:N2}'}" Margin="0,8" TextAlignment="Right"/>
+                                            <TextBlock Grid.Row="2" Grid.Column="4" Text="{Binding MsIPurchaseProfit, Converter={StaticResource CurrencyConverter}}" Margin="0,8" TextAlignment="Right" FontWeight="SemiBold"/>
+
+                                            <!-- Speed Row -->
+                                            <TextBlock Grid.Row="3" Grid.Column="0" Text="HSD - 20KL II (Diesel)" Margin="0,8"/>
+                                            <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding MsIILitres, StringFormat='{}{0:N2} L'}" Margin="0,8" TextAlignment="Right"/>
+                                            <TextBlock Grid.Row="3" Grid.Column="2" Text="{Binding MsIIAvgSaleRate, StringFormat='{}₹{0:N2}'}" Margin="0,8" TextAlignment="Right"/>
+                                            <TextBlock Grid.Row="3" Grid.Column="3" Text="{Binding MsIIAvgPurchaseRate, StringFormat='{}₹{0:N2}'}" Margin="0,8" TextAlignment="Right"/>
+                                            <TextBlock Grid.Row="3" Grid.Column="4" Text="{Binding MsIIPurchaseProfit, Converter={StaticResource CurrencyConverter}}" Margin="0,8" TextAlignment="Right" FontWeight="SemiBold"/>
+
+                                            <!-- CNG Row -->
+                                            <TextBlock Grid.Row="4" Grid.Column="0" Text="CNG" Margin="0,8"/>
+                                            <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding CngLitres, StringFormat='{}{0:N2} Kg'}" Margin="0,8" TextAlignment="Right"/>
+                                            <TextBlock Grid.Row="4" Grid.Column="2" Text="{Binding CngAvgSaleRate, StringFormat='{}₹{0:N2}'}" Margin="0,8" TextAlignment="Right"/>
+                                            <TextBlock Grid.Row="4" Grid.Column="3" Text="{Binding CngAvgPurchaseRate, StringFormat='{}₹{0:N2}'}" Margin="0,8" TextAlignment="Right"/>
+                                            <TextBlock Grid.Row="4" Grid.Column="4" Text="{Binding CngPurchaseProfit, Converter={StaticResource CurrencyConverter}}" Margin="0,8" TextAlignment="Right" FontWeight="SemiBold"/>
+                                        </Grid>
+                                        <Separator Margin="0,8" Background="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="2*"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="Total Fuel" FontWeight="Bold"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding TotalFuelLitres, StringFormat='{}{0:N2} L'}" FontWeight="Bold" TextAlignment="Right"/>
+                                            <TextBlock Grid.Column="4" Text="{Binding TotalFuelProfit, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" TextAlignment="Right" Foreground="#1565C0"/>
+                                        </Grid>
+                                    </StackPanel>
+                                </TabItem>
+                            </TabControl>
                         </StackPanel>
                     </materialDesign:Card>
 
@@ -318,6 +403,51 @@
                                 <TextBlock Text="Final Net Profit" FontSize="16" FontWeight="Bold" Foreground="#1B5E20"/>
                                 <TextBlock Text="{Binding NetProfit, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" FontSize="16" HorizontalAlignment="Right" Foreground="#1B5E20"/>
                             </Grid>
+                        </StackPanel>
+                    </materialDesign:Card>
+
+                    <!-- Configure Fuel Profit Margins -->
+                    <materialDesign:Card Padding="16" UniformCornerRadius="8" Margin="0,0,0,16" materialDesign:ElevationAssist.Elevation="Dp1">
+                        <StackPanel>
+                            <TextBlock Text="Configure Fuel Margins" FontSize="16" FontWeight="Bold" Margin="0,0,0,12" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                            
+                            <Grid Margin="0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="80"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Diesel (HSD) (₹/L):" VerticalAlignment="Center" FontSize="13"/>
+                                <TextBox Grid.Column="1" Text="{Binding EditHsdMargin, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource MaterialDesignTextBox}" TextAlignment="Right" FontWeight="SemiBold"/>
+                            </Grid>
+                            
+                            <Grid Margin="0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="80"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Petrol (MS-I) (₹/L):" VerticalAlignment="Center" FontSize="13"/>
+                                <TextBox Grid.Column="1" Text="{Binding EditMsIMargin, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource MaterialDesignTextBox}" TextAlignment="Right" FontWeight="SemiBold"/>
+                            </Grid>
+
+                            <Grid Margin="0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="80"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Speed (MS-II) (₹/L):" VerticalAlignment="Center" FontSize="13"/>
+                                <TextBox Grid.Column="1" Text="{Binding EditMsIIMargin, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource MaterialDesignTextBox}" TextAlignment="Right" FontWeight="SemiBold"/>
+                            </Grid>
+
+                            <Grid Margin="0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="80"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="CNG (₹/Kg):" VerticalAlignment="Center" FontSize="13"/>
+                                <TextBox Grid.Column="1" Text="{Binding EditCngMargin, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource MaterialDesignTextBox}" TextAlignment="Right" FontWeight="SemiBold"/>
+                            </Grid>
+
+                            <Button Content="Save Margins" Command="{Binding SaveMarginsCommand}" Style="{StaticResource MaterialDesignRaisedButton}" Height="36" Margin="0,12,0,0" Background="#1565C0" BorderBrush="#1565C0"/>
                         </StackPanel>
                     </materialDesign:Card>
 

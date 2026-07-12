@@ -211,8 +211,11 @@ export default function DashboardScreen({ onNavigate }: DashboardProps) {
             <p className="greeting-date">{today}</p>
             <p className="greeting-station">
               Station ID: {profile?.StationId}
-              {profile?.AssignedPump ? ` · Pump ${profile.AssignedPump} (Shift ${profile.AssignedShift})` : ' · No Active Assignment'}
+              {profile?.AssignedPump 
+                ? ` · Pump ${profile.AssignedPump}${profile.ConnectedPump ? ` + Pump ${profile.ConnectedPump} (Connected)` : ''} (Shift ${profile.AssignedShift})` 
+                : ' · No Active Assignment'}
             </p>
+
           </div>
         </div>
 

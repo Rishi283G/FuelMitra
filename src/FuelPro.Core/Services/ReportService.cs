@@ -193,7 +193,10 @@ public class ReportService : IReportService
             new() { Category = "Oil Sales", Amount = 0 },
             new() { Category = "DEF Sales", Amount = 0 },
             new() { Category = "Expenses", Amount = dto.ExpensesTotal },
-            new() { Category = "Testing", Amount = testingTotal },
+            new() { Category = "MS Testing", Amount = msTesting },
+            new() { Category = "HSD Testing I", Amount = hsdTesting },
+            new() { Category = "HSD Testing II", Amount = hsdTesting2 },
+            new() { Category = "CNG Testing", Amount = cngTesting },
             new() { Category = "DSM Short", Amount = totalDsmShort }
         };
 
@@ -266,7 +269,7 @@ public class ReportService : IReportService
         // 5. Expenses (Table D)
         var expensesList = allExpenses ?? new List<Expense>();
         dto.ExpenseRows = _aggregation.BuildExpenseRows(entriesList, expensesList);
-        dto.ExpensesTotal = dto.ExpenseRows.Sum(e => e.Amount);
+        dto.ExpensesTotal = dto.ExpenseRows.Where(r => !r.IsShiftLevel).Sum(e => e.Amount);
 
         // 6. Debtor Repayments
         var repaymentsList = repayments ?? new List<CreditorRepayment>();
@@ -281,7 +284,7 @@ public class ReportService : IReportService
             else if (string.Equals(mode, "Bank Transfer", StringComparison.OrdinalIgnoreCase)) dto.BankCashRepayments += r.Amount;
 
             string refNo = "";
-            if (r.PaymentMode == "PhonePe" || r.PaymentMode == "Credit Card" || r.PaymentMode == "PineLabs Card" || r.PaymentMode == "PetroCard" || r.PaymentMode == "Bank Transfer")
+            if (r.PaymentMode == "PhonePe" || r.PaymentMode == "Credit Card" || r.PaymentMode == "PineLabs Card" || r.PaymentMode == "PetroCard")
                 refNo = $"TID: {r.CardTid}, Batch: {r.CardBatch}";
             else if (r.PaymentMode == "Cheque")
                 refNo = $"Chq: {r.ChequeNo}";
@@ -384,7 +387,10 @@ public class ReportService : IReportService
             new() { Category = "Oil Sales", Amount = 0 },
             new() { Category = "DEF Sales", Amount = 0 },
             new() { Category = "Expenses", Amount = dto.ExpensesTotal },
-            new() { Category = "Testing", Amount = testingTotal },
+            new() { Category = "MS Testing", Amount = msTesting },
+            new() { Category = "HSD Testing I", Amount = hsdTesting },
+            new() { Category = "HSD Testing II", Amount = hsdTesting2 },
+            new() { Category = "CNG Testing", Amount = cngTesting },
             new() { Category = "DSM Short", Amount = totalDsmShort }
         };
 
@@ -404,7 +410,9 @@ public class ReportService : IReportService
         var mismatchGroups = entries.GroupBy(e => new { e.ShiftId, e.DsmName, GroupPumpId = e.ReconciledToPumpId ?? e.PumpId });
         foreach (var g in mismatchGroups)
         {
-            var gs = g.SelectMany(e => e.NozzleReadings).Sum(n => n.Amount);
+            var gs = g.SelectMany(e => e.NozzleReadings).Any()
+                ? g.SelectMany(e => e.NozzleReadings).Sum(n => n.Amount)
+                : (double)g.Sum(e => e.GrossSales);
             var cash1Total = g.SelectMany(e => e.CashDenominations).Where(c => c.CashType == "Cash1").Sum(c => c.TotalAmount);
             var cash2Total = g.SelectMany(e => e.CashDenominations).Where(c => c.CashType == "Cash2").Sum(c => c.TotalAmount);
             
@@ -470,11 +478,15 @@ public class ReportService : IReportService
                 ReconciledToPumpId = null,
                 StartTime = primary.StartTime,
                 EndTime = primary.EndTime,
-                GrossSales = group.Sum(e => e.GrossSales),
-                TotalInDirect = group.Sum(e => e.TotalInDirect),
-                TotalCreditors = group.Sum(e => e.TotalCreditors),
-                TotalCollection = group.Sum(e => e.TotalCollection),
-                Mismatch = group.Sum(e => e.Mismatch)
+                GrossSales = group.SelectMany(e => e.NozzleReadings ?? new List<NozzleReading>()).Any()
+                    ? (decimal)group.SelectMany(e => e.NozzleReadings ?? new List<NozzleReading>()).Sum(n => n.Amount)
+                    : group.Sum(e => e.GrossSales),
+                TotalInDirect = primary.TotalInDirect,
+                TotalCreditors = primary.TotalCreditors,
+                TotalCollection = primary.TotalCollection,
+                Mismatch = primary.TotalCollection - (group.SelectMany(e => e.NozzleReadings ?? new List<NozzleReading>()).Any()
+                    ? (decimal)group.SelectMany(e => e.NozzleReadings ?? new List<NozzleReading>()).Sum(n => n.Amount)
+                    : group.Sum(e => e.GrossSales))
             };
 
             // Merge child collections

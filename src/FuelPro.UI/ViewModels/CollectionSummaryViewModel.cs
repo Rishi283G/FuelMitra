@@ -39,6 +39,7 @@ public partial class CollectionSummaryViewModel : ObservableObject
     [ObservableProperty] private double _totalPetroCard;
     [ObservableProperty] private double _totalDebit;
     [ObservableProperty] private double _grandTotal;
+    [ObservableProperty] private double _totalDigital;
 
     public ObservableCollection<CollectionDayRow> DayRows { get; } = new();
 
@@ -67,7 +68,7 @@ public partial class CollectionSummaryViewModel : ObservableObject
             TotalCashDeposit = 0; TotalCashInHand = 0;
             TotalPhonePe = 0; TotalPhonePeCard = 0;
             TotalCreditCard = 0; TotalPetroCard = 0;
-            TotalDebit = 0; GrandTotal = 0;
+            TotalDebit = 0; GrandTotal = 0; TotalDigital = 0;
             DayRows.Clear();
 
             var tidSheets = await _tidService.GetTidSheetsForRangeAsync(StartDate.Date, EndDate.Date);
@@ -107,6 +108,7 @@ public partial class CollectionSummaryViewModel : ObservableObject
 
             GrandTotal = TotalCashDeposit + TotalCashInHand + TotalPhonePe + TotalPhonePeCard
                          + TotalCreditCard + TotalPetroCard + TotalDebit;
+            TotalDigital = TotalPhonePe + TotalPhonePeCard + TotalCreditCard + TotalPetroCard;
         }
         catch (Exception ex)
         {

@@ -45,6 +45,11 @@ public class FinancialCalculationService : IFinancialCalculationService
             .OrderBy(m => m.EffectiveDate)
             .ToListAsync();
 
+        // Fetch fuel tankers for purchase-based profit tracking
+        var tankers = await _dbContext.FuelTankers
+            .OrderBy(t => t.TankerDate)
+            .ToListAsync();
+
         // Helper to lookup historical margin
         double GetMargin(string fuelType, DateTime date)
         {
@@ -66,6 +71,26 @@ public class FinancialCalculationService : IFinancialCalculationService
             };
         }
 
+        // Helper to lookup historical purchase rate
+        double GetPurchaseRate(string fuelType, DateTime date, double saleRate)
+        {
+            var match = tankers
+                .Where(t => string.Equals(t.FuelType, fuelType, StringComparison.OrdinalIgnoreCase) && t.TankerDate.Date <= date.Date)
+                .OrderByDescending(t => t.TankerDate)
+                .FirstOrDefault();
+
+            if (match != null) return match.PurchaseRate;
+
+            // Fallback: saleRate - margin
+            return saleRate - GetMargin(fuelType, date);
+        }
+
+        // Temporary sum fields for sale amount and purchase cost
+        double hsdSaleAmount = 0, hsdPurchaseCost = 0;
+        double msISaleAmount = 0, msIPurchaseCost = 0;
+        double msIISaleAmount = 0, msIIPurchaseCost = 0;
+        double cngSaleAmount = 0, cngPurchaseCost = 0;
+
         // Aggregate fuel litres and calculate profit
         foreach (var shift in shifts)
         {
@@ -77,43 +102,74 @@ public class FinancialCalculationService : IFinancialCalculationService
                     var margin = GetMargin(ft, shift.ShiftDate);
                     var profit = nr.SaleLitres * margin;
 
+                    var saleRate = nr.Rate;
+                    var purchaseRate = GetPurchaseRate(ft, shift.ShiftDate, saleRate);
+                    var purchaseProfit = nr.SaleLitres * (saleRate - purchaseRate);
+
                     if (ft == "HSD")
                     {
                         result.FuelProfit.HsdLitres += nr.SaleLitres;
                         result.FuelProfit.HsdProfit += profit;
+
+                        hsdSaleAmount += (nr.SaleLitres * saleRate);
+                        hsdPurchaseCost += (nr.SaleLitres * purchaseRate);
+                        result.FuelProfit.HsdPurchaseProfit += purchaseProfit;
                     }
                     else if (ft == "MS-I")
                     {
                         result.FuelProfit.MsILitres += nr.SaleLitres;
                         result.FuelProfit.MsIProfit += profit;
+
+                        msISaleAmount += (nr.SaleLitres * saleRate);
+                        msIPurchaseCost += (nr.SaleLitres * purchaseRate);
+                        result.FuelProfit.MsIPurchaseProfit += purchaseProfit;
                     }
                     else if (ft == "MS-II")
                     {
                         result.FuelProfit.MsIILitres += nr.SaleLitres;
                         result.FuelProfit.MsIIProfit += profit;
+
+                        msIISaleAmount += (nr.SaleLitres * saleRate);
+                        msIIPurchaseCost += (nr.SaleLitres * purchaseRate);
+                        result.FuelProfit.MsIIPurchaseProfit += purchaseProfit;
                     }
                     else if (ft == "CNG")
                     {
                         result.FuelProfit.CngLitres += nr.SaleLitres;
                         result.FuelProfit.CngProfit += profit;
+
+                        cngSaleAmount += (nr.SaleLitres * saleRate);
+                        cngPurchaseCost += (nr.SaleLitres * purchaseRate);
+                        result.FuelProfit.CngPurchaseProfit += purchaseProfit;
                     }
                 }
             }
         }
 
-        // Calculate average margin for display in the P&L details
+        // Calculate average margin, sale rates, and purchase rates for display in the P&L details
         result.FuelProfit.HsdMargin = result.FuelProfit.HsdLitres > 0 
             ? result.FuelProfit.HsdProfit / result.FuelProfit.HsdLitres 
             : GetMargin("HSD", endDate);
+        result.FuelProfit.HsdAvgSaleRate = result.FuelProfit.HsdLitres > 0 ? hsdSaleAmount / result.FuelProfit.HsdLitres : 0.0;
+        result.FuelProfit.HsdAvgPurchaseRate = result.FuelProfit.HsdLitres > 0 ? hsdPurchaseCost / result.FuelProfit.HsdLitres : 0.0;
+
         result.FuelProfit.MsIMargin = result.FuelProfit.MsILitres > 0 
             ? result.FuelProfit.MsIProfit / result.FuelProfit.MsILitres 
             : GetMargin("MS-I", endDate);
+        result.FuelProfit.MsIAvgSaleRate = result.FuelProfit.MsILitres > 0 ? msISaleAmount / result.FuelProfit.MsILitres : 0.0;
+        result.FuelProfit.MsIAvgPurchaseRate = result.FuelProfit.MsILitres > 0 ? msIPurchaseCost / result.FuelProfit.MsILitres : 0.0;
+
         result.FuelProfit.MsIIMargin = result.FuelProfit.MsIILitres > 0 
             ? result.FuelProfit.MsIIProfit / result.FuelProfit.MsIILitres 
             : GetMargin("MS-II", endDate);
+        result.FuelProfit.MsIIAvgSaleRate = result.FuelProfit.MsIILitres > 0 ? msIISaleAmount / result.FuelProfit.MsIILitres : 0.0;
+        result.FuelProfit.MsIIAvgPurchaseRate = result.FuelProfit.MsIILitres > 0 ? msIIPurchaseCost / result.FuelProfit.MsIILitres : 0.0;
+
         result.FuelProfit.CngMargin = result.FuelProfit.CngLitres > 0 
             ? result.FuelProfit.CngProfit / result.FuelProfit.CngLitres 
             : GetMargin("CNG", endDate);
+        result.FuelProfit.CngAvgSaleRate = result.FuelProfit.CngLitres > 0 ? cngSaleAmount / result.FuelProfit.CngLitres : 0.0;
+        result.FuelProfit.CngAvgPurchaseRate = result.FuelProfit.CngLitres > 0 ? cngPurchaseCost / result.FuelProfit.CngLitres : 0.0;
 
         // 4. Calculate Oil & DEF Profit by aggregating daily logs and purchases directly (using ProductMaster)
         result.OilProfit = await CalculateProductProfitForCategoryAsync("Oil", startDate, endDate);

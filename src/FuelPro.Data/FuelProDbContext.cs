@@ -68,6 +68,15 @@ public class FuelProDbContext : DbContext
     public DbSet<DsmPersonalDebtorRepayment> DsmPersonalDebtorRepayments => Set<DsmPersonalDebtorRepayment>();
     public DbSet<PettyCashTransaction> PettyCashTransactions => Set<PettyCashTransaction>();
 
+    // Tanker Management
+    public DbSet<FuelTanker> FuelTankers => Set<FuelTanker>();
+    public DbSet<TankDailyStock> TankDailyStocks => Set<TankDailyStock>();
+
+    // DSM Salary & Payroll
+    public DbSet<DsmSalaryHistory> DsmSalaryHistories => Set<DsmSalaryHistory>();
+    public DbSet<DsmSalaryPayment> DsmSalaryPayments => Set<DsmSalaryPayment>();
+
+
     // AGS Import
     public DbSet<AgsShiftImport> AgsShiftImports => Set<AgsShiftImport>();
     public DbSet<AgsNozzleReading> AgsNozzleReadings => Set<AgsNozzleReading>();
@@ -405,17 +414,51 @@ public class FuelProDbContext : DbContext
     public override int SaveChanges()
     {
         var changes = CaptureChanges();
-        var result = base.SaveChanges();
-        SaveChangeLogs(changes);
-        return result;
+        try
+        {
+            var result = base.SaveChanges();
+            SaveChangeLogs(changes);
+            return result;
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            foreach (var entry in ex.Entries)
+            {
+                var keyValues = entry.Metadata.FindPrimaryKey()?.Properties
+                    .Select(p => $"{p.Name}: {entry.Property(p.Name).CurrentValue}")
+                    .ToList();
+                Serilog.Log.Error("Concurrency Exception on Entity: {EntityType}, State: {State}, Keys: {Keys}",
+                    entry.Entity.GetType().FullName,
+                    entry.State,
+                    string.Join(", ", keyValues ?? new List<string>()));
+            }
+            throw;
+        }
     }
 
     public override async Task<int> SaveChangesAsync(System.Threading.CancellationToken cancellationToken = default)
     {
         var changes = CaptureChanges();
-        var result = await base.SaveChangesAsync(cancellationToken);
-        await SaveChangeLogsAsync(changes);
-        return result;
+        try
+        {
+            var result = await base.SaveChangesAsync(cancellationToken);
+            await SaveChangeLogsAsync(changes);
+            return result;
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            foreach (var entry in ex.Entries)
+            {
+                var keyValues = entry.Metadata.FindPrimaryKey()?.Properties
+                    .Select(p => $"{p.Name}: {entry.Property(p.Name).CurrentValue}")
+                    .ToList();
+                Serilog.Log.Error("Concurrency Exception on Entity: {EntityType}, State: {State}, Keys: {Keys}",
+                    entry.Entity.GetType().FullName,
+                    entry.State,
+                    string.Join(", ", keyValues ?? new List<string>()));
+            }
+            throw;
+        }
     }
 
     private class CapturedChange

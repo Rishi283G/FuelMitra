@@ -12,11 +12,16 @@ public class TidCalculationService : ITidCalculationService
 {
     private readonly IShiftRepository _shiftRepo;
     private readonly IDsmEntryRepository _dsmRepo;
+    private readonly ICreditorRepaymentRepository _repaymentRepo;
 
-    public TidCalculationService(IShiftRepository shiftRepo, IDsmEntryRepository dsmRepo)
+    public TidCalculationService(
+        IShiftRepository shiftRepo,
+        IDsmEntryRepository dsmRepo,
+        ICreditorRepaymentRepository repaymentRepo)
     {
         _shiftRepo = shiftRepo;
         _dsmRepo = dsmRepo;
+        _repaymentRepo = repaymentRepo;
     }
 
     public async Task<BusinessDayTidSheet> GetTidSheetAsync(DateTime date)
@@ -346,6 +351,93 @@ public class TidCalculationService : ITidCalculationService
         sheet.PhonePePayments = GroupAndMerge(sheet.PhonePePayments);
         sheet.CardPayments = GroupAndMerge(sheet.CardPayments);
         sheet.PetroCardPayments = GroupAndMerge(sheet.PetroCardPayments);
+
+        // Populate debtor repayments (PhonePe / PineLabs Card)
+        // Slot mapping:
+        //   Morning  → RepaymentDate == prevDate  && ShiftNumber == "A"
+        //   Day      → RepaymentDate == date.Date && ShiftNumber == "B"
+        //   Night    → RepaymentDate == date.Date && ShiftNumber == "A"
+        var repPrevRes  = await _repaymentRepo.GetByDateAsync(prevDate);
+        var repDateRes  = await _repaymentRepo.GetByDateAsync(date.Date);
+
+        var allRepayments = new List<CreditorRepayment>();
+        if (repPrevRes.Success && repPrevRes.Data != null)  allRepayments.AddRange(repPrevRes.Data);
+        if (repDateRes.Success && repDateRes.Data != null)  allRepayments.AddRange(repDateRes.Data);
+
+        foreach (var r in allRepayments)
+        {
+            bool isPhonePe  = r.PaymentMode == "PhonePe";
+            bool isPineLabs = r.PaymentMode == "PineLabs Card";
+            if (!isPhonePe && !isPineLabs) continue;
+
+            string slot;
+            string shiftLabel;
+            string slotDate;
+            string timeWindow;
+            string slotSubtitle;
+
+            if (r.RepaymentDate.Date == prevDate && r.ShiftNumber == "A")
+            {
+                slot = "Morning";
+                shiftLabel = "Morning (12am - 8am)";
+                slotDate = prevDate.ToString("dd-MMM-yyyy");
+                timeWindow = "12:00 AM – 8:00 AM";
+                slotSubtitle = $"({prevDate:dd MMM} | 12:00 AM – 8:00 AM)";
+            }
+            else if (r.RepaymentDate.Date == date.Date && r.ShiftNumber == "B")
+            {
+                slot = "Day";
+                shiftLabel = "Day (8am - 8pm)";
+                slotDate = date.Date.ToString("dd-MMM-yyyy");
+                timeWindow = "8:00 AM – 8:00 PM";
+                slotSubtitle = $"({date.Date:dd MMM} | 8:00 AM – 8:00 PM)";
+            }
+            else if (r.RepaymentDate.Date == date.Date && r.ShiftNumber == "A")
+            {
+                slot = "Night";
+                shiftLabel = "Night (8pm - 12am)";
+                slotDate = date.Date.ToString("dd-MMM-yyyy");
+                timeWindow = "8:00 PM – 12:00 AM";
+                slotSubtitle = $"({date.Date:dd MMM} | 8:00 PM – 12:00 AM)";
+            }
+            else continue; // doesn't belong to this business day
+
+            var item = new TidItemDto
+            {
+                DsmName   = r.CreditorName,
+                PumpId    = 0,
+                RomanIndex = "Debtor",
+                Amount    = r.Amount,
+                Tid       = string.IsNullOrWhiteSpace(r.CardTid)   ? "—" : r.CardTid,
+                Batch     = string.IsNullOrWhiteSpace(r.CardBatch) ? "—" : r.CardBatch,
+                Slot      = slot,
+                ShiftLabel = shiftLabel,
+                SlotDate  = slotDate,
+                TimeWindow = timeWindow,
+                SlotDisplaySubtitle = slotSubtitle
+            };
+
+            if (isPhonePe)
+            {
+                sheet.DebtorPhonePeRepayments.Add(item);
+                switch (slot)
+                {
+                    case "Morning": sheet.DebtorPhonePeRepaymentMorning += r.Amount; break;
+                    case "Day":     sheet.DebtorPhonePeRepaymentDay     += r.Amount; break;
+                    case "Night":   sheet.DebtorPhonePeRepaymentNight   += r.Amount; break;
+                }
+            }
+            else // PineLabs Card
+            {
+                sheet.DebtorCardRepayments.Add(item);
+                switch (slot)
+                {
+                    case "Morning": sheet.DebtorCardRepaymentMorning += r.Amount; break;
+                    case "Day":     sheet.DebtorCardRepaymentDay     += r.Amount; break;
+                    case "Night":   sheet.DebtorCardRepaymentNight   += r.Amount; break;
+                }
+            }
+        }
 
         return sheet;
     }

@@ -75,33 +75,47 @@ public partial class MonthlyPerformanceViewModel : ObservableObject
 
             var tidSheets = await _tidService.GetTidSheetsForRangeAsync(startDate, endDate);
 
-            var byDay = entries.GroupBy(e =>
-            {
-                var shift = e.Shift;
-                return shift != null ? shift.ShiftDate.Date : DateTime.Today;
-            });
+            var shiftsResult = await _shiftRepo.GetShiftsByDateRangeAsync(startDate, endDate);
+            var shifts = shiftsResult.Success && shiftsResult.Data != null ? shiftsResult.Data : new List<Shift>();
+            var shiftIds = shifts.Select(s => s.ShiftId).ToList();
 
-            foreach (var dayGroup in byDay.OrderBy(g => g.Key))
+            var expenseRepo = App.Services.GetRequiredService<IExpenseRepository>();
+            var shiftExpensesResult = await expenseRepo.GetExpensesByShiftIdsAsync(shiftIds);
+            var shiftExpenses = shiftExpensesResult.Success && shiftExpensesResult.Data != null ? shiftExpensesResult.Data : new List<Expense>();
+
+            var otherCashRepo = App.Services.GetRequiredService<IShiftOtherCashRepository>();
+            var otherCashResult = await otherCashRepo.GetByDateRangeAsync(startDate, endDate);
+            var otherCash = otherCashResult.Success && otherCashResult.Data != null ? otherCashResult.Data : new List<ShiftOtherCash>();
+
+            var dayResults = _ownerCalcService.CalculateByDay(entries, shiftExpenses, otherCash, tidSheets);
+
+            double totalGrossSales = 0;
+            double totalTesting = 0;
+
+            foreach (var kv in dayResults.OrderBy(x => x.Key))
             {
-                var date = dayGroup.Key;
-                tidSheets.TryGetValue(date, out var tidSheet);
-                var dayResult = _ownerCalcService.Calculate(dayGroup, Array.Empty<Expense>(), Array.Empty<ShiftOtherCash>(), tidSheet);
+                var date = kv.Key;
+                var dayResult = kv.Value;
+
+                var dayGroupEntries = entries.Where(e => (e.Shift != null ? e.Shift.ShiftDate.Date : DateTime.Today) == date).ToList();
 
                 DayRows.Add(new MonthDayRow
                 {
-                    Date = dayGroup.Key,
-                    DsmEntryCount = dayGroup.Count(),
+                    Date = date,
+                    DsmEntryCount = dayGroupEntries.Count,
                     TotalSale = dayResult.GrossSales,
                     TotalLitres = dayResult.TotalLitres,
-                    TotalCollection = dayResult.AdjustedCollection,
+                    TotalCollection = dayResult.DirectCollection, // Mitali displays Direct Collection (Cash/Card/Digital/Credit)
                     Mismatch = dayResult.Mismatch
                 });
 
-                MonthTotalSale += dayResult.GrossSales;
+                totalGrossSales += dayResult.GrossSales;
+                totalTesting += dayResult.Testing;
                 MonthTotalLitres += dayResult.TotalLitres;
-                MonthTotalCollection += dayResult.AdjustedCollection;
+                MonthTotalCollection += dayResult.DirectCollection;
             }
 
+            MonthTotalSale = totalGrossSales - totalTesting; // Mitali displays Net Sales (Gross - Testing)
             MonthAvgDailySale = DayRows.Count > 0 ? MonthTotalSale / DayRows.Count : 0;
         }
         catch (Exception ex)

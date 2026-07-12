@@ -151,10 +151,11 @@ export function useSubmissionService() {
   const fetchSubmissionHistory = useCallback(async (dsmUserId: string) => {
     const { data, error } = await supabase
       .from('DsmSubmissions')
-      .select('Id, PumpId, ShiftDate, ShiftType, Status, SubmittedAt, RejectionReason, ApprovedAt')
+      .select('Id, PumpId, ShiftDate, ShiftType, Status, SubmittedAt, RejectionReason, ApprovedAt, Metadata')
       .eq('DsmUserId', dsmUserId)
       .order('SubmittedAt', { ascending: false })
       .limit(30);
+
 
     if (error) throw error;
     return data ?? [];

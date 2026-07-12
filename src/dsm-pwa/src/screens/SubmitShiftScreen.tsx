@@ -250,21 +250,21 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         pumpsToFetch.push(profile.ConnectedPump);
       }
 
-      // Try to fetch nozzle config from Supabase PumpNozzleConfig table
+      // Try to fetch nozzle config from Supabase PumpMappings table
       const { data: nozzleConfig, error: nozzleErr } = await supabase
-        .from('PumpNozzleConfig')
-        .select('NozzleId, FuelType, SortOrder, PumpId')
-        .eq('StationId', profile.StationId)
+        .from('PumpMappings')
+        .select('NozzleNumber, FuelType, PumpId')
+        .eq('station_id', profile.StationId)
         .in('PumpId', pumpsToFetch)
         .eq('IsActive', true)
-        .order('SortOrder', { ascending: true });
+        .order('NozzleNumber', { ascending: true });
 
       let configRows: { nozzleId: number; fuelType: string; pumpId: number }[] = [];
 
       if (!nozzleErr && nozzleConfig && nozzleConfig.length > 0) {
         // Use Supabase config
         configRows = nozzleConfig.map((r: any) => ({
-          nozzleId: r.NozzleId,
+          nozzleId: r.NozzleNumber,
           fuelType: r.FuelType,
           pumpId: r.PumpId
         }));
@@ -308,7 +308,8 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       try {
         const { data: latestEntries } = await supabase
           .from('DsmEntries')
-          .select('DsmEntryId, ShiftId, PumpId')
+          .select('DsmEntryId, SyncGuid, ShiftId, PumpId')
+          .eq('station_id', profile?.StationId || '')
           .in('PumpId', pumpsToFetch)
           .order('DsmEntryId', { ascending: false });
 
@@ -329,7 +330,8 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                 const { data: approvedReadings } = await supabase
                   .from('NozzleReadings')
                   .select('NozzleNumber, ClosingReading')
-                  .eq('DsmEntryId', entry.DsmEntryId);
+                  .eq('station_id', profile?.StationId || '')
+                  .eq('DsmEntryId', entry.SyncGuid);
                 
                 if (approvedReadings && approvedReadings.length > 0) {
                   approvedReadings.forEach((r: any) => {
@@ -351,6 +353,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         const { data: lastSubmissions } = await supabase
           .from('DsmSubmissions')
           .select('Id, ShiftDate, ShiftType, PumpId')
+          .eq('StationId', profile?.StationId || '')
           .in('PumpId', pumpsToFetch)
           .order('ShiftDate', { ascending: false })
           .order('SubmittedAt', { ascending: false });
@@ -770,8 +773,13 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
               <div className="field-group">
                 <label className="field-label">Assigned Pump</label>
                 <div className="field-input" style={{ background: '#1e293b', display: 'flex', alignItems: 'center', minHeight: '42px', paddingLeft: '12px', fontWeight: 'bold', color: '#f8fafc', borderRadius: '0.375rem' }}>
-                  Pump {pumpId}
+                  Pump {pumpId}{profile?.ConnectedPump ? ` + Pump ${profile.ConnectedPump} (Connected)` : ''}
                 </div>
+                {profile?.ConnectedPump && (
+                  <span style={{ fontSize: '0.7rem', color: '#38bdf8', marginTop: '4px', display: 'block', lineHeight: '1.2' }}>
+                    ℹ️ You are entering readings for both Pump {pumpId} and Connected Pump {profile.ConnectedPump}.
+                  </span>
+                )}
               </div>
               <div className="field-group">
                 <label className="field-label">Assigned Shift</label>
@@ -780,6 +788,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                 </div>
               </div>
             </div>
+
 
             <div className="field-group">
               <label className="field-label">Shift Date</label>
@@ -1418,7 +1427,11 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
             <h2 className="section-heading">Review Submission</h2>
 
             <div className="review-block">
-              <div className="review-row"><span>Pump</span><strong>Pump {pumpId}</strong></div>
+              <div className="review-row">
+                <span>Pump</span>
+                <strong>Pump {pumpId}{profile?.ConnectedPump ? ` + Pump ${profile.ConnectedPump} (Connected)` : ''}</strong>
+              </div>
+
               <div className="review-row"><span>Date</span><strong>{new Date(shiftDate + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}</strong></div>
               <div className="review-row"><span>Shift</span><strong>Shift {shiftType} ({shiftType === 'A' ? 'Night/Morning' : 'Day'})</strong></div>
             </div>

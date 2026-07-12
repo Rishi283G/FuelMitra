@@ -250,6 +250,28 @@
                     </StackPanel>
                 </materialDesign:Card>
 
+                <!-- ── Purchase Transaction Log ── -->
+                <materialDesign:Card Margin="0,0,0,16" Padding="16" UniformCornerRadius="8"
+                                     materialDesign:ElevationAssist.Elevation="Dp1">
+                    <StackPanel>
+                        <TextBlock Text="Purchase Transaction Log" FontSize="15" FontWeight="Bold"
+                                   Foreground="{DynamicResource MaterialDesign.Brush.Primary}" Margin="0,0,0,10"/>
+                        <DataGrid ItemsSource="{Binding RecentPurchases}" AutoGenerateColumns="False"
+                                  IsReadOnly="True" materialDesign:DataGridAssist.CellPadding="8 6"
+                                  MaxHeight="250" VerticalScrollBarVisibility="Auto">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Date" Binding="{Binding PurchaseDate, StringFormat='{}{0:dd-MMM-yyyy}'}" Width="120"/>
+                                <DataGridTextColumn Header="Product" Binding="{Binding Product.ProductName}" Width="2*"/>
+                                <DataGridTextColumn Header="Supplier" Binding="{Binding SupplierName}" Width="1.5*"/>
+                                <DataGridTextColumn Header="Invoice #" Binding="{Binding InvoiceNumber}" Width="100"/>
+                                <DataGridTextColumn Header="Qty Purchased" Binding="{Binding Quantity, StringFormat='{}{0:N2}'}" Width="110"/>
+                                <DataGridTextColumn Header="Unit Price" Binding="{Binding UnitPrice, StringFormat='₹{0:N2}'}" Width="100"/>
+                                <DataGridTextColumn Header="Total Cost" Binding="{Binding TotalCost, StringFormat='₹{0:N2}'}" Width="110"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </StackPanel>
+                </materialDesign:Card>
+
                 <!-- ── Adjustment / Loss Log Table ── -->
                 <materialDesign:Card Margin="0,0,0,16" Padding="16" UniformCornerRadius="8"
                                      materialDesign:ElevationAssist.Elevation="Dp1">

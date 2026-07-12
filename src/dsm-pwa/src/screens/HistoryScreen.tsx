@@ -17,7 +17,11 @@ interface HistoryEntry {
   SubmittedAt: string;
   RejectionReason?: string;
   ApprovedAt?: string;
+  Metadata?: {
+    connectedPumpId?: number | null;
+  } | null;
 }
+
 
 export default function HistoryScreen({ onBack }: HistoryProps) {
   const { profile } = useAuth();
@@ -152,8 +156,9 @@ export default function HistoryScreen({ onBack }: HistoryProps) {
             <div className="history-card-top">
               <div>
                 <p className="history-card-title">
-                  Pump {entry.PumpId} · Shift {entry.ShiftType}
+                  Pump {entry.PumpId}{entry.Metadata?.connectedPumpId ? ` + Pump ${entry.Metadata.connectedPumpId} (Connected)` : ''} · Shift {entry.ShiftType}
                 </p>
+
                 <p className="history-card-date">
                   {new Date(entry.ShiftDate).toLocaleDateString('en-IN', {
                     day: 'numeric', month: 'long', year: 'numeric'

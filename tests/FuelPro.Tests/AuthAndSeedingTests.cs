@@ -79,7 +79,7 @@ public class AuthAndSeedingTests
             // 5. Verify Settings
             var settings = await context.Settings.FirstOrDefaultAsync();
             Assert.NotNull(settings);
-            Assert.Equal("Mitali Service Station", settings.PumpStationName);
+            Assert.Equal("Kandhare Petroleum", settings.PumpStationName);
         }
         finally
         {

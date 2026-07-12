@@ -235,9 +235,6 @@
                                                          <DataTrigger Binding="{Binding SelectedPaymentMode}" Value="PineLabs Card">
                                                              <Setter Property="Visibility" Value="Visible" />
                                                          </DataTrigger>
-                                                         <DataTrigger Binding="{Binding SelectedPaymentMode}" Value="Bank Transfer">
-                                                             <Setter Property="Visibility" Value="Visible" />
-                                                         </DataTrigger>
                                                          <DataTrigger Binding="{Binding SelectedPaymentMode}" Value="Others">
                                                              <Setter Property="Visibility" Value="Visible" />
                                                          </DataTrigger>

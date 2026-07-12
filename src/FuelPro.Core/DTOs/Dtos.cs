@@ -8,11 +8,30 @@ public class DsmEntrySummaryDto
     public int DsmEntryId { get; set; }
     public string DsmName { get; set; } = string.Empty;
     public int PumpId { get; set; }
+    public int? ConnectedPumpId { get; set; }
+    public int? ReconciledToPumpId { get; set; }
     public double GrossSales { get; set; }
     public double TotalPaymentIn { get; set; }
     public double Difference { get; set; }
     public DateTime CreatedAt { get; set; }
+
+    public string PumpDisplay
+    {
+        get
+        {
+            if (ReconciledToPumpId.HasValue)
+            {
+                return $"Pump {PumpId} (Connected to {ReconciledToPumpId.Value})";
+            }
+            if (ConnectedPumpId.HasValue)
+            {
+                return $"Pump {PumpId} + Pump {ConnectedPumpId.Value}";
+            }
+            return $"Pump {PumpId}";
+        }
+    }
 }
+
 
 /// <summary>
 /// Dashboard summary for today's/last shift.

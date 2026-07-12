@@ -50,6 +50,12 @@
         <DataTemplate DataType="{x:Type vm:PettyCashViewModel}">
             <views:PettyCashView/>
         </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:FuelTankerEntryViewModel}">
+            <views:FuelTankerEntryView/>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:TankStockHistoryViewModel}">
+            <views:TankStockHistoryView/>
+        </DataTemplate>
     </Window.Resources>
 
 
@@ -64,10 +70,11 @@
                 <RowDefinition Height="36"/>
             </Grid.RowDefinitions>
 
-            <!-- Sidebar Navigation -->
+            <!-- Sidebar Navigation — Darker slate for Manager -->
             <Border Grid.Column="0" Grid.RowSpan="2"
-                    Background="{DynamicResource MaterialDesign.Brush.Primary}">
-                <StackPanel Margin="0,16,0,0">
+                    Background="#2C3E50">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="0,16,0,0">
                     <!-- App Icon -->
                     <materialDesign:PackIcon Kind="GasStation" Width="36" Height="36"
                                              Foreground="White"
@@ -256,6 +263,40 @@
                         <materialDesign:PackIcon Kind="Wallet" Width="28" Height="28"/>
                     </Button>
 
+                    <!-- Fuel Tanker Entry -->
+                    <Button Command="{Binding NavigateToFuelTankerEntryCommand}" ToolTip="Fuel Tanker Purchases" Margin="0,4">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
+                                <Setter Property="Foreground" Value="White" />
+                                <Setter Property="Opacity" Value="0.5" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding SelectedNavIndex}" Value="12">
+                                        <Setter Property="Opacity" Value="1" />
+                                        <Setter Property="Background" Value="#33FFFFFF" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                        <materialDesign:PackIcon Kind="TruckDelivery" Width="28" Height="28"/>
+                    </Button>
+
+                    <!-- Tank Stock History -->
+                    <Button Command="{Binding NavigateToTankStockHistoryCommand}" ToolTip="Tank Stock History" Margin="0,4">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
+                                <Setter Property="Foreground" Value="White" />
+                                <Setter Property="Opacity" Value="0.5" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding SelectedNavIndex}" Value="13">
+                                        <Setter Property="Opacity" Value="1" />
+                                        <Setter Property="Background" Value="#33FFFFFF" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                        <materialDesign:PackIcon Kind="DatabaseArrowDown" Width="28" Height="28"/>
+                    </Button>
+
                     <!-- Settings -->
                     <Button Command="{Binding NavigateToSettingsCommand}" ToolTip="Settings" Margin="0,4">
                         <Button.Style>
@@ -273,6 +314,7 @@
                         <materialDesign:PackIcon Kind="Cog" Width="28" Height="28"/>
                     </Button>
                 </StackPanel>
+                </ScrollViewer>
             </Border>
 
 
