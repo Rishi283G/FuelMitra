@@ -129,6 +129,20 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
       <div><div class="mini-hdr">Debtors Register</div>
         <table><thead><tr><th>DSM</th><th>Debtor Name</th><th>Slip No</th><th>Amount (&#8377;)</th></tr></thead><tbody id="tCred"></tbody></table>
       </div>
+      <div id="secRepayments" style="display:none; margin-top: 12px;">
+        <div class="mini-hdr">Debtor Recoveries (Collections)</div>
+        <table>
+          <thead>
+            <tr>
+              <th style="text-align:left;">Debtor Name</th>
+              <th>Mode</th>
+              <th>Ref / Details</th>
+              <th>Amount (&#8377;)</th>
+            </tr>
+          </thead>
+          <tbody id="tRepayments"></tbody>
+        </table>
+      </div>
       <div style="margin-top: 12px;"><div class="mini-hdr">Daily Sales Record (DSR) of the Day</div>
         <table>
           <thead>
@@ -304,15 +318,17 @@ function renderData(){
       var testing = getVal(g, 'testingLitres') || 0;
       var receipts = getVal(g, 'receipts') || 0;
       var calculated = getVal(g, 'calculatedStock') || 0;
+      var variance = stock - calculated;
 
       tankInfo.innerHTML = 
         '<table style="width:100%; border-collapse:collapse; font-size:9.5px; line-height:1.2; margin-bottom: 4px;">' +
         '<tr><td style="color:#555; padding:1px 0;">Opening Stock:</td><td style="text-align:right; font-weight:500; padding:1px 0;">' + parseFloat(opening).toFixed(1) + ' L</td></tr>' +
-        '<tr><td style="color:#555; padding:1px 0;">Nozzle Sales:</td><td style="text-align:right; font-weight:500; padding:1px 0;">-' + parseFloat(sales).toFixed(1) + ' L</td></tr>' +
-        '<tr><td style="color:#555; padding:1px 0;">Testing:</td><td style="text-align:right; font-weight:500; padding:1px 0;">+' + parseFloat(testing).toFixed(1) + ' L</td></tr>' +
         '<tr><td style="color:#555; padding:1px 0;">Receipts:</td><td style="text-align:right; font-weight:500; padding:1px 0;">+' + parseFloat(receipts).toFixed(1) + ' L</td></tr>' +
-        '<tr style="border-top:1px dashed #ccc; font-weight:bold; color:#16211C;"><td style="padding:2px 0 1px 0;">Calculated:</td><td style="text-align:right; padding:2px 0 1px 0;">' + parseFloat(calculated).toFixed(1) + ' L</td></tr>' +
+        '<tr><td style="color:#555; padding:1px 0;">Sales:</td><td style="text-align:right; font-weight:500; padding:1px 0;">-' + parseFloat(sales).toFixed(1) + ' L</td></tr>' +
+        '<tr><td style="color:#555; padding:1px 0;">Testing:</td><td style="text-align:right; font-weight:500; padding:1px 0;">+' + parseFloat(testing).toFixed(1) + ' L</td></tr>' +
+        '<tr style="border-top:1px dashed #ccc; font-weight:bold; color:#16211C;"><td style="padding:2px 0 1px 0;">Calculated Stock:</td><td style="text-align:right; padding:2px 0 1px 0;">' + parseFloat(calculated).toFixed(1) + ' L</td></tr>' +
         '<tr style="font-weight:bold; color:#0B6E4F;"><td style="padding:1px 0;">Actual Stock:</td><td style="text-align:right; padding:1px 0;">' + parseFloat(stock).toFixed(1) + ' L (' + dip + ' mm)</td></tr>' +
+        '<tr style="font-weight:bold; border-top:1px solid #ddd; border-bottom:1px solid #ddd; padding:2px 0;"><td style="padding:2px 0;">Variance:</td><td style="text-align:right; padding:2px 0; color:' + (variance >= 0 ? '#0B6E4F' : '#D32F2F') + ';">' + (variance >= 0 ? '+' : '') + parseFloat(variance).toFixed(1) + ' L</td></tr>' +
         '</table>';
       card.appendChild(tankInfo);
       
@@ -363,7 +379,7 @@ function renderData(){
   var phonePeCardAmt = getAmt("PhonePe Card Morning") + getAmt("PhonePe Card Night");
   var pineLabsAmt = getAmt("PineLabs Morning") + getAmt("PineLabs Night");
   var debtorsAmt = getAmt("Debtors");
-  var otherAmt = getAmt("Other Collections");
+  var otherAmt = d.otherCashTotal || d.otherCashTotalAmount || 0;
 
   var cg=document.getElementById('collGrid');cg.innerHTML='';
   var cols=[
@@ -390,6 +406,31 @@ function renderData(){
   });
   var ctr=document.createElement('tr');ctr.className='tr-total';
   ctr.innerHTML='<td colspan="3">TOTAL DEBTORS</td><td>'+inrZ(credTot)+'</td>';ct.appendChild(ctr);
+
+  var sameDayRepayments = d.debtorRepayments || d.sameDayRepayments || [];
+  var secRep = document.getElementById('secRepayments');
+  var tRep   = document.getElementById('tRepayments');
+  if (tRep && sameDayRepayments.length > 0) {
+    tRep.innerHTML = '';
+    if (secRep) secRep.style.display = 'block';
+    var repTot = d.debtorRepaymentsTotal || 0;
+    sameDayRepayments.forEach(function(r) {
+      var mode = getVal(r, 'paymentMode') || '';
+      var refNo = getVal(r, 'refNo') || getVal(r, 'referenceDisplay') || '';
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td style="text-align:left;">' + (getVal(r, 'debtorName') || getVal(r, 'creditorName') || '') + '</td>' +
+                     '<td>' + mode + '</td>' +
+                     '<td>' + (refNo || '\u2013') + '</td>' +
+                     '<td>' + inr(getVal(r, 'amount')) + '</td>';
+      tRep.appendChild(tr);
+    });
+    var trTot = document.createElement('tr');
+    trTot.className = 'tr-total';
+    trTot.innerHTML = '<td colspan="3" style="text-align:left;">Total Recoveries</td><td>' + inrZ(repTot) + '</td>';
+    tRep.appendChild(trTot);
+  } else {
+    if (secRep) secRep.style.display = 'none';
+  }
 
   // Fuel Summary
   var tf = document.getElementById('tFuel');
@@ -456,6 +497,15 @@ function renderData(){
   else{dCell.textContent='\u26A0  EXCESS \u2014 Difference: '+inrZ(diff);dCell.className='diff-bad';}
 
   document.getElementById('ftrMid').innerHTML='<strong>'+(d.dateString||d.date||'')+'</strong> &middot; '+parseFloat(d.totalFuelLitres||0).toFixed(2)+' L &middot; '+inrZ(d.totalFuelAmount);
+
+  function getVal(obj, key) {
+    if (!obj) return undefined;
+    var lowerKey = key.toLowerCase();
+    for (var prop in obj) {
+      if (prop.toLowerCase() === lowerKey) return obj[prop];
+    }
+    return undefined;
+  }
 }
 renderData();
 document.addEventListener('DOMContentLoaded',renderData);

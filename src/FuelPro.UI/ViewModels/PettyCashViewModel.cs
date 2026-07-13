@@ -93,6 +93,7 @@ public partial class PettyCashViewModel : ObservableObject
 
             _dbContext.PettyCashTransactions.Add(item);
             await _dbContext.SaveChangesAsync();
+            FuelPro.Core.Services.DsmEntryService.RaisePettyCashChanged();
 
             Description = string.Empty;
             Amount = 0;
@@ -128,6 +129,7 @@ public partial class PettyCashViewModel : ObservableObject
             {
                 _dbContext.PettyCashTransactions.Remove(tracked);
                 await _dbContext.SaveChangesAsync();
+                FuelPro.Core.Services.DsmEntryService.RaisePettyCashChanged();
                 await LoadDataAsync();
             }
         }

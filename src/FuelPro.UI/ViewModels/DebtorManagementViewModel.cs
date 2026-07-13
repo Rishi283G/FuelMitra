@@ -87,7 +87,7 @@ public partial class DebtorManagementViewModel : ObservableObject
     [ObservableProperty] private int? _denom20;
     [ObservableProperty] private int? _denom10;
     [ObservableProperty] private int? _coins;
-    public string[] PaymentModes { get; } = { "Cash", "PhonePe", "PineLabs Card", "Cheque", "Bank Transfer" };
+    public string[] PaymentModes { get; } = { "Cash", "PhonePe", "PineLabs Card", "PetroCard", "Bank Transfer", "Cheque" };
 
     // True when Cash is selected — used for XAML visibility of denomination grid vs manual amount
     public bool IsCashPaymentMode => SelectedPaymentMode == "Cash";
@@ -399,6 +399,7 @@ public partial class DebtorManagementViewModel : ObservableObject
                     }
 
                     DebtorStatusMessage = "✅ Debtor updated successfully!";
+                    DsmEntryService.RaiseDebtorChanged();
                     CancelEditDebtor();
                     await LoadDataAsync();
                 }
@@ -532,8 +533,8 @@ public partial class DebtorManagementViewModel : ObservableObject
             Amount = RepaymentAmount,
             CreatedAt = DateTime.Now,
             ShiftNumber = shiftNumber,
-            CardTid = (SelectedPaymentMode == "PhonePe" || SelectedPaymentMode == "PineLabs Card" || SelectedPaymentMode == "Others") ? CardTid?.Trim() : null,
-            CardBatch = (SelectedPaymentMode == "PhonePe" || SelectedPaymentMode == "PineLabs Card" || SelectedPaymentMode == "Others") ? CardBatch?.Trim() : null,
+            CardTid = (SelectedPaymentMode == "PhonePe" || SelectedPaymentMode == "PineLabs Card" || SelectedPaymentMode == "PetroCard" || SelectedPaymentMode == "Others") ? CardTid?.Trim() : null,
+            CardBatch = (SelectedPaymentMode == "PhonePe" || SelectedPaymentMode == "PineLabs Card" || SelectedPaymentMode == "PetroCard" || SelectedPaymentMode == "Others") ? CardBatch?.Trim() : null,
             Denom500 = SelectedPaymentMode == "Cash" ? (Denom500 ?? 0) : 0,
             Denom200 = SelectedPaymentMode == "Cash" ? (Denom200 ?? 0) : 0,
             Denom100 = SelectedPaymentMode == "Cash" ? (Denom100 ?? 0) : 0,
@@ -558,6 +559,7 @@ public partial class DebtorManagementViewModel : ObservableObject
             Denom20 = null;
             Denom10 = null;
             Coins = null;
+            DsmEntryService.RaiseDebtorChanged();
             await LoadDataAsync();
             if (!string.IsNullOrEmpty(LedgerDebtorName) && LedgerDebtorName.Equals(SelectedDebtorName, StringComparison.OrdinalIgnoreCase))
             {

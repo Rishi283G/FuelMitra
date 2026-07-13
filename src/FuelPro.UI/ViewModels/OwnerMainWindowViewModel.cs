@@ -200,15 +200,32 @@ public partial class OwnerMainWindowViewModel : ObservableObject
         CurrentView = App.Services.GetRequiredService<PettyCashViewModel>();
     }
 
+    partial void OnCurrentViewChanged(object? oldValue, object? newValue)
+    {
+        if (oldValue is IDisposable disposable)
+        {
+            disposable.Dispose();
+        }
+    }
 
     /// <summary>
     /// Called by the sync engine to update status display.
     /// </summary>
     public void UpdateSyncStatus(DateTime lastSync, int pendingCount, bool isConnected, string statusMessage)
     {
-        LastSyncTime = lastSync.ToString("dd MMM yyyy\nhh:mm tt");
         PendingSyncCount = pendingCount;
         IsSyncConnected = isConnected;
-        SyncStatusText = statusMessage;
+        
+        if (!isConnected)
+        {
+            var lastSyncStr = lastSync == DateTime.MinValue ? "Never" : lastSync.ToString("dd MMM yyyy hh:mm tt");
+            SyncStatusText = $"Offline\nPending Changes: {pendingCount}\nLast Successful Sync:\n{lastSyncStr}\nRetrying Automatically...";
+            LastSyncTime = lastSync == DateTime.MinValue ? "Never" : lastSync.ToString("dd MMM yyyy hh:mm tt");
+        }
+        else
+        {
+            SyncStatusText = statusMessage;
+            LastSyncTime = lastSync == DateTime.MinValue ? "Never" : lastSync.ToString("dd MMM yyyy hh:mm tt");
+        }
     }
 }

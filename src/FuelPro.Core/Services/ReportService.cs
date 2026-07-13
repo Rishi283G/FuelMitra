@@ -110,6 +110,19 @@ public class ReportService : IReportService
             });
         }
 
+        // Build generic RepaymentBreakdown
+        dto.RepaymentBreakdown = repaymentsList
+            .GroupBy(r => r.PaymentMode ?? "Unknown")
+            .Select(g => new RepaymentBreakdownDto
+            {
+                PaymentMethod = g.Key,
+                Amount = g.Sum(x => x.Amount),
+                IsReconcilable = IsReconcilableMode(g.Key)
+            }).ToList();
+
+        double reconcilableRecoveriesTotal = dto.CashRepayments + dto.PhonePeRepayments
+            + dto.CreditCardRepayments + dto.PetroCardRepayments;
+
         // 7. Oil & DEF Sales (Phase 3/4 Product Sales)
         dto.OilDefSales = new List<OilDefSaleDisplayRow>();
         dto.OilDefSalesTotal = 0;
@@ -145,7 +158,7 @@ public class ReportService : IReportService
         }
 
         // Apply debtor repayments adjustments (silent additions per logic rules)
-        double finalCashDeposit = dto.Cash1.GrandTotal + dto.BankCashRepayments;
+        double finalCashDeposit = dto.Cash1.GrandTotal;
         double finalCashInHand = dto.Cash2.GrandTotal + dto.CashRepayments;
         double finalPhonePeMorning = phonePeMorning + (shiftType == "B" ? dto.PhonePeRepayments : 0);
         double finalPhonePeNight = phonePeNight + (shiftType != "B" ? dto.PhonePeRepayments : 0);
@@ -176,33 +189,32 @@ public class ReportService : IReportService
         double totalDsmShort = CalculateDsmShort(entriesList);
         dto.TotalDsmShort = totalDsmShort;
 
-        // 11. Build standardized collection categories (16 items)
+        // 11. Build standardized collection categories with audit breakdown
         dto.CollectionBreakdown = new List<CollectionCategoryDto>
         {
-            new() { Category = "Cash Deposit", Amount = finalCashDeposit },
-            new() { Category = "Cash In Hand", Amount = finalCashInHand },
-            new() { Category = "PhonePe Morning", Amount = finalPhonePeMorning },
-            new() { Category = "PhonePe Night", Amount = finalPhonePeNight },
-            new() { Category = "PhonePe Card Morning", Amount = phonePeCardMorning },
-            new() { Category = "PhonePe Card Night", Amount = phonePeCardNight },
-            new() { Category = "PineLabs Morning", Amount = finalCreditCardMorning },
-            new() { Category = "PineLabs Night", Amount = finalCreditCardNight },
-            new() { Category = "Petro Card", Amount = finalPetroCard },
-            new() { Category = "Debtors", Amount = dto.CreditorsTotal },
-            new() { Category = "Other Collections", Amount = dto.OtherCashTotal },
-            new() { Category = "Oil Sales", Amount = 0 },
-            new() { Category = "DEF Sales", Amount = 0 },
-            new() { Category = "Expenses", Amount = dto.ExpensesTotal },
-            new() { Category = "MS Testing", Amount = msTesting },
-            new() { Category = "HSD Testing I", Amount = hsdTesting },
-            new() { Category = "HSD Testing II", Amount = hsdTesting2 },
-            new() { Category = "CNG Testing", Amount = cngTesting },
-            new() { Category = "DSM Short", Amount = totalDsmShort }
+            new() { Category = "Cash Deposit", Amount = finalCashDeposit, BaseAmount = dto.Cash1.GrandTotal, RecoveryAmount = 0 },
+            new() { Category = "Cash In Hand", Amount = finalCashInHand, BaseAmount = dto.Cash2.GrandTotal, RecoveryAmount = dto.CashRepayments },
+            new() { Category = "PhonePe Morning", Amount = finalPhonePeMorning, BaseAmount = phonePeMorning, RecoveryAmount = shiftType == "B" ? dto.PhonePeRepayments : 0 },
+            new() { Category = "PhonePe Night", Amount = finalPhonePeNight, BaseAmount = phonePeNight, RecoveryAmount = shiftType != "B" ? dto.PhonePeRepayments : 0 },
+            new() { Category = "PhonePe Card Morning", Amount = phonePeCardMorning, BaseAmount = phonePeCardMorning, RecoveryAmount = 0 },
+            new() { Category = "PhonePe Card Night", Amount = phonePeCardNight, BaseAmount = phonePeCardNight, RecoveryAmount = 0 },
+            new() { Category = "PineLabs Morning", Amount = finalCreditCardMorning, BaseAmount = creditCardMorning, RecoveryAmount = shiftType == "B" ? dto.CreditCardRepayments : 0 },
+            new() { Category = "PineLabs Night", Amount = finalCreditCardNight, BaseAmount = creditCardNight, RecoveryAmount = shiftType != "B" ? dto.CreditCardRepayments : 0 },
+            new() { Category = "Petro Card", Amount = finalPetroCard, BaseAmount = petroCard, RecoveryAmount = dto.PetroCardRepayments },
+            new() { Category = "Debtors", Amount = dto.CreditorsTotal, BaseAmount = dto.CreditorsTotal, RecoveryAmount = 0 },
+            new() { Category = "Oil Sales", Amount = 0, BaseAmount = 0, RecoveryAmount = 0 },
+            new() { Category = "DEF Sales", Amount = 0, BaseAmount = 0, RecoveryAmount = 0 },
+            new() { Category = "Expenses", Amount = dto.ExpensesTotal, BaseAmount = dto.ExpensesTotal, RecoveryAmount = 0 },
+            new() { Category = "MS Testing", Amount = msTesting, BaseAmount = msTesting, RecoveryAmount = 0 },
+            new() { Category = "HSD Testing I", Amount = hsdTesting, BaseAmount = hsdTesting, RecoveryAmount = 0 },
+            new() { Category = "HSD Testing II", Amount = hsdTesting2, BaseAmount = hsdTesting2, RecoveryAmount = 0 },
+            new() { Category = "CNG Testing", Amount = cngTesting, BaseAmount = cngTesting, RecoveryAmount = 0 },
+            new() { Category = "DSM Short", Amount = totalDsmShort, BaseAmount = totalDsmShort, RecoveryAmount = 0 }
         };
 
         // 12. Final Reconciliation
         dto.ActualCollection = dto.CollectionBreakdown.Sum(c => c.Amount);
-        dto.ExpectedCollection = dto.TotalFuelAmount + dto.OilDefSalesTotal + dto.OtherCashTotal + dto.DebtorRepaymentsTotal;
+        dto.ExpectedCollection = dto.TotalFuelAmount + dto.OilDefSalesTotal + reconcilableRecoveriesTotal;
         dto.Difference = dto.ActualCollection - dto.ExpectedCollection;
         dto.IsBalanced = Math.Abs(dto.Difference) < 0.01;
         dto.BalancedStatus = dto.IsBalanced ? "Balanced" : (dto.Difference < 0 ? "Short" : "Excess");
@@ -298,6 +310,19 @@ public class ReportService : IReportService
             });
         }
 
+        // Build generic RepaymentBreakdown
+        dto.RepaymentBreakdown = repaymentsList
+            .GroupBy(r => r.PaymentMode ?? "Unknown")
+            .Select(g => new RepaymentBreakdownDto
+            {
+                PaymentMethod = g.Key,
+                Amount = g.Sum(x => x.Amount),
+                IsReconcilable = IsReconcilableMode(g.Key)
+            }).ToList();
+
+        double reconcilableRecoveriesTotal = dto.CashRepayments + dto.PhonePeRepayments
+            + dto.CreditCardRepayments + dto.PetroCardRepayments;
+
         // 7. Oil & DEF Sales (Phase 3/4 Product Sales)
         dto.OilDefSales = new List<OilDefSaleDisplayRow>();
         dto.OilDefSalesTotal = 0;
@@ -370,33 +395,32 @@ public class ReportService : IReportService
         double totalDsmShort = CalculateDsmShort(entriesList);
         dto.TotalDsmShort = totalDsmShort;
 
-        // 11. Build standardized collection categories (16 items)
+        // 11. Build standardized collection categories with audit breakdown
         dto.CollectionBreakdown = new List<CollectionCategoryDto>
         {
-            new() { Category = "Cash Deposit", Amount = dto.Cash1.GrandTotal + dto.BankCashRepayments },
-            new() { Category = "Cash In Hand", Amount = dto.Cash2.GrandTotal + dto.CashRepayments },
-            new() { Category = "PhonePe Morning", Amount = finalPhonePeMorning },
-            new() { Category = "PhonePe Night", Amount = finalPhonePeNight },
-            new() { Category = "PhonePe Card Morning", Amount = finalPhonePeCardMorning },
-            new() { Category = "PhonePe Card Night", Amount = finalPhonePeCardNight },
-            new() { Category = "PineLabs Morning", Amount = finalCreditCardMorning },
-            new() { Category = "PineLabs Night", Amount = finalCreditCardNight },
-            new() { Category = "Petro Card", Amount = finalPetroCard },
-            new() { Category = "Debtors", Amount = dto.CreditorsTotal },
-            new() { Category = "Other Collections", Amount = dto.OtherCashTotal },
-            new() { Category = "Oil Sales", Amount = 0 },
-            new() { Category = "DEF Sales", Amount = 0 },
-            new() { Category = "Expenses", Amount = dto.ExpensesTotal },
-            new() { Category = "MS Testing", Amount = msTesting },
-            new() { Category = "HSD Testing I", Amount = hsdTesting },
-            new() { Category = "HSD Testing II", Amount = hsdTesting2 },
-            new() { Category = "CNG Testing", Amount = cngTesting },
-            new() { Category = "DSM Short", Amount = totalDsmShort }
+            new() { Category = "Cash Deposit", Amount = dto.Cash1.GrandTotal, BaseAmount = dto.Cash1.GrandTotal, RecoveryAmount = 0 },
+            new() { Category = "Cash In Hand", Amount = dto.Cash2.GrandTotal + dto.CashRepayments, BaseAmount = dto.Cash2.GrandTotal, RecoveryAmount = dto.CashRepayments },
+            new() { Category = "PhonePe Morning", Amount = finalPhonePeMorning, BaseAmount = phonePeDirectMorning + phonePeDirectDay, RecoveryAmount = dto.PhonePeRepayments },
+            new() { Category = "PhonePe Night", Amount = finalPhonePeNight, BaseAmount = phonePeDirectNight, RecoveryAmount = 0 },
+            new() { Category = "PhonePe Card Morning", Amount = finalPhonePeCardMorning, BaseAmount = phonePeCardMorning + phonePeCardDay, RecoveryAmount = 0 },
+            new() { Category = "PhonePe Card Night", Amount = finalPhonePeCardNight, BaseAmount = phonePeCardNight, RecoveryAmount = 0 },
+            new() { Category = "PineLabs Morning", Amount = finalCreditCardMorning, BaseAmount = pineLabsCardMorning + pineLabsCardDay, RecoveryAmount = dto.CreditCardRepayments },
+            new() { Category = "PineLabs Night", Amount = finalCreditCardNight, BaseAmount = pineLabsCardNight, RecoveryAmount = 0 },
+            new() { Category = "Petro Card", Amount = finalPetroCard, BaseAmount = petroCardMorning + petroCardDay + petroCardNight, RecoveryAmount = dto.PetroCardRepayments },
+            new() { Category = "Debtors", Amount = dto.CreditorsTotal, BaseAmount = dto.CreditorsTotal, RecoveryAmount = 0 },
+            new() { Category = "Oil Sales", Amount = 0, BaseAmount = 0, RecoveryAmount = 0 },
+            new() { Category = "DEF Sales", Amount = 0, BaseAmount = 0, RecoveryAmount = 0 },
+            new() { Category = "Expenses", Amount = dto.ExpensesTotal, BaseAmount = dto.ExpensesTotal, RecoveryAmount = 0 },
+            new() { Category = "MS Testing", Amount = msTesting, BaseAmount = msTesting, RecoveryAmount = 0 },
+            new() { Category = "HSD Testing I", Amount = hsdTesting, BaseAmount = hsdTesting, RecoveryAmount = 0 },
+            new() { Category = "HSD Testing II", Amount = hsdTesting2, BaseAmount = hsdTesting2, RecoveryAmount = 0 },
+            new() { Category = "CNG Testing", Amount = cngTesting, BaseAmount = cngTesting, RecoveryAmount = 0 },
+            new() { Category = "DSM Short", Amount = totalDsmShort, BaseAmount = totalDsmShort, RecoveryAmount = 0 }
         };
 
         // 12. Final Reconciliation
         dto.ActualCollection = dto.CollectionBreakdown.Sum(c => c.Amount);
-        dto.ExpectedCollection = dto.TotalFuelAmount + dto.OilDefSalesTotal + dto.OtherCashTotal + dto.DebtorRepaymentsTotal;
+        dto.ExpectedCollection = dto.TotalFuelAmount + dto.OilDefSalesTotal + reconcilableRecoveriesTotal;
         dto.Difference = dto.ActualCollection - dto.ExpectedCollection;
         dto.IsBalanced = Math.Abs(dto.Difference) < 0.01;
         dto.BalancedStatus = dto.IsBalanced ? "Balanced" : (dto.Difference < 0 ? "Short" : "Excess");
@@ -446,6 +470,20 @@ public class ReportService : IReportService
             }
         }
         return totalDsmShort;
+    }
+
+    private static bool IsReconcilableMode(string mode)
+    {
+        if (string.IsNullOrEmpty(mode)) return false;
+        return string.Equals(mode, "Cash", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(mode, "PhonePe", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(mode, "PhonePe UPI", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(mode, "UPI Terminal", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(mode, "Credit Card", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(mode, "PineLabs Card", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(mode, "PineLabs", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(mode, "PetroCard", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(mode, "Petro Card", StringComparison.OrdinalIgnoreCase);
     }
 
     private static List<DsmEntry> MergeConnectedPumpEntries(List<DsmEntry> entries)

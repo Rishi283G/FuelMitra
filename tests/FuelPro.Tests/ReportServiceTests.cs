@@ -75,8 +75,8 @@ public class ReportServiceTests
         Assert.Equal("Mitali Service Station", report.StationName);
         Assert.Equal(6095.85, report.ExpectedCollection - 1000); // Exclude repayments for comparison
 
-        // Verify the 19 collection categories exist
-        Assert.Equal(19, report.CollectionBreakdown.Count);
+        // Verify the 18 collection categories exist
+        Assert.Equal(18, report.CollectionBreakdown.Count);
         
         var deposit = report.CollectionBreakdown.First(c => c.Category == "Cash Deposit").Amount;
         var cashInHand = report.CollectionBreakdown.First(c => c.Category == "Cash In Hand").Amount;

@@ -18,13 +18,18 @@ namespace FuelPro.UI.ViewModels;
 /// <summary>
 /// Collection summary: payment mode breakdown for selected date range.
 /// </summary>
-public partial class CollectionSummaryViewModel : ObservableObject
+public partial class CollectionSummaryViewModel : ObservableObject, IDisposable
 {
     private readonly IDsmEntryRepository _dsmEntryRepo;
     private readonly IOwnerCalculationService _ownerCalcService;
     private readonly ITidCalculationService _tidService;
     private readonly PrintService _printService;
     private readonly ExcelExportService _excelExportService;
+    private readonly IShiftRepository _shiftRepo;
+    private readonly IExpenseRepository _expenseRepo;
+    private readonly ICreditorRepaymentRepository _repaymentRepo;
+    private readonly IReportService _reportService;
+    private readonly ISettingsRepository _settingsRepo;
 
     [ObservableProperty] private DateTime _startDate = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
     [ObservableProperty] private DateTime _endDate = DateTime.Today;
@@ -50,7 +55,30 @@ public partial class CollectionSummaryViewModel : ObservableObject
         _tidService = App.Services.GetRequiredService<ITidCalculationService>();
         _printService = App.Services.GetRequiredService<PrintService>();
         _excelExportService = App.Services.GetRequiredService<ExcelExportService>();
+        _shiftRepo = App.Services.GetRequiredService<IShiftRepository>();
+        _expenseRepo = App.Services.GetRequiredService<IExpenseRepository>();
+        _repaymentRepo = App.Services.GetRequiredService<ICreditorRepaymentRepository>();
+        _reportService = App.Services.GetRequiredService<IReportService>();
+        _settingsRepo = App.Services.GetRequiredService<ISettingsRepository>();
+
+        DsmEntryService.DsmEntryChanged += OnDataChanged;
+        DsmEntryService.PettyCashChanged += OnDataChanged;
+        DsmEntryService.DebtorChanged += OnDataChanged;
+
         _ = LoadAsync();
+    }
+
+    private void OnDataChanged()
+    {
+        System.Windows.Application.Current.Dispatcher.InvokeAsync(async () => await LoadAsync());
+    }
+
+    public void Dispose()
+    {
+        DsmEntryService.DsmEntryChanged -= OnDataChanged;
+        DsmEntryService.PettyCashChanged -= OnDataChanged;
+        DsmEntryService.DebtorChanged -= OnDataChanged;
+        GC.SuppressFinalize(this);
     }
 
     partial void OnStartDateChanged(DateTime value) => _ = LoadAsync();
@@ -62,8 +90,29 @@ public partial class CollectionSummaryViewModel : ObservableObject
         IsLoading = true;
         try
         {
-            var entriesResult = await _dsmEntryRepo.GetEntriesForDateRangeAsync(StartDate, EndDate);
+            var startDate = StartDate.Date;
+            var endDate = EndDate.Date;
+
+            var entriesResult = await _dsmEntryRepo.GetEntriesForDateRangeAsync(startDate, endDate);
             var entries = entriesResult.Success && entriesResult.Data != null ? entriesResult.Data : new List<DsmEntry>();
+
+            var shiftsResult = await _shiftRepo.GetShiftsByDateRangeAsync(startDate, endDate);
+            var shifts = shiftsResult.Success && shiftsResult.Data != null ? shiftsResult.Data : new List<Shift>();
+            var shiftIds = shifts.Select(s => s.ShiftId).ToList();
+
+            var expensesResult = await _expenseRepo.GetExpensesByShiftIdsAsync(shiftIds);
+            var expenses = expensesResult.Success && expensesResult.Data != null ? expensesResult.Data : new List<Expense>();
+
+            var repaymentsResult = await _repaymentRepo.GetByDateRangeAsync(startDate, endDate);
+            var repayments = repaymentsResult.Success && repaymentsResult.Data != null ? repaymentsResult.Data : new List<CreditorRepayment>();
+
+            var settingsResult = await _settingsRepo.GetSettingsAsync();
+            var settings = settingsResult.Success && settingsResult.Data != null ? settingsResult.Data : new Setting();
+            double defaultHsd = settings.HsdRate;
+            double defaultMsI = settings.MsIRate;
+            double defaultMsII = settings.MsIIRate;
+            double defaultCng = settings.CngRate;
+            string stationName = settings.StationDisplayName;
 
             TotalCashDeposit = 0; TotalCashInHand = 0;
             TotalPhonePe = 0; TotalPhonePeCard = 0;
@@ -71,39 +120,50 @@ public partial class CollectionSummaryViewModel : ObservableObject
             TotalDebit = 0; GrandTotal = 0; TotalDigital = 0;
             DayRows.Clear();
 
-            var tidSheets = await _tidService.GetTidSheetsForRangeAsync(StartDate.Date, EndDate.Date);
-
-            var byDay = entries.GroupBy(e =>
+            // Loop day by day from startDate to endDate
+            for (var date = startDate; date <= endDate; date = date.AddDays(1))
             {
-                var shift = e.Shift;
-                return shift != null ? shift.ShiftDate.Date : DateTime.Today;
-            });
+                var dayEntries = entries.Where(e => (e.Shift != null ? e.Shift.ShiftDate.Date : DateTime.Today) == date).ToList();
+                if (dayEntries.Count == 0) continue;
 
-            foreach (var dayGroup in byDay.OrderBy(g => g.Key))
-            {
-                var date = dayGroup.Key;
-                tidSheets.TryGetValue(date, out var tidSheet);
-                var dayResult = _ownerCalcService.Calculate(dayGroup, Array.Empty<Expense>(), Array.Empty<ShiftOtherCash>(), tidSheet);
+                var dayExpenses = expenses.Where(e => (e.Shift != null ? e.Shift.ShiftDate.Date : DateTime.Today) == date).ToList();
+                var dayRepayments = repayments.Where(r => r.RepaymentDate.Date == date).ToList();
+
+                var dayReport = _reportService.CalculateDayReport(
+                    date, date,
+                    dayEntries,
+                    dayExpenses,
+                    dayRepayments,
+                    defaultHsd, defaultMsI, defaultMsII, defaultCng,
+                    stationName);
+
+                var cashDeposit = dayReport.Cash1.GrandTotal;
+                var cashInHand = dayReport.Cash2.GrandTotal + dayReport.CashRepayments;
+                var phonePe = dayReport.DsmSummaryTotals.PhonePe + dayReport.PhonePeRepayments;
+                var phonePeCard = dayReport.DsmSummaryTotals.PhonePeCard;
+                var creditCard = dayReport.DsmSummaryTotals.CreditCardMorning + dayReport.DsmSummaryTotals.CreditCardNight + dayReport.CreditCardRepayments;
+                var petroCard = dayReport.DsmSummaryTotals.PetroCard + dayReport.PetroCardRepayments;
+                var debit = dayReport.CreditorsTotal;
 
                 DayRows.Add(new CollectionDayRow
                 {
-                    Date = dayGroup.Key,
-                    CashDeposit = dayResult.CashDeposit,
-                    CashInHand = dayResult.CashInHand,
-                    PhonePe = dayResult.PhonePeDirect,
-                    PhonePeCard = dayResult.PhonePeCard,
-                    CreditCard = dayResult.CreditCard,
-                    PetroCard = dayResult.PetroCard,
-                    Debit = dayResult.Debit
+                    Date = date,
+                    CashDeposit = cashDeposit,
+                    CashInHand = cashInHand,
+                    PhonePe = phonePe,
+                    PhonePeCard = phonePeCard,
+                    CreditCard = creditCard,
+                    PetroCard = petroCard,
+                    Debit = debit
                 });
 
-                TotalCashDeposit += dayResult.CashDeposit;
-                TotalCashInHand += dayResult.CashInHand;
-                TotalPhonePe += dayResult.PhonePeDirect;
-                TotalPhonePeCard += dayResult.PhonePeCard;
-                TotalCreditCard += dayResult.CreditCard;
-                TotalPetroCard += dayResult.PetroCard;
-                TotalDebit += dayResult.Debit;
+                TotalCashDeposit += cashDeposit;
+                TotalCashInHand += cashInHand;
+                TotalPhonePe += phonePe;
+                TotalPhonePeCard += phonePeCard;
+                TotalCreditCard += creditCard;
+                TotalPetroCard += petroCard;
+                TotalDebit += debit;
             }
 
             GrandTotal = TotalCashDeposit + TotalCashInHand + TotalPhonePe + TotalPhonePeCard

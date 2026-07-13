@@ -109,6 +109,24 @@ public class FinancialPipelineIntegrationTests : IDisposable
         typeof(App).GetProperty("Services")?.SetValue(null, _serviceProvider);
         typeof(App).GetProperty("DbPath")?.SetValue(null, _dbPath);
 
+        var now = DateTime.Now;
+        var defaultMappings = new List<PumpMapping>
+        {
+            new PumpMapping { PumpId = 1, NozzleNumber = 1, FuelType = "MS-I", TankName = "MS - 20KL", IsActive = true, CreatedAt = now },
+            new PumpMapping { PumpId = 1, NozzleNumber = 3, FuelType = "HSD", TankName = "HSD - 20KL", IsActive = true, CreatedAt = now },
+            new PumpMapping { PumpId = 2, NozzleNumber = 2, FuelType = "MS-I", TankName = "MS - 20KL", IsActive = true, CreatedAt = now },
+            new PumpMapping { PumpId = 2, NozzleNumber = 4, FuelType = "HSD", TankName = "HSD - 20KL", IsActive = true, CreatedAt = now },
+            new PumpMapping { PumpId = 3, NozzleNumber = 5, FuelType = "MS-I", TankName = "MS - 20KL", IsActive = true, CreatedAt = now },
+            new PumpMapping { PumpId = 3, NozzleNumber = 7, FuelType = "MS-II", TankName = "HSD - 20KL II", IsActive = true, CreatedAt = now },
+            new PumpMapping { PumpId = 4, NozzleNumber = 6, FuelType = "MS-I", TankName = "MS - 20KL", IsActive = true, CreatedAt = now },
+            new PumpMapping { PumpId = 4, NozzleNumber = 8, FuelType = "MS-II", TankName = "HSD - 20KL II", IsActive = true, CreatedAt = now },
+            new PumpMapping { PumpId = 5, NozzleNumber = 9, FuelType = "MS-I", TankName = "MS - 20KL", IsActive = true, CreatedAt = now },
+            new PumpMapping { PumpId = 5, NozzleNumber = 11, FuelType = "HSD", TankName = "HSD - 20KL", IsActive = true, CreatedAt = now },
+            new PumpMapping { PumpId = 6, NozzleNumber = 10, FuelType = "MS-I", TankName = "MS - 20KL", IsActive = true, CreatedAt = now },
+            new PumpMapping { PumpId = 6, NozzleNumber = 12, FuelType = "HSD", TankName = "HSD - 20KL", IsActive = true, CreatedAt = now }
+        };
+        PumpConfiguration.InitializeFromDb(defaultMappings);
+
         using (var context = _serviceProvider.GetRequiredService<FuelProDbContext>())
         {
             context.Database.EnsureCreated();
@@ -518,6 +536,160 @@ public class FinancialPipelineIntegrationTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task DebtorRepayments_FinancialIntegration_BalancedExpected()
+    {
+        var testDate = new DateTime(2026, 7, 12);
+        
+        using (var context = _serviceProvider.GetRequiredService<FuelProDbContext>())
+        {
+            var shift = new Shift
+            {
+                ShiftId = 2,
+                ShiftDate = testDate,
+                ShiftType = "A",
+                IsLocked = false
+            };
+            context.Shifts.Add(shift);
+
+            var entry = new DsmEntry
+            {
+                DsmEntryId = 2,
+                ShiftId = 2,
+                PumpId = 1,
+                DsmName = "Bruce Wayne"
+            };
+            context.DsmEntries.Add(entry);
+
+            // Fuel sales (Gross sales = 5000)
+            entry.NozzleReadings.Add(new NozzleReading { NozzleNumber = 1, OpeningReading = 0, ClosingReading = 50, Rate = 100, SaleLitres = 50, Amount = 5000 });
+
+            // PaymentCollection (PhonePe = 2000, CreditCard = 1500; Total = 3500)
+            entry.PaymentCollection = new PaymentCollection
+            {
+                DsmEntryId = 2,
+                PhonePeMorning = 1000,
+                PhonePeNight = 1000,
+                CreditCardMorning = 1500
+            };
+
+            // Cash In Hand = 1500
+            entry.CashDenominations.Add(new CashDenomination
+            {
+                CashType = "Cash2",
+                Denom500 = 3,
+                TotalAmount = 1500
+            });
+
+            await context.SaveChangesAsync();
+        }
+
+        // Setup debtor repayments:
+        // 1. PhonePe (Reconcilable) - 500
+        // 2. PetroCard (Reconcilable) - 300
+        // 3. Bank Transfer (Non-Reconcilable / Record-Only) - 1000
+        // Total reconcilable recoveries = 500 + 300 = 800
+        var repaymentRepo = _serviceProvider.GetRequiredService<ICreditorRepaymentRepository>();
+        await repaymentRepo.AddAsync(new CreditorRepayment
+        {
+            CreditorName = "Clark Kent",
+            RepaymentDate = testDate,
+            PaymentMode = "PhonePe",
+            Amount = 500,
+            ShiftNumber = "A"
+        });
+        await repaymentRepo.AddAsync(new CreditorRepayment
+        {
+            CreditorName = "Clark Kent",
+            RepaymentDate = testDate,
+            PaymentMode = "PetroCard",
+            Amount = 300,
+            ShiftNumber = "A"
+        });
+        await repaymentRepo.AddAsync(new CreditorRepayment
+        {
+            CreditorName = "Clark Kent",
+            RepaymentDate = testDate,
+            PaymentMode = "Bank Transfer",
+            Amount = 1000,
+            ShiftNumber = "A"
+        });
+
+        // Load repositories and calculate
+        List<DsmEntry> entries;
+        List<CreditorRepayment> repayments;
+        using (var context = _serviceProvider.GetRequiredService<FuelProDbContext>())
+        {
+            entries = await context.DsmEntries
+                .Include(e => e.NozzleReadings)
+                .Include(e => e.PaymentCollection)
+                .Include(e => e.DebitEntries)
+                .Include(e => e.TestingEntries)
+                .Include(e => e.Expenses)
+                .Include(e => e.CashDenominations)
+                .Where(e => e.ShiftId == 2)
+                .ToListAsync();
+
+            repayments = await context.CreditorRepayments
+                .Where(r => r.ShiftNumber == "A")
+                .ToListAsync();
+        }
+        
+        var todayTid = new BusinessDayTidSheet
+        {
+            Date = testDate,
+            PhonePeDirectNight = 1000
+        };
+        var tomorrowTid = new BusinessDayTidSheet
+        {
+            Date = testDate.AddDays(1),
+            PhonePeDirectMorning = 1000,
+            PineLabsCardMorning = 1500
+        };
+        
+        var reportService = _serviceProvider.GetRequiredService<IReportService>();
+        var report = reportService.CalculateShiftReport(
+            testDate,
+            "A",
+            entries,
+            new List<Expense>(),
+            new List<ShiftOtherCash>(),
+            repayments,
+            100.0, 100.0, 100.0, 100.0,
+            todayTid, tomorrowTid,
+            "Test Station"
+        );
+
+        // Assertions:
+        // ExpectedCollection = Fuel Sales (5000) + Reconcilable Recoveries (800) = 5800
+        // ActualCollection = CashDeposit (0) + CashInHand (1500) + PhonePeMorning (1000) + PhonePeNight (1000 + 500 = 1500) + PineLabsMorning (1500) + PetroCard (300) = 5800
+        // Difference = 0 (Balanced)
+        Assert.Equal(5000, report.TotalFuelAmount);
+        Assert.Equal(5800, report.ExpectedCollection);
+        Assert.Equal(5800, report.ActualCollection);
+        Assert.Equal(0, report.Difference);
+        Assert.True(report.IsBalanced);
+        
+        // Verify breakdown items:
+        // Cash In Hand category total should be 1500 base + 0 recovery = 1500
+        var cashInHandCol = report.CollectionBreakdown.First(c => c.Category == "Cash In Hand");
+        Assert.Equal(1500, cashInHandCol.Amount);
+        Assert.Equal(1500, cashInHandCol.BaseAmount);
+        Assert.Equal(0, cashInHandCol.RecoveryAmount);
+
+        // PhonePe Night category total should be 1000 base + 500 recovery = 1500
+        var phonePeNightCol = report.CollectionBreakdown.First(c => c.Category == "PhonePe Night");
+        Assert.Equal(1500, phonePeNightCol.Amount);
+        Assert.Equal(1000, phonePeNightCol.BaseAmount);
+        Assert.Equal(500, phonePeNightCol.RecoveryAmount);
+
+        // Petro Card category total should be 0 base + 300 recovery = 300
+        var petroCardCol = report.CollectionBreakdown.First(c => c.Category == "Petro Card");
+        Assert.Equal(300, petroCardCol.Amount);
+        Assert.Equal(0, petroCardCol.BaseAmount);
+        Assert.Equal(300, petroCardCol.RecoveryAmount);
+    }
+
     public void Dispose()
     {
         try
@@ -535,6 +707,11 @@ public class FinancialPipelineIntegrationTests : IDisposable
 public class MockAgsInventoryService : IAgsInventoryService
 {
     public Task<List<NozzleGroupDto>> BuildNozzleGroupsAsync(DateTime date, string shiftType, List<DsmEntry>? loadedEntries = null)
+    {
+        return Task.FromResult(new List<NozzleGroupDto>());
+    }
+
+    public Task<List<NozzleGroupDto>> BuildNozzleGroupsForDateRangeAsync(DateTime startDate, DateTime endDate, List<DsmEntry>? loadedEntries = null)
     {
         return Task.FromResult(new List<NozzleGroupDto>());
     }

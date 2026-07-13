@@ -15,7 +15,7 @@ using System.Windows;
 
 namespace FuelPro.UI.ViewModels;
 
-public partial class ExpenseAnalysisViewModel : ObservableObject
+public partial class ExpenseAnalysisViewModel : ObservableObject, IDisposable
 {
     private readonly IShiftRepository _shiftRepo;
     private readonly IDsmEntryRepository _dsmEntryRepo;
@@ -41,7 +41,23 @@ public partial class ExpenseAnalysisViewModel : ObservableObject
         _expenseRepo = App.Services.GetRequiredService<IExpenseRepository>();
         _printService = App.Services.GetRequiredService<PrintService>();
         _excelExportService = App.Services.GetRequiredService<ExcelExportService>();
+
+        DsmEntryService.DsmEntryChanged += OnDataChanged;
+        DsmEntryService.PettyCashChanged += OnDataChanged;
+
         _ = LoadAsync();
+    }
+
+    private void OnDataChanged()
+    {
+        System.Windows.Application.Current.Dispatcher.InvokeAsync(async () => await LoadAsync());
+    }
+
+    public void Dispose()
+    {
+        DsmEntryService.DsmEntryChanged -= OnDataChanged;
+        DsmEntryService.PettyCashChanged -= OnDataChanged;
+        GC.SuppressFinalize(this);
     }
 
     partial void OnStartDateChanged(DateTime value) => _ = LoadAsync();

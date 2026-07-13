@@ -169,6 +169,21 @@ public class SyncEngine
         _syncTimer?.Dispose();
     }
 
+    public async Task<int> GetPendingCountAsync()
+    {
+        try
+        {
+            using var scope = _serviceProvider.CreateScope();
+            using var context = scope.ServiceProvider.GetRequiredService<FuelProDbContext>();
+            return await context.SyncChangeLogs.CountAsync(l => !l.IsSynced);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to get pending sync count");
+            return 0;
+        }
+    }
+
     public async Task ForceSyncAsync()
     {
         _logger.Information("Force sync requested.");
@@ -177,7 +192,14 @@ public class SyncEngine
 
     private async Task OnTimerTickAsync()
     {
-        await RunSyncCycleAsync(forcePull: false);
+        try
+        {
+            await RunSyncCycleAsync(forcePull: false);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Background timer tick sync failed.");
+        }
     }
 
     private async Task RunSyncCycleAsync(bool forcePull = false)
@@ -238,12 +260,33 @@ public class SyncEngine
                 }
             }
         }
-            catch (Exception ex)
+        catch (Exception ex) when (ex is HttpRequestException ||
+                                  ex is System.Net.Sockets.SocketException ||
+                                  ex is TaskCanceledException ||
+                                  ex is System.IO.IOException ||
+                                  ex.InnerException is HttpRequestException ||
+                                  ex.InnerException is System.Net.Sockets.SocketException ||
+                                  ex.InnerException is TaskCanceledException ||
+                                  ex.InnerException is System.IO.IOException)
         {
-            _logger.Error(ex, "Sync cycle failed with exception");
+            _logger.Warning(ex, "Sync cycle network failure (offline mode)");
+            
+            int pendingCount = await GetPendingCountAsync();
+            var settings = await _configService.GetSettingsAsync();
+            
             CurrentStatus.IsConnected = false;
-            CurrentStatus.StatusMessage = $"Error: {ex.Message} | Inner: {ex.InnerException?.Message} | Details: {ex.InnerException?.InnerException?.Message}";
+            CurrentStatus.PendingRecords = pendingCount;
+            var lastSyncStr = settings.LastSyncTime == DateTime.MinValue ? "Never" : settings.LastSyncTime.ToString("dd MMM yyyy hh:mm tt");
+            CurrentStatus.StatusMessage = $"Offline\nPending Changes: {pendingCount}\nLast Successful Sync:\n{lastSyncStr}\nRetrying Automatically...";
             SyncStatusChanged?.Invoke(CurrentStatus);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Sync cycle failed with fatal exception (Database/Data issue)");
+            CurrentStatus.IsConnected = false;
+            CurrentStatus.StatusMessage = $"Database Error: {ex.Message}";
+            SyncStatusChanged?.Invoke(CurrentStatus);
+            throw; // Let database/mapping errors fail normally
         }
         finally
         {

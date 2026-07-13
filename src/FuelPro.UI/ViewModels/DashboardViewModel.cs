@@ -60,7 +60,7 @@ public partial class DashboardViewModel : ObservableObject
     [ObservableProperty] private double _newRepaymentAmount;
     [ObservableProperty] private string _repaymentStatusMessage = "";
 
-    public string[] PaymentModes { get; } = { "Cash", "Cheque", "PhonePe", "PineLab Card" };
+    public string[] PaymentModes { get; } = { "Cash", "PhonePe", "PineLabs Card", "PetroCard", "Bank Transfer", "Cheque" };
 
     // ─── AGS Tank Stock & Shift Status ─────────────────────────────────────
     // Shift import status
@@ -536,13 +536,17 @@ public partial class DashboardViewModel : ObservableObject
             return;
         }
 
+        var shiftNumber = DateTime.Now.Hour < 20 ? "B" : "A";
+
         var repayment = new FuelPro.Core.Models.CreditorRepayment
         {
             CreditorName = NewCreditorName.Trim(),
             RepaymentDate = SelectedDate.Date,
             PaymentMode = NewRepaymentMode,
             ChequeNo = NewRepaymentMode == "Cheque" ? NewChequeNumber?.Trim() : null,
-            Amount = NewRepaymentAmount
+            Amount = NewRepaymentAmount,
+            ShiftNumber = shiftNumber,
+            CreatedAt = DateTime.Now
         };
 
         var result = await _repaymentRepo.AddAsync(repayment);
@@ -553,6 +557,7 @@ public partial class DashboardViewModel : ObservableObject
             NewRepaymentAmount = 0;
             NewChequeNumber = "";
             NewRepaymentMode = "Cash";
+            DsmEntryService.RaiseDsmEntryChanged();
             _ = LoadDataAsync();
         }
         else
@@ -566,7 +571,11 @@ public partial class DashboardViewModel : ObservableObject
     {
         if (repayment == null) return;
         var result = await _repaymentRepo.DeleteAsync(repayment.CreditorRepaymentId);
-        if (result.Success) _ = LoadDataAsync();
+        if (result.Success)
+        {
+            DsmEntryService.RaiseDsmEntryChanged();
+            _ = LoadDataAsync();
+        }
     }
 
     // ─── AGS Daily Summary Loading ──────────────────────────────────────────

@@ -369,6 +369,18 @@ public partial class FuelTankerEntryViewModel : ObservableObject
 
             await _context.SaveChangesAsync();
 
+            DateTime propagationStartDate = TankerDate;
+            if (wasEdit && oldDate < TankerDate)
+            {
+                propagationStartDate = oldDate;
+            }
+
+            var inventoryService = App.Services.GetRequiredService<IAgsInventoryService>();
+            await inventoryService.PropagateInventoryCalculationsAsync(propagationStartDate, "B");
+
+            FuelPro.Core.Services.DsmEntryService.RaiseInventoryChanged();
+            FuelPro.Core.Services.DsmEntryService.RaiseDsmEntryChanged();
+
             ClearForm();
             await LoadTankersAsync();
             MessageBox.Show("Fuel tanker entry saved successfully.", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -398,6 +410,7 @@ public partial class FuelTankerEntryViewModel : ObservableObject
             var tanker = await _context.FuelTankers.FindAsync(SelectedTanker.FuelTankerId);
             if (tanker != null)
             {
+                var propagationStartDate = tanker.TankerDate;
                 _context.FuelTankers.Remove(tanker);
 
                 _context.SyncChangeLogs.Add(new SyncChangeLog
@@ -410,6 +423,12 @@ public partial class FuelTankerEntryViewModel : ObservableObject
                 });
 
                 await _context.SaveChangesAsync();
+
+                var inventoryService = App.Services.GetRequiredService<IAgsInventoryService>();
+                await inventoryService.PropagateInventoryCalculationsAsync(propagationStartDate, "B");
+
+                FuelPro.Core.Services.DsmEntryService.RaiseInventoryChanged();
+                FuelPro.Core.Services.DsmEntryService.RaiseDsmEntryChanged();
 
                 ClearForm();
                 await LoadTankersAsync();

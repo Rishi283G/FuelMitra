@@ -23,7 +23,6 @@ public partial class SettingsViewModel : ObservableObject
     private readonly ISettingsRepository _settingsRepo;
     private readonly AuthService _authService;
     private readonly IUserRepository _userRepo;
-    private readonly IDsmProfileRepository _dsmProfileRepo;
     private readonly ICreditorRepository _creditorRepo;
     private readonly LicenseManager _licenseManager;
     private readonly FuelPro.Sync.SyncConfigService _syncConfigService;
@@ -57,11 +56,7 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string _newPinChange = "";
     [ObservableProperty] private string _pinStatusMessage = "";
 
-    // DSM Profile Management
-    public ObservableCollection<DsmProfile> DsmProfiles { get; } = new();
-    [ObservableProperty] private string _newDsmName = "";
-    [ObservableProperty] private string _newDsmMobile = "";
-    [ObservableProperty] private string _dsmStatusMessage = "";
+
 
     // Creditor Management
     public ObservableCollection<Creditor> Creditors { get; } = new();
@@ -114,7 +109,6 @@ public partial class SettingsViewModel : ObservableObject
         _settingsRepo = App.Services.GetRequiredService<ISettingsRepository>();
         _authService = App.Services.GetRequiredService<AuthService>();
         _userRepo = App.Services.GetRequiredService<IUserRepository>();
-        _dsmProfileRepo = App.Services.GetRequiredService<IDsmProfileRepository>();
         _creditorRepo = App.Services.GetRequiredService<ICreditorRepository>();
         _licenseManager = App.Services.GetRequiredService<LicenseManager>();
         _syncConfigService = App.Services.GetRequiredService<FuelPro.Sync.SyncConfigService>();
@@ -160,10 +154,7 @@ public partial class SettingsViewModel : ObservableObject
         if (usersResult.Success)
             foreach (var u in usersResult.Data!) Users.Add(u);
 
-        var dsmResult = await _dsmProfileRepo.GetAllAsync();
-        DsmProfiles.Clear();
-        if (dsmResult.Success)
-            foreach (var d in dsmResult.Data!) DsmProfiles.Add(d);
+
 
         var creditorsResult = await _creditorRepo.GetAllActiveAsync();
         Creditors.Clear();
@@ -251,37 +242,7 @@ public partial class SettingsViewModel : ObservableObject
         if (result.Success) await LoadAsync();
     }
 
-    [RelayCommand]
-    private async Task AddDsmProfileAsync()
-    {
-        if (string.IsNullOrWhiteSpace(NewDsmName))
-        {
-            DsmStatusMessage = "❌ DSM Name is required";
-            return;
-        }
-        var profile = new DsmProfile
-        {
-            DsmName = NewDsmName.Trim(),
-            MobileNumber = string.IsNullOrWhiteSpace(NewDsmMobile) ? null : NewDsmMobile.Trim()
-        };
-        var result = await _dsmProfileRepo.AddAsync(profile);
-        if (result.Success)
-        {
-            NewDsmName = "";
-            NewDsmMobile = "";
-            DsmStatusMessage = "✅ DSM Profile added!";
-            await LoadAsync();
-        }
-        else DsmStatusMessage = $"❌ {result.Error}";
-    }
 
-    [RelayCommand]
-    private async Task DeleteDsmProfileAsync(DsmProfile? profile)
-    {
-        if (profile == null) return;
-        var result = await _dsmProfileRepo.DeleteAsync(profile.DsmProfileId);
-        if (result.Success) await LoadAsync();
-    }
 
     [RelayCommand]
     private async Task AddCreditorAsync()

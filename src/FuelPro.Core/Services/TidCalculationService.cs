@@ -366,9 +366,18 @@ public class TidCalculationService : ITidCalculationService
 
         foreach (var r in allRepayments)
         {
-            bool isPhonePe  = r.PaymentMode == "PhonePe";
-            bool isPineLabs = r.PaymentMode == "PineLabs Card";
-            if (!isPhonePe && !isPineLabs) continue;
+            bool isPhonePe = string.Equals(r.PaymentMode, "PhonePe", StringComparison.OrdinalIgnoreCase) ||
+                             string.Equals(r.PaymentMode, "PhonePe UPI", StringComparison.OrdinalIgnoreCase) ||
+                             string.Equals(r.PaymentMode, "UPI Terminal", StringComparison.OrdinalIgnoreCase);
+
+            bool isPineLabs = string.Equals(r.PaymentMode, "PineLabs Card", StringComparison.OrdinalIgnoreCase) ||
+                              string.Equals(r.PaymentMode, "Credit Card", StringComparison.OrdinalIgnoreCase) ||
+                              string.Equals(r.PaymentMode, "PineLabs", StringComparison.OrdinalIgnoreCase);
+
+            bool isPetro = string.Equals(r.PaymentMode, "Petro Card", StringComparison.OrdinalIgnoreCase) ||
+                           string.Equals(r.PaymentMode, "PetroCard", StringComparison.OrdinalIgnoreCase);
+
+            if (!isPhonePe && !isPineLabs && !isPetro) continue;
 
             string slot;
             string shiftLabel;
@@ -427,7 +436,7 @@ public class TidCalculationService : ITidCalculationService
                     case "Night":   sheet.DebtorPhonePeRepaymentNight   += r.Amount; break;
                 }
             }
-            else // PineLabs Card
+            else if (isPineLabs)
             {
                 sheet.DebtorCardRepayments.Add(item);
                 switch (slot)
@@ -435,6 +444,16 @@ public class TidCalculationService : ITidCalculationService
                     case "Morning": sheet.DebtorCardRepaymentMorning += r.Amount; break;
                     case "Day":     sheet.DebtorCardRepaymentDay     += r.Amount; break;
                     case "Night":   sheet.DebtorCardRepaymentNight   += r.Amount; break;
+                }
+            }
+            else if (isPetro)
+            {
+                sheet.DebtorPetroCardRepayments.Add(item);
+                switch (slot)
+                {
+                    case "Morning": sheet.DebtorPetroCardRepaymentMorning += r.Amount; break;
+                    case "Day":     sheet.DebtorPetroCardRepaymentDay     += r.Amount; break;
+                    case "Night":   sheet.DebtorPetroCardRepaymentNight   += r.Amount; break;
                 }
             }
         }

@@ -34,7 +34,7 @@ public partial class CardSettlementItem : ObservableObject
     public CardSettlementSlot Slot { get; set; }
 }
 
-public partial class CardSettlementViewModel : ObservableObject
+public partial class CardSettlementViewModel : ObservableObject, IDisposable
 {
     private readonly IShiftRepository _shiftRepo;
     private readonly IDsmEntryRepository _dsmRepo;
@@ -82,9 +82,10 @@ public partial class CardSettlementViewModel : ObservableObject
         App.Current?.Dispatcher?.InvokeAsync(async () => await LoadShiftDataAsync());
     }
 
-    ~CardSettlementViewModel()
+    public void Dispose()
     {
         DsmEntryService.DsmEntryChanged -= OnDsmEntryChanged;
+        GC.SuppressFinalize(this);
     }
 
     partial void OnSelectedDateChanged(DateTime value) => _ = LoadShiftDataAsync();
@@ -189,7 +190,8 @@ public partial class CardSettlementViewModel : ObservableObject
             }
 
             HasData = CardPayments.Count > 0 || PhonePePayments.Count > 0 || PetroCardPayments.Count > 0
-                   || tidSheet.DebtorPhonePeRepayments.Count > 0 || tidSheet.DebtorCardRepayments.Count > 0;
+                   || tidSheet.DebtorPhonePeRepayments.Count > 0 || tidSheet.DebtorCardRepayments.Count > 0
+                   || tidSheet.DebtorPetroCardRepayments.Count > 0;
 
             // 4. Debtor repayments — PhonePe
             foreach (var item in tidSheet.DebtorPhonePeRepayments)
@@ -223,7 +225,23 @@ public partial class CardSettlementViewModel : ObservableObject
                 });
             }
 
-            HasData = HasData || CardPayments.Count > 0 || PhonePePayments.Count > 0;
+            // 6. Debtor repayments — Petro Card
+            foreach (var item in tidSheet.DebtorPetroCardRepayments)
+            {
+                PetroCardPayments.Add(new CardSettlementItem
+                {
+                    RomanIndex = "—",
+                    DsmName = $"[Debtor] {item.DsmName} ({item.ShiftLabel})",
+                    Amount = item.Amount,
+                    Tid = item.Tid,
+                    Batch = item.Batch,
+                    ShiftLabel = item.ShiftLabel,
+                    Slot = ParseSlot(item.Slot),
+                    SlotDisplaySubtitle = item.SlotDisplaySubtitle
+                });
+            }
+
+            HasData = HasData || CardPayments.Count > 0 || PhonePePayments.Count > 0 || PetroCardPayments.Count > 0;
             if (!HasData)
             {
                 StatusMessage = "No card, PhonePe, or Petro Card payments found for these shifts.";

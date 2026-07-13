@@ -17,7 +17,7 @@ using FuelPro.Core.Models.AGS;
 
 namespace FuelPro.UI.ViewModels;
 
-public partial class FinalCalculationViewModel : ObservableObject
+public partial class FinalCalculationViewModel : ObservableObject, IDisposable
 {
     private readonly IShiftRepository _shiftRepo;
     private readonly IDsmEntryRepository _dsmRepo;
@@ -100,6 +100,7 @@ public partial class FinalCalculationViewModel : ObservableObject
 
     // DEBTOR REPAYMENTS (Part 5)
     [ObservableProperty] private ObservableCollection<CreditorRepayment> _debtorRepayments = new();
+    [ObservableProperty] private ObservableCollection<RepaymentBreakdownDto> _repaymentBreakdown = new();
     [ObservableProperty] private ObservableCollection<Creditor> _debtorsList = new();
     [ObservableProperty] private string _newDebtorName = "";
     [ObservableProperty] private string _newRepaymentMode = "Cash";
@@ -118,7 +119,7 @@ public partial class FinalCalculationViewModel : ObservableObject
     [ObservableProperty] private int? _newDenom10;
     [ObservableProperty] private double? _newCoins;
 
-    public string[] PaymentModes { get; } = { "Cash", "PhonePe", "Credit Card", "Cheque" };
+    public string[] PaymentModes { get; } = { "Cash", "PhonePe", "PineLabs Card", "PetroCard", "Bank Transfer", "Cheque" };
 
     public string[] ShiftOptions { get; } = { "A", "B" };
 
@@ -139,6 +140,21 @@ public partial class FinalCalculationViewModel : ObservableObject
         _tidService = App.Services.GetRequiredService<ITidCalculationService>();
         _inventoryService = App.Services.GetRequiredService<IAgsInventoryService>();
         _reportService = App.Services.GetRequiredService<IReportService>();
+
+        DsmEntryService.DsmEntryChanged += OnDataChanged;
+        DsmEntryService.DebtorChanged += OnDataChanged;
+    }
+
+    private void OnDataChanged()
+    {
+        System.Windows.Application.Current.Dispatcher.InvokeAsync(async () => await LoadShiftDataAsync());
+    }
+
+    public void Dispose()
+    {
+        DsmEntryService.DsmEntryChanged -= OnDataChanged;
+        DsmEntryService.DebtorChanged -= OnDataChanged;
+        GC.SuppressFinalize(this);
     }
 
     partial void OnSelectedDateChanged(DateTime value) => _ = LoadShiftDataAsync();
@@ -258,13 +274,13 @@ public partial class FinalCalculationViewModel : ObservableObject
             OtherCashTotal = report.OtherCashTotal;
             GrandTotalSaleAmount = report.GrandTotalSaleAmount;
 
-            // Reconciliation rows mapping for UI
+            // Reconciliation rows — use audit description with breakdown
             var reconRows = new List<ReconciliationRowDto>();
             foreach (var category in report.CollectionBreakdown)
             {
                 if (category.Amount > 0)
                 {
-                    reconRows.Add(new ReconciliationRowDto { Description = category.Category, Amount = category.Amount });
+                    reconRows.Add(new ReconciliationRowDto { Description = category.DescriptionWithBreakdown, Amount = category.Amount });
                 }
             }
             ReconciliationRows = new ObservableCollection<ReconciliationRowDto>(reconRows);
@@ -273,6 +289,9 @@ public partial class FinalCalculationViewModel : ObservableObject
             Difference = report.Difference;
             IsBalanced = report.IsBalanced;
             TotalDsmShort = report.TotalDsmShort;
+
+            // Bind repayment breakdown for debtor recovery section
+            RepaymentBreakdown = new ObservableCollection<RepaymentBreakdownDto>(report.RepaymentBreakdown);
 
             // Load AGS Nozzle Readings
             try
@@ -709,6 +728,7 @@ public partial class FinalCalculationViewModel : ObservableObject
             NewDenom20 = null;
             NewDenom10 = null;
             NewCoins = null;
+            DsmEntryService.RaiseDsmEntryChanged();
             await LoadShiftDataAsync();
         }
         else
@@ -731,6 +751,7 @@ public partial class FinalCalculationViewModel : ObservableObject
         if (result.Success)
         {
             RepaymentStatusMessage = "✅ Repayment deleted.";
+            DsmEntryService.RaiseDsmEntryChanged();
             await LoadShiftDataAsync();
         }
         else

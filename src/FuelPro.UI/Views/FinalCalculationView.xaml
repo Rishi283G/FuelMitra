@@ -194,6 +194,26 @@
                         </StackPanel>
                     </materialDesign:Card>
 
+                    <!-- DEBTOR RECOVERIES -->
+                    <materialDesign:Card Style="{StaticResource SectionCard}">
+                        <StackPanel>
+                            <Grid Margin="0,0,0,12">
+                                <TextBlock Text="C2. Debtor Recoveries (Collections)" Style="{StaticResource SectionTitle}" Margin="0" />
+                                <TextBlock Text="{Binding CurrentReport.DebtorRepaymentsTotal, Converter={StaticResource CurrencyConverter}, StringFormat='Total: {0}'}" HorizontalAlignment="Right" FontWeight="Bold" FontSize="16" Foreground="Green" />
+                            </Grid>
+                            
+                            <!-- Repayments List -->
+                            <DataGrid ItemsSource="{Binding DebtorRepayments}" AutoGenerateColumns="False" IsReadOnly="True" MaxHeight="200">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Debtor" Binding="{Binding CreditorName}" Width="2*" />
+                                    <DataGridTextColumn Header="Mode" Binding="{Binding PaymentMode}" Width="*" />
+                                    <DataGridTextColumn Header="Details" Binding="{Binding ReferenceDisplay}" Width="2*" />
+                                    <DataGridTextColumn Header="Amount" Binding="{Binding Amount, Converter={StaticResource CurrencyConverter}}" Width="1.5*" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </StackPanel>
+                    </materialDesign:Card>
+
                     <!-- TABLE D: EXPENSES -->
                     <materialDesign:Card Style="{StaticResource SectionCard}">
                         <StackPanel>
@@ -475,7 +495,7 @@
                                                  <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="4,2" VerticalAlignment="Center">
                                                      <TextBlock Text="Receipts: " FontWeight="SemiBold" Opacity="0.7" VerticalAlignment="Center"/>
                                                      <TextBox Text="{Binding Receipts, UpdateSourceTrigger=PropertyChanged}" FontWeight="Bold" Width="55" 
-                                                              IsEnabled="{Binding DataContext.IsShiftLocked, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource InverseBool}}"/>
+                                                              IsEnabled="False"/>
                                                      <TextBlock Text=" L" Opacity="0.7" VerticalAlignment="Center"/>
                                                  </StackPanel>
 

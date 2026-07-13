@@ -17,7 +17,7 @@ namespace FuelPro.UI.ViewModels;
 /// <summary>
 /// Monthly performance overview: day-by-day totals for the selected month.
 /// </summary>
-public partial class MonthlyPerformanceViewModel : ObservableObject
+public partial class MonthlyPerformanceViewModel : ObservableObject, IDisposable
 {
     private readonly IDsmEntryRepository _dsmEntryRepo;
     private readonly IShiftRepository _shiftRepo;
@@ -26,6 +26,9 @@ public partial class MonthlyPerformanceViewModel : ObservableObject
     private readonly ITidCalculationService _tidService;
     private readonly PrintService _printService;
     private readonly ExcelExportService _excelExportService;
+    private readonly ICreditorRepaymentRepository _repaymentRepo;
+    private readonly IReportService _reportService;
+    private readonly ISettingsRepository _settingsRepo;
 
     [ObservableProperty] private DateTime _selectedMonth = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
     [ObservableProperty] private bool _isLoading;
@@ -48,7 +51,32 @@ public partial class MonthlyPerformanceViewModel : ObservableObject
         _tidService = App.Services.GetRequiredService<ITidCalculationService>();
         _printService = App.Services.GetRequiredService<PrintService>();
         _excelExportService = App.Services.GetRequiredService<ExcelExportService>();
+        _repaymentRepo = App.Services.GetRequiredService<ICreditorRepaymentRepository>();
+        _reportService = App.Services.GetRequiredService<IReportService>();
+        _settingsRepo = App.Services.GetRequiredService<ISettingsRepository>();
+
+        DsmEntryService.DsmEntryChanged += OnDataChanged;
+        DsmEntryService.PettyCashChanged += OnDataChanged;
+        DsmEntryService.DebtorChanged += OnDataChanged;
+        DsmEntryService.PayrollChanged += OnDataChanged;
+        DsmEntryService.InventoryChanged += OnDataChanged;
+
         _ = LoadAsync();
+    }
+
+    private void OnDataChanged()
+    {
+        System.Windows.Application.Current.Dispatcher.InvokeAsync(async () => await LoadAsync());
+    }
+
+    public void Dispose()
+    {
+        DsmEntryService.DsmEntryChanged -= OnDataChanged;
+        DsmEntryService.PettyCashChanged -= OnDataChanged;
+        DsmEntryService.DebtorChanged -= OnDataChanged;
+        DsmEntryService.PayrollChanged -= OnDataChanged;
+        DsmEntryService.InventoryChanged -= OnDataChanged;
+        GC.SuppressFinalize(this);
     }
 
     partial void OnSelectedMonthChanged(DateTime value) => _ = LoadAsync();
@@ -73,8 +101,6 @@ public partial class MonthlyPerformanceViewModel : ObservableObject
             MonthTotalCollection = 0;
             MonthTotalEntries = entries.Count;
 
-            var tidSheets = await _tidService.GetTidSheetsForRangeAsync(startDate, endDate);
-
             var shiftsResult = await _shiftRepo.GetShiftsByDateRangeAsync(startDate, endDate);
             var shifts = shiftsResult.Success && shiftsResult.Data != null ? shiftsResult.Data : new List<Shift>();
             var shiftIds = shifts.Select(s => s.ShiftId).ToList();
@@ -83,39 +109,54 @@ public partial class MonthlyPerformanceViewModel : ObservableObject
             var shiftExpensesResult = await expenseRepo.GetExpensesByShiftIdsAsync(shiftIds);
             var shiftExpenses = shiftExpensesResult.Success && shiftExpensesResult.Data != null ? shiftExpensesResult.Data : new List<Expense>();
 
-            var otherCashRepo = App.Services.GetRequiredService<IShiftOtherCashRepository>();
-            var otherCashResult = await otherCashRepo.GetByDateRangeAsync(startDate, endDate);
-            var otherCash = otherCashResult.Success && otherCashResult.Data != null ? otherCashResult.Data : new List<ShiftOtherCash>();
+            var repaymentsResult = await _repaymentRepo.GetByDateRangeAsync(startDate, endDate);
+            var repayments = repaymentsResult.Success && repaymentsResult.Data != null ? repaymentsResult.Data : new List<CreditorRepayment>();
 
-            var dayResults = _ownerCalcService.CalculateByDay(entries, shiftExpenses, otherCash, tidSheets);
+            var settingsResult = await _settingsRepo.GetSettingsAsync();
+            var settings = settingsResult.Success && settingsResult.Data != null ? settingsResult.Data : new Setting();
+            double defaultHsd = settings.HsdRate;
+            double defaultMsI = settings.MsIRate;
+            double defaultMsII = settings.MsIIRate;
+            double defaultCng = settings.CngRate;
+            string stationName = settings.StationDisplayName;
 
-            double totalGrossSales = 0;
-            double totalTesting = 0;
+            double totalNetSales = 0;
 
-            foreach (var kv in dayResults.OrderBy(x => x.Key))
+            for (var date = startDate; date <= endDate; date = date.AddDays(1))
             {
-                var date = kv.Key;
-                var dayResult = kv.Value;
-
                 var dayGroupEntries = entries.Where(e => (e.Shift != null ? e.Shift.ShiftDate.Date : DateTime.Today) == date).ToList();
+                if (dayGroupEntries.Count == 0) continue;
+
+                var dayExpenses = shiftExpenses.Where(e => (e.Shift != null ? e.Shift.ShiftDate.Date : DateTime.Today) == date).ToList();
+                var dayRepayments = repayments.Where(r => r.RepaymentDate.Date == date).ToList();
+
+                var dayReport = _reportService.CalculateDayReport(
+                    date, date,
+                    dayGroupEntries,
+                    dayExpenses,
+                    dayRepayments,
+                    defaultHsd, defaultMsI, defaultMsII, defaultCng,
+                    stationName);
+
+                double dayNetSale = dayReport.TotalFuelAmount - dayReport.DsmSummaryTotals.Testing;
+                double dayCollection = dayReport.ActualCollection;
 
                 DayRows.Add(new MonthDayRow
                 {
                     Date = date,
                     DsmEntryCount = dayGroupEntries.Count,
-                    TotalSale = dayResult.GrossSales,
-                    TotalLitres = dayResult.TotalLitres,
-                    TotalCollection = dayResult.DirectCollection, // Mitali displays Direct Collection (Cash/Card/Digital/Credit)
-                    Mismatch = dayResult.Mismatch
+                    TotalSale = dayNetSale,
+                    TotalLitres = dayReport.TotalFuelLitres,
+                    TotalCollection = dayCollection,
+                    Mismatch = dayReport.Difference
                 });
 
-                totalGrossSales += dayResult.GrossSales;
-                totalTesting += dayResult.Testing;
-                MonthTotalLitres += dayResult.TotalLitres;
-                MonthTotalCollection += dayResult.DirectCollection;
+                totalNetSales += dayNetSale;
+                MonthTotalLitres += dayReport.TotalFuelLitres;
+                MonthTotalCollection += dayCollection;
             }
 
-            MonthTotalSale = totalGrossSales - totalTesting; // Mitali displays Net Sales (Gross - Testing)
+            MonthTotalSale = totalNetSales;
             MonthAvgDailySale = DayRows.Count > 0 ? MonthTotalSale / DayRows.Count : 0;
         }
         catch (Exception ex)

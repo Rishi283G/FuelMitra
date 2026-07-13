@@ -21,7 +21,7 @@ namespace FuelPro.UI.ViewModels;
 /// <summary>
 /// Owner Dashboard ViewModel — read-only KPI overview with prominent sync status.
 /// </summary>
-public partial class OwnerDashboardViewModel : ObservableObject
+public partial class OwnerDashboardViewModel : ObservableObject, IDisposable
 {
     private readonly ShiftCalculationService _calcService;
     private readonly IShiftRepository _shiftRepository;
@@ -117,21 +117,45 @@ public partial class OwnerDashboardViewModel : ObservableObject
         _reportService = App.Services.GetRequiredService<IReportService>();
 
         // Wire Sync Status
-        _syncEngine.SyncStatusChanged += (status) =>
-        {
-            System.Windows.Application.Current.Dispatcher.Invoke(async () =>
-            {
-                UpdateSyncDisplay(status.LastSyncTime == default ? (DateTime?)null : status.LastSyncTime, status.PendingRecords);
-                if (status.StatusMessage == "Synced")
-                {
-                    await LoadDataAsync();
-                }
-            });
-        };
+        _syncEngine.SyncStatusChanged += OnSyncStatusChanged;
         // Initial sync state update
         UpdateSyncDisplay(_syncEngine.CurrentStatus.LastSyncTime == default ? (DateTime?)null : _syncEngine.CurrentStatus.LastSyncTime, _syncEngine.CurrentStatus.PendingRecords);
 
+        DsmEntryService.DsmEntryChanged += OnDataChanged;
+        DsmEntryService.PettyCashChanged += OnDataChanged;
+        DsmEntryService.DebtorChanged += OnDataChanged;
+        DsmEntryService.PayrollChanged += OnDataChanged;
+        DsmEntryService.InventoryChanged += OnDataChanged;
+
         _ = SetPresetAsync(SelectedPreset);
+    }
+
+    private void OnSyncStatusChanged(FuelPro.Sync.SyncStatusInfo status)
+    {
+        System.Windows.Application.Current.Dispatcher.Invoke(async () =>
+        {
+            UpdateSyncDisplay(status.LastSyncTime == default ? (DateTime?)null : status.LastSyncTime, status.PendingRecords);
+            if (status.StatusMessage == "Synced")
+            {
+                await LoadDataAsync();
+            }
+        });
+    }
+
+    private void OnDataChanged()
+    {
+        System.Windows.Application.Current.Dispatcher.InvokeAsync(async () => await LoadDataAsync());
+    }
+
+    public void Dispose()
+    {
+        _syncEngine.SyncStatusChanged -= OnSyncStatusChanged;
+        DsmEntryService.DsmEntryChanged -= OnDataChanged;
+        DsmEntryService.PettyCashChanged -= OnDataChanged;
+        DsmEntryService.DebtorChanged -= OnDataChanged;
+        DsmEntryService.PayrollChanged -= OnDataChanged;
+        DsmEntryService.InventoryChanged -= OnDataChanged;
+        GC.SuppressFinalize(this);
     }
 
     partial void OnStartDateChanged(DateTime value)

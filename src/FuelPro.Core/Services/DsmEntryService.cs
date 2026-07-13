@@ -16,6 +16,21 @@ public class DsmEntryService
     public static event Action? DsmEntryChanged;
     public static void RaiseDsmEntryChanged() => DsmEntryChanged?.Invoke();
 
+    public static event Action? PettyCashChanged;
+    public static void RaisePettyCashChanged() => PettyCashChanged?.Invoke();
+
+    public static event Action? InventoryChanged;
+    public static void RaiseInventoryChanged() => InventoryChanged?.Invoke();
+
+    public static event Action? DebtorChanged;
+    public static void RaiseDebtorChanged() => DebtorChanged?.Invoke();
+
+    public static event Action? PayrollChanged;
+    public static void RaisePayrollChanged() => PayrollChanged?.Invoke();
+
+    public static event Action? SettingsChanged;
+    public static void RaiseSettingsChanged() => SettingsChanged?.Invoke();
+
     private readonly IDsmEntryRepository _dsmRepo;
     private readonly INozzleReadingRepository _nozzleRepo;
     private readonly IPaymentRepository _paymentRepo;
@@ -521,5 +536,541 @@ public class DsmEntryService
             return Result.Fail($"Failed to propagate nozzle readings: {ex.Message}");
         }
     }
+
+    public async Task<Result<DsmEntry>> SaveCompleteEntryWithContextAsync(
+        DbContext context,
+        DateTime date, string shiftType, string dsmName, int pumpId,
+        List<NozzleReading> nozzleReadings,
+        PaymentCollection payment,
+        List<DebitEntry> debits,
+        List<TestingEntry> testingEntries,
+        List<Expense> expenses,
+        List<CashDenomination> cashDenominations,
+        int? connectedPumpId = null,
+        int? existingEntryId = null,
+        string? startTime = null,
+        string? endTime = null,
+        List<DsmPersonalDebtor>? personalDebtors = null)
+    {
+        try
+        {
+            var dateOnly = date.Date;
+            
+            // Check/Get/Create Shift
+            var shift = await context.Set<Shift>()
+                .FirstOrDefaultAsync(s => s.ShiftDate == dateOnly && s.ShiftType == shiftType);
+            if (shift == null)
+            {
+                shift = new Shift
+                {
+                    ShiftDate = dateOnly,
+                    ShiftType = shiftType,
+                    IsLocked = false,
+                    CreatedAt = DateTime.Now
+                };
+                context.Set<Shift>().Add(shift);
+                await context.SaveChangesAsync();
+            }
+
+            if (shift.IsLocked)
+                return Result<DsmEntry>.Fail("This shift is locked and cannot be edited.");
+
+            // Pre-calculate nozzle readings SaleLitres and Amount
+            foreach (var nr in nozzleReadings)
+            {
+                nr.SaleLitres = nr.ClosingReading - nr.OpeningReading;
+                nr.Amount = nr.SaleLitres * nr.Rate;
+            }
+
+            // Split nozzle readings into primary and connected pump nozzles
+            var primaryReadings = new List<NozzleReading>();
+            var connectedReadings = new List<NozzleReading>();
+            foreach (var nr in nozzleReadings)
+            {
+                var nozzlePumpId = PumpConfiguration.GetPumpIdForNozzle(nr.NozzleNumber, date);
+                if (nozzlePumpId == 0) nozzlePumpId = pumpId;
+
+                if (connectedPumpId.HasValue && nozzlePumpId == connectedPumpId.Value)
+                {
+                    connectedReadings.Add(nr);
+                }
+                else
+                {
+                    primaryReadings.Add(nr);
+                }
+            }
+
+            // Check duplicate for primary
+            if (existingEntryId == null)
+            {
+                var duplicateExists = await context.Set<DsmEntry>().AnyAsync(e =>
+                    e.ShiftId == shift.ShiftId &&
+                    e.PumpId == pumpId &&
+                    e.DsmName == dsmName);
+                if (duplicateExists)
+                {
+                    // Look up the existing entry to see if it's an orphan
+                    var orphan = await context.Set<DsmEntry>()
+                        .Include(e => e.PaymentCollection)
+                        .FirstOrDefaultAsync(e =>
+                            e.ShiftId == shift.ShiftId &&
+                            e.PumpId == pumpId &&
+                            e.DsmName == dsmName &&
+                            e.PaymentCollection == null);
+
+                    if (orphan != null)
+                    {
+                        _logger.Information("Found orphaned DSM entry {Id} for {Dsm}/Pump {Pump}, reusing",
+                            orphan.DsmEntryId, dsmName, pumpId);
+                        existingEntryId = orphan.DsmEntryId;
+                    }
+                    else
+                    {
+                        return Result<DsmEntry>.Fail($"A DSM entry for '{dsmName}' on Pump {pumpId} already exists in this shift.");
+                    }
+                }
+            }
+
+            // Create or update DSM entry
+            DsmEntry entry;
+            if (existingEntryId.HasValue && existingEntryId.Value != 0)
+            {
+                var existing = await context.Set<DsmEntry>().FindAsync(existingEntryId.Value);
+                if (existing != null)
+                {
+                    existing.ShiftId = shift.ShiftId;
+                    existing.DsmName = dsmName;
+                    existing.PumpId = pumpId;
+                    existing.ConnectedPumpId = connectedPumpId;
+                    existing.StartTime = startTime;
+                    existing.EndTime = endTime;
+                    existing.UpdatedAt = DateTime.Now;
+                    entry = existing;
+                }
+                else
+                {
+                    entry = new DsmEntry
+                    {
+                        ShiftId = shift.ShiftId,
+                        DsmName = dsmName,
+                        PumpId = pumpId,
+                        ConnectedPumpId = connectedPumpId,
+                        StartTime = startTime,
+                        EndTime = endTime,
+                        CreatedAt = DateTime.Now,
+                        UpdatedAt = DateTime.Now
+                    };
+                    context.Set<DsmEntry>().Add(entry);
+                }
+            }
+            else
+            {
+                entry = new DsmEntry
+                {
+                    ShiftId = shift.ShiftId,
+                    DsmName = dsmName,
+                    PumpId = pumpId,
+                    ConnectedPumpId = connectedPumpId,
+                    StartTime = startTime,
+                    EndTime = endTime,
+                    CreatedAt = DateTime.Now,
+                    UpdatedAt = DateTime.Now
+                };
+                context.Set<DsmEntry>().Add(entry);
+            }
+
+            await context.SaveChangesAsync();
+            var savedEntryId = entry.DsmEntryId;
+
+            // Save nozzle readings
+            var existingNozzles = await context.Set<NozzleReading>().Where(r => r.DsmEntryId == savedEntryId).ToListAsync();
+            context.Set<NozzleReading>().RemoveRange(existingNozzles);
+            foreach (var r in primaryReadings)
+            {
+                r.DsmEntryId = savedEntryId;
+                r.DsmEntry = null;
+                r.SaleLitres = r.ClosingReading - r.OpeningReading;
+                r.Amount = r.SaleLitres * r.Rate;
+            }
+            context.Set<NozzleReading>().AddRange(primaryReadings);
+
+            // Save Payment Collection
+            var existingPayment = await context.Set<PaymentCollection>().FirstOrDefaultAsync(p => p.DsmEntryId == savedEntryId);
+            if (existingPayment != null)
+            {
+                payment.PaymentId = existingPayment.PaymentId;
+                payment.DsmEntryId = savedEntryId;
+                payment.DsmEntry = null;
+                context.Entry(existingPayment).CurrentValues.SetValues(payment);
+            }
+            else
+            {
+                payment.DsmEntryId = savedEntryId;
+                payment.DsmEntry = null;
+                context.Set<PaymentCollection>().Add(payment);
+            }
+
+            // Save Debits
+            var existingDebits = await context.Set<DebitEntry>().Where(d => d.DsmEntryId == savedEntryId).ToListAsync();
+            context.Set<DebitEntry>().RemoveRange(existingDebits);
+            foreach (var d in debits)
+            {
+                d.DsmEntryId = savedEntryId;
+                d.DsmEntry = null;
+            }
+            context.Set<DebitEntry>().AddRange(debits);
+
+            // Save Testing
+            var existingTesting = await context.Set<TestingEntry>().Where(t => t.DsmEntryId == savedEntryId).ToListAsync();
+            context.Set<TestingEntry>().RemoveRange(existingTesting);
+            foreach (var t in testingEntries)
+            {
+                t.DsmEntryId = savedEntryId;
+                t.DsmEntry = null;
+            }
+            context.Set<TestingEntry>().AddRange(testingEntries);
+
+            // Save Expenses
+            var existingExpenses = await context.Set<Expense>().Where(e => e.DsmEntryId == savedEntryId).ToListAsync();
+            context.Set<Expense>().RemoveRange(existingExpenses);
+            foreach (var e in expenses)
+            {
+                e.DsmEntryId = savedEntryId;
+                e.DsmEntry = null;
+            }
+            context.Set<Expense>().AddRange(expenses);
+
+            // Save Cash Denominations
+            var existingCash = await context.Set<CashDenomination>().Where(c => c.DsmEntryId == savedEntryId).ToListAsync();
+            context.Set<CashDenomination>().RemoveRange(existingCash);
+            foreach (var c in cashDenominations)
+            {
+                c.DsmEntryId = savedEntryId;
+                c.DsmEntry = null;
+            }
+            context.Set<CashDenomination>().AddRange(cashDenominations);
+
+            // Save Personal Debtors
+            var existingPersonal = await context.Set<DsmPersonalDebtor>().Where(p => p.DsmEntryId == savedEntryId).ToListAsync();
+            context.Set<DsmPersonalDebtor>().RemoveRange(existingPersonal);
+            if (personalDebtors != null)
+            {
+                foreach (var p in personalDebtors)
+                {
+                    p.DsmEntryId = savedEntryId;
+                    p.DsmEntry = null;
+                }
+                context.Set<DsmPersonalDebtor>().AddRange(personalDebtors);
+            }
+
+            await context.SaveChangesAsync();
+
+            // Recalculate canonical totals for primary entry
+            var fullEntry = await context.Set<DsmEntry>()
+                .Include(e => e.NozzleReadings)
+                .Include(e => e.PaymentCollection)
+                .Include(e => e.DebitEntries)
+                .Include(e => e.TestingEntries)
+                .Include(e => e.Expenses)
+                .Include(e => e.CashDenominations)
+                .Include(e => e.PersonalDebtors)
+                .FirstOrDefaultAsync(e => e.DsmEntryId == savedEntryId);
+
+            if (fullEntry != null)
+            {
+                var calc = _dsmCalculationService.Calculate(ToCalculationDto(fullEntry));
+                var connectedGross = connectedPumpId.HasValue ? (decimal)connectedReadings.Sum(x => x.Amount) : 0m;
+                entry.GrossSales = calc.GrossSales + connectedGross;
+                entry.TotalInDirect = calc.TotalInDirect;
+                entry.TotalCreditors = calc.TotalCreditors;
+                entry.TotalCollection = calc.TotalCollection;
+                entry.Mismatch = calc.TotalCollection - entry.GrossSales;
+                entry.UpdatedAt = DateTime.Now;
+                context.Entry(entry).State = EntityState.Modified;
+                await context.SaveChangesAsync();
+            }
+
+            // Save connected pump entry if specified
+            if (connectedPumpId.HasValue)
+            {
+                var shiftEntries = await context.Set<DsmEntry>()
+                    .Where(e => e.ShiftId == shift.ShiftId)
+                    .ToListAsync();
+                
+                var existingConnectedEntry = shiftEntries.FirstOrDefault(e =>
+                    e.PumpId == connectedPumpId.Value &&
+                    string.Equals(e.DsmName, dsmName, StringComparison.OrdinalIgnoreCase));
+
+                DsmEntry connectedEntry;
+                if (existingConnectedEntry != null)
+                {
+                    existingConnectedEntry.ReconciledToPumpId = pumpId;
+                    existingConnectedEntry.StartTime = startTime;
+                    existingConnectedEntry.EndTime = endTime;
+                    existingConnectedEntry.UpdatedAt = DateTime.Now;
+                    connectedEntry = existingConnectedEntry;
+                }
+                else
+                {
+                    connectedEntry = new DsmEntry
+                    {
+                        ShiftId = shift.ShiftId,
+                        DsmName = dsmName,
+                        PumpId = connectedPumpId.Value,
+                        ReconciledToPumpId = pumpId,
+                        StartTime = startTime,
+                        EndTime = endTime,
+                        CreatedAt = DateTime.Now,
+                        UpdatedAt = DateTime.Now
+                    };
+                    context.Set<DsmEntry>().Add(connectedEntry);
+                }
+
+                await context.SaveChangesAsync();
+                var savedConnEntryId = connectedEntry.DsmEntryId;
+
+                // Save nozzle readings for connected pump
+                var existingConnNozzles = await context.Set<NozzleReading>().Where(r => r.DsmEntryId == savedConnEntryId).ToListAsync();
+                context.Set<NozzleReading>().RemoveRange(existingConnNozzles);
+                foreach (var r in connectedReadings)
+                {
+                    r.DsmEntryId = savedConnEntryId;
+                    r.DsmEntry = null;
+                    r.SaleLitres = r.ClosingReading - r.OpeningReading;
+                    r.Amount = r.SaleLitres * r.Rate;
+                }
+                context.Set<NozzleReading>().AddRange(connectedReadings);
+
+                // Save empty child tables for connected pump to avoid null refs
+                var existingConnPayment = await context.Set<PaymentCollection>().FirstOrDefaultAsync(p => p.DsmEntryId == savedConnEntryId);
+                if (existingConnPayment == null)
+                {
+                    context.Set<PaymentCollection>().Add(new PaymentCollection { DsmEntryId = savedConnEntryId });
+                }
+                
+                var existingConnDebits = await context.Set<DebitEntry>().Where(d => d.DsmEntryId == savedConnEntryId).ToListAsync();
+                context.Set<DebitEntry>().RemoveRange(existingConnDebits);
+                var existingConnTesting = await context.Set<TestingEntry>().Where(t => t.DsmEntryId == savedConnEntryId).ToListAsync();
+                context.Set<TestingEntry>().RemoveRange(existingConnTesting);
+                var existingConnExpenses = await context.Set<Expense>().Where(e => e.DsmEntryId == savedConnEntryId).ToListAsync();
+                context.Set<Expense>().RemoveRange(existingConnExpenses);
+                var existingConnCash = await context.Set<CashDenomination>().Where(c => c.DsmEntryId == savedConnEntryId).ToListAsync();
+                context.Set<CashDenomination>().RemoveRange(existingConnCash);
+
+                await context.SaveChangesAsync();
+
+                // Recalculate totals for connected entry
+                var fullConnEntry = await context.Set<DsmEntry>()
+                    .Include(e => e.NozzleReadings)
+                    .Include(e => e.PaymentCollection)
+                    .Include(e => e.DebitEntries)
+                    .Include(e => e.TestingEntries)
+                    .Include(e => e.Expenses)
+                    .Include(e => e.CashDenominations)
+                    .FirstOrDefaultAsync(e => e.DsmEntryId == savedConnEntryId);
+
+                if (fullConnEntry != null)
+                {
+                    var calc = _dsmCalculationService.Calculate(ToCalculationDto(fullConnEntry));
+                    connectedEntry.GrossSales = calc.GrossSales;
+                    connectedEntry.TotalInDirect = calc.TotalInDirect;
+                    connectedEntry.TotalCreditors = calc.TotalCreditors;
+                    connectedEntry.TotalCollection = calc.TotalCollection;
+                    connectedEntry.Mismatch = 0m;
+                    connectedEntry.UpdatedAt = DateTime.Now;
+                    context.Entry(connectedEntry).State = EntityState.Modified;
+                    await context.SaveChangesAsync();
+                }
+            }
+            else
+            {
+                // Clear any existing ReconciledToPumpId links for this primary pump in the shift
+                var candidates = await context.Set<DsmEntry>()
+                    .Where(e => e.ShiftId == shift.ShiftId && e.ReconciledToPumpId == pumpId && string.Equals(e.DsmName, dsmName, StringComparison.OrdinalIgnoreCase))
+                    .ToListAsync();
+                foreach (var candidate in candidates)
+                {
+                    candidate.ReconciledToPumpId = null;
+                    candidate.UpdatedAt = DateTime.Now;
+                }
+                await context.SaveChangesAsync();
+            }
+
+            // Sync pairing properties for other entries if relevant
+            var shiftEntriesList = await context.Set<DsmEntry>()
+                .Where(e => e.ShiftId == shift.ShiftId)
+                .ToListAsync();
+            
+            var firstEntry = shiftEntriesList.FirstOrDefault(e => e.DsmEntryId == savedEntryId);
+            if (firstEntry != null)
+            {
+                firstEntry.ConnectedPumpId = connectedPumpId;
+                context.Entry(firstEntry).State = EntityState.Modified;
+            }
+
+            foreach (var candidate in shiftEntriesList.Where(e =>
+                         e.DsmEntryId != savedEntryId
+                         && string.Equals(e.DsmName, dsmName, StringComparison.OrdinalIgnoreCase)))
+            {
+                if (connectedPumpId.HasValue && candidate.PumpId == connectedPumpId.Value)
+                {
+                    candidate.ReconciledToPumpId = pumpId;
+                    context.Entry(candidate).State = EntityState.Modified;
+                }
+
+                if (candidate.ConnectedPumpId == pumpId)
+                {
+                    var current = shiftEntriesList.FirstOrDefault(e => e.DsmEntryId == savedEntryId);
+                    if (current != null)
+                    {
+                        current.ReconciledToPumpId = candidate.PumpId;
+                        context.Entry(current).State = EntityState.Modified;
+                    }
+                }
+            }
+            await context.SaveChangesAsync();
+
+            // Propagate nozzle readings downstream
+            await PropagateNozzleReadingsWithContextAsync(context, date, shiftType);
+
+            _logger.Information("DSM entry saved successfully via transaction context: {DsmName} Pump {PumpId}", dsmName, pumpId);
+            RaiseDsmEntryChanged();
+            return Result<DsmEntry>.Ok(entry);
+        }
+        catch (DbUpdateException)
+        {
+            throw; // Let the caller catch and log with complete details!
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to save complete DSM entry with context");
+            return Result<DsmEntry>.Fail($"Failed to save DSM entry: {ex.Message}");
+        }
+    }
+
+    public async Task<Result> PropagateNozzleReadingsWithContextAsync(DbContext context, DateTime startDate, string startShiftType)
+    {
+        try
+        {
+            // Load shifts from startDate onwards (up to 30 days forward to keep it bounded)
+            var shifts = await context.Set<Shift>()
+                .Where(s => s.ShiftDate >= startDate.Date && s.ShiftDate <= startDate.Date.AddDays(30))
+                .ToListAsync();
+
+            // Sort operationally: Date ascending, then Shift B (Day) before Shift A (Night)
+            var sortedShifts = shifts
+                .OrderBy(s => s.ShiftDate)
+                .ThenBy(s => s.ShiftType == "A")
+                .ToList();
+
+            var startIdx = sortedShifts.FindIndex(s => s.ShiftDate.Date == startDate.Date && string.Equals(s.ShiftType, startShiftType, StringComparison.OrdinalIgnoreCase));
+            if (startIdx < 0) return Result.Ok();
+
+            // Build a map of previous nozzle closings from the shift before startIdx
+            var prevClosings = new Dictionary<int, double>();
+            if (startIdx > 0)
+            {
+                var prevShift = sortedShifts[startIdx - 1];
+                var prevEntries = await context.Set<DsmEntry>()
+                    .AsNoTracking()
+                    .Include(e => e.NozzleReadings)
+                    .Where(e => e.ShiftId == prevShift.ShiftId)
+                    .ToListAsync();
+                
+                foreach (var entry in prevEntries)
+                {
+                    foreach (var r in entry.NozzleReadings)
+                    {
+                        prevClosings[r.NozzleNumber] = r.ClosingReading;
+                    }
+                }
+            }
+
+            for (int i = startIdx; i < sortedShifts.Count; i++)
+            {
+                var currentShift = sortedShifts[i];
+                var entries = await context.Set<DsmEntry>()
+                    .Include(e => e.NozzleReadings)
+                    .Include(e => e.PaymentCollection)
+                    .Include(e => e.DebitEntries)
+                    .Include(e => e.TestingEntries)
+                    .Include(e => e.Expenses)
+                    .Include(e => e.CashDenominations)
+                    .Where(e => e.ShiftId == currentShift.ShiftId)
+                    .ToListAsync();
+
+                foreach (var entry in entries)
+                {
+                    bool entryChanged = false;
+                    var updatedReadings = new List<NozzleReading>();
+
+                    foreach (var reading in entry.NozzleReadings)
+                    {
+                        double newOpening = reading.OpeningReading;
+
+                        if (prevClosings.TryGetValue(reading.NozzleNumber, out var prevClosing))
+                        {
+                            newOpening = prevClosing;
+                            if (newOpening > reading.ClosingReading)
+                            {
+                                newOpening = reading.ClosingReading;
+                                _logger.Warning("Nozzle {NozzleNumber} prev closing {PrevClosing} > current closing {CurrentClosing} in {Date} {Shift}. Capping.",
+                                    reading.NozzleNumber, prevClosing, reading.ClosingReading, currentShift.ShiftDate, currentShift.ShiftType);
+                            }
+                        }
+
+                        if (Math.Abs(reading.OpeningReading - newOpening) > 0.001)
+                        {
+                            reading.OpeningReading = newOpening;
+                            reading.SaleLitres = reading.ClosingReading - reading.OpeningReading;
+                            reading.Amount = reading.SaleLitres * reading.Rate;
+                            entryChanged = true;
+                        }
+
+                        updatedReadings.Add(reading);
+                    }
+
+                    if (entryChanged)
+                    {
+                        // Save nozzle readings directly to context
+                        var existingReadings = await context.Set<NozzleReading>().Where(r => r.DsmEntryId == entry.DsmEntryId).ToListAsync();
+                        context.Set<NozzleReading>().RemoveRange(existingReadings);
+                        foreach (var ur in updatedReadings)
+                        {
+                            ur.DsmEntryId = entry.DsmEntryId;
+                            ur.DsmEntry = null;
+                        }
+                        context.Set<NozzleReading>().AddRange(updatedReadings);
+                        await context.SaveChangesAsync();
+
+                        // Recalculate totals
+                        var calc = _dsmCalculationService.Calculate(ToCalculationDto(entry));
+                        entry.GrossSales = calc.GrossSales;
+                        entry.TotalInDirect = calc.TotalInDirect;
+                        entry.TotalCreditors = calc.TotalCreditors;
+                        entry.TotalCollection = calc.TotalCollection;
+                        entry.Mismatch = calc.TotalCollection - entry.GrossSales;
+                        entry.UpdatedAt = DateTime.Now;
+                        context.Entry(entry).State = EntityState.Modified;
+                        await context.SaveChangesAsync();
+                    }
+
+                    // Update prevClosings map with this entry's nozzle closings
+                    foreach (var r in entry.NozzleReadings)
+                    {
+                        prevClosings[r.NozzleNumber] = r.ClosingReading;
+                    }
+                }
+            }
+
+            return Result.Ok();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to propagate nozzle readings starting from {Date} {Shift} using context", startDate, startShiftType);
+            return Result.Fail($"Failed to propagate nozzle readings: {ex.Message}");
+        }
+    }
 }
+
 

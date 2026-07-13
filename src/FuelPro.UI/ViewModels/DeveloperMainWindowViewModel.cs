@@ -29,6 +29,15 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
     private readonly Rashtra.Licensing.LicenseManager _licenseManager;
 
     [ObservableProperty] private object? _currentView;
+
+    partial void OnCurrentViewChanged(object? oldValue, object? newValue)
+    {
+        if (oldValue is IDisposable disposable)
+        {
+            disposable.Dispose();
+        }
+    }
+
     [ObservableProperty] private int _selectedNavIndex;
     [ObservableProperty] private string _currentUser = "";
     [ObservableProperty] private string _currentDateTime = DateTime.Now.ToString("dd MMM yyyy  hh:mm tt");

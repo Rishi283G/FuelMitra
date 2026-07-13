@@ -44,4 +44,21 @@ public class CreditorRepayment
     public string? ShiftNumber { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.Now;
+
+    [NotMapped]
+    public string ReferenceDisplay
+    {
+        get
+        {
+            if (string.Equals(PaymentMode, "Cheque", StringComparison.OrdinalIgnoreCase))
+            {
+                return $"Cheque No: {ChequeNo ?? "—"}";
+            }
+            if (!string.IsNullOrWhiteSpace(CardTid) || !string.IsNullOrWhiteSpace(CardBatch))
+            {
+                return $"TID: {CardTid ?? "—"}, Batch: {CardBatch ?? "—"}";
+            }
+            return "—";
+        }
+    }
 }

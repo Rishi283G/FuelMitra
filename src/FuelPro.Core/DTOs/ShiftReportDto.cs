@@ -45,6 +45,7 @@ public class ShiftReportDto
     public double CreditCardRepayments { get; set; }
     public double PetroCardRepayments { get; set; }
     public double BankCashRepayments { get; set; }
+    public List<RepaymentBreakdownDto> RepaymentBreakdown { get; set; } = new();
 
     // Oil & DEF Sales (Phase 3/4)
     public List<OilDefSaleDisplayRow> OilDefSales { get; set; } = new();
@@ -103,6 +104,7 @@ public class DayReportDto
     public double CreditCardRepayments { get; set; }
     public double PetroCardRepayments { get; set; }
     public double BankCashRepayments { get; set; }
+    public List<RepaymentBreakdownDto> RepaymentBreakdown { get; set; } = new();
 
     // Oil & DEF Sales (Phase 3/4)
     public List<OilDefSaleDisplayRow> OilDefSales { get; set; } = new();
@@ -124,6 +126,20 @@ public class CollectionCategoryDto
 {
     public string Category { get; set; } = string.Empty;
     public double Amount { get; set; }
+    public double BaseAmount { get; set; }
+    public double RecoveryAmount { get; set; }
+
+    public string DescriptionWithBreakdown =>
+        RecoveryAmount > 0 
+            ? $"{Category} (Fuel: ₹{BaseAmount:N2} | Recovery: ₹{RecoveryAmount:N2})"
+            : Category;
+}
+
+public class RepaymentBreakdownDto
+{
+    public string PaymentMethod { get; set; } = string.Empty;
+    public double Amount { get; set; }
+    public bool IsReconcilable { get; set; }
 }
 
 public class FuelSaleRowDto

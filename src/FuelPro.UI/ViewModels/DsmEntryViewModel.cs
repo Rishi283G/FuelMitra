@@ -742,36 +742,47 @@ public partial class DsmEntryViewModel : ObservableObject
                 IsManualOpeningOverride = n.IsManualOpeningOverride
             }).ToList();
 
+            var isDay = SelectedShift == "B";
             var payment = new PaymentCollection
             {
-                PhonePeCardMorning = PhonePeCardMorning ?? 0,
-                PhonePeCardNight = SelectedShift == "B" ? 0 : (PhonePeCardNight ?? 0),
-                PhonePeMorning = PhonePeMorning ?? 0,
-                PhonePeNight = SelectedShift == "B" ? 0 : (PhonePeNight ?? 0),
-                CreditCardMorning = CreditCardMorning ?? 0,
-                CreditCardNight = SelectedShift == "B" ? 0 : (CreditCardNight ?? 0),
-                PetroCardMorning = PetroCardMorning ?? 0,
-                PetroCardNight = SelectedShift == "B" ? 0 : (PetroCardNight ?? 0),
+                PhonePeCardMorning = isDay ? 0 : (PhonePeCardMorning ?? 0),
+                PhonePeCardDay = isDay ? (PhonePeCardMorning ?? 0) : 0,
+                PhonePeCardNight = isDay ? 0 : (PhonePeCardNight ?? 0),
+                PhonePeMorning = isDay ? 0 : (PhonePeMorning ?? 0),
+                PhonePeDay = isDay ? (PhonePeMorning ?? 0) : 0,
+                PhonePeNight = isDay ? 0 : (PhonePeNight ?? 0),
+                CreditCardMorning = isDay ? 0 : (CreditCardMorning ?? 0),
+                CreditCardDay = isDay ? (CreditCardMorning ?? 0) : 0,
+                CreditCardNight = isDay ? 0 : (CreditCardNight ?? 0),
+                PetroCardMorning = isDay ? 0 : (PetroCardMorning ?? 0),
+                PetroCardDay = isDay ? (PetroCardMorning ?? 0) : 0,
+                PetroCardNight = isDay ? 0 : (PetroCardNight ?? 0),
                 Others = Others ?? 0,
                 CashDeposit = Cash1.TotalAmount,
-                CardTid = SelectedShift == "B" ? CreditCardTidMorning : CreditCardTidNight,
-                CardBatch = SelectedShift == "B" ? CreditCardBatchMorning : CreditCardBatchNight,
-                PhonePeTid = SelectedShift == "B" ? PhonePeTidMorning : PhonePeTidNight,
-                PhonePeBatch = SelectedShift == "B" ? PhonePeBatchMorning : PhonePeBatchNight,
-                PetroCardTid = SelectedShift == "B" ? PetroCardTidMorning : PetroCardTidNight,
-                PetroCardBatch = SelectedShift == "B" ? PetroCardBatchMorning : PetroCardBatchNight,
-                PhonePeTidMorning = PhonePeTidMorning,
-                PhonePeBatchMorning = PhonePeBatchMorning,
-                PhonePeTidNight = SelectedShift == "B" ? null : PhonePeTidNight,
-                PhonePeBatchNight = SelectedShift == "B" ? null : PhonePeBatchNight,
-                CreditCardTidMorning = CreditCardTidMorning,
-                CreditCardBatchMorning = CreditCardBatchMorning,
-                CreditCardTidNight = SelectedShift == "B" ? null : CreditCardTidNight,
-                CreditCardBatchNight = SelectedShift == "B" ? null : CreditCardBatchNight,
-                PetroCardTidMorning = PetroCardTidMorning,
-                PetroCardBatchMorning = PetroCardBatchMorning,
-                PetroCardTidNight = SelectedShift == "B" ? null : PetroCardTidNight,
-                PetroCardBatchNight = SelectedShift == "B" ? null : PetroCardBatchNight
+                CardTid = isDay ? CreditCardTidMorning : CreditCardTidNight,
+                CardBatch = isDay ? CreditCardBatchMorning : CreditCardBatchNight,
+                PhonePeTid = isDay ? PhonePeTidMorning : PhonePeTidNight,
+                PhonePeBatch = isDay ? PhonePeBatchMorning : PhonePeBatchNight,
+                PetroCardTid = isDay ? PetroCardTidMorning : PetroCardTidNight,
+                PetroCardBatch = isDay ? PetroCardBatchMorning : PetroCardBatchNight,
+                PhonePeTidMorning = isDay ? null : PhonePeTidMorning,
+                PhonePeBatchMorning = isDay ? null : PhonePeBatchMorning,
+                PhonePeTidDay = isDay ? PhonePeTidMorning : null,
+                PhonePeBatchDay = isDay ? PhonePeBatchMorning : null,
+                PhonePeTidNight = isDay ? null : PhonePeTidNight,
+                PhonePeBatchNight = isDay ? null : PhonePeBatchNight,
+                CreditCardTidMorning = isDay ? null : CreditCardTidMorning,
+                CreditCardBatchMorning = isDay ? null : CreditCardBatchMorning,
+                CreditCardTidDay = isDay ? CreditCardTidMorning : null,
+                CreditCardBatchDay = isDay ? CreditCardBatchMorning : null,
+                CreditCardTidNight = isDay ? null : CreditCardTidNight,
+                CreditCardBatchNight = isDay ? null : CreditCardBatchNight,
+                PetroCardTidMorning = isDay ? null : PetroCardTidMorning,
+                PetroCardBatchMorning = isDay ? null : PetroCardBatchMorning,
+                PetroCardTidDay = isDay ? PetroCardTidMorning : null,
+                PetroCardBatchDay = isDay ? PetroCardBatchMorning : null,
+                PetroCardTidNight = isDay ? null : PetroCardTidNight,
+                PetroCardBatchNight = isDay ? null : PetroCardBatchNight
             };
 
             var debitModels = Debits.Where(d => !string.IsNullOrWhiteSpace(d.DebtorName))
@@ -856,74 +867,22 @@ public partial class DsmEntryViewModel : ObservableObject
         StatusMessage = "Form cleared — ready for new entry";
     }
 
-    [RelayCommand]
-    private async Task EditEntryAsync(int dsmEntryId)
+    public async Task HydrateFromEntryAsync(DsmEntry entry)
     {
         _isEditing = true;
         try
         {
-            var repo = App.Services.GetRequiredService<IDsmEntryRepository>();
-            var fullResult = await repo.GetFullEntryAsync(dsmEntryId);
-            if (!fullResult.Success || fullResult.Data == null)
-            {
-                StatusMessage = $"❌ Failed to load entry: {fullResult.Error}";
-                return;
-            }
+            EditingEntryId = entry.DsmEntryId;
+            DsmName = entry.DsmName;
+            StartTime = string.IsNullOrEmpty(entry.StartTime) ? "08:00 AM" : entry.StartTime;
+            EndTime = string.IsNullOrEmpty(entry.EndTime) ? "08:00 PM" : entry.EndTime;
 
-            var entry = fullResult.Data;
-
-            // If this is a connected pump entry, redirect to the primary pump entry
-            if (entry.ReconciledToPumpId.HasValue)
-            {
-                var shiftId = entry.ShiftId;
-                var entriesResult = await repo.GetEntriesForShiftAsync(shiftId);
-                if (entriesResult.Success && entriesResult.Data != null)
-                {
-                    var primaryRaw = entriesResult.Data.FirstOrDefault(e =>
-                        e.PumpId == entry.ReconciledToPumpId.Value
-                        && string.Equals(e.DsmName, entry.DsmName, StringComparison.OrdinalIgnoreCase));
-                    if (primaryRaw != null)
-                    {
-                        var fullPrimary = await repo.GetFullEntryAsync(primaryRaw.DsmEntryId);
-                        if (fullPrimary.Success && fullPrimary.Data != null)
-                        {
-                            entry = fullPrimary.Data;
-                        }
-                    }
-                }
-            }
-
-            // Self-healing: if the primary entry's ConnectedPumpId is not set, check if any entry reconciles to it
-            if (!entry.ConnectedPumpId.HasValue && !entry.ReconciledToPumpId.HasValue)
-            {
-                var shiftId = entry.ShiftId;
-                var entriesResult = await repo.GetEntriesForShiftAsync(shiftId);
-                if (entriesResult.Success && entriesResult.Data != null)
-                {
-                    var connectedRaw = entriesResult.Data.FirstOrDefault(e =>
-                        e.ReconciledToPumpId == entry.PumpId
-                        && string.Equals(e.DsmName, entry.DsmName, StringComparison.OrdinalIgnoreCase));
-                    if (connectedRaw != null)
-                    {
-                        entry.ConnectedPumpId = connectedRaw.PumpId;
-                    }
-                }
-            }
-
-            // Set shift details first
             if (entry.Shift != null)
             {
                 SelectedDate = entry.Shift.ShiftDate;
                 SelectedShift = entry.Shift.ShiftType;
             }
 
-            // Populate header
-            EditingEntryId = entry.DsmEntryId;
-            DsmName = entry.DsmName;
-            StartTime = string.IsNullOrEmpty(entry.StartTime) ? "08:00 AM" : entry.StartTime;
-            EndTime = string.IsNullOrEmpty(entry.EndTime) ? "08:00 PM" : entry.EndTime;
-
-            // Find matching pump
             var pumpMatch = PumpOptions.FirstOrDefault(p => p.PumpId == entry.PumpId);
             if (pumpMatch != null) SelectedPump = pumpMatch;
 
@@ -943,14 +902,14 @@ public partial class DsmEntryViewModel : ObservableObject
                 }
             }
 
+            var repo = App.Services.GetRequiredService<IDsmEntryRepository>();
             if (targetConnectedPumpId.HasValue)
             {
                 var connMatch = ConnectablePumpOptions.FirstOrDefault(p => p.PumpId == targetConnectedPumpId.Value);
                 SelectedConnectedPump = connMatch;
 
                 var shiftId = entry.ShiftId;
-                var entriesResult = await App.Services.GetRequiredService<IDsmEntryRepository>()
-                    .GetEntriesForShiftAsync(shiftId);
+                var entriesResult = await repo.GetEntriesForShiftAsync(shiftId);
                 if (entriesResult.Success && entriesResult.Data != null)
                 {
                     var rawConn = entriesResult.Data.FirstOrDefault(e =>
@@ -971,42 +930,83 @@ public partial class DsmEntryViewModel : ObservableObject
                 SelectedConnectedPump = null;
             }
 
-            // Explicitly load and await nozzles loading
+            // Explicitly load nozzles loading
             await LoadNozzlesForPumpAsync();
 
-            // Populate payment
+            // Populate payment losslessly
             var paymentSource = entry.PaymentCollection ?? connectedEntry?.PaymentCollection;
-            PhonePeCardMorning = paymentSource?.PhonePeCardMorning;
-            PhonePeCardNight = paymentSource?.PhonePeCardNight;
-            PhonePeMorning = paymentSource?.PhonePeMorning;
-            PhonePeNight = paymentSource?.PhonePeNight;
-            CreditCardMorning = paymentSource?.CreditCardMorning;
-            CreditCardNight = paymentSource?.CreditCardNight;
-            PetroCardMorning = paymentSource?.PetroCardMorning;
-            PetroCardNight = paymentSource?.PetroCardNight;
-            Others = paymentSource?.Others;
-            CashDeposit = paymentSource?.CashDeposit;
+            var isDay = entry.Shift?.ShiftType == "B";
 
-            CardTid = paymentSource?.CardTid;
-            CardBatch = paymentSource?.CardBatch;
-            PhonePeTid = paymentSource?.PhonePeTid;
-            PhonePeBatch = paymentSource?.PhonePeBatch;
-            PetroCardTid = paymentSource?.PetroCardTid;
-            PetroCardBatch = paymentSource?.PetroCardBatch;
-            PhonePeTidMorning = paymentSource?.PhonePeTidMorning ?? paymentSource?.PhonePeTid;
-            PhonePeBatchMorning = paymentSource?.PhonePeBatchMorning ?? paymentSource?.PhonePeBatch;
-            PhonePeTidNight = paymentSource?.PhonePeTidNight ?? paymentSource?.PhonePeTid;
-            PhonePeBatchNight = paymentSource?.PhonePeBatchNight ?? paymentSource?.PhonePeBatch;
+            if (isDay)
+            {
+                PhonePeCardMorning = paymentSource?.PhonePeCardDay;
+                PhonePeCardNight = null;
+                PhonePeMorning = paymentSource?.PhonePeDay;
+                PhonePeNight = null;
+                CreditCardMorning = paymentSource?.CreditCardDay;
+                CreditCardNight = null;
+                PetroCardMorning = paymentSource?.PetroCardDay;
+                PetroCardNight = null;
+                Others = paymentSource?.Others;
+                CashDeposit = paymentSource?.CashDeposit;
 
-            CreditCardTidMorning = paymentSource?.CreditCardTidMorning ?? paymentSource?.CardTid;
-            CreditCardBatchMorning = paymentSource?.CreditCardBatchMorning ?? paymentSource?.CardBatch;
-            CreditCardTidNight = paymentSource?.CreditCardTidNight ?? paymentSource?.CardTid;
-            CreditCardBatchNight = paymentSource?.CreditCardBatchNight ?? paymentSource?.CardBatch;
+                PhonePeTidMorning = paymentSource?.PhonePeTidDay ?? paymentSource?.PhonePeTid;
+                PhonePeBatchMorning = paymentSource?.PhonePeBatchDay ?? paymentSource?.PhonePeBatch;
+                PhonePeTidNight = null;
+                PhonePeBatchNight = null;
 
-            PetroCardTidMorning = paymentSource?.PetroCardTidMorning ?? paymentSource?.PetroCardTid;
-            PetroCardBatchMorning = paymentSource?.PetroCardBatchMorning ?? paymentSource?.PetroCardBatch;
-            PetroCardTidNight = paymentSource?.PetroCardTidNight ?? paymentSource?.PetroCardTid;
-            PetroCardBatchNight = paymentSource?.PetroCardBatchNight ?? paymentSource?.PetroCardBatch;
+                CreditCardTidMorning = paymentSource?.CreditCardTidDay ?? paymentSource?.CardTid;
+                CreditCardBatchMorning = paymentSource?.CreditCardBatchDay ?? paymentSource?.CardBatch;
+                CreditCardTidNight = null;
+                CreditCardBatchNight = null;
+
+                PetroCardTidMorning = paymentSource?.PetroCardTidDay ?? paymentSource?.PetroCardTid;
+                PetroCardBatchMorning = paymentSource?.PetroCardBatchDay ?? paymentSource?.PetroCardBatch;
+                PetroCardTidNight = null;
+                PetroCardBatchNight = null;
+
+                PhonePeTid = paymentSource?.PhonePeTidDay ?? paymentSource?.PhonePeTid;
+                PhonePeBatch = paymentSource?.PhonePeBatchDay ?? paymentSource?.PhonePeBatch;
+                CardTid = paymentSource?.CreditCardTidDay ?? paymentSource?.CardTid;
+                CardBatch = paymentSource?.CreditCardBatchDay ?? paymentSource?.CardBatch;
+                PetroCardTid = paymentSource?.PetroCardTidDay ?? paymentSource?.PetroCardTid;
+                PetroCardBatch = paymentSource?.PetroCardBatchDay ?? paymentSource?.PetroCardBatch;
+            }
+            else
+            {
+                PhonePeCardMorning = paymentSource?.PhonePeCardMorning;
+                PhonePeCardNight = paymentSource?.PhonePeCardNight;
+                PhonePeMorning = paymentSource?.PhonePeMorning;
+                PhonePeNight = paymentSource?.PhonePeNight;
+                CreditCardMorning = paymentSource?.CreditCardMorning;
+                CreditCardNight = paymentSource?.CreditCardNight;
+                PetroCardMorning = paymentSource?.PetroCardMorning;
+                PetroCardNight = paymentSource?.PetroCardNight;
+                Others = paymentSource?.Others;
+                CashDeposit = paymentSource?.CashDeposit;
+
+                PhonePeTidMorning = paymentSource?.PhonePeTidMorning ?? paymentSource?.PhonePeTid;
+                PhonePeBatchMorning = paymentSource?.PhonePeBatchMorning ?? paymentSource?.PhonePeBatch;
+                PhonePeTidNight = paymentSource?.PhonePeTidNight ?? paymentSource?.PhonePeTid;
+                PhonePeBatchNight = paymentSource?.PhonePeBatchNight ?? paymentSource?.PhonePeBatch;
+
+                CreditCardTidMorning = paymentSource?.CreditCardTidMorning ?? paymentSource?.CardTid;
+                CreditCardBatchMorning = paymentSource?.CreditCardBatchMorning ?? paymentSource?.CardBatch;
+                CreditCardTidNight = paymentSource?.CreditCardTidNight ?? paymentSource?.CardTid;
+                CreditCardBatchNight = paymentSource?.CreditCardBatchNight ?? paymentSource?.CardBatch;
+
+                PetroCardTidMorning = paymentSource?.PetroCardTidMorning ?? paymentSource?.PetroCardTid;
+                PetroCardBatchMorning = paymentSource?.PetroCardBatchMorning ?? paymentSource?.PetroCardBatch;
+                PetroCardTidNight = paymentSource?.PetroCardTidNight ?? paymentSource?.PetroCardTid;
+                PetroCardBatchNight = paymentSource?.PetroCardBatchNight ?? paymentSource?.PetroCardBatch;
+
+                PhonePeTid = paymentSource?.PhonePeTidNight ?? paymentSource?.PhonePeTid;
+                PhonePeBatch = paymentSource?.PhonePeBatchNight ?? paymentSource?.PhonePeBatch;
+                CardTid = paymentSource?.CreditCardTidNight ?? paymentSource?.CardTid;
+                CardBatch = paymentSource?.CreditCardBatchNight ?? paymentSource?.CardBatch;
+                PetroCardTid = paymentSource?.PetroCardTidNight ?? paymentSource?.PetroCardTid;
+                PetroCardBatch = paymentSource?.PetroCardBatchNight ?? paymentSource?.PetroCardBatch;
+            }
 
             // Populate nozzle readings (override auto-loaded ones)
             foreach (var nozzleRow in NozzleReadings)
@@ -1088,7 +1088,6 @@ public partial class DsmEntryViewModel : ObservableObject
                 }
                 else
                 {
-                    // Legacy fallback mapping
                     string canonicalFuel = testEntry.FuelType;
                     if (canonicalFuel == "MS")
                     {
@@ -1149,15 +1148,118 @@ public partial class DsmEntryViewModel : ObservableObject
             };
 
             RecalculateAll();
-            StatusMessage = $"📝 Editing entry for {DsmName} on Pump {entry.PumpId}";
-        }
-        catch (Exception ex)
-        {
-            StatusMessage = $"❌ Failed to load entry for editing: {ex.Message}";
         }
         finally
         {
             _isEditing = false;
+        }
+    }
+
+    private bool UpdateHostViewModel(DsmEntryViewModel newVm)
+    {
+        if (Application.Current == null) return false;
+
+        bool updated = false;
+        Application.Current.Dispatcher.Invoke(() =>
+        {
+            foreach (Window window in Application.Current.Windows)
+            {
+                if (window.DataContext is MainWindowViewModel mwvm)
+                {
+                    mwvm.CurrentView = newVm;
+                    updated = true;
+                    break;
+                }
+                else if (window.DataContext is OwnerMainWindowViewModel omwvm)
+                {
+                    omwvm.CurrentView = newVm;
+                    updated = true;
+                    break;
+                }
+                else if (window.DataContext is DeveloperMainWindowViewModel dmwvm)
+                {
+                    dmwvm.CurrentView = newVm;
+                    updated = true;
+                    break;
+                }
+            }
+        });
+        return updated;
+    }
+
+    [RelayCommand]
+    private async Task EditEntryAsync(int dsmEntryId)
+    {
+        try
+        {
+            var repo = App.Services.GetRequiredService<IDsmEntryRepository>();
+            var fullResult = await repo.GetFullEntryAsync(dsmEntryId);
+            if (!fullResult.Success || fullResult.Data == null)
+            {
+                StatusMessage = $"❌ Failed to load entry: {fullResult.Error}";
+                return;
+            }
+
+            var entry = fullResult.Data;
+
+            // If this is a connected pump entry, redirect to the primary pump entry
+            if (entry.ReconciledToPumpId.HasValue)
+            {
+                var shiftId = entry.ShiftId;
+                var entriesResult = await repo.GetEntriesForShiftAsync(shiftId);
+                if (entriesResult.Success && entriesResult.Data != null)
+                {
+                    var primaryRaw = entriesResult.Data.FirstOrDefault(e =>
+                        e.PumpId == entry.ReconciledToPumpId.Value
+                        && string.Equals(e.DsmName, entry.DsmName, StringComparison.OrdinalIgnoreCase));
+                    if (primaryRaw != null)
+                    {
+                        var fullPrimary = await repo.GetFullEntryAsync(primaryRaw.DsmEntryId);
+                        if (fullPrimary.Success && fullPrimary.Data != null)
+                        {
+                            entry = fullPrimary.Data;
+                        }
+                    }
+                }
+            }
+
+            // Self-healing: if the primary entry's ConnectedPumpId is not set, check if any entry reconciles to it
+            if (!entry.ConnectedPumpId.HasValue && !entry.ReconciledToPumpId.HasValue)
+            {
+                var shiftId = entry.ShiftId;
+                var entriesResult = await repo.GetEntriesForShiftAsync(shiftId);
+                if (entriesResult.Success && entriesResult.Data != null)
+                {
+                    var connectedRaw = entriesResult.Data.FirstOrDefault(e =>
+                        e.ReconciledToPumpId == entry.PumpId
+                        && string.Equals(e.DsmName, entry.DsmName, StringComparison.OrdinalIgnoreCase));
+                    if (connectedRaw != null)
+                    {
+                        entry.ConnectedPumpId = connectedRaw.PumpId;
+                    }
+                }
+            }
+
+            // Hydrate a brand new ViewModel instance
+            var newVm = App.Services.GetRequiredService<DsmEntryViewModel>();
+            await newVm.HydrateFromEntryAsync(entry);
+
+            // Swap view model on host window
+            bool hostUpdated = UpdateHostViewModel(newVm);
+            if (!hostUpdated)
+            {
+                // Fallback for tests where no active host window is found/updated
+                await HydrateFromEntryAsync(entry);
+                StatusMessage = $"📝 Editing entry for {DsmName} on Pump {entry.PumpId}";
+            }
+            else
+            {
+                newVm.StatusMessage = $"📝 Editing entry for {newVm.DsmName} on Pump {entry.PumpId}";
+            }
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"❌ Failed to load entry for editing: {ex.Message}";
         }
     }
 
@@ -1179,9 +1281,40 @@ public partial class DsmEntryViewModel : ObservableObject
     {
         var result = await _dsmProfileRepo.GetAllAsync();
         DsmOptions.Clear();
+
+        var uniqueNames = new System.Collections.Generic.HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+
         if (result.Success)
         {
-            foreach (var profile in result.Data!) DsmOptions.Add(profile.DsmName);
+            foreach (var profile in result.Data!)
+            {
+                if (!string.IsNullOrWhiteSpace(profile.DsmName))
+                {
+                    uniqueNames.Add(profile.DsmName);
+                }
+            }
+        }
+
+        try
+        {
+            using var dbContext = App.Services.GetRequiredService<FuelPro.Data.FuelProDbContext>();
+            var users = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.ToListAsync(dbContext.DsmUsers);
+            foreach (var user in users)
+            {
+                if (!string.IsNullOrWhiteSpace(user.FullName))
+                {
+                    uniqueNames.Add(user.FullName);
+                }
+            }
+        }
+        catch (System.Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to load DsmUsers for manual entry suggestions");
+        }
+
+        foreach (var name in uniqueNames.OrderBy(n => n))
+        {
+            DsmOptions.Add(name);
         }
 
         var creditorsResult = await _creditorRepo.GetAllActiveWithVehiclesAsync();

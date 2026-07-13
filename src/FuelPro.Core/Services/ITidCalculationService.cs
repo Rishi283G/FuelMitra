@@ -59,7 +59,7 @@ public class BusinessDayTidSheet
     // Grand Total Digital (DSM payments + debtor repayments)
     public double GrandTotal =>
         PhonePeTotal + PineLabsCardTotal + PetroCardTotal
-        + DebtorPhonePeRepaymentTotal + DebtorCardRepaymentTotal;
+        + DebtorPhonePeRepaymentTotal + DebtorCardRepaymentTotal + DebtorPetroCardRepaymentTotal;
 
     public List<TidItemDto> PhonePePayments { get; set; } = new();
     public List<TidItemDto> CardPayments { get; set; } = new();
@@ -80,6 +80,14 @@ public class BusinessDayTidSheet
     public double DebtorCardRepaymentNight   { get; set; }
     public double DebtorCardRepaymentTotal =>
         DebtorCardRepaymentMorning + DebtorCardRepaymentDay + DebtorCardRepaymentNight;
+
+    // Debtor Repayments — Petro Card
+    public List<TidItemDto> DebtorPetroCardRepayments { get; set; } = new();
+    public double DebtorPetroCardRepaymentMorning { get; set; }
+    public double DebtorPetroCardRepaymentDay     { get; set; }
+    public double DebtorPetroCardRepaymentNight   { get; set; }
+    public double DebtorPetroCardRepaymentTotal =>
+        DebtorPetroCardRepaymentMorning + DebtorPetroCardRepaymentDay + DebtorPetroCardRepaymentNight;
 }
 
 public interface ITidCalculationService

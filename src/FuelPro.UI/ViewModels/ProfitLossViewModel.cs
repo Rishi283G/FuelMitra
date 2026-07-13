@@ -17,7 +17,7 @@ using System.Threading.Tasks;
 
 namespace FuelPro.UI.ViewModels;
 
-public partial class ProfitLossViewModel : ObservableObject
+public partial class ProfitLossViewModel : ObservableObject, IDisposable
 {
     private readonly IDsmEntryRepository _dsmEntryRepo;
     private readonly IShiftRepository _shiftRepo;
@@ -26,6 +26,8 @@ public partial class ProfitLossViewModel : ObservableObject
     private readonly IOwnerCalculationService _ownerCalcService;
     private readonly IFinancialCalculationService _financialCalcService;
     private readonly ITidCalculationService _tidService;
+    private readonly IReportService _reportService;
+    private readonly FuelPro.Sync.SyncEngine _syncEngine;
 
     [ObservableProperty] private DateTime _startDate = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
     [ObservableProperty] private DateTime _endDate = DateTime.Today;
@@ -187,23 +189,54 @@ public partial class ProfitLossViewModel : ObservableObject
         _ownerCalcService = App.Services.GetRequiredService<IOwnerCalculationService>();
         _financialCalcService = App.Services.GetRequiredService<IFinancialCalculationService>();
         _tidService = App.Services.GetRequiredService<ITidCalculationService>();
+        _reportService = App.Services.GetRequiredService<IReportService>();
+        _syncEngine = App.Services.GetRequiredService<FuelPro.Sync.SyncEngine>();
         
         // Wire Sync Status to trigger auto-reload
-        var syncEngine = App.Services.GetRequiredService<FuelPro.Sync.SyncEngine>();
-        syncEngine.SyncStatusChanged += (status) =>
-        {
-            System.Windows.Application.Current.Dispatcher.Invoke(async () =>
-            {
-                if (status.StatusMessage == "Synced")
-                {
-                    await LoadCurrentMarginsAsync();
-                    await LoadAsync();
-                }
-            });
-        };
+        _syncEngine.SyncStatusChanged += OnSyncStatusChanged;
+
+        DsmEntryService.DsmEntryChanged += OnDataChanged;
+        DsmEntryService.PettyCashChanged += OnDataChanged;
+        DsmEntryService.DebtorChanged += OnDataChanged;
+        DsmEntryService.PayrollChanged += OnDataChanged;
+        DsmEntryService.InventoryChanged += OnDataChanged;
+        DsmEntryService.SettingsChanged += OnDataChanged;
 
         _ = LoadCurrentMarginsAsync();
         _ = LoadAsync();
+    }
+
+    private void OnSyncStatusChanged(FuelPro.Sync.SyncStatusInfo status)
+    {
+        System.Windows.Application.Current.Dispatcher.Invoke(async () =>
+        {
+            if (status.StatusMessage == "Synced")
+            {
+                await LoadCurrentMarginsAsync();
+                await LoadAsync();
+            }
+        });
+    }
+
+    private void OnDataChanged()
+    {
+        System.Windows.Application.Current.Dispatcher.InvokeAsync(async () =>
+        {
+            await LoadCurrentMarginsAsync();
+            await LoadAsync();
+        });
+    }
+
+    public void Dispose()
+    {
+        _syncEngine.SyncStatusChanged -= OnSyncStatusChanged;
+        DsmEntryService.DsmEntryChanged -= OnDataChanged;
+        DsmEntryService.PettyCashChanged -= OnDataChanged;
+        DsmEntryService.DebtorChanged -= OnDataChanged;
+        DsmEntryService.PayrollChanged -= OnDataChanged;
+        DsmEntryService.InventoryChanged -= OnDataChanged;
+        DsmEntryService.SettingsChanged -= OnDataChanged;
+        GC.SuppressFinalize(this);
     }
 
     [RelayCommand]
@@ -360,38 +393,32 @@ public partial class ProfitLossViewModel : ObservableObject
                 ExpenseBreakdown.Add(new ExpenseBreakdownRow { Category = kvp.Key, Amount = kvp.Value });
             }
 
-            // Fetch creditor repayments
+            // Fetch creditor repayments and settings
             var repResult = await _repaymentRepo.GetByDateRangeAsync(StartDate, EndDate);
-            TotalCreditorRepayments = repResult.Success && repResult.Data != null
-                ? (double)repResult.Data.Sum(r => r.Amount)
-                : 0;
+            var repaymentsList = repResult.Success && repResult.Data != null ? repResult.Data : new List<CreditorRepayment>();
 
-            var tidSheets = await _tidService.GetTidSheetsForRangeAsync(StartDate.Date, EndDate.Date);
-            var aggTidSheet = new BusinessDayTidSheet();
-            foreach (var s in tidSheets.Values)
-            {
-                aggTidSheet.PhonePeDirectMorning += s.PhonePeDirectMorning;
-                aggTidSheet.PhonePeDirectDay += s.PhonePeDirectDay;
-                aggTidSheet.PhonePeDirectNight += s.PhonePeDirectNight;
+            var settingsRepo = App.Services.GetRequiredService<ISettingsRepository>();
+            var settingsResult = await settingsRepo.GetSettingsAsync();
+            var settings = settingsResult.Success && settingsResult.Data != null ? settingsResult.Data : new Setting();
+            double defaultHsd = settings.HsdRate;
+            double defaultMsI = settings.MsIRate;
+            double defaultMsII = settings.MsIIRate;
+            double defaultCng = settings.CngRate;
+            string stationName = settings.StationDisplayName;
 
-                aggTidSheet.PhonePeCardMorning += s.PhonePeCardMorning;
-                aggTidSheet.PhonePeCardDay += s.PhonePeCardDay;
-                aggTidSheet.PhonePeCardNight += s.PhonePeCardNight;
+            var report = _reportService.CalculateDayReport(
+                StartDate.Date, EndDate.Date,
+                entries,
+                shiftExpensesList,
+                repaymentsList,
+                defaultHsd, defaultMsI, defaultMsII, defaultCng,
+                stationName);
 
-                aggTidSheet.PineLabsCardMorning += s.PineLabsCardMorning;
-                aggTidSheet.PineLabsCardDay += s.PineLabsCardDay;
-                aggTidSheet.PineLabsCardNight += s.PineLabsCardNight;
-
-                aggTidSheet.PetroCardMorning += s.PetroCardMorning;
-                aggTidSheet.PetroCardDay += s.PetroCardDay;
-                aggTidSheet.PetroCardNight += s.PetroCardNight;
-            }
-
-            var calculationData = _ownerCalcService.Calculate(entries, shiftExpensesList, Array.Empty<ShiftOtherCash>(), aggTidSheet);
-            TotalGrossSales = calculationData.GrossSales;
-            TotalCollection = calculationData.AdjustedCollection;
-            TotalCreditorDebits = calculationData.Debit;
-            TotalMismatch = calculationData.Mismatch;
+            TotalCreditorRepayments = report.DebtorRepaymentsTotal;
+            TotalGrossSales = report.TotalFuelAmount;
+            TotalCollection = report.ActualCollection;
+            TotalCreditorDebits = report.CreditorsTotal;
+            TotalMismatch = report.Difference;
         }
         catch (Exception ex)
         {

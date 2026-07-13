@@ -692,12 +692,16 @@ public class PaymentRepository : IPaymentRepository
             if (existing != null)
             {
                 existing.PhonePeCardMorning = payment.PhonePeCardMorning;
+                existing.PhonePeCardDay = payment.PhonePeCardDay;
                 existing.PhonePeCardNight = payment.PhonePeCardNight;
                 existing.PhonePeMorning = payment.PhonePeMorning;
+                existing.PhonePeDay = payment.PhonePeDay;
                 existing.PhonePeNight = payment.PhonePeNight;
                 existing.CreditCardMorning = payment.CreditCardMorning;
+                existing.CreditCardDay = payment.CreditCardDay;
                 existing.CreditCardNight = payment.CreditCardNight;
                 existing.PetroCardMorning = payment.PetroCardMorning;
+                existing.PetroCardDay = payment.PetroCardDay;
                 existing.PetroCardNight   = payment.PetroCardNight;
                 existing.CashDeposit = payment.CashDeposit;
                 existing.Others      = payment.Others;
@@ -709,14 +713,20 @@ public class PaymentRepository : IPaymentRepository
                 existing.PetroCardBatch = payment.PetroCardBatch;
                 existing.CreditCardTidMorning = payment.CreditCardTidMorning;
                 existing.CreditCardBatchMorning = payment.CreditCardBatchMorning;
+                existing.CreditCardTidDay = payment.CreditCardTidDay;
+                existing.CreditCardBatchDay = payment.CreditCardBatchDay;
                 existing.CreditCardTidNight = payment.CreditCardTidNight;
                 existing.CreditCardBatchNight = payment.CreditCardBatchNight;
                 existing.PetroCardTidMorning = payment.PetroCardTidMorning;
                 existing.PetroCardBatchMorning = payment.PetroCardBatchMorning;
+                existing.PetroCardTidDay = payment.PetroCardTidDay;
+                existing.PetroCardBatchDay = payment.PetroCardBatchDay;
                 existing.PetroCardTidNight = payment.PetroCardTidNight;
                 existing.PetroCardBatchNight = payment.PetroCardBatchNight;
                 existing.PhonePeTidMorning = payment.PhonePeTidMorning;
                 existing.PhonePeBatchMorning = payment.PhonePeBatchMorning;
+                existing.PhonePeTidDay = payment.PhonePeTidDay;
+                existing.PhonePeBatchDay = payment.PhonePeBatchDay;
                 existing.PhonePeTidNight = payment.PhonePeTidNight;
                 existing.PhonePeBatchNight = payment.PhonePeBatchNight;
             }

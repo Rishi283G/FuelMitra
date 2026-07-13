@@ -642,21 +642,14 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
             return;
         }
 
-        StatusMessage = "⏳ Locking submission and saving to local SQLite...";
+        StatusMessage = "⏳ Saving submission to local SQLite...";
         
+        Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? transaction = null;
         try
         {
-            // 1. Generate lock token and acquire lock in Supabase (Optimistic Locking)
+            // 1. Generate lock token for background update
             var lockId = Guid.NewGuid().ToString();
             var approvedBy = _authService.CurrentUser?.Username ?? "Manager";
-
-            var lockResult = await _supabaseService.ApproveSubmissionAsync(SelectedSubmission.Id, approvedBy, lockId);
-            if (!lockResult.Success)
-            {
-                MessageBox.Show($"Approval failed: {lockResult.Error}", "Concurrency Conflict", MessageBoxButton.OK, MessageBoxImage.Error);
-                await RefreshQueueAsync();
-                return;
-            }
 
             // 2. Prepare C# models for local SaveCompleteEntryAsync
             var nozzleModels = NozzleReadings.Select(n => new NozzleReading
@@ -1126,191 +1119,243 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                 }
             };
 
-            // 3. Save locally via existing service (zero calculation redundancy!)
-            var localSaveResult = await _dsmEntryService.SaveCompleteEntryAsync(
-                SelectedSubmission.ShiftDate,
-                SelectedSubmission.ShiftType,
-                SelectedSubmission.DsmName,
-                SelectedSubmission.PumpId,
-                nozzleModels,
-                payment,
-                debitModels,
-                testingModels,
-                expenseModels,
-                cashModels,
-                connectedPumpId: connectedPumpId,
-                personalDebtors: new List<DsmPersonalDebtor>()
-            );
-
-            if (!localSaveResult.Success)
-            {
-                // Rollback in Supabase: reset status to Pending
-                await _supabaseService.RejectSubmissionAsync(SelectedSubmission.Id, "Rollback: Local database save failed.");
-                MessageBox.Show($"WPF local save failed: {localSaveResult.Error}", "Save Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                await RefreshQueueAsync();
-                return;
-            }
-
-            var savedEntry = localSaveResult.Data!;
-
-            // 4. Create local DsmApprovalAudit record (will sync back to Supabase)
+            // 3. Save locally via single database transaction (authoritative source of truth)
             using var context = _serviceProvider.GetRequiredService<FuelProDbContext>();
+            transaction = await context.Database.BeginTransactionAsync();
+                var localSaveResult = await _dsmEntryService.SaveCompleteEntryWithContextAsync(
+                    context,
+                    SelectedSubmission.ShiftDate,
+                    SelectedSubmission.ShiftType,
+                    SelectedSubmission.DsmName,
+                    SelectedSubmission.PumpId,
+                    nozzleModels,
+                    payment,
+                    debitModels,
+                    testingModels,
+                    expenseModels,
+                    cashModels,
+                    connectedPumpId: connectedPumpId,
+                    personalDebtors: new List<DsmPersonalDebtor>()
+                );
 
-            // Process Oil & DEF Sales from PWA Submission Metadata
-            if (!string.IsNullOrEmpty(SelectedSubmission.MetadataJson))
-            {
+                if (!localSaveResult.Success)
+                {
+                    await transaction.RollbackAsync();
+                    MessageBox.Show($"WPF local save failed: {localSaveResult.Error}", "Save Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    await RefreshQueueAsync();
+                    return;
+                }
+
+                var savedEntry = localSaveResult.Data!;
+
+                // Process Oil & DEF Sales from PWA Submission Metadata
+                if (!string.IsNullOrEmpty(SelectedSubmission.MetadataJson))
+                {
+                    try
+                    {
+                        var metadata = JsonConvert.DeserializeObject<dynamic>(SelectedSubmission.MetadataJson);
+                        if (metadata != null && metadata.oilDefSales != null)
+                        {
+                            foreach (var sale in metadata.oilDefSales)
+                            {
+                                int productId = (int)(sale.productId ?? 0);
+                                double quantity = (double)(sale.quantity ?? 0.0);
+                                double price = (double)(sale.price ?? 0.0);
+
+                                if (productId <= 0 || quantity <= 0) continue;
+
+                                var productMaster = await context.ProductMasters.FindAsync(productId);
+                                if (productMaster == null) continue;
+
+                                double defaultSaleRate = productMaster.DefaultSaleRate;
+
+                                var log = await context.OilDefDailyLogs
+                                    .FirstOrDefaultAsync(l => l.ProductId == productId && l.LogDate == SelectedSubmission.ShiftDate.Date);
+
+                                if (log != null)
+                                {
+                                    log.SoldQuantity += quantity;
+                                    if (Math.Abs(price - defaultSaleRate) > 0.01)
+                                    {
+                                        log.OverrideSaleRate = price;
+                                    }
+                                    context.Entry(log).State = EntityState.Modified;
+                                }
+                                else
+                                {
+                                    log = new OilDefDailyLog
+                                    {
+                                        LogDate = SelectedSubmission.ShiftDate.Date,
+                                        ProductId = productId,
+                                        ProductType = productMaster.Category,
+                                        SoldQuantity = quantity,
+                                        OverrideSaleRate = Math.Abs(price - defaultSaleRate) > 0.01 ? price : null
+                                    };
+                                    context.OilDefDailyLogs.Add(log);
+                                }
+
+                                await context.SaveChangesAsync();
+                                await RecalculateRunningBalancesAsync(context, productId, SelectedSubmission.ShiftDate.Date);
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.Error(ex, "Failed to save Oil & DEF sales during approval");
+                        throw; // Escalate to rollback transaction
+                    }
+                }
+                
+                var originalData = new
+                {
+                    Readings = NozzleReadings.Select(r => new { r.NozzleId, r.OpeningReading, r.ClosingReading, r.Rate }),
+                    Collections = new { Cash = CashAmount, UPI = UpiAmount, Card = CardAmount, Credit = CreditAmount, Expense = ExpenseAmount, ExpenseNotes }
+                };
+
+                var approvedData = new
+                {
+                    DsmEntryId = savedEntry.DsmEntryId,
+                    ShiftId = savedEntry.ShiftId,
+                    savedEntry.GrossSales,
+                    savedEntry.TotalCollection,
+                    savedEntry.Mismatch
+                };
+
+                var audit = new DsmApprovalAudit
+                {
+                    SubmissionId = SelectedSubmission.Id,
+                    OriginalDataJson = JsonConvert.SerializeObject(originalData),
+                    ApprovedDataJson = JsonConvert.SerializeObject(approvedData),
+                    ApprovedBy = approvedBy,
+                    ApprovedAt = DateTime.Now,
+                    Remarks = HasContinuityWarnings ? $"Override Continuity: {OverrideRemark}" : "Approved as-is."
+                };
+
+                context.DsmApprovalAudits.Add(audit);
+
+                // 4. Complete the active DSM assignment automatically after successful approval
                 try
                 {
-                    var metadata = JsonConvert.DeserializeObject<dynamic>(SelectedSubmission.MetadataJson);
-                    if (metadata != null && metadata.oilDefSales != null)
+                    var dsmUser = await context.DsmUsers.FirstOrDefaultAsync(u =>
+                        u.AuthUserId == SelectedSubmission.DsmUserId ||
+                        u.FullName == SelectedSubmission.DsmName);
+
+                    if (dsmUser != null)
                     {
-                        foreach (var sale in metadata.oilDefSales)
+                        var assignment = await context.DsmPumpAssignments
+                            .FirstOrDefaultAsync(a => a.IsActive
+                                && a.DsmUserId == dsmUser.DsmUserId
+                                && a.ShiftType == SelectedSubmission.ShiftType
+                                && a.PumpId == SelectedSubmission.PumpId
+                                && a.ConnectedPumpId == connectedPumpId);
+
+                        if (assignment == null)
                         {
-                            int productId = (int)(sale.productId ?? 0);
-                            double quantity = (double)(sale.quantity ?? 0.0);
-                            double price = (double)(sale.price ?? 0.0);
+                            // Fallback to match without connected pump if exact match not found
+                            assignment = await context.DsmPumpAssignments
+                                .FirstOrDefaultAsync(a => a.IsActive
+                                    && a.DsmUserId == dsmUser.DsmUserId
+                                    && a.ShiftType == SelectedSubmission.ShiftType
+                                    && a.PumpId == SelectedSubmission.PumpId);
+                        }
 
-                            if (productId <= 0 || quantity <= 0) continue;
-
-                            var productMaster = await context.ProductMasters.FindAsync(productId);
-                            if (productMaster == null) continue;
-
-                            double defaultSaleRate = productMaster.DefaultSaleRate;
-
-                            var log = await context.OilDefDailyLogs
-                                .FirstOrDefaultAsync(l => l.ProductId == productId && l.LogDate == SelectedSubmission.ShiftDate.Date);
-
-                            if (log != null)
-                            {
-                                log.SoldQuantity += quantity;
-                                if (Math.Abs(price - defaultSaleRate) > 0.01)
-                                {
-                                    log.OverrideSaleRate = price;
-                                }
-                                context.Entry(log).State = EntityState.Modified;
-                            }
-                            else
-                            {
-                                log = new OilDefDailyLog
-                                {
-                                    LogDate = SelectedSubmission.ShiftDate.Date,
-                                    ProductId = productId,
-                                    ProductType = productMaster.Category,
-                                    SoldQuantity = quantity,
-                                    OverrideSaleRate = Math.Abs(price - defaultSaleRate) > 0.01 ? price : null
-                                };
-                                context.OilDefDailyLogs.Add(log);
-                            }
-
-                            await context.SaveChangesAsync();
-                            await RecalculateRunningBalancesAsync(context, productId, SelectedSubmission.ShiftDate.Date);
+                        if (assignment != null)
+                        {
+                            assignment.IsActive = false;
+                            assignment.CompletedDate = DateTime.Now;
+                            context.Entry(assignment).State = EntityState.Modified;
+                            _logger.Information("Automatically marked active assignment {AssignmentId} as Completed for DSM {DsmName} on Pump {PumpId}",
+                                assignment.DsmPumpAssignmentId, dsmUser.FullName, SelectedSubmission.PumpId);
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    _logger.Error(ex, "Failed to save Oil & DEF sales during approval");
+                    _logger.Error(ex, "Failed to complete active DSM assignment during approval");
+                    throw; // Escalate to rollback transaction
                 }
-            }
-            
-            var originalData = new
-            {
-                Readings = NozzleReadings.Select(r => new { r.NozzleId, r.OpeningReading, r.ClosingReading, r.Rate }),
-                Collections = new { Cash = CashAmount, UPI = UpiAmount, Card = CardAmount, Credit = CreditAmount, Expense = ExpenseAmount, ExpenseNotes }
-            };
 
-            var approvedData = new
-            {
-                DsmEntryId = savedEntry.DsmEntryId,
-                ShiftId = savedEntry.ShiftId,
-                savedEntry.GrossSales,
-                savedEntry.TotalCollection,
-                savedEntry.Mismatch
-            };
+                await context.SaveChangesAsync();
+                await transaction.CommitAsync();
+                
+                _logger.Information("Local transaction successfully committed for DSM entry. SelectedSubmissionId: {SubId}", SelectedSubmission.Id);
 
-            var audit = new DsmApprovalAudit
-            {
-                SubmissionId = SelectedSubmission.Id,
-                OriginalDataJson = JsonConvert.SerializeObject(originalData),
-                ApprovedDataJson = JsonConvert.SerializeObject(approvedData),
-                ApprovedBy = approvedBy,
-                ApprovedAt = DateTime.Now,
-                Remarks = HasContinuityWarnings ? $"Override Continuity: {OverrideRemark}" : "Approved as-is."
-            };
+                // 5. Send approval notification to DSM asynchronously (non-blocking)
+                var submissionId = SelectedSubmission.Id;
+                var submissionDsmUserId = SelectedSubmission.DsmUserId;
+                var submissionPumpId = SelectedSubmission.PumpId;
+                var submissionShiftDateDisplay = SelectedSubmission.ShiftDateDisplay;
+                var submissionShiftType = SelectedSubmission.ShiftType;
 
-            context.DsmApprovalAudits.Add(audit);
-
-            // 4.5. Complete the active DSM assignment automatically after successful approval
-            try
-            {
-                var dsmUser = await context.DsmUsers.FirstOrDefaultAsync(u =>
-                    u.AuthUserId == SelectedSubmission.DsmUserId ||
-                    u.FullName == SelectedSubmission.DsmName);
-
-                if (dsmUser != null)
+                _ = Task.Run(async () =>
                 {
-                    var assignment = await context.DsmPumpAssignments
-                        .FirstOrDefaultAsync(a => a.IsActive
-                            && a.DsmUserId == dsmUser.DsmUserId
-                            && a.ShiftType == SelectedSubmission.ShiftType
-                            && a.PumpId == SelectedSubmission.PumpId
-                            && a.ConnectedPumpId == connectedPumpId);
-
-                    if (assignment == null)
+                    try
                     {
-                        // Fallback to match without connected pump if exact match not found
-                        assignment = await context.DsmPumpAssignments
-                            .FirstOrDefaultAsync(a => a.IsActive
-                                && a.DsmUserId == dsmUser.DsmUserId
-                                && a.ShiftType == SelectedSubmission.ShiftType
-                                && a.PumpId == SelectedSubmission.PumpId);
+                        var settingsSvc = _serviceProvider.GetRequiredService<SyncConfigService>();
+                        var settings = await settingsSvc.GetSettingsAsync();
+                        var approvalMessage = $"Your shift submission for {submissionShiftDateDisplay} Shift {submissionShiftType} on Pump {submissionPumpId} has been approved.";
+                        await _supabaseService.SendNotificationAsync(settings.StationId, submissionDsmUserId, "DSM", approvalMessage);
                     }
-
-                    if (assignment != null)
+                    catch (Exception ex)
                     {
-                        assignment.IsActive = false;
-                        assignment.CompletedDate = DateTime.Now;
-                        context.Entry(assignment).State = EntityState.Modified;
-                        _logger.Information("Automatically marked active assignment {AssignmentId} as Completed for DSM {DsmName} on Pump {PumpId}",
-                            assignment.DsmPumpAssignmentId, dsmUser.FullName, SelectedSubmission.PumpId);
+                        _logger.Warning(ex, "Failed to send approval notification to DSM");
                     }
-                }
+                });
+
+                // 6. Update status in Supabase asynchronously with retry and exponential backoff
+                _ = Task.Run(async () =>
+                {
+                    int maxRetries = 10;
+                    int delayMs = 1000;
+                    for (int attempt = 1; attempt <= maxRetries; attempt++)
+                    {
+                        var lockResult = await _supabaseService.ApproveSubmissionAsync(submissionId, approvedBy, lockId);
+                        if (lockResult.Success)
+                        {
+                            _logger.Information("Successfully approved submission {SubId} in Supabase on attempt {Attempt}", submissionId, attempt);
+                            break;
+                        }
+                        
+                        _logger.Warning("Attempt {Attempt} to approve submission {SubId} in Supabase failed: {Error}. Retrying in {Delay}ms...",
+                            attempt, submissionId, lockResult.Error, delayMs);
+                        
+                        await Task.Delay(delayMs);
+                        delayMs *= 2;
+                    }
+                });
+
+                // 7. Push local change to Supabase immediately (for DsmApprovalAudits, etc.)
+                var syncEngine = _serviceProvider.GetRequiredService<SyncEngine>();
+                _ = syncEngine.ForceSyncAsync();
+
+                MessageBox.Show("DSM Submission approved successfully and saved locally!", "Approved", MessageBoxButton.OK, MessageBoxImage.Information);
+                
+                SelectedSubmission = null;
+                OverrideRemark = "";
+                OverrideContinuity = false;
+                
+                await RefreshQueueAsync();
+                await LoadApprovedHistoryAsync();
+            }
+            catch (DbUpdateException dbEx)
+            {
+                await transaction.RollbackAsync();
+                LogDbUpdateExceptionDetails(dbEx);
+                MessageBox.Show($"Approval failed: A database update constraint or validation error occurred. Check log files for technical details.", "Database Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
             catch (Exception ex)
             {
-                _logger.Error(ex, "Failed to complete active DSM assignment during approval");
+                await transaction.RollbackAsync();
+                _logger.Error(ex, "Approval process failed for submission {SubId}", SelectedSubmission.Id);
+                MessageBox.Show($"Approval failed: {ex.Message}", "System Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
-
-            await context.SaveChangesAsync();
-
-            // 5. Send approval notification to DSM
-            var settings = await _serviceProvider.GetRequiredService<SyncConfigService>().GetSettingsAsync();
-            var approvalMessage = $"Your shift submission for {SelectedSubmission.ShiftDateDisplay} Shift {SelectedSubmission.ShiftType} on Pump {SelectedSubmission.PumpId} has been approved.";
-            await _supabaseService.SendNotificationAsync(settings.StationId, SelectedSubmission.DsmUserId, "DSM", approvalMessage);
-
-            // 6. Push local change to Supabase immediately
-            var syncEngine = _serviceProvider.GetRequiredService<SyncEngine>();
-            _ = syncEngine.ForceSyncAsync();
-
-            MessageBox.Show("DSM Submission approved successfully!", "Approved", MessageBoxButton.OK, MessageBoxImage.Information);
-            
-            SelectedSubmission = null;
-            OverrideRemark = "";
-            OverrideContinuity = false;
-            
-            await RefreshQueueAsync();
-            await LoadApprovedHistoryAsync();
+            finally
+            {
+                transaction?.Dispose();
+                StatusMessage = "";
+            }
         }
-        catch (Exception ex)
-        {
-            _logger.Error(ex, "Approval process failed for submission {SubId}", SelectedSubmission.Id);
-            MessageBox.Show($"Approval failed: {ex.Message}", "System Error", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-        finally
-        {
-            StatusMessage = "";
-        }
-    }
+
 
     [RelayCommand]
     private async Task RejectAsync()
@@ -1403,6 +1448,83 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
         catch (Exception ex)
         {
             _logger.Error(ex, "Failed to recalculate running balances for product {ProductId}", productId);
+        }
+    }
+
+    private void LogDbUpdateExceptionDetails(DbUpdateException dbEx)
+    {
+        _logger.Error(dbEx, "=== EF Core SaveChanges Database Update Exception ===");
+        
+        if (dbEx.InnerException != null)
+        {
+            _logger.Error(dbEx.InnerException, "Inner Exception Details: {Message}", dbEx.InnerException.Message);
+        }
+
+        if (dbEx.Entries != null)
+        {
+            foreach (var entry in dbEx.Entries)
+            {
+                var entityType = entry.Entity.GetType().FullName;
+                var state = entry.State.ToString();
+                
+                // Get primary key values
+                var keyValues = new List<string>();
+                var keyProperties = entry.Metadata.FindPrimaryKey()?.Properties;
+                if (keyProperties != null)
+                {
+                    foreach (var prop in keyProperties)
+                    {
+                        var val = entry.Property(prop.Name).CurrentValue;
+                        keyValues.Add($"{prop.Name} = {val}");
+                    }
+                }
+                var keysStr = string.Join(", ", keyValues);
+
+                _logger.Error("Failed Entity Type: {EntityType} | State: {State} | Key Values: [{KeysStr}]",
+                    entityType, state, keysStr);
+
+                // Print all property values
+                try
+                {
+                    var propValues = entry.CurrentValues.Properties
+                        .Select(p => $"{p.Name} = {entry.CurrentValues[p]}")
+                        .ToList();
+                    _logger.Error("Entity Values: {Values}", string.Join(" | ", propValues));
+                }
+                catch (Exception valEx)
+                {
+                    _logger.Error(valEx, "Error while printing entity property values");
+                }
+            }
+        }
+
+        try
+        {
+            var validationContexts = dbEx.Entries
+                .Select(e => e.Entity)
+                .Select(entity => 
+                {
+                    var results = new List<System.ComponentModel.DataAnnotations.ValidationResult>();
+                    var valCtx = new System.ComponentModel.DataAnnotations.ValidationContext(entity);
+                    System.ComponentModel.DataAnnotations.Validator.TryValidateObject(entity, valCtx, results, true);
+                    return new { Entity = entity, Results = results };
+                })
+                .Where(x => x.Results.Any())
+                .ToList();
+
+            foreach (var vc in validationContexts)
+            {
+                _logger.Error("Validation failed for entity {EntityType}:", vc.Entity.GetType().FullName);
+                foreach (var err in vc.Results)
+                {
+                    _logger.Error("  - MemberNames: {Members} | Error: {Error}", 
+                        string.Join(", ", err.MemberNames), err.ErrorMessage);
+                }
+            }
+        }
+        catch (Exception valEx)
+        {
+            _logger.Error(valEx, "Error while performing entity validation checks");
         }
     }
 

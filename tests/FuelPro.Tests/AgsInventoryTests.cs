@@ -46,6 +46,7 @@ public class AgsInventoryTests
         services.AddTransient<ICashDenominationRepository, CashDenominationRepository>();
         services.AddTransient<IAgsImportRepository, AgsImportRepository>();
         services.AddTransient<ICreditorRepository, CreditorRepository>();
+        services.AddTransient<IFuelTankerRepository, FuelTankerRepository>();
 
         // Services
         services.AddTransient<IAgsImportService, AgsImportService>();
@@ -96,6 +97,16 @@ public class AgsInventoryTests
             // 1. Arrange: Pre-populate database with Shift B and Shift A imports containing nozzle readings
             await CreateMockImportAsync(agsRepo, date1, "B", 1000.0);
             await CreateMockImportAsync(agsRepo, date1, "A", 500.0);
+
+            var tankerRepo = scope.ServiceProvider.GetRequiredService<IFuelTankerRepository>();
+            await tankerRepo.AddAsync(new FuelTanker
+            {
+                TankerDate = date1.Date,
+                FuelType = "HSD",
+                Quantity = 2000.0,
+                InvoiceNumber = "INV-TEST-PROP",
+                CreatedAt = DateTime.Now
+            });
 
             // Load nozzle groups for Shift B (Day)
             var groupsB = await inventoryService.BuildNozzleGroupsAsync(date1, "B");
@@ -193,6 +204,52 @@ public class AgsInventoryTests
             
             // Day Closing Stock must come from Shift A (5000L)
             Assert.Equal(5000.0, summaryRes.Data.HsdDayClosingStock);
+        }
+    }
+
+    [Fact]
+    public async Task Test_FuelTankerPurchases_FlowIntoReceipts()
+    {
+        var provider = SetupServiceProvider();
+        var date = new DateTime(2026, 7, 10);
+
+        using (var scope = provider.CreateScope())
+        {
+            var agsRepo = scope.ServiceProvider.GetRequiredService<IAgsImportRepository>();
+            var tankerRepo = scope.ServiceProvider.GetRequiredService<IFuelTankerRepository>();
+            var inventoryService = scope.ServiceProvider.GetRequiredService<IAgsInventoryService>();
+
+            // Setup Shift B (Day) with an import
+            await CreateMockImportAsync(agsRepo, date, "B", 1000.0);
+
+            // Add a tanker purchase of 5000L of HSD
+            var tanker = new FuelTanker
+            {
+                TankerDate = date.Date,
+                FuelType = "HSD",
+                Quantity = 5000.0,
+                PurchaseRate = 90.0,
+                TotalAmount = 450000.0,
+                CreatedAt = DateTime.Now
+            };
+            var saveTankerRes = await tankerRepo.AddAsync(tanker);
+            Assert.True(saveTankerRes.Success);
+
+            // Load nozzle groups for Shift B
+            var groupsB = await inventoryService.BuildNozzleGroupsAsync(date, "B");
+            var hsdGroupB = groupsB.First(g => g.GroupName.Contains("Tank 2"));
+
+            // Verify that Receipts is automatically populated with the 5000L tanker quantity
+            Assert.Equal(5000.0, hsdGroupB.Receipts);
+
+            // Verify calculated stock: Opening (default 0) - Sales (1000) + Receipts (5000) = 4000L
+            Assert.Equal(4000.0, hsdGroupB.CalculatedStock);
+
+            // Load groups for Shift A (Night) and verify receipts are 0 (only Shift B gets the day's tanker receipts)
+            await CreateMockImportAsync(agsRepo, date, "A", 500.0);
+            var groupsA = await inventoryService.BuildNozzleGroupsAsync(date, "A");
+            var hsdGroupA = groupsA.First(g => g.GroupName.Contains("Tank 2"));
+            Assert.Equal(0.0, hsdGroupA.Receipts);
         }
     }
 }

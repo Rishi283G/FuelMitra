@@ -83,6 +83,7 @@ public partial class SalaryPaymentWindow : Window
 
             _dbContext.DsmSalaryPayments.Add(payment);
             await _dbContext.SaveChangesAsync();
+            FuelPro.Core.Services.DsmEntryService.RaisePayrollChanged();
 
             MessageBox.Show("Salary payment recorded successfully!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
             DialogResult = true;

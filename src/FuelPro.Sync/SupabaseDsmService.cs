@@ -238,6 +238,48 @@ public class SupabaseDsmService
         }
     }
 
+    public virtual async Task<Result> ResetSubmissionToPendingAsync(Guid submissionId)
+    {
+        try
+        {
+            var endpoint = $"DsmSubmissions?Id=eq.{submissionId}";
+            
+            var payload = new
+            {
+                Status = "Pending",
+                ApprovedAt = (string?)null,
+                ApprovedBy = (string?)null,
+                ApprovalLockId = (string?)null
+            };
+
+            var json = JsonConvert.SerializeObject(payload);
+            var request = await CreateRequestAsync(HttpMethod.Patch, endpoint, json);
+            request.Headers.Add("Prefer", "return=representation");
+
+            var response = await _client.SendAsync(request);
+            var content = await response.Content.ReadAsStringAsync();
+
+            if (response.IsSuccessStatusCode)
+            {
+                var updatedRows = JsonConvert.DeserializeObject<List<dynamic>>(content);
+                if (updatedRows != null && updatedRows.Count > 0)
+                {
+                    _logger.Information("Successfully reset submission {SubId} to Pending in Supabase.", submissionId);
+                    return Result.Ok();
+                }
+                return Result.Fail("Failed to reset submission status.");
+            }
+
+            return Result.Fail($"Supabase API error: {response.StatusCode} - {content}");
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Exception during status reset in Supabase for {SubId}", submissionId);
+            return Result.Fail(ex.Message);
+        }
+    }
+
+
     public virtual async Task<Result> SendNotificationAsync(string stationId, string userId, string role, string message)
     {
         try

@@ -14,7 +14,7 @@ namespace FuelPro.UI.ViewModels;
 /// <summary>
 /// Daily drill-down: shift-wise breakdown, fuel-wise sales, collection summary, DSM-wise details.
 /// </summary>
-public partial class DailyPerformanceViewModel : ObservableObject
+public partial class DailyPerformanceViewModel : ObservableObject, IDisposable
 {
     private readonly IShiftRepository _shiftRepo;
     private readonly IDsmEntryRepository _dsmEntryRepo;
@@ -22,6 +22,9 @@ public partial class DailyPerformanceViewModel : ObservableObject
     private readonly IExpenseRepository _expenseRepo;
     private readonly PrintService _printService;
     private readonly ExcelExportService _excelExportService;
+    private readonly IReportService _reportService;
+    private readonly ICreditorRepaymentRepository _repaymentRepo;
+    private readonly ISettingsRepository _settingsRepo;
 
     [ObservableProperty] private DateTime _selectedDate = DateTime.Today;
     [ObservableProperty] private bool _isLoading;
@@ -47,7 +50,32 @@ public partial class DailyPerformanceViewModel : ObservableObject
         _expenseRepo = App.Services.GetRequiredService<IExpenseRepository>();
         _printService = App.Services.GetRequiredService<PrintService>();
         _excelExportService = App.Services.GetRequiredService<ExcelExportService>();
+        _repaymentRepo = App.Services.GetRequiredService<ICreditorRepaymentRepository>();
+        _reportService = App.Services.GetRequiredService<IReportService>();
+        _settingsRepo = App.Services.GetRequiredService<ISettingsRepository>();
+
+        DsmEntryService.DsmEntryChanged += OnDataChanged;
+        DsmEntryService.PettyCashChanged += OnDataChanged;
+        DsmEntryService.DebtorChanged += OnDataChanged;
+        DsmEntryService.PayrollChanged += OnDataChanged;
+        DsmEntryService.InventoryChanged += OnDataChanged;
+
         _ = LoadAsync();
+    }
+
+    private void OnDataChanged()
+    {
+        System.Windows.Application.Current.Dispatcher.InvokeAsync(async () => await LoadAsync());
+    }
+
+    public void Dispose()
+    {
+        DsmEntryService.DsmEntryChanged -= OnDataChanged;
+        DsmEntryService.PettyCashChanged -= OnDataChanged;
+        DsmEntryService.DebtorChanged -= OnDataChanged;
+        DsmEntryService.PayrollChanged -= OnDataChanged;
+        DsmEntryService.InventoryChanged -= OnDataChanged;
+        GC.SuppressFinalize(this);
     }
 
     partial void OnSelectedDateChanged(DateTime value) => _ = LoadAsync();
@@ -160,13 +188,51 @@ public partial class DailyPerformanceViewModel : ObservableObject
 
             var shiftsResult = await _shiftRepo.GetShiftsByDateRangeAsync(SelectedDate, SelectedDate);
             var shifts = shiftsResult.Success && shiftsResult.Data != null ? shiftsResult.Data : new List<Shift>();
+            var shiftIds = shifts.Select(s => s.ShiftId).ToList();
+
+            var repaymentsResult = await _repaymentRepo.GetByDateRangeAsync(SelectedDate, SelectedDate);
+            var repayments = repaymentsResult.Success && repaymentsResult.Data != null ? repaymentsResult.Data : new List<CreditorRepayment>();
+
+            var shiftExpResult = await _expenseRepo.GetExpensesByShiftIdsAsync(shiftIds);
+            var shiftExpenses = shiftExpResult.Success && shiftExpResult.Data != null ? shiftExpResult.Data : new List<Expense>();
+
+            var settingsResult = await _settingsRepo.GetSettingsAsync();
+            var settings = settingsResult.Success && settingsResult.Data != null ? settingsResult.Data : new Setting();
+            double defaultHsd = settings.HsdRate;
+            double defaultMsI = settings.MsIRate;
+            double defaultMsII = settings.MsIIRate;
+            double defaultCng = settings.CngRate;
+            string stationName = settings.StationDisplayName;
 
             TotalSale = 0; TotalCollection = 0; TotalExpenses = 0;
             TotalHsd = 0; TotalMsI = 0; TotalMsII = 0;
             DsmBreakdown.Clear();
 
-            var dsmGroups = entries.GroupBy(e => e.DsmName ?? "Unknown");
+            // Run the centralized calculation
+            var dayReport = _reportService.CalculateDayReport(
+                SelectedDate, SelectedDate,
+                entries,
+                shiftExpenses,
+                repayments,
+                defaultHsd, defaultMsI, defaultMsII, defaultCng,
+                stationName);
 
+            TotalSale = dayReport.TotalFuelAmount - dayReport.DsmSummaryTotals.Testing;
+            TotalLitres = dayReport.TotalFuelLitres;
+            TotalCollection = dayReport.ActualCollection;
+            TotalExpenses = dayReport.ExpensesTotal;
+            TotalMismatch = dayReport.Difference;
+
+            // Load liters breakdown
+            foreach (var fRow in dayReport.FuelSales)
+            {
+                if (fRow.FuelType == "HSD") TotalHsd = fRow.Litres;
+                else if (fRow.FuelType == "MS-I") TotalMsI = fRow.Litres;
+                else if (fRow.FuelType == "MS-II") TotalMsII = fRow.Litres;
+            }
+
+            // Group by DSM to populate breakdown rows
+            var dsmGroups = entries.GroupBy(e => e.DsmName ?? "Unknown");
             foreach (var group in dsmGroups)
             {
                 double groupSale = 0, groupLitres = 0, groupCollection = 0;
@@ -197,11 +263,7 @@ public partial class DailyPerformanceViewModel : ObservableObject
 
                     foreach (var nr in entry.NozzleReadings)
                     {
-                        var ft = PumpConfiguration.GetFuelTypeDisplayName(entry.PumpId, nr.NozzleNumber, SelectedDate);
                         groupLitres += nr.SaleLitres;
-                        if (ft == "HSD") TotalHsd += nr.SaleLitres;
-                        else if (ft == "MS-I") TotalMsI += nr.SaleLitres;
-                        else if (ft == "MS-II") TotalMsII += nr.SaleLitres;
                     }
                 }
 
@@ -214,20 +276,7 @@ public partial class DailyPerformanceViewModel : ObservableObject
                     TotalCollection = groupCollection,
                     Mismatch = groupCollection - groupSale
                 });
-
-                TotalSale += groupSale;
-                TotalCollection += groupCollection;
             }
-
-            // Add shift-level expenses
-            var shiftIds = shifts.Select(s => s.ShiftId).ToList();
-            var shiftExpResult = await _expenseRepo.GetExpensesByShiftIdsAsync(shiftIds);
-            if (shiftExpResult.Success && shiftExpResult.Data != null)
-                TotalExpenses = shiftExpResult.Data.Sum(e => e.Amount);
-
-            TotalExpenses += entries.SelectMany(e => e.Expenses).Sum(e => e.Amount);
-            TotalLitres = TotalHsd + TotalMsI + TotalMsII;
-            TotalMismatch = TotalCollection - TotalSale;
         }
         finally { IsLoading = false; }
     }

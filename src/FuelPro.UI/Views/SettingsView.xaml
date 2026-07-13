@@ -59,59 +59,7 @@
                 </StackPanel>
             </materialDesign:Card>
 
-            <!-- DSM Profile Management -->
-            <materialDesign:Card Padding="24" UniformCornerRadius="12" Margin="0,20,0,24"
-                                 materialDesign:ElevationAssist.Elevation="Dp3">
-                <StackPanel>
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
-                        <materialDesign:PackIcon Kind="AccountHardHat" Width="24" Height="24"
-                                                 Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
-                        <TextBlock Text="DSM Profile Management" FontSize="18" FontWeight="SemiBold" Margin="8,0"
-                                   Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}"/>
-                    </StackPanel>
 
-                    <DataGrid ItemsSource="{Binding DsmProfiles}" IsReadOnly="True" Margin="0,0,0,16"
-                              AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False"
-                              HeadersVisibility="Column" MaxHeight="200" FontSize="13" GridLinesVisibility="Horizontal"
-                              materialDesign:DataGridAssist.CellPadding="12 8"
-                              materialDesign:DataGridAssist.ColumnHeaderPadding="12 8">
-                        <DataGrid.Columns>
-                            <DataGridTextColumn Header="DSM Name" Binding="{Binding DsmName}" Width="*"/>
-                            <DataGridTextColumn Header="Mobile Number" Binding="{Binding MobileNumber}" Width="150"/>
-                            <DataGridTemplateColumn Header="" Width="50">
-                                <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <Button Style="{StaticResource MaterialDesignIconButton}" Height="28" Width="28"
-                                                Command="{Binding DataContext.DeleteDsmProfileCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                CommandParameter="{Binding}">
-                                            <materialDesign:PackIcon Kind="Delete" Width="16" Height="16" Foreground="#F44336"/>
-                                        </Button>
-                                    </DataTemplate>
-                                </DataGridTemplateColumn.CellTemplate>
-                            </DataGridTemplateColumn>
-                        </DataGrid.Columns>
-                    </DataGrid>
-
-                    <TextBlock Text="Add New DSM" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,8" Opacity="0.7"/>
-                    <Grid Margin="0,0,0,12">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBox Grid.Column="0" Text="{Binding NewDsmName, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0"
-                                 materialDesign:HintAssist.Hint="DSM Name" materialDesign:HintAssist.IsFloating="True"
-                                 Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
-                        <TextBox Grid.Column="1" Text="{Binding NewDsmMobile, UpdateSourceTrigger=PropertyChanged}" Margin="8,0,0,0"
-                                 materialDesign:HintAssist.Hint="Mobile Number (Optional)" materialDesign:HintAssist.IsFloating="True"
-                                 Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
-                    </Grid>
-                    <StackPanel Orientation="Horizontal">
-                        <Button Content="Add DSM" Command="{Binding AddDsmProfileCommand}" Height="40" Padding="24,0"
-                                Style="{StaticResource MaterialDesignRaisedButton}" HorizontalAlignment="Left" Margin="0,0,16,0"/>
-                        <TextBlock Text="{Binding DsmStatusMessage}" VerticalAlignment="Center" FontSize="14"/>
-                    </StackPanel>
-                </StackPanel>
-            </materialDesign:Card>
 
             <!-- Creditor Management Card -->
             <materialDesign:Card Margin="0,0,0,24" Padding="24" UniformCornerRadius="16" Background="White" materialDesign:ElevationAssist.Elevation="Dp2">

@@ -230,10 +230,11 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       let hsdRate = 90.35;
       let msIRate = 103.81;
       let msIIRate = 103.81;
+      let cngRate = 85.0;
 
       const { data: settingsData } = await supabase
         .from('Settings')
-        .select('HsdRate, MsIRate, MsIIRate')
+        .select('HsdRate, MsIRate, MsIIRate, CngRate')
         .eq('station_id', profile.StationId)
         .order('LastUpdated', { ascending: false })
         .limit(1);
@@ -242,6 +243,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         hsdRate = settingsData[0].HsdRate ?? hsdRate;
         msIRate = settingsData[0].MsIRate ?? msIRate;
         msIIRate = settingsData[0].MsIIRate ?? msIIRate;
+        cngRate = settingsData[0].CngRate ?? cngRate;
       }
 
       // We load nozzles of both the primary and connected pump
@@ -419,8 +421,16 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
 
       const rows: NozzleRow[] = configRows.map((n, index) => {
         let rate = msIRate;
-        if (n.fuelType === 'HSD') rate = hsdRate;
-        else if (n.fuelType === 'MS-II') rate = msIIRate;
+        if (n.fuelType) {
+          const normalized = n.fuelType.trim().toUpperCase();
+          if (normalized.startsWith('HSD')) {
+            rate = hsdRate;
+          } else if (normalized.startsWith('MS')) {
+            rate = msIRate;
+          } else if (normalized.startsWith('CNG')) {
+            rate = cngRate;
+          }
+        }
 
         const prevClosing = prevClosings[n.nozzleId] || 0;
 

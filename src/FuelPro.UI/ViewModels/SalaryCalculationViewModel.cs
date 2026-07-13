@@ -175,6 +175,7 @@ public partial class SalaryCalculationViewModel : ObservableObject
         {
             int monthNum = GetMonthNumber(SelectedMonthName);
             await _financialCalcService.SaveDsmSalaryAdjustmentsAsync(SelectedYear, monthNum, SalaryRows.ToList());
+            FuelPro.Core.Services.DsmEntryService.RaisePayrollChanged();
             MessageBox.Show("Salary adjustments saved successfully!", "FuelPro — Success", MessageBoxButton.OK, MessageBoxImage.Information);
             await LoadSalariesAsync();
         }
@@ -199,6 +200,7 @@ public partial class SalaryCalculationViewModel : ObservableObject
         {
             int monthNum = GetMonthNumber(SelectedMonthName);
             await _financialCalcService.DeleteDsmSalaryAdjustmentAsync(SelectedYear, monthNum, row.DsmName);
+            FuelPro.Core.Services.DsmEntryService.RaisePayrollChanged();
             MessageBox.Show("Salary adjustments deleted/reset successfully!", "FuelPro — Success", MessageBoxButton.OK, MessageBoxImage.Information);
             await LoadSalariesAsync();
         }
