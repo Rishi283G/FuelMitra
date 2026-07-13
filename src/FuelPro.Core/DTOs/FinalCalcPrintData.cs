@@ -37,7 +37,7 @@ public class CreditorRepaymentPrintDto
 public class DsmPrintRow
 {
     public string DsmName { get; set; } = string.Empty;
-    public int PumpNo { get; set; }
+    public string PumpNo { get; set; } = string.Empty;
     public decimal CardAmount { get; set; }
     public decimal CreditCardMorning { get; set; }
     public decimal CreditCardNight { get; set; }

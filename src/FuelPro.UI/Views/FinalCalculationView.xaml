@@ -121,7 +121,7 @@
                             <DataGrid ItemsSource="{Binding DsmSummaryRows}" AutoGenerateColumns="False" IsReadOnly="True" MaxHeight="300">
                                 <DataGrid.Columns>
                                     <DataGridTextColumn Header="DSM" Binding="{Binding DsmName}" FontWeight="Bold"/>
-                                    <DataGridTextColumn Header="Pump" Binding="{Binding PumpId, Converter={StaticResource PumpIdConverter}}" />
+                                    <DataGridTextColumn Header="Pump" Binding="{Binding PumpLabel}" />
                                     <DataGridTextColumn Header="P.Pe Card (M)" Binding="{Binding PhonePeCardMorning, Converter={StaticResource CurrencyConverter}}" />
                                     <DataGridTextColumn Header="P.Pe Card (N)" Binding="{Binding PhonePeCardNight, Converter={StaticResource CurrencyConverter}}" />
                                     <DataGridTextColumn Header="Phone Pe (M)" Binding="{Binding PhonePeMorning, Converter={StaticResource CurrencyConverter}}" />

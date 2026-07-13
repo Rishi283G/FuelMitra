@@ -40,6 +40,7 @@ public class ShiftAggregationService : IShiftAggregationService
                     DsmName = entry.DsmName,
                     Shift = entry.Shift?.ShiftType ?? "",
                     PumpId = entry.PumpId,
+                    ConnectedPumpId = entry.ConnectedPumpId,
                     PhonePeCard = entry.PaymentCollection?.PhonePeCard ?? 0,
                     PhonePeCardMorning = entry.PaymentCollection?.PhonePeCardMorning ?? 0,
                     PhonePeCardNight = entry.PaymentCollection?.PhonePeCardNight ?? 0,

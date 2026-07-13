@@ -65,7 +65,7 @@ public class PrintDataBuilder
             var dsmPrintRows = dsmRows.Select(r => new DsmPrintRow
             {
                 DsmName    = r.DsmName,
-                PumpNo     = r.PumpId,
+                PumpNo     = r.PumpNoDisplay,
                 CardAmount = (decimal)(r.CreditCardMorning + r.CreditCardNight),
                 CreditCardMorning = (decimal)r.CreditCardMorning,
                 CreditCardNight   = (decimal)r.CreditCardNight,

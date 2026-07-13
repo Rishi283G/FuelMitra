@@ -272,8 +272,10 @@ function renderData(){
     var c2 = r.cashInHand || r.cash2 || 0;
     var sale = r.grossSales || r.grossSale || 0;
     var mismatch = (cc + phcM + phcN + ph + phN + petro + deb + exp + test + c1 + c2) - sale;
+    var pVal = getVal(r, 'pumpNoDisplay') || getVal(r, 'pumpNo') || getVal(r, 'pumpId') || '';
+    var pDisp = pVal ? (pVal.toString().startsWith('P-') ? pVal : 'P-' + pVal) : '\u2013';
 
-    tr.innerHTML='<td>'+r.dsmName+'</td><td>'+shiftBadge(r.shift)+'</td><td>P-'+(r.pumpId||r.pumpNo)+'</td><td>'+inr(ph + phN)+'</td><td>'+inr(phcM)+'</td><td>'+inr(phcN)+'</td><td>'+inr(cc)+'</td><td>'+inr(petro)+'</td><td>'+inr(c1)+'</td><td>'+inr(deb)+'</td><td>'+inr(exp)+'</td><td>'+inr(test)+'</td><td>'+inr(c2)+'</td><td>'+inr(sale)+'</td><td>'+inr(mismatch)+'</td>';
+    tr.innerHTML='<td>'+r.dsmName+'</td><td>'+shiftBadge(r.shift)+'</td><td>'+pDisp+'</td><td>'+inr(ph + phN)+'</td><td>'+inr(phcM)+'</td><td>'+inr(phcN)+'</td><td>'+inr(cc)+'</td><td>'+inr(petro)+'</td><td>'+inr(c1)+'</td><td>'+inr(deb)+'</td><td>'+inr(exp)+'</td><td>'+inr(test)+'</td><td>'+inr(c2)+'</td><td>'+inr(sale)+'</td><td>'+inr(mismatch)+'</td>';
     tb.appendChild(tr);
     tot.ph+=(ph + phN);tot.phcM+=phcM;tot.phcN+=phcN;tot.cc+=cc;tot.pc+=petro;tot.bk+=c1;tot.deb+=deb;tot.exp+=exp;tot.test+=test;tot.c2+=c2;tot.sale+=sale;tot.mis+=mismatch;
   });

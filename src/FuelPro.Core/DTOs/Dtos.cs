@@ -145,6 +145,34 @@ public class DsmSummaryRowDto
     public string DsmName { get; set; } = string.Empty;
     public string Shift { get; set; } = string.Empty;
     public int PumpId { get; set; }
+    public int? ConnectedPumpId { get; set; }
+
+    public string PumpLabel
+    {
+        get
+        {
+            if (PumpId <= 0) return "";
+            if (ConnectedPumpId.HasValue && ConnectedPumpId.Value > 0)
+            {
+                return $"Pump {PumpId} & {ConnectedPumpId.Value}";
+            }
+            return $"Pump {PumpId}";
+        }
+    }
+
+    public string PumpNoDisplay
+    {
+        get
+        {
+            if (PumpId <= 0) return "";
+            if (ConnectedPumpId.HasValue && ConnectedPumpId.Value > 0)
+            {
+                return $"{PumpId} & {ConnectedPumpId.Value}";
+            }
+            return $"{PumpId}";
+        }
+    }
+
     public double PhonePeCard { get; set; }
     public double PhonePeCardMorning { get; set; }
     public double PhonePeCardNight { get; set; }

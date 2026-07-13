@@ -265,9 +265,11 @@ function renderData(){
     var c1 = r.cashDeposit || r.cash1 || r.bankCash || 0;
     var c2 = r.cashInHand || r.cash2 || 0;
     var sale = r.grossSales || r.grossSale || 0;
+    var pVal = r.pumpNoDisplay || (r.pumpId || r.pumpNo) || '';
+    var pDisp = pVal ? (pVal.toString().startsWith('P-') ? pVal : 'P-' + pVal) : '\u2013';
 
     tr.innerHTML='<td>'+r.dsmName+'</td>' +
-                 '<td>P-'+(r.pumpId||r.pumpNo)+'</td>' +
+                 '<td>'+pDisp+'</td>' +
                  '<td>'+inr(ccM)+'</td>' +
                  '<td>'+inr(ccN)+'</td>' +
                  '<td>'+inr(phcM)+'</td>' +
