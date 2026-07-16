@@ -271,7 +271,11 @@ public class ReportService : IReportService
 
         var entriesList = MergeConnectedPumpEntries(entries ?? new List<DsmEntry>());
         var todayEntries = entriesList.Where(e => e.Shift != null && e.Shift.ShiftDate.Date >= startDate.Date && e.Shift.ShiftDate.Date <= endDate.Date).ToList();
-        var tomorrowShiftAEntries = entriesList.Where(e => e.Shift != null && e.Shift.ShiftDate.Date == endDate.Date.AddDays(1) && e.Shift.ShiftType == "A").ToList();
+        var tomorrowShiftAEntries = entriesList.Where(e => {
+            if (e.Shift == null) return false;
+            var s = e.Shift.ShiftType;
+            return e.Shift.ShiftDate.Date == endDate.Date.AddDays(1) && (s == "A" || s == "I");
+        }).ToList();
 
         (hsdL, hsdA) = _aggregation.GetFuelTotals(todayEntries, "HSD", null);
         (msIL, msIA) = _aggregation.GetFuelTotals(todayEntries, "MS-I", null);
@@ -300,7 +304,10 @@ public class ReportService : IReportService
             if (entry == null) continue;
             var pc = entry.PaymentCollection;
 
-            if (row.Shift == "A")
+            var rShift = (row.Shift ?? "").Trim().ToUpperInvariant();
+            var normShift = (rShift == "I" || rShift == "SHIFT I") ? "A" : (rShift == "II" || rShift == "SHIFT II") ? "B" : (rShift == "III" || rShift == "SHIFT III") ? "C" : rShift;
+
+            if (normShift == "A")
             {
                 // Today's Shift A -> Morning only
                 row.PhonePeMorning = pc?.PhonePeMorning ?? 0;
@@ -325,7 +332,7 @@ public class ReportService : IReportService
                     row.PetroCard += tpc?.PetroCardNight ?? 0;
                 }
             }
-            else if (row.Shift == "B")
+            else if (normShift == "B")
             {
                 // Today's Shift B -> Day only (maps to Morning column on-screen)
                 row.PhonePeMorning = pc?.PhonePeDay ?? 0;
@@ -341,7 +348,11 @@ public class ReportService : IReportService
         // Add any tomorrow's Shift A entries that are not represented in today's Shift A
         foreach (var tomorrowEntry in tomorrowShiftAEntries)
         {
-            var exists = summaryRows.Any(r => r.Shift == "A" && (r.PumpId == tomorrowEntry.PumpId || r.DsmName == tomorrowEntry.DsmName));
+            var exists = summaryRows.Any(r => {
+                var rShift = (r.Shift ?? "").Trim().ToUpperInvariant();
+                var normShift = (rShift == "I" || rShift == "SHIFT I") ? "A" : (rShift == "II" || rShift == "SHIFT II") ? "B" : (rShift == "III" || rShift == "SHIFT III") ? "C" : rShift;
+                return normShift == "A" && (r.PumpId == tomorrowEntry.PumpId || r.DsmName == tomorrowEntry.DsmName);
+            });
             if (!exists)
             {
                 var tpc = tomorrowEntry.PaymentCollection;
@@ -460,7 +471,8 @@ public class ReportService : IReportService
             if (pc == null) continue;
 
             var sDate = entry.Shift?.ShiftDate.Date ?? startDate.Date;
-            var sType = entry.Shift?.ShiftType ?? "";
+            var rawType = entry.Shift?.ShiftType ?? "";
+            var sType = (rawType == "I" || rawType == "Shift I") ? "A" : (rawType == "II" || rawType == "Shift II") ? "B" : (rawType == "III" || rawType == "Shift III") ? "C" : rawType;
 
             if (sDate == startDate.Date && sType == "A")
             {
