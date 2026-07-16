@@ -219,41 +219,33 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
         {
             DsmPrintRows = new List<(string Shift, DsmSummaryRowDto Row)>();
 
-            var entriesResult = await _dsmRepo.GetEntriesForDateRangeAsync(StartDate, EndDate);
+            var entriesResult = await _dsmRepo.GetEntriesForDateRangeAsync(StartDate.Date, EndDate.Date.AddDays(1));
             var allEntries = entriesResult.Success && entriesResult.Data != null ? entriesResult.Data : new List<DsmEntry>();
             _allEntries = allEntries;
 
-            var shiftsResult = await _shiftRepo.GetShiftsByDateRangeAsync(StartDate, EndDate);
+            var shiftsResult = await _shiftRepo.GetShiftsByDateRangeAsync(StartDate.Date, EndDate.Date.AddDays(1));
             var shifts = shiftsResult.Success && shiftsResult.Data != null ? shiftsResult.Data : new List<Shift>();
-            var shiftIds = shifts.Select(s => s.ShiftId).ToList();
+            
+            var todayShifts = shifts.Where(s => s.ShiftDate.Date >= StartDate.Date && s.ShiftDate.Date <= EndDate.Date).ToList();
+            var todayShiftIds = todayShifts.Select(s => s.ShiftId).ToList();
 
-            var expResult = await _expenseRepo.GetExpensesByShiftIdsAsync(shiftIds);
+            var expResult = await _expenseRepo.GetExpensesByShiftIdsAsync(todayShiftIds);
             var allExpenses = expResult.Success && expResult.Data != null ? expResult.Data : new List<Expense>();
 
-            // Build per-shift DSM rows with the shift label/date
-            var entriesByShift = allEntries.GroupBy(e => e.ShiftId);
-            foreach (var g in entriesByShift)
-            {
-                var shift = shifts.FirstOrDefault(s => s.ShiftId == g.Key);
-                var shiftLabel = shift != null ? $"{shift.ShiftDate:dd/MM} {shift.ShiftType}" : "Unknown";
-                
-                var shiftDsmRows = _aggregation.BuildDsmSummaryRows(g.ToList());
-                foreach (var r in shiftDsmRows)
-                    DsmPrintRows.Add((shiftLabel, r));
-            }
-
-            if (allEntries.Count == 0)
+            if (allEntries.Where(e => e.Shift != null && e.Shift.ShiftDate.Date >= StartDate.Date && e.Shift.ShiftDate.Date <= EndDate.Date).Count() == 0)
             {
                 StatusMessage = "No entries found for this date range.";
                 ClearAll();
                 return;
             }
 
-            // Load repayments for the day range
+            // Load repayments for today + 1 day
             DebtorRepayments.Clear();
-            var repaymentsRes = await _repaymentRepo.GetByDateRangeAsync(StartDate.Date, EndDate.Date);
+            var repaymentsRes = await _repaymentRepo.GetByDateRangeAsync(StartDate.Date, EndDate.Date.AddDays(1));
             var repayments = repaymentsRes.Success && repaymentsRes.Data != null ? repaymentsRes.Data : new List<CreditorRepayment>();
-            foreach (var r in repayments)
+            
+            // Only add today's repayments to the UI list of debtor repayments on-screen (tomorrow's Shift A repayments are silently aggregated into the report)
+            foreach (var r in repayments.Where(x => x.RepaymentDate.Date >= StartDate.Date && x.RepaymentDate.Date <= EndDate.Date))
             {
                 DebtorRepayments.Add(r);
             }
@@ -270,9 +262,21 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
                 EndDate,
                 _allEntries,
                 allExpenses,
-                DebtorRepayments.ToList(),
+                repayments,
                 defaultHsd, defaultMsI, defaultMsII, defaultCng,
                 stationName);
+
+            // Populate DsmPrintRows from report
+            foreach (var r in report.DsmSummaryRows)
+            {
+                var entry = allEntries.FirstOrDefault(e => e.DsmName == r.DsmName && e.PumpId == r.PumpId && e.Shift?.ShiftType == r.Shift && e.Shift.ShiftDate.Date >= StartDate.Date && e.Shift.ShiftDate.Date <= EndDate.Date);
+                if (entry == null)
+                {
+                    entry = allEntries.FirstOrDefault(e => e.DsmName == r.DsmName && e.PumpId == r.PumpId && e.Shift?.ShiftType == r.Shift && e.Shift.ShiftDate.Date == EndDate.Date.AddDays(1));
+                }
+                var shiftLabel = entry?.Shift != null ? $"{entry.Shift.ShiftDate:dd/MM} {r.Shift}" : $"Unknown {r.Shift}";
+                DsmPrintRows.Add((shiftLabel, r));
+            }
 
             CurrentReport = report;
 

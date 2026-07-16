@@ -632,13 +632,29 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
             }
         }
 
-        var repaymentsRes = await _repaymentRepo.GetByDateAsync(SelectedDate.Date);
+        var repaymentsRes = await _repaymentRepo.GetByDateRangeAsync(SelectedDate.Date.AddDays(-1), SelectedDate.Date.AddDays(1));
         if (repaymentsRes.Success && repaymentsRes.Data != null)
         {
-            var filtered = repaymentsRes.Data.Where(r => string.IsNullOrEmpty(r.ShiftNumber) || r.ShiftNumber == SelectedShift);
-            foreach (var r in filtered)
+            foreach (var r in repaymentsRes.Data)
             {
-                DebtorRepayments.Add(r);
+                var classified = SettlementWindowResolver.Classify(r);
+                if (classified.IsValid && classified.BusinessDate == SelectedDate.Date)
+                {
+                    bool match = false;
+                    if (SelectedShift == "B")
+                    {
+                        match = classified.SettlementWindow == "Day";
+                    }
+                    else if (SelectedShift == "A")
+                    {
+                        match = classified.SettlementWindow == "Morning" || classified.SettlementWindow == "Night";
+                    }
+
+                    if (match)
+                    {
+                        DebtorRepayments.Add(r);
+                    }
+                }
             }
         }
     }
@@ -694,7 +710,7 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
         var repayment = new CreditorRepayment
         {
             CreditorName = NewDebtorName.Trim(),
-            RepaymentDate = SelectedDate.Date,
+            RepaymentDate = SettlementWindowResolver.GetRepaymentDateTime(SelectedDate.Date, SelectedShift, DateTime.Now),
             ShiftNumber = SelectedShift,
             PaymentMode = NewRepaymentMode,
             ChequeNo = NewRepaymentMode == "Cheque" ? NewChequeNumber?.Trim() : null,

@@ -79,7 +79,14 @@ public partial class App : Application
             // Create legacy tables FIRST so SeedData can safely ALTER/query them
             EnsureLegacyDatabaseCompatibility(DbPath);
             
-            await SeedData.InitializeAsync(context, credentialService);
+            try
+            {
+                await SeedData.InitializeAsync(context, credentialService);
+            }
+            catch (Exception seedEx)
+            {
+                Log.Warning(seedEx, "Non-fatal database initialization/seeding concurrency issue encountered. The database might have already been initialized by another concurrent instance.");
+            }
 
             // Re-run compatibility check to ensure columns are added after EF Core creates the tables on fresh install
             EnsureLegacyDatabaseCompatibility(DbPath);

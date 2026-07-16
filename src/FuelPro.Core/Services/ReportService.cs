@@ -84,7 +84,31 @@ public class ReportService : IReportService
         dto.ExpensesTotal = dto.ExpenseRows.Where(r => !r.IsShiftLevel).Sum(e => e.Amount);
 
         // 6. Debtor Repayments
-        var repaymentsList = repayments ?? new List<CreditorRepayment>();
+        var repaymentsList = new List<CreditorRepayment>();
+        if (repayments != null)
+        {
+            foreach (var r in repayments)
+            {
+                var classified = SettlementWindowResolver.Classify(r);
+                if (classified.IsValid && classified.BusinessDate == date.Date)
+                {
+                    bool match = false;
+                    if (shiftType == "B" && classified.SettlementWindow == "Day")
+                    {
+                        match = true;
+                    }
+                    else if (shiftType == "A" && (classified.SettlementWindow == "Morning" || classified.SettlementWindow == "Night"))
+                    {
+                        match = true;
+                    }
+
+                    if (match)
+                    {
+                        repaymentsList.Add(r);
+                    }
+                }
+            }
+        }
         dto.DebtorRepaymentsTotal = repaymentsList.Sum(r => r.Amount);
         foreach (var r in repaymentsList)
         {
@@ -246,10 +270,13 @@ public class ReportService : IReportService
         double cngL = 0, cngA = 0;
 
         var entriesList = MergeConnectedPumpEntries(entries ?? new List<DsmEntry>());
-        (hsdL, hsdA) = _aggregation.GetFuelTotals(entriesList, "HSD", null);
-        (msIL, msIA) = _aggregation.GetFuelTotals(entriesList, "MS-I", null);
-        (msIIL, msIIA) = _aggregation.GetFuelTotals(entriesList, "MS-II", null);
-        (cngL, cngA) = _aggregation.GetFuelTotals(entriesList, "CNG", null);
+        var todayEntries = entriesList.Where(e => e.Shift != null && e.Shift.ShiftDate.Date >= startDate.Date && e.Shift.ShiftDate.Date <= endDate.Date).ToList();
+        var tomorrowShiftAEntries = entriesList.Where(e => e.Shift != null && e.Shift.ShiftDate.Date == endDate.Date.AddDays(1) && e.Shift.ShiftType == "A").ToList();
+
+        (hsdL, hsdA) = _aggregation.GetFuelTotals(todayEntries, "HSD", null);
+        (msIL, msIA) = _aggregation.GetFuelTotals(todayEntries, "MS-I", null);
+        (msIIL, msIIA) = _aggregation.GetFuelTotals(todayEntries, "MS-II", null);
+        (cngL, cngA) = _aggregation.GetFuelTotals(todayEntries, "CNG", null);
 
         dto.FuelSales = new List<FuelSaleRowDto>();
         if (hsdL > 0 || hsdA > 0)
@@ -262,29 +289,115 @@ public class ReportService : IReportService
             dto.FuelSales.Add(new FuelSaleRowDto { Description = "CNG - Line", FuelType = "CNG", Litres = cngL, Rate = cngRate, Amount = cngL * cngRate });
 
         dto.TotalFuelLitres = dto.FuelSales.Sum(f => f.Litres);
-        dto.TotalFuelAmount = entriesList.Sum(e => e.GrossSales > 0 ? (double)e.GrossSales : e.NozzleReadings.Sum(n => n.Amount));
+        dto.TotalFuelAmount = todayEntries.Sum(e => e.GrossSales > 0 ? (double)e.GrossSales : e.NozzleReadings.Sum(n => n.Amount));
         dto.GrandTotalSaleAmount = dto.TotalFuelAmount;
 
         // 2. DSM Summary (Table A)
-        var summaryRows = _aggregation.BuildDsmSummaryRows(entriesList);
+        var summaryRows = _aggregation.BuildDsmSummaryRows(todayEntries);
+        foreach (var row in summaryRows)
+        {
+            var entry = todayEntries.FirstOrDefault(e => e.DsmName == row.DsmName && e.PumpId == row.PumpId && e.Shift?.ShiftType == row.Shift);
+            if (entry == null) continue;
+            var pc = entry.PaymentCollection;
+
+            if (row.Shift == "A")
+            {
+                // Today's Shift A -> Morning only
+                row.PhonePeMorning = pc?.PhonePeMorning ?? 0;
+                row.PhonePeNight = 0;
+                row.PhonePeCardMorning = pc?.PhonePeCardMorning ?? 0;
+                row.PhonePeCardNight = 0;
+                row.CreditCardMorning = pc?.CreditCardMorning ?? 0;
+                row.CreditCardNight = 0;
+                row.PetroCard = pc?.PetroCardMorning ?? 0;
+
+                // Query tomorrow's Shift A for Night collections
+                var tomorrowEntry = tomorrowShiftAEntries.FirstOrDefault(e => e.PumpId == row.PumpId);
+                if (tomorrowEntry == null)
+                    tomorrowEntry = tomorrowShiftAEntries.FirstOrDefault(e => e.DsmName == row.DsmName);
+
+                if (tomorrowEntry != null)
+                {
+                    var tpc = tomorrowEntry.PaymentCollection;
+                    row.PhonePeNight = tpc?.PhonePeNight ?? 0;
+                    row.PhonePeCardNight = tpc?.PhonePeCardNight ?? 0;
+                    row.CreditCardNight = tpc?.CreditCardNight ?? 0;
+                    row.PetroCard += tpc?.PetroCardNight ?? 0;
+                }
+            }
+            else if (row.Shift == "B")
+            {
+                // Today's Shift B -> Day only (maps to Morning column on-screen)
+                row.PhonePeMorning = pc?.PhonePeDay ?? 0;
+                row.PhonePeNight = 0;
+                row.PhonePeCardMorning = pc?.PhonePeCardDay ?? 0;
+                row.PhonePeCardNight = 0;
+                row.CreditCardMorning = pc?.CreditCardDay ?? 0;
+                row.CreditCardNight = 0;
+                row.PetroCard = pc?.PetroCardDay ?? 0;
+            }
+        }
+
+        // Add any tomorrow's Shift A entries that are not represented in today's Shift A
+        foreach (var tomorrowEntry in tomorrowShiftAEntries)
+        {
+            var exists = summaryRows.Any(r => r.Shift == "A" && (r.PumpId == tomorrowEntry.PumpId || r.DsmName == tomorrowEntry.DsmName));
+            if (!exists)
+            {
+                var tpc = tomorrowEntry.PaymentCollection;
+                summaryRows.Add(new DsmSummaryRowDto
+                {
+                    DsmName = tomorrowEntry.DsmName,
+                    Shift = "A",
+                    PumpId = tomorrowEntry.PumpId,
+                    ConnectedPumpId = tomorrowEntry.ConnectedPumpId,
+                    PhonePeMorning = 0,
+                    PhonePeNight = tpc?.PhonePeNight ?? 0,
+                    PhonePeCardMorning = 0,
+                    PhonePeCardNight = tpc?.PhonePeCardNight ?? 0,
+                    CreditCardMorning = 0,
+                    CreditCardNight = tpc?.CreditCardNight ?? 0,
+                    PetroCard = tpc?.PetroCardNight ?? 0,
+                    Others = 0,
+                    CashDeposit = 0,
+                    Debit = 0,
+                    Expenses = 0,
+                    Testing = 0,
+                    CashInHand = 0,
+                    GrossSales = 0
+                });
+            }
+        }
+
         dto.DsmSummaryRows = summaryRows;
         dto.DsmSummaryTotals = _aggregation.BuildDsmSummaryTotalRow(summaryRows);
 
         // 3. Cash Summary (Table B)
-        dto.Cash1 = _aggregation.AggregateCash(entriesList, "Cash1");
-        dto.Cash2 = _aggregation.AggregateCash(entriesList, "Cash2");
+        dto.Cash1 = _aggregation.AggregateCash(todayEntries, "Cash1");
+        dto.Cash2 = _aggregation.AggregateCash(todayEntries, "Cash2");
 
         // 4. Debtors (Table C)
-        dto.CreditorRows = _aggregation.BuildCreditorRows(entriesList);
+        dto.CreditorRows = _aggregation.BuildCreditorRows(todayEntries);
         dto.CreditorsTotal = dto.CreditorRows.Sum(c => c.Amount);
 
         // 5. Expenses (Table D)
         var expensesList = allExpenses ?? new List<Expense>();
-        dto.ExpenseRows = _aggregation.BuildExpenseRows(entriesList, expensesList);
+        dto.ExpenseRows = _aggregation.BuildExpenseRows(todayEntries, expensesList);
         dto.ExpensesTotal = dto.ExpenseRows.Where(r => !r.IsShiftLevel).Sum(e => e.Amount);
 
         // 6. Debtor Repayments
-        var repaymentsList = repayments ?? new List<CreditorRepayment>();
+        var repaymentsList = new List<CreditorRepayment>();
+        if (repayments != null)
+        {
+            foreach (var r in repayments)
+            {
+                var classified = SettlementWindowResolver.Classify(r);
+                if (classified.IsValid && classified.BusinessDate >= startDate.Date && classified.BusinessDate <= endDate.Date)
+                {
+                    repaymentsList.Add(r);
+                }
+            }
+        }
         dto.DebtorRepaymentsTotal = repaymentsList.Sum(r => r.Amount);
         foreach (var r in repaymentsList)
         {
@@ -346,21 +459,30 @@ public class ReportService : IReportService
             var pc = entry.PaymentCollection;
             if (pc == null) continue;
 
-            phonePeDirectMorning += pc.PhonePeMorning;
-            phonePeDirectDay += pc.PhonePeDay;
-            phonePeDirectNight += pc.PhonePeNight;
+            var sDate = entry.Shift?.ShiftDate.Date ?? startDate.Date;
+            var sType = entry.Shift?.ShiftType ?? "";
 
-            phonePeCardMorning += pc.PhonePeCardMorning;
-            phonePeCardDay += pc.PhonePeCardDay;
-            phonePeCardNight += pc.PhonePeCardNight;
-
-            pineLabsCardMorning += pc.CreditCardMorning;
-            pineLabsCardDay += pc.CreditCardDay;
-            pineLabsCardNight += pc.CreditCardNight;
-
-            petroCardMorning += pc.PetroCardMorning;
-            petroCardDay += pc.PetroCardDay;
-            petroCardNight += pc.PetroCardNight;
+            if (sDate == startDate.Date && sType == "A")
+            {
+                phonePeDirectMorning += pc.PhonePeMorning;
+                phonePeCardMorning += pc.PhonePeCardMorning;
+                pineLabsCardMorning += pc.CreditCardMorning;
+                petroCardMorning += pc.PetroCardMorning;
+            }
+            else if (sDate == startDate.Date && sType == "B")
+            {
+                phonePeDirectDay += pc.PhonePeDay;
+                phonePeCardDay += pc.PhonePeCardDay;
+                pineLabsCardDay += pc.CreditCardDay;
+                petroCardDay += pc.PetroCardDay;
+            }
+            else if (sDate == endDate.Date.AddDays(1) && sType == "A")
+            {
+                phonePeDirectNight += pc.PhonePeNight;
+                phonePeCardNight += pc.PhonePeCardNight;
+                pineLabsCardNight += pc.CreditCardNight;
+                petroCardNight += pc.PetroCardNight;
+            }
         }
 
         // Standardize categories for Day (Aggregates Morning+Day as Morning, and Night as Night)
@@ -378,7 +500,7 @@ public class ReportService : IReportService
         double hsdTesting2 = 0;
         double cngTesting = 0;
 
-        foreach (var entry in entriesList)
+        foreach (var entry in todayEntries)
         {
             foreach (var t in entry.TestingEntries)
             {
@@ -392,7 +514,7 @@ public class ReportService : IReportService
         double testingTotal = msTesting + hsdTesting + hsdTesting2 + cngTesting;
 
         // 10. DSM Short calculation
-        double totalDsmShort = CalculateDsmShort(entriesList);
+        double totalDsmShort = CalculateDsmShort(todayEntries);
         dto.TotalDsmShort = totalDsmShort;
 
         // 11. Build standardized collection categories with audit breakdown

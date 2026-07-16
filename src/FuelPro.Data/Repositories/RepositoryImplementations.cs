@@ -275,7 +275,7 @@ public class ShiftRepository : IShiftRepository
             var end = endDate.Date;
             var shifts = await _context.Shifts
                 .Include(s => s.DsmEntries)
-                .Where(s => s.ShiftDate >= start && s.ShiftDate <= end)
+                .Where(s => s.ShiftDate >= start && s.ShiftDate < end.AddDays(1))
                 .OrderBy(s => s.ShiftDate)
                 .ThenBy(s => s.ShiftType)
                 .ToListAsync();
@@ -552,7 +552,7 @@ public class DsmEntryRepository : IDsmEntryRepository
                 .Include(e => e.TestingEntries)
                 .Include(e => e.Expenses)
                 .Include(e => e.CashDenominations)
-                .Where(e => e.Shift != null && e.Shift.ShiftDate >= start && e.Shift.ShiftDate <= end)
+                .Where(e => e.Shift != null && e.Shift.ShiftDate >= start && e.Shift.ShiftDate < end.AddDays(1))
                 .OrderBy(e => e.Shift!.ShiftDate)
                 .ThenBy(e => e.Shift!.ShiftType)
                 .ToListAsync();
@@ -1262,7 +1262,7 @@ public class CreditorRepaymentRepository : ICreditorRepaymentRepository
         {
             var dateOnly = date.Date;
             var repayments = await _context.CreditorRepayments
-                .Where(r => r.RepaymentDate == dateOnly)
+                .Where(r => r.RepaymentDate >= dateOnly && r.RepaymentDate < dateOnly.AddDays(1))
                 .OrderBy(r => r.CreatedAt)
                 .ToListAsync();
             return Result<List<CreditorRepayment>>.Ok(repayments);
@@ -1279,10 +1279,10 @@ public class CreditorRepaymentRepository : ICreditorRepaymentRepository
         try
         {
             var startDate = new DateTime(year, month, 1);
-            var endDate = startDate.AddMonths(1).AddDays(-1);
+            var endDate = startDate.AddMonths(1);
 
             var repayments = await _context.CreditorRepayments
-                .Where(r => r.RepaymentDate >= startDate && r.RepaymentDate <= endDate)
+                .Where(r => r.RepaymentDate >= startDate && r.RepaymentDate < endDate)
                 .OrderBy(r => r.RepaymentDate)
                 .ToListAsync();
             return Result<List<CreditorRepayment>>.Ok(repayments);
@@ -1334,7 +1334,7 @@ public class CreditorRepaymentRepository : ICreditorRepaymentRepository
             var start = startDate.Date;
             var end = endDate.Date;
             var repayments = await _context.CreditorRepayments
-                .Where(r => r.RepaymentDate >= start && r.RepaymentDate <= end)
+                .Where(r => r.RepaymentDate >= start && r.RepaymentDate < end.AddDays(1))
                 .OrderBy(r => r.RepaymentDate)
                 .ToListAsync();
             return Result<List<CreditorRepayment>>.Ok(repayments);

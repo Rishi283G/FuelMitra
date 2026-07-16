@@ -212,21 +212,23 @@ public partial class OwnerDashboardViewModel : ObservableObject, IDisposable
         IsLoading = true;
         try
         {
-            var entriesResult = await _dsmEntryRepository.GetEntriesForDateRangeAsync(StartDate.Date, EndDate.Date);
+            var entriesResult = await _dsmEntryRepository.GetEntriesForDateRangeAsync(StartDate.Date, EndDate.Date.AddDays(1));
             var entries = entriesResult.Success && entriesResult.Data != null ? entriesResult.Data : new List<DsmEntry>();
 
-            var shiftsResult = await _shiftRepository.GetShiftsByDateRangeAsync(StartDate.Date, EndDate.Date);
+            var shiftsResult = await _shiftRepository.GetShiftsByDateRangeAsync(StartDate.Date, EndDate.Date.AddDays(1));
             var shifts = shiftsResult.Success && shiftsResult.Data != null ? shiftsResult.Data : new List<Shift>();
-            var shiftIds = shifts.Select(s => s.ShiftId).ToList();
 
-            var shiftExpensesResult = await _expenseRepo.GetExpensesByShiftIdsAsync(shiftIds);
+            var todayShifts = shifts.Where(s => s.ShiftDate.Date >= StartDate.Date && s.ShiftDate.Date <= EndDate.Date).ToList();
+            var todayShiftIds = todayShifts.Select(s => s.ShiftId).ToList();
+
+            var shiftExpensesResult = await _expenseRepo.GetExpensesByShiftIdsAsync(todayShiftIds);
             var shiftExpenses = shiftExpensesResult.Success && shiftExpensesResult.Data != null ? shiftExpensesResult.Data : new List<Expense>();
 
             var otherCashResult = await App.Services.GetRequiredService<IShiftOtherCashRepository>().GetByDateRangeAsync(StartDate.Date, EndDate.Date);
             var otherCashList = otherCashResult.Success && otherCashResult.Data != null ? otherCashResult.Data : new List<ShiftOtherCash>();
 
             var repayments = await _dbContext.CreditorRepayments
-                .Where(r => r.RepaymentDate >= StartDate.Date && r.RepaymentDate <= EndDate.Date)
+                .Where(r => r.RepaymentDate >= StartDate.Date && r.RepaymentDate <= EndDate.Date.AddDays(1))
                 .ToListAsync();
 
             var settings = await _dbContext.Settings.FirstOrDefaultAsync();

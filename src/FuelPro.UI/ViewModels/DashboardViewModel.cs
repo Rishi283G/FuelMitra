@@ -216,17 +216,19 @@ public partial class DashboardViewModel : ObservableObject
         IsLoading = true;
         try
         {
-            var entriesResult = await _dsmEntryRepository.GetEntriesForDateRangeAsync(StartDate, EndDate);
+            var entriesResult = await _dsmEntryRepository.GetEntriesForDateRangeAsync(StartDate, EndDate.AddDays(1));
             var entries = entriesResult.Success && entriesResult.Data != null ? entriesResult.Data : new List<DsmEntry>();
 
-            var shiftsResult = await _shiftRepository.GetShiftsByDateRangeAsync(StartDate, EndDate);
+            var shiftsResult = await _shiftRepository.GetShiftsByDateRangeAsync(StartDate, EndDate.AddDays(1));
             var shifts = shiftsResult.Success && shiftsResult.Data != null ? shiftsResult.Data : new List<Shift>();
-            var shiftIds = shifts.Select(s => s.ShiftId).ToList();
+            
+            var todayShifts = shifts.Where(s => s.ShiftDate.Date >= StartDate.Date && s.ShiftDate.Date <= EndDate.Date).ToList();
+            var todayShiftIds = todayShifts.Select(s => s.ShiftId).ToList();
 
             var otherCashResult = await App.Services.GetRequiredService<IShiftOtherCashRepository>().GetByDateRangeAsync(StartDate, EndDate);
             var otherCashList = otherCashResult.Success && otherCashResult.Data != null ? otherCashResult.Data : new List<ShiftOtherCash>();
 
-            var shiftExpensesResult = await App.Services.GetRequiredService<IExpenseRepository>().GetExpensesByShiftIdsAsync(shiftIds);
+            var shiftExpensesResult = await App.Services.GetRequiredService<IExpenseRepository>().GetExpensesByShiftIdsAsync(todayShiftIds);
             var shiftExpenses = shiftExpensesResult.Success && shiftExpensesResult.Data != null ? shiftExpensesResult.Data : new List<Expense>();
 
             MorningShift = AggregateShiftSummary(shifts, entries, otherCashList, shiftExpenses, "A");
@@ -258,8 +260,61 @@ public partial class DashboardViewModel : ObservableObject
 
             foreach (var entry in entries)
             {
+                var sDate = entry.Shift?.ShiftDate.Date ?? StartDate.Date;
+                var sType = entry.Shift?.ShiftType ?? "";
+
+                bool isTodayA = sDate == StartDate.Date && sType == "A";
+                bool isTodayB = sDate == StartDate.Date && sType == "B";
+                bool isTomorrowA = sDate == StartDate.Date.AddDays(1) && sType == "A";
+
+                if (!isTodayA && !isTodayB && !isTomorrowA) continue;
+
                 var cash1 = entry.CashDenominations.Where(x => x.CashType == "Cash1").Sum(x => x.TotalAmount);
                 var cash2 = entry.CashDenominations.Where(x => x.CashType == "Cash2").Sum(x => x.TotalAmount);
+
+                double pp = 0;
+                double cc = 0;
+                double petro = 0;
+                double ppDirectVal = 0;
+                double ppCardMorningVal = 0;
+                double ppCardNightVal = 0;
+                double ccVal = 0;
+                double petroVal = 0;
+
+                var pc = entry.PaymentCollection;
+                if (isTodayA)
+                {
+                    pp = (pc?.PhonePeMorning ?? 0) + (pc?.PhonePeCardMorning ?? 0);
+                    cc = pc?.CreditCardMorning ?? 0;
+                    petro = pc?.PetroCardMorning ?? 0;
+
+                    ppDirectVal = pc?.PhonePeMorning ?? 0;
+                    ppCardMorningVal = pc?.PhonePeCardMorning ?? 0;
+                    ccVal = pc?.CreditCardMorning ?? 0;
+                    petroVal = pc?.PetroCardMorning ?? 0;
+                }
+                else if (isTodayB)
+                {
+                    pp = (pc?.PhonePeDay ?? 0) + (pc?.PhonePeCardDay ?? 0);
+                    cc = pc?.CreditCardDay ?? 0;
+                    petro = pc?.PetroCardDay ?? 0;
+
+                    ppDirectVal = pc?.PhonePeDay ?? 0;
+                    ppCardMorningVal = pc?.PhonePeCardDay ?? 0;
+                    ccVal = pc?.CreditCardDay ?? 0;
+                    petroVal = pc?.PetroCardDay ?? 0;
+                }
+                else if (isTomorrowA)
+                {
+                    pp = (pc?.PhonePeNight ?? 0) + (pc?.PhonePeCardNight ?? 0);
+                    cc = pc?.CreditCardNight ?? 0;
+                    petro = pc?.PetroCardNight ?? 0;
+
+                    ppDirectVal = pc?.PhonePeNight ?? 0;
+                    ppCardNightVal = pc?.PhonePeCardNight ?? 0;
+                    ccVal = pc?.CreditCardNight ?? 0;
+                    petroVal = pc?.PetroCardNight ?? 0;
+                }
 
                 var calc = _dsmCalculationService.Calculate(new DsmEntryDto
                 {
@@ -267,18 +322,9 @@ public partial class DashboardViewModel : ObservableObject
                     NozzleReadings = entry.NozzleReadings.Select(r => new NozzleReadingDto { Amount = (decimal)r.Amount }).ToList(),
                     PaymentCollection = new PaymentCollectionDto
                     {
-                        PhonePe = (decimal)((entry.PaymentCollection?.PhonePeMorning ?? 0)
-                                            + (entry.PaymentCollection?.PhonePeDay ?? 0)
-                                            + (entry.PaymentCollection?.PhonePeNight ?? 0)
-                                            + (entry.PaymentCollection?.PhonePeCardMorning ?? 0)
-                                            + (entry.PaymentCollection?.PhonePeCardDay ?? 0)
-                                            + (entry.PaymentCollection?.PhonePeCardNight ?? 0)),
-                        CreditCard = (decimal)((entry.PaymentCollection?.CreditCardMorning ?? 0)
-                                               + (entry.PaymentCollection?.CreditCardDay ?? 0)
-                                               + (entry.PaymentCollection?.CreditCardNight ?? 0)),
-                        PetroCard = (decimal)((entry.PaymentCollection?.PetroCardMorning ?? 0)
-                                              + (entry.PaymentCollection?.PetroCardDay ?? 0)
-                                              + (entry.PaymentCollection?.PetroCardNight ?? 0)),
+                        PhonePe = (decimal)pp,
+                        CreditCard = (decimal)cc,
+                        PetroCard = (decimal)petro,
                         CashDeposit = (decimal)(cash1 > 0 ? cash1 : (entry.PaymentCollection?.CashDeposit ?? 0)),
                         PhysicalCash = (decimal)cash2
                     },
@@ -292,38 +338,38 @@ public partial class DashboardViewModel : ObservableObject
                 });
 
                 double mismatch = (double)calc.Mismatch;
-                entryCalculations.Add((entry.ShiftId, entry.DsmName ?? "", entry.PumpId, entry.ReconciledToPumpId, mismatch));
-
-                TodayTotalSale += (double)calc.GrossSales;
-                TodayCollection += (double)calc.TotalCollection;
-                TotalCreditorsToday += (double)calc.TotalCreditors;
                 
-                TodayTotalPhonePe += (entry.PaymentCollection?.PhonePeMorning ?? 0)
-                                     + (entry.PaymentCollection?.PhonePeDay ?? 0)
-                                     + (entry.PaymentCollection?.PhonePeNight ?? 0);
-                TodayTotalPhonePeCardMorning += (entry.PaymentCollection?.PhonePeCardMorning ?? 0)
-                                                + (entry.PaymentCollection?.PhonePeCardDay ?? 0);
-                TodayTotalPhonePeCardNight += (entry.PaymentCollection?.PhonePeCardNight ?? 0);
-                TodayTotalCreditCard += (entry.PaymentCollection?.CreditCardMorning ?? 0)
-                                         + (entry.PaymentCollection?.CreditCardDay ?? 0)
-                                         + (entry.PaymentCollection?.CreditCardNight ?? 0);
-                TodayTotalPetroCard += (entry.PaymentCollection?.PetroCardMorning ?? 0)
-                                        + (entry.PaymentCollection?.PetroCardDay ?? 0)
-                                        + (entry.PaymentCollection?.PetroCardNight ?? 0);
-                TodayTotalBankCash += cash1 > 0 ? cash1 : (entry.PaymentCollection?.CashDeposit ?? 0);
-                TodayTotalCashInHand += cash2;
-                TodayTotalExpenses += entry.Expenses.Sum(x => x.Amount);
-                
-                foreach (var d in entry.DebitEntries)
+                if (!isTomorrowA)
                 {
-                    TodayDebtorsList.Add(new DebitRegisterRowDto
+                    entryCalculations.Add((entry.ShiftId, entry.DsmName ?? "", entry.PumpId, entry.ReconciledToPumpId, mismatch));
+                    TodayTotalSale += (double)calc.GrossSales;
+                    TodayCollection += (double)calc.TotalCollection;
+                    TotalCreditorsToday += (double)calc.TotalCreditors;
+                    TodayTotalBankCash += cash1 > 0 ? cash1 : (entry.PaymentCollection?.CashDeposit ?? 0);
+                    TodayTotalCashInHand += cash2;
+                    TodayTotalExpenses += entry.Expenses.Sum(x => x.Amount);
+
+                    foreach (var d in entry.DebitEntries)
                     {
-                        DsmName = entry.DsmName ?? "",
-                        PumpId = entry.PumpId,
-                        DebtorName = d.DebtorName,
-                        Amount = (double)d.Amount
-                    });
+                        TodayDebtorsList.Add(new DebitRegisterRowDto
+                        {
+                            DsmName = entry.DsmName ?? "",
+                            PumpId = entry.PumpId,
+                            DebtorName = d.DebtorName,
+                            Amount = (double)d.Amount
+                        });
+                    }
                 }
+                else
+                {
+                    TodayCollection += pp + cc + petro;
+                }
+
+                TodayTotalPhonePe += ppDirectVal;
+                TodayTotalPhonePeCardMorning += ppCardMorningVal;
+                TodayTotalPhonePeCardNight += ppCardNightVal;
+                TodayTotalCreditCard += ccVal;
+                TodayTotalPetroCard += petroVal;
             }
 
             // Add shift-level expenses
@@ -381,6 +427,10 @@ public partial class DashboardViewModel : ObservableObject
             {
                 foreach (var c in creditorsResult.Data) Creditors.Add(c);
             }
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Error loading dashboard data");
         }
         finally { IsLoading = false; }
     }

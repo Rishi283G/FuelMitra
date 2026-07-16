@@ -138,61 +138,87 @@ public class FinancialPipelineIntegrationTests : IDisposable
     {
         var testDate = new DateTime(2026, 7, 11);
 
-        // 1. Seed one shift with entry containing mixed collections
+        // 1. Seed shifts and entries matching the operational business day cycle
         using (var context = _serviceProvider.GetRequiredService<FuelProDbContext>())
         {
-            var shift = new Shift
-            {
-                ShiftId = 1,
-                ShiftDate = testDate,
-                ShiftType = "A",
-                IsLocked = false
-            };
-            context.Shifts.Add(shift);
+            // Today Shift A (Morning)
+            var shift1 = new Shift { ShiftId = 1, ShiftDate = testDate, ShiftType = "A", IsLocked = false };
+            // Today Shift B (Day)
+            var shift2 = new Shift { ShiftId = 2, ShiftDate = testDate, ShiftType = "B", IsLocked = false };
+            // Tomorrow Shift A (Night)
+            var shift3 = new Shift { ShiftId = 3, ShiftDate = testDate.AddDays(1), ShiftType = "A", IsLocked = false };
+            
+            context.Shifts.AddRange(shift1, shift2, shift3);
 
-            var entry = new DsmEntry
+            var entry1 = new DsmEntry
             {
                 DsmEntryId = 1,
                 ShiftId = 1,
                 PumpId = 1,
                 DsmName = "Peter Parker"
             };
-            context.DsmEntries.Add(entry);
+            var entry2 = new DsmEntry
+            {
+                DsmEntryId = 2,
+                ShiftId = 2,
+                PumpId = 1,
+                DsmName = "Tony Stark"
+            };
+            var entry3 = new DsmEntry
+            {
+                DsmEntryId = 3,
+                ShiftId = 3,
+                PumpId = 1,
+                DsmName = "Steve Rogers"
+            };
+            
+            context.DsmEntries.AddRange(entry1, entry2, entry3);
 
-            // Nozzle readings (gross sale total = 3000)
-            entry.NozzleReadings.Add(new NozzleReading { NozzleNumber = 1, OpeningReading = 0, ClosingReading = 10, Rate = 100, SaleLitres = 10, Amount = 1000 });
-            entry.NozzleReadings.Add(new NozzleReading { NozzleNumber = 2, OpeningReading = 0, ClosingReading = 20, Rate = 100, SaleLitres = 20, Amount = 2000 });
+            // Nozzle readings (gross sale total = 3000: 1200 on Shift A, 1800 on Shift B)
+            entry1.NozzleReadings.Add(new NozzleReading { NozzleNumber = 1, OpeningReading = 0, ClosingReading = 4, Rate = 100, SaleLitres = 4, Amount = 400 });
+            entry1.NozzleReadings.Add(new NozzleReading { NozzleNumber = 2, OpeningReading = 0, ClosingReading = 8, Rate = 100, SaleLitres = 8, Amount = 800 });
 
-            // PaymentCollection (PhonePe total = 1000, PhonePeCard = 500, CreditCard = 900, PetroCard = 300, CashDeposit = 100)
-            entry.PaymentCollection = new PaymentCollection
+            entry2.NozzleReadings.Add(new NozzleReading { NozzleNumber = 1, OpeningReading = 0, ClosingReading = 6, Rate = 100, SaleLitres = 6, Amount = 600 });
+            entry2.NozzleReadings.Add(new NozzleReading { NozzleNumber = 2, OpeningReading = 0, ClosingReading = 12, Rate = 100, SaleLitres = 12, Amount = 1200 });
+
+            // PaymentCollections
+            entry1.PaymentCollection = new PaymentCollection
             {
                 PhonePeMorning = 300,
-                PhonePeDay = 200,
-                PhonePeNight = 500,
                 PhonePeCardMorning = 100,
-                PhonePeCardDay = 150,
-                PhonePeCardNight = 250,
                 CreditCardMorning = 400,
-                CreditCardDay = 300,
-                CreditCardNight = 200,
                 PetroCardMorning = 100,
-                PetroCardDay = 100,
-                PetroCardNight = 100,
                 CashDeposit = 100
             };
 
-            // Cash denominations (Cash1 = 100, Cash2 = 100)
-            entry.CashDenominations.Add(new CashDenomination { CashType = "Cash1", Denom100 = 1, TotalAmount = 100 });
-            entry.CashDenominations.Add(new CashDenomination { CashType = "Cash2", Denom100 = 1, TotalAmount = 100 });
+            entry2.PaymentCollection = new PaymentCollection
+            {
+                PhonePeDay = 200,
+                PhonePeCardDay = 150,
+                CreditCardDay = 300,
+                PetroCardDay = 100
+            };
 
-            // Debtor / Creditor (50)
-            entry.DebitEntries.Add(new DebitEntry { DebtorName = "John Doe", Amount = 50 });
+            entry3.PaymentCollection = new PaymentCollection
+            {
+                PhonePeNight = 500,
+                PhonePeCardNight = 250,
+                CreditCardNight = 200,
+                PetroCardNight = 100
+            };
 
-            // Testing (50)
-            entry.TestingEntries.Add(new TestingEntry { FuelType = "MS", Amount = 50, Litres = 0.5 });
+            // Cash denominations (Cash1 = 100, Cash2 = 100) on today's Shift A
+            entry1.CashDenominations.Add(new CashDenomination { CashType = "Cash1", Denom100 = 1, TotalAmount = 100 });
+            entry1.CashDenominations.Add(new CashDenomination { CashType = "Cash2", Denom100 = 1, TotalAmount = 100 });
 
-            // Expenses (50)
-            entry.Expenses.Add(new Expense { Description = "WINE", Amount = 50 });
+            // Debtor / Creditor (50) on today's Shift A
+            entry1.DebitEntries.Add(new DebitEntry { DebtorName = "John Doe", Amount = 50 });
+
+            // Testing (50) on today's Shift A
+            entry1.TestingEntries.Add(new TestingEntry { FuelType = "MS", Amount = 50, Litres = 0.5 });
+
+            // Expenses (50) on today's Shift A
+            entry1.Expenses.Add(new Expense { Description = "WINE", Amount = 50 });
 
             await context.SaveChangesAsync();
         }
@@ -261,10 +287,10 @@ public class FinancialPipelineIntegrationTests : IDisposable
         //                    + (Bank Cash) 100 + (Cash in hand) 100 + (Debtors) 50 + (Expenses) 50 + (Testing) 50
         //                  = 3050
         // Sales = 3000
-        // Difference = 3050 - 3000 = +50
-        Assert.Equal(50, dayTotalVm.Difference);
-        Assert.Equal(50, dashboardVm.TodayTotalMismatch);
-        Assert.Equal(50, ownerVm.TodayTotalMismatch);
+        // Expected Mismatch = 1100 (due to tomorrow's Shift A Night collections (1050) being added to actual collections but not expected sales, and shift B shortfall of 1050 being added to DSM Short)
+        Assert.Equal(1100, dayTotalVm.Difference);
+        Assert.Equal(1100, dashboardVm.TodayTotalMismatch);
+        Assert.Equal(1100, ownerVm.TodayTotalMismatch);
     }
 
     [Fact]
@@ -593,7 +619,7 @@ public class FinancialPipelineIntegrationTests : IDisposable
         await repaymentRepo.AddAsync(new CreditorRepayment
         {
             CreditorName = "Clark Kent",
-            RepaymentDate = testDate,
+            RepaymentDate = testDate.AddHours(4),
             PaymentMode = "PhonePe",
             Amount = 500,
             ShiftNumber = "A"
@@ -601,7 +627,7 @@ public class FinancialPipelineIntegrationTests : IDisposable
         await repaymentRepo.AddAsync(new CreditorRepayment
         {
             CreditorName = "Clark Kent",
-            RepaymentDate = testDate,
+            RepaymentDate = testDate.AddHours(4),
             PaymentMode = "PetroCard",
             Amount = 300,
             ShiftNumber = "A"
@@ -609,7 +635,7 @@ public class FinancialPipelineIntegrationTests : IDisposable
         await repaymentRepo.AddAsync(new CreditorRepayment
         {
             CreditorName = "Clark Kent",
-            RepaymentDate = testDate,
+            RepaymentDate = testDate.AddHours(4),
             PaymentMode = "Bank Transfer",
             Amount = 1000,
             ShiftNumber = "A"

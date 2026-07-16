@@ -159,6 +159,8 @@
                                         
                                         <ComboBox ItemsSource="{Binding DebtorsList}" SelectedValue="{Binding SelectedDebtorName, UpdateSourceTrigger=PropertyChanged}" SelectedValuePath="Name" DisplayMemberPath="Name" IsEditable="True" materialDesign:HintAssist.Hint="Select Debtor" Style="{StaticResource MaterialDesignOutlinedComboBox}" Margin="0,0,0,12"/>
                                         
+                                        <ComboBox ItemsSource="{Binding RepaymentShifts}" SelectedItem="{Binding SelectedRepaymentShift}" materialDesign:HintAssist.Hint="Shift / Settlement Slot" Style="{StaticResource MaterialDesignOutlinedComboBox}" Margin="0,0,0,12"/>
+
                                         <Grid Margin="0,0,0,12">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*"/>

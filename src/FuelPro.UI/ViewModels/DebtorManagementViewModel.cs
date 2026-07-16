@@ -88,6 +88,8 @@ public partial class DebtorManagementViewModel : ObservableObject
     [ObservableProperty] private int? _denom10;
     [ObservableProperty] private int? _coins;
     public string[] PaymentModes { get; } = { "Cash", "PhonePe", "PineLabs Card", "PetroCard", "Bank Transfer", "Cheque" };
+    [ObservableProperty] private string _selectedRepaymentShift = "Shift B (Day)";
+    public string[] RepaymentShifts { get; } = { "Shift B (Day)", "Shift A (Morning)", "Shift A (Night)" };
 
     // True when Cash is selected — used for XAML visibility of denomination grid vs manual amount
     public bool IsCashPaymentMode => SelectedPaymentMode == "Cash";
@@ -265,6 +267,7 @@ public partial class DebtorManagementViewModel : ObservableObject
         _printService = App.Services.GetRequiredService<PrintService>();
         _excelExportService = App.Services.GetRequiredService<ExcelExportService>();
         _dbContext = App.Services.GetRequiredService<FuelProDbContext>();
+        _selectedRepaymentShift = DateTime.Now.Hour < 20 ? "Shift B (Day)" : "Shift A (Night)";
 
         _ = LoadDataAsync();
     }
@@ -522,12 +525,34 @@ public partial class DebtorManagementViewModel : ObservableObject
         // Auto-assign ShiftNumber for TID-sheet slot attribution:
         //   before 20:00 → Shift B (Day slot on the business day)
         //   from  20:00 → Shift A (Night slot on the business day)
-        var shiftNumber = DateTime.Now.Hour < 20 ? "B" : "A";
+        string shiftNumber;
+        DateTime finalRepaymentDate;
+
+        if (SelectedRepaymentShift == "Shift B (Day)")
+        {
+            shiftNumber = "B";
+            finalRepaymentDate = RepaymentDate.Date.AddHours(12);
+        }
+        else if (SelectedRepaymentShift == "Shift A (Morning)")
+        {
+            shiftNumber = "A";
+            finalRepaymentDate = RepaymentDate.Date.AddHours(4);
+        }
+        else if (SelectedRepaymentShift == "Shift A (Night)")
+        {
+            shiftNumber = "A";
+            finalRepaymentDate = RepaymentDate.Date.AddHours(22);
+        }
+        else
+        {
+            shiftNumber = "B";
+            finalRepaymentDate = RepaymentDate.Date.AddHours(12);
+        }
 
         var repayment = new CreditorRepayment
         {
             CreditorName = SelectedDebtorName.Trim(),
-            RepaymentDate = RepaymentDate.Date,
+            RepaymentDate = finalRepaymentDate,
             PaymentMode = SelectedPaymentMode,
             ChequeNo = SelectedPaymentMode == "Cheque" ? ChequeNumber?.Trim() : null,
             Amount = RepaymentAmount,
@@ -559,6 +584,7 @@ public partial class DebtorManagementViewModel : ObservableObject
             Denom20 = null;
             Denom10 = null;
             Coins = null;
+            SelectedRepaymentShift = DateTime.Now.Hour < 20 ? "Shift B (Day)" : "Shift A (Night)";
             DsmEntryService.RaiseDebtorChanged();
             await LoadDataAsync();
             if (!string.IsNullOrEmpty(LedgerDebtorName) && LedgerDebtorName.Equals(SelectedDebtorName, StringComparison.OrdinalIgnoreCase))

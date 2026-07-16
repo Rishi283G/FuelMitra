@@ -54,7 +54,7 @@ public class ReportServiceTests
 
         var repayments = new List<CreditorRepayment>
         {
-            new CreditorRepayment { Amount = 1000, PaymentMode = "Cash" }
+            new CreditorRepayment { Amount = 1000, PaymentMode = "Cash", ShiftNumber = "B", RepaymentDate = date }
         };
 
         // Act
@@ -98,6 +98,7 @@ public class ReportServiceTests
                 DsmName = "Peter Parker",
                 PumpId = 1,
                 GrossSales = 3000,
+                Shift = new Shift { ShiftDate = date, ShiftType = "A" },
                 PaymentCollection = new PaymentCollection { PhonePeMorning = 500 },
                 CashDenominations = new List<CashDenomination> { new CashDenomination { CashType = "Cash2", TotalAmount = 2500 } },
                 DebitEntries = new List<DebitEntry>(),
@@ -110,6 +111,7 @@ public class ReportServiceTests
                 DsmName = "Tony Stark",
                 PumpId = 1,
                 GrossSales = 4000,
+                Shift = new Shift { ShiftDate = date.AddDays(1), ShiftType = "A" },
                 PaymentCollection = new PaymentCollection { PhonePeNight = 800 },
                 CashDenominations = new List<CashDenomination> { new CashDenomination { CashType = "Cash2", TotalAmount = 3200 } },
                 DebitEntries = new List<DebitEntry>(),
@@ -130,7 +132,7 @@ public class ReportServiceTests
         );
 
         // Assert
-        Assert.Equal(7000, report.CollectionBreakdown.Sum(c => c.Amount)); // 500 + 800 + 2500 + 3200
-        Assert.Equal(7000, report.ExpectedCollection);
+        Assert.Equal(3800, report.CollectionBreakdown.Sum(c => c.Amount)); // 500 PhonePe + 2500 Cash + 800 PhonePe (tomorrow's Shift A Night)
+        Assert.Equal(3000, report.ExpectedCollection); // only today's entries (Shift A gross sales = 3000)
     }
 }

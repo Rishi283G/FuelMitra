@@ -29,14 +29,13 @@ public class TidCalculationService : ITidCalculationService
         var sheet = new BusinessDayTidSheet
         {
             Date = date.Date,
-            MorningBusinessDate = date.Date.AddDays(-1).ToString("dd-MMM-yyyy"),
+            MorningBusinessDate = date.Date.ToString("dd-MMM-yyyy"),
             DayBusinessDate = date.Date.ToString("dd-MMM-yyyy"),
             NightBusinessDate = date.Date.ToString("dd-MMM-yyyy")
         };
 
-        // 1. Morning slot: Shift A of D-1 (yesterday)
-        var prevDate = date.Date.AddDays(-1);
-        var morningShiftRes = await _shiftRepo.GetShiftAsync(prevDate, "A");
+        // 1. Morning slot: Shift A of D (today)
+        var morningShiftRes = await _shiftRepo.GetShiftAsync(date.Date, "A");
         if (morningShiftRes.Success && morningShiftRes.Data != null)
         {
             var entriesRes = await _dsmRepo.GetEntriesForShiftAsync(morningShiftRes.Data.ShiftId);
@@ -63,9 +62,9 @@ public class TidCalculationService : ITidCalculationService
                             Slot = "Morning",
                             PaymentCollection = pc,
                             ShiftLabel = "Morning (12am - 8am)",
-                            SlotDate = prevDate.ToString("dd-MMM-yyyy"),
+                            SlotDate = date.Date.ToString("dd-MMM-yyyy"),
                             TimeWindow = "12:00 AM – 8:00 AM",
-                            SlotDisplaySubtitle = $"({prevDate.ToString("dd MMM")} | 12:00 AM – 8:00 AM)"
+                            SlotDisplaySubtitle = $"({date.Date.ToString("dd MMM")} | 12:00 AM – 8:00 AM)"
                         });
                         sheet.PhonePeDirectMorning += ppVal;
                     }
@@ -85,9 +84,9 @@ public class TidCalculationService : ITidCalculationService
                             Slot = "Morning",
                             PaymentCollection = pc,
                             ShiftLabel = "Morning (12am - 8am)",
-                            SlotDate = prevDate.ToString("dd-MMM-yyyy"),
+                            SlotDate = date.Date.ToString("dd-MMM-yyyy"),
                             TimeWindow = "12:00 AM – 8:00 AM",
-                            SlotDisplaySubtitle = $"({prevDate.ToString("dd MMM")} | 12:00 AM – 8:00 AM)"
+                            SlotDisplaySubtitle = $"({date.Date.ToString("dd MMM")} | 12:00 AM – 8:00 AM)"
                         });
                         sheet.PhonePeCardMorning += ppCardVal;
                     }
@@ -107,9 +106,9 @@ public class TidCalculationService : ITidCalculationService
                             Slot = "Morning",
                             PaymentCollection = pc,
                             ShiftLabel = "Morning (12am - 8am)",
-                            SlotDate = prevDate.ToString("dd-MMM-yyyy"),
+                            SlotDate = date.Date.ToString("dd-MMM-yyyy"),
                             TimeWindow = "12:00 AM – 8:00 AM",
-                            SlotDisplaySubtitle = $"({prevDate.ToString("dd MMM")} | 12:00 AM – 8:00 AM)"
+                            SlotDisplaySubtitle = $"({date.Date.ToString("dd MMM")} | 12:00 AM – 8:00 AM)"
                         });
                         sheet.PineLabsCardMorning += ccVal;
                     }
@@ -129,9 +128,9 @@ public class TidCalculationService : ITidCalculationService
                             Slot = "Morning",
                             PaymentCollection = pc,
                             ShiftLabel = "Morning (12am - 8am)",
-                            SlotDate = prevDate.ToString("dd-MMM-yyyy"),
+                            SlotDate = date.Date.ToString("dd-MMM-yyyy"),
                             TimeWindow = "12:00 AM – 8:00 AM",
-                            SlotDisplaySubtitle = $"({prevDate.ToString("dd MMM")} | 12:00 AM – 8:00 AM)"
+                            SlotDisplaySubtitle = $"({date.Date.ToString("dd MMM")} | 12:00 AM – 8:00 AM)"
                         });
                         sheet.PetroCardMorning += petroVal;
                     }
@@ -243,8 +242,9 @@ public class TidCalculationService : ITidCalculationService
             }
         }
 
-        // 3. Night slot: Shift A of D (today)
-        var nightShiftRes = await _shiftRepo.GetShiftAsync(date.Date, "A");
+        // 3. Night slot: Shift A of D+1 (tomorrow)
+        var tomorrowDate = date.Date.AddDays(1);
+        var nightShiftRes = await _shiftRepo.GetShiftAsync(tomorrowDate, "A");
         if (nightShiftRes.Success && nightShiftRes.Data != null)
         {
             var entriesRes = await _dsmRepo.GetEntriesForShiftAsync(nightShiftRes.Data.ShiftId);
@@ -354,15 +354,15 @@ public class TidCalculationService : ITidCalculationService
 
         // Populate debtor repayments (PhonePe / PineLabs Card)
         // Slot mapping:
-        //   Morning  → RepaymentDate == prevDate  && ShiftNumber == "A"
+        //   Morning  → RepaymentDate == date.Date && ShiftNumber == "A"
         //   Day      → RepaymentDate == date.Date && ShiftNumber == "B"
-        //   Night    → RepaymentDate == date.Date && ShiftNumber == "A"
-        var repPrevRes  = await _repaymentRepo.GetByDateAsync(prevDate);
+        //   Night    → RepaymentDate == tomorrowDate && ShiftNumber == "A"
         var repDateRes  = await _repaymentRepo.GetByDateAsync(date.Date);
+        var repNextRes  = await _repaymentRepo.GetByDateAsync(tomorrowDate);
 
         var allRepayments = new List<CreditorRepayment>();
-        if (repPrevRes.Success && repPrevRes.Data != null)  allRepayments.AddRange(repPrevRes.Data);
         if (repDateRes.Success && repDateRes.Data != null)  allRepayments.AddRange(repDateRes.Data);
+        if (repNextRes.Success && repNextRes.Data != null)  allRepayments.AddRange(repNextRes.Data);
 
         foreach (var r in allRepayments)
         {
@@ -379,37 +379,37 @@ public class TidCalculationService : ITidCalculationService
 
             if (!isPhonePe && !isPineLabs && !isPetro) continue;
 
-            string slot;
-            string shiftLabel;
-            string slotDate;
-            string timeWindow;
-            string slotSubtitle;
-
-            if (r.RepaymentDate.Date == prevDate && r.ShiftNumber == "A")
+            var classified = SettlementWindowResolver.Classify(r);
+            if (!classified.IsValid || classified.BusinessDate != date.Date)
             {
-                slot = "Morning";
-                shiftLabel = "Morning (12am - 8am)";
-                slotDate = prevDate.ToString("dd-MMM-yyyy");
-                timeWindow = "12:00 AM – 8:00 AM";
-                slotSubtitle = $"({prevDate:dd MMM} | 12:00 AM – 8:00 AM)";
+                continue; // Exclude invalid or mismatching business day
             }
-            else if (r.RepaymentDate.Date == date.Date && r.ShiftNumber == "B")
+
+            string slot = classified.SettlementWindow!;
+            string shiftLabel = "";
+            string slotDate = date.Date.ToString("dd-MMM-yyyy");
+            string timeWindow = "";
+            string slotSubtitle = "";
+
+            if (slot == "Morning")
             {
-                slot = "Day";
+                shiftLabel = "Morning (12am - 8am)";
+                timeWindow = "12:00 AM – 8:00 AM";
+                slotSubtitle = $"({date.Date:dd MMM} | 12:00 AM – 8:00 AM)";
+            }
+            else if (slot == "Day")
+            {
                 shiftLabel = "Day (8am - 8pm)";
-                slotDate = date.Date.ToString("dd-MMM-yyyy");
                 timeWindow = "8:00 AM – 8:00 PM";
                 slotSubtitle = $"({date.Date:dd MMM} | 8:00 AM – 8:00 PM)";
             }
-            else if (r.RepaymentDate.Date == date.Date && r.ShiftNumber == "A")
+            else if (slot == "Night")
             {
-                slot = "Night";
                 shiftLabel = "Night (8pm - 12am)";
-                slotDate = date.Date.ToString("dd-MMM-yyyy");
                 timeWindow = "8:00 PM – 12:00 AM";
                 slotSubtitle = $"({date.Date:dd MMM} | 8:00 PM – 12:00 AM)";
             }
-            else continue; // doesn't belong to this business day
+            else continue;
 
             var item = new TidItemDto
             {

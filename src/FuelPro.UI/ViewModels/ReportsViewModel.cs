@@ -87,24 +87,26 @@ public partial class ReportsViewModel : ObservableObject
             if (SelectedReportType == "DSR")
             {
                 // DSR: Daily Sales Register (Single Day)
-                var entriesResult = await _dsmRepo.GetEntriesForDateRangeAsync(SelectedDate, SelectedDate);
+                var entriesResult = await _dsmRepo.GetEntriesForDateRangeAsync(SelectedDate.Date, SelectedDate.Date.AddDays(1));
                 var entries = entriesResult.Success && entriesResult.Data != null ? entriesResult.Data : new List<DsmEntry>();
 
-                if (entries.Count == 0)
+                if (entries.Where(e => e.Shift != null && e.Shift.ShiftDate.Date >= SelectedDate.Date && e.Shift.ShiftDate.Date <= SelectedDate.Date).Count() == 0)
                 {
                     MessageBox.Show("No entry data found for the selected date.", "PyroSync — Report", MessageBoxButton.OK, MessageBoxImage.Information);
                     StatusMessage = "No data found.";
                     return;
                 }
 
-                var shiftsResult = await _shiftRepo.GetShiftsByDateRangeAsync(SelectedDate, SelectedDate);
+                var shiftsResult = await _shiftRepo.GetShiftsByDateRangeAsync(SelectedDate.Date, SelectedDate.Date.AddDays(1));
                 var shifts = shiftsResult.Success && shiftsResult.Data != null ? shiftsResult.Data : new List<Shift>();
-                var shiftIds = shifts.Select(s => s.ShiftId).ToList();
+                
+                var todayShifts = shifts.Where(s => s.ShiftDate.Date >= SelectedDate.Date && s.ShiftDate.Date <= SelectedDate.Date).ToList();
+                var todayShiftIds = todayShifts.Select(s => s.ShiftId).ToList();
 
-                var expResult = await _expenseRepo.GetExpensesByShiftIdsAsync(shiftIds);
+                var expResult = await _expenseRepo.GetExpensesByShiftIdsAsync(todayShiftIds);
                 var allExpenses = expResult.Success && expResult.Data != null ? expResult.Data : new List<Expense>();
 
-                var repaymentsRes = await App.Services.GetRequiredService<ICreditorRepaymentRepository>().GetByDateRangeAsync(SelectedDate.Date, SelectedDate.Date);
+                var repaymentsRes = await App.Services.GetRequiredService<ICreditorRepaymentRepository>().GetByDateRangeAsync(SelectedDate.Date, SelectedDate.Date.AddDays(1));
                 var repayments = repaymentsRes.Success && repaymentsRes.Data != null ? repaymentsRes.Data : new List<CreditorRepayment>();
 
                 var settings = await _settingsRepo.GetSettingsAsync();
@@ -115,8 +117,8 @@ public partial class ReportsViewModel : ObservableObject
                 string stationName = settings.Success ? settings.Data!.PumpStationName : "PyroSync";
 
                 var report = _reportService.CalculateDayReport(
-                    SelectedDate,
-                    SelectedDate,
+                    SelectedDate.Date,
+                    SelectedDate.Date,
                     entries,
                     allExpenses,
                     repayments,

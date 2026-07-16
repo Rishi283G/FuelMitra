@@ -17,18 +17,18 @@ public class TidCalculationServiceTests
     {
         // Arrange
         var testDate = new DateTime(2026, 7, 3);
-        var yesterday = testDate.AddDays(-1);
+        var tomorrow = testDate.AddDays(1);
 
         // We create:
-        // 1. Yesterday (July 2) Shift A Morning fields:
+        // 1. Today (July 3) Shift A Morning fields:
         //    - PhonePeMorning = 1000
         //    - PhonePeCardMorning = 200
         //    - CreditCardMorning = 300
         //    - PetroCardMorning = 400
-        var yesterdayShiftA = new Shift { ShiftId = 1, ShiftDate = yesterday, ShiftType = "A" };
+        var todayShiftA = new Shift { ShiftId = 1, ShiftDate = testDate, ShiftType = "A" };
         var entry1 = new DsmEntry
         {
-            Shift = yesterdayShiftA,
+            Shift = todayShiftA,
             ShiftId = 1,
             PaymentCollection = new PaymentCollection
             {
@@ -39,11 +39,11 @@ public class TidCalculationServiceTests
             }
         };
 
-        // 2. Today (July 3) Shift B Morning fields (which represents Day shift collections):
-        //    - PhonePeMorning = 5000
-        //    - PhonePeCardMorning = 1200
-        //    - CreditCardMorning = 1500
-        //    - PetroCardMorning = 800
+        // 2. Today (July 3) Shift B Day fields:
+        //    - PhonePeDay = 5000
+        //    - PhonePeCardDay = 1200
+        //    - CreditCardDay = 1500
+        //    - PetroCardDay = 800
         var todayShiftB = new Shift { ShiftId = 2, ShiftDate = testDate, ShiftType = "B" };
         var entry2 = new DsmEntry
         {
@@ -51,22 +51,22 @@ public class TidCalculationServiceTests
             ShiftId = 2,
             PaymentCollection = new PaymentCollection
             {
-                PhonePeMorning = 5000,
-                PhonePeCardMorning = 1200,
-                CreditCardMorning = 1500,
-                PetroCardMorning = 800
+                PhonePeDay = 5000,
+                PhonePeCardDay = 1200,
+                CreditCardDay = 1500,
+                PetroCardDay = 800
             }
         };
 
-        // 3. Today (July 3) Shift A Night fields:
+        // 3. Tomorrow (July 4) Shift A Night fields:
         //    - PhonePeNight = 3000
         //    - PhonePeCardNight = 500
         //    - CreditCardNight = 700
         //    - PetroCardNight = 900
-        var todayShiftA = new Shift { ShiftId = 3, ShiftDate = testDate, ShiftType = "A" };
+        var tomorrowShiftA = new Shift { ShiftId = 3, ShiftDate = tomorrow, ShiftType = "A" };
         var entry3 = new DsmEntry
         {
-            Shift = todayShiftA,
+            Shift = tomorrowShiftA,
             ShiftId = 3,
             PaymentCollection = new PaymentCollection
             {
@@ -77,7 +77,7 @@ public class TidCalculationServiceTests
             }
         };
 
-        var shifts = new List<Shift> { yesterdayShiftA, todayShiftA, todayShiftB };
+        var shifts = new List<Shift> { todayShiftA, todayShiftB, tomorrowShiftA };
         var entries = new List<DsmEntry> { entry1, entry2, entry3 };
 
         var mockShiftRepo = new MockShiftRepository(shifts);
@@ -89,19 +89,19 @@ public class TidCalculationServiceTests
         var sheet = await sut.GetTidSheetAsync(testDate);
 
         // Assert
-        // Morning Slot (yesterday Shift B)
+        // Morning Slot (today Shift A)
         Assert.Equal(1000, sheet.PhonePeDirectMorning);
         Assert.Equal(200, sheet.PhonePeCardMorning);
         Assert.Equal(300, sheet.PineLabsCardMorning);
         Assert.Equal(400, sheet.PetroCardMorning);
 
-        // Day Slot (today Shift A)
+        // Day Slot (today Shift B)
         Assert.Equal(5000, sheet.PhonePeDirectDay);
         Assert.Equal(1200, sheet.PhonePeCardDay);
         Assert.Equal(1500, sheet.PineLabsCardDay);
         Assert.Equal(800, sheet.PetroCardDay);
 
-        // Night Slot (today Shift B)
+        // Night Slot (tomorrow Shift A)
         Assert.Equal(3000, sheet.PhonePeDirectNight);
         Assert.Equal(500, sheet.PhonePeCardNight);
         Assert.Equal(700, sheet.PineLabsCardNight);
