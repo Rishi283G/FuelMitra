@@ -21,6 +21,7 @@ public partial class App : Application
 {
     public static IServiceProvider Services { get; private set; } = null!;
     public static string DbPath { get; private set; } = null!;
+    public static FuelPro.Core.Services.DataIntegrityReport? StartupIntegrityReport { get; set; }
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -139,6 +140,26 @@ public partial class App : Application
             Log.Warning("License is invalid or missing: {ErrorMessage}", validationResult.ErrorMessage);
             var activationWindow = new Views.ActivationWindow();
             activationWindow.Show();
+        }
+
+        // Run database integrity check (non-blocking, silent)
+        try
+        {
+            using (var scope = Services.CreateScope())
+            {
+                var integrityService = scope.ServiceProvider.GetRequiredService<IDuplicateDataInspectionService>();
+                var report = await integrityService.RunFullScanAsync();
+                if (report.HasIssues)
+                {
+                    Log.Warning("Startup integrity scan found issues: DsmDuplicates={DsmDupes}, DebitDuplicates={DebitDupes}, Orphans={Orphans}",
+                        report.DuplicateDsmEntries, report.DuplicateDebitEntries, report.OrphanRecords);
+                    StartupIntegrityReport = report;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Non-fatal: startup integrity scan failed");
         }
 
         base.OnStartup(e);
@@ -749,6 +770,8 @@ public partial class App : Application
             options.UseSqlite($"Data Source={DbPath}"),
             ServiceLifetime.Transient);
 
+        services.AddTransient<DbContext>(sp => sp.GetRequiredService<FuelProDbContext>());
+
         // Credentials
         services.AddSingleton<ICredentialFileService, LocalCredentialFileService>();
 
@@ -844,6 +867,9 @@ public partial class App : Application
         services.AddTransient<DsmManagementViewModel>();
         services.AddTransient<DsmApprovalQueueViewModel>();
 
+        // Duplicate prevention / resolution services
+        services.AddTransient<IDuplicateDataInspectionService, DuplicateDataInspectionService>();
+        services.AddTransient<DuplicateResolutionService>();
 
         // Licensing
         services.AddSingleton(new Rashtra.Licensing.LicenseManager("PSC", "PyroSyncMax"));

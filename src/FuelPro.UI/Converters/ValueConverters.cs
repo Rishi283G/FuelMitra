@@ -313,3 +313,49 @@ public class EqualToBoolConverter : IValueConverter
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
         => throw new NotImplementedException();
 }
+
+/// <summary>
+/// Converts an integer count to a Brush.
+/// If count > 0, returns red/orange brush based on parameter.
+/// If count == 0, returns green/grey brush.
+/// </summary>
+public class IntToColorConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is int count)
+        {
+            if (count > 0)
+            {
+                var colorStr = parameter?.ToString()?.ToLowerInvariant();
+                return colorStr switch
+                {
+                    "red" => new SolidColorBrush(Color.FromRgb(229, 57, 53)),     // #E53935
+                    "orange" => new SolidColorBrush(Color.FromRgb(245, 124, 0)),   // #F57C00
+                    _ => new SolidColorBrush(Color.FromRgb(229, 57, 53))
+                };
+            }
+            return new SolidColorBrush(Color.FromRgb(76, 175, 80)); // Green (#4CAF50)
+        }
+        return new SolidColorBrush(Color.FromRgb(120, 144, 156)); // Grey (#78909C)
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotImplementedException();
+}
+
+/// <summary>
+/// Converts an integer to Visibility (visible if > 0).
+/// </summary>
+public class IntToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is int count && count > 0)
+            return Visibility.Visible;
+        return Visibility.Collapsed;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotImplementedException();
+}

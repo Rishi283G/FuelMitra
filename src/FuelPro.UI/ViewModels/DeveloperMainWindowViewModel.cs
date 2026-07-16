@@ -16,6 +16,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Windows;
 
 namespace FuelPro.UI.ViewModels;
 
@@ -27,6 +28,8 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
     private readonly SyncConfigService _syncConfigService;
     private readonly SyncEngine _syncEngine;
     private readonly Rashtra.Licensing.LicenseManager _licenseManager;
+    private readonly IDuplicateDataInspectionService _inspectionService;
+    private readonly DuplicateResolutionService _resolutionService;
 
     [ObservableProperty] private object? _currentView;
 
@@ -86,6 +89,21 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
     [ObservableProperty] private string _licenseExpiryDate = "";
     [ObservableProperty] private string _licenseDeviceId = "";
 
+    // Tab 5: Data Integrity
+    [ObservableProperty] private bool _isRunningIntegrityScan;
+    [ObservableProperty] private string _integrityScanMessage = "Run a scan to check data integrity.";
+    [ObservableProperty] private string _integrityScanTimestamp = "Never scanned";
+    [ObservableProperty] private bool _integrityHasIssues;
+    [ObservableProperty] private int _integrityDsmDuplicates;
+    [ObservableProperty] private int _integrityDebitDuplicates;
+    [ObservableProperty] private int _integrityRepaymentDuplicates;
+    [ObservableProperty] private int _integrityOrphans;
+    [ObservableProperty] private int _integrityBrokenFks;
+    public ObservableCollection<DsmEntryDuplicateGroupVm> DuplicateDsmGroups { get; } = new();
+    public ObservableCollection<DebitEntryDuplicateGroupVm> DuplicateDebitGroups { get; } = new();
+    public ObservableCollection<RepaymentDuplicateGroupVm> DuplicateRepaymentGroups { get; } = new();
+    public ObservableCollection<OrphanRecord> OrphanRecords { get; } = new();
+
     public DeveloperMainWindowViewModel()
     {
         _serviceProvider = App.Services;
@@ -94,6 +112,8 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
         _syncConfigService = _serviceProvider.GetRequiredService<SyncConfigService>();
         _syncEngine = _serviceProvider.GetRequiredService<SyncEngine>();
         _licenseManager = _serviceProvider.GetRequiredService<Rashtra.Licensing.LicenseManager>();
+        _inspectionService = _serviceProvider.GetRequiredService<IDuplicateDataInspectionService>();
+        _resolutionService = _serviceProvider.GetRequiredService<DuplicateResolutionService>();
 
         CurrentUser = _authService.CurrentUser?.Username ?? "Developer";
 
@@ -712,6 +732,264 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
                 break;
             }
         }
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // Tab 5 — Data Integrity commands
+    // ══════════════════════════════════════════════════════════
+
+    [RelayCommand]
+    private async Task RunIntegrityScanAsync()
+    {
+        IsRunningIntegrityScan = true;
+        IntegrityScanMessage = "⏳ Scanning database for integrity issues...";
+        DuplicateDsmGroups.Clear();
+        DuplicateDebitGroups.Clear();
+        DuplicateRepaymentGroups.Clear();
+        OrphanRecords.Clear();
+
+        try
+        {
+            var report = await _inspectionService.RunFullScanAsync();
+
+            IntegrityDsmDuplicates = report.DuplicateDsmEntries;
+            IntegrityDebitDuplicates = report.DuplicateDebitEntries;
+            IntegrityRepaymentDuplicates = report.DuplicateRepayments;
+            IntegrityOrphans = report.OrphanRecords;
+            IntegrityBrokenFks = report.BrokenForeignKeys;
+            IntegrityHasIssues = report.HasIssues;
+            IntegrityScanTimestamp = $"Last scanned: {report.ScannedAt:dd MMM yyyy  hh:mm tt}";
+
+            foreach (var g in report.DsmEntryGroups)
+                DuplicateDsmGroups.Add(DsmEntryDuplicateGroupVm.FromModel(g));
+
+            foreach (var g in report.DebitEntryGroups)
+                DuplicateDebitGroups.Add(DebitEntryDuplicateGroupVm.FromModel(g));
+
+            foreach (var g in report.RepaymentGroups)
+                DuplicateRepaymentGroups.Add(RepaymentDuplicateGroupVm.FromModel(g));
+
+            foreach (var o in report.Orphans)
+                OrphanRecords.Add(o);
+
+            IntegrityScanMessage = report.HasIssues
+                ? $"⚠️  Issues found — {report.DuplicateDsmEntries} duplicate DSM entries, " +
+                  $"{report.DuplicateDebitEntries} duplicate debits, {report.OrphanRecords} orphans."
+                : "✅ No integrity issues found. Database is clean.";
+        }
+        catch (Exception ex)
+        {
+            Log.ForContext<DeveloperMainWindowViewModel>().Error(ex, "Integrity scan failed");
+            IntegrityScanMessage = $"❌ Scan failed: {ex.Message}";
+        }
+        finally
+        {
+            IsRunningIntegrityScan = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task DeleteDuplicateDsmEntryAsync(DsmEntryDuplicateGroupVm group)
+    {
+        if (group == null) return;
+
+        var confirm = MessageBox.Show(
+            $"Delete duplicate DsmEntry {group.DuplicateEntryId}?\n\n" +
+            $"DSM: {group.DsmName}  |  Pump: {group.PumpId}\n" +
+            $"Surviving entry: {group.OriginalEntryId} (created {group.OriginalCreatedAt:dd MMM yyyy})\n\n" +
+            "This will permanently delete the duplicate and all its child rows.\n" +
+            "The surviving record will not be affected.",
+            "Confirm Delete Duplicate",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (confirm != MessageBoxResult.Yes) return;
+
+        var result = await _resolutionService.DeleteDuplicateDsmEntryAsync(
+            group.DuplicateEntryId, group.OriginalEntryId);
+
+        if (result.Success)
+        {
+            DuplicateDsmGroups.Remove(group);
+            IntegrityDsmDuplicates = DuplicateDsmGroups.Count;
+            IntegrityHasIssues = IntegrityDsmDuplicates > 0 || IntegrityDebitDuplicates > 0
+                || IntegrityRepaymentDuplicates > 0 || IntegrityOrphans > 0;
+            IntegrityScanMessage = $"✅ {result.Data}";
+        }
+        else
+        {
+            MessageBox.Show(result.Error, "Delete Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    [RelayCommand]
+    private async Task DeleteDuplicateDebitGroupAsync(DebitEntryDuplicateGroupVm group)
+    {
+        if (group == null) return;
+
+        var ids = group.DuplicateIds;
+        var confirm = MessageBox.Show(
+            $"Delete {ids.Count} duplicate DebitEntry row(s)?\n" +
+            $"IDs: [{string.Join(", ", ids)}]\n\n" +
+            $"The original entry (ID {group.OriginalEntryId}) will be kept.",
+            "Confirm Delete Duplicates",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (confirm != MessageBoxResult.Yes) return;
+
+        var result = await _resolutionService.DeleteDuplicateDebitEntriesAsync(ids);
+
+        if (result.Success)
+        {
+            DuplicateDebitGroups.Remove(group);
+            IntegrityDebitDuplicates = DuplicateDebitGroups.Sum(g => g.DuplicateCount);
+            IntegrityScanMessage = $"✅ {result.Data}";
+        }
+        else
+        {
+            MessageBox.Show(result.Error, "Delete Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    [RelayCommand]
+    private async Task DeleteDuplicateRepaymentGroupAsync(RepaymentDuplicateGroupVm group)
+    {
+        if (group == null) return;
+
+        var ids = group.DuplicateIds;
+        var confirm = MessageBox.Show(
+            $"Delete {ids.Count} duplicate CreditorRepayment row(s)?\n" +
+            $"IDs: [{string.Join(", ", ids)}]\n\n" +
+            $"The original repayment (ID {group.OriginalRepaymentId}) will be kept.",
+            "Confirm Delete Duplicates",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (confirm != MessageBoxResult.Yes) return;
+
+        var result = await _resolutionService.DeleteDuplicateRepaymentsAsync(ids);
+
+        if (result.Success)
+        {
+            DuplicateRepaymentGroups.Remove(group);
+            IntegrityRepaymentDuplicates = DuplicateRepaymentGroups.Sum(g => g.DuplicateCount);
+            IntegrityScanMessage = $"✅ {result.Data}";
+        }
+        else
+        {
+            MessageBox.Show(result.Error, "Delete Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    [RelayCommand]
+    private async Task DeleteAllOrphansAsync()
+    {
+        if (OrphanRecords.Count == 0) return;
+
+        var confirm = MessageBox.Show(
+            $"Delete all {OrphanRecords.Count} orphan child records?\n\n" +
+            "These are rows whose parent DsmEntry no longer exists.\n" +
+            "They are not visible in any report and are safe to remove.",
+            "Confirm Delete Orphans",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (confirm != MessageBoxResult.Yes) return;
+
+        var result = await _resolutionService.DeleteOrphanRecordsAsync(OrphanRecords.ToList());
+
+        if (result.Success)
+        {
+            OrphanRecords.Clear();
+            IntegrityOrphans = 0;
+            IntegrityScanMessage = $"✅ {result.Data}";
+        }
+        else
+        {
+            MessageBox.Show(result.Error, "Delete Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+}
+
+// ─── View-Model wrappers for the Data Integrity DataGrids ─────────────────────
+
+public class DsmEntryDuplicateGroupVm
+{
+    public int OriginalEntryId { get; set; }
+    public int DuplicateEntryId { get; set; }
+    public string DsmName { get; set; } = string.Empty;
+    public int PumpId { get; set; }
+    public int ShiftId { get; set; }
+    public DateTime OriginalCreatedAt { get; set; }
+    public DateTime DuplicateCreatedAt { get; set; }
+    public int DuplicateNozzleCount { get; set; }
+    public int DuplicateDebitCount { get; set; }
+    public bool DuplicateHasPayment { get; set; }
+    public string BusinessKey => $"Shift {ShiftId} | DSM: {DsmName} | Pump: {PumpId}";
+
+    public static DsmEntryDuplicateGroupVm FromModel(DsmEntryDuplicateGroup g)
+    {
+        var dup = g.DuplicateRecords.First();
+        return new DsmEntryDuplicateGroupVm
+        {
+            OriginalEntryId = g.OriginalRecord.DsmEntryId,
+            DuplicateEntryId = dup.DsmEntryId,
+            DsmName = g.OriginalRecord.DsmName ?? string.Empty,
+            PumpId = g.OriginalRecord.PumpId,
+            ShiftId = g.OriginalRecord.ShiftId,
+            OriginalCreatedAt = g.OriginalRecord.CreatedAt,
+            DuplicateCreatedAt = dup.CreatedAt,
+            DuplicateNozzleCount = dup.NozzleReadings?.Count ?? 0,
+            DuplicateDebitCount = dup.DebitEntries?.Count ?? 0,
+            DuplicateHasPayment = dup.PaymentCollection != null
+        };
+    }
+}
+
+public class DebitEntryDuplicateGroupVm
+{
+    public int OriginalEntryId { get; set; }
+    public List<int> DuplicateIds { get; set; } = new();
+    public int DuplicateCount => DuplicateIds.Count;
+    public string DebtorName { get; set; } = string.Empty;
+    public double Amount { get; set; }
+    public int DsmEntryId { get; set; }
+
+    public static DebitEntryDuplicateGroupVm FromModel(DebitEntryDuplicateGroup g)
+    {
+        return new DebitEntryDuplicateGroupVm
+        {
+            OriginalEntryId = g.OriginalRecord.DebitId,
+            DuplicateIds = g.DuplicateRecords.Select(d => d.DebitId).ToList(),
+            DebtorName = g.OriginalRecord.DebtorName ?? string.Empty,
+            Amount = g.OriginalRecord.Amount,
+            DsmEntryId = g.OriginalRecord.DsmEntryId
+        };
+    }
+}
+
+public class RepaymentDuplicateGroupVm
+{
+    public int OriginalRepaymentId { get; set; }
+    public List<int> DuplicateIds { get; set; } = new();
+    public int DuplicateCount => DuplicateIds.Count;
+    public string CreditorName { get; set; } = string.Empty;
+    public double Amount { get; set; }
+    public DateTime RepaymentDate { get; set; }
+    public string PaymentMode { get; set; } = string.Empty;
+
+    public static RepaymentDuplicateGroupVm FromModel(RepaymentDuplicateGroup g)
+    {
+        return new RepaymentDuplicateGroupVm
+        {
+            OriginalRepaymentId = g.OriginalRecord.CreditorRepaymentId,
+            DuplicateIds = g.DuplicateRecords.Select(r => r.CreditorRepaymentId).ToList(),
+            CreditorName = g.OriginalRecord.CreditorName ?? string.Empty,
+            Amount = g.OriginalRecord.Amount,
+            RepaymentDate = g.OriginalRecord.RepaymentDate,
+            PaymentMode = g.OriginalRecord.PaymentMode ?? string.Empty
+        };
     }
 }
 

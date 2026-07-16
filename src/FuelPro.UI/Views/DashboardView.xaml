@@ -13,6 +13,23 @@
 
     <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="32,24">
         <StackPanel>
+            <!-- Database Integrity Warning Banner -->
+            <Border Background="#FFFDE7" BorderBrush="#FFF9C4" BorderThickness="1" CornerRadius="8" Padding="16,12" Margin="0,0,0,20"
+                    Visibility="{Binding ShowIntegrityWarning, Converter={StaticResource BoolToVis}}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <materialDesign:PackIcon Kind="Alert" Width="20" Height="20" Foreground="#F57C00" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                    <TextBlock Grid.Column="1" Text="{Binding IntegrityWarningMessage}" Foreground="#5D4037" FontSize="13" TextWrapping="Wrap" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                    <Button Grid.Column="2" Command="{Binding DismissIntegrityWarningCommand}" Style="{StaticResource MaterialDesignFlatButton}" Foreground="#5D4037" Height="30" Width="30" Padding="0" VerticalAlignment="Center">
+                        <materialDesign:PackIcon Kind="Close" Width="18" Height="18"/>
+                    </Button>
+                </Grid>
+            </Border>
+
             <!-- Header -->
             <Grid Margin="0,0,0,24">
                 <Grid.ColumnDefinitions>

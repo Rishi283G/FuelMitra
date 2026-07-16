@@ -116,6 +116,10 @@ public partial class DashboardViewModel : ObservableObject
     [ObservableProperty] private string _agsStatusLabel = "No AGS data";
     [ObservableProperty] private bool _hasAgsData;
 
+    // Database Integrity warning banner
+    [ObservableProperty] private bool _showIntegrityWarning;
+    [ObservableProperty] private string _integrityWarningMessage = "";
+
     public DashboardViewModel()
     {
         _calcService = App.Services.GetRequiredService<ShiftCalculationService>();
@@ -124,8 +128,21 @@ public partial class DashboardViewModel : ObservableObject
         _dsmCalculationService = App.Services.GetRequiredService<IDsmCalculationService>();
         _repaymentRepo = App.Services.GetRequiredService<ICreditorRepaymentRepository>();
         _creditorRepo = App.Services.GetRequiredService<ICreditorRepository>();
+
+        if (App.StartupIntegrityReport != null && App.StartupIntegrityReport.HasIssues)
+        {
+            ShowIntegrityWarning = true;
+            IntegrityWarningMessage = $"⚠️ Database integrity issues detected: {App.StartupIntegrityReport.DuplicateDsmEntries} duplicate DSM entries, {App.StartupIntegrityReport.DuplicateDebitEntries} duplicate debits, {App.StartupIntegrityReport.OrphanRecords} orphans. Please contact administrator or check Developer Tools → Data Integrity.";
+        }
+
         _ = LoadDataAsync();
         _ = LoadAgsDataAsync();
+    }
+
+    [RelayCommand]
+    private void DismissIntegrityWarning()
+    {
+        ShowIntegrityWarning = false;
     }
 
     private bool _isUpdatingPreset;

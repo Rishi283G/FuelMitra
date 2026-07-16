@@ -16,6 +16,8 @@
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
         <converters:InverseBoolConverter x:Key="InverseBoolConverter"/>
+        <converters:IntToColorConverter x:Key="IntToColorConverter"/>
+        <converters:IntToVisibilityConverter x:Key="IntToVisibilityConverter"/>
     </Window.Resources>
 
     <materialDesign:DialogHost Identifier="DeveloperDialog">
@@ -128,6 +130,33 @@
                             <StackPanel Orientation="Horizontal">
                                 <materialDesign:PackIcon Kind="Key" Width="20" Height="20" Margin="0,0,12,0" VerticalAlignment="Center"/>
                                 <TextBlock Text="Licensing Status" FontSize="13" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Command="{Binding SelectTabCommand}" CommandParameter="4" ToolTip="Data Integrity Scanner" Height="48" Margin="0,2" HorizontalContentAlignment="Left">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignFlatMidBgButton}">
+                                    <Setter Property="Background" Value="Transparent" />
+                                    <Setter Property="BorderBrush" Value="Transparent" />
+                                    <Setter Property="Foreground" Value="White" />
+                                    <Setter Property="Opacity" Value="0.6" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding SelectedNavIndex}" Value="4">
+                                            <Setter Property="Opacity" Value="1" />
+                                            <Setter Property="Background" Value="#37474F" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding IntegrityHasIssues}" Value="True">
+                                            <Setter Property="Foreground" Value="#FFEB3B" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="DatabaseCheck" Width="20" Height="20" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Data Integrity" FontSize="13" VerticalAlignment="Center"/>
+                                <Border Background="#E53935" CornerRadius="8" Padding="5,1" Margin="8,0,0,0"
+                                        Visibility="{Binding IntegrityHasIssues, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                    <TextBlock Text="!" FontSize="10" FontWeight="Bold" Foreground="White"/>
+                                </Border>
                             </StackPanel>
                         </Button>
                     </StackPanel>
@@ -560,6 +589,235 @@
                         </materialDesign:Card>
                     </Grid>
                 </TabItem>
+
+                <!-- Tab 4: Data Integrity -->
+                <TabItem>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel Margin="0,0,16,24">
+
+                            <!-- Header -->
+                            <TextBlock Text="Data Integrity" FontSize="24" FontWeight="Bold" Foreground="#37474F" Margin="0,0,0,4"/>
+                            <TextBlock Text="{Binding IntegrityScanTimestamp}" FontSize="12" Foreground="#90A4AE" Margin="0,0,0,16"/>
+
+                            <!-- Action bar -->
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                                <Button Command="{Binding RunIntegrityScanCommand}"
+                                        IsEnabled="{Binding IsRunningIntegrityScan, Converter={StaticResource InverseBoolConverter}}"
+                                        Style="{StaticResource MaterialDesignRaisedButton}"
+                                        Background="#1565C0" Foreground="White" Height="36" Padding="16,0" Margin="0,0,12,0">
+                                    <StackPanel Orientation="Horizontal">
+                                        <materialDesign:PackIcon Kind="DatabaseSearch" Width="18" Height="18" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                        <TextBlock Text="Run Full Scan" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Button>
+                                <materialDesign:Card Padding="12,8" UniformCornerRadius="8" materialDesign:ElevationAssist.Elevation="Dp1"
+                                                     Visibility="{Binding IsRunningIntegrityScan, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <ProgressBar IsIndeterminate="True" Width="20" Height="20" Margin="0,0,10,0"
+                                                     Style="{StaticResource MaterialDesignCircularProgressBar}" Value="0"/>
+                                        <TextBlock Text="Scanning..." VerticalAlignment="Center" FontSize="12"/>
+                                    </StackPanel>
+                                </materialDesign:Card>
+                            </StackPanel>
+
+                            <!-- Status message -->
+                            <materialDesign:Card Padding="14,10" UniformCornerRadius="8" Margin="0,0,0,16"
+                                                 materialDesign:ElevationAssist.Elevation="Dp1">
+                                <TextBlock Text="{Binding IntegrityScanMessage}" FontSize="13" TextWrapping="Wrap"
+                                           Foreground="#37474F" FontWeight="SemiBold"/>
+                            </materialDesign:Card>
+
+                            <!-- Summary cards -->
+                            <UniformGrid Columns="5" Margin="0,0,0,20">
+                                <!-- DSM Duplicates -->
+                                <materialDesign:Card Margin="0,0,8,0" Padding="16,12" UniformCornerRadius="10" materialDesign:ElevationAssist.Elevation="Dp2">
+                                    <StackPanel>
+                                        <TextBlock Text="DSM Duplicates" FontSize="11" Foreground="#78909C" Margin="0,0,0,4"/>
+                                        <TextBlock Text="{Binding IntegrityDsmDuplicates}" FontSize="28" FontWeight="Bold"
+                                                   Foreground="{Binding IntegrityDsmDuplicates, Converter={StaticResource IntToColorConverter}, ConverterParameter=red}"/>
+                                    </StackPanel>
+                                </materialDesign:Card>
+                                <!-- Debit Duplicates -->
+                                <materialDesign:Card Margin="0,0,8,0" Padding="16,12" UniformCornerRadius="10" materialDesign:ElevationAssist.Elevation="Dp2">
+                                    <StackPanel>
+                                        <TextBlock Text="Debit Duplicates" FontSize="11" Foreground="#78909C" Margin="0,0,0,4"/>
+                                        <TextBlock Text="{Binding IntegrityDebitDuplicates}" FontSize="28" FontWeight="Bold"
+                                                   Foreground="{Binding IntegrityDebitDuplicates, Converter={StaticResource IntToColorConverter}, ConverterParameter=orange}"/>
+                                    </StackPanel>
+                                </materialDesign:Card>
+                                <!-- Repayment Duplicates -->
+                                <materialDesign:Card Margin="0,0,8,0" Padding="16,12" UniformCornerRadius="10" materialDesign:ElevationAssist.Elevation="Dp2">
+                                    <StackPanel>
+                                        <TextBlock Text="Repayment Dupes" FontSize="11" Foreground="#78909C" Margin="0,0,0,4"/>
+                                        <TextBlock Text="{Binding IntegrityRepaymentDuplicates}" FontSize="28" FontWeight="Bold"
+                                                   Foreground="{Binding IntegrityRepaymentDuplicates, Converter={StaticResource IntToColorConverter}, ConverterParameter=orange}"/>
+                                    </StackPanel>
+                                </materialDesign:Card>
+                                <!-- Orphans -->
+                                <materialDesign:Card Margin="0,0,8,0" Padding="16,12" UniformCornerRadius="10" materialDesign:ElevationAssist.Elevation="Dp2">
+                                    <StackPanel>
+                                        <TextBlock Text="Orphan Records" FontSize="11" Foreground="#78909C" Margin="0,0,0,4"/>
+                                        <TextBlock Text="{Binding IntegrityOrphans}" FontSize="28" FontWeight="Bold"
+                                                   Foreground="{Binding IntegrityOrphans, Converter={StaticResource IntToColorConverter}, ConverterParameter=orange}"/>
+                                    </StackPanel>
+                                </materialDesign:Card>
+                                <!-- Broken FKs -->
+                                <materialDesign:Card Padding="16,12" UniformCornerRadius="10" materialDesign:ElevationAssist.Elevation="Dp2">
+                                    <StackPanel>
+                                        <TextBlock Text="Broken FK" FontSize="11" Foreground="#78909C" Margin="0,0,0,4"/>
+                                        <TextBlock Text="{Binding IntegrityBrokenFks}" FontSize="28" FontWeight="Bold"
+                                                   Foreground="{Binding IntegrityBrokenFks, Converter={StaticResource IntToColorConverter}, ConverterParameter=red}"/>
+                                    </StackPanel>
+                                </materialDesign:Card>
+                            </UniformGrid>
+
+                            <!-- DSM Entry Duplicates -->
+                            <materialDesign:Card Padding="16" UniformCornerRadius="12" Margin="0,0,0,16"
+                                                 materialDesign:ElevationAssist.Elevation="Dp2"
+                                                 Visibility="{Binding IntegrityDsmDuplicates, Converter={StaticResource IntToVisibilityConverter}}">
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                        <materialDesign:PackIcon Kind="ContentDuplicate" Width="18" Height="18" Margin="0,0,8,0"
+                                                                  Foreground="#E53935" VerticalAlignment="Center"/>
+                                        <TextBlock Text="Duplicate DSM Entries" FontSize="15" FontWeight="SemiBold"
+                                                   Foreground="#E53935" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <DataGrid ItemsSource="{Binding DuplicateDsmGroups}" AutoGenerateColumns="False"
+                                              IsReadOnly="True" MaxHeight="240"
+                                              materialDesign:DataGridAssist.CellPadding="10 6">
+                                        <DataGrid.Columns>
+                                            <DataGridTextColumn Header="Business Key" Binding="{Binding BusinessKey}" Width="*"/>
+                                            <DataGridTextColumn Header="Original ID" Binding="{Binding OriginalEntryId}" Width="90"/>
+                                            <DataGridTextColumn Header="Duplicate ID" Binding="{Binding DuplicateEntryId}" Width="90"/>
+                                            <DataGridTextColumn Header="Dup Created" Binding="{Binding DuplicateCreatedAt, StringFormat=dd-MMM-yy HH:mm}" Width="130"/>
+                                            <DataGridTextColumn Header="Nozzles" Binding="{Binding DuplicateNozzleCount}" Width="65"/>
+                                            <DataGridTextColumn Header="Debits" Binding="{Binding DuplicateDebitCount}" Width="55"/>
+                                            <DataGridTextColumn Header="Has Payment" Binding="{Binding DuplicateHasPayment}" Width="90"/>
+                                            <DataGridTemplateColumn Header="Action" Width="120">
+                                                <DataGridTemplateColumn.CellTemplate>
+                                                    <DataTemplate>
+                                                        <Button Content="Delete Duplicate"
+                                                                Style="{StaticResource MaterialDesignOutlinedButton}"
+                                                                Foreground="#E53935" BorderBrush="#E53935"
+                                                                Height="26" Padding="8,0" FontSize="11"
+                                                                Command="{Binding DataContext.DeleteDuplicateDsmEntryCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                CommandParameter="{Binding}"/>
+                                                    </DataTemplate>
+                                                </DataGridTemplateColumn.CellTemplate>
+                                            </DataGridTemplateColumn>
+                                        </DataGrid.Columns>
+                                    </DataGrid>
+                                </StackPanel>
+                            </materialDesign:Card>
+
+                            <!-- Debit Entry Duplicates -->
+                            <materialDesign:Card Padding="16" UniformCornerRadius="12" Margin="0,0,0,16"
+                                                 materialDesign:ElevationAssist.Elevation="Dp2"
+                                                 Visibility="{Binding IntegrityDebitDuplicates, Converter={StaticResource IntToVisibilityConverter}}">
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                        <materialDesign:PackIcon Kind="ContentDuplicate" Width="18" Height="18" Margin="0,0,8,0"
+                                                                  Foreground="#F57C00" VerticalAlignment="Center"/>
+                                        <TextBlock Text="Duplicate Debit Entries" FontSize="15" FontWeight="SemiBold"
+                                                   Foreground="#F57C00" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <DataGrid ItemsSource="{Binding DuplicateDebitGroups}" AutoGenerateColumns="False"
+                                              IsReadOnly="True" MaxHeight="200"
+                                              materialDesign:DataGridAssist.CellPadding="10 6">
+                                        <DataGrid.Columns>
+                                            <DataGridTextColumn Header="DsmEntry ID" Binding="{Binding DsmEntryId}" Width="90"/>
+                                            <DataGridTextColumn Header="Debtor" Binding="{Binding DebtorName}" Width="*"/>
+                                            <DataGridTextColumn Header="Amount" Binding="{Binding Amount, StringFormat='₹#,##0.00'}" Width="110"/>
+                                            <DataGridTextColumn Header="Dupe Count" Binding="{Binding DuplicateCount}" Width="80"/>
+                                            <DataGridTemplateColumn Header="Action" Width="120">
+                                                <DataGridTemplateColumn.CellTemplate>
+                                                    <DataTemplate>
+                                                        <Button Content="Delete Dupes"
+                                                                Style="{StaticResource MaterialDesignOutlinedButton}"
+                                                                Foreground="#F57C00" BorderBrush="#F57C00"
+                                                                Height="26" Padding="8,0" FontSize="11"
+                                                                Command="{Binding DataContext.DeleteDuplicateDebitGroupCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                CommandParameter="{Binding}"/>
+                                                    </DataTemplate>
+                                                </DataGridTemplateColumn.CellTemplate>
+                                            </DataGridTemplateColumn>
+                                        </DataGrid.Columns>
+                                    </DataGrid>
+                                </StackPanel>
+                            </materialDesign:Card>
+
+                            <!-- Repayment Duplicates -->
+                            <materialDesign:Card Padding="16" UniformCornerRadius="12" Margin="0,0,0,16"
+                                                 materialDesign:ElevationAssist.Elevation="Dp2"
+                                                 Visibility="{Binding IntegrityRepaymentDuplicates, Converter={StaticResource IntToVisibilityConverter}}">
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                        <materialDesign:PackIcon Kind="ContentDuplicate" Width="18" Height="18" Margin="0,0,8,0"
+                                                                  Foreground="#F57C00" VerticalAlignment="Center"/>
+                                        <TextBlock Text="Duplicate Creditor Repayments" FontSize="15" FontWeight="SemiBold"
+                                                   Foreground="#F57C00" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <DataGrid ItemsSource="{Binding DuplicateRepaymentGroups}" AutoGenerateColumns="False"
+                                              IsReadOnly="True" MaxHeight="200"
+                                              materialDesign:DataGridAssist.CellPadding="10 6">
+                                        <DataGrid.Columns>
+                                            <DataGridTextColumn Header="Creditor" Binding="{Binding CreditorName}" Width="*"/>
+                                            <DataGridTextColumn Header="Date" Binding="{Binding RepaymentDate, StringFormat=dd-MMM-yy}" Width="90"/>
+                                            <DataGridTextColumn Header="Amount" Binding="{Binding Amount, StringFormat='₹#,##0.00'}" Width="110"/>
+                                            <DataGridTextColumn Header="Mode" Binding="{Binding PaymentMode}" Width="80"/>
+                                            <DataGridTextColumn Header="Dupes" Binding="{Binding DuplicateCount}" Width="60"/>
+                                            <DataGridTemplateColumn Header="Action" Width="120">
+                                                <DataGridTemplateColumn.CellTemplate>
+                                                    <DataTemplate>
+                                                        <Button Content="Delete Dupes"
+                                                                Style="{StaticResource MaterialDesignOutlinedButton}"
+                                                                Foreground="#F57C00" BorderBrush="#F57C00"
+                                                                Height="26" Padding="8,0" FontSize="11"
+                                                                Command="{Binding DataContext.DeleteDuplicateRepaymentGroupCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                CommandParameter="{Binding}"/>
+                                                    </DataTemplate>
+                                                </DataGridTemplateColumn.CellTemplate>
+                                            </DataGridTemplateColumn>
+                                        </DataGrid.Columns>
+                                    </DataGrid>
+                                </StackPanel>
+                            </materialDesign:Card>
+
+                            <!-- Orphan Records -->
+                            <materialDesign:Card Padding="16" UniformCornerRadius="12" Margin="0,0,0,16"
+                                                 materialDesign:ElevationAssist.Elevation="Dp2"
+                                                 Visibility="{Binding IntegrityOrphans, Converter={StaticResource IntToVisibilityConverter}}">
+                                <StackPanel>
+                                    <Grid Margin="0,0,0,10">
+                                        <StackPanel Orientation="Horizontal">
+                                            <materialDesign:PackIcon Kind="LinkOff" Width="18" Height="18" Margin="0,0,8,0"
+                                                                      Foreground="#F57C00" VerticalAlignment="Center"/>
+                                            <TextBlock Text="Orphan Child Records" FontSize="15" FontWeight="SemiBold"
+                                                       Foreground="#F57C00" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                        <Button HorizontalAlignment="Right"
+                                                Content="Delete All Orphans"
+                                                Style="{StaticResource MaterialDesignOutlinedButton}"
+                                                Foreground="#E53935" BorderBrush="#E53935"
+                                                Height="30" Padding="12,0" FontSize="11"
+                                                Command="{Binding DeleteAllOrphansCommand}"/>
+                                    </Grid>
+                                    <DataGrid ItemsSource="{Binding OrphanRecords}" AutoGenerateColumns="False"
+                                              IsReadOnly="True" MaxHeight="200"
+                                              materialDesign:DataGridAssist.CellPadding="10 6">
+                                        <DataGrid.Columns>
+                                            <DataGridTextColumn Header="Entity Type" Binding="{Binding EntityType}" Width="140"/>
+                                            <DataGridTextColumn Header="ID" Binding="{Binding EntityId}" Width="70"/>
+                                            <DataGridTextColumn Header="Description" Binding="{Binding Description}" Width="*"/>
+                                        </DataGrid.Columns>
+                                    </DataGrid>
+                                </StackPanel>
+                            </materialDesign:Card>
+
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+
             </TabControl>
 
             <!-- Bottom Status Bar -->
