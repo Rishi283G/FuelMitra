@@ -117,7 +117,7 @@ public class ReportService : IReportService
             else if (string.Equals(mode, "PhonePe", StringComparison.OrdinalIgnoreCase) || string.Equals(mode, "PhonePe UPI", StringComparison.OrdinalIgnoreCase)) dto.PhonePeRepayments += r.Amount;
             else if (string.Equals(mode, "Credit Card", StringComparison.OrdinalIgnoreCase) || string.Equals(mode, "PineLabs Card", StringComparison.OrdinalIgnoreCase)) dto.CreditCardRepayments += r.Amount;
             else if (string.Equals(mode, "PetroCard", StringComparison.OrdinalIgnoreCase) || string.Equals(mode, "Petro Card", StringComparison.OrdinalIgnoreCase)) dto.PetroCardRepayments += r.Amount;
-            else if (string.Equals(mode, "Bank Transfer", StringComparison.OrdinalIgnoreCase)) dto.BankCashRepayments += r.Amount;
+            else if (string.Equals(mode, "Bank Transfer", StringComparison.OrdinalIgnoreCase) || string.Equals(mode, "Cheque", StringComparison.OrdinalIgnoreCase)) dto.BankCashRepayments += r.Amount;
 
             string refNo = "";
             if (r.PaymentMode == "PhonePe" || r.PaymentMode == "Credit Card" || r.PaymentMode == "PineLabs Card" || r.PaymentMode == "PetroCard" || r.PaymentMode == "Bank Transfer")
@@ -145,7 +145,7 @@ public class ReportService : IReportService
             }).ToList();
 
         double reconcilableRecoveriesTotal = dto.CashRepayments + dto.PhonePeRepayments
-            + dto.CreditCardRepayments + dto.PetroCardRepayments;
+            + dto.CreditCardRepayments + dto.PetroCardRepayments + dto.BankCashRepayments;
 
         // 7. Oil & DEF Sales (Phase 3/4 Product Sales)
         dto.OilDefSales = new List<OilDefSaleDisplayRow>();
@@ -225,6 +225,7 @@ public class ReportService : IReportService
             new() { Category = "PineLabs Morning", Amount = finalCreditCardMorning, BaseAmount = creditCardMorning, RecoveryAmount = shiftType == "B" ? dto.CreditCardRepayments : 0 },
             new() { Category = "PineLabs Night", Amount = finalCreditCardNight, BaseAmount = creditCardNight, RecoveryAmount = shiftType != "B" ? dto.CreditCardRepayments : 0 },
             new() { Category = "Petro Card", Amount = finalPetroCard, BaseAmount = petroCard, RecoveryAmount = dto.PetroCardRepayments },
+            new() { Category = "Bank/Cheque Transfer", Amount = dto.BankCashRepayments, BaseAmount = 0, RecoveryAmount = dto.BankCashRepayments },
             new() { Category = "Debtors", Amount = dto.CreditorsTotal, BaseAmount = dto.CreditorsTotal, RecoveryAmount = 0 },
             new() { Category = "Oil Sales", Amount = 0, BaseAmount = 0, RecoveryAmount = 0 },
             new() { Category = "DEF Sales", Amount = 0, BaseAmount = 0, RecoveryAmount = 0 },
@@ -406,7 +407,7 @@ public class ReportService : IReportService
             else if (string.Equals(mode, "PhonePe", StringComparison.OrdinalIgnoreCase) || string.Equals(mode, "PhonePe UPI", StringComparison.OrdinalIgnoreCase)) dto.PhonePeRepayments += r.Amount;
             else if (string.Equals(mode, "Credit Card", StringComparison.OrdinalIgnoreCase) || string.Equals(mode, "PineLabs Card", StringComparison.OrdinalIgnoreCase)) dto.CreditCardRepayments += r.Amount;
             else if (string.Equals(mode, "PetroCard", StringComparison.OrdinalIgnoreCase) || string.Equals(mode, "Petro Card", StringComparison.OrdinalIgnoreCase)) dto.PetroCardRepayments += r.Amount;
-            else if (string.Equals(mode, "Bank Transfer", StringComparison.OrdinalIgnoreCase)) dto.BankCashRepayments += r.Amount;
+            else if (string.Equals(mode, "Bank Transfer", StringComparison.OrdinalIgnoreCase) || string.Equals(mode, "Cheque", StringComparison.OrdinalIgnoreCase)) dto.BankCashRepayments += r.Amount;
 
             string refNo = "";
             if (r.PaymentMode == "PhonePe" || r.PaymentMode == "Credit Card" || r.PaymentMode == "PineLabs Card" || r.PaymentMode == "PetroCard")
@@ -434,7 +435,7 @@ public class ReportService : IReportService
             }).ToList();
 
         double reconcilableRecoveriesTotal = dto.CashRepayments + dto.PhonePeRepayments
-            + dto.CreditCardRepayments + dto.PetroCardRepayments;
+            + dto.CreditCardRepayments + dto.PetroCardRepayments + dto.BankCashRepayments;
 
         // 7. Oil & DEF Sales (Phase 3/4 Product Sales)
         dto.OilDefSales = new List<OilDefSaleDisplayRow>();
@@ -529,6 +530,7 @@ public class ReportService : IReportService
             new() { Category = "PineLabs Morning", Amount = finalCreditCardMorning, BaseAmount = pineLabsCardMorning + pineLabsCardDay, RecoveryAmount = dto.CreditCardRepayments },
             new() { Category = "PineLabs Night", Amount = finalCreditCardNight, BaseAmount = pineLabsCardNight, RecoveryAmount = 0 },
             new() { Category = "Petro Card", Amount = finalPetroCard, BaseAmount = petroCardMorning + petroCardDay + petroCardNight, RecoveryAmount = dto.PetroCardRepayments },
+            new() { Category = "Bank/Cheque Transfer", Amount = dto.BankCashRepayments, BaseAmount = 0, RecoveryAmount = dto.BankCashRepayments },
             new() { Category = "Debtors", Amount = dto.CreditorsTotal, BaseAmount = dto.CreditorsTotal, RecoveryAmount = 0 },
             new() { Category = "Oil Sales", Amount = 0, BaseAmount = 0, RecoveryAmount = 0 },
             new() { Category = "DEF Sales", Amount = 0, BaseAmount = 0, RecoveryAmount = 0 },
@@ -605,7 +607,9 @@ public class ReportService : IReportService
             || string.Equals(mode, "PineLabs Card", StringComparison.OrdinalIgnoreCase)
             || string.Equals(mode, "PineLabs", StringComparison.OrdinalIgnoreCase)
             || string.Equals(mode, "PetroCard", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(mode, "Petro Card", StringComparison.OrdinalIgnoreCase);
+            || string.Equals(mode, "Petro Card", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(mode, "Bank Transfer", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(mode, "Cheque", StringComparison.OrdinalIgnoreCase);
     }
 
     private static List<DsmEntry> MergeConnectedPumpEntries(List<DsmEntry> entries)

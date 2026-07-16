@@ -116,13 +116,14 @@ public class DuplicateDataInspectionService : IDuplicateDataInspectionService
             var db = GetDbContext(scope);
 
             var entries = await db.Set<DebitEntry>()
+                .Include(d => d.DsmEntry)
                 .OrderBy(d => d.DebitId)
                 .ToListAsync();
 
             var groups = entries
                 .GroupBy(d => new
                 {
-                    d.DsmEntryId,
+                    ShiftId = d.DsmEntry?.ShiftId ?? 0,
                     DebtorName = (d.DebtorName ?? string.Empty).Trim().ToLowerInvariant(),
                     d.Amount
                 })
@@ -137,7 +138,7 @@ public class DuplicateDataInspectionService : IDuplicateDataInspectionService
                 {
                     OriginalRecord = ordered.First(),
                     DuplicateRecords = ordered.Skip(1).ToList(),
-                    Reason = "Same DsmEntryId + DebtorName + Amount"
+                    Reason = "Same ShiftId + DebtorName + Amount"
                 });
             }
 
