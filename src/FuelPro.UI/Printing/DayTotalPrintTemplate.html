@@ -482,11 +482,10 @@ function renderData(){
   if (tRecon) {
     tRecon.innerHTML = '';
     (d.collectionBreakdown || []).forEach(function(c) {
-      if (c.amount > 0) {
-        var tr = document.createElement('tr');
-        tr.innerHTML = '<td>' + c.category + '</td><td>' + inr(c.amount) + '</td>';
-        tRecon.appendChild(tr);
-      }
+      var tr = document.createElement('tr');
+      var name = c.descriptionWithBreakdown || c.category;
+      tr.innerHTML = '<td>' + name + '</td><td>' + inr(c.amount) + '</td>';
+      tRecon.appendChild(tr);
     });
   }
 

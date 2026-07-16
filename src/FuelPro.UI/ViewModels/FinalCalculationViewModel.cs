@@ -278,10 +278,7 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
             var reconRows = new List<ReconciliationRowDto>();
             foreach (var category in report.CollectionBreakdown)
             {
-                if (category.Amount > 0)
-                {
-                    reconRows.Add(new ReconciliationRowDto { Description = category.DescriptionWithBreakdown, Amount = category.Amount });
-                }
+                reconRows.Add(new ReconciliationRowDto { Description = category.DescriptionWithBreakdown, Amount = category.Amount });
             }
             ReconciliationRows = new ObservableCollection<ReconciliationRowDto>(reconRows);
             ReconciliationTotal = report.ActualCollection;
@@ -364,10 +361,7 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
         var reconRows = new List<ReconciliationRowDto>();
         foreach (var category in report.CollectionBreakdown)
         {
-            if (category.Amount > 0)
-            {
-                reconRows.Add(new ReconciliationRowDto { Description = category.Category, Amount = category.Amount });
-            }
+            reconRows.Add(new ReconciliationRowDto { Description = category.DescriptionWithBreakdown, Amount = category.Amount });
         }
         ReconciliationRows = new ObservableCollection<ReconciliationRowDto>(reconRows);
         ReconciliationTotal = report.ActualCollection;

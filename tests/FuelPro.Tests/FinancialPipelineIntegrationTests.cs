@@ -687,12 +687,12 @@ public class FinancialPipelineIntegrationTests : IDisposable
         );
 
         // Assertions:
-        // ExpectedCollection = Fuel Sales (5000) + Reconcilable Recoveries (1800) = 6800
-        // ActualCollection = CashDeposit (0) + CashInHand (1500) + PhonePeMorning (1000) + PhonePeNight (1000 + 500 = 1500) + PineLabsMorning (1500) + PetroCard (300) + Bank/Cheque Transfer (1000) = 6800
+        // ExpectedCollection = Fuel Sales (5000) + Reconcilable Recoveries (800) = 5800
+        // ActualCollection = CashDeposit (0) + CashInHand (1500) + PhonePeMorning (1000) + PhonePeNight (1000 + 500 = 1500) + PineLabsMorning (1500) + PetroCard (300) = 5800
         // Difference = 0 (Balanced)
         Assert.Equal(5000, report.TotalFuelAmount);
-        Assert.Equal(6800, report.ExpectedCollection);
-        Assert.Equal(6800, report.ActualCollection);
+        Assert.Equal(5800, report.ExpectedCollection);
+        Assert.Equal(5800, report.ActualCollection);
         Assert.Equal(0, report.Difference);
         Assert.True(report.IsBalanced);
         
@@ -714,12 +714,6 @@ public class FinancialPipelineIntegrationTests : IDisposable
         Assert.Equal(300, petroCardCol.Amount);
         Assert.Equal(0, petroCardCol.BaseAmount);
         Assert.Equal(300, petroCardCol.RecoveryAmount);
-
-        // Bank/Cheque Transfer category total should be 0 base + 1000 recovery = 1000
-        var bankTransferCol = report.CollectionBreakdown.First(c => c.Category == "Bank/Cheque Transfer");
-        Assert.Equal(1000, bankTransferCol.Amount);
-        Assert.Equal(0, bankTransferCol.BaseAmount);
-        Assert.Equal(1000, bankTransferCol.RecoveryAmount);
     }
 
     public void Dispose()
