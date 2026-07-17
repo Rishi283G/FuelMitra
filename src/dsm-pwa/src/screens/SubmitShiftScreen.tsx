@@ -301,8 +301,8 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         const dateCompare = dateA.localeCompare(dateB);
         if (dateCompare !== 0) return dateCompare;
         const rank: Record<string, number> = { 
-          A: 1, I: 1, 
-          B: 2, II: 2, 
+          B: 1, II: 1, 
+          A: 2, I: 2, 
           C: 3, III: 3 
         };
         const rA = rank[typeA] || 0;
@@ -876,7 +876,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
               <div className="field-group">
                 <label className="field-label">Assigned Shift</label>
                 <div className="field-input" style={{ background: '#1e293b', display: 'flex', alignItems: 'center', minHeight: '42px', paddingLeft: '12px', fontWeight: 'bold', color: '#f8fafc', borderRadius: '0.375rem' }}>
-                  Shift {shiftType} ({shiftType === 'A' ? 'Day' : 'Night/Morning'})
+                  Shift {shiftType} ({shiftType === 'A' ? 'Night/Morning' : 'Day'})
                 </div>
               </div>
             </div>
@@ -1525,7 +1525,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
               </div>
 
               <div className="review-row"><span>Date</span><strong>{new Date(shiftDate + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}</strong></div>
-              <div className="review-row"><span>Shift</span><strong>Shift {shiftType} ({shiftType === 'A' ? 'Day' : 'Night/Morning'})</strong></div>
+              <div className="review-row"><span>Shift</span><strong>Shift {shiftType} ({shiftType === 'A' ? 'Night/Morning' : 'Day'})</strong></div>
             </div>
 
             <div className="review-block">

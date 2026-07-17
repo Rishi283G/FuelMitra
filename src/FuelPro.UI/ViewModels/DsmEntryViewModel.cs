@@ -438,9 +438,9 @@ public partial class DsmEntryViewModel : ObservableObject
             .ToDictionary(r => r.NozzleNumber, r => r);
 
         var previousShiftType = GetPreviousShiftType(SelectedShift);
-        // Operationally: Shift A (Day) predecessor is yesterday's Shift B (Night)
-        //                Shift B (Night) predecessor is same day's Shift A (Day)
-        DateTime previousShiftDate = SelectedShift == "A" ? SelectedDate.AddDays(-1) : SelectedDate;
+        // Operationally: Shift B (Day) predecessor is yesterday's Shift A (Night)
+        //                Shift A (Night) predecessor is same day's Shift B (Day)
+        DateTime previousShiftDate = SelectedShift == "B" ? SelectedDate.AddDays(-1) : SelectedDate;
         var previousShiftImport = previousShiftType != null
             ? await GetShiftImportAsync(previousShiftDate, previousShiftType)
             : null;
@@ -935,7 +935,7 @@ public partial class DsmEntryViewModel : ObservableObject
 
             // Populate payment losslessly
             var paymentSource = entry.PaymentCollection ?? connectedEntry?.PaymentCollection;
-            var isDay = entry.Shift?.ShiftType == "B" || entry.Shift?.ShiftType == "II";
+            var isDay = entry.Shift?.ShiftType == "B";
 
             if (isDay)
             {

@@ -605,16 +605,13 @@ public class NozzleReadingRepository : INozzleReadingRepository
                     && r.DsmEntry.Shift != null
                     && (currentDsmEntryId == null || r.DsmEntryId != currentDsmEntryId.Value)
                     && (r.DsmEntry.Shift.ShiftDate < targetDate || 
-                       (r.DsmEntry.Shift.ShiftDate == targetDate && mappedShift == "II" && r.DsmEntry.Shift.ShiftType == "I") ||
-                       (r.DsmEntry.Shift.ShiftDate == targetDate && mappedShift == "III" && (r.DsmEntry.Shift.ShiftType == "II" || r.DsmEntry.Shift.ShiftType == "I")) ||
+                       (r.DsmEntry.Shift.ShiftDate == targetDate && mappedShift == "I" && r.DsmEntry.Shift.ShiftType == "II") ||
                        (r.DsmEntry.Shift.ShiftDate == targetDate && r.DsmEntry.Shift.ShiftType == mappedShift && (currentDsmEntryId == null || r.DsmEntryId < currentDsmEntryId.Value))))
                 .GroupBy(r => r.NozzleNumber)
                 .Select(g => new { 
                     NozzleNumber = g.Key, 
                     Closing = g.OrderByDescending(x => x.DsmEntry!.Shift!.ShiftDate)
-                               // Within same date: Shift II (B) is chronologically LATER than Shift I (A).
-                               // Since "II" > "I" lexicographically, ThenByDescending on ShiftType ensures Shift II wins.
-                               .ThenByDescending(x => x.DsmEntry!.Shift!.ShiftType)
+                               .ThenByDescending(x => x.DsmEntry!.Shift!.ShiftType == "I")
                                .ThenByDescending(x => x.DsmEntryId)
                                .ThenByDescending(x => x.NozzleReadingId)
                                .Select(x => x.ClosingReading)
@@ -629,7 +626,6 @@ public class NozzleReadingRepository : INozzleReadingRepository
             _logger.Error(ex, "Failed to get previous-shift closings for date {Date} shift {ShiftType} pump {PumpId}", date, shiftType, pumpId);
             return Result<Dictionary<int, double>>.Fail($"Failed to load previous-shift closings: {ex.Message}");
         }
-
     }
 
     public async Task<Result> SaveReadingsAsync(int dsmEntryId, List<NozzleReading> readings)
