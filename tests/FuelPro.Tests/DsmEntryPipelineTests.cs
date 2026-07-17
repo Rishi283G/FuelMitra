@@ -365,7 +365,7 @@ public class DsmEntryPipelineTests : IDisposable
         Assert.Equal("Bruce Banner", vm.DsmName);
         Assert.Equal(1, vm.SelectedPump.PumpId);
         Assert.Equal(date, vm.SelectedDate);
-        Assert.Equal("B", vm.SelectedShift);
+        Assert.Equal("II", vm.SelectedShift);
 
         // Nozzles (pump has 2 nozzles configured; only nozzle 1 was saved with readings)
         var nozzle1 = vm.NozzleReadings.FirstOrDefault(n => n.NozzleNumber == 1);

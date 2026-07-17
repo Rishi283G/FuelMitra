@@ -136,7 +136,7 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
   <hr class="div">
   <div class="sec">
     <div class="sec-title">DSM Summary &mdash; All Pumps</div>
-    <table><thead><tr><th>DSM Name</th><th>Pump</th><th>PineLab M</th><th>PineLab N</th><th>PhonePe M</th><th>PhonePe N</th><th>UPI M</th><th>UPI N</th><th>Petro</th><th>Debit</th><th>Exp</th><th>Test</th><th>Cash 1</th><th>Cash 2</th><th>Gross Sale</th></tr></thead><tbody id="tDsm"></tbody></table>
+    <table><thead><tr><th>DSM Name</th><th>Pump</th><th>PineLab M</th><th>PineLab N</th><th>PhonePe M</th><th>PhonePe N</th><th>Petro</th><th>Debit</th><th>Exp</th><th>Test</th><th>Cash 1</th><th>Cash 2</th><th>Gross Sale</th></tr></thead><tbody id="tDsm"></tbody></table>
   </div>
   <hr class="div">
 
@@ -245,7 +245,6 @@ function renderData(){
   var tb=document.getElementById('tDsm');tb.innerHTML='';
   var tot={
     ccM: 0, ccN: 0,
-    phcM: 0, phcN: 0,
     phM: 0, phN: 0,
     pc: 0, deb: 0, exp: 0, test: 0,
     c1: 0, c2: 0, sale: 0
@@ -254,8 +253,6 @@ function renderData(){
     var tr=document.createElement('tr');
     var ccM = r.creditCardMorning || 0;
     var ccN = r.creditCardNight || 0;
-    var phcM = r.phonePeCardMorning || 0;
-    var phcN = r.phonePeCardNight || 0;
     var phM = r.phonePeMorning || r.phonePe || 0;
     var phN = r.phonePeNight || 0;
     var petro = r.petroCard || 0;
@@ -272,8 +269,6 @@ function renderData(){
                  '<td>'+pDisp+'</td>' +
                  '<td>'+inr(ccM)+'</td>' +
                  '<td>'+inr(ccN)+'</td>' +
-                 '<td>'+inr(phcM)+'</td>' +
-                 '<td>'+inr(phcN)+'</td>' +
                  '<td>'+inr(phM)+'</td>' +
                  '<td>'+inr(phN)+'</td>' +
                  '<td>'+inr(petro)+'</td>' +
@@ -285,7 +280,7 @@ function renderData(){
                  '<td>'+inr(sale)+'</td>';
     tb.appendChild(tr);
 
-    tot.ccM += ccM; tot.ccN += ccN; tot.phcM += phcM; tot.phcN += phcN; tot.phM += phM; tot.phN += phN; tot.pc += petro; tot.deb += deb; tot.exp += exp; tot.test += test; tot.c1 += c1; tot.c2 += c2; tot.sale += sale;
+    tot.ccM += ccM; tot.ccN += ccN; tot.phM += phM; tot.phN += phN; tot.pc += petro; tot.deb += deb; tot.exp += exp; tot.test += test; tot.c1 += c1; tot.c2 += c2; tot.sale += sale;
   });
 
   var tr2=document.createElement('tr');tr2.className='tr-total';
@@ -293,8 +288,6 @@ function renderData(){
                 '<td>\u2013</td>' +
                 '<td>'+inrZ(tot.ccM)+'</td>' +
                 '<td>'+inrZ(tot.ccN)+'</td>' +
-                '<td>'+inrZ(tot.phcM)+'</td>' +
-                '<td>'+inrZ(tot.phcN)+'</td>' +
                 '<td>'+inrZ(tot.phM)+'</td>' +
                 '<td>'+inrZ(tot.phN)+'</td>' +
                 '<td>'+inrZ(tot.pc)+'</td>' +

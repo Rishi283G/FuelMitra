@@ -77,7 +77,7 @@ CREATE TABLE IF NOT EXISTS "SyncChangeLogs" (
     "Operation" text NOT NULL,
     "Timestamp" timestamp with time zone NOT NULL,
     "IsSynced" boolean NOT NULL DEFAULT FALSE,
-    "SyncGuid" text NULL
+    "SyncGuid" text NULL UNIQUE
 );
 
 CREATE TABLE IF NOT EXISTS "Settings" (

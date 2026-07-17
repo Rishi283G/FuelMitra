@@ -300,45 +300,77 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       function compareShifts(dateA: string, typeA: string, dateB: string, typeB: string): number {
         const dateCompare = dateA.localeCompare(dateB);
         if (dateCompare !== 0) return dateCompare;
-        const rank: Record<string, number> = { A: 1, B: 2, C: 3 };
+        const rank: Record<string, number> = { 
+          A: 1, I: 1, 
+          B: 2, II: 2, 
+          C: 3, III: 3 
+        };
         const rA = rank[typeA] || 0;
         const rB = rank[typeB] || 0;
         return rA - rB;
       }
 
-      // 1. Fetch from approved DsmEntries + NozzleReadings in Supabase
+      // 1. Fetch from approved DsmEntries + NozzleReadings in Supabase.
+      //    Use a Shifts-first approach: query Shifts ordered by ShiftDate DESC, then look up
+      //    DsmEntries per shift. This is chronologically reliable — no FK join alias needed.
       try {
-        const { data: latestEntries } = await supabase
-          .from('DsmEntries')
-          .select('DsmEntryId, SyncGuid, ShiftId, PumpId')
+        // Fetch recent Shifts for the station, most recent first.
+        const { data: recentShifts, error: shiftsErr } = await supabase
+          .from('Shifts')
+          .select('SyncGuid, ShiftDate, ShiftType')
           .eq('station_id', profile?.StationId || '')
-          .in('PumpId', pumpsToFetch)
-          .order('DsmEntryId', { ascending: false });
+          .order('ShiftDate', { ascending: false })
+          .order('ShiftType', { ascending: false })  // C > B > A so descending gives C first
+          .limit(30); // look at last 30 shifts — enough to cover any recent data
 
-        if (latestEntries && latestEntries.length > 0) {
-          for (const pId of pumpsToFetch) {
-            const entry = latestEntries.find(e => e.PumpId === pId);
-            if (entry) {
-              const { data: shiftData } = await supabase
-                .from('Shifts')
-                .select('ShiftDate, ShiftType')
-                .eq('ShiftId', entry.ShiftId)
-                .limit(1);
-                
-              if (shiftData && shiftData.length > 0) {
-                const shiftDateStr = shiftData[0].ShiftDate ? shiftData[0].ShiftDate.split('T')[0] : '';
-                const shiftTypeStr = shiftData[0].ShiftType || 'A';
-                
-                const { data: approvedReadings } = await supabase
-                  .from('NozzleReadings')
-                  .select('NozzleNumber, ClosingReading')
-                  .eq('station_id', profile?.StationId || '')
-                  .eq('DsmEntryId', entry.SyncGuid);
-                
-                if (approvedReadings && approvedReadings.length > 0) {
-                  approvedReadings.forEach((r: any) => {
-                    prevClosings[r.NozzleNumber] = Number(r.ClosingReading);
-                  });
+        if (!shiftsErr && recentShifts && recentShifts.length > 0) {
+          // Track which pumps we've already found data for
+          const resolvedPumps = new Set<number>();
+
+          for (const shift of recentShifts) {
+            const shiftDateStr = shift.ShiftDate ? shift.ShiftDate.split('T')[0] : '';
+            const shiftTypeStr = shift.ShiftType || 'A';
+
+            // Skip current or future shifts
+            if (compareShifts(shiftDateStr, shiftTypeStr, shiftDate, shiftType) >= 0) {
+              continue;
+            }
+
+            // Stop scanning once we have data for all pumps
+            if (resolvedPumps.size >= pumpsToFetch.length) break;
+
+            const remainingPumps = pumpsToFetch.filter(p => !resolvedPumps.has(p));
+
+            // Check if a DsmEntry exists for this shift and any of the remaining pumps
+            const { data: entriesInShift, error: entriesErr } = await supabase
+              .from('DsmEntries')
+              .select('SyncGuid, PumpId')
+              .eq('station_id', profile?.StationId || '')
+              .eq('ShiftId', shift.SyncGuid)
+              .in('PumpId', remainingPumps);
+
+            if (entriesErr || !entriesInShift || entriesInShift.length === 0) continue;
+
+            for (const entry of entriesInShift) {
+              const pId: number = entry.PumpId;
+              if (resolvedPumps.has(pId)) continue;
+
+              // Fetch NozzleReadings for this DsmEntry
+              const { data: approvedReadings, error: readingsErr } = await supabase
+                .from('NozzleReadings')
+                .select('NozzleNumber, ClosingReading')
+                .eq('station_id', profile?.StationId || '')
+                .eq('DsmEntryId', entry.SyncGuid)
+                .gt('ClosingReading', 0);
+
+              if (!readingsErr && approvedReadings && approvedReadings.length > 0) {
+                approvedReadings.forEach((r: any) => {
+                  prevClosings[r.NozzleNumber] = Number(r.ClosingReading);
+                });
+                resolvedPumps.add(pId);
+
+                // Set prevSourceDate to this shift (it's the most recent with NozzleReadings for this pump)
+                if (!prevSourceDate || compareShifts(shiftDateStr, shiftTypeStr, prevSourceDate, prevSourceType) > 0) {
                   prevSourceDate = shiftDateStr;
                   prevSourceType = shiftTypeStr;
                 }
@@ -347,16 +379,57 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           }
         }
       } catch (e) {
-        console.error('Failed to fetch from approved NozzleReadings:', e);
+        console.error('Failed to fetch from approved NozzleReadings (Shifts-first):', e);
       }
 
-      // 2. Fetch from DsmSubmissions + DsmSubmissionReadings in Supabase
+      // 1b. Direct NozzleReadings fallback — query by nozzle number, ordered by local_id desc.
+      //     Catches historical data that was never pushed through SyncChangeLog (pre-sync entries).
+      //     Only fills nozzles that Step 1 did NOT already populate.
+      try {
+        const missingNozzles = configRows
+          .map(r => r.nozzleId)
+          .filter(nId => !prevClosings[nId]);
+
+        if (missingNozzles.length > 0) {
+          const { data: directReadings } = await supabase
+            .from('NozzleReadings')
+            .select('NozzleNumber, ClosingReading, local_id')
+            .eq('station_id', profile?.StationId || '')
+            .in('NozzleNumber', missingNozzles)
+            .gt('ClosingReading', 0)
+            .order('local_id', { ascending: false });
+
+          if (directReadings && directReadings.length > 0) {
+            const seenNozzles = new Set<number>();
+            for (const r of directReadings) {
+              if (!seenNozzles.has(r.NozzleNumber)) {
+                seenNozzles.add(r.NozzleNumber);
+                prevClosings[r.NozzleNumber] = Number(r.ClosingReading);
+              }
+            }
+            // Do NOT set a sentinel date here — Step 2 (DsmSubmissions) should still
+            // be able to override these fallback readings if a more recent submission exists.
+          }
+        }
+      } catch (e) {
+        console.error('Failed direct NozzleReadings fetch (Step 1b):', e);
+      }
+
+      // 2. Fetch from DsmSubmissions + DsmSubmissionReadings in Supabase.
+      //    Only Approved or Pending submissions — Rejected/Expired closings must NOT propagate.
+      //
+      //    Priority logic (per nozzle):
+      //    - If the submission is from a NEWER shift than software data → always apply.
+      //    - If from the SAME shift as software data → only fill nozzles software didn't cover
+      //      (i.e. prevClosings[nozzle] == 0). Software readings win for nozzles it has.
+      //    - If no software data at all (prevSourceDate empty) → always apply.
       try {
         const { data: lastSubmissions } = await supabase
           .from('DsmSubmissions')
           .select('Id, ShiftDate, ShiftType, PumpId')
           .eq('StationId', profile?.StationId || '')
           .in('PumpId', pumpsToFetch)
+          .in('Status', ['Approved', 'Pending'])
           .order('ShiftDate', { ascending: false })
           .order('SubmittedAt', { ascending: false });
 
@@ -366,21 +439,30 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
             if (sub) {
               const subDate = sub.ShiftDate ? sub.ShiftDate.split('T')[0] : '';
               const subType = sub.ShiftType || 'A';
+              const cmp = prevSourceDate ? compareShifts(subDate, subType, prevSourceDate, prevSourceType) : 1;
 
-              if (!prevSourceDate || compareShifts(subDate, subType, prevSourceDate, prevSourceType) >= 0) {
+              // Apply if submission is same-or-newer shift than any software data we have.
+              if (cmp >= 0) {
                 const { data: lastReadings } = await supabase
                   .from('DsmSubmissionReadings')
                   .select('NozzleId, ClosingReading')
                   .eq('SubmissionId', sub.Id);
-                
+
                 if (lastReadings && lastReadings.length > 0) {
                   lastReadings.forEach((r: any) => {
                     if (Number(r.ClosingReading) > 0) {
-                      prevClosings[r.NozzleId] = Number(r.ClosingReading);
+                      // For SAME shift: only fill nozzles not already provided by software.
+                      // For NEWER shift: always apply (overrides older software data).
+                      if (cmp > 0 || !prevClosings[r.NozzleId]) {
+                        prevClosings[r.NozzleId] = Number(r.ClosingReading);
+                      }
                     }
                   });
-                  prevSourceDate = subDate;
-                  prevSourceType = subType;
+                  // Advance prevSourceDate only when the submission is strictly newer.
+                  if (cmp > 0) {
+                    prevSourceDate = subDate;
+                    prevSourceType = subType;
+                  }
                 }
               }
             }
@@ -794,7 +876,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
               <div className="field-group">
                 <label className="field-label">Assigned Shift</label>
                 <div className="field-input" style={{ background: '#1e293b', display: 'flex', alignItems: 'center', minHeight: '42px', paddingLeft: '12px', fontWeight: 'bold', color: '#f8fafc', borderRadius: '0.375rem' }}>
-                  Shift {shiftType} ({shiftType === 'A' ? 'Night/Morning' : 'Day'})
+                  Shift {shiftType} ({shiftType === 'A' ? 'Day' : 'Night/Morning'})
                 </div>
               </div>
             </div>
@@ -1443,7 +1525,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
               </div>
 
               <div className="review-row"><span>Date</span><strong>{new Date(shiftDate + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}</strong></div>
-              <div className="review-row"><span>Shift</span><strong>Shift {shiftType} ({shiftType === 'A' ? 'Night/Morning' : 'Day'})</strong></div>
+              <div className="review-row"><span>Shift</span><strong>Shift {shiftType} ({shiftType === 'A' ? 'Day' : 'Night/Morning'})</strong></div>
             </div>
 
             <div className="review-block">

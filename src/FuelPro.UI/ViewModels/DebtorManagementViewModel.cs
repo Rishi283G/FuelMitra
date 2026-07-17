@@ -151,6 +151,15 @@ public partial class DebtorManagementViewModel : ObservableObject
     [ObservableProperty] private string _editReason = "";
     [ObservableProperty] private string _editTxStatusMessage = "";
 
+    public bool IsDebtTransaction => SelectedTransaction?.TransactionType == "Debt";
+    public string EditTxSlipNumberHint => SelectedTransaction?.TransactionType == "Repayment" ? "Ref / Cheque Number" : "Slip Number";
+
+    partial void OnSelectedTransactionChanged(LedgerTransactionRow? value)
+    {
+        OnPropertyChanged(nameof(IsDebtTransaction));
+        OnPropertyChanged(nameof(EditTxSlipNumberHint));
+    }
+
     public bool IsOwner => App.Services.GetRequiredService<AuthService>().CurrentUser?.IsOwner ?? false;
 
     // Vehicle management properties
@@ -687,9 +696,8 @@ public partial class DebtorManagementViewModel : ObservableObject
             var currentCredits = allRepayments
                 .Where(r => r.RepaymentDate >= start && r.RepaymentDate <= end)
                 .Select(r => {
-                    bool isLocked = dayLocks.TryGetValue(r.RepaymentDate.Date, out bool locked) && locked;
-                    bool within48Hours = (DateTime.Now - r.CreatedAt).TotalHours <= 48;
-                    bool canEdit = isOwner || (!isLocked && within48Hours);
+                    // Repayments are manual entries for ledger balance adjustments and can always be edited/deleted by managers
+                    bool canEdit = true;
 
                     return new LedgerTransactionRow
                     {
@@ -910,6 +918,79 @@ public partial class DebtorManagementViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private async Task DeleteTransactionAsync(LedgerTransactionRow? tx)
+    {
+        if (tx == null || !tx.CanEdit) return;
+
+        var confirm = MessageBox.Show(
+            $"Are you sure you want to delete this {tx.TransactionType} transaction of amount ₹{tx.Amount:F2}?\nThis action cannot be undone.",
+            "Confirm Delete", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        
+        if (confirm != MessageBoxResult.Yes) return;
+
+        var auth = App.Services.GetRequiredService<AuthService>();
+        var currentUser = auth.CurrentUser?.Username ?? "Unknown";
+        var isOwner = auth.CurrentUser?.IsOwner ?? false;
+
+        try
+        {
+            using var context = App.Services.GetRequiredService<FuelProDbContext>();
+            var auditLogService = App.Services.GetRequiredService<IAuditLogService>();
+            var reasonStr = isOwner ? "Deleted by Owner" : (tx.TransactionType == "Repayment" ? "Deleted by Manager" : "Deleted by Manager within 48h");
+
+            if (tx.TransactionType == "Debt")
+            {
+                var entry = await context.DebitEntries.FindAsync(tx.TransactionId);
+                if (entry != null)
+                {
+                    context.DebitEntries.Remove(entry);
+                    await context.SaveChangesAsync();
+
+                    await auditLogService.LogAsync(
+                        tableName: "DebitEntries",
+                        recordId: entry.DebitId,
+                        action: "Delete",
+                        fieldName: "All",
+                        oldValue: entry.Amount.ToString("F2"),
+                        newValue: null,
+                        modifiedBy: currentUser,
+                        reason: reasonStr
+                    );
+                }
+            }
+            else if (tx.TransactionType == "Repayment")
+            {
+                var repayment = await context.CreditorRepayments.FindAsync(tx.TransactionId);
+                if (repayment != null)
+                {
+                    context.CreditorRepayments.Remove(repayment);
+                    await context.SaveChangesAsync();
+
+                    await auditLogService.LogAsync(
+                        tableName: "CreditorRepayments",
+                        recordId: repayment.CreditorRepaymentId,
+                        action: "Delete",
+                        fieldName: "All",
+                        oldValue: repayment.Amount.ToString("F2"),
+                        newValue: null,
+                        modifiedBy: currentUser,
+                        reason: reasonStr
+                    );
+                }
+            }
+
+            DsmEntryService.RaiseDebtorChanged();
+            await LoadDataAsync();
+            await LoadLedgerAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to delete transaction");
+            MessageBox.Show($"❌ Delete failed: {ex.Message}", "Delete Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    [RelayCommand]
     private async Task SaveTransactionEditAsync()
     {
         if (SelectedTransaction == null) return;
@@ -1010,7 +1091,7 @@ public partial class DebtorManagementViewModel : ObservableObject
                         context.CreditorRepayments.Update(repayment);
                         await context.SaveChangesAsync();
 
-                        var reasonStr = isOwner ? EditReason : "Manager edit within 48h";
+                        var reasonStr = isOwner ? EditReason : "Manager edit";
                         foreach (var change in changes)
                         {
                             await auditLogService.LogAsync(

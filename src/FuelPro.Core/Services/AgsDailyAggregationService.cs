@@ -21,9 +21,9 @@ public class AgsDailyAggregationService : IAgsDailyAggregationService
         // Only aggregate active imports
         var active = shiftsForDay.Where(s => s.IsActive).ToList();
 
-        summary.ShiftAImported = active.Any(s => s.ShiftType == "A");
-        summary.ShiftBImported = active.Any(s => s.ShiftType == "B");
-        summary.ShiftCImported = active.Any(s => s.ShiftType == "C");
+        summary.ShiftAImported = active.Any(s => s.ShiftType == "A" || s.ShiftType == "I");
+        summary.ShiftBImported = active.Any(s => s.ShiftType == "B" || s.ShiftType == "II");
+        summary.ShiftCImported = active.Any(s => s.ShiftType == "C" || s.ShiftType == "III");
 
 
 
@@ -53,8 +53,8 @@ public class AgsDailyAggregationService : IAgsDailyAggregationService
             .Sum(r => r.NetSaleLitres);
 
         // Tank stock: Shift B opening (starts 8:00 AM) → Shift A closing (ends 8:00 AM next day)
-        var shiftA = active.FirstOrDefault(s => s.ShiftType == "A");
-        var shiftB = active.FirstOrDefault(s => s.ShiftType == "B");
+        var shiftA = active.FirstOrDefault(s => s.ShiftType == "A" || s.ShiftType == "I");
+        var shiftB = active.FirstOrDefault(s => s.ShiftType == "B" || s.ShiftType == "II");
 
         summary.HsdDayOpeningStock  = shiftB?.HsdOpeningStock ?? shiftA?.HsdOpeningStock ?? 0;
         summary.MsIDayOpeningStock  = shiftB?.MsIOpeningStock ?? shiftA?.MsIOpeningStock ?? 0;

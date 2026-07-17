@@ -565,16 +565,17 @@ public class DsmEntryService
         try
         {
             var dateOnly = date.Date;
+            var mappedShift = shiftType == "A" ? "I" : shiftType == "B" ? "II" : shiftType == "C" ? "III" : shiftType;
             
             // Check/Get/Create Shift
             var shift = await context.Set<Shift>()
-                .FirstOrDefaultAsync(s => s.ShiftDate == dateOnly && s.ShiftType == shiftType);
+                .FirstOrDefaultAsync(s => s.ShiftDate == dateOnly && s.ShiftType == mappedShift);
             if (shift == null)
             {
                 shift = new Shift
                 {
                     ShiftDate = dateOnly,
-                    ShiftType = shiftType,
+                    ShiftType = mappedShift,
                     IsLocked = false,
                     CreatedAt = DateTime.Now
                 };

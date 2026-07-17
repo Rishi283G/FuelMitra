@@ -130,6 +130,19 @@ public class FinancialPipelineIntegrationTests : IDisposable
         using (var context = _serviceProvider.GetRequiredService<FuelProDbContext>())
         {
             context.Database.EnsureCreated();
+
+            // Seed a Settings record so fuel rates match the NozzleReading test data (rate=100).
+            // Without this, DayTotalViewModel falls back to the hardcoded default (MsIRate=103.81)
+            // causing TotalDayFuelSaleAmount = 30 litres × 103.81 = 3114.30 instead of 3000.
+            context.Settings.Add(new Setting
+            {
+                HsdRate = 100.0,
+                MsIRate = 100.0,
+                MsIIRate = 100.0,
+                CngRate = 100.0,
+                PumpStationName = "Test Station"
+            });
+            context.SaveChanges();
         }
     }
 
@@ -287,10 +300,10 @@ public class FinancialPipelineIntegrationTests : IDisposable
         //                    + (Bank Cash) 100 + (Cash in hand) 100 + (Debtors) 50 + (Expenses) 50 + (Testing) 50
         //                  = 3050
         // Sales = 3000
-        // Expected Mismatch = 1100 (due to tomorrow's Shift A Night collections (1050) being added to actual collections but not expected sales, and shift B shortfall of 1050 being added to DSM Short)
-        Assert.Equal(1100, dayTotalVm.Difference);
-        Assert.Equal(1100, dashboardVm.TodayTotalMismatch);
-        Assert.Equal(1100, ownerVm.TodayTotalMismatch);
+        // Expected Mismatch = 50 (due to tomorrow's Shift A Night collections (1050) being added to actual collections but not expected sales, and DSM Short being excluded from ActualCollection/Difference calculation)
+        Assert.Equal(50, dayTotalVm.Difference);
+        Assert.Equal(50, dashboardVm.TodayTotalMismatch);
+        Assert.Equal(50, ownerVm.TodayTotalMismatch);
     }
 
     [Fact]

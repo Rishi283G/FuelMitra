@@ -415,12 +415,20 @@
                                         <DataGridTemplateColumn Width="Auto">
                                             <DataGridTemplateColumn.CellTemplate>
                                                 <DataTemplate>
-                                                    <Button Command="{Binding DataContext.StartEditTransactionCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
-                                                            CommandParameter="{Binding}"
-                                                            Style="{StaticResource MaterialDesignIconForegroundButton}" ToolTip="Edit Transaction" 
-                                                            Visibility="{Binding CanEdit, Converter={StaticResource BoolToVis}}" Height="24" Width="24" Padding="0">
-                                                        <materialDesign:PackIcon Kind="Pencil" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" Width="16" Height="16" />
-                                                    </Button>
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <Button Command="{Binding DataContext.StartEditTransactionCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                                CommandParameter="{Binding}"
+                                                                Style="{StaticResource MaterialDesignIconForegroundButton}" ToolTip="Edit Transaction" 
+                                                                Visibility="{Binding CanEdit, Converter={StaticResource BoolToVis}}" Height="24" Width="24" Padding="0">
+                                                            <materialDesign:PackIcon Kind="Pencil" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" Width="16" Height="16" />
+                                                        </Button>
+                                                        <Button Command="{Binding DataContext.DeleteTransactionCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                                CommandParameter="{Binding}"
+                                                                Style="{StaticResource MaterialDesignIconForegroundButton}" ToolTip="Delete Transaction" 
+                                                                Visibility="{Binding CanEdit, Converter={StaticResource BoolToVis}}" Height="24" Width="24" Padding="0" Margin="4,0,0,0">
+                                                            <materialDesign:PackIcon Kind="Delete" Foreground="Red" Width="16" Height="16" />
+                                                        </Button>
+                                                    </StackPanel>
                                                 </DataTemplate>
                                             </DataGridTemplateColumn.CellTemplate>
                                         </DataGridTemplateColumn>
@@ -442,15 +450,17 @@
                                              Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,0,12"/>
 
                                     <TextBox Text="{Binding EditTxSlipNumber, UpdateSourceTrigger=PropertyChanged}" 
-                                             materialDesign:HintAssist.Hint="Slip Number" 
+                                             materialDesign:HintAssist.Hint="{Binding EditTxSlipNumberHint}" 
                                              Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,0,12"/>
 
                                     <TextBox Text="{Binding EditTxVehicleNumber, UpdateSourceTrigger=PropertyChanged}" 
                                              materialDesign:HintAssist.Hint="Vehicle Number" 
+                                             Visibility="{Binding IsDebtTransaction, Converter={StaticResource BoolToVis}}"
                                              Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,0,12"/>
 
                                     <TextBox Text="{Binding EditTxRemarks, UpdateSourceTrigger=PropertyChanged}" 
                                              materialDesign:HintAssist.Hint="Remarks" 
+                                             Visibility="{Binding IsDebtTransaction, Converter={StaticResource BoolToVis}}"
                                              Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,0,16"
                                              TextWrapping="Wrap" AcceptsReturn="True" Height="60"/>
 

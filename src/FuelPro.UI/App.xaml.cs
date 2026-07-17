@@ -732,6 +732,17 @@ public partial class App : Application
             cmd.ExecuteNonQuery();
             Log.Information("Created DsmSalaryPayments table");
         }
+
+        // Migrate existing shift types from A/B/C to I/II/III to match the new reporting code
+        using (var cmdMigrate = connection.CreateCommand())
+        {
+            cmdMigrate.CommandText = "UPDATE Shifts SET ShiftType = 'I' WHERE ShiftType = 'A';";
+            cmdMigrate.ExecuteNonQuery();
+            cmdMigrate.CommandText = "UPDATE Shifts SET ShiftType = 'II' WHERE ShiftType = 'B';";
+            cmdMigrate.ExecuteNonQuery();
+            cmdMigrate.CommandText = "UPDATE Shifts SET ShiftType = 'III' WHERE ShiftType = 'C';";
+            cmdMigrate.ExecuteNonQuery();
+        }
     }
 
     private static bool TableExists(SqliteConnection connection, string tableName)

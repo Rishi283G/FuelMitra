@@ -159,8 +159,7 @@ public class SyncEngine
     public void Start()
     {
         _logger.Information("Starting background sync engine...");
-        // [TESTING] Run every 1 second, starting immediately (was: 10s delay, 30s interval)
-        _syncTimer = new Timer(async _ => await OnTimerTickAsync(), null, TimeSpan.Zero, TimeSpan.FromSeconds(1));
+        _syncTimer = new Timer(async _ => await OnTimerTickAsync(), null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(30));
     }
 
     public void Stop()
@@ -187,7 +186,175 @@ public class SyncEngine
     public async Task ForceSyncAsync()
     {
         _logger.Information("Force sync requested.");
+        try
+        {
+            await QueueAllUnsyncedHistoricalRecordsAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to queue unsynced historical records during force sync.");
+        }
         await RunSyncCycleAsync(forcePull: true);
+    }
+
+    public async Task QueueAllUnsyncedHistoricalRecordsAsync()
+    {
+        _logger.Information("Scanning for unsynced historical records to queue...");
+        using var scope = _serviceProvider.CreateScope();
+        using var context = scope.ServiceProvider.GetRequiredService<FuelProDbContext>();
+        var settings = await _configService.GetSettingsAsync();
+
+        var tables = new[]
+        {
+            "Settings",
+            "DsmProfiles",
+            "Creditors",
+            "Shifts",
+            "DsmEntries",
+            "NozzleReadings",
+            "PaymentCollections",
+            "DebitEntries",
+            "TestingEntries",
+            "Expenses",
+            "CashDenominations",
+            "ShiftOtherCash",
+            "ShiftFuelRates",
+            "CreditorRepayments",
+            "AgsShiftImports",
+            "AgsNozzleReadings",
+            "AgsTankStocks",
+            "AgsDailySummaries",
+            "ProductMasters",
+            "OilDefInventories",
+            "OilDefPurchases",
+            "OilDefDailyLogs"
+        };
+
+        int totalQueued = 0;
+
+        foreach (var tableName in tables)
+        {
+            List<int> localIds;
+            switch (tableName)
+            {
+                case "Settings":
+                    localIds = await context.Settings.Select(e => e.SettingId).ToListAsync();
+                    break;
+                case "DsmProfiles":
+                    localIds = await context.DsmProfiles.Select(e => e.DsmProfileId).ToListAsync();
+                    break;
+                case "Creditors":
+                    localIds = await context.Creditors.Select(e => e.CreditorId).ToListAsync();
+                    break;
+                case "Shifts":
+                    localIds = await context.Shifts.Select(e => e.ShiftId).ToListAsync();
+                    break;
+                case "DsmEntries":
+                    localIds = await context.DsmEntries.Select(e => e.DsmEntryId).ToListAsync();
+                    break;
+                case "NozzleReadings":
+                    localIds = await context.NozzleReadings.Select(e => e.NozzleReadingId).ToListAsync();
+                    break;
+                case "PaymentCollections":
+                    localIds = await context.PaymentCollections.Select(e => e.PaymentId).ToListAsync();
+                    break;
+                case "DebitEntries":
+                    localIds = await context.DebitEntries.Select(e => e.DebitId).ToListAsync();
+                    break;
+                case "TestingEntries":
+                    localIds = await context.TestingEntries.Select(e => e.TestingId).ToListAsync();
+                    break;
+                case "Expenses":
+                    localIds = await context.Expenses.Select(e => e.ExpenseId).ToListAsync();
+                    break;
+                case "CashDenominations":
+                    localIds = await context.CashDenominations.Select(e => e.CashDenomId).ToListAsync();
+                    break;
+                case "ShiftOtherCash":
+                    localIds = await context.ShiftOtherCash.Select(e => e.ShiftOtherCashId).ToListAsync();
+                    break;
+                case "ShiftFuelRates":
+                    localIds = await context.ShiftFuelRates.Select(e => e.ShiftFuelRateId).ToListAsync();
+                    break;
+                case "CreditorRepayments":
+                    localIds = await context.CreditorRepayments.Select(e => e.CreditorRepaymentId).ToListAsync();
+                    break;
+                case "AgsShiftImports":
+                    localIds = await context.AgsShiftImports.Select(e => e.AgsShiftImportId).ToListAsync();
+                    break;
+                case "AgsNozzleReadings":
+                    localIds = await context.AgsNozzleReadings.Select(e => e.AgsNozzleReadingId).ToListAsync();
+                    break;
+                case "AgsTankStocks":
+                    localIds = await context.AgsTankStocks.Select(e => e.AgsTankStockId).ToListAsync();
+                    break;
+                case "AgsDailySummaries":
+                    localIds = await context.AgsDailySummaries.Select(e => e.AgsDailySummaryId).ToListAsync();
+                    break;
+                case "ProductMasters":
+                    localIds = await context.ProductMasters.Select(e => e.Id).ToListAsync();
+                    break;
+                case "OilDefInventories":
+                    localIds = await context.OilDefInventories.Select(e => e.Id).ToListAsync();
+                    break;
+                case "OilDefPurchases":
+                    localIds = await context.OilDefPurchases.Select(e => e.Id).ToListAsync();
+                    break;
+                case "OilDefDailyLogs":
+                    localIds = await context.OilDefDailyLogs.Select(e => e.Id).ToListAsync();
+                    break;
+                default:
+                    continue;
+            }
+
+            if (localIds.Count == 0) continue;
+
+            var mappedIds = new HashSet<int>(await context.SyncIdMappings
+                .Where(m => m.TableName == tableName)
+                .Select(m => m.LocalId)
+                .ToListAsync());
+
+            var loggedIds = new HashSet<int>(await context.SyncChangeLogs
+                .Where(l => l.TableName == tableName)
+                .Select(l => l.RecordId)
+                .ToListAsync());
+
+            int queuedForTable = 0;
+            foreach (var localId in localIds)
+            {
+                if (!mappedIds.Contains(localId) && !loggedIds.Contains(localId))
+                {
+                    context.SyncChangeLogs.Add(new SyncChangeLog
+                    {
+                        TableName = tableName,
+                        RecordId = localId,
+                        Operation = "INSERT",
+                        CreatedAt = DateTime.Now,
+                        IsSynced = false,
+                        StationId = settings.StationId,
+                        MachineId = settings.MachineId,
+                        SyncGuid = Guid.NewGuid().ToString()
+                    });
+                    queuedForTable++;
+                    totalQueued++;
+                }
+            }
+
+            if (queuedForTable > 0)
+            {
+                _logger.Information("Queued {Count} unsynced historical records for table {Table}", queuedForTable, tableName);
+            }
+        }
+
+        if (totalQueued > 0)
+        {
+            await context.SaveChangesAsync();
+            _logger.Information("Successfully queued {Count} total historical records for synchronization.", totalQueued);
+        }
+        else
+        {
+            _logger.Information("No unsynced historical records found.");
+        }
     }
 
     private async Task OnTimerTickAsync()

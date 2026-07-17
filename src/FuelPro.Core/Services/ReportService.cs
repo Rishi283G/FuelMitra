@@ -61,9 +61,11 @@ public class ReportService : IReportService
             dto.FuelSales.Add(new FuelSaleRowDto { Description = "CNG - Line", FuelType = "CNG", Litres = cngL, Rate = cngRate, Amount = cngL * cngRate });
 
         dto.TotalFuelLitres = dto.FuelSales.Sum(f => f.Litres);
-        dto.TotalFuelAmount = entriesList.Sum(e => e.GrossSales > 0 ? (double)e.GrossSales : e.NozzleReadings.Sum(n => n.Amount));
+        // Use the same FuelSales amounts (rate x litres) as the DSR table to avoid any
+        // discrepancy caused by how MergeConnectedPumpEntries pre-sums GrossSales.
+        dto.TotalFuelAmount = dto.FuelSales.Sum(f => f.Amount);
         dto.OtherCashTotal = otherCashList != null ? otherCashList.Sum(o => o.Amount) : 0;
-        dto.GrandTotalSaleAmount = dto.TotalFuelAmount; // Adjusts with other cash in reconciliation if needed
+        dto.GrandTotalSaleAmount = dto.TotalFuelAmount;
 
         // 2. DSM Summary (Table A)
         var summaryRows = _aggregation.BuildDsmSummaryRows(entriesList);
@@ -151,35 +153,39 @@ public class ReportService : IReportService
         dto.OilDefSales = new List<OilDefSaleDisplayRow>();
         dto.OilDefSalesTotal = 0;
 
-        // 8. TID Card Data Calculations
-        double phonePeCardMorning = 0;
-        double phonePeCardNight = 0;
+        // 8. Aggregated Digital Collections from DB Entries
         double phonePeMorning = 0;
         double phonePeNight = 0;
-        double petroCard = 0;
+        double phonePeCardMorning = 0;
+        double phonePeCardNight = 0;
         double creditCardMorning = 0;
         double creditCardNight = 0;
+        double petroCard = 0;
 
-        if (todayTid != null && tomorrowTid != null)
+        foreach (var entry in entriesList)
         {
+            var pc = entry.PaymentCollection;
+            if (pc == null) continue;
+
             if (shiftType == "B")
             {
-                phonePeCardMorning = todayTid.PhonePeCardDay;
-                phonePeMorning = todayTid.PhonePeDirectDay;
-                petroCard = todayTid.PetroCardDay;
-                creditCardMorning = todayTid.PineLabsCardDay;
+                phonePeMorning += pc.PhonePeDay;
+                phonePeCardMorning += pc.PhonePeCardDay;
+                creditCardMorning += pc.CreditCardDay;
+                petroCard += pc.PetroCardDay;
             }
             else
             {
-                phonePeCardMorning = tomorrowTid.PhonePeCardMorning;
-                phonePeCardNight = todayTid.PhonePeCardNight;
-                phonePeMorning = tomorrowTid.PhonePeDirectMorning;
-                phonePeNight = todayTid.PhonePeDirectNight;
-                petroCard = tomorrowTid.PetroCardMorning + todayTid.PetroCardNight;
-                creditCardMorning = tomorrowTid.PineLabsCardMorning;
-                creditCardNight = todayTid.PineLabsCardNight;
+                phonePeMorning += pc.PhonePeMorning;
+                phonePeNight += pc.PhonePeNight;
+                phonePeCardMorning += pc.PhonePeCardMorning;
+                phonePeCardNight += pc.PhonePeCardNight;
+                creditCardMorning += pc.CreditCardMorning;
+                creditCardNight += pc.CreditCardNight;
+                petroCard += pc.PetroCardMorning + pc.PetroCardNight + pc.PetroCardDay;
             }
         }
+
 
         // Apply debtor repayments adjustments (silent additions per logic rules)
         double finalCashDeposit = dto.Cash1.GrandTotal;
@@ -189,6 +195,8 @@ public class ReportService : IReportService
         double finalCreditCardMorning = creditCardMorning + (shiftType == "B" ? dto.CreditCardRepayments : 0);
         double finalCreditCardNight = creditCardNight + (shiftType != "B" ? dto.CreditCardRepayments : 0);
         double finalPetroCard = petroCard + dto.PetroCardRepayments;
+        double finalPhonePeCardMorning = phonePeCardMorning;
+        double finalPhonePeCardNight = phonePeCardNight;
 
         // 9. Testing summary totals
         double msTesting = 0;
@@ -220,8 +228,8 @@ public class ReportService : IReportService
             new() { Category = "Cash In Hand", Amount = finalCashInHand, BaseAmount = dto.Cash2.GrandTotal, RecoveryAmount = dto.CashRepayments },
             new() { Category = "PhonePe Morning", Amount = finalPhonePeMorning, BaseAmount = phonePeMorning, RecoveryAmount = shiftType == "B" ? dto.PhonePeRepayments : 0 },
             new() { Category = "PhonePe Night", Amount = finalPhonePeNight, BaseAmount = phonePeNight, RecoveryAmount = shiftType != "B" ? dto.PhonePeRepayments : 0 },
-            new() { Category = "PhonePe Card Morning", Amount = phonePeCardMorning, BaseAmount = phonePeCardMorning, RecoveryAmount = 0 },
-            new() { Category = "PhonePe Card Night", Amount = phonePeCardNight, BaseAmount = phonePeCardNight, RecoveryAmount = 0 },
+            new() { Category = "PhonePe Card Morning", Amount = finalPhonePeCardMorning, BaseAmount = phonePeCardMorning, RecoveryAmount = 0 },
+            new() { Category = "PhonePe Card Night", Amount = finalPhonePeCardNight, BaseAmount = phonePeCardNight, RecoveryAmount = 0 },
             new() { Category = "PineLabs Morning", Amount = finalCreditCardMorning, BaseAmount = creditCardMorning, RecoveryAmount = shiftType == "B" ? dto.CreditCardRepayments : 0 },
             new() { Category = "PineLabs Night", Amount = finalCreditCardNight, BaseAmount = creditCardNight, RecoveryAmount = shiftType != "B" ? dto.CreditCardRepayments : 0 },
             new() { Category = "Petro Card", Amount = finalPetroCard, BaseAmount = petroCard, RecoveryAmount = dto.PetroCardRepayments },
@@ -237,11 +245,14 @@ public class ReportService : IReportService
         };
 
         // 12. Final Reconciliation
-        dto.ActualCollection = dto.CollectionBreakdown.Sum(c => c.Amount);
+        // DSM Short is informational only — it represents individual DSM shortfalls but
+        // is NOT real cash collected. Including it inflates ActualCollection by that amount.
+        dto.ActualCollection = dto.CollectionBreakdown.Where(c => c.Category != "DSM Short").Sum(c => c.Amount);
         dto.ExpectedCollection = dto.TotalFuelAmount + dto.OilDefSalesTotal + reconcilableRecoveriesTotal;
         dto.Difference = dto.ActualCollection - dto.ExpectedCollection;
         dto.IsBalanced = Math.Abs(dto.Difference) < 0.01;
         dto.BalancedStatus = dto.IsBalanced ? "Balanced" : (dto.Difference < 0 ? "Short" : "Excess");
+
 
         return dto;
     }
@@ -271,11 +282,6 @@ public class ReportService : IReportService
 
         var entriesList = MergeConnectedPumpEntries(entries ?? new List<DsmEntry>());
         var todayEntries = entriesList.Where(e => e.Shift != null && e.Shift.ShiftDate.Date >= startDate.Date && e.Shift.ShiftDate.Date <= endDate.Date).ToList();
-        var tomorrowShiftAEntries = entriesList.Where(e => {
-            if (e.Shift == null) return false;
-            var s = e.Shift.ShiftType;
-            return e.Shift.ShiftDate.Date == endDate.Date.AddDays(1) && (s == "A" || s == "I");
-        }).ToList();
 
         (hsdL, hsdA) = _aggregation.GetFuelTotals(todayEntries, "HSD", null);
         (msIL, msIA) = _aggregation.GetFuelTotals(todayEntries, "MS-I", null);
@@ -293,7 +299,9 @@ public class ReportService : IReportService
             dto.FuelSales.Add(new FuelSaleRowDto { Description = "CNG - Line", FuelType = "CNG", Litres = cngL, Rate = cngRate, Amount = cngL * cngRate });
 
         dto.TotalFuelLitres = dto.FuelSales.Sum(f => f.Litres);
-        dto.TotalFuelAmount = todayEntries.Sum(e => e.GrossSales > 0 ? (double)e.GrossSales : e.NozzleReadings.Sum(n => n.Amount));
+        // Use the same FuelSales amounts (rate x litres) as the DSR table — avoids
+        // double-counting when merged entries have pre-summed GrossSales from both pumps.
+        dto.TotalFuelAmount = dto.FuelSales.Sum(f => f.Amount);
         dto.GrandTotalSaleAmount = dto.TotalFuelAmount;
 
         // 2. DSM Summary (Table A)
@@ -309,32 +317,18 @@ public class ReportService : IReportService
 
             if (normShift == "A")
             {
-                // Today's Shift A -> Morning only
+                // Shift I stores both Morning AND Night in the same entry
                 row.PhonePeMorning = pc?.PhonePeMorning ?? 0;
-                row.PhonePeNight = 0;
+                row.PhonePeNight = pc?.PhonePeNight ?? 0;
                 row.PhonePeCardMorning = pc?.PhonePeCardMorning ?? 0;
-                row.PhonePeCardNight = 0;
+                row.PhonePeCardNight = pc?.PhonePeCardNight ?? 0;
                 row.CreditCardMorning = pc?.CreditCardMorning ?? 0;
-                row.CreditCardNight = 0;
-                row.PetroCard = pc?.PetroCardMorning ?? 0;
-
-                // Query tomorrow's Shift A for Night collections
-                var tomorrowEntry = tomorrowShiftAEntries.FirstOrDefault(e => e.PumpId == row.PumpId);
-                if (tomorrowEntry == null)
-                    tomorrowEntry = tomorrowShiftAEntries.FirstOrDefault(e => e.DsmName == row.DsmName);
-
-                if (tomorrowEntry != null)
-                {
-                    var tpc = tomorrowEntry.PaymentCollection;
-                    row.PhonePeNight = tpc?.PhonePeNight ?? 0;
-                    row.PhonePeCardNight = tpc?.PhonePeCardNight ?? 0;
-                    row.CreditCardNight = tpc?.CreditCardNight ?? 0;
-                    row.PetroCard += tpc?.PetroCardNight ?? 0;
-                }
+                row.CreditCardNight = pc?.CreditCardNight ?? 0;
+                row.PetroCard = (pc?.PetroCardMorning ?? 0) + (pc?.PetroCardNight ?? 0);
             }
             else if (normShift == "B")
             {
-                // Today's Shift B -> Day only (maps to Morning column on-screen)
+                // Today's Shift II -> Day only (maps to Morning column on-screen)
                 row.PhonePeMorning = pc?.PhonePeDay ?? 0;
                 row.PhonePeNight = 0;
                 row.PhonePeCardMorning = pc?.PhonePeCardDay ?? 0;
@@ -342,41 +336,6 @@ public class ReportService : IReportService
                 row.CreditCardMorning = pc?.CreditCardDay ?? 0;
                 row.CreditCardNight = 0;
                 row.PetroCard = pc?.PetroCardDay ?? 0;
-            }
-        }
-
-        // Add any tomorrow's Shift A entries that are not represented in today's Shift A
-        foreach (var tomorrowEntry in tomorrowShiftAEntries)
-        {
-            var exists = summaryRows.Any(r => {
-                var rShift = (r.Shift ?? "").Trim().ToUpperInvariant();
-                var normShift = (rShift == "I" || rShift == "SHIFT I") ? "A" : (rShift == "II" || rShift == "SHIFT II") ? "B" : (rShift == "III" || rShift == "SHIFT III") ? "C" : rShift;
-                return normShift == "A" && (r.PumpId == tomorrowEntry.PumpId || r.DsmName == tomorrowEntry.DsmName);
-            });
-            if (!exists)
-            {
-                var tpc = tomorrowEntry.PaymentCollection;
-                summaryRows.Add(new DsmSummaryRowDto
-                {
-                    DsmName = tomorrowEntry.DsmName,
-                    Shift = "A",
-                    PumpId = tomorrowEntry.PumpId,
-                    ConnectedPumpId = tomorrowEntry.ConnectedPumpId,
-                    PhonePeMorning = 0,
-                    PhonePeNight = tpc?.PhonePeNight ?? 0,
-                    PhonePeCardMorning = 0,
-                    PhonePeCardNight = tpc?.PhonePeCardNight ?? 0,
-                    CreditCardMorning = 0,
-                    CreditCardNight = tpc?.CreditCardNight ?? 0,
-                    PetroCard = tpc?.PetroCardNight ?? 0,
-                    Others = 0,
-                    CashDeposit = 0,
-                    Debit = 0,
-                    Expenses = 0,
-                    Testing = 0,
-                    CashInHand = 0,
-                    GrossSales = 0
-                });
             }
         }
 
@@ -476,10 +435,15 @@ public class ReportService : IReportService
 
             if (sDate == startDate.Date && sType == "A")
             {
+                // Shift I stores Morning AND Night in the same entry
                 phonePeDirectMorning += pc.PhonePeMorning;
                 phonePeCardMorning += pc.PhonePeCardMorning;
                 pineLabsCardMorning += pc.CreditCardMorning;
                 petroCardMorning += pc.PetroCardMorning;
+                phonePeDirectNight += pc.PhonePeNight;
+                phonePeCardNight += pc.PhonePeCardNight;
+                pineLabsCardNight += pc.CreditCardNight;
+                petroCardNight += pc.PetroCardNight;
             }
             else if (sDate == startDate.Date && sType == "B")
             {
@@ -488,8 +452,9 @@ public class ReportService : IReportService
                 pineLabsCardDay += pc.CreditCardDay;
                 petroCardDay += pc.PetroCardDay;
             }
-            else if (sDate == endDate.Date.AddDays(1) && sType == "A")
+            else if (sDate == startDate.Date.AddDays(1) && sType == "A")
             {
+                // Tomorrow's Shift I (Night) actually holds tonight's Night collections
                 phonePeDirectNight += pc.PhonePeNight;
                 phonePeCardNight += pc.PhonePeCardNight;
                 pineLabsCardNight += pc.CreditCardNight;
@@ -553,11 +518,14 @@ public class ReportService : IReportService
         };
 
         // 12. Final Reconciliation
-        dto.ActualCollection = dto.CollectionBreakdown.Sum(c => c.Amount);
+        // DSM Short is informational — it tracks individual DSM shortfalls but is NOT
+        // actual cash collected; including it inflates ActualCollection by the short amount.
+        dto.ActualCollection = dto.CollectionBreakdown.Where(c => c.Category != "DSM Short").Sum(c => c.Amount);
         dto.ExpectedCollection = dto.TotalFuelAmount + dto.OilDefSalesTotal + reconcilableRecoveriesTotal;
         dto.Difference = dto.ActualCollection - dto.ExpectedCollection;
         dto.IsBalanced = Math.Abs(dto.Difference) < 0.01;
         dto.BalancedStatus = dto.IsBalanced ? "Balanced" : (dto.Difference < 0 ? "Short" : "Excess");
+
 
         return dto;
     }

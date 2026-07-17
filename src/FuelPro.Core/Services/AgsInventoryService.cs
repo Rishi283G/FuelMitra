@@ -27,12 +27,30 @@ public class AgsInventoryService : IAgsInventoryService
         _dsmRepo = serviceProvider.GetRequiredService<IDsmEntryRepository>();
     }
 
+    /// <summary>Normalises Roman-numeral shift types (I/II/III) back to A/B/C so all
+    /// internal comparisons use a single canonical form.</summary>
+    private static string NormalizeShiftType(string shiftType) => shiftType switch
+    {
+        "I"   or "Shift I"   => "A",
+        "II"  or "Shift II"  => "B",
+        "III" or "Shift III" => "C",
+        _                    => shiftType
+    };
+
     public (DateTime Date, string Shift) GetPreviousShift(DateTime date, string shift)
     {
-        return shift == "A" ? (date.Date, "B") : (date.Date.AddDays(-1), "A");
+        var norm = NormalizeShiftType(shift);
+        return norm == "A" ? (date.Date, "B") : (date.Date.AddDays(-1), "A");
     }
 
     public async Task<List<NozzleGroupDto>> BuildNozzleGroupsAsync(DateTime date, string shiftType, List<DsmEntry>? loadedEntries = null)
+    {
+        shiftType = NormalizeShiftType(shiftType);
+        // ---- end of normalisation ----
+        return await BuildNozzleGroupsInternalAsync(date, shiftType, loadedEntries);
+    }
+
+    private async Task<List<NozzleGroupDto>> BuildNozzleGroupsInternalAsync(DateTime date, string shiftType, List<DsmEntry>? loadedEntries = null)
     {
         var groups = new List<NozzleGroupDto>();
 
@@ -171,7 +189,7 @@ public class AgsInventoryService : IAgsInventoryService
             var tankers = (tankersRes.Success && tankersRes.Data != null) ? tankersRes.Data : new List<FuelTanker>();
 
             // Put all approved tanker receipts into Shift B (Day shift/first shift of the day)
-            if (shiftType == "B")
+            if (shiftType == "B" || shiftType == "II")
             {
                 msIReceipts = tankers.Where(t => t.FuelType == "MS-I").Sum(t => t.Quantity);
                 hsdReceipts = tankers.Where(t => t.FuelType == "HSD").Sum(t => t.Quantity);
@@ -348,20 +366,24 @@ public class AgsInventoryService : IAgsInventoryService
             }
             var allImports = activeImportsRes.Data;
 
+            startShiftType = NormalizeShiftType(startShiftType);
+
             // Sort chronologically: OrderBy Date, then Shift B (Day) before Shift A (Night/Morning)
             var sortedImports = allImports
                 .OrderBy(x => x.ImportDate)
-                .ThenBy(x => x.ShiftType == "A")
+                .ThenBy(x => NormalizeShiftType(x.ShiftType) == "A")
                 .ToList();
 
-            var startIdx = sortedImports.FindIndex(x => x.ImportDate.Date == startDate.Date && x.ShiftType == startShiftType);
+            var startIdx = sortedImports.FindIndex(x =>
+                x.ImportDate.Date == startDate.Date &&
+                NormalizeShiftType(x.ShiftType) == startShiftType);
             if (startIdx < 0) return Result.Ok(); // Nothing downstream found
 
             for (int i = startIdx; i < sortedImports.Count; i++)
             {
                 var import = sortedImports[i];
                 var date = import.ImportDate;
-                var shiftType = import.ShiftType;
+                var shiftType = NormalizeShiftType(import.ShiftType);
 
                 // Build nozzle groups (which fetches previous closing stock chronologically)
                 var groups = await BuildNozzleGroupsAsync(date, shiftType, null);
@@ -446,7 +468,7 @@ public class AgsInventoryService : IAgsInventoryService
             }
         }
 
-        var sortedShifts = activeImports.OrderBy(s => s.ImportDate).ThenBy(s => s.ShiftType == "A").ToList();
+        var sortedShifts = activeImports.OrderBy(s => s.ImportDate).ThenBy(s => NormalizeShiftType(s.ShiftType) == "A").ToList();
         var lastShift = sortedShifts.LastOrDefault();
 
         var hsdTank = lastShift?.TankStocks?.FirstOrDefault(t => t.FuelType == "HSD");

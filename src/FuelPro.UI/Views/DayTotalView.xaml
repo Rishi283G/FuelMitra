@@ -123,7 +123,6 @@
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="2*" />
@@ -150,35 +149,31 @@
                                 <TextBlock Grid.Row="2" Grid.Column="2" Text="{Binding PhonePeNightTotal, Converter={StaticResource CurrencyConverter}}" FontSize="14" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="4,6"/>
                                 <TextBlock Grid.Row="2" Grid.Column="3" Text="{Binding PhonePeTotal, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" FontSize="14" Foreground="#1565C0" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="4,6"/>
 
-                                <!-- PhonePe Card Row -->
-                                <TextBlock Grid.Row="3" Grid.Column="0" Text="PhonePe Card (UPI)" FontSize="14" VerticalAlignment="Center" Margin="4,6"/>
-                                <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding PhonePeCardMorningTotal, Converter={StaticResource CurrencyConverter}}" FontSize="14" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="4,6"/>
-                                <TextBlock Grid.Row="3" Grid.Column="2" Text="{Binding PhonePeCardNightTotal, Converter={StaticResource CurrencyConverter}}" FontSize="14" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="4,6"/>
-                                <TextBlock Grid.Row="3" Grid.Column="3" Text="{Binding PhonePeCardTotal, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" FontSize="14" Foreground="#00695C" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="4,6"/>
+                                <!-- PhonePe Card Row REMOVED - not used by this client -->
 
                                 <!-- PineLabs Card Row -->
-                                <TextBlock Grid.Row="4" Grid.Column="0" Text="PineLabs Card" FontSize="14" VerticalAlignment="Center" Margin="4,6"/>
-                                <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding CreditCardMorningTotal, Converter={StaticResource CurrencyConverter}}" FontSize="14" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="4,6"/>
-                                <TextBlock Grid.Row="4" Grid.Column="2" Text="{Binding CreditCardNightTotal, Converter={StaticResource CurrencyConverter}}" FontSize="14" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="4,6"/>
-                                <TextBlock Grid.Row="4" Grid.Column="3" Text="{Binding CreditCardTotal, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" FontSize="14" Foreground="#E65100" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="4,6"/>
+                                <TextBlock Grid.Row="3" Grid.Column="0" Text="PineLabs Card" FontSize="14" VerticalAlignment="Center" Margin="4,6"/>
+                                <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding CreditCardMorningTotal, Converter={StaticResource CurrencyConverter}}" FontSize="14" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="4,6"/>
+                                <TextBlock Grid.Row="3" Grid.Column="2" Text="{Binding CreditCardNightTotal, Converter={StaticResource CurrencyConverter}}" FontSize="14" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="4,6"/>
+                                <TextBlock Grid.Row="3" Grid.Column="3" Text="{Binding CreditCardTotal, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" FontSize="14" Foreground="#E65100" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="4,6"/>
 
                                 <!-- Petro Card Row -->
-                                <TextBlock Grid.Row="5" Grid.Column="0" Text="Petro Card" FontSize="14" VerticalAlignment="Center" Margin="4,6"/>
-                                <TextBlock Grid.Row="5" Grid.Column="1" Text="-" FontSize="14" HorizontalAlignment="Right" Opacity="0.4" VerticalAlignment="Center" Margin="4,6"/>
-                                <TextBlock Grid.Row="5" Grid.Column="2" Text="-" FontSize="14" HorizontalAlignment="Right" Opacity="0.4" VerticalAlignment="Center" Margin="4,6"/>
-                                <TextBlock Grid.Row="5" Grid.Column="3" Text="{Binding PetroCardTotal, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" FontSize="14" Foreground="#6A1B9A" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="4,6"/>
+                                <TextBlock Grid.Row="4" Grid.Column="0" Text="Petro Card" FontSize="14" VerticalAlignment="Center" Margin="4,6"/>
+                                <TextBlock Grid.Row="4" Grid.Column="1" Text="-" FontSize="14" HorizontalAlignment="Right" Opacity="0.4" VerticalAlignment="Center" Margin="4,6"/>
+                                <TextBlock Grid.Row="4" Grid.Column="2" Text="-" FontSize="14" HorizontalAlignment="Right" Opacity="0.4" VerticalAlignment="Center" Margin="4,6"/>
+                                <TextBlock Grid.Row="4" Grid.Column="3" Text="{Binding PetroCardTotal, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" FontSize="14" Foreground="#6A1B9A" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="4,6"/>
 
                                 <!-- Credit Row -->
-                                <TextBlock Grid.Row="6" Grid.Column="0" Text="Credit (Debtors)" FontSize="14" VerticalAlignment="Center" Margin="4,6"/>
-                                <TextBlock Grid.Row="6" Grid.Column="1" Text="-" FontSize="14" HorizontalAlignment="Right" Opacity="0.4" VerticalAlignment="Center" Margin="4,6"/>
-                                <TextBlock Grid.Row="6" Grid.Column="2" Text="-" FontSize="14" HorizontalAlignment="Right" Opacity="0.4" VerticalAlignment="Center" Margin="4,6"/>
-                                <TextBlock Grid.Row="6" Grid.Column="3" Text="{Binding SplitCredit, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" FontSize="14" Foreground="#BF360C" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="4,6"/>
+                                <TextBlock Grid.Row="5" Grid.Column="0" Text="Credit (Debtors)" FontSize="14" VerticalAlignment="Center" Margin="4,6"/>
+                                <TextBlock Grid.Row="5" Grid.Column="1" Text="-" FontSize="14" HorizontalAlignment="Right" Opacity="0.4" VerticalAlignment="Center" Margin="4,6"/>
+                                <TextBlock Grid.Row="5" Grid.Column="2" Text="-" FontSize="14" HorizontalAlignment="Right" Opacity="0.4" VerticalAlignment="Center" Margin="4,6"/>
+                                <TextBlock Grid.Row="5" Grid.Column="3" Text="{Binding SplitCredit, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" FontSize="14" Foreground="#BF360C" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="4,6"/>
 
                                 <!-- Others Row -->
-                                <TextBlock Grid.Row="7" Grid.Column="0" Text="Other Collections" FontSize="14" VerticalAlignment="Center" Margin="4,6"/>
-                                <TextBlock Grid.Row="7" Grid.Column="1" Text="-" FontSize="14" HorizontalAlignment="Right" Opacity="0.4" VerticalAlignment="Center" Margin="4,6"/>
-                                <TextBlock Grid.Row="7" Grid.Column="2" Text="-" FontSize="14" HorizontalAlignment="Right" Opacity="0.4" VerticalAlignment="Center" Margin="4,6"/>
-                                <TextBlock Grid.Row="7" Grid.Column="3" Text="{Binding OthersTotal, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" FontSize="14" Foreground="#F57F17" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="4,6"/>
+                                <TextBlock Grid.Row="6" Grid.Column="0" Text="Other Collections" FontSize="14" VerticalAlignment="Center" Margin="4,6"/>
+                                <TextBlock Grid.Row="6" Grid.Column="1" Text="-" FontSize="14" HorizontalAlignment="Right" Opacity="0.4" VerticalAlignment="Center" Margin="4,6"/>
+                                <TextBlock Grid.Row="6" Grid.Column="2" Text="-" FontSize="14" HorizontalAlignment="Right" Opacity="0.4" VerticalAlignment="Center" Margin="4,6"/>
+                                <TextBlock Grid.Row="6" Grid.Column="3" Text="{Binding OthersTotal, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" FontSize="14" Foreground="#F57F17" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="4,6"/>
                             </Grid>
                         </StackPanel>
                     </materialDesign:Card>

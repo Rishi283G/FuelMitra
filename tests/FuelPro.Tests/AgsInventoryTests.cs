@@ -66,10 +66,11 @@ public class AgsInventoryTests
 
     private async Task CreateMockImportAsync(IAgsImportRepository repo, DateTime date, string shiftType, double hsdSaleLitres)
     {
+        var mappedShift = shiftType == "A" ? "I" : shiftType == "B" ? "II" : shiftType == "C" ? "III" : shiftType;
         var import = new AgsShiftImport
         {
             ImportDate = date.Date,
-            ShiftType = shiftType,
+            ShiftType = mappedShift,
             PdfFileName = $"Mock_{shiftType}.pdf",
             ImportedBy = "Test",
             IsActive = true,

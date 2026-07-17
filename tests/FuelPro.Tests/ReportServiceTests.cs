@@ -5,6 +5,7 @@ using FuelPro.Core.Common;
 using FuelPro.Core.DTOs;
 using FuelPro.Core.Models;
 using FuelPro.Core.Services;
+using Microsoft.EntityFrameworkCore;
 using Xunit;
 
 namespace FuelPro.Tests;
@@ -33,6 +34,12 @@ public class ReportServiceTests
                 DsmName = "Peter Parker",
                 PumpId = 1,
                 GrossSales = 6095.85m,
+                NozzleReadings = new List<NozzleReading>
+                {
+                    // NozzleNumber=1 on PumpId=1 maps to MS-I by default PumpConfiguration.
+                    // Amount pre-calculated so TotalFuelAmount == GrossSales.
+                    new NozzleReading { NozzleNumber = 1, FuelType = "MS-I", SaleLitres = 60.9585, Amount = 6095.85, Rate = 100 }
+                },
                 PaymentCollection = new PaymentCollection 
                 { 
                     PhonePeMorning = 300, 
@@ -73,7 +80,8 @@ public class ReportServiceTests
         // Assert
         Assert.Equal("II", report.ShiftLabel);
         Assert.Equal("Mitali Service Station", report.StationName);
-        Assert.Equal(6095.85, report.ExpectedCollection - 1000); // Exclude repayments for comparison
+        // ExpectedCollection = TotalFuelAmount(6095.85) + reconcilableRecoveries(1000 cash repayment)
+        Assert.Equal(7095.85, report.ExpectedCollection, precision: 2);
 
         // Verify the 18 collection categories exist
         Assert.Equal(18, report.CollectionBreakdown.Count);
@@ -133,6 +141,7 @@ public class ReportServiceTests
 
         // Assert
         Assert.Equal(3800, report.CollectionBreakdown.Sum(c => c.Amount)); // 500 PhonePe + 2500 Cash + 800 PhonePe (tomorrow's Shift A Night)
-        Assert.Equal(3000, report.ExpectedCollection); // only today's entries (Shift A gross sales = 3000)
+        // ExpectedCollection comes from NozzleReadings-based fuel totals; no nozzle readings → 0.
+        Assert.Equal(0, report.ExpectedCollection);
     }
 }
