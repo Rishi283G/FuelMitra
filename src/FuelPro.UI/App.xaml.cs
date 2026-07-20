@@ -255,7 +255,7 @@ public partial class App : Application
 
     public static void EnsureLegacyDatabaseCompatibility(string dbPath)
     {
-        using var connection = new SqliteConnection($"Data Source={dbPath};Busy Timeout=5000");
+        using var connection = new SqliteConnection($"Data Source={dbPath};Default Timeout=5");
         connection.Open();
 
         using (var pragmaCmd = connection.CreateCommand())
@@ -872,7 +872,7 @@ public partial class App : Application
     {
         // Database
         services.AddDbContext<FuelProDbContext>(options =>
-            options.UseSqlite($"Data Source={DbPath};Busy Timeout=5000"),
+            options.UseSqlite($"Data Source={DbPath};Default Timeout=5"),
             ServiceLifetime.Transient);
 
         services.AddTransient<DbContext>(sp => sp.GetRequiredService<FuelProDbContext>());
