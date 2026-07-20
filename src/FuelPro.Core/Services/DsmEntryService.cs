@@ -781,6 +781,12 @@ public class DsmEntryService
                 {
                     p.DsmEntryId = savedEntryId;
                     p.DsmEntry = null;
+                    p.DsmName = dsmName;
+                    p.Date = shift.ShiftDate;
+                    if (string.IsNullOrEmpty(p.Time))
+                    {
+                        p.Time = DateTime.Now.ToString("hh:mm tt");
+                    }
                 }
                 context.Set<DsmPersonalDebtor>().AddRange(personalDebtors);
             }

@@ -136,6 +136,13 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private void NavigateToDsmPersonalDebtor()
+    {
+        SelectedNavIndex = 14;
+        CurrentView = App.Services.GetRequiredService<DsmPersonalDebtorViewModel>();
+    }
+
+    [RelayCommand]
     private void NavigateToDsmApprovalQueue()
     {
         SelectedNavIndex = 5;

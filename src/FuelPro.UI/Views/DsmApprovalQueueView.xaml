@@ -431,6 +431,26 @@
                         </StackPanel>
                     </materialDesign:Card>
 
+                    <!-- Personal Debtors Card -->
+                    <materialDesign:Card Padding="20" UniformCornerRadius="12" Margin="0,0,0,16" materialDesign:ElevationAssist.Elevation="Dp3">
+                        <StackPanel>
+                            <TextBlock Text="👥 Personal Debtors (PWA)" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}" Margin="0,0,0,12"/>
+                            <DataGrid ItemsSource="{Binding PersonalDebtors}" AutoGenerateColumns="False"
+                                      IsReadOnly="{Binding IsReadOnlyMode}"
+                                      CanUserAddRows="{Binding IsEditable}" CanUserDeleteRows="{Binding IsEditable}"
+                                      HeadersVisibility="Column" GridLinesVisibility="Horizontal" materialDesign:DataGridAssist.CellPadding="12 8" materialDesign:DataGridAssist.ColumnHeaderPadding="12 8">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Amount (₹)" Binding="{Binding Amount, StringFormat=F2}" Width="100"/>
+                                    <DataGridTextColumn Header="Payment" Binding="{Binding PaymentMethod}" Width="120"/>
+                                    <DataGridTextColumn Header="Fuel Product" Binding="{Binding FuelProduct}" Width="140"/>
+                                    <DataGridTextColumn Header="Remarks" Binding="{Binding Remarks}" Width="2*"/>
+                                    <DataGridTextColumn Header="TID" Binding="{Binding CardTid}" Width="120"/>
+                                    <DataGridTextColumn Header="Batch" Binding="{Binding CardBatch}" Width="120"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </StackPanel>
+                    </materialDesign:Card>
+
                     <!-- Card Swipe Details Card -->
                     <materialDesign:Card Padding="20" UniformCornerRadius="12" Margin="0,0,0,16" materialDesign:ElevationAssist.Elevation="Dp3">
                         <StackPanel>

@@ -30,7 +30,7 @@ public class DsmSubmissionPollingService
     public DsmSubmissionPollingService(SyncConfigService configService)
     {
         _configService = configService;
-        _client = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+        _client = SupabaseHttpClient.CreateHttpClient(TimeSpan.FromSeconds(15));
     }
 
     public void Start()

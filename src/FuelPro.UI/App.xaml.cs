@@ -12,6 +12,7 @@ using FuelPro.Data.Services;
 using FuelPro.UI.ViewModels;
 using FuelPro.UI.Printing;
 using FuelPro.Sync;
+using FuelPro.Core.Models;
 using Serilog;
 
 
@@ -92,6 +93,93 @@ public partial class App : Application
             // Re-run compatibility check to ensure columns are added after EF Core creates the tables on fresh install
             EnsureLegacyDatabaseCompatibility(DbPath);
             
+            // Repair Nozzle 7 & 8 FuelType if they are incorrectly MS-II
+            try
+            {
+                var badMappings = await context.PumpMappings
+                    .Where(m => (m.NozzleNumber == 7 || m.NozzleNumber == 8) && m.FuelType == "MS-II")
+                    .ToListAsync();
+                if (badMappings.Any())
+                {
+                    foreach (var mapping in badMappings)
+                    {
+                        mapping.FuelType = "HSD";
+                    }
+                    await context.SaveChangesAsync();
+                    Log.Information("Repaired {Count} incorrect MS-II nozzle mappings for nozzles 7 and 8 to HSD", badMappings.Count);
+                }
+            }
+            catch (Exception repairEx)
+            {
+                Log.Error(repairEx, "Failed to run nozzle 7 & 8 automatic mapping repair");
+            }
+
+            // Ensure all 12 PumpMappings are queued for sync to Supabase under the current station ID.
+            // IMPORTANT: Check ALL logs (both synced and unsynced) to avoid re-queuing already-synced
+            // mappings with a new RecordGuid, which would create duplicate rows in Supabase.
+            try
+            {
+                var settings = await scope.ServiceProvider.GetRequiredService<SyncConfigService>().GetSettingsAsync();
+                var allMappings = await context.PumpMappings.ToListAsync();
+
+                // Get IDs of mappings that have ANY log entry (synced OR pending) for this station
+                var alreadyLoggedRecordIds = await context.SyncChangeLogs
+                    .Where(l => l.TableName == "PumpMappings" && l.StationId == settings.StationId)
+                    .Select(l => l.RecordId)
+                    .Distinct()
+                    .ToListAsync();
+
+                // Load the stable SyncIdMappings GUIDs so upserts hit the conflict key correctly
+                var idMappings = await context.SyncIdMappings
+                    .Where(m => m.TableName == "PumpMappings")
+                    .ToDictionaryAsync(m => m.LocalId, m => m.RemoteGuid);
+
+                var mappingsToQueue = allMappings.Where(m => !alreadyLoggedRecordIds.Contains(m.PumpMappingId)).ToList();
+                if (mappingsToQueue.Any())
+                {
+                    foreach (var mapping in mappingsToQueue)
+                    {
+                        // Use the stable GUID from SyncIdMappings so the Supabase upsert on SyncGuid
+                        // updates the existing row rather than inserting a second one.
+                        var recordGuid = idMappings.TryGetValue(mapping.PumpMappingId, out var g) ? g : Guid.NewGuid().ToString();
+                        var log = new SyncChangeLog
+                        {
+                            TableName = "PumpMappings",
+                            RecordId = mapping.PumpMappingId,
+                            Operation = "INSERT",
+                            CreatedAt = DateTime.Now,
+                            IsSynced = false,
+                            SyncGuid = Guid.NewGuid().ToString(),
+                            RecordGuid = recordGuid,
+                            StationId = settings.StationId,
+                            MachineId = settings.MachineId
+                        };
+                        context.SyncChangeLogs.Add(log);
+                    }
+                    await context.SaveChangesAsync();
+                    Log.Information("Queued {Count} pump mappings for sync to Supabase under station {StationId}", mappingsToQueue.Count, settings.StationId);
+                }
+            }
+            catch (Exception syncEx)
+            {
+                Log.Error(syncEx, "Failed to check and queue missing pump mappings for sync");
+            }
+
+            // Self-healing: Ensure all historical data is queued for sync under the current StationId
+            try
+            {
+                var settings = await scope.ServiceProvider.GetRequiredService<SyncConfigService>().GetSettingsAsync();
+                if (!string.IsNullOrEmpty(settings.StationId))
+                {
+                    var syncEngine = scope.ServiceProvider.GetRequiredService<FuelPro.Sync.SyncEngine>();
+                    await syncEngine.QueueAllHistoricalRecordsForStationAsync(settings.StationId);
+                }
+            }
+            catch (Exception histSyncEx)
+            {
+                Log.Error(histSyncEx, "Failed to run self-healing sync recovery for historical data");
+            }
+
             // Initialize PumpConfiguration from Database
             var pumpMappings = await context.PumpMappings.ToListAsync();
             FuelPro.Core.Common.PumpConfiguration.InitializeFromDb(pumpMappings);
@@ -850,6 +938,7 @@ public partial class App : Application
         services.AddTransient<AgsImportViewModel>();
         services.AddTransient<OilDefDailyLogViewModel>();
         services.AddTransient<DebtorManagementViewModel>();
+        services.AddTransient<DsmPersonalDebtorViewModel>();
         services.AddTransient<PumpExpensesViewModel>();
         services.AddTransient<PettyCashViewModel>();
         services.AddTransient<FuelTankerEntryViewModel>();

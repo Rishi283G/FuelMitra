@@ -19,7 +19,7 @@ public class SupabaseDsmService
     public SupabaseDsmService(SyncConfigService syncConfigService)
     {
         _syncConfigService = syncConfigService;
-        _client = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+        _client = SupabaseHttpClient.CreateHttpClient(TimeSpan.FromSeconds(20));
     }
 
     private async Task<HttpRequestMessage> CreateRequestAsync(HttpMethod method, string endpoint, string? jsonBody = null)

@@ -1,0 +1,302 @@
+<UserControl x:Class="FuelPro.UI.Views.DsmPersonalDebtorView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             xmlns:converters="clr-namespace:FuelPro.UI.Converters"
+             xmlns:viewmodels="clr-namespace:FuelPro.UI.ViewModels"
+             mc:Ignorable="d" 
+             d:DataContext="{d:DesignInstance Type=viewmodels:DsmPersonalDebtorViewModel}"
+             d:DesignHeight="750" d:DesignWidth="1100">
+
+    <UserControl.Resources>
+        <converters:IndianCurrencyConverter x:Key="CurrencyConverter" />
+        <converters:BoolToVisibilityConverter x:Key="BoolToVis" />
+        <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis" />
+
+        <Style TargetType="materialDesign:Card" x:Key="SectionCard">
+            <Setter Property="Margin" Value="0,0,0,16" />
+            <Setter Property="Padding" Value="16" />
+            <Setter Property="Background" Value="{DynamicResource MaterialDesign.Brush.Surface}" />
+            <Setter Property="UniformCornerRadius" Value="8" />
+        </Style>
+
+        <Style TargetType="TextBlock" x:Key="SectionTitle">
+            <Setter Property="FontSize" Value="18" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{DynamicResource MaterialDesign.Brush.Primary}" />
+            <Setter Property="Margin" Value="0,0,0,12" />
+        </Style>
+
+        <Style TargetType="DataGrid" BasedOn="{StaticResource {x:Type DataGrid}}">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{DynamicResource MaterialDesign.Brush.Divider}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="HorizontalGridLinesBrush" Value="{DynamicResource MaterialDesign.Brush.Divider}" />
+            <Setter Property="VerticalGridLinesBrush" Value="{DynamicResource MaterialDesign.Brush.Divider}" />
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Background="{DynamicResource MaterialDesign.Brush.Background}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- HEADER -->
+        <materialDesign:Card Grid.Row="0" Margin="16" Padding="16" UniformCornerRadius="8" materialDesign:ElevationAssist.Elevation="Dp2">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Orientation="Horizontal" Grid.Column="0">
+                    <materialDesign:PackIcon Kind="AccountCashOutline" Width="28" Height="28" VerticalAlignment="Center" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" Margin="0,0,10,0"/>
+                    <TextBlock Text="DSM Personal Debtors Management" FontSize="22" FontWeight="Bold" VerticalAlignment="Center" />
+                </StackPanel>
+
+                <Button Grid.Column="2" Content="Refresh" Command="{Binding LoadDataCommand}" Style="{StaticResource MaterialDesignOutlinedButton}"/>
+            </Grid>
+        </materialDesign:Card>
+
+        <!-- MAIN LAYOUT -->
+        <Grid Grid.Row="1" Margin="16,0,16,16">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="4*"/>
+                <ColumnDefinition Width="6*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- LEFT: DSM Summaries Directory -->
+            <materialDesign:Card Grid.Column="0" Style="{StaticResource SectionCard}" Margin="0,0,8,0">
+                <DockPanel LastChildFill="True">
+                    <TextBlock DockPanel.Dock="Top" Text="DSM Accounts" Style="{StaticResource SectionTitle}"/>
+                    
+                    <ProgressBar DockPanel.Dock="Top" IsIndeterminate="{Binding IsLoading}" Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}" Style="{StaticResource MaterialDesignLinearProgressBar}" Margin="0,0,0,8"/>
+
+                    <DataGrid ItemsSource="{Binding DsmSummaries}" SelectedItem="{Binding SelectedSummary}" AutoGenerateColumns="False" IsReadOnly="True" VerticalScrollBarVisibility="Auto">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="DSM Name" Binding="{Binding DsmName}" Width="2*" FontWeight="SemiBold"/>
+                            <DataGridTextColumn Header="Total Borrowed" Binding="{Binding TotalBorrowed, Converter={StaticResource CurrencyConverter}}" Width="2*"/>
+                            <DataGridTextColumn Header="Total Repaid" Binding="{Binding TotalRepaid, Converter={StaticResource CurrencyConverter}}" Width="2*" Foreground="Green"/>
+                            <DataGridTextColumn Header="Balance" Binding="{Binding Balance, Converter={StaticResource CurrencyConverter}}" Width="2*" FontWeight="Bold" Foreground="Red"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+            </materialDesign:Card>
+
+            <!-- RIGHT: Ledger & Action Panels -->
+            <Grid Grid.Column="1" Margin="8,0,0,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- Top Filter / Action Bar -->
+                <materialDesign:Card Grid.Row="0" Style="{StaticResource SectionCard}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="2*"/>
+                            <ColumnDefinition Width="2*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <DatePicker Grid.Column="0" SelectedDate="{Binding LedgerStartDate}" materialDesign:HintAssist.Hint="Start Date" Style="{StaticResource MaterialDesignOutlinedDatePicker}" Margin="0,0,12,0"/>
+                        <DatePicker Grid.Column="1" SelectedDate="{Binding LedgerEndDate}" materialDesign:HintAssist.Hint="End Date" Style="{StaticResource MaterialDesignOutlinedDatePicker}" Margin="0,0,12,0"/>
+
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button Content="Show Ledger" Command="{Binding LoadLedgerCommand}" Style="{StaticResource MaterialDesignRaisedButton}" Margin="0,0,8,0"/>
+                            <Button Content="Print Ledger" Command="{Binding PrintLedgerCommand}" Style="{StaticResource MaterialDesignOutlinedButton}" IsEnabled="{Binding DsmLedger.Count}"/>
+                        </StackPanel>
+                    </Grid>
+                </materialDesign:Card>
+
+                <!-- Middle Section: Ledger and Forms side-by-side -->
+                <Grid Grid.Row="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="6*"/>
+                        <ColumnDefinition Width="4*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Left Part: Detailed Ledger Grid -->
+                    <materialDesign:Card Grid.Column="0" Style="{StaticResource SectionCard}" Margin="0,0,8,0">
+                        <DockPanel LastChildFill="True">
+                            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,10">
+                                <TextBlock Text="Statement of Account - " Style="{StaticResource SectionTitle}" Margin="0"/>
+                                <TextBlock Text="{Binding SelectedSummary.DsmName}" Style="{StaticResource SectionTitle}" FontWeight="Bold" Margin="0"/>
+                            </StackPanel>
+                            
+                            <TextBlock DockPanel.Dock="Top" Text="{Binding LedgerStatus}" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" Margin="0,0,0,8" FontSize="12"/>
+
+                            <DataGrid ItemsSource="{Binding DsmLedger}" SelectedItem="{Binding SelectedLedgerRow}" AutoGenerateColumns="False" IsReadOnly="True" VerticalScrollBarVisibility="Auto">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat={}{0:dd-MMM-yyyy}}" Width="1.5*"/>
+                                    <DataGridTextColumn Header="Particulars" Binding="{Binding Description}" Width="3*"/>
+                                    <DataGridTextColumn Header="Remarks / Debtor" Binding="{Binding Remarks}" Width="2*"/>
+                                    <DataGridTextColumn Header="Debit (+)" Binding="{Binding Debit, Converter={StaticResource CurrencyConverter}}" Width="1.8*" Foreground="Red" FontWeight="SemiBold"/>
+                                    <DataGridTextColumn Header="Credit (-)" Binding="{Binding Credit, Converter={StaticResource CurrencyConverter}}" Width="1.8*" Foreground="Green" FontWeight="SemiBold"/>
+                                    <DataGridTextColumn Header="Balance" Binding="{Binding RunningBalance, Converter={StaticResource CurrencyConverter}}" Width="2*" FontWeight="Bold"/>
+                                    
+                                    <DataGridTemplateColumn Width="Auto">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <Button Command="{Binding DataContext.StartEditTransactionCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                            CommandParameter="{Binding}"
+                                                            Style="{StaticResource MaterialDesignIconForegroundButton}" ToolTip="Edit Entry" Height="24" Width="24" Padding="0">
+                                                        <materialDesign:PackIcon Kind="Pencil" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" Width="16" Height="16"/>
+                                                    </Button>
+                                                    <Button Command="{Binding DataContext.DeleteTransactionCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                            CommandParameter="{Binding}"
+                                                            Style="{StaticResource MaterialDesignIconForegroundButton}" ToolTip="Delete Entry" Height="24" Width="24" Padding="0" Margin="4,0,0,0">
+                                                        <materialDesign:PackIcon Kind="Delete" Foreground="Red" Width="16" Height="16"/>
+                                                    </Button>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </DockPanel>
+                    </materialDesign:Card>
+
+                    <!-- Right Part: Sidebar Panels (Repay / Edit) -->
+                    <Grid Grid.Column="1" Margin="8,0,0,0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Panel A: Edit Form -->
+                        <materialDesign:Card Style="{StaticResource SectionCard}" Visibility="{Binding IsEditingTransaction, Converter={StaticResource BoolToVis}}">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <StackPanel>
+                                    <TextBlock Text="Edit Entry" Style="{StaticResource SectionTitle}"/>
+                                    
+                                    <TextBox Text="{Binding EditTxAmount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" materialDesign:HintAssist.Hint="Amount (₹)" Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,0,12"/>
+                                    
+                                    <TextBox Text="{Binding EditTxFuelProduct}" materialDesign:HintAssist.Hint="Product (if borrow)" Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,0,12"
+                                             Visibility="{Binding SelectedLedgerRow.TransactionType, Converter={StaticResource BoolToVis}, ConverterParameter=Borrow}"/>
+
+                                    <TextBox Text="{Binding EditTxRemarks}" materialDesign:HintAssist.Hint="Remarks" Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,0,12"/>
+
+                                    <ComboBox ItemsSource="{Binding PaymentModes}" SelectedItem="{Binding EditTxPaymentMethod}" materialDesign:HintAssist.Hint="Payment Method" Style="{StaticResource MaterialDesignOutlinedComboBox}" Margin="0,0,0,16"/>
+
+                                    <!-- Justification Reason (Required for Owner) -->
+                                    <TextBox Text="{Binding EditReason}" materialDesign:HintAssist.Hint="Justification Reason (Required for Owner)" Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,0,16"
+                                             Visibility="{Binding IsOwner, Converter={StaticResource BoolToVis}}"/>
+
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Button Grid.Column="0" Content="Save" Command="{Binding SaveTransactionEditCommand}" Style="{StaticResource MaterialDesignRaisedButton}" Margin="0,0,4,0"/>
+                                        <Button Grid.Column="1" Content="Cancel" Command="{Binding CancelEditTransactionCommand}" Style="{StaticResource MaterialDesignOutlinedButton}" Margin="4,0,0,0"/>
+                                    </Grid>
+
+                                    <TextBlock Text="{Binding EditTxStatusMessage}" Margin="0,8,0,0" Foreground="Red" FontSize="12" TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </materialDesign:Card>
+
+                        <!-- Panel B: Log Repayment Form (when no Edit, and SelectedLedgerRow is a Borrow entry) -->
+                        <materialDesign:Card>
+                            <materialDesign:Card.Style>
+                                <Style TargetType="materialDesign:Card" BasedOn="{StaticResource SectionCard}">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding IsEditingTransaction}" Value="False"/>
+                                                <Condition Binding="{Binding SelectedLedgerRow.TransactionType}" Value="Borrow"/>
+                                            </MultiDataTrigger.Conditions>
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </MultiDataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </materialDesign:Card.Style>
+                            
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <StackPanel>
+                                    <TextBlock Text="Record Repayment" Style="{StaticResource SectionTitle}"/>
+                                    
+                                    <TextBlock Text="Selected borrowing entry:" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,4"/>
+                                    <TextBlock Text="{Binding SelectedLedgerRow.Description}" FontSize="12" TextWrapping="Wrap" Opacity="0.8" Margin="0,0,0,12"/>
+                                    
+                                    <TextBox Text="{Binding RepaymentAmount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" materialDesign:HintAssist.Hint="Repayment Amount (₹)" Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,0,12"/>
+
+                                    <DatePicker SelectedDate="{Binding RepaymentDate}" materialDesign:HintAssist.Hint="Repayment Date" Style="{StaticResource MaterialDesignOutlinedDatePicker}" Margin="0,0,0,12"/>
+
+                                    <ComboBox ItemsSource="{Binding PaymentModes}" SelectedItem="{Binding SelectedPaymentMode}" materialDesign:HintAssist.Hint="Payment Mode" Style="{StaticResource MaterialDesignOutlinedComboBox}" Margin="0,0,0,16"/>
+
+                                    <!-- Cash Denominations Grid -->
+                                    <Grid Visibility="{Binding IsCashPaymentMode, Converter={StaticResource BoolToVis}}" Margin="0,0,0,12">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <TextBox Grid.Row="0" Grid.Column="0" Text="{Binding Denom500}" materialDesign:HintAssist.Hint="500x" Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,4,8"/>
+                                        <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding Denom200}" materialDesign:HintAssist.Hint="200x" Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="4,0,0,8"/>
+                                        
+                                        <TextBox Grid.Row="1" Grid.Column="0" Text="{Binding Denom100}" materialDesign:HintAssist.Hint="100x" Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,4,8"/>
+                                        <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding Denom50}" materialDesign:HintAssist.Hint="50x" Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="4,0,0,8"/>
+
+                                        <TextBox Grid.Row="2" Grid.Column="0" Text="{Binding Denom20}" materialDesign:HintAssist.Hint="20x" Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,4,8"/>
+                                        <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding Denom10}" materialDesign:HintAssist.Hint="10x" Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="4,0,0,8"/>
+
+                                        <TextBox Grid.Row="3" Grid.ColumnSpan="2" Text="{Binding Coins}" materialDesign:HintAssist.Hint="Coins/Change (₹)" Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,0,8"/>
+                                    </Grid>
+
+                                    <!-- Card Details -->
+                                    <StackPanel Visibility="{Binding IsCardPaymentMode, Converter={StaticResource BoolToVis}}" Margin="0,0,0,12">
+                                        <TextBox Text="{Binding CardTid}" materialDesign:HintAssist.Hint="Terminal ID (TID)" Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,0,8"/>
+                                        <TextBox Text="{Binding CardBatch}" materialDesign:HintAssist.Hint="Batch No" Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,0,8"/>
+                                    </StackPanel>
+
+                                    <Button Content="Save Repayment" Command="{Binding SavePersonalRepaymentCommand}" Style="{StaticResource MaterialDesignRaisedButton}"/>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </materialDesign:Card>
+                    </Grid>
+                </Grid>
+
+                <!-- Bottom Summary Card -->
+                <materialDesign:Card Grid.Row="2" Margin="0,8,0,0" Padding="12" UniformCornerRadius="6" Background="{DynamicResource MaterialDesign.Brush.Primary.Light}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" HorizontalAlignment="Center">
+                            <TextBlock Text="Total Borrowed: " Foreground="White" FontSize="14" Opacity="0.8"/>
+                            <TextBlock Text="{Binding LedgerTotalDebt, Converter={StaticResource CurrencyConverter}}" Foreground="White" FontSize="15" FontWeight="Bold"/>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center">
+                            <TextBlock Text="Total Repaid: " Foreground="White" FontSize="14" Opacity="0.8"/>
+                            <TextBlock Text="{Binding LedgerTotalRepayments, Converter={StaticResource CurrencyConverter}}" Foreground="White" FontSize="15" FontWeight="Bold"/>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Center">
+                            <TextBlock Text="Outstanding: " Foreground="White" FontSize="14" Opacity="0.8"/>
+                            <TextBlock Text="{Binding LedgerOutstandingBalance, Converter={StaticResource CurrencyConverter}}" Foreground="White" FontSize="16" FontWeight="Bold"/>
+                        </StackPanel>
+                    </Grid>
+                </materialDesign:Card>
+
+            </Grid>
+        </Grid>
+    </Grid>
+</UserControl>

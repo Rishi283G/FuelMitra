@@ -21,7 +21,7 @@ public class DsmAuthAdminService
     public DsmAuthAdminService(SyncConfigService syncConfigService)
     {
         _syncConfigService = syncConfigService;
-        _client = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+        _client = SupabaseHttpClient.CreateHttpClient(TimeSpan.FromSeconds(20));
     }
 
     /// <summary>

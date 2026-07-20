@@ -7,13 +7,13 @@ export function useSubmissionService() {
   const [syncing, setSyncing] = useState(false);
 
   const saveDraft = useCallback(async (
-    draft: Omit<DraftSubmission, 'id' | 'draftId' | 'createdAt' | 'status'>
+    draft: Omit<DraftSubmission, 'id' | 'draftId' | 'createdAt' | 'status'> & { status?: DraftSubmission['status'] }
   ) => {
     const record: DraftSubmission = {
       ...draft,
       draftId: uuidv4(),
       createdAt: new Date().toISOString(),
-      status: 'draft',
+      status: draft.status || 'draft',
     };
     await db.drafts.add(record);
     return record;

@@ -190,6 +190,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
     public ObservableCollection<DsmNozzleRow> NozzleReadings { get; } = new();
     public ObservableCollection<DsmDebitRow> DebtorEntries { get; } = new();
     public ObservableCollection<DsmCardSwipeRow> CardSwipeDetails { get; } = new();
+    public ObservableCollection<DsmPersonalDebtor> PersonalDebtors { get; } = new();
     public ObservableCollection<DsmOilDefSaleRow> OilDefSales { get; } = new();
 
     // Validations & Overrides
@@ -277,8 +278,39 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
 
             if (result.Success && result.Data != null)
             {
+                using var scope = _serviceProvider.CreateScope();
+                using var context = scope.ServiceProvider.GetRequiredService<FuelProDbContext>();
+                
+                var approvedSubIds = await context.DsmApprovalAudits
+                    .Select(a => a.SubmissionId)
+                    .ToListAsync();
+                
+                var approvedSubIdSet = new HashSet<Guid>(approvedSubIds);
+
                 foreach (var item in result.Data)
                 {
+                    Guid subId = item.Id;
+
+                    // If already approved locally, skip showing it and auto-heal status on Supabase
+                    if (approvedSubIdSet.Contains(subId))
+                    {
+                        _logger.Information("Submission {SubId} was already approved locally. Auto-healing Supabase status asynchronously.", subId);
+                        _ = Task.Run(async () =>
+                        {
+                            try
+                            {
+                                var settingsSvc = _serviceProvider.GetRequiredService<SyncConfigService>();
+                                var settings = await settingsSvc.GetSettingsAsync();
+                                await _supabaseService.ApproveSubmissionAsync(subId, "System (Sync Auto-Heal)", Guid.NewGuid().ToString("N"));
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.Warning(ex, "Failed to auto-heal approved submission {SubId} in Supabase", subId);
+                            }
+                        });
+                        continue;
+                    }
+
                     // Filter out expired submissions (older than 48 hours)
                     DateTime submittedAt = item.SubmittedAt;
                     if (DateTime.UtcNow - submittedAt > TimeSpan.FromHours(48))
@@ -289,7 +321,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
 
                     PendingSubmissions.Add(new DsmPendingSubmission
                     {
-                        Id = item.Id,
+                        Id = subId,
                         DsmName = item.DsmUsers?.FullName ?? "Unknown DSM",
                         DsmUserId = item.DsmUserId,
                         PumpId = (int)item.PumpId,
@@ -469,6 +501,34 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                                 });
                             }
                         }
+
+                        PersonalDebtors.Clear();
+                        if (metadata.personalDebtors != null)
+                        {
+                            foreach (var pd in metadata.personalDebtors)
+                            {
+                                PersonalDebtors.Add(new DsmPersonalDebtor
+                                {
+                                    DsmName = submission.DsmName,
+                                    Date = submission.ShiftDate,
+                                    Time = DateTime.Now.ToString("hh:mm tt"),
+                                    Amount = Convert.ToDouble((object?)(pd.amount ?? 0.0)),
+                                    FuelProduct = (pd.fuelProduct ?? string.Empty).ToString(),
+                                    Remarks = (pd.remarks ?? string.Empty).ToString(),
+                                    PaymentMethod = (pd.paymentMethod ?? "Cash").ToString(),
+                                    CardTid = (pd.tid ?? string.Empty).ToString(),
+                                    CardBatch = (pd.batch ?? string.Empty).ToString(),
+                                    Denom500 = Convert.ToInt32((object?)(pd.denom500 ?? 0)),
+                                    Denom200 = Convert.ToInt32((object?)(pd.denom200 ?? 0)),
+                                    Denom100 = Convert.ToInt32((object?)(pd.denom100 ?? 0)),
+                                    Denom50 = Convert.ToInt32((object?)(pd.denom50 ?? 0)),
+                                    Denom20 = Convert.ToInt32((object?)(pd.denom20 ?? 0)),
+                                    Denom10 = Convert.ToInt32((object?)(pd.denom10 ?? 0)),
+                                    Coins = Convert.ToInt32((object?)(pd.coins ?? 0))
+                                });
+                            }
+                        }
+
                         if (metadata.testingEntries != null)
                         {
                             foreach (var test in metadata.testingEntries)
@@ -614,6 +674,50 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
     partial void OnOthersAmountChanged(double value) => RecalculateTotals();
     partial void OnCreditAmountChanged(double value) => RecalculateTotals();
     partial void OnExpenseAmountChanged(double value) => RecalculateTotals();
+
+    private List<DsmPersonalDebtor> ParsePersonalDebtorsFromMetadata(string? metadataJson)
+    {
+        var personalDebtors = new List<DsmPersonalDebtor>();
+        if (string.IsNullOrEmpty(metadataJson)) return personalDebtors;
+
+        try
+        {
+            var metadata = JsonConvert.DeserializeObject<dynamic>(metadataJson);
+            if (metadata == null || metadata.personalDebtors == null) return personalDebtors;
+
+            int sequence = 1;
+            foreach (var pd in metadata.personalDebtors)
+            {
+                var personalDebtor = new DsmPersonalDebtor
+                {
+                    DsmName = SelectedSubmission?.DsmName ?? string.Empty,
+                    Date = SelectedSubmission?.ShiftDate ?? DateTime.Today,
+                    Time = DateTime.Now.ToString("hh:mm tt"),
+                    Amount = Convert.ToDouble((object?)(pd.amount ?? 0.0)),
+                    FuelProduct = (pd.fuelProduct ?? string.Empty).ToString(),
+                    Remarks = (pd.remarks ?? string.Empty).ToString(),
+                    PaymentMethod = (pd.paymentMethod ?? "Cash").ToString(),
+                    CardTid = (pd.tid ?? string.Empty).ToString(),
+                    CardBatch = (pd.batch ?? string.Empty).ToString(),
+                    Denom500 = Convert.ToInt32((object?)(pd.denom500 ?? 0)),
+                    Denom200 = Convert.ToInt32((object?)(pd.denom200 ?? 0)),
+                    Denom100 = Convert.ToInt32((object?)(pd.denom100 ?? 0)),
+                    Denom50 = Convert.ToInt32((object?)(pd.denom50 ?? 0)),
+                    Denom20 = Convert.ToInt32((object?)(pd.denom20 ?? 0)),
+                    Denom10 = Convert.ToInt32((object?)(pd.denom10 ?? 0)),
+                    Coins = Convert.ToInt32((object?)(pd.coins ?? 0)),
+                    SequenceNumber = sequence++
+                };
+                personalDebtors.Add(personalDebtor);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to parse personalDebtors from metadata JSON");
+        }
+
+        return personalDebtors;
+    }
 
     [RelayCommand]
     private async Task ApproveAsync()
@@ -966,50 +1070,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
             }
 
             // Parse Personal Debtors
-            var personalDebtors = new List<DsmPersonalDebtor>();
-            if (!string.IsNullOrEmpty(SelectedSubmission.MetadataJson))
-            {
-                try
-                {
-                    var metadata = JsonConvert.DeserializeObject<dynamic>(SelectedSubmission.MetadataJson);
-                    if (metadata != null && metadata.personalDebtors != null)
-                    {
-                        foreach (var pd in metadata.personalDebtors)
-                        {
-                            double amount = (double)(pd.amount ?? 0.0);
-                            string fuelProduct = pd.fuelProduct ?? "";
-                            string remarks = pd.remarks ?? "";
-                            string paymentMethod = pd.paymentMethod ?? "Cash";
-                            string tid = pd.tid ?? "";
-                            string batch = pd.batch ?? "";
-
-                            personalDebtors.Add(new DsmPersonalDebtor
-                            {
-                                DsmName = SelectedSubmission.DsmName,
-                                Date = SelectedSubmission.ShiftDate,
-                                Time = DateTime.Now.ToString("hh:mm tt"),
-                                Amount = amount,
-                                FuelProduct = string.IsNullOrEmpty(fuelProduct) ? null : fuelProduct,
-                                Remarks = string.IsNullOrEmpty(remarks) ? null : remarks,
-                                PaymentMethod = paymentMethod,
-                                CardTid = string.IsNullOrEmpty(tid) ? null : tid,
-                                CardBatch = string.IsNullOrEmpty(batch) ? null : batch,
-                                Denom500 = (int)(pd.denom500 ?? 0),
-                                Denom200 = (int)(pd.denom200 ?? 0),
-                                Denom100 = (int)(pd.denom100 ?? 0),
-                                Denom50 = (int)(pd.denom50 ?? 0),
-                                Denom20 = (int)(pd.denom20 ?? 0),
-                                Denom10 = (int)(pd.denom10 ?? 0),
-                                Coins = (int)(pd.coins ?? 0)
-                            });
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.Error(ex, "Failed to parse personalDebtors from metadata JSON");
-                }
-            }
+            var personalDebtors = PersonalDebtors.Count > 0 ? PersonalDebtors.ToList() : ParsePersonalDebtorsFromMetadata(SelectedSubmission.MetadataJson);
 
             // Parse cash denominations, connected pump, and testing entries
             int denom500 = 0, denom200 = 0, denom100 = 0, denom50 = 0, denom20 = 0, denom10 = 0, coins = 0;
@@ -1135,7 +1196,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                     expenseModels,
                     cashModels,
                     connectedPumpId: connectedPumpId,
-                    personalDebtors: new List<DsmPersonalDebtor>()
+                    personalDebtors: personalDebtors
                 );
 
                 if (!localSaveResult.Success)
@@ -1879,6 +1940,15 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
 
             if (entry != null)
             {
+                PersonalDebtors.Clear();
+                if (entry.PersonalDebtors != null)
+                {
+                    foreach (var d in entry.PersonalDebtors.OrderBy(d => d.SequenceNumber).ThenBy(d => d.Id))
+                    {
+                        PersonalDebtors.Add(d);
+                    }
+                }
+
                 var pc = entry.PaymentCollection;
                 if (pc != null)
                 {
@@ -1930,6 +2000,11 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                         CardSwipeDetails.Add(new DsmCardSwipeRow { Mode = "Petro Card (Day)", Amount = pc.PetroCardDay, Tid = pc.PetroCardTidDay ?? "", Batch = pc.PetroCardBatchDay ?? "" });
                     if (pc.PetroCardNight > 0)
                         CardSwipeDetails.Add(new DsmCardSwipeRow { Mode = "Petro Card (Night)", Amount = pc.PetroCardNight, Tid = pc.PetroCardTidNight ?? "", Batch = pc.PetroCardBatchNight ?? "" });
+                }
+
+                foreach (var d in entry.PersonalDebtors)
+                {
+                    PersonalDebtors.Add(d);
                 }
 
                 foreach (var t in entry.TestingEntries)

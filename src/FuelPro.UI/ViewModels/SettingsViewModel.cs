@@ -593,7 +593,12 @@ public partial class SettingsViewModel : ObservableObject
                 SyncEnabled = SyncEnabled,
                 LastSyncTime = _syncEngine.CurrentStatus.LastSyncTime
             };
+            var newStationId = SyncStationId.Trim();
             await _syncConfigService.SaveSettingsAsync(settings);
+
+            // Dynamically queue all historical data under the new Station ID so they sync immediately
+            await _syncEngine.QueueAllHistoricalRecordsForStationAsync(newStationId);
+
             SyncStatusMessage = "✅ Sync settings saved!";
             
             // Trigger sync update

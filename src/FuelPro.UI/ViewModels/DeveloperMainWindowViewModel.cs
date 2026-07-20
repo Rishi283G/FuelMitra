@@ -387,6 +387,10 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
             };
 
             await _syncConfigService.SaveSettingsAsync(settings);
+
+            // Dynamically queue all historical data under the new Station ID so they sync immediately
+            await _syncEngine.QueueAllHistoricalRecordsForStationAsync(normalizedStationId);
+
             IsConfigLocked = true;
             ConfigStatusMessage = "✅ Cloud settings saved and locked!";
             

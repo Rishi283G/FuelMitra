@@ -138,9 +138,8 @@ public class SyncEngine
         new TableSyncConfig("PettyCashTransactions", new[] {
             new FkMapping("ShiftExpenseId", "Expenses")
         }),
-        // Tanker Management
         new TableSyncConfig("FuelTankers", Array.Empty<FkMapping>()),
-        new TableSyncConfig("TankDailyStocks", Array.Empty<FkMapping>())
+        new TableSyncConfig("TankDailyStocks", new[] { new FkMapping("ShiftId", "Shifts") })
     };
 
     /// <summary>
@@ -354,6 +353,84 @@ public class SyncEngine
         else
         {
             _logger.Information("No unsynced historical records found.");
+        }
+    }
+
+    public async Task QueueAllHistoricalRecordsForStationAsync(string stationId)
+    {
+        _logger.Information("Queueing all historical records for station {StationId}...", stationId);
+        using var scope = _serviceProvider.CreateScope();
+        using var context = scope.ServiceProvider.GetRequiredService<FuelProDbContext>();
+        var settings = await _configService.GetSettingsAsync();
+
+        int totalQueued = 0;
+
+        foreach (var tableName in SyncedTables)
+        {
+            if (tableName == "SyncChangeLogs") continue;
+
+            var entityType = context.Model.GetEntityTypes().FirstOrDefault(t => t.GetTableName() == tableName);
+            if (entityType == null) continue;
+
+            var pkProperty = entityType.FindPrimaryKey()?.Properties.FirstOrDefault();
+            if (pkProperty == null) continue;
+
+            try
+            {
+                // Dynamically construct a query to fetch all primary key IDs for this table
+                var localIds = await context.Database
+                    .SqlQueryRaw<int>($"SELECT [{pkProperty.Name}] FROM [{tableName}]")
+                    .ToListAsync();
+
+                if (localIds.Count == 0) continue;
+
+                var idMappings = await context.SyncIdMappings
+                    .Where(m => m.TableName == tableName)
+                    .ToDictionaryAsync(m => m.LocalId, m => m.RemoteGuid);
+
+                var alreadyLoggedIds = new HashSet<int>(await context.SyncChangeLogs
+                    .Where(l => l.TableName == tableName && l.StationId == stationId)
+                    .Select(l => l.RecordId)
+                    .ToListAsync());
+
+                int queuedForTable = 0;
+                foreach (var localId in localIds)
+                {
+                    if (!alreadyLoggedIds.Contains(localId))
+                    {
+                        var recordGuid = idMappings.TryGetValue(localId, out var g) ? g : Guid.NewGuid().ToString();
+                        context.SyncChangeLogs.Add(new SyncChangeLog
+                        {
+                            TableName = tableName,
+                            RecordId = localId,
+                            Operation = "INSERT",
+                            CreatedAt = DateTime.Now,
+                            IsSynced = false,
+                            StationId = stationId,
+                            MachineId = settings.MachineId,
+                            SyncGuid = Guid.NewGuid().ToString(),
+                            RecordGuid = recordGuid
+                        });
+                        queuedForTable++;
+                        totalQueued++;
+                    }
+                }
+
+                if (queuedForTable > 0)
+                {
+                    _logger.Information("Queued {Count} records for table {Table} under station {StationId}", queuedForTable, tableName, stationId);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.Error(ex, "Failed to dynamically queue historical records for table {Table}", tableName);
+            }
+        }
+
+        if (totalQueued > 0)
+        {
+            await context.SaveChangesAsync();
+            _logger.Information("Successfully queued {Count} total historical records for station {StationId}", totalQueued, stationId);
         }
     }
 
@@ -1233,7 +1310,14 @@ public class SyncEngine
 
         foreach (var property in entry.Metadata.GetProperties())
         {
-            if (property.Name == "Id") continue;
+            if (property.Name == "Id" 
+                && tableName != "DsmPersonalDebtors" 
+                && tableName != "DsmPersonalDebtorRepayments"
+                && tableName != "TankDailyStocks"
+                && tableName != "DebtorVehicles"
+                && tableName != "PumpExpenseCategoryItems"
+                && tableName != "DsmSalaryAdjustments"
+                && tableName != "AuditLogs") continue;
             if (excludePk && pkProperties != null && pkProperties.Contains(property)) continue;
             if (isTestEnv && tableName == "PaymentCollections" && testExcludeCols.Contains(property.Name)) continue;
             if (tableName == "DsmPumpAssignments" && property.Name == "CompletedDate") continue;

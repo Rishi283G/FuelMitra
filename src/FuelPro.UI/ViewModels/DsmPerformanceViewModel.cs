@@ -12,6 +12,8 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
+using FuelPro.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace FuelPro.UI.ViewModels;
 
@@ -188,6 +190,7 @@ public partial class DsmPerformanceViewModel : ObservableObject
             }
 
             FilterAndCalculate();
+            await LoadPersonalSummariesAsync();
         }
         finally { IsLoading = false; }
     }
@@ -324,6 +327,217 @@ public partial class DsmPerformanceViewModel : ObservableObject
         {
             Serilog.Log.Error(ex, "Failed to export DSM performance to Excel");
             MessageBox.Show($"Export failed: {ex.Message}", "Export Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    // --- Personal Debtors Dashboard (Owner side) ---
+    [ObservableProperty] private ObservableCollection<DsmPersonalDebtorSummaryRow> _personalDsmSummaries = new();
+    [ObservableProperty] private DsmPersonalDebtorSummaryRow? _selectedPersonalSummary;
+    [ObservableProperty] private ObservableCollection<DsmPersonalDebtorLedgerRow> _personalLedger = new();
+    [ObservableProperty] private DateTime _personalLedgerStartDate = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+    [ObservableProperty] private DateTime _personalLedgerEndDate = DateTime.Today;
+    [ObservableProperty] private double _personalLedgerTotalDebt;
+    [ObservableProperty] private double _personalLedgerTotalRepayments;
+    [ObservableProperty] private double _personalLedgerOutstandingBalance;
+    [ObservableProperty] private string _personalLedgerStatus = "";
+
+    partial void OnSelectedPersonalSummaryChanged(DsmPersonalDebtorSummaryRow? value)
+    {
+        _ = LoadPersonalLedgerAsync();
+    }
+
+    public async Task LoadPersonalSummariesAsync()
+    {
+        try
+        {
+            using var context = App.Services.GetRequiredService<FuelProDbContext>();
+            var allDsms = await context.DsmUsers.Select(u => u.FullName).Distinct().ToListAsync();
+            var debtorsList = await context.DsmPersonalDebtors.ToListAsync();
+            var repaymentsList = await context.DsmPersonalDebtorRepayments.ToListAsync();
+
+            var debtorsGrouped = debtorsList.GroupBy(d => d.DsmName, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
+
+            var summaryList = new List<DsmPersonalDebtorSummaryRow>();
+            foreach (var dsm in allDsms)
+            {
+                double totalBorrowed = 0;
+                double totalRepaid = 0;
+
+                if (debtorsGrouped.TryGetValue(dsm, out var debits))
+                {
+                    totalBorrowed = debits.Sum(d => d.Amount);
+                    var personalDebtorIds = debits.Select(d => d.Id).ToList();
+                    totalRepaid = repaymentsList
+                        .Where(r => personalDebtorIds.Contains(r.DsmPersonalDebtorId))
+                        .Sum(r => r.Amount);
+                }
+
+                summaryList.Add(new DsmPersonalDebtorSummaryRow
+                {
+                    DsmName = dsm,
+                    TotalBorrowed = totalBorrowed,
+                    TotalRepaid = totalRepaid
+                });
+            }
+
+            // Fallback for any DSM names in personal debtors not present in DsmUsers
+            foreach (var dsm in debtorsGrouped.Keys)
+            {
+                if (!summaryList.Any(s => string.Equals(s.DsmName, dsm, StringComparison.OrdinalIgnoreCase)))
+                {
+                    var debits = debtorsGrouped[dsm];
+                    var totalBorrowed = debits.Sum(d => d.Amount);
+                    var personalDebtorIds = debits.Select(d => d.Id).ToList();
+                    var totalRepaid = repaymentsList
+                        .Where(r => personalDebtorIds.Contains(r.DsmPersonalDebtorId))
+                        .Sum(r => r.Amount);
+
+                    summaryList.Add(new DsmPersonalDebtorSummaryRow
+                    {
+                        DsmName = dsm,
+                        TotalBorrowed = totalBorrowed,
+                        TotalRepaid = totalRepaid
+                    });
+                }
+            }
+
+            var summary = summaryList.OrderBy(s => s.DsmName).ToList();
+
+            PersonalDsmSummaries.Clear();
+            foreach (var s in summary)
+            {
+                PersonalDsmSummaries.Add(s);
+            }
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to load owner personal summaries");
+        }
+    }
+
+    [RelayCommand]
+    public async Task LoadPersonalLedgerAsync()
+    {
+        PersonalLedger.Clear();
+        if (SelectedPersonalSummary == null) return;
+
+        try
+        {
+            using var context = App.Services.GetRequiredService<FuelProDbContext>();
+            var dsmName = SelectedPersonalSummary.DsmName;
+
+            var debits = await context.DsmPersonalDebtors
+                .Where(d => d.DsmName == dsmName && d.Date.Date >= PersonalLedgerStartDate.Date && d.Date.Date <= PersonalLedgerEndDate.Date)
+                .ToListAsync();
+
+            var repayments = await context.DsmPersonalDebtorRepayments
+                .Include(r => r.DsmPersonalDebtor)
+                .Where(r => r.DsmPersonalDebtor != null && r.DsmPersonalDebtor.DsmName == dsmName && r.Date.Date >= PersonalLedgerStartDate.Date && r.Date.Date <= PersonalLedgerEndDate.Date)
+                .ToListAsync();
+
+            var list = new List<DsmPersonalDebtorLedgerRow>();
+
+            foreach (var d in debits)
+            {
+                list.Add(new DsmPersonalDebtorLedgerRow
+                {
+                    TransactionId = d.Id,
+                    TransactionType = "Borrow",
+                    Date = d.Date,
+                    Description = $"Borrowed: {d.FuelProduct} ({(string.IsNullOrEmpty(d.Remarks) ? "No remarks" : d.Remarks)})",
+                    Debit = d.Amount,
+                    Credit = 0,
+                    FuelProduct = d.FuelProduct,
+                    Remarks = d.Remarks,
+                    PaymentMethod = d.PaymentMethod,
+                    CardTid = d.CardTid,
+                    CardBatch = d.CardBatch,
+                    Amount = d.Amount,
+                    CreatedAt = d.CreatedAt
+                });
+            }
+
+            foreach (var c in repayments)
+            {
+                list.Add(new DsmPersonalDebtorLedgerRow
+                {
+                    TransactionId = c.Id,
+                    TransactionType = "Repayment",
+                    Date = c.Date,
+                    Description = $"Repayment via {c.PaymentMethod} ({(c.Source == "OwnerPayroll" ? "Salary Deduction" : "Cash Repayment")})",
+                    Debit = 0,
+                    Credit = c.Amount,
+                    PaymentMethod = c.PaymentMethod,
+                    CardTid = c.CardTid,
+                    CardBatch = c.CardBatch,
+                    Amount = c.Amount,
+                    Remarks = c.DsmPersonalDebtor?.Remarks,
+                    CreatedAt = c.CreatedAt
+                });
+            }
+
+            var sorted = list.OrderBy(x => x.Date).ThenBy(x => x.TransactionType == "Borrow" ? 0 : 1).ToList();
+
+            double running = 0;
+            foreach (var item in sorted)
+            {
+                running += (item.Debit - item.Credit);
+                item.RunningBalance = running;
+            }
+
+            foreach (var item in sorted)
+            {
+                PersonalLedger.Add(item);
+            }
+
+            PersonalLedgerTotalDebt = sorted.Sum(x => x.Debit);
+            PersonalLedgerTotalRepayments = sorted.Sum(x => x.Credit);
+            PersonalLedgerOutstandingBalance = running;
+
+            PersonalLedgerStatus = sorted.Count > 0 ? $"Loaded {sorted.Count} transactions." : "No transactions found in date range.";
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to load owner personal ledger");
+            PersonalLedgerStatus = $"Error: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    private void PrintPersonalLedger()
+    {
+        if (SelectedPersonalSummary == null) return;
+        if (PersonalLedger == null || PersonalLedger.Count == 0) return;
+
+        try
+        {
+            var printRows = PersonalLedger.Select(t => new DebtorLedgerPrintRow
+            {
+                Date = t.Date.ToString("dd-MMM-yyyy"),
+                Description = t.Description,
+                Debit = t.Debit,
+                Credit = t.Credit,
+                RunningBalance = t.RunningBalance
+            }).ToList();
+
+            var printData = new DebtorLedgerPrintData
+            {
+                DebtorName = $"{SelectedPersonalSummary.DsmName} (DSM Personal Debtors)",
+                DebtorPhone = "N/A",
+                StartDate = PersonalLedgerStartDate.ToString("dd-MMM-yyyy"),
+                EndDate = PersonalLedgerEndDate.ToString("dd-MMM-yyyy"),
+                OpeningBalance = PersonalLedger.FirstOrDefault()?.RunningBalance ?? 0,
+                TotalDebt = PersonalLedgerTotalDebt,
+                TotalRepayments = PersonalLedgerTotalRepayments,
+                ClosingBalance = PersonalLedgerOutstandingBalance,
+                Transactions = printRows
+            };
+
+            _printService.PrintDebtorLedger(printData);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to print personal ledger");
         }
     }
 }

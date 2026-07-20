@@ -7,173 +7,285 @@
         <converters:IndianCurrencyConverter x:Key="CurrencyConverter"/>
         <converters:LitresConverter x:Key="LitresConverter"/>
         <converters:EqualToBoolConverter x:Key="EqualToBoolConverter"/>
+        <converters:BoolToVisibilityConverter x:Key="BoolToVis" />
     </UserControl.Resources>
-    <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel Margin="24,16">
-            <!-- Header with date range pickers and presets -->
-            <Grid Margin="0,0,0,16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <StackPanel Grid.Column="0" Orientation="Horizontal">
-                    <materialDesign:PackIcon Kind="AccountGroup" Width="28" Height="28" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                    <TextBlock Text="DSM Performance" FontSize="24" FontWeight="Bold" VerticalAlignment="Center"/>
-                </StackPanel>
 
-                <!-- Date Range Controls -->
-                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                    <!-- Preset Selector -->
-                    <StackPanel Orientation="Horizontal" Margin="0,0,16,0">
-                        <Button Content="Daily" Command="{Binding SetPresetCommand}" CommandParameter="Daily" Margin="0,0,4,0" Height="48" Padding="8,0">
-                            <Button.Style>
-                                <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding SelectedPreset, Converter={StaticResource EqualToBoolConverter}, ConverterParameter=Daily}" Value="True">
-                                            <Setter Property="Background" Value="{DynamicResource MaterialDesign.Brush.Primary}"/>
-                                            <Setter Property="Foreground" Value="{DynamicResource MaterialDesign.Brush.Primary.Foreground}"/>
-                                            <Setter Property="BorderBrush" Value="{DynamicResource MaterialDesign.Brush.Primary}"/>
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </Button.Style>
-                        </Button>
-                        <Button Content="Weekly" Command="{Binding SetPresetCommand}" CommandParameter="Weekly" Margin="0,0,4,0" Height="48" Padding="8,0">
-                            <Button.Style>
-                                <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding SelectedPreset, Converter={StaticResource EqualToBoolConverter}, ConverterParameter=Weekly}" Value="True">
-                                            <Setter Property="Background" Value="{DynamicResource MaterialDesign.Brush.Primary}"/>
-                                            <Setter Property="Foreground" Value="{DynamicResource MaterialDesign.Brush.Primary.Foreground}"/>
-                                            <Setter Property="BorderBrush" Value="{DynamicResource MaterialDesign.Brush.Primary}"/>
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </Button.Style>
-                        </Button>
-                        <Button Content="Monthly" Command="{Binding SetPresetCommand}" CommandParameter="Monthly" Margin="0,0,4,0" Height="48" Padding="8,0">
-                            <Button.Style>
-                                <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding SelectedPreset, Converter={StaticResource EqualToBoolConverter}, ConverterParameter=Monthly}" Value="True">
-                                            <Setter Property="Background" Value="{DynamicResource MaterialDesign.Brush.Primary}"/>
-                                            <Setter Property="Foreground" Value="{DynamicResource MaterialDesign.Brush.Primary.Foreground}"/>
-                                            <Setter Property="BorderBrush" Value="{DynamicResource MaterialDesign.Brush.Primary}"/>
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </Button.Style>
-                        </Button>
-                        <Button Content="Custom" Command="{Binding SetPresetCommand}" CommandParameter="Custom" Height="48" Padding="8,0">
-                            <Button.Style>
-                                <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding SelectedPreset, Converter={StaticResource EqualToBoolConverter}, ConverterParameter=Custom}" Value="True">
-                                            <Setter Property="Background" Value="{DynamicResource MaterialDesign.Brush.Primary}"/>
-                                            <Setter Property="Foreground" Value="{DynamicResource MaterialDesign.Brush.Primary.Foreground}"/>
-                                            <Setter Property="BorderBrush" Value="{DynamicResource MaterialDesign.Brush.Primary}"/>
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </Button.Style>
-                        </Button>
-                    </StackPanel>
-                    
-                    <DatePicker SelectedDate="{Binding StartDate}" IsEnabled="{Binding IsCustomRange}" materialDesign:HintAssist.Hint="From" Style="{StaticResource MaterialDesignOutlinedDatePicker}" Width="130" Margin="0,0,8,0" Height="48"/>
-                    <DatePicker SelectedDate="{Binding EndDate}" IsEnabled="{Binding IsCustomRange}" materialDesign:HintAssist.Hint="To" Style="{StaticResource MaterialDesignOutlinedDatePicker}" Width="130" Height="48"/>
-                </StackPanel>
-            </Grid>
-
-            <ProgressBar IsIndeterminate="{Binding IsLoading}" Visibility="{Binding IsLoading, Converter={StaticResource BooleanToVisibilityConverter}}" Style="{StaticResource MaterialDesignLinearProgressBar}" Margin="0,0,0,8"/>
-            
-            <!-- Filters, Search and Print/Export Buttons -->
-            <Grid Margin="0,0,0,16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                
-                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                    <ComboBox ItemsSource="{Binding DsmFilterOptions}" 
-                              SelectedItem="{Binding SelectedDsmFilter}" 
-                              materialDesign:HintAssist.Hint="Filter by DSM" 
-                              Style="{StaticResource MaterialDesignOutlinedComboBox}" 
-                              Width="200" Margin="0,0,16,0" Height="48"/>
-                    
-                    <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" 
-                              materialDesign:HintAssist.Hint="Search DSM name..." 
-                              Style="{StaticResource MaterialDesignOutlinedTextBox}" 
-                              Width="250" Height="48" 
-                              materialDesign:TextFieldAssist.HasClearButton="True"/>
-                </StackPanel>
-
-                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button Command="{Binding PrintCommand}" Style="{StaticResource MaterialDesignFlatMidBgButton}" Height="48" Padding="12,0" Margin="0,0,8,0" ToolTip="Print Report">
-                        <StackPanel Orientation="Horizontal">
-                            <materialDesign:PackIcon Kind="Printer" Width="20" Height="20" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                            <TextBlock Text="Print" VerticalAlignment="Center"/>
+    <TabControl materialDesign:ColorZoneAssist.Mode="Standard" Margin="16">
+        
+        <!-- Tab 1: Performance Metrics Overview -->
+        <TabItem Header="Performance Overview">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="24,16">
+                    <!-- Header with date range pickers and presets -->
+                    <Grid Margin="0,0,0,16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="AccountGroup" Width="28" Height="28" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                            <TextBlock Text="DSM Performance" FontSize="24" FontWeight="Bold" VerticalAlignment="Center"/>
                         </StackPanel>
-                    </Button>
-                    <Button Command="{Binding ExportExcelCommand}" Style="{StaticResource MaterialDesignFlatMidBgButton}" Height="48" Padding="12,0" Background="#1B5E20" BorderBrush="#1B5E20" ToolTip="Export to Excel">
-                        <StackPanel Orientation="Horizontal">
-                            <materialDesign:PackIcon Kind="FileExcel" Width="20" Height="20" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                            <TextBlock Text="Export" VerticalAlignment="Center"/>
+
+                        <!-- Date Range Controls -->
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                            <!-- Preset Selector -->
+                            <StackPanel Orientation="Horizontal" Margin="0,0,16,0">
+                                <Button Content="Daily" Command="{Binding SetPresetCommand}" CommandParameter="Daily" Margin="0,0,4,0" Height="48" Padding="8,0">
+                                    <Button.Style>
+                                        <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding SelectedPreset, Converter={StaticResource EqualToBoolConverter}, ConverterParameter=Daily}" Value="True">
+                                                    <Setter Property="Background" Value="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                                    <Setter Property="Foreground" Value="{DynamicResource MaterialDesign.Brush.Primary.Foreground}"/>
+                                                    <Setter Property="BorderBrush" Value="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                                <Button Content="Weekly" Command="{Binding SetPresetCommand}" CommandParameter="Weekly" Margin="0,0,4,0" Height="48" Padding="8,0">
+                                    <Button.Style>
+                                        <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding SelectedPreset, Converter={StaticResource EqualToBoolConverter}, ConverterParameter=Weekly}" Value="True">
+                                                    <Setter Property="Background" Value="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                                    <Setter Property="Foreground" Value="{DynamicResource MaterialDesign.Brush.Primary.Foreground}"/>
+                                                    <Setter Property="BorderBrush" Value="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                                <Button Content="Monthly" Command="{Binding SetPresetCommand}" CommandParameter="Monthly" Margin="0,0,4,0" Height="48" Padding="8,0">
+                                    <Button.Style>
+                                        <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding SelectedPreset, Converter={StaticResource EqualToBoolConverter}, ConverterParameter=Monthly}" Value="True">
+                                                    <Setter Property="Background" Value="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                                    <Setter Property="Foreground" Value="{DynamicResource MaterialDesign.Brush.Primary.Foreground}"/>
+                                                    <Setter Property="BorderBrush" Value="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                                <Button Content="Custom" Command="{Binding SetPresetCommand}" CommandParameter="Custom" Height="48" Padding="8,0">
+                                    <Button.Style>
+                                        <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignOutlinedButton}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding SelectedPreset, Converter={StaticResource EqualToBoolConverter}, ConverterParameter=Custom}" Value="True">
+                                                    <Setter Property="Background" Value="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                                    <Setter Property="Foreground" Value="{DynamicResource MaterialDesign.Brush.Primary.Foreground}"/>
+                                                    <Setter Property="BorderBrush" Value="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                            </StackPanel>
+                            
+                            <DatePicker SelectedDate="{Binding StartDate}" IsEnabled="{Binding IsCustomRange}" materialDesign:HintAssist.Hint="From" Style="{StaticResource MaterialDesignOutlinedDatePicker}" Width="130" Margin="0,0,8,0" Height="48"/>
+                            <DatePicker SelectedDate="{Binding EndDate}" IsEnabled="{Binding IsCustomRange}" materialDesign:HintAssist.Hint="To" Style="{StaticResource MaterialDesignOutlinedDatePicker}" Width="130" Height="48"/>
                         </StackPanel>
-                    </Button>
+                    </Grid>
+
+                    <ProgressBar IsIndeterminate="{Binding IsLoading}" Visibility="{Binding IsLoading, Converter={StaticResource BooleanToVisibilityConverter}}" Style="{StaticResource MaterialDesignLinearProgressBar}" Margin="0,0,0,8"/>
+                    
+                    <!-- Filters, Search and Print/Export Buttons -->
+                    <Grid Margin="0,0,0,16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                            <ComboBox ItemsSource="{Binding DsmFilterOptions}" 
+                                      SelectedItem="{Binding SelectedDsmFilter}" 
+                                      materialDesign:HintAssist.Hint="Filter by DSM" 
+                                      Style="{StaticResource MaterialDesignOutlinedComboBox}" 
+                                      Width="200" Margin="0,0,16,0" Height="48"/>
+                            
+                            <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" 
+                                      materialDesign:HintAssist.Hint="Search DSM name..." 
+                                      Style="{StaticResource MaterialDesignOutlinedTextBox}" 
+                                      Width="250" Height="48" 
+                                      materialDesign:TextFieldAssist.HasClearButton="True"/>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button Command="{Binding PrintCommand}" Style="{StaticResource MaterialDesignFlatMidBgButton}" Height="48" Padding="12,0" Margin="0,0,8,0" ToolTip="Print Report">
+                                <StackPanel Orientation="Horizontal">
+                                    <materialDesign:PackIcon Kind="Printer" Width="20" Height="20" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                    <TextBlock Text="Print" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                            <Button Command="{Binding ExportExcelCommand}" Style="{StaticResource MaterialDesignFlatMidBgButton}" Height="48" Padding="12,0" Background="#1B5E20" BorderBrush="#1B5E20" ToolTip="Export to Excel">
+                                <StackPanel Orientation="Horizontal">
+                                    <materialDesign:PackIcon Kind="FileExcel" Width="20" Height="20" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                    <TextBlock Text="Export" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+
+                    <UniformGrid Columns="4" Margin="0,0,0,16">
+                        <materialDesign:Card Margin="4" Padding="12" UniformCornerRadius="8">
+                            <StackPanel>
+                                <TextBlock Text="Range Gross Sales" FontSize="11" Opacity="0.5"/>
+                                <TextBlock Text="{Binding TotalSale, Converter={StaticResource CurrencyConverter}}" FontSize="18" FontWeight="Bold" Foreground="#1565C0"/>
+                            </StackPanel>
+                        </materialDesign:Card>
+                        <materialDesign:Card Margin="4" Padding="12" UniformCornerRadius="8">
+                            <StackPanel>
+                                <TextBlock Text="Range Litres Sold" FontSize="11" Opacity="0.5"/>
+                                <TextBlock Text="{Binding TotalLitres, Converter={StaticResource LitresConverter}}" FontSize="18" FontWeight="Bold" Foreground="#2E7D32"/>
+                            </StackPanel>
+                        </materialDesign:Card>
+                        <materialDesign:Card Margin="4" Padding="12" UniformCornerRadius="8">
+                            <StackPanel>
+                                <TextBlock Text="Range Net Mismatch" FontSize="11" Opacity="0.5"/>
+                                <TextBlock Text="{Binding TotalMismatch, Converter={StaticResource CurrencyConverter}}" FontSize="18" FontWeight="Bold" Foreground="#C62828"/>
+                            </StackPanel>
+                        </materialDesign:Card>
+                        <materialDesign:Card Margin="4" Padding="12" UniformCornerRadius="8">
+                            <StackPanel>
+                                <TextBlock Text="Total Shifts Run" FontSize="11" Opacity="0.5"/>
+                                <TextBlock Text="{Binding TotalShifts}" FontSize="18" FontWeight="Bold"/>
+                            </StackPanel>
+                        </materialDesign:Card>
+                    </UniformGrid>
+
+                    <TextBlock Text="DSM-wise Performance Summary" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                    <DataGrid ItemsSource="{Binding DsmRows}" AutoGenerateColumns="False" IsReadOnly="True"
+                              materialDesign:DataGridAssist.CellPadding="12 8" CanUserSortColumns="True">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="DSM Name" Binding="{Binding DsmName}" Width="*"/>
+                            <DataGridTextColumn Header="Shifts Worked" Binding="{Binding ShiftCount}" Width="110"/>
+                            <DataGridTextColumn Header="Total Sales" Binding="{Binding TotalSale, Converter={StaticResource CurrencyConverter}}" Width="120"/>
+                            <DataGridTextColumn Header="Total Cash" Binding="{Binding TotalCash, Converter={StaticResource CurrencyConverter}}" Width="110"/>
+                            <DataGridTextColumn Header="Cash (Bank)" Binding="{Binding CashDeposit, Converter={StaticResource CurrencyConverter}}" Width="110"/>
+                            <DataGridTextColumn Header="Cash (Hand)" Binding="{Binding CashInHand, Converter={StaticResource CurrencyConverter}}" Width="110"/>
+                            <DataGridTextColumn Header="PhonePe" Binding="{Binding PhonePe, Converter={StaticResource CurrencyConverter}}" Width="110"/>
+                            <DataGridTextColumn Header="PhonePe Card" Binding="{Binding PhonePeCard, Converter={StaticResource CurrencyConverter}}" Width="120"/>
+                            <DataGridTextColumn Header="PineLab Card" Binding="{Binding CreditCard, Converter={StaticResource CurrencyConverter}}" Width="120"/>
+                            <DataGridTextColumn Header="Petro Card" Binding="{Binding PetroCard, Converter={StaticResource CurrencyConverter}}" Width="110"/>
+                            <DataGridTextColumn Header="Debits" Binding="{Binding Debit, Converter={StaticResource CurrencyConverter}}" Width="100"/>
+                            <DataGridTextColumn Header="Total Collection" Binding="{Binding TotalCollection, Converter={StaticResource CurrencyConverter}}" Width="130"/>
+                            <DataGridTextColumn Header="Total Short" Binding="{Binding TotalShortAmount, Converter={StaticResource CurrencyConverter}}" Width="120"/>
+                            <DataGridTextColumn Header="Average Short" Binding="{Binding AverageShort, Converter={StaticResource CurrencyConverter}}" Width="120"/>
+                            <DataGridTextColumn Header="Highest Short" Binding="{Binding HighestShort, Converter={StaticResource CurrencyConverter}}" Width="120"/>
+                            <DataGridTextColumn Header="Accuracy" Binding="{Binding CollectionAccuracy, StringFormat='{}{0:F2}%'}" Width="100"/>
+                            <DataGridTextColumn Header="Mismatch Count" Binding="{Binding MismatchCount}" Width="120"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
                 </StackPanel>
+            </ScrollViewer>
+        </TabItem>
+
+        <!-- Tab 2: Personal Debtors Dashboard -->
+        <TabItem Header="Personal Debtors Dashboard">
+            <Grid Margin="0,16,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="4*"/>
+                    <ColumnDefinition Width="6*"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Left Column: DSM Accounts Summaries -->
+                <materialDesign:Card Grid.Column="0" Margin="0,0,8,0" Padding="16" UniformCornerRadius="8" Background="{DynamicResource MaterialDesign.Brush.Surface}">
+                    <DockPanel LastChildFill="True">
+                        <TextBlock DockPanel.Dock="Top" Text="DSM Accounts Overview" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" Margin="0,0,0,12"/>
+                        
+                        <DataGrid ItemsSource="{Binding PersonalDsmSummaries}" SelectedItem="{Binding SelectedPersonalSummary}" AutoGenerateColumns="False" IsReadOnly="True" VerticalScrollBarVisibility="Auto">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="DSM Name" Binding="{Binding DsmName}" Width="2*" FontWeight="SemiBold"/>
+                                <DataGridTextColumn Header="Total Borrowed" Binding="{Binding TotalBorrowed, Converter={StaticResource CurrencyConverter}}" Width="2*"/>
+                                <DataGridTextColumn Header="Total Repaid" Binding="{Binding TotalRepaid, Converter={StaticResource CurrencyConverter}}" Width="2*" Foreground="Green"/>
+                                <DataGridTextColumn Header="Balance" Binding="{Binding Balance, Converter={StaticResource CurrencyConverter}}" Width="2*" FontWeight="Bold" Foreground="Red"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </DockPanel>
+                </materialDesign:Card>
+
+                <!-- Right Column: Ledger -->
+                <Grid Grid.Column="1" Margin="8,0,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Date Filters -->
+                    <materialDesign:Card Grid.Row="0" Margin="0,0,0,16" Padding="16" UniformCornerRadius="8">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="2*"/>
+                                <ColumnDefinition Width="2*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <DatePicker Grid.Column="0" SelectedDate="{Binding PersonalLedgerStartDate}" materialDesign:HintAssist.Hint="Start Date" Style="{StaticResource MaterialDesignOutlinedDatePicker}" Margin="0,0,12,0"/>
+                            <DatePicker Grid.Column="1" SelectedDate="{Binding PersonalLedgerEndDate}" materialDesign:HintAssist.Hint="End Date" Style="{StaticResource MaterialDesignOutlinedDatePicker}" Margin="0,0,12,0"/>
+
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                <Button Content="Show Ledger" Command="{Binding LoadPersonalLedgerCommand}" Style="{StaticResource MaterialDesignRaisedButton}" Margin="0,0,8,0"/>
+                                <Button Content="Print Ledger" Command="{Binding PrintPersonalLedgerCommand}" Style="{StaticResource MaterialDesignOutlinedButton}" IsEnabled="{Binding PersonalLedger.Count}"/>
+                            </StackPanel>
+                        </Grid>
+                    </materialDesign:Card>
+
+                    <!-- Detailed Transaction Ledger Table -->
+                    <materialDesign:Card Grid.Row="1" Margin="0,0,0,16" Padding="16" UniformCornerRadius="8" Background="{DynamicResource MaterialDesign.Brush.Surface}">
+                        <DockPanel LastChildFill="True">
+                            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,10">
+                                <TextBlock Text="Statement of Account - " FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                <TextBlock Text="{Binding SelectedPersonalSummary.DsmName}" FontSize="18" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                            </StackPanel>
+                            
+                            <TextBlock DockPanel.Dock="Top" Text="{Binding PersonalLedgerStatus}" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" Margin="0,0,0,8" FontSize="12"/>
+
+                            <DataGrid ItemsSource="{Binding PersonalLedger}" AutoGenerateColumns="False" IsReadOnly="True" VerticalScrollBarVisibility="Auto">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat={}{0:dd-MMM-yyyy}}" Width="1.5*"/>
+                                    <DataGridTextColumn Header="Particulars" Binding="{Binding Description}" Width="3.5*"/>
+                                    <DataGridTextColumn Header="Remarks / Debtor" Binding="{Binding Remarks}" Width="2*"/>
+                                    <DataGridTextColumn Header="Debit (+)" Binding="{Binding Debit, Converter={StaticResource CurrencyConverter}}" Width="2*" Foreground="Red" FontWeight="SemiBold"/>
+                                    <DataGridTextColumn Header="Credit (-)" Binding="{Binding Credit, Converter={StaticResource CurrencyConverter}}" Width="2*" Foreground="Green" FontWeight="SemiBold"/>
+                                    <DataGridTextColumn Header="Balance" Binding="{Binding RunningBalance, Converter={StaticResource CurrencyConverter}}" Width="2*" FontWeight="Bold"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </DockPanel>
+                    </materialDesign:Card>
+
+                    <!-- Summary Footer -->
+                    <materialDesign:Card Grid.Row="2" Padding="12" UniformCornerRadius="6" Background="{DynamicResource MaterialDesign.Brush.Primary.Light}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0" Orientation="Horizontal" HorizontalAlignment="Center">
+                                <TextBlock Text="Total Borrowed: " Foreground="White" FontSize="14" Opacity="0.8"/>
+                                <TextBlock Text="{Binding PersonalLedgerTotalDebt, Converter={StaticResource CurrencyConverter}}" Foreground="White" FontSize="15" FontWeight="Bold"/>
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center">
+                                <TextBlock Text="Total Repaid: " Foreground="White" FontSize="14" Opacity="0.8"/>
+                                <TextBlock Text="{Binding PersonalLedgerTotalRepayments, Converter={StaticResource CurrencyConverter}}" Foreground="White" FontSize="15" FontWeight="Bold"/>
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Center">
+                                <TextBlock Text="Outstanding: " Foreground="White" FontSize="14" Opacity="0.8"/>
+                                <TextBlock Text="{Binding PersonalLedgerOutstandingBalance, Converter={StaticResource CurrencyConverter}}" Foreground="White" FontSize="16" FontWeight="Bold"/>
+                            </StackPanel>
+                        </Grid>
+                    </materialDesign:Card>
+                </Grid>
             </Grid>
-
-            <UniformGrid Columns="4" Margin="0,0,0,16">
-                <materialDesign:Card Margin="4" Padding="12" UniformCornerRadius="8">
-                    <StackPanel>
-                        <TextBlock Text="Range Gross Sales" FontSize="11" Opacity="0.5"/>
-                        <TextBlock Text="{Binding TotalSale, Converter={StaticResource CurrencyConverter}}" FontSize="18" FontWeight="Bold" Foreground="#1565C0"/>
-                    </StackPanel>
-                </materialDesign:Card>
-                <materialDesign:Card Margin="4" Padding="12" UniformCornerRadius="8">
-                    <StackPanel>
-                        <TextBlock Text="Range Litres Sold" FontSize="11" Opacity="0.5"/>
-                        <TextBlock Text="{Binding TotalLitres, Converter={StaticResource LitresConverter}}" FontSize="18" FontWeight="Bold" Foreground="#2E7D32"/>
-                    </StackPanel>
-                </materialDesign:Card>
-                <materialDesign:Card Margin="4" Padding="12" UniformCornerRadius="8">
-                    <StackPanel>
-                        <TextBlock Text="Range Net Mismatch" FontSize="11" Opacity="0.5"/>
-                        <TextBlock Text="{Binding TotalMismatch, Converter={StaticResource CurrencyConverter}}" FontSize="18" FontWeight="Bold" Foreground="#C62828"/>
-                    </StackPanel>
-                </materialDesign:Card>
-                <materialDesign:Card Margin="4" Padding="12" UniformCornerRadius="8">
-                    <StackPanel>
-                        <TextBlock Text="Total Shifts Run" FontSize="11" Opacity="0.5"/>
-                        <TextBlock Text="{Binding TotalShifts}" FontSize="18" FontWeight="Bold"/>
-                    </StackPanel>
-                </materialDesign:Card>
-            </UniformGrid>
-
-            <TextBlock Text="DSM-wise Performance Summary" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,8"/>
-            <DataGrid ItemsSource="{Binding DsmRows}" AutoGenerateColumns="False" IsReadOnly="True"
-                      materialDesign:DataGridAssist.CellPadding="12 8" CanUserSortColumns="True">
-                <DataGrid.Columns>
-                    <DataGridTextColumn Header="DSM Name" Binding="{Binding DsmName}" Width="*"/>
-                    <DataGridTextColumn Header="Shifts Worked" Binding="{Binding ShiftCount}" Width="110"/>
-                    <DataGridTextColumn Header="Total Sales" Binding="{Binding TotalSale, Converter={StaticResource CurrencyConverter}}" Width="120"/>
-                    <DataGridTextColumn Header="Total Cash" Binding="{Binding TotalCash, Converter={StaticResource CurrencyConverter}}" Width="110"/>
-                    <DataGridTextColumn Header="Cash (Bank)" Binding="{Binding CashDeposit, Converter={StaticResource CurrencyConverter}}" Width="110"/>
-                    <DataGridTextColumn Header="Cash (Hand)" Binding="{Binding CashInHand, Converter={StaticResource CurrencyConverter}}" Width="110"/>
-                    <DataGridTextColumn Header="PhonePe" Binding="{Binding PhonePe, Converter={StaticResource CurrencyConverter}}" Width="110"/>
-                    <DataGridTextColumn Header="PhonePe Card" Binding="{Binding PhonePeCard, Converter={StaticResource CurrencyConverter}}" Width="120"/>
-                    <DataGridTextColumn Header="PineLab Card" Binding="{Binding CreditCard, Converter={StaticResource CurrencyConverter}}" Width="120"/>
-                    <DataGridTextColumn Header="Petro Card" Binding="{Binding PetroCard, Converter={StaticResource CurrencyConverter}}" Width="110"/>
-                    <DataGridTextColumn Header="Debits" Binding="{Binding Debit, Converter={StaticResource CurrencyConverter}}" Width="100"/>
-                    <DataGridTextColumn Header="Total Collection" Binding="{Binding TotalCollection, Converter={StaticResource CurrencyConverter}}" Width="130"/>
-                    <DataGridTextColumn Header="Total Short" Binding="{Binding TotalShortAmount, Converter={StaticResource CurrencyConverter}}" Width="120"/>
-                    <DataGridTextColumn Header="Average Short" Binding="{Binding AverageShort, Converter={StaticResource CurrencyConverter}}" Width="120"/>
-                    <DataGridTextColumn Header="Highest Short" Binding="{Binding HighestShort, Converter={StaticResource CurrencyConverter}}" Width="120"/>
-                    <DataGridTextColumn Header="Accuracy" Binding="{Binding CollectionAccuracy, StringFormat='{}{0:F2}%'}" Width="100"/>
-                    <DataGridTextColumn Header="Mismatch Count" Binding="{Binding MismatchCount}" Width="120"/>
-                </DataGrid.Columns>
-            </DataGrid>
-        </StackPanel>
-    </ScrollViewer>
+        </TabItem>
+        
+    </TabControl>
 </UserControl>
