@@ -6,9 +6,11 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b %ERRORLEVEL%
 )
 echo Build succeeded!
-xcopy /E /I /Y Assets publish_output\Assets
+if exist Assets (
+    xcopy /E /I /Y Assets publish_output\Assets
+)
 echo Compiling the installer...
-iscc installer.iss
+"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
 if %ERRORLEVEL% NEQ 0 (
     echo Installer compilation failed!
     exit /b %ERRORLEVEL%
