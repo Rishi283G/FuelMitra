@@ -90,7 +90,7 @@ class Program
         // 2. Open DbContext and verify Developer user exists
         Console.WriteLine("[2/4] Connecting to database and verifying Developer account...");
         var options = new DbContextOptionsBuilder<FuelProDbContext>()
-            .UseSqlite($"Data Source={dbPath}")
+            .UseSqlite($"Data Source={dbPath};Busy Timeout=5000")
             .Options;
 
         using var context = new FuelProDbContext(options);

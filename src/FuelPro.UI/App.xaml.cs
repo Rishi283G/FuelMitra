@@ -255,8 +255,14 @@ public partial class App : Application
 
     public static void EnsureLegacyDatabaseCompatibility(string dbPath)
     {
-        using var connection = new SqliteConnection($"Data Source={dbPath}");
+        using var connection = new SqliteConnection($"Data Source={dbPath};Busy Timeout=5000");
         connection.Open();
+
+        using (var pragmaCmd = connection.CreateCommand())
+        {
+            pragmaCmd.CommandText = "PRAGMA journal_mode=WAL;";
+            pragmaCmd.ExecuteNonQuery();
+        }
 
         // Always ensure Creditors table exists since EF migrations assume it's there
         using (var cmdCred = connection.CreateCommand())
@@ -866,7 +872,7 @@ public partial class App : Application
     {
         // Database
         services.AddDbContext<FuelProDbContext>(options =>
-            options.UseSqlite($"Data Source={DbPath}"),
+            options.UseSqlite($"Data Source={DbPath};Busy Timeout=5000"),
             ServiceLifetime.Transient);
 
         services.AddTransient<DbContext>(sp => sp.GetRequiredService<FuelProDbContext>());
