@@ -716,6 +716,45 @@
                             </ItemsControl>
                         </StackPanel>
                     </materialDesign:Card>
+
+                    <!-- Khandhare Petroleum Ledger Section (Drawings & Expenses) -->
+                    <materialDesign:Card Padding="20" UniformCornerRadius="12" Margin="0,16,0,0"
+                                         materialDesign:ElevationAssist.Elevation="Dp3">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                <TextBlock Text="🏛️ Khandhare Petroleum" FontSize="16" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}"/>
+                                <Button Content="+ Add" Margin="16,0,0,0"
+                                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                                        Command="{Binding AddKhandharePetroleumEntryCommand}" Height="28" FontSize="12"/>
+                            </StackPanel>
+                            <ItemsControl ItemsSource="{Binding KhandharePetroleumEntries}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,4">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBox Text="{Binding SlipNumber, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0"
+                                                     materialDesign:HintAssist.Hint="Slip No"
+                                                     Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                                            <TextBox Grid.Column="1" Text="{Binding Amount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,0,8,0"
+                                                     materialDesign:HintAssist.Hint="Amount"
+                                                     Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                                     PreviewTextInput="DecimalTextBox_PreviewTextInput"
+                                                     GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"
+                                                     LostKeyboardFocus="DecimalTextBox_LostKeyboardFocus"/>
+                                            <Button Grid.Column="2" Style="{StaticResource MaterialDesignIconButton}"
+                                                    Command="{Binding DataContext.RemoveKhandharePetroleumEntryCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="{Binding}">
+                                                <materialDesign:PackIcon Kind="Delete" Foreground="#F44336"/>
+                                            </Button>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </materialDesign:Card>
                 </StackPanel>
             </Grid>
 

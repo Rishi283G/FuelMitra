@@ -73,6 +73,7 @@ public class SyncEngine
         "DsmPersonalDebtors",
         "DsmPersonalDebtorRepayments",
         "PettyCashTransactions",
+        "KhandharePetroleumEntries",
         // Tanker Management
         "FuelTankers",
         "TankDailyStocks"
@@ -137,6 +138,9 @@ public class SyncEngine
         }),
         new TableSyncConfig("PettyCashTransactions", new[] {
             new FkMapping("ShiftExpenseId", "Expenses")
+        }),
+        new TableSyncConfig("KhandharePetroleumEntries", new[] {
+            new FkMapping("DsmEntryId", "DsmEntries")
         }),
         new TableSyncConfig("FuelTankers", Array.Empty<FkMapping>()),
         new TableSyncConfig("TankDailyStocks", new[] { new FkMapping("ShiftId", "Shifts") })

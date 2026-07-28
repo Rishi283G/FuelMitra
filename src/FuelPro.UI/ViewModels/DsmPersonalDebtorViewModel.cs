@@ -52,7 +52,11 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
 
     // Summaries directory
     [ObservableProperty] private ObservableCollection<DsmPersonalDebtorSummaryRow> _dsmSummaries = new();
-    [ObservableProperty] private DsmPersonalDebtorSummaryRow? _selectedSummary;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsDsmSelected))]
+    private DsmPersonalDebtorSummaryRow? _selectedSummary;
+
+    public bool IsDsmSelected => SelectedSummary != null;
 
     // Ledger statement
     [ObservableProperty] private ObservableCollection<DsmPersonalDebtorLedgerRow> _dsmLedger = new();
@@ -102,11 +106,13 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
     {
         _dbContext = App.Services.GetRequiredService<FuelProDbContext>();
         _printService = App.Services.GetRequiredService<PrintService>();
+        _excelExportService = App.Services.GetRequiredService<ExcelExportService>();
 
         var auth = App.Services.GetRequiredService<AuthService>();
         IsOwner = auth.CurrentUser?.IsOwner ?? false;
 
         _ = LoadDataAsync();
+        _ = LoadKpEntriesAsync();
     }
 
     partial void OnSelectedSummaryChanged(DsmPersonalDebtorSummaryRow? value)
@@ -134,6 +140,28 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
             Coins = null;
         }
     }
+
+    private void RecalculateCashAmount()
+    {
+        if (SelectedPaymentMode != "Cash") return;
+        double total = 0;
+        total += (Denom500 ?? 0) * 500;
+        total += (Denom200 ?? 0) * 200;
+        total += (Denom100 ?? 0) * 100;
+        total += (Denom50 ?? 0) * 50;
+        total += (Denom20 ?? 0) * 20;
+        total += (Denom10 ?? 0) * 10;
+        total += Coins ?? 0;
+        RepaymentAmount = total;
+    }
+
+    partial void OnDenom500Changed(int? value) => RecalculateCashAmount();
+    partial void OnDenom200Changed(int? value) => RecalculateCashAmount();
+    partial void OnDenom100Changed(int? value) => RecalculateCashAmount();
+    partial void OnDenom50Changed(int? value) => RecalculateCashAmount();
+    partial void OnDenom20Changed(int? value) => RecalculateCashAmount();
+    partial void OnDenom10Changed(int? value) => RecalculateCashAmount();
+    partial void OnCoinsChanged(int? value) => RecalculateCashAmount();
 
     [RelayCommand]
     public async Task LoadDataAsync()
@@ -380,6 +408,15 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
                 if (repayment != null)
                 {
                     double oldAmount = repayment.Amount;
+                    double diff = EditTxAmount - oldAmount;
+
+                    var parentBorrow = await _dbContext.DsmPersonalDebtors.FindAsync(repayment.DsmPersonalDebtorId);
+                    if (parentBorrow != null)
+                    {
+                        parentBorrow.RepaidAmount += diff;
+                        _dbContext.DsmPersonalDebtors.Update(parentBorrow);
+                    }
+
                     repayment.Amount = EditTxAmount;
                     repayment.PaymentMethod = EditTxPaymentMethod;
 
@@ -456,6 +493,13 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
                 var repayment = await _dbContext.DsmPersonalDebtorRepayments.FindAsync(row.TransactionId);
                 if (repayment != null)
                 {
+                    var parentBorrow = await _dbContext.DsmPersonalDebtors.FindAsync(repayment.DsmPersonalDebtorId);
+                    if (parentBorrow != null)
+                    {
+                        parentBorrow.RepaidAmount = Math.Max(0, parentBorrow.RepaidAmount - repayment.Amount);
+                        _dbContext.DsmPersonalDebtors.Update(parentBorrow);
+                    }
+
                     _dbContext.DsmPersonalDebtorRepayments.Remove(repayment);
                     await _dbContext.SaveChangesAsync();
 
@@ -488,9 +532,9 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
     [RelayCommand]
     private async Task SavePersonalRepaymentAsync()
     {
-        if (SelectedLedgerRow == null || SelectedLedgerRow.TransactionType != "Borrow")
+        if (SelectedSummary == null)
         {
-            MessageBox.Show("Please select a borrowing entry from the ledger to record a repayment against.", "Selection Required", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show("Please select a DSM account to record a repayment.", "Selection Required", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
@@ -500,40 +544,58 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
             return;
         }
 
-        // Get total repaid for this specific debtor entry
-        var repaymentsForEntry = await _dbContext.DsmPersonalDebtorRepayments
-            .Where(r => r.DsmPersonalDebtorId == SelectedLedgerRow.TransactionId)
-            .ToListAsync();
-        double repaidSoFar = repaymentsForEntry.Sum(r => r.Amount);
-        double remaining = SelectedLedgerRow.Amount - repaidSoFar;
-
-        if (RepaymentAmount > remaining + 0.01)
-        {
-            MessageBox.Show($"Repayment amount cannot exceed the remaining balance of ₹{remaining:N2}.", "Excess Repayment", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-
         try
         {
-            var repayment = new DsmPersonalDebtorRepayment
-            {
-                DsmPersonalDebtorId = SelectedLedgerRow.TransactionId,
-                Amount = RepaymentAmount,
-                Date = RepaymentDate,
-                PaymentMethod = SelectedPaymentMode,
-                Source = "OwnerPayroll",
-                Denom500 = Denom500 ?? 0,
-                Denom200 = Denom200 ?? 0,
-                Denom100 = Denom100 ?? 0,
-                Denom50 = Denom50 ?? 0,
-                Denom20 = Denom20 ?? 0,
-                Denom10 = Denom10 ?? 0,
-                Coins = Coins ?? 0,
-                CardTid = CardTid,
-                CardBatch = CardBatch
-            };
+            var dsmName = SelectedSummary.DsmName;
+            var outstandingBorrowings = await _dbContext.DsmPersonalDebtors
+                .Where(b => b.DsmName == dsmName && b.Amount > b.RepaidAmount)
+                .OrderBy(b => b.Date)
+                .ThenBy(b => b.Id)
+                .ToListAsync();
 
-            _dbContext.DsmPersonalDebtorRepayments.Add(repayment);
+            double totalOutstanding = outstandingBorrowings.Sum(b => b.Amount - b.RepaidAmount);
+            if (RepaymentAmount > totalOutstanding + 0.01)
+            {
+                MessageBox.Show($"Repayment amount cannot exceed the total outstanding balance of ₹{totalOutstanding:N2}.", "Excess Repayment", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            double remainingAmountToDistribute = RepaymentAmount;
+            bool isFirst = true;
+
+            foreach (var borrow in outstandingBorrowings)
+            {
+                if (remainingAmountToDistribute <= 0) break;
+
+                double remainingForThisBorrow = borrow.Amount - borrow.RepaidAmount;
+                double allocatedAmount = Math.Min(remainingAmountToDistribute, remainingForThisBorrow);
+
+                borrow.RepaidAmount += allocatedAmount;
+                _dbContext.DsmPersonalDebtors.Update(borrow);
+                remainingAmountToDistribute -= allocatedAmount;
+
+                var repayment = new DsmPersonalDebtorRepayment
+                {
+                    DsmPersonalDebtorId = borrow.Id,
+                    Amount = allocatedAmount,
+                    Date = RepaymentDate,
+                    PaymentMethod = SelectedPaymentMode,
+                    Source = "OwnerPayroll",
+                    Denom500 = isFirst ? (Denom500 ?? 0) : 0,
+                    Denom200 = isFirst ? (Denom200 ?? 0) : 0,
+                    Denom100 = isFirst ? (Denom100 ?? 0) : 0,
+                    Denom50 = isFirst ? (Denom50 ?? 0) : 0,
+                    Denom20 = isFirst ? (Denom20 ?? 0) : 0,
+                    Denom10 = isFirst ? (Denom10 ?? 0) : 0,
+                    Coins = isFirst ? (Coins ?? 0) : 0,
+                    CardTid = isFirst ? CardTid : "",
+                    CardBatch = isFirst ? CardBatch : ""
+                };
+
+                _dbContext.DsmPersonalDebtorRepayments.Add(repayment);
+                isFirst = false;
+            }
+
             await _dbContext.SaveChangesAsync();
 
             MessageBox.Show("Repayment recorded successfully.", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -609,6 +671,151 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
         {
             _logger.Error(ex, "Failed to print DSM personal debtor ledger");
             MessageBox.Show($"Failed to print ledger: {ex.Message}", "Print Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    // Khandhare Petroleum Drawings Tab
+    private readonly ExcelExportService _excelExportService;
+
+    [ObservableProperty] private DateTime _kpStartDate = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+    [ObservableProperty] private DateTime _kpEndDate = DateTime.Today;
+    [ObservableProperty] private string _kpSearchText = "";
+    [ObservableProperty] private double _kpTotalAmount;
+    public ObservableCollection<KhandharePetroleumEntry> KpEntries { get; } = new();
+
+    private List<KhandharePetroleumEntry> _allLoadedKpEntries = new();
+
+    partial void OnKpStartDateChanged(DateTime value) => _ = LoadKpEntriesAsync();
+    partial void OnKpEndDateChanged(DateTime value) => _ = LoadKpEntriesAsync();
+    partial void OnKpSearchTextChanged(string value) => ApplyKpFilter();
+
+    [RelayCommand]
+    public async Task LoadKpEntriesAsync()
+    {
+        try
+        {
+            var entries = await _dbContext.KhandharePetroleumEntries
+                .Where(kp => kp.Date.Date >= KpStartDate.Date && kp.Date.Date <= KpEndDate.Date)
+                .OrderByDescending(kp => kp.Date)
+                .ToListAsync();
+
+            _allLoadedKpEntries = entries;
+            ApplyKpFilter();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to load Khandhare Petroleum entries");
+        }
+    }
+
+    private void ApplyKpFilter()
+    {
+        KpEntries.Clear();
+        var query = _allLoadedKpEntries.AsEnumerable();
+        if (!string.IsNullOrWhiteSpace(KpSearchText))
+        {
+            query = query.Where(kp => kp.Name.Contains(KpSearchText, StringComparison.OrdinalIgnoreCase) ||
+                                     kp.DsmName.Contains(KpSearchText, StringComparison.OrdinalIgnoreCase) ||
+                                     kp.SlipNumber.Contains(KpSearchText, StringComparison.OrdinalIgnoreCase));
+        }
+
+        var filtered = query.ToList();
+        foreach (var kp in filtered)
+        {
+            KpEntries.Add(kp);
+        }
+
+        KpTotalAmount = filtered.Sum(kp => kp.Amount);
+    }
+
+    [RelayCommand]
+    private void PrintKpLedger()
+    {
+        try
+        {
+            var summaryCards = new List<GenericGridPrintCard>
+            {
+                new() { Label = "Total Drawings", Value = "₹" + KpTotalAmount.ToString("N2"), Highlight = true }
+            };
+
+            var headers = new List<string> { "Date", "Logged By", "Person Name", "Slip No", "Amount" };
+            var rows = new List<List<string>>();
+
+            foreach (var row in KpEntries)
+            {
+                rows.Add(new List<string>
+                {
+                    row.Date.ToString("dd-MMM-yyyy"),
+                    row.DsmName,
+                    row.Name,
+                    row.SlipNumber,
+                    "₹" + row.Amount.ToString("N2")
+                });
+            }
+
+            var printData = new GenericGridPrintData
+            {
+                Title = "Khandhare Petroleum Drawings Report",
+                Subtitle = $"Date Range: {KpStartDate:dd-MMM-yyyy} to {KpEndDate:dd-MMM-yyyy}" + 
+                           (string.IsNullOrWhiteSpace(KpSearchText) ? "" : $" (Filtered by: '{KpSearchText}')"),
+                SummaryCards = summaryCards,
+                Headers = headers,
+                Rows = rows,
+                ShowSignatures = true
+            };
+
+            _printService.PrintGenericGrid(printData);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to print Khandhare Petroleum Drawings report");
+            MessageBox.Show($"Print failed: {ex.Message}", "Print Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    [RelayCommand]
+    private async Task ExportKpExcelAsync()
+    {
+        try
+        {
+            var summaryCards = new List<GenericGridPrintCard>
+            {
+                new() { Label = "Total Drawings", Value = "₹" + KpTotalAmount.ToString("N2"), Highlight = true }
+            };
+
+            var headers = new List<string> { "Date", "Logged By", "Person Name", "Slip No", "Amount" };
+            var rows = new List<List<string>>();
+
+            foreach (var row in KpEntries)
+            {
+                rows.Add(new List<string>
+                {
+                    row.Date.ToString("dd-MMM-yyyy"),
+                    row.DsmName,
+                    row.Name,
+                    row.SlipNumber,
+                    "₹" + row.Amount.ToString("N2")
+                });
+            }
+
+            var printData = new GenericGridPrintData
+            {
+                Title = "Khandhare Petroleum Drawings Report",
+                Subtitle = $"Date Range: {KpStartDate:dd-MMM-yyyy} to {KpEndDate:dd-MMM-yyyy}" + 
+                           (string.IsNullOrWhiteSpace(KpSearchText) ? "" : $" (Filtered by: '{KpSearchText}')"),
+                SummaryCards = summaryCards,
+                Headers = headers,
+                Rows = rows,
+                ShowSignatures = true
+            };
+
+            var path = await _excelExportService.ExportGenericGridAsync(printData, "KhandharePetroleumDrawings");
+            MessageBox.Show($"Report exported successfully to:\n{path}", "Export Success", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to export Khandhare Petroleum Drawings to Excel");
+            MessageBox.Show($"Export failed: {ex.Message}", "Export Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 }

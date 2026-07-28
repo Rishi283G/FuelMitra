@@ -141,6 +141,8 @@ public class FinancialPipelineIntegrationTests : IDisposable
         // 1. Seed shifts and entries matching the operational business day cycle
         using (var context = _serviceProvider.GetRequiredService<FuelProDbContext>())
         {
+            context.Settings.Add(new Setting { HsdRate = 100.0, MsIRate = 100.0, MsIIRate = 100.0, CngRate = 100.0 });
+
             // Today Shift A (Morning)
             var shift1 = new Shift { ShiftId = 1, ShiftDate = testDate, ShiftType = "A", IsLocked = false };
             // Today Shift B (Day)

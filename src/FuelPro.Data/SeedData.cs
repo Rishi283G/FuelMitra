@@ -187,6 +187,8 @@ public static class SeedData
                     CreatedAt TEXT NOT NULL,
                     FOREIGN KEY (CreditorId) REFERENCES Creditors (CreditorId) ON DELETE CASCADE
                 );
+            ");
+            await context.Database.ExecuteSqlRawAsync(@"
                 CREATE UNIQUE INDEX IF NOT EXISTS IX_DebtorVehicles_CreditorId_VehicleNumber ON DebtorVehicles (CreditorId, VehicleNumber);
             ");
         }
@@ -226,6 +228,8 @@ public static class SeedData
                     UnlockedBy TEXT,
                     UnlockReason TEXT
                 );
+            ");
+            await context.Database.ExecuteSqlRawAsync(@"
                 CREATE UNIQUE INDEX IF NOT EXISTS IX_DayLocks_LockDate ON DayLocks (LockDate);
             ");
         }
@@ -247,6 +251,93 @@ public static class SeedData
         }
         catch (Exception ex) { Log.Error(ex, "Failed to create SoftwareVersionHistories table"); }
 
+        // DsmSalaryHistories
+        try
+        {
+            await context.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE IF NOT EXISTS DsmSalaryHistories (
+                    DsmSalaryHistoryId INTEGER PRIMARY KEY AUTOINCREMENT,
+                    DsmProfileId INTEGER NOT NULL,
+                    OldBaseSalary REAL NOT NULL,
+                    NewBaseSalary REAL NOT NULL,
+                    OldSalaryType TEXT NOT NULL,
+                    NewSalaryType TEXT NOT NULL,
+                    ChangeDate TEXT NOT NULL,
+                    FOREIGN KEY (DsmProfileId) REFERENCES DsmProfiles (DsmProfileId) ON DELETE CASCADE
+                );
+            ");
+        }
+        catch (Exception ex) { Log.Error(ex, "Failed to create DsmSalaryHistories table"); }
+
+        // DsmSalaryPayments
+        try
+        {
+            await context.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE IF NOT EXISTS DsmSalaryPayments (
+                    DsmSalaryPaymentId INTEGER PRIMARY KEY AUTOINCREMENT,
+                    DsmProfileId INTEGER NOT NULL,
+                    Year INTEGER NOT NULL,
+                    Month INTEGER NOT NULL,
+                    NetSalary REAL NOT NULL,
+                    PaidAmount REAL NOT NULL,
+                    PaymentDate TEXT NOT NULL,
+                    PaymentMode TEXT NOT NULL,
+                    Remarks TEXT,
+                    CreatedAt TEXT NOT NULL,
+                    UpdatedAt TEXT NOT NULL,
+                    FOREIGN KEY (DsmProfileId) REFERENCES DsmProfiles (DsmProfileId) ON DELETE CASCADE
+                );
+            ");
+        }
+        catch (Exception ex) { Log.Error(ex, "Failed to create DsmSalaryPayments table"); }
+
+        // FuelTankers
+        try
+        {
+            await context.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE IF NOT EXISTS FuelTankers (
+                    FuelTankerId INTEGER PRIMARY KEY AUTOINCREMENT,
+                    TankerDate TEXT NOT NULL,
+                    TankerNumber TEXT,
+                    InvoiceNumber TEXT NOT NULL,
+                    FuelType TEXT NOT NULL,
+                    Quantity REAL NOT NULL,
+                    PurchaseRate REAL NOT NULL,
+                    TotalAmount REAL NOT NULL,
+                    Density REAL NOT NULL,
+                    Remarks TEXT,
+                    CreatedAt TEXT NOT NULL,
+                    UpdatedAt TEXT NOT NULL
+                );
+            ");
+        }
+        catch (Exception ex) { Log.Error(ex, "Failed to create FuelTankers table"); }
+
+        // TankDailyStocks
+        try
+        {
+            await context.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE IF NOT EXISTS TankDailyStocks (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    Date TEXT NOT NULL,
+                    FuelType TEXT NOT NULL,
+                    OpeningStock REAL NOT NULL,
+                    DaySaleLitres REAL NOT NULL,
+                    TestingLitres REAL NOT NULL,
+                    PurchasedLitres REAL NOT NULL,
+                    ClosingStock REAL NOT NULL,
+                    DipMm REAL NOT NULL,
+                    ManualStock REAL NOT NULL,
+                    LastUpdated TEXT NOT NULL,
+                    ShiftId INTEGER,
+                    FOREIGN KEY (ShiftId) REFERENCES Shifts (ShiftId) ON DELETE SET NULL
+                );
+            ");
+        }
+        catch (Exception ex) { Log.Error(ex, "Failed to create TankDailyStocks table"); }
+
+
+
         // PumpMappings
         try
         {
@@ -260,6 +351,8 @@ public static class SeedData
                     IsActive INTEGER NOT NULL DEFAULT 1,
                     CreatedAt TEXT NOT NULL
                 );
+            ");
+            await context.Database.ExecuteSqlRawAsync(@"
                 CREATE UNIQUE INDEX IF NOT EXISTS IX_PumpMappings_PumpId_NozzleNumber ON PumpMappings (PumpId, NozzleNumber);
             ");
         }
@@ -275,6 +368,8 @@ public static class SeedData
                     IsActive INTEGER NOT NULL DEFAULT 1,
                     CreatedAt TEXT NOT NULL
                 );
+            ");
+            await context.Database.ExecuteSqlRawAsync(@"
                 CREATE UNIQUE INDEX IF NOT EXISTS IX_ExpenseCategories_Name ON ExpenseCategories (Name);
             ");
         }
@@ -304,6 +399,8 @@ public static class SeedData
                     Remarks TEXT NOT NULL DEFAULT '',
                     CreatedAt TEXT NOT NULL
                 );
+            ");
+            await context.Database.ExecuteSqlRawAsync(@"
                 CREATE UNIQUE INDEX IF NOT EXISTS IX_PumpExpenses_ExpenseDate ON PumpExpenses (ExpenseDate);
             ");
         }
@@ -323,6 +420,8 @@ public static class SeedData
                     FOREIGN KEY (PumpExpenseId) REFERENCES PumpExpenses (Id) ON DELETE CASCADE,
                     FOREIGN KEY (CategoryId) REFERENCES ExpenseCategories (Id) ON DELETE RESTRICT
                 );
+            ");
+            await context.Database.ExecuteSqlRawAsync(@"
                 CREATE INDEX IF NOT EXISTS IX_PumpExpenseCategoryItems_PumpExpenseId ON PumpExpenseCategoryItems (PumpExpenseId);
             ");
         }

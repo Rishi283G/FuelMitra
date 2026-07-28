@@ -201,17 +201,29 @@ public static class PumpConfiguration
 
     public static string GetTestingTankCategory(string fuelTypeField, int pumpId, DateTime date)
     {
+        if (string.IsNullOrWhiteSpace(fuelTypeField)) return "MS";
+
         if (int.TryParse(fuelTypeField, out var nozzleNumber))
         {
-            var tankName = GetTankName(pumpId, nozzleNumber, date);
-            if (tankName == "MS - 20KL") return "MS";
-            if (tankName == "HSD - 20KL") return "HSD";
-            if (tankName == "HSD - 20KL II") return "HSD-II";
-            if (tankName == "CNG") return "CNG";
+            var ft = GetFuelType(pumpId, nozzleNumber, date);
+            if (ft == FuelType.MS_I) return "MS";
+            if (ft == FuelType.MS_II) return "HSD-II";
+            if (ft == FuelType.HSD) return "HSD";
+            if (ft == FuelType.CNG) return "CNG";
+
+            var tankName = (GetTankName(pumpId, nozzleNumber, date) ?? "").ToUpperInvariant();
+            if (tankName.Contains("MS-II") || tankName.Contains("20KL II") || tankName.Contains("HSD-II") || tankName.Contains("TANK 3")) return "HSD-II";
+            if (tankName.Contains("MS") || tankName.Contains("PETROL") || tankName.Contains("TANK 1")) return "MS";
+            if (tankName.Contains("HSD") || tankName.Contains("DIESEL") || tankName.Contains("TANK 2")) return "HSD";
+            if (tankName.Contains("CNG")) return "CNG";
         }
 
-        if (fuelTypeField == "MS-I") return "MS";
-        if (fuelTypeField == "MS-II") return "HSD-II";
+        var str = fuelTypeField.Trim().ToUpperInvariant();
+        if (str == "MS-II" || str.Contains("HSD-II") || str.Contains("HSD II") || str.Contains("20KL II") || str.Contains("MS-II")) return "HSD-II";
+        if (str == "MS-I" || str == "MS" || str.StartsWith("MS") || str.Contains("PETROL")) return "MS";
+        if (str == "HSD" || str.StartsWith("HSD") || str.Contains("DIESEL")) return "HSD";
+        if (str == "CNG" || str.StartsWith("CNG")) return "CNG";
+
         return fuelTypeField;
     }
 

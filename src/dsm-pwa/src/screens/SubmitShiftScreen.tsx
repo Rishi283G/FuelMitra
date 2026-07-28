@@ -38,6 +38,12 @@ interface PersonalDebtorRow {
   coins: number;
 }
 
+interface KhandharePetroleumRow {
+  name: string;
+  slipNumber: string;
+  amount: number;
+}
+
 export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   const { profile } = useAuth();
   const { syncing, saveDraft, submitToSupabase } = useSubmissionService();
@@ -117,6 +123,10 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   const [personalDebtors, setPersonalDebtors] = useState<PersonalDebtorRow[]>(
     [],
   );
+  const [khandhareEntries, setKhandhareEntries] = useState<KhandharePetroleumRow[]>([]);
+  const [newKpName, setNewKpName] = useState("");
+  const [newKpSlipNumber, setNewKpSlipNumber] = useState("");
+  const [newKpAmount, setNewKpAmount] = useState("");
   const [newPersonalDebtorAmount, setNewPersonalDebtorAmount] = useState("");
   const [newPersonalDebtorFuelProduct, setNewPersonalDebtorFuelProduct] =
     useState("");
@@ -332,6 +342,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       setCardSwipeDetails(parsed.cardSwipeDetails ?? []);
       setSalesQuantities(parsed.salesQuantities ?? {});
       setPersonalDebtors(parsed.personalDebtors ?? []);
+      setKhandhareEntries(parsed.khandhareEntries ?? []);
       setStep(parsed.step ?? "readings");
 
       if (parsed.nozzleRows) {
@@ -415,6 +426,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       cardSwipeDetails,
       salesQuantities,
       personalDebtors,
+      khandhareEntries,
       step,
       nozzleRows,
     };
@@ -491,6 +503,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     cardSwipeDetails,
     salesQuantities,
     personalDebtors,
+    khandhareEntries,
     step,
     nozzleRows,
   ]);
@@ -908,6 +921,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
 
   const grandProductSales = shiftOilTotal + shiftDefTotal;
 
+  const kpTotal = khandhareEntries.reduce((sum, item) => sum + item.amount, 0);
   const totalCollections =
     cash +
     upiTotal +
@@ -915,7 +929,8 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     petroCardTotal +
     cashDeposit +
     creditTotal +
-    totalTesting;
+    totalTesting +
+    kpTotal;
   const mismatch =
     totalCollections + expense - (grossSales + grandProductSales);
 
@@ -1314,6 +1329,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       settlements: settlementsList,
       debtorEntries,
       personalDebtors,
+      khandhareEntries,
       cash1Denominations: {
         denom500: cash1Denom500,
         denom200: cash1Denom200,
@@ -3505,6 +3521,128 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
               </div>
             </div>
 
+            {/* Khandhare Petroleum Drawings */}
+            <div
+              className="nozzle-card"
+              style={{ marginBottom: "16px", padding: "16px" }}
+            >
+              <h3
+                style={{
+                  fontSize: "1rem",
+                  fontWeight: "bold",
+                  marginBottom: "12px",
+                  borderBottom: "1px solid #334155",
+                  paddingBottom: "6px",
+                }}
+              >
+                Khandhare Petroleum Drawings
+              </h3>
+              <div className="field-row-2">
+                <div className="field-group">
+                  <label className="field-label">Person Name</label>
+                  <input
+                    type="text"
+                    className="field-input"
+                    placeholder="Enter name"
+                    value={newKpName}
+                    onChange={(e) => setNewKpName(e.target.value)}
+                  />
+                </div>
+                <div className="field-group">
+                  <label className="field-label">Slip Number</label>
+                  <input
+                    type="text"
+                    className="field-input"
+                    placeholder="Enter slip no"
+                    value={newKpSlipNumber}
+                    onChange={(e) => setNewKpSlipNumber(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="field-group" style={{ marginTop: "12px" }}>
+                <label className="field-label">Amount (₹)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  className="field-input"
+                  placeholder="0.00"
+                  value={newKpAmount}
+                  onChange={(e) => setNewKpAmount(e.target.value)}
+                />
+              </div>
+
+              <button
+                type="button"
+                className="btn-outline"
+                style={{ marginTop: "12px", width: "100%", padding: "8px" }}
+                onClick={() => {
+                  if (!newKpName.trim() || !newKpAmount || Number(newKpAmount) <= 0)
+                    return;
+                  setKhandhareEntries((prev) => [
+                    ...prev,
+                    {
+                      name: newKpName,
+                      slipNumber: newKpSlipNumber,
+                      amount: Number(newKpAmount),
+                    },
+                  ]);
+                  setNewKpName("");
+                  setNewKpSlipNumber("");
+                  setNewKpAmount("");
+                }}
+              >
+                + Add Drawing Entry
+              </button>
+
+              {khandhareEntries.length > 0 && (
+                <div
+                  className="debtor-entry-list"
+                  style={{ marginTop: "16px" }}
+                >
+                  {khandhareEntries.map((item, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        background: "#0f172a",
+                        padding: "8px 12px",
+                        borderRadius: "4px",
+                        marginBottom: "4px",
+                        fontSize: "0.85rem",
+                      }}
+                    >
+                      <div>
+                        <strong>₹{item.amount.toFixed(2)}</strong>{" "}
+                        <span>{item.name}</span>
+                        <div style={{ color: "#94a3b8" }}>
+                          {item.slipNumber ? `Slip: ${item.slipNumber}` : "No slip number"}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        style={{
+                          color: "#ef4444",
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                          fontWeight: "bold",
+                        }}
+                        onClick={() => {
+                          setKhandhareEntries((prev) =>
+                            prev.filter((_, i) => i !== idx),
+                          );
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* Oil & DEF Product Sales */}
             {availableProducts.length > 0 && (
               <div
@@ -3968,6 +4106,20 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                     <span>
                       {item.mode} (TID: {item.tid || "N/A"}, Batch:{" "}
                       {item.batch || "N/A"})
+                    </span>
+                    <strong>₹{item.amount.toFixed(2)}</strong>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {khandhareEntries.length > 0 && (
+              <div className="review-block">
+                <p className="review-block-title">Khandhare Petroleum Drawings</p>
+                {khandhareEntries.map((item, idx) => (
+                  <div key={idx} className="review-row">
+                    <span>
+                      {item.name} {item.slipNumber ? `(Slip: ${item.slipNumber})` : ""}
                     </span>
                     <strong>₹{item.amount.toFixed(2)}</strong>
                   </div>

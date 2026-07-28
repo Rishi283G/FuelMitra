@@ -369,6 +369,7 @@ public partial class ProfitLossViewModel : ObservableObject, IDisposable
 
             var expensesByCategory = new Dictionary<string, double>();
 
+            double totalKpDrawings = 0;
             foreach (var entry in entries)
             {
                 foreach (var exp in entry.Expenses)
@@ -377,6 +378,15 @@ public partial class ProfitLossViewModel : ObservableObject, IDisposable
                     if (!expensesByCategory.ContainsKey(cat)) expensesByCategory[cat] = 0;
                     expensesByCategory[cat] += exp.Amount;
                 }
+                if (entry.KhandharePetroleumEntries != null)
+                {
+                    totalKpDrawings += entry.KhandharePetroleumEntries.Sum(k => k.Amount);
+                }
+            }
+
+            if (totalKpDrawings > 0)
+            {
+                expensesByCategory["Khandhare Petroleum Drawing"] = totalKpDrawings;
             }
 
             var shiftExpResult = await _expenseRepo.GetExpensesByShiftIdsAsync(shiftIds);

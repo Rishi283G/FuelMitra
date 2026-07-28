@@ -50,19 +50,23 @@ public class ReportService : IReportService
         (msIIL, msIIA) = _aggregation.GetFuelTotals(entriesList, "MS-II", null);
         (cngL, cngA) = _aggregation.GetFuelTotals(entriesList, "CNG", null);
 
+        if (hsdA == 0 && hsdL > 0) hsdA = hsdL * hsdRate;
+        if (msIIA == 0 && msIIL > 0) msIIA = msIIL * msIIRate;
+        if (msIA == 0 && msIL > 0) msIA = msIL * msIRate;
+        if (cngA == 0 && cngL > 0) cngA = cngL * cngRate;
+
         dto.FuelSales = new List<FuelSaleRowDto>();
         if (hsdL > 0 || hsdA > 0)
-            dto.FuelSales.Add(new FuelSaleRowDto { Description = "HSD - 20KL", FuelType = "HSD", Litres = hsdL, Rate = hsdRate, Amount = hsdL * hsdRate });
+            dto.FuelSales.Add(new FuelSaleRowDto { Description = "HSD - 20KL", FuelType = "HSD", Litres = hsdL, Rate = hsdL > 0 ? Math.Round(hsdA / hsdL, 2) : hsdRate, Amount = hsdA });
         if (msIIL > 0 || msIIA > 0)
-            dto.FuelSales.Add(new FuelSaleRowDto { Description = "HSD - 20KL II", FuelType = "MS-II", Litres = msIIL, Rate = msIIRate, Amount = msIIL * msIIRate });
+            dto.FuelSales.Add(new FuelSaleRowDto { Description = "HSD - 20KL II", FuelType = "MS-II", Litres = msIIL, Rate = msIIL > 0 ? Math.Round(msIIA / msIIL, 2) : msIIRate, Amount = msIIA });
         if (msIL > 0 || msIA > 0)
-            dto.FuelSales.Add(new FuelSaleRowDto { Description = "MS - 20KL", FuelType = "MS-I", Litres = msIL, Rate = msIRate, Amount = msIL * msIRate });
+            dto.FuelSales.Add(new FuelSaleRowDto { Description = "MS - 20KL", FuelType = "MS-I", Litres = msIL, Rate = msIL > 0 ? Math.Round(msIA / msIL, 2) : msIRate, Amount = msIA });
         if (cngL > 0 || cngA > 0)
-            dto.FuelSales.Add(new FuelSaleRowDto { Description = "CNG - Line", FuelType = "CNG", Litres = cngL, Rate = cngRate, Amount = cngL * cngRate });
+            dto.FuelSales.Add(new FuelSaleRowDto { Description = "CNG - Line", FuelType = "CNG", Litres = cngL, Rate = cngL > 0 ? Math.Round(cngA / cngL, 2) : cngRate, Amount = cngA });
 
         dto.TotalFuelLitres = dto.FuelSales.Sum(f => f.Litres);
-        // Use the same FuelSales amounts (rate x litres) as the DSR table to avoid any
-        // discrepancy caused by how MergeConnectedPumpEntries pre-sums GrossSales.
+        // Use actual nozzle reading amounts to ensure ExpectedCollection matches DSM Summary Gross Sales
         dto.TotalFuelAmount = dto.FuelSales.Sum(f => f.Amount);
         dto.OtherCashTotal = otherCashList != null ? otherCashList.Sum(o => o.Amount) : 0;
         dto.GrandTotalSaleAmount = dto.TotalFuelAmount;
@@ -209,10 +213,11 @@ public class ReportService : IReportService
             foreach (var t in entry.TestingEntries)
             {
                 var cat = PumpConfiguration.GetTestingTankCategory(t.FuelType, entry.PumpId, date.Date);
-                if (cat == "MS") msTesting += (double)t.Amount;
-                else if (cat == "HSD") hsdTesting += (double)t.Amount;
-                else if (cat == "HSD-II") hsdTesting2 += (double)t.Amount;
-                else if (cat == "CNG") cngTesting += (double)t.Amount;
+                double tAmt = t.Amount > 0 ? (double)t.Amount : (double)(t.Litres * t.Rate);
+                if (cat == "MS") msTesting += tAmt;
+                else if (cat == "HSD") hsdTesting += tAmt;
+                else if (cat == "HSD-II") hsdTesting2 += tAmt;
+                else if (cat == "CNG") cngTesting += tAmt;
             }
         }
         double testingTotal = msTesting + hsdTesting + hsdTesting2 + cngTesting;
@@ -244,15 +249,32 @@ public class ReportService : IReportService
             new() { Category = "DSM Short", Amount = totalDsmShort, BaseAmount = totalDsmShort, RecoveryAmount = 0 }
         };
 
-        // 12. Final Reconciliation
-        // DSM Short is informational only — it represents individual DSM shortfalls but
-        // is NOT real cash collected. Including it inflates ActualCollection by that amount.
         dto.ActualCollection = dto.CollectionBreakdown.Where(c => c.Category != "DSM Short").Sum(c => c.Amount);
         dto.ExpectedCollection = dto.TotalFuelAmount + dto.OilDefSalesTotal + reconcilableRecoveriesTotal;
         dto.Difference = dto.ActualCollection - dto.ExpectedCollection;
         dto.IsBalanced = Math.Abs(dto.Difference) < 0.01;
         dto.BalancedStatus = dto.IsBalanced ? "Balanced" : (dto.Difference < 0 ? "Short" : "Excess");
 
+        dto.PersonalDebtors = entriesList
+            .SelectMany(e => e.PersonalDebtors ?? new List<DsmPersonalDebtor>())
+            .Select(pd => new DsmPersonalDebtorPrintDto
+            {
+                DsmName = pd.DsmName,
+                FuelProduct = pd.FuelProduct ?? string.Empty,
+                Remarks = pd.Remarks ?? string.Empty,
+                Amount = pd.Amount
+            })
+            .ToList();
+
+        dto.KhandhareEntries = entriesList
+            .SelectMany(e => e.KhandharePetroleumEntries ?? new List<KhandharePetroleumEntry>())
+            .Select(kp => new KhandharePetroleumPrintDto
+            {
+                Name = kp.Name,
+                SlipNumber = kp.SlipNumber,
+                Amount = kp.Amount
+            })
+            .ToList();
 
         return dto;
     }
@@ -288,19 +310,23 @@ public class ReportService : IReportService
         (msIIL, msIIA) = _aggregation.GetFuelTotals(todayEntries, "MS-II", null);
         (cngL, cngA) = _aggregation.GetFuelTotals(todayEntries, "CNG", null);
 
+        if (hsdA == 0 && hsdL > 0) hsdA = hsdL * hsdRate;
+        if (msIIA == 0 && msIIL > 0) msIIA = msIIL * msIIRate;
+        if (msIA == 0 && msIL > 0) msIA = msIL * msIRate;
+        if (cngA == 0 && cngL > 0) cngA = cngL * cngRate;
+
         dto.FuelSales = new List<FuelSaleRowDto>();
         if (hsdL > 0 || hsdA > 0)
-            dto.FuelSales.Add(new FuelSaleRowDto { Description = "HSD - 20KL", FuelType = "HSD", Litres = hsdL, Rate = hsdRate, Amount = hsdL * hsdRate });
+            dto.FuelSales.Add(new FuelSaleRowDto { Description = "HSD - 20KL", FuelType = "HSD", Litres = hsdL, Rate = hsdL > 0 ? Math.Round(hsdA / hsdL, 2) : hsdRate, Amount = hsdA });
         if (msIIL > 0 || msIIA > 0)
-            dto.FuelSales.Add(new FuelSaleRowDto { Description = "HSD - 20KL II", FuelType = "MS-II", Litres = msIIL, Rate = msIIRate, Amount = msIIL * msIIRate });
+            dto.FuelSales.Add(new FuelSaleRowDto { Description = "HSD - 20KL II", FuelType = "MS-II", Litres = msIIL, Rate = msIIL > 0 ? Math.Round(msIIA / msIIL, 2) : msIIRate, Amount = msIIA });
         if (msIL > 0 || msIA > 0)
-            dto.FuelSales.Add(new FuelSaleRowDto { Description = "MS - 20KL", FuelType = "MS-I", Litres = msIL, Rate = msIRate, Amount = msIL * msIRate });
+            dto.FuelSales.Add(new FuelSaleRowDto { Description = "MS - 20KL", FuelType = "MS-I", Litres = msIL, Rate = msIL > 0 ? Math.Round(msIA / msIL, 2) : msIRate, Amount = msIA });
         if (cngL > 0 || cngA > 0)
-            dto.FuelSales.Add(new FuelSaleRowDto { Description = "CNG - Line", FuelType = "CNG", Litres = cngL, Rate = cngRate, Amount = cngL * cngRate });
+            dto.FuelSales.Add(new FuelSaleRowDto { Description = "CNG - Line", FuelType = "CNG", Litres = cngL, Rate = cngL > 0 ? Math.Round(cngA / cngL, 2) : cngRate, Amount = cngA });
 
         dto.TotalFuelLitres = dto.FuelSales.Sum(f => f.Litres);
-        // Use the same FuelSales amounts (rate x litres) as the DSR table — avoids
-        // double-counting when merged entries have pre-summed GrossSales from both pumps.
+        // Use actual nozzle reading amounts to ensure ExpectedCollection matches DSM Summary Gross Sales
         dto.TotalFuelAmount = dto.FuelSales.Sum(f => f.Amount);
         dto.GrandTotalSaleAmount = dto.TotalFuelAmount;
 
@@ -482,10 +508,11 @@ public class ReportService : IReportService
             foreach (var t in entry.TestingEntries)
             {
                 var cat = PumpConfiguration.GetTestingTankCategory(t.FuelType, entry.PumpId, startDate.Date);
-                if (cat == "MS") msTesting += (double)t.Amount;
-                else if (cat == "HSD") hsdTesting += (double)t.Amount;
-                else if (cat == "HSD-II") hsdTesting2 += (double)t.Amount;
-                else if (cat == "CNG") cngTesting += (double)t.Amount;
+                double tAmt = t.Amount > 0 ? (double)t.Amount : (double)(t.Litres * t.Rate);
+                if (cat == "MS") msTesting += tAmt;
+                else if (cat == "HSD") hsdTesting += tAmt;
+                else if (cat == "HSD-II") hsdTesting2 += tAmt;
+                else if (cat == "CNG") cngTesting += tAmt;
             }
         }
         double testingTotal = msTesting + hsdTesting + hsdTesting2 + cngTesting;
@@ -518,14 +545,32 @@ public class ReportService : IReportService
         };
 
         // 12. Final Reconciliation
-        // DSM Short is informational — it tracks individual DSM shortfalls but is NOT
-        // actual cash collected; including it inflates ActualCollection by the short amount.
         dto.ActualCollection = dto.CollectionBreakdown.Where(c => c.Category != "DSM Short").Sum(c => c.Amount);
         dto.ExpectedCollection = dto.TotalFuelAmount + dto.OilDefSalesTotal + reconcilableRecoveriesTotal;
         dto.Difference = dto.ActualCollection - dto.ExpectedCollection;
         dto.IsBalanced = Math.Abs(dto.Difference) < 0.01;
         dto.BalancedStatus = dto.IsBalanced ? "Balanced" : (dto.Difference < 0 ? "Short" : "Excess");
 
+        dto.PersonalDebtors = todayEntries
+            .SelectMany(e => e.PersonalDebtors ?? new List<DsmPersonalDebtor>())
+            .Select(pd => new DsmPersonalDebtorPrintDto
+            {
+                DsmName = pd.DsmName,
+                FuelProduct = pd.FuelProduct ?? string.Empty,
+                Remarks = pd.Remarks ?? string.Empty,
+                Amount = pd.Amount
+            })
+            .ToList();
+
+        dto.KhandhareEntries = todayEntries
+            .SelectMany(e => e.KhandharePetroleumEntries ?? new List<KhandharePetroleumEntry>())
+            .Select(kp => new KhandharePetroleumPrintDto
+            {
+                Name = kp.Name,
+                SlipNumber = kp.SlipNumber,
+                Amount = kp.Amount
+            })
+            .ToList();
 
         return dto;
     }
@@ -560,7 +605,7 @@ public class ReportService : IReportService
             var totalInDirect = (double)(pp + cc + cashDepositVal + cash2Total);
             
             var totalCreditors = g.SelectMany(e => e.DebitEntries).Sum(d => d.Amount);
-            var dsmTesting = g.SelectMany(e => e.TestingEntries).Sum(t => t.Amount);
+            var dsmTesting = g.SelectMany(e => e.TestingEntries).Sum(t => t.Amount > 0 ? t.Amount : t.Litres * t.Rate);
             var totalExpenses = g.SelectMany(e => e.Expenses).Sum(ex => ex.Amount);
             
             var totalCollection = totalInDirect + totalCreditors + dsmTesting + totalExpenses;
@@ -635,6 +680,8 @@ public class ReportService : IReportService
             merged.DebitEntries = group.SelectMany(e => e.DebitEntries ?? new List<DebitEntry>()).ToList();
             merged.Expenses = group.SelectMany(e => e.Expenses ?? new List<Expense>()).ToList();
             merged.TestingEntries = group.SelectMany(e => e.TestingEntries ?? new List<TestingEntry>()).ToList();
+            merged.PersonalDebtors = group.SelectMany(e => e.PersonalDebtors ?? new List<DsmPersonalDebtor>()).ToList();
+            merged.KhandharePetroleumEntries = group.SelectMany(e => e.KhandharePetroleumEntries ?? new List<KhandharePetroleumEntry>()).ToList();
             
             // Merge PaymentCollection
             var mainPayment = group.FirstOrDefault(e => e.PaymentCollection != null)?.PaymentCollection;

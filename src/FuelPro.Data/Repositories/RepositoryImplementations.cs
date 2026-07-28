@@ -374,6 +374,7 @@ public class DsmEntryRepository : IDsmEntryRepository
                 .Include(e => e.Expenses)
                 .Include(e => e.CashDenominations)
                 .Include(e => e.PersonalDebtors)
+                .Include(e => e.KhandharePetroleumEntries)
                 .Where(e => e.ShiftId == shiftId)
                 .OrderBy(e => e.CreatedAt)
                 .ToListAsync();
@@ -554,6 +555,7 @@ public class DsmEntryRepository : IDsmEntryRepository
                 .Include(e => e.TestingEntries)
                 .Include(e => e.Expenses)
                 .Include(e => e.CashDenominations)
+                .Include(e => e.KhandharePetroleumEntries)
                 .Where(e => e.Shift != null && e.Shift.ShiftDate >= start && e.Shift.ShiftDate < end.AddDays(1))
                 .OrderBy(e => e.Shift!.ShiftDate)
                 .ThenBy(e => e.Shift!.ShiftType)

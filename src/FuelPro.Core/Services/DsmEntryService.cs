@@ -88,7 +88,8 @@ public class DsmEntryService
         int? existingEntryId = null,
         string? startTime = null,
         string? endTime = null,
-        List<DsmPersonalDebtor>? personalDebtors = null)
+        List<DsmPersonalDebtor>? personalDebtors = null,
+        List<KhandharePetroleumEntry>? khandharePetroleumEntries = null)
     {
         try
         {
@@ -205,6 +206,32 @@ public class DsmEntryService
 
             var personalDebtorResult = await _personalDebtorRepo.SavePersonalDebtorsAsync(savedEntry.DsmEntryId, personalDebtors ?? new List<DsmPersonalDebtor>());
             if (!personalDebtorResult.Success) return Result<DsmEntry>.Fail(personalDebtorResult.Error);
+
+            // Save Khandhare Petroleum Entries
+            try
+            {
+                using var scope = _serviceProvider.CreateScope();
+                var dbContext = scope.ServiceProvider.GetRequiredService<DbContext>();
+                var existingKP = await dbContext.Set<KhandharePetroleumEntry>().Where(kp => kp.DsmEntryId == savedEntry.DsmEntryId).ToListAsync();
+                dbContext.Set<KhandharePetroleumEntry>().RemoveRange(existingKP);
+
+                if (khandharePetroleumEntries != null && khandharePetroleumEntries.Count > 0)
+                {
+                    foreach (var kp in khandharePetroleumEntries)
+                    {
+                        kp.DsmEntryId = savedEntry.DsmEntryId;
+                        kp.DsmEntry = null;
+                        kp.DsmName = dsmName;
+                        kp.Date = shift.ShiftDate;
+                    }
+                    dbContext.Set<KhandharePetroleumEntry>().AddRange(khandharePetroleumEntries);
+                }
+                await dbContext.SaveChangesAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.Error(ex, "Failed to save Khandhare Petroleum entries for DsmEntryId {DsmEntryId}", savedEntry.DsmEntryId);
+            }
 
             // Re-load full entry and persist canonical totals.
             var fullResult = await _dsmRepo.GetFullEntryAsync(savedEntry.DsmEntryId);
@@ -423,7 +450,9 @@ public class DsmEntryService
                 PhysicalCash = (decimal)cash2Total
             },
             DebitEntries   = entry.DebitEntries.Select(d => new DebitEntryDto { Amount = (decimal)d.Amount }).ToList(),
-            Expenses       = entry.Expenses.Select(e => new ExpenseDto { Amount = (decimal)e.Amount }).ToList(),
+            Expenses       = entry.Expenses.Select(e => new ExpenseDto { Amount = (decimal)e.Amount })
+                                .Concat(entry.KhandharePetroleumEntries?.Select(kp => new ExpenseDto { Amount = (decimal)kp.Amount }) ?? Array.Empty<ExpenseDto>())
+                                .ToList(),
             TestingEntries = entry.TestingEntries.Select(t => new TestingEntryDto
             {
                 FuelType = t.FuelType,
@@ -560,7 +589,8 @@ public class DsmEntryService
         int? existingEntryId = null,
         string? startTime = null,
         string? endTime = null,
-        List<DsmPersonalDebtor>? personalDebtors = null)
+        List<DsmPersonalDebtor>? personalDebtors = null,
+        List<KhandharePetroleumEntry>? khandharePetroleumEntries = null)
     {
         try
         {
@@ -791,6 +821,21 @@ public class DsmEntryService
                 context.Set<DsmPersonalDebtor>().AddRange(personalDebtors);
             }
 
+            // Save Khandhare Petroleum Drawings
+            var existingKP = await context.Set<KhandharePetroleumEntry>().Where(kp => kp.DsmEntryId == savedEntryId).ToListAsync();
+            context.Set<KhandharePetroleumEntry>().RemoveRange(existingKP);
+            if (khandharePetroleumEntries != null)
+            {
+                foreach (var kp in khandharePetroleumEntries)
+                {
+                    kp.DsmEntryId = savedEntryId;
+                    kp.DsmEntry = null;
+                    kp.DsmName = dsmName;
+                    kp.Date = shift.ShiftDate;
+                }
+                context.Set<KhandharePetroleumEntry>().AddRange(khandharePetroleumEntries);
+            }
+
             await context.SaveChangesAsync();
 
             // Recalculate canonical totals for primary entry
@@ -802,6 +847,7 @@ public class DsmEntryService
                 .Include(e => e.Expenses)
                 .Include(e => e.CashDenominations)
                 .Include(e => e.PersonalDebtors)
+                .Include(e => e.KhandharePetroleumEntries)
                 .FirstOrDefaultAsync(e => e.DsmEntryId == savedEntryId);
 
             if (fullEntry != null)

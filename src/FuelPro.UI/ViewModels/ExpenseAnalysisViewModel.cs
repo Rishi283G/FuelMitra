@@ -113,6 +113,21 @@ public partial class ExpenseAnalysisViewModel : ObservableObject, IDisposable
                             Amount = exp.Amount
                         });
                     }
+                    if (entry.KhandharePetroleumEntries != null)
+                    {
+                        foreach (var kp in entry.KhandharePetroleumEntries)
+                        {
+                            loaded.Add(new ExpenseItemRow
+                            {
+                                ExpenseId = kp.Id,
+                                Date = kp.Date,
+                                ShiftType = entry.Shift?.ShiftType ?? "—",
+                                Source = $"DSM: {entry.DsmName} (Khandhare Draw)",
+                                Description = $"Khandhare Petroleum Drawing: {kp.Name} (Slip: {kp.SlipNumber})",
+                                Amount = kp.Amount
+                            });
+                        }
+                    }
                 }
             }
 

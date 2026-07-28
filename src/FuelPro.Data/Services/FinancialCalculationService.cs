@@ -178,8 +178,11 @@ public class FinancialCalculationService : IFinancialCalculationService
         // 5. Calculate Total Operational Expenses (Pump Expenses) in range
         double entryExpenses = shifts.SelectMany(s => s.DsmEntries).SelectMany(e => e.Expenses).Sum(ex => ex.Amount);
         double shiftExpenses = shifts.SelectMany(s => s.Expenses).Sum(ex => ex.Amount);
-        result.TotalExpenses = entryExpenses + shiftExpenses;
-        result.ManagerExpenses = entryExpenses + shiftExpenses;
+        double khandhareDrawings = await _dbContext.KhandharePetroleumEntries
+            .Where(kp => kp.Date >= startDate.Date && kp.Date <= endDate.Date)
+            .SumAsync(kp => kp.Amount);
+        result.TotalExpenses = entryExpenses + shiftExpenses + khandhareDrawings;
+        result.ManagerExpenses = entryExpenses + shiftExpenses + khandhareDrawings;
 
         // 6. Calculate Total DSM Salary costs and components in range (prorated by month overlap)
         double totalSalaryCost = 0;

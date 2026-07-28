@@ -152,6 +152,20 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
         <div class="mini-hdr">Fuel Dispensed &amp; Sale</div>
         <table><thead><tr><th>No.</th><th>Description</th><th>Qty (L/Kg)</th><th>Rate</th><th>Amount (&#8377;)</th></tr></thead><tbody id="tFuel"></tbody></table>
       </div>
+      <div id="secPersonalDebtors" style="display:none; margin-top: 12px;">
+        <div class="mini-hdr">DSM Personal Debtors</div>
+        <table>
+          <thead>
+            <tr>
+              <th style="text-align:left;">DSM Name</th>
+              <th>Product</th>
+              <th>Slip No / Remarks</th>
+              <th>Amount (&#8377;)</th>
+            </tr>
+          </thead>
+          <tbody id="tPersonalDebtors"></tbody>
+        </table>
+      </div>
       <div id="secRepayments" style="display:none;">
         <div class="mini-hdr">Debtor Recoveries (Collections)</div>
         <table>
@@ -175,6 +189,19 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
       <div>
         <div class="mini-hdr">Expenses Register (Informational)</div>
         <table><thead><tr><th>DSM</th><th>Description</th><th>Amount (&#8377;)</th></tr></thead><tbody id="tExp"></tbody></table>
+      </div>
+      <div id="secKhandhare" style="display:none; margin-top: 12px;">
+        <div class="mini-hdr">Khandhare Petroleum Drawing</div>
+        <table>
+          <thead>
+            <tr>
+              <th style="text-align:left;">Person Name</th>
+              <th>Slip No</th>
+              <th>Amount (&#8377;)</th>
+            </tr>
+          </thead>
+          <tbody id="tKhandhare"></tbody>
+        </table>
       </div>
       <div>
         <div class="mini-hdr">Final Reconciliation</div>
@@ -354,6 +381,55 @@ function renderData(){
     if (secRep) secRep.style.display = 'none';
   }
 
+  // Render DSM Personal Debtors
+  var personalDebtors = d.personalDebtors || [];
+  var secPers = document.getElementById('secPersonalDebtors');
+  var tPers   = document.getElementById('tPersonalDebtors');
+  if (tPers && personalDebtors.length > 0) {
+    tPers.innerHTML = '';
+    if (secPers) secPers.style.display = 'block';
+    var persTot = 0;
+    personalDebtors.forEach(function(p) {
+      persTot += (p.amount || 0);
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td style="text-align:left;">' + (p.dsmName || '') + '</td>' +
+                     '<td>' + (p.fuelProduct || '\u2013') + '</td>' +
+                     '<td>' + (p.remarks || '\u2013') + '</td>' +
+                     '<td>' + inr(p.amount) + '</td>';
+      tPers.appendChild(tr);
+    });
+    var trTot = document.createElement('tr');
+    trTot.className = 'tr-total';
+    trTot.innerHTML = '<td colspan="3" style="text-align:left;">Total DSM Personal Debtors</td><td>' + inrZ(persTot) + '</td>';
+    tPers.appendChild(trTot);
+  } else {
+    if (secPers) secPers.style.display = 'none';
+  }
+
+  // Render Khandhare Petroleum Drawings
+  var khandhareEntries = d.khandhareEntries || d.khandharePetroleumEntries || [];
+  var secKp = document.getElementById('secKhandhare');
+  var tKp   = document.getElementById('tKhandhare');
+  if (tKp && khandhareEntries.length > 0) {
+    tKp.innerHTML = '';
+    if (secKp) secKp.style.display = 'block';
+    var kpTot = 0;
+    khandhareEntries.forEach(function(kp) {
+      kpTot += (kp.amount || 0);
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td style="text-align:left;">' + (kp.name || '') + '</td>' +
+                     '<td>' + (kp.slipNumber || '\u2013') + '</td>' +
+                     '<td>' + inr(kp.amount) + '</td>';
+      tKp.appendChild(tr);
+    });
+    var trTot = document.createElement('tr');
+    trTot.className = 'tr-total';
+    trTot.innerHTML = '<td colspan="2" style="text-align:left;">Total Drawings</td><td>' + inrZ(kpTot) + '</td>';
+    tKp.appendChild(trTot);
+  } else {
+    if (secKp) secKp.style.display = 'none';
+  }
+
   var tRecon = document.getElementById('tRecon');
   if (tRecon) {
     tRecon.innerHTML = '';
@@ -369,8 +445,8 @@ function renderData(){
   document.getElementById('rGross').textContent=inrZ(grossFuel);
   var dCell=document.getElementById('rDiff');
   if(Math.abs(diff)<0.01){dCell.textContent='\u2713  BALANCED \u2014 Difference: \u20B90.00';dCell.className='diff-ok';}
-  else if(diff>0){dCell.textContent='\u26A0  SHORT \u2014 Difference: '+inrZ(diff);dCell.className='diff-bad';}
-  else{dCell.textContent='\u26A0  EXCESS \u2014 Difference: '+inrZ(Math.abs(diff));dCell.className='diff-bad';}
+  else if(diff<0){dCell.textContent='\u26A0  SHORT \u2014 Difference: '+inrZ(Math.abs(diff));dCell.className='diff-bad';}
+  else{dCell.textContent='\u26A0  EXCESS \u2014 Difference: '+inrZ(diff);dCell.className='diff-bad';}
 
   var et=document.getElementById('tExp');et.innerHTML='';var expTot=d.expensesTotal||0;
   (d.expenseRows||d.expenses||[]).forEach(function(e){

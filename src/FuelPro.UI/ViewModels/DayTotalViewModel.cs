@@ -340,10 +340,11 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
                 foreach (var t in entry.TestingEntries)
                 {
                     var cat = FuelPro.Core.Common.PumpConfiguration.GetTestingTankCategory(t.FuelType, entry.PumpId, SelectedDate.Date);
-                    if (cat == "MS") msTesting += (double)t.Amount;
-                    else if (cat == "HSD") hsdTesting += (double)t.Amount;
-                    else if (cat == "HSD-II") hsdTesting2 += (double)t.Amount;
-                    else if (cat == "CNG") cngTesting += (double)t.Amount;
+                    double tAmt = t.Amount > 0 ? (double)t.Amount : (double)(t.Litres * t.Rate);
+                    if (cat == "MS") msTesting += tAmt;
+                    else if (cat == "HSD") hsdTesting += tAmt;
+                    else if (cat == "HSD-II") hsdTesting2 += tAmt;
+                    else if (cat == "CNG") cngTesting += tAmt;
                 }
             }
             MsTesting = msTesting;

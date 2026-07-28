@@ -125,6 +125,17 @@ public partial class ExpenseRow : ObservableObject
     partial void OnAmountChanged(double? value) => OnRowChanged?.Invoke();
 }
 
+public partial class KhandharePetroleumRow : ObservableObject
+{
+    public Action? OnRowChanged { get; set; }
+
+    [ObservableProperty] private string _slipNumber = "";
+    [ObservableProperty] private double? _amount;
+
+    partial void OnAmountChanged(double? value) => OnRowChanged?.Invoke();
+    partial void OnSlipNumberChanged(string value) => OnRowChanged?.Invoke();
+}
+
 public partial class TestingRow : ObservableObject
 {
     public Action? OnRowChanged { get; set; }
@@ -287,6 +298,7 @@ public partial class DsmEntryViewModel : ObservableObject
     // Dynamic sections
     public ObservableCollection<DebitRow> Debits { get; } = new();
     public ObservableCollection<ExpenseRow> Expenses { get; } = new();
+    public ObservableCollection<KhandharePetroleumRow> KhandharePetroleumEntries { get; } = new();
 
     // Testing
     public ObservableCollection<TestingRow> TestingRows { get; } = new();
@@ -717,6 +729,12 @@ public partial class DsmEntryViewModel : ObservableObject
     private void RemoveExpense(ExpenseRow? row) { if (row != null) Expenses.Remove(row); RecalculateAll(); }
 
     [RelayCommand]
+    private void AddKhandharePetroleumEntry() => KhandharePetroleumEntries.Add(new KhandharePetroleumRow { OnRowChanged = RecalculateAll });
+
+    [RelayCommand]
+    private void RemoveKhandharePetroleumEntry(KhandharePetroleumRow? row) { if (row != null) KhandharePetroleumEntries.Remove(row); RecalculateAll(); }
+
+    [RelayCommand]
     private async Task SaveEntryAsync()
     {
         var validationErrors = ValidateBeforeSave();
@@ -800,6 +818,15 @@ public partial class DsmEntryViewModel : ObservableObject
             var expenseModels = Expenses.Where(e => !string.IsNullOrWhiteSpace(e.Description))
                 .Select(e => new Expense { Description = e.Description, Amount = e.Amount ?? 0 }).ToList();
 
+            var kpModels = KhandharePetroleumEntries
+                .Where(kp => !string.IsNullOrWhiteSpace(kp.SlipNumber) || (kp.Amount ?? 0) > 0)
+                .Select(kp => new KhandharePetroleumEntry
+                {
+                    Name = string.IsNullOrWhiteSpace(kp.SlipNumber) ? "Khandhare Petroleum" : $"Slip #{kp.SlipNumber}",
+                    SlipNumber = kp.SlipNumber ?? "",
+                    Amount = kp.Amount ?? 0
+                }).ToList();
+
             var cashModels = new List<CashDenomination>
             {
                 new() { CashType = "Cash1", Denom500 = Cash1.Denom500 ?? 0, Denom200 = Cash1.Denom200 ?? 0,
@@ -817,7 +844,8 @@ public partial class DsmEntryViewModel : ObservableObject
                 EditingEntryId,
                 StartTime,
                 EndTime,
-                new List<DsmPersonalDebtor>());
+                new List<DsmPersonalDebtor>(),
+                kpModels);
 
             if (result.Success)
             {
@@ -860,6 +888,7 @@ public partial class DsmEntryViewModel : ObservableObject
         TestingRows.Clear();
         Debits.Clear();
         Expenses.Clear();
+        KhandharePetroleumEntries.Clear();
         NozzleReadings.Clear();
         Cash1 = new CashDenomRow { CashType = "Cash1", OnTotalChanged = RecalculateAll };
         Cash2 = new CashDenomRow { CashType = "Cash2", OnTotalChanged = RecalculateAll };
@@ -1065,6 +1094,22 @@ public partial class DsmEntryViewModel : ObservableObject
                 {
                     Description = expense.Description,
                     Amount = expense.Amount,
+                    OnRowChanged = RecalculateAll
+                });
+            }
+
+            // Populate Khandhare Petroleum entries
+            KhandharePetroleumEntries.Clear();
+            var allKp = new List<KhandharePetroleumEntry>();
+            if (entry.KhandharePetroleumEntries != null) allKp.AddRange(entry.KhandharePetroleumEntries);
+            if (connectedEntry?.KhandharePetroleumEntries != null) allKp.AddRange(connectedEntry.KhandharePetroleumEntries);
+
+            foreach (var kp in allKp)
+            {
+                KhandharePetroleumEntries.Add(new KhandharePetroleumRow
+                {
+                    SlipNumber = kp.SlipNumber,
+                    Amount = kp.Amount,
                     OnRowChanged = RecalculateAll
                 });
             }
@@ -1355,7 +1400,9 @@ public partial class DsmEntryViewModel : ObservableObject
                 PhysicalCash = (decimal)Cash2.TotalAmount
             },
             DebitEntries = Debits.Select(x => new DebitEntryDto { Amount = (decimal)(x.Amount ?? 0), ChequeNo = x.ChequeNo }).ToList(),
-            Expenses = Expenses.Select(x => new ExpenseDto { Amount = (decimal)(x.Amount ?? 0) }).ToList(),
+            Expenses = Expenses.Select(x => new ExpenseDto { Amount = (decimal)(x.Amount ?? 0) })
+                .Concat(KhandharePetroleumEntries.Select(x => new ExpenseDto { Amount = (decimal)(x.Amount ?? 0) }))
+                .ToList(),
             TestingEntries = TestingRows
                 .Where(x => x.Amount > 0)
                 .Select(x => new TestingEntryDto
@@ -1412,6 +1459,11 @@ public partial class DsmEntryViewModel : ObservableObject
         {
             if (string.IsNullOrWhiteSpace(expense.Description)) errors.Add("Expense description is required.");
             if (!expense.Amount.HasValue || expense.Amount.Value <= 0) errors.Add($"Expense amount must be greater than zero for {expense.Description}.");
+        }
+        foreach (var kp in KhandharePetroleumEntries)
+        {
+            if (string.IsNullOrWhiteSpace(kp.SlipNumber)) errors.Add("Khandhare Petroleum slip number is required.");
+            if (!kp.Amount.HasValue || kp.Amount.Value <= 0) errors.Add($"Khandhare Petroleum amount must be greater than zero for Slip #{kp.SlipNumber}.");
         }
         if (string.IsNullOrWhiteSpace(DsmName)) errors.Add("DSM Name is required.");
         return errors;

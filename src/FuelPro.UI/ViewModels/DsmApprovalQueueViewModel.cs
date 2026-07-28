@@ -191,6 +191,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
     public ObservableCollection<DsmDebitRow> DebtorEntries { get; } = new();
     public ObservableCollection<DsmCardSwipeRow> CardSwipeDetails { get; } = new();
     public ObservableCollection<DsmPersonalDebtor> PersonalDebtors { get; } = new();
+    public ObservableCollection<KhandharePetroleumEntry> KhandhareEntries { get; } = new();
     public ObservableCollection<DsmOilDefSaleRow> OilDefSales { get; } = new();
 
     // Validations & Overrides
@@ -529,6 +530,22 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                             }
                         }
 
+                        KhandhareEntries.Clear();
+                        if (metadata.khandhareEntries != null)
+                        {
+                            foreach (var kp in metadata.khandhareEntries)
+                            {
+                                KhandhareEntries.Add(new KhandharePetroleumEntry
+                                {
+                                    DsmName = submission.DsmName,
+                                    Date = submission.ShiftDate,
+                                    Name = (kp.name ?? string.Empty).ToString(),
+                                    SlipNumber = (kp.slipNumber ?? string.Empty).ToString(),
+                                    Amount = Convert.ToDouble((object?)(kp.amount ?? 0.0))
+                                });
+                            }
+                        }
+
                         if (metadata.testingEntries != null)
                         {
                             foreach (var test in metadata.testingEntries)
@@ -603,7 +620,8 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
             var nozzleRow = NozzleReadings.FirstOrDefault(n => n.NozzleId == t.NozzleId);
             return t.Amount * (nozzleRow != null ? nozzleRow.Rate : 0.0);
         });
-        TotalCollections = UpiAmount + CardAmount + CashAmount + CreditAmount + PetroCardAmount + CashDepositAmount + totalTestingAmount + ExpenseAmount;
+        double totalKpAmount = KhandhareEntries.Sum(k => k.Amount);
+        TotalCollections = UpiAmount + CardAmount + CashAmount + CreditAmount + PetroCardAmount + CashDepositAmount + totalTestingAmount + ExpenseAmount + totalKpAmount;
         
         // Mismatch is computed: Collections + Expense - (GrossSales + Excess/Short)
         // Let's use the DsmCalculationService logic to keep it consistent!
@@ -1196,7 +1214,8 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                     expenseModels,
                     cashModels,
                     connectedPumpId: connectedPumpId,
-                    personalDebtors: personalDebtors
+                    personalDebtors: personalDebtors,
+                    khandharePetroleumEntries: KhandhareEntries.ToList()
                 );
 
                 if (!localSaveResult.Success)

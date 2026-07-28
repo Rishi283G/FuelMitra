@@ -258,6 +258,24 @@ public class DebitRegisterRowDto
 }
 
 /// <summary>
+/// One row in the DSM Personal Debtors print section.
+/// </summary>
+public class DsmPersonalDebtorPrintDto
+{
+    public string DsmName { get; set; } = string.Empty;
+    public string FuelProduct { get; set; } = string.Empty;
+    public string Remarks { get; set; } = string.Empty;
+    public double Amount { get; set; }
+}
+
+public class KhandharePetroleumPrintDto
+{
+    public string Name { get; set; } = string.Empty;
+    public string SlipNumber { get; set; } = string.Empty;
+    public double Amount { get; set; }
+}
+
+/// <summary>
 /// One row in the Expense register (Table D).
 /// </summary>
 public class ExpenseRegisterRowDto

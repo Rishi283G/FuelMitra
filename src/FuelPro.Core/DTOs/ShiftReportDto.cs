@@ -46,6 +46,8 @@ public class ShiftReportDto
     public double PetroCardRepayments { get; set; }
     public double BankCashRepayments { get; set; }
     public List<RepaymentBreakdownDto> RepaymentBreakdown { get; set; } = new();
+    public List<DsmPersonalDebtorPrintDto> PersonalDebtors { get; set; } = new();
+    public List<KhandharePetroleumPrintDto> KhandhareEntries { get; set; } = new();
 
     // Oil & DEF Sales (Phase 3/4)
     public List<OilDefSaleDisplayRow> OilDefSales { get; set; } = new();
@@ -105,6 +107,8 @@ public class DayReportDto
     public double PetroCardRepayments { get; set; }
     public double BankCashRepayments { get; set; }
     public List<RepaymentBreakdownDto> RepaymentBreakdown { get; set; } = new();
+    public List<DsmPersonalDebtorPrintDto> PersonalDebtors { get; set; } = new();
+    public List<KhandharePetroleumPrintDto> KhandhareEntries { get; set; } = new();
 
     // Oil & DEF Sales (Phase 3/4)
     public List<OilDefSaleDisplayRow> OilDefSales { get; set; } = new();
