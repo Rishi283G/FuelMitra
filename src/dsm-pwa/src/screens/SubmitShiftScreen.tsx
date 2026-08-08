@@ -44,6 +44,11 @@ interface KhandharePetroleumRow {
   amount: number;
 }
 
+interface ExpenseRow {
+  description: string;
+  amount: number;
+}
+
 export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   const { profile } = useAuth();
   const { syncing, saveDraft, submitToSupabase } = useSubmissionService();
@@ -158,8 +163,14 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     cash1Denom500 * 500 + cash1Denom200 * 200 + cash1Denom100 * 100;
 
   const [others, setOthers] = useState(0);
-  const [expense, setExpense] = useState(0);
-  const [expenseNotes, setExpenseNotes] = useState("");
+  const [expenseEntries, setExpenseEntries] = useState<ExpenseRow[]>([]);
+  const [newExpenseDescription, setNewExpenseDescription] = useState("");
+  const [newExpenseAmount, setNewExpenseAmount] = useState("");
+
+  const expense = expenseEntries.reduce((sum, item) => sum + item.amount, 0);
+  const expenseNotes = expenseEntries
+    .map((item) => `${item.description} (₹${item.amount.toFixed(2)})`)
+    .join(", ");
 
   // Slot-based collections fields
   const [phonePeMorning, setPhonePeMorning] = useState<number>(0);
@@ -309,8 +320,15 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       setNewDebtorSlip(parsed.newDebtorSlip ?? "");
       setCustomVehicle(parsed.customVehicle ?? false);
       setOthers(parsed.others ?? 0);
-      setExpense(parsed.expense ?? 0);
-      setExpenseNotes(parsed.expenseNotes ?? "");
+      if (parsed.expenseEntries && Array.isArray(parsed.expenseEntries)) {
+        setExpenseEntries(parsed.expenseEntries);
+      } else if (parsed.expense && parsed.expense > 0) {
+        setExpenseEntries([
+          { description: parsed.expenseNotes || "Expense", amount: parsed.expense },
+        ]);
+      } else {
+        setExpenseEntries([]);
+      }
       setPhonePeMorning(parsed.phonePeMorning ?? 0);
       setPhonePeTidMorning(parsed.phonePeTidMorning ?? "");
       setPhonePeBatchMorning(parsed.phonePeBatchMorning ?? "");
@@ -393,6 +411,9 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       newDebtorSlip,
       customVehicle,
       others,
+      expenseEntries,
+      newExpenseDescription,
+      newExpenseAmount,
       expense,
       expenseNotes,
       phonePeMorning,
@@ -1350,6 +1371,10 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       credit: creditTotal,
       expense,
       expenseNotes,
+      expenseEntries: expenseEntries.map((e) => ({
+        description: e.description,
+        amount: e.amount,
+      })),
       short: 0,
       excess: 0,
       cardSwipeDetails: cardSwipes,
@@ -2979,7 +3004,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
               </div>
             </div>
 
-            {/* Adjustments (Expense only) */}
+            {/* Adjustments (Expenses Log) */}
             <div
               className="nozzle-card"
               style={{ marginBottom: "16px", padding: "16px" }}
@@ -2991,31 +3016,118 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                   marginBottom: "12px",
                   borderBottom: "1px solid #334155",
                   paddingBottom: "6px",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
                 }}
               >
-                Adjustments
+                <span>Expenses / Adjustments</span>
+                <span
+                  style={{
+                    fontSize: "0.85rem",
+                    fontWeight: "normal",
+                    color: "#f87171",
+                  }}
+                >
+                  Total: ₹{expense.toFixed(2)}
+                </span>
               </h3>
+
               <div className="field-group" style={{ marginBottom: "12px" }}>
-                <label className="field-label">Expense (₹)</label>
-                <input
-                  type="number"
-                  className="field-input"
-                  value={expense || ""}
-                  step="0.01"
-                  min="0"
-                  onChange={(e) => setExpense(Number(e.target.value))}
-                />
-              </div>
-              <div className="field-group" style={{ marginBottom: 0 }}>
-                <label className="field-label">Expense Notes</label>
+                <label className="field-label">Expense Description / Purpose</label>
                 <input
                   type="text"
                   className="field-input"
-                  value={expenseNotes}
-                  placeholder="What was the expense for?"
-                  onChange={(e) => setExpenseNotes(e.target.value)}
+                  placeholder="e.g. Tea / Refreshment, Dinner, Repair"
+                  value={newExpenseDescription}
+                  onChange={(e) => setNewExpenseDescription(e.target.value)}
                 />
               </div>
+              <div className="field-group" style={{ marginBottom: "12px" }}>
+                <label className="field-label">Amount (₹)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className="field-input"
+                  placeholder="0.00"
+                  value={newExpenseAmount}
+                  onChange={(e) => setNewExpenseAmount(e.target.value)}
+                />
+              </div>
+
+              <button
+                type="button"
+                className="btn-outline"
+                style={{ marginTop: "4px", width: "100%", padding: "8px" }}
+                onClick={() => {
+                  if (
+                    !newExpenseDescription.trim() ||
+                    !newExpenseAmount ||
+                    Number(newExpenseAmount) <= 0
+                  )
+                    return;
+                  setExpenseEntries((prev) => [
+                    ...prev,
+                    {
+                      description: newExpenseDescription.trim(),
+                      amount: Number(newExpenseAmount),
+                    },
+                  ]);
+                  setNewExpenseDescription("");
+                  setNewExpenseAmount("");
+                }}
+              >
+                + Add Expense Entry
+              </button>
+
+              {expenseEntries.length > 0 && (
+                <div
+                  className="debtor-entry-list"
+                  style={{ marginTop: "16px" }}
+                >
+                  {expenseEntries.map((item, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        background: "#0f172a",
+                        padding: "8px 12px",
+                        borderRadius: "4px",
+                        marginBottom: "4px",
+                        fontSize: "0.85rem",
+                      }}
+                    >
+                      <div>
+                        <strong style={{ color: "#f87171" }}>
+                          ₹{item.amount.toFixed(2)}
+                        </strong>{" "}
+                        <span>{item.description}</span>
+                      </div>
+                      <button
+                        type="button"
+                        style={{
+                          background: "transparent",
+                          border: "none",
+                          color: "#ef4444",
+                          cursor: "pointer",
+                          fontWeight: "bold",
+                          fontSize: "1rem",
+                        }}
+                        onClick={() =>
+                          setExpenseEntries((prev) =>
+                            prev.filter((_, i) => i !== idx),
+                          )
+                        }
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Debtors Log */}
@@ -4115,15 +4227,45 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                   </strong>
                 </div>
               )}
-              {expense > 0 && (
-                <div className="review-row">
-                  <span>Expense</span>
-                  <strong>
-                    ₹
-                    {expense.toLocaleString("en-IN", {
-                      minimumFractionDigits: 2,
-                    })}
-                  </strong>
+              {expenseEntries.length > 0 && (
+                <div
+                  style={{
+                    marginTop: "8px",
+                    borderTop: "1px dashed #334155",
+                    paddingTop: "8px",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: "0.85rem",
+                      fontWeight: "bold",
+                      color: "#94a3b8",
+                      marginBottom: "4px",
+                    }}
+                  >
+                    Expenses Breakdown ({expenseEntries.length}):
+                  </div>
+                  {expenseEntries.map((item, idx) => (
+                    <div
+                      key={idx}
+                      className="review-row"
+                      style={{ fontSize: "0.85rem", padding: "2px 0" }}
+                    >
+                      <span>{item.description}</span>
+                      <strong style={{ color: "#f87171" }}>
+                        ₹{item.amount.toFixed(2)}
+                      </strong>
+                    </div>
+                  ))}
+                  <div
+                    className="review-row"
+                    style={{ marginTop: "4px", fontWeight: "bold" }}
+                  >
+                    <span>Total Expenses</span>
+                    <strong style={{ color: "#f87171" }}>
+                      ₹{expense.toFixed(2)}
+                    </strong>
+                  </div>
                 </div>
               )}
               <div

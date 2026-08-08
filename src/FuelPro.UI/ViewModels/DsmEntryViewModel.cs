@@ -1064,8 +1064,101 @@ public partial class DsmEntryViewModel : ObservableObject
             // Populate Khandhare Petroleum entries
             KhandharePetroleumEntries.Clear();
             var allKp = new List<KhandharePetroleumEntry>();
-            if (entry.KhandharePetroleumEntries != null) allKp.AddRange(entry.KhandharePetroleumEntries);
-            if (connectedEntry?.KhandharePetroleumEntries != null) allKp.AddRange(connectedEntry.KhandharePetroleumEntries);
+            if (entry.KhandharePetroleumEntries != null && entry.KhandharePetroleumEntries.Count > 0)
+            {
+                allKp.AddRange(entry.KhandharePetroleumEntries);
+            }
+            if (connectedEntry?.KhandharePetroleumEntries != null && connectedEntry.KhandharePetroleumEntries.Count > 0)
+            {
+                allKp.AddRange(connectedEntry.KhandharePetroleumEntries);
+            }
+
+            // Fallback 1: Query local DB for KhandharePetroleumEntries by (Date, DsmName) or DsmEntryId
+            if (allKp.Count == 0 && entry.Shift != null)
+            {
+                try
+                {
+                    using var db = App.Services.GetRequiredService<FuelPro.Data.FuelProDbContext>();
+                    var shiftDate = entry.Shift.ShiftDate.Date;
+                    var unlinkedKp = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.ToListAsync(
+                        db.KhandharePetroleumEntries
+                            .Where(kp => (kp.DsmEntryId == entry.DsmEntryId) || (kp.Date.Date == shiftDate && kp.DsmName == entry.DsmName)));
+
+                    if (unlinkedKp.Count > 0)
+                    {
+                        bool needsSave = false;
+                        foreach (var kp in unlinkedKp)
+                        {
+                            if (!kp.DsmEntryId.HasValue || kp.DsmEntryId.Value <= 0)
+                            {
+                                kp.DsmEntryId = entry.DsmEntryId;
+                                db.Entry(kp).State = Microsoft.EntityFrameworkCore.EntityState.Modified;
+                                needsSave = true;
+                            }
+                        }
+                        if (needsSave)
+                        {
+                            await db.SaveChangesAsync();
+                        }
+                        allKp.AddRange(unlinkedKp);
+                    }
+                }
+                catch (System.Exception ex)
+                {
+                    Serilog.Log.Error(ex, "Failed to load fallback KhandharePetroleumEntries by date/dsmName for DsmEntryId {Id}", entry.DsmEntryId);
+                }
+            }
+
+            // Fallback 2: Check DsmApprovalAudits for metadata JSON containing khandhareEntries
+            if (allKp.Count == 0)
+            {
+                try
+                {
+                    using var db = App.Services.GetRequiredService<FuelPro.Data.FuelProDbContext>();
+                    var audit = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.FirstOrDefaultAsync(
+                        db.DsmApprovalAudits
+                            .Where(a => a.ApprovedDataJson.Contains($"\"DsmEntryId\":{entry.DsmEntryId}") 
+                                     || a.ApprovedDataJson.Contains($"\"DsmEntryId\": {entry.DsmEntryId}")));
+
+                    if (audit != null && !string.IsNullOrEmpty(audit.OriginalDataJson))
+                    {
+                        var parsed = JsonConvert.DeserializeObject<dynamic>(audit.OriginalDataJson);
+                        var kpRawList = parsed?.khandhareEntries ?? parsed?.khandharePetroleumEntries ?? parsed?.Collections?.khandhareEntries;
+                        if (kpRawList != null)
+                        {
+                            var newKpModels = new List<KhandharePetroleumEntry>();
+                            foreach (var kp in kpRawList)
+                            {
+                                string name = (kp.name ?? kp.Name ?? string.Empty).ToString();
+                                string slipNumber = (kp.slipNumber ?? kp.SlipNumber ?? string.Empty).ToString();
+                                double amount = System.Convert.ToDouble((object?)(kp.amount ?? kp.Amount ?? 0.0));
+
+                                var model = new KhandharePetroleumEntry
+                                {
+                                    DsmEntryId = entry.DsmEntryId,
+                                    DsmName = entry.DsmName,
+                                    Date = entry.Shift?.ShiftDate ?? SelectedDate,
+                                    Name = !string.IsNullOrWhiteSpace(name) ? name : (!string.IsNullOrWhiteSpace(slipNumber) ? $"Slip #{slipNumber}" : "Khandhare Petroleum"),
+                                    SlipNumber = slipNumber,
+                                    Amount = amount
+                                };
+                                newKpModels.Add(model);
+                            }
+
+                            if (newKpModels.Count > 0)
+                            {
+                                db.KhandharePetroleumEntries.AddRange(newKpModels);
+                                await db.SaveChangesAsync();
+                                allKp.AddRange(newKpModels);
+                            }
+                        }
+                    }
+                }
+                catch (System.Exception ex)
+                {
+                    Serilog.Log.Error(ex, "Failed to restore KhandharePetroleumEntries from audit metadata for DsmEntryId {Id}", entry.DsmEntryId);
+                }
+            }
 
             foreach (var kp in allKp)
             {

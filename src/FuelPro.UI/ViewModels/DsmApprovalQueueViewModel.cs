@@ -1172,9 +1172,35 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                 }
             }
 
-            var expenseModels = ExpenseAmount > 0
-                ? new List<Expense> { new() { Description = string.IsNullOrEmpty(ExpenseNotes) ? "DSM PWA Expense" : ExpenseNotes, Amount = ExpenseAmount } }
-                : new List<Expense>();
+            var expenseModels = new List<Expense>();
+            if (!string.IsNullOrEmpty(SelectedSubmission.MetadataJson))
+            {
+                try
+                {
+                    var metadata = JsonConvert.DeserializeObject<dynamic>(SelectedSubmission.MetadataJson);
+                    var expRawList = metadata?.expenseEntries ?? metadata?.expensesList;
+                    if (expRawList != null)
+                    {
+                        foreach (var exp in expRawList)
+                        {
+                            string desc = (exp.description ?? exp.Description ?? exp.notes ?? exp.Notes ?? "DSM PWA Expense").ToString();
+                            double amt = Convert.ToDouble((object?)(exp.amount ?? exp.Amount ?? 0.0));
+                            if (amt > 0)
+                            {
+                                expenseModels.Add(new Expense { Description = desc, Amount = amt });
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error(ex, "Failed to parse expenseEntries from metadata JSON");
+                }
+            }
+            if (expenseModels.Count == 0 && ExpenseAmount > 0)
+            {
+                expenseModels.Add(new Expense { Description = string.IsNullOrEmpty(ExpenseNotes) ? "DSM PWA Expense" : ExpenseNotes, Amount = ExpenseAmount });
+            }
 
             // Cash1 is Cash 1, Cash2 is Cash in Hand
             var cashModels = new List<CashDenomination>
@@ -1296,7 +1322,8 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                 var originalData = new
                 {
                     Readings = NozzleReadings.Select(r => new { r.NozzleId, r.OpeningReading, r.ClosingReading, r.Rate }),
-                    Collections = new { Cash = CashAmount, UPI = UpiAmount, Card = CardAmount, Credit = CreditAmount, Expense = ExpenseAmount, ExpenseNotes }
+                    Collections = new { Cash = CashAmount, UPI = UpiAmount, Card = CardAmount, Credit = CreditAmount, Expense = ExpenseAmount, ExpenseNotes },
+                    khandhareEntries = KhandhareEntries.Select(k => new { k.Name, k.SlipNumber, k.Amount })
                 };
 
                 var approvedData = new

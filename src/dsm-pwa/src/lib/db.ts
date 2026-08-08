@@ -41,6 +41,7 @@ export interface DraftSubmission {
   credit: number;
   expense: number;
   expenseNotes: string;
+  expenseEntries?: { description: string; amount: number; }[];
   short: number;
   excess: number;
   createdAt: string;
