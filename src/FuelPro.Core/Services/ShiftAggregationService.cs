@@ -32,7 +32,7 @@ public class ShiftAggregationService : IShiftAggregationService
                     .Sum(c => c.TotalAmount);
 
                 var totalDebit = entry.DebitEntries.Sum(d => d.Amount);
-                var totalExpenses = entry.Expenses.Sum(e => e.Amount);
+                var totalExpenses = entry.Expenses.Sum(e => e.Amount) + (entry.KhandharePetroleumEntries != null ? entry.KhandharePetroleumEntries.Sum(kp => kp.Amount) : 0);
                 var totalTesting = entry.TestingEntries.Sum(t => t.Amount);
 
                 rows.Add(new DsmSummaryRowDto
@@ -179,7 +179,7 @@ public class ShiftAggregationService : IShiftAggregationService
         {
             var rows = new List<ExpenseRegisterRowDto>();
 
-            // DSM-level expenses
+            // DSM-level expenses & drawings
             foreach (var entry in entries)
             {
                 foreach (var expense in entry.Expenses)
@@ -194,6 +194,25 @@ public class ShiftAggregationService : IShiftAggregationService
                         IsShiftLevel = false,
                         CanDelete = false
                     });
+                }
+
+                if (entry.KhandharePetroleumEntries != null)
+                {
+                    foreach (var kp in entry.KhandharePetroleumEntries)
+                    {
+                        rows.Add(new ExpenseRegisterRowDto
+                        {
+                            ExpenseId = 0,
+                            DsmName = entry.DsmName,
+                            PumpId = entry.PumpId,
+                            Description = string.IsNullOrWhiteSpace(kp.SlipNumber)
+                                ? $"Khandhare Drawing: {kp.Name}"
+                                : $"Khandhare Drawing: {kp.Name} (Slip #{kp.SlipNumber})",
+                            Amount = kp.Amount,
+                            IsShiftLevel = false,
+                            CanDelete = false
+                        });
+                    }
                 }
             }
 
