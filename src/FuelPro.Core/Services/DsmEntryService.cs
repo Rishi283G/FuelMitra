@@ -389,20 +389,44 @@ public class DsmEntryService
             var entriesResult = await _dsmRepo.GetEntriesForShiftAsync(shiftId);
             if (!entriesResult.Success) return Result<List<DsmEntrySummaryDto>>.Fail(entriesResult.Error);
 
-            var summaries = entriesResult.Data!
-                .Where(e => !e.ReconciledToPumpId.HasValue)
-                .Select(e => new DsmEntrySummaryDto
+            var allEntries = entriesResult.Data!;
+            var primaryEntries = allEntries.Where(e => !e.ReconciledToPumpId.HasValue).ToList();
+            var summaries = new List<DsmEntrySummaryDto>();
+
+            foreach (var primary in primaryEntries)
+            {
+                var connectedSlaves = allEntries
+                    .Where(e => e.ReconciledToPumpId == primary.PumpId &&
+                                string.Equals((e.DsmName ?? "").Trim(), (primary.DsmName ?? "").Trim(), StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+
+                double totalGrossSales = primary.NozzleReadings != null && primary.NozzleReadings.Count > 0
+                    ? primary.NozzleReadings.Sum(n => (double)n.Amount)
+                    : (double)primary.GrossSales;
+
+                foreach (var slave in connectedSlaves)
                 {
-                    DsmEntryId = e.DsmEntryId,
-                    DsmName = e.DsmName,
-                    PumpId = e.PumpId,
-                    ConnectedPumpId = e.ConnectedPumpId,
-                    ReconciledToPumpId = e.ReconciledToPumpId,
-                    GrossSales = (double)e.GrossSales,
-                    TotalPaymentIn = (double)e.TotalCollection,
-                    Difference = e.ReconciledToPumpId.HasValue ? 0 : (double)e.Mismatch,
-                    CreatedAt = e.CreatedAt
-                }).ToList();
+                    totalGrossSales += slave.NozzleReadings != null && slave.NozzleReadings.Count > 0
+                        ? slave.NozzleReadings.Sum(n => (double)n.Amount)
+                        : (double)slave.GrossSales;
+                }
+
+                double totalCollection = (double)primary.TotalCollection;
+                double mismatch = totalCollection - totalGrossSales;
+
+                summaries.Add(new DsmEntrySummaryDto
+                {
+                    DsmEntryId = primary.DsmEntryId,
+                    DsmName = primary.DsmName,
+                    PumpId = primary.PumpId,
+                    ConnectedPumpId = primary.ConnectedPumpId,
+                    ReconciledToPumpId = null,
+                    GrossSales = totalGrossSales,
+                    TotalPaymentIn = totalCollection,
+                    Difference = mismatch,
+                    CreatedAt = primary.CreatedAt
+                });
+            }
 
 
             return Result<List<DsmEntrySummaryDto>>.Ok(summaries);

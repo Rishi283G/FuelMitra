@@ -251,9 +251,9 @@ public class FinancialPipelineIntegrationTests : IDisposable
         Assert.Equal(3000, ownerVm.TodayTotalSale);
 
         // Assert PhonePe / UPI Direct Direct
-        Assert.Equal(1000, dayTotalVm.PhonePeTotal);
-        Assert.Equal(1000, dashboardVm.TodayTotalPhonePe);
-        Assert.Equal(1500, ownerVm.TodayTotalPhonePe);
+        Assert.Equal(500, dayTotalVm.PhonePeTotal);
+        Assert.Equal(500, dashboardVm.TodayTotalPhonePe);
+        Assert.Equal(750, ownerVm.TodayTotalPhonePe);
 
         // Assert PhonePe Card / UPI Card
         Assert.Equal(500, dayTotalVm.PhonePeCardTotal);

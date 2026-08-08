@@ -280,11 +280,10 @@ public partial class DashboardViewModel : ObservableObject
                 var sDate = entry.Shift?.ShiftDate.Date ?? StartDate.Date;
                 var sType = entry.Shift?.ShiftType ?? "";
 
-                bool isTodayA = sDate == StartDate.Date && (sType == "A" || sType == "I");
-                bool isTodayB = sDate == StartDate.Date && (sType == "B" || sType == "II");
-                bool isTomorrowA = sDate == StartDate.Date.AddDays(1) && (sType == "A" || sType == "I");
+                bool isTodayA = sDate >= StartDate.Date && sDate <= EndDate.Date && (sType == "A" || sType == "I");
+                bool isTodayB = sDate >= StartDate.Date && sDate <= EndDate.Date && (sType == "B" || sType == "II");
 
-                if (!isTodayA && !isTodayB && !isTomorrowA) continue;
+                if (!isTodayA && !isTodayB) continue;
 
                 var cash1 = entry.CashDenominations.Where(x => x.CashType == "Cash1").Sum(x => x.TotalAmount);
                 var cash2 = entry.CashDenominations.Where(x => x.CashType == "Cash2").Sum(x => x.TotalAmount);
@@ -301,14 +300,15 @@ public partial class DashboardViewModel : ObservableObject
                 var pc = entry.PaymentCollection;
                 if (isTodayA)
                 {
-                    pp = (pc?.PhonePeMorning ?? 0) + (pc?.PhonePeCardMorning ?? 0);
-                    cc = pc?.CreditCardMorning ?? 0;
-                    petro = pc?.PetroCardMorning ?? 0;
+                    pp = (pc?.PhonePeMorning ?? 0) + (pc?.PhonePeNight ?? 0) + (pc?.PhonePeCardMorning ?? 0) + (pc?.PhonePeCardNight ?? 0);
+                    cc = (pc?.CreditCardMorning ?? 0) + (pc?.CreditCardNight ?? 0);
+                    petro = (pc?.PetroCardMorning ?? 0) + (pc?.PetroCardNight ?? 0);
 
-                    ppDirectVal = pc?.PhonePeMorning ?? 0;
+                    ppDirectVal = (pc?.PhonePeMorning ?? 0) + (pc?.PhonePeNight ?? 0);
                     ppCardMorningVal = pc?.PhonePeCardMorning ?? 0;
-                    ccVal = pc?.CreditCardMorning ?? 0;
-                    petroVal = pc?.PetroCardMorning ?? 0;
+                    ppCardNightVal = pc?.PhonePeCardNight ?? 0;
+                    ccVal = (pc?.CreditCardMorning ?? 0) + (pc?.CreditCardNight ?? 0);
+                    petroVal = (pc?.PetroCardMorning ?? 0) + (pc?.PetroCardNight ?? 0);
                 }
                 else if (isTodayB)
                 {
@@ -320,17 +320,6 @@ public partial class DashboardViewModel : ObservableObject
                     ppCardMorningVal = pc?.PhonePeCardDay ?? 0;
                     ccVal = pc?.CreditCardDay ?? 0;
                     petroVal = pc?.PetroCardDay ?? 0;
-                }
-                else if (isTomorrowA)
-                {
-                    pp = (pc?.PhonePeNight ?? 0) + (pc?.PhonePeCardNight ?? 0);
-                    cc = pc?.CreditCardNight ?? 0;
-                    petro = pc?.PetroCardNight ?? 0;
-
-                    ppDirectVal = pc?.PhonePeNight ?? 0;
-                    ppCardNightVal = pc?.PhonePeCardNight ?? 0;
-                    ccVal = pc?.CreditCardNight ?? 0;
-                    petroVal = pc?.PetroCardNight ?? 0;
                 }
 
                 var calc = _dsmCalculationService.Calculate(new DsmEntryDto
@@ -356,30 +345,23 @@ public partial class DashboardViewModel : ObservableObject
 
                 double mismatch = (double)calc.Mismatch;
                 
-                if (!isTomorrowA)
-                {
-                    entryCalculations.Add((entry.ShiftId, entry.DsmName ?? "", entry.PumpId, entry.ReconciledToPumpId, mismatch));
-                    TodayTotalSale += (double)calc.GrossSales;
-                    TodayCollection += (double)calc.TotalCollection;
-                    TotalCreditorsToday += (double)calc.TotalCreditors;
-                    TodayTotalBankCash += cash1 > 0 ? cash1 : (entry.PaymentCollection?.CashDeposit ?? 0);
-                    TodayTotalCashInHand += cash2;
-                    TodayTotalExpenses += entry.Expenses.Sum(x => x.Amount);
+                entryCalculations.Add((entry.ShiftId, entry.DsmName ?? "", entry.PumpId, entry.ReconciledToPumpId, mismatch));
+                TodayTotalSale += (double)calc.GrossSales;
+                TodayCollection += (double)calc.TotalCollection;
+                TotalCreditorsToday += (double)calc.TotalCreditors;
+                TodayTotalBankCash += cash1 > 0 ? cash1 : (entry.PaymentCollection?.CashDeposit ?? 0);
+                TodayTotalCashInHand += cash2;
+                TodayTotalExpenses += entry.Expenses.Sum(x => x.Amount);
 
-                    foreach (var d in entry.DebitEntries)
-                    {
-                        TodayDebtorsList.Add(new DebitRegisterRowDto
-                        {
-                            DsmName = entry.DsmName ?? "",
-                            PumpId = entry.PumpId,
-                            DebtorName = d.DebtorName,
-                            Amount = (double)d.Amount
-                        });
-                    }
-                }
-                else
+                foreach (var d in entry.DebitEntries)
                 {
-                    TodayCollection += pp + cc + petro;
+                    TodayDebtorsList.Add(new DebitRegisterRowDto
+                    {
+                        DsmName = entry.DsmName ?? "",
+                        PumpId = entry.PumpId,
+                        DebtorName = d.DebtorName,
+                        Amount = (double)d.Amount
+                    });
                 }
 
                 TodayTotalPhonePe += ppDirectVal;

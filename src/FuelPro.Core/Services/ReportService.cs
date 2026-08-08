@@ -186,7 +186,7 @@ public class ReportService : IReportService
                 phonePeCardNight += pc.PhonePeCardNight;
                 creditCardMorning += pc.CreditCardMorning;
                 creditCardNight += pc.CreditCardNight;
-                petroCard += pc.PetroCardMorning + pc.PetroCardNight + pc.PetroCardDay;
+                petroCard += pc.PetroCardMorning + pc.PetroCardNight;
             }
         }
 
@@ -450,16 +450,15 @@ public class ReportService : IReportService
         double petroCardDay = 0;
         double petroCardNight = 0;
 
-        foreach (var entry in entriesList)
+        foreach (var entry in todayEntries)
         {
             var pc = entry.PaymentCollection;
             if (pc == null) continue;
 
-            var sDate = entry.Shift?.ShiftDate.Date ?? startDate.Date;
             var rawType = entry.Shift?.ShiftType ?? "";
             var sType = (rawType == "I" || rawType == "Shift I") ? "A" : (rawType == "II" || rawType == "Shift II") ? "B" : (rawType == "III" || rawType == "Shift III") ? "C" : rawType;
 
-            if (sDate == startDate.Date && sType == "A")
+            if (sType == "A")
             {
                 // Shift I stores Morning AND Night in the same entry
                 phonePeDirectMorning += pc.PhonePeMorning;
@@ -471,20 +470,12 @@ public class ReportService : IReportService
                 pineLabsCardNight += pc.CreditCardNight;
                 petroCardNight += pc.PetroCardNight;
             }
-            else if (sDate == startDate.Date && sType == "B")
+            else if (sType == "B")
             {
                 phonePeDirectDay += pc.PhonePeDay;
                 phonePeCardDay += pc.PhonePeCardDay;
                 pineLabsCardDay += pc.CreditCardDay;
                 petroCardDay += pc.PetroCardDay;
-            }
-            else if (sDate == startDate.Date.AddDays(1) && sType == "A")
-            {
-                // Tomorrow's Shift I (Night) actually holds tonight's Night collections
-                phonePeDirectNight += pc.PhonePeNight;
-                phonePeCardNight += pc.PhonePeCardNight;
-                pineLabsCardNight += pc.CreditCardNight;
-                petroCardNight += pc.PetroCardNight;
             }
         }
 

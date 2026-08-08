@@ -140,7 +140,7 @@ public class ReportServiceTests
         );
 
         // Assert
-        Assert.Equal(3800, report.CollectionBreakdown.Sum(c => c.Amount)); // 500 PhonePe + 2500 Cash + 800 PhonePe (tomorrow's Shift A Night)
+        Assert.Equal(3000, report.CollectionBreakdown.Sum(c => c.Amount)); // 500 PhonePe + 2500 Cash (today's shift entries only)
         // ExpectedCollection comes from NozzleReadings-based fuel totals; no nozzle readings → 0.
         Assert.Equal(0, report.ExpectedCollection);
     }
