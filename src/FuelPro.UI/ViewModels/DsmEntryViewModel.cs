@@ -129,9 +129,11 @@ public partial class KhandharePetroleumRow : ObservableObject
 {
     public Action? OnRowChanged { get; set; }
 
+    [ObservableProperty] private string _name = "";
     [ObservableProperty] private string _slipNumber = "";
     [ObservableProperty] private double? _amount;
 
+    partial void OnNameChanged(string value) => OnRowChanged?.Invoke();
     partial void OnAmountChanged(double? value) => OnRowChanged?.Invoke();
     partial void OnSlipNumberChanged(string value) => OnRowChanged?.Invoke();
 }
@@ -763,44 +765,44 @@ public partial class DsmEntryViewModel : ObservableObject
             var isDay = SelectedShift == "B";
             var payment = new PaymentCollection
             {
-                PhonePeCardMorning = isDay ? 0 : (PhonePeCardMorning ?? 0),
+                PhonePeCardMorning = PhonePeCardMorning ?? 0,
                 PhonePeCardDay = isDay ? (PhonePeCardMorning ?? 0) : 0,
-                PhonePeCardNight = isDay ? 0 : (PhonePeCardNight ?? 0),
-                PhonePeMorning = isDay ? 0 : (PhonePeMorning ?? 0),
+                PhonePeCardNight = PhonePeCardNight ?? 0,
+                PhonePeMorning = PhonePeMorning ?? 0,
                 PhonePeDay = isDay ? (PhonePeMorning ?? 0) : 0,
-                PhonePeNight = isDay ? 0 : (PhonePeNight ?? 0),
-                CreditCardMorning = isDay ? 0 : (CreditCardMorning ?? 0),
+                PhonePeNight = PhonePeNight ?? 0,
+                CreditCardMorning = CreditCardMorning ?? 0,
                 CreditCardDay = isDay ? (CreditCardMorning ?? 0) : 0,
-                CreditCardNight = isDay ? 0 : (CreditCardNight ?? 0),
-                PetroCardMorning = isDay ? 0 : (PetroCardMorning ?? 0),
+                CreditCardNight = CreditCardNight ?? 0,
+                PetroCardMorning = PetroCardMorning ?? 0,
                 PetroCardDay = isDay ? (PetroCardMorning ?? 0) : 0,
-                PetroCardNight = isDay ? 0 : (PetroCardNight ?? 0),
+                PetroCardNight = PetroCardNight ?? 0,
                 Others = Others ?? 0,
                 CashDeposit = Cash1.TotalAmount,
-                CardTid = isDay ? CreditCardTidMorning : CreditCardTidNight,
-                CardBatch = isDay ? CreditCardBatchMorning : CreditCardBatchNight,
-                PhonePeTid = isDay ? PhonePeTidMorning : PhonePeTidNight,
-                PhonePeBatch = isDay ? PhonePeBatchMorning : PhonePeBatchNight,
-                PetroCardTid = isDay ? PetroCardTidMorning : PetroCardTidNight,
-                PetroCardBatch = isDay ? PetroCardBatchMorning : PetroCardBatchNight,
-                PhonePeTidMorning = isDay ? null : PhonePeTidMorning,
-                PhonePeBatchMorning = isDay ? null : PhonePeBatchMorning,
+                CardTid = (CreditCardTidNight ?? CreditCardTidMorning),
+                CardBatch = (CreditCardBatchNight ?? CreditCardBatchMorning),
+                PhonePeTid = (PhonePeTidNight ?? PhonePeTidMorning),
+                PhonePeBatch = (PhonePeBatchNight ?? PhonePeBatchMorning),
+                PetroCardTid = (PetroCardTidNight ?? PetroCardTidMorning),
+                PetroCardBatch = (PetroCardBatchNight ?? PetroCardBatchMorning),
+                PhonePeTidMorning = PhonePeTidMorning,
+                PhonePeBatchMorning = PhonePeBatchMorning,
                 PhonePeTidDay = isDay ? PhonePeTidMorning : null,
                 PhonePeBatchDay = isDay ? PhonePeBatchMorning : null,
-                PhonePeTidNight = isDay ? null : PhonePeTidNight,
-                PhonePeBatchNight = isDay ? null : PhonePeBatchNight,
-                CreditCardTidMorning = isDay ? null : CreditCardTidMorning,
-                CreditCardBatchMorning = isDay ? null : CreditCardBatchMorning,
+                PhonePeTidNight = PhonePeTidNight,
+                PhonePeBatchNight = PhonePeBatchNight,
+                CreditCardTidMorning = CreditCardTidMorning,
+                CreditCardBatchMorning = CreditCardBatchMorning,
                 CreditCardTidDay = isDay ? CreditCardTidMorning : null,
                 CreditCardBatchDay = isDay ? CreditCardBatchMorning : null,
-                CreditCardTidNight = isDay ? null : CreditCardTidNight,
-                CreditCardBatchNight = isDay ? null : CreditCardBatchNight,
-                PetroCardTidMorning = isDay ? null : PetroCardTidMorning,
-                PetroCardBatchMorning = isDay ? null : PetroCardBatchMorning,
+                CreditCardTidNight = CreditCardTidNight,
+                CreditCardBatchNight = CreditCardBatchNight,
+                PetroCardTidMorning = PetroCardTidMorning,
+                PetroCardBatchMorning = PetroCardBatchMorning,
                 PetroCardTidDay = isDay ? PetroCardTidMorning : null,
                 PetroCardBatchDay = isDay ? PetroCardBatchMorning : null,
-                PetroCardTidNight = isDay ? null : PetroCardTidNight,
-                PetroCardBatchNight = isDay ? null : PetroCardBatchNight
+                PetroCardTidNight = PetroCardTidNight,
+                PetroCardBatchNight = PetroCardBatchNight
             };
 
             var debitModels = Debits.Where(d => !string.IsNullOrWhiteSpace(d.DebtorName))
@@ -819,10 +821,10 @@ public partial class DsmEntryViewModel : ObservableObject
                 .Select(e => new Expense { Description = e.Description, Amount = e.Amount ?? 0 }).ToList();
 
             var kpModels = KhandharePetroleumEntries
-                .Where(kp => !string.IsNullOrWhiteSpace(kp.SlipNumber) || (kp.Amount ?? 0) > 0)
+                .Where(kp => !string.IsNullOrWhiteSpace(kp.Name) || !string.IsNullOrWhiteSpace(kp.SlipNumber) || (kp.Amount ?? 0) > 0)
                 .Select(kp => new KhandharePetroleumEntry
                 {
-                    Name = string.IsNullOrWhiteSpace(kp.SlipNumber) ? "Khandhare Petroleum" : $"Slip #{kp.SlipNumber}",
+                    Name = !string.IsNullOrWhiteSpace(kp.Name) ? kp.Name : (!string.IsNullOrWhiteSpace(kp.SlipNumber) ? $"Slip #{kp.SlipNumber}" : "Khandhare Petroleum"),
                     SlipNumber = kp.SlipNumber ?? "",
                     Amount = kp.Amount ?? 0
                 }).ToList();
@@ -909,7 +911,8 @@ public partial class DsmEntryViewModel : ObservableObject
             if (entry.Shift != null)
             {
                 SelectedDate = entry.Shift.ShiftDate;
-                SelectedShift = entry.Shift.ShiftType;
+                var st = entry.Shift.ShiftType;
+                SelectedShift = st == "I" ? "A" : (st == "II" ? "B" : (st == "III" ? "C" : st));
             }
 
             var pumpMatch = PumpOptions.FirstOrDefault(p => p.PumpId == entry.PumpId);
@@ -962,80 +965,40 @@ public partial class DsmEntryViewModel : ObservableObject
             // Explicitly load nozzles loading
             await LoadNozzlesForPumpAsync();
 
-            // Populate payment losslessly
+            // Populate payment losslessly (preserve both Morning and Night slots for all shifts)
             var paymentSource = entry.PaymentCollection ?? connectedEntry?.PaymentCollection;
-            var isDay = entry.Shift?.ShiftType == "B" || entry.Shift?.ShiftType == "II";
+            PhonePeCardMorning = paymentSource?.PhonePeCardMorning > 0 ? paymentSource?.PhonePeCardMorning : (paymentSource?.PhonePeCardDay > 0 ? paymentSource?.PhonePeCardDay : paymentSource?.PhonePeCardMorning);
+            PhonePeCardNight = paymentSource?.PhonePeCardNight;
+            PhonePeMorning = paymentSource?.PhonePeMorning > 0 ? paymentSource?.PhonePeMorning : (paymentSource?.PhonePeDay > 0 ? paymentSource?.PhonePeDay : paymentSource?.PhonePeMorning);
+            PhonePeNight = paymentSource?.PhonePeNight;
+            CreditCardMorning = paymentSource?.CreditCardMorning > 0 ? paymentSource?.CreditCardMorning : (paymentSource?.CreditCardDay > 0 ? paymentSource?.CreditCardDay : paymentSource?.CreditCardMorning);
+            CreditCardNight = paymentSource?.CreditCardNight;
+            PetroCardMorning = paymentSource?.PetroCardMorning > 0 ? paymentSource?.PetroCardMorning : (paymentSource?.PetroCardDay > 0 ? paymentSource?.PetroCardDay : paymentSource?.PetroCardMorning);
+            PetroCardNight = paymentSource?.PetroCardNight;
+            Others = paymentSource?.Others;
+            CashDeposit = paymentSource?.CashDeposit;
 
-            if (isDay)
-            {
-                PhonePeCardMorning = paymentSource?.PhonePeCardDay;
-                PhonePeCardNight = null;
-                PhonePeMorning = paymentSource?.PhonePeDay;
-                PhonePeNight = null;
-                CreditCardMorning = paymentSource?.CreditCardDay;
-                CreditCardNight = null;
-                PetroCardMorning = paymentSource?.PetroCardDay;
-                PetroCardNight = null;
-                Others = paymentSource?.Others;
-                CashDeposit = paymentSource?.CashDeposit;
+            PhonePeTidMorning = paymentSource?.PhonePeTidMorning ?? paymentSource?.PhonePeTidDay ?? paymentSource?.PhonePeTid;
+            PhonePeBatchMorning = paymentSource?.PhonePeBatchMorning ?? paymentSource?.PhonePeBatchDay ?? paymentSource?.PhonePeBatch;
+            PhonePeTidNight = paymentSource?.PhonePeTidNight;
+            PhonePeBatchNight = paymentSource?.PhonePeBatchNight;
 
-                PhonePeTidMorning = paymentSource?.PhonePeTidDay ?? paymentSource?.PhonePeTid;
-                PhonePeBatchMorning = paymentSource?.PhonePeBatchDay ?? paymentSource?.PhonePeBatch;
-                PhonePeTidNight = null;
-                PhonePeBatchNight = null;
+            CreditCardTidMorning = paymentSource?.CreditCardTidMorning ?? paymentSource?.CreditCardTidDay ?? paymentSource?.CardTid;
+            CreditCardBatchMorning = paymentSource?.CreditCardBatchMorning ?? paymentSource?.CreditCardBatchDay ?? paymentSource?.CardBatch;
+            CreditCardTidNight = paymentSource?.CreditCardTidNight;
+            CreditCardBatchNight = paymentSource?.CreditCardBatchNight;
 
-                CreditCardTidMorning = paymentSource?.CreditCardTidDay ?? paymentSource?.CardTid;
-                CreditCardBatchMorning = paymentSource?.CreditCardBatchDay ?? paymentSource?.CardBatch;
-                CreditCardTidNight = null;
-                CreditCardBatchNight = null;
+            PetroCardTidMorning = paymentSource?.PetroCardTidMorning ?? paymentSource?.PetroCardTidDay ?? paymentSource?.PetroCardTid;
+            PetroCardBatchMorning = paymentSource?.PetroCardBatchMorning ?? paymentSource?.PetroCardBatchDay ?? paymentSource?.PetroCardBatch;
+            PetroCardTidNight = paymentSource?.PetroCardTidNight;
+            PetroCardBatchNight = paymentSource?.PetroCardBatchNight;
 
-                PetroCardTidMorning = paymentSource?.PetroCardTidDay ?? paymentSource?.PetroCardTid;
-                PetroCardBatchMorning = paymentSource?.PetroCardBatchDay ?? paymentSource?.PetroCardBatch;
-                PetroCardTidNight = null;
-                PetroCardBatchNight = null;
-
-                PhonePeTid = paymentSource?.PhonePeTidDay ?? paymentSource?.PhonePeTid;
-                PhonePeBatch = paymentSource?.PhonePeBatchDay ?? paymentSource?.PhonePeBatch;
-                CardTid = paymentSource?.CreditCardTidDay ?? paymentSource?.CardTid;
-                CardBatch = paymentSource?.CreditCardBatchDay ?? paymentSource?.CardBatch;
-                PetroCardTid = paymentSource?.PetroCardTidDay ?? paymentSource?.PetroCardTid;
-                PetroCardBatch = paymentSource?.PetroCardBatchDay ?? paymentSource?.PetroCardBatch;
-            }
-            else
-            {
-                PhonePeCardMorning = paymentSource?.PhonePeCardMorning;
-                PhonePeCardNight = paymentSource?.PhonePeCardNight;
-                PhonePeMorning = paymentSource?.PhonePeMorning;
-                PhonePeNight = paymentSource?.PhonePeNight;
-                CreditCardMorning = paymentSource?.CreditCardMorning;
-                CreditCardNight = paymentSource?.CreditCardNight;
-                PetroCardMorning = paymentSource?.PetroCardMorning;
-                PetroCardNight = paymentSource?.PetroCardNight;
-                Others = paymentSource?.Others;
-                CashDeposit = paymentSource?.CashDeposit;
-
-                PhonePeTidMorning = paymentSource?.PhonePeTidMorning ?? paymentSource?.PhonePeTid;
-                PhonePeBatchMorning = paymentSource?.PhonePeBatchMorning ?? paymentSource?.PhonePeBatch;
-                PhonePeTidNight = paymentSource?.PhonePeTidNight ?? paymentSource?.PhonePeTid;
-                PhonePeBatchNight = paymentSource?.PhonePeBatchNight ?? paymentSource?.PhonePeBatch;
-
-                CreditCardTidMorning = paymentSource?.CreditCardTidMorning ?? paymentSource?.CardTid;
-                CreditCardBatchMorning = paymentSource?.CreditCardBatchMorning ?? paymentSource?.CardBatch;
-                CreditCardTidNight = paymentSource?.CreditCardTidNight ?? paymentSource?.CardTid;
-                CreditCardBatchNight = paymentSource?.CreditCardBatchNight ?? paymentSource?.CardBatch;
-
-                PetroCardTidMorning = paymentSource?.PetroCardTidMorning ?? paymentSource?.PetroCardTid;
-                PetroCardBatchMorning = paymentSource?.PetroCardBatchMorning ?? paymentSource?.PetroCardBatch;
-                PetroCardTidNight = paymentSource?.PetroCardTidNight ?? paymentSource?.PetroCardTid;
-                PetroCardBatchNight = paymentSource?.PetroCardBatchNight ?? paymentSource?.PetroCardBatch;
-
-                PhonePeTid = paymentSource?.PhonePeTidNight ?? paymentSource?.PhonePeTid;
-                PhonePeBatch = paymentSource?.PhonePeBatchNight ?? paymentSource?.PhonePeBatch;
-                CardTid = paymentSource?.CreditCardTidNight ?? paymentSource?.CardTid;
-                CardBatch = paymentSource?.CreditCardBatchNight ?? paymentSource?.CardBatch;
-                PetroCardTid = paymentSource?.PetroCardTidNight ?? paymentSource?.PetroCardTid;
-                PetroCardBatch = paymentSource?.PetroCardBatchNight ?? paymentSource?.PetroCardBatch;
-            }
+            PhonePeTid = paymentSource?.PhonePeTidNight ?? paymentSource?.PhonePeTidMorning ?? paymentSource?.PhonePeTid;
+            PhonePeBatch = paymentSource?.PhonePeBatchNight ?? paymentSource?.PhonePeBatchMorning ?? paymentSource?.PhonePeBatch;
+            CardTid = paymentSource?.CreditCardTidNight ?? paymentSource?.CreditCardTidMorning ?? paymentSource?.CardTid;
+            CardBatch = paymentSource?.CreditCardBatchNight ?? paymentSource?.CreditCardBatchMorning ?? paymentSource?.CardBatch;
+            PetroCardTid = paymentSource?.PetroCardTidNight ?? paymentSource?.PetroCardTidMorning ?? paymentSource?.PetroCardTid;
+            PetroCardBatch = paymentSource?.PetroCardBatchNight ?? paymentSource?.PetroCardBatchMorning ?? paymentSource?.PetroCardBatch;
 
             // Populate nozzle readings (override auto-loaded ones)
             foreach (var nozzleRow in NozzleReadings)
@@ -1108,7 +1071,8 @@ public partial class DsmEntryViewModel : ObservableObject
             {
                 KhandharePetroleumEntries.Add(new KhandharePetroleumRow
                 {
-                    SlipNumber = kp.SlipNumber,
+                    Name = kp.Name ?? "",
+                    SlipNumber = kp.SlipNumber ?? "",
                     Amount = kp.Amount,
                     OnRowChanged = RecalculateAll
                 });
@@ -1395,7 +1359,8 @@ public partial class DsmEntryViewModel : ObservableObject
             {
                 // Others is NOT included in TotalInDirect — it is informational only
                 PhonePe = (decimal)((PhonePeMorning ?? 0) + (PhonePeNight ?? 0) + (PhonePeCardMorning ?? 0) + (PhonePeCardNight ?? 0)),
-                CreditCard = (decimal)((CreditCardMorning ?? 0) + (CreditCardNight ?? 0) + (PetroCardMorning ?? 0) + (PetroCardNight ?? 0)),
+                CreditCard = (decimal)((CreditCardMorning ?? 0) + (CreditCardNight ?? 0)),
+                PetroCard = (decimal)((PetroCardMorning ?? 0) + (PetroCardNight ?? 0)),
                 CashDeposit = (decimal)Cash1.TotalAmount,
                 PhysicalCash = (decimal)Cash2.TotalAmount
             },

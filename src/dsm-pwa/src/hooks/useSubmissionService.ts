@@ -148,14 +148,20 @@ export function useSubmissionService() {
     }
   }, [submitToSupabase]);
 
-  const fetchSubmissionHistory = useCallback(async (dsmUserId: string) => {
-    const { data, error } = await supabase
+  const fetchSubmissionHistory = useCallback(async (dsmUserId: string, authUserId?: string) => {
+    let query = supabase
       .from('DsmSubmissions')
-      .select('Id, PumpId, ShiftDate, ShiftType, Status, SubmittedAt, RejectionReason, ApprovedAt, Metadata')
-      .eq('DsmUserId', dsmUserId)
-      .order('SubmittedAt', { ascending: false })
-      .limit(30);
+      .select('Id, PumpId, ShiftDate, ShiftType, Status, SubmittedAt, RejectionReason, ApprovedAt, Metadata');
 
+    if (authUserId && authUserId !== dsmUserId) {
+      query = query.or(`DsmUserId.eq.${dsmUserId},DsmUserId.eq.${authUserId}`);
+    } else {
+      query = query.eq('DsmUserId', dsmUserId);
+    }
+
+    const { data, error } = await query
+      .order('SubmittedAt', { ascending: false })
+      .limit(100);
 
     if (error) throw error;
     return data ?? [];

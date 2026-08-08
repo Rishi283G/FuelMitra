@@ -827,14 +827,34 @@ public partial class App : Application
             Log.Information("Created DsmSalaryPayments table");
         }
 
-        // Migrate existing shift types from A/B/C to I/II/III to match the new reporting code
+        // ─── KhandharePetroleumEntries ───────────────────────────────────────────
+        if (!TableExists(connection, "KhandharePetroleumEntries"))
+        {
+            cmd.CommandText = @"
+                CREATE TABLE ""KhandharePetroleumEntries"" (
+                    ""Id"" INTEGER NOT NULL CONSTRAINT ""PK_KhandharePetroleumEntries"" PRIMARY KEY AUTOINCREMENT,
+                    ""DsmEntryId"" INTEGER NULL,
+                    ""DsmName"" TEXT NOT NULL DEFAULT '',
+                    ""Name"" TEXT NOT NULL DEFAULT '',
+                    ""SlipNumber"" TEXT NOT NULL DEFAULT '',
+                    ""Amount"" REAL NOT NULL DEFAULT 0.0,
+                    ""Date"" TEXT NOT NULL DEFAULT '',
+                    ""CreatedAt"" TEXT NOT NULL DEFAULT '',
+                    ""SyncGuid"" TEXT NOT NULL DEFAULT '',
+                    CONSTRAINT ""FK_KhandharePetroleumEntries_DsmEntries_DsmEntryId"" FOREIGN KEY (""DsmEntryId"") REFERENCES ""DsmEntries"" (""DsmEntryId"") ON DELETE CASCADE
+                );";
+            cmd.ExecuteNonQuery();
+            Log.Information("Created KhandharePetroleumEntries table");
+        }
+
+        // Restore canonical shift types A/B/C so all queries match properly across PWA and Desktop
         using (var cmdMigrate = connection.CreateCommand())
         {
-            cmdMigrate.CommandText = "UPDATE Shifts SET ShiftType = 'I' WHERE ShiftType = 'A';";
+            cmdMigrate.CommandText = "UPDATE Shifts SET ShiftType = 'A' WHERE ShiftType = 'I';";
             cmdMigrate.ExecuteNonQuery();
-            cmdMigrate.CommandText = "UPDATE Shifts SET ShiftType = 'II' WHERE ShiftType = 'B';";
+            cmdMigrate.CommandText = "UPDATE Shifts SET ShiftType = 'B' WHERE ShiftType = 'II';";
             cmdMigrate.ExecuteNonQuery();
-            cmdMigrate.CommandText = "UPDATE Shifts SET ShiftType = 'III' WHERE ShiftType = 'C';";
+            cmdMigrate.CommandText = "UPDATE Shifts SET ShiftType = 'C' WHERE ShiftType = 'III';";
             cmdMigrate.ExecuteNonQuery();
         }
     }

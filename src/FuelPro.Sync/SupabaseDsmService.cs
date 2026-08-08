@@ -80,7 +80,7 @@ public class SupabaseDsmService
             var settings = await _syncConfigService.GetSettingsAsync();
             if (string.IsNullOrEmpty(settings.StationId)) return Result<List<dynamic>>.Fail("Station ID is blank.");
 
-            var endpoint = $"DsmSubmissions?select=*,DsmUsers(FullName)&StationId=eq.{settings.StationId}&Status=eq.Approved&order=ApprovedAt.desc&limit=50";
+            var endpoint = $"DsmSubmissions?select=*,DsmUsers(FullName)&StationId=eq.{settings.StationId}&Status=eq.Approved&order=ApprovedAt.desc&limit=500";
             var request = await CreateRequestAsync(HttpMethod.Get, endpoint);
 
             var response = await _client.SendAsync(request);

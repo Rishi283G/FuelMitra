@@ -280,9 +280,9 @@ public partial class DashboardViewModel : ObservableObject
                 var sDate = entry.Shift?.ShiftDate.Date ?? StartDate.Date;
                 var sType = entry.Shift?.ShiftType ?? "";
 
-                bool isTodayA = sDate == StartDate.Date && sType == "A";
-                bool isTodayB = sDate == StartDate.Date && sType == "B";
-                bool isTomorrowA = sDate == StartDate.Date.AddDays(1) && sType == "A";
+                bool isTodayA = sDate == StartDate.Date && (sType == "A" || sType == "I");
+                bool isTodayB = sDate == StartDate.Date && (sType == "B" || sType == "II");
+                bool isTomorrowA = sDate == StartDate.Date.AddDays(1) && (sType == "A" || sType == "I");
 
                 if (!isTodayA && !isTodayB && !isTomorrowA) continue;
 

@@ -76,7 +76,10 @@ public class SyncEngine
         "KhandharePetroleumEntries",
         // Tanker Management
         "FuelTankers",
-        "TankDailyStocks"
+        "TankDailyStocks",
+        // Salary & Payroll
+        "DsmSalaryHistories",
+        "DsmSalaryPayments"
     };
 
     // ── FK Configuration ──────────────────────────────────────────────
@@ -143,7 +146,9 @@ public class SyncEngine
             new FkMapping("DsmEntryId", "DsmEntries")
         }),
         new TableSyncConfig("FuelTankers", Array.Empty<FkMapping>()),
-        new TableSyncConfig("TankDailyStocks", new[] { new FkMapping("ShiftId", "Shifts") })
+        new TableSyncConfig("TankDailyStocks", new[] { new FkMapping("ShiftId", "Shifts") }),
+        new TableSyncConfig("DsmSalaryHistories", new[] { new FkMapping("DsmProfileId", "DsmProfiles") }),
+        new TableSyncConfig("DsmSalaryPayments", new[] { new FkMapping("DsmProfileId", "DsmProfiles") })
     };
 
     /// <summary>
@@ -162,7 +167,7 @@ public class SyncEngine
     public void Start()
     {
         _logger.Information("Starting background sync engine...");
-        _syncTimer = new Timer(async _ => await OnTimerTickAsync(), null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(30));
+        _syncTimer = new Timer(async _ => await OnTimerTickAsync(), null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(3));
     }
 
     public void Stop()
@@ -207,107 +212,29 @@ public class SyncEngine
         using var context = scope.ServiceProvider.GetRequiredService<FuelProDbContext>();
         var settings = await _configService.GetSettingsAsync();
 
-        var tables = new[]
-        {
-            "Settings",
-            "DsmProfiles",
-            "Creditors",
-            "Shifts",
-            "DsmEntries",
-            "NozzleReadings",
-            "PaymentCollections",
-            "DebitEntries",
-            "TestingEntries",
-            "Expenses",
-            "CashDenominations",
-            "ShiftOtherCash",
-            "ShiftFuelRates",
-            "CreditorRepayments",
-            "AgsShiftImports",
-            "AgsNozzleReadings",
-            "AgsTankStocks",
-            "AgsDailySummaries",
-            "ProductMasters",
-            "OilDefInventories",
-            "OilDefPurchases",
-            "OilDefDailyLogs"
-        };
-
         int totalQueued = 0;
 
-        foreach (var tableName in tables)
+        foreach (var tableName in SyncedTables)
         {
+            if (tableName == "SyncChangeLogs" || tableName == "Users") continue;
+
+            var entityType = context.Model.GetEntityTypes().FirstOrDefault(t => t.GetTableName() == tableName);
+            if (entityType == null) continue;
+
+            var pkProp = entityType.FindPrimaryKey()?.Properties.FirstOrDefault();
+            if (pkProp == null) continue;
+
             List<int> localIds;
-            switch (tableName)
+            try
             {
-                case "Settings":
-                    localIds = await context.Settings.Select(e => e.SettingId).ToListAsync();
-                    break;
-                case "DsmProfiles":
-                    localIds = await context.DsmProfiles.Select(e => e.DsmProfileId).ToListAsync();
-                    break;
-                case "Creditors":
-                    localIds = await context.Creditors.Select(e => e.CreditorId).ToListAsync();
-                    break;
-                case "Shifts":
-                    localIds = await context.Shifts.Select(e => e.ShiftId).ToListAsync();
-                    break;
-                case "DsmEntries":
-                    localIds = await context.DsmEntries.Select(e => e.DsmEntryId).ToListAsync();
-                    break;
-                case "NozzleReadings":
-                    localIds = await context.NozzleReadings.Select(e => e.NozzleReadingId).ToListAsync();
-                    break;
-                case "PaymentCollections":
-                    localIds = await context.PaymentCollections.Select(e => e.PaymentId).ToListAsync();
-                    break;
-                case "DebitEntries":
-                    localIds = await context.DebitEntries.Select(e => e.DebitId).ToListAsync();
-                    break;
-                case "TestingEntries":
-                    localIds = await context.TestingEntries.Select(e => e.TestingId).ToListAsync();
-                    break;
-                case "Expenses":
-                    localIds = await context.Expenses.Select(e => e.ExpenseId).ToListAsync();
-                    break;
-                case "CashDenominations":
-                    localIds = await context.CashDenominations.Select(e => e.CashDenomId).ToListAsync();
-                    break;
-                case "ShiftOtherCash":
-                    localIds = await context.ShiftOtherCash.Select(e => e.ShiftOtherCashId).ToListAsync();
-                    break;
-                case "ShiftFuelRates":
-                    localIds = await context.ShiftFuelRates.Select(e => e.ShiftFuelRateId).ToListAsync();
-                    break;
-                case "CreditorRepayments":
-                    localIds = await context.CreditorRepayments.Select(e => e.CreditorRepaymentId).ToListAsync();
-                    break;
-                case "AgsShiftImports":
-                    localIds = await context.AgsShiftImports.Select(e => e.AgsShiftImportId).ToListAsync();
-                    break;
-                case "AgsNozzleReadings":
-                    localIds = await context.AgsNozzleReadings.Select(e => e.AgsNozzleReadingId).ToListAsync();
-                    break;
-                case "AgsTankStocks":
-                    localIds = await context.AgsTankStocks.Select(e => e.AgsTankStockId).ToListAsync();
-                    break;
-                case "AgsDailySummaries":
-                    localIds = await context.AgsDailySummaries.Select(e => e.AgsDailySummaryId).ToListAsync();
-                    break;
-                case "ProductMasters":
-                    localIds = await context.ProductMasters.Select(e => e.Id).ToListAsync();
-                    break;
-                case "OilDefInventories":
-                    localIds = await context.OilDefInventories.Select(e => e.Id).ToListAsync();
-                    break;
-                case "OilDefPurchases":
-                    localIds = await context.OilDefPurchases.Select(e => e.Id).ToListAsync();
-                    break;
-                case "OilDefDailyLogs":
-                    localIds = await context.OilDefDailyLogs.Select(e => e.Id).ToListAsync();
-                    break;
-                default:
-                    continue;
+                localIds = await context.Database.SqlQueryRaw<int>(
+                    $"SELECT \"{pkProp.Name}\" AS \"Value\" FROM \"{tableName}\"")
+                    .ToListAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.Warning(ex, "Could not query primary keys for historical sync scan on table {Table}", tableName);
+                continue;
             }
 
             if (localIds.Count == 0) continue;
@@ -759,6 +686,7 @@ public class SyncEngine
                     }
 
                     // ── Force-push any missing parent records before the child batch ──
+                    bool hasParentError = false;
                     foreach (var (parentTable, parentRecords) in missingParents)
                     {
                         if (parentRecords.Count > 0)
@@ -770,6 +698,12 @@ public class SyncEngine
                             {
                                 var parentError = await parentResponse.Content.ReadAsStringAsync();
                                 _logger.Error("Failed to force-push missing parent records for table {Table}: {Error}", parentTable, parentError);
+                                if (parentError.Contains("PGRST205") || parentError.Contains("Could not find the table"))
+                                {
+                                    _logger.Warning("Parent table {ParentTable} does not exist in Supabase schema cache (PGRST205). Skipping push for dependent table {ChildTable} until Supabase schema migration is applied.", parentTable, tableName);
+                                    hasParentError = true;
+                                    break;
+                                }
                                 throw new HttpRequestException($"Supabase UPSERT failed for parent table {parentTable}: {parentError}");
                             }
                             // Mark these parent GUIDs as pushed
@@ -781,6 +715,8 @@ public class SyncEngine
                             _logger.Information("Force-pushed {Count} missing parent records to {Table}", parentList.Count, parentTable);
                         }
                     }
+
+                    if (hasParentError) continue;
                 }
 
                 if (recordsToUpsert.Count > 0)
@@ -793,6 +729,7 @@ public class SyncEngine
                     if (deactivations.Count > 0) batches.Add(deactivations);
                     if (activations.Count > 0) batches.Add(activations);
 
+                    bool hasPushError = false;
                     foreach (var batch in batches)
                     {
                         var json = JsonConvert.SerializeObject(batch);
@@ -801,9 +738,17 @@ public class SyncEngine
                         if (!response.IsSuccessStatusCode)
                         {
                             var error = await response.Content.ReadAsStringAsync();
+                            if (error.Contains("PGRST205") || error.Contains("Could not find the table"))
+                            {
+                                _logger.Warning("Table {Table} does not exist in Supabase schema cache (PGRST205). Skipping push for this table until Supabase schema migration is applied: {Error}", tableName, error);
+                                hasPushError = true;
+                                break;
+                            }
                             throw new HttpRequestException($"Supabase UPSERT failed for table {tableName}: {error}");
                         }
                     }
+
+                    if (hasPushError) continue;
 
                     // Mark all upserted GUIDs as pushed
                     foreach (var rec in recordsToUpsert)

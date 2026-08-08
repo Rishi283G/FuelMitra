@@ -40,7 +40,7 @@ public class DsmSubmissionPollingService
             if (_pollingTimer != null) return;
             
             _logger.Information("Starting DSM submission background polling service...");
-            _pollingTimer = new Timer(async _ => await PollAsync(), null, TimeSpan.Zero, TimeSpan.FromSeconds(30));
+            _pollingTimer = new Timer(async _ => await PollAsync(), null, TimeSpan.Zero, TimeSpan.FromSeconds(3));
         }
     }
 

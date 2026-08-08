@@ -342,7 +342,7 @@
     <span><span class="meta-label">Date</span><span class="mono" id="metaDate"></span></span>
   </div>
 
-  <div class="doc-title">SETTLEMENT SUMMARY</div>
+  <div class="doc-title">TID Sheet</div>
 
   <!-- Dynamic Settlement Summary Sections -->
   <div id="sectionsContainer"></div>
@@ -439,57 +439,71 @@ const printDate = data.date
   : '';
 document.getElementById('metaDate').textContent = printDate;
 
-// ── Section renderer (summary mode) ──────────────────────────────────────────
-// Renders a block with Morning / Day / Night totals only — no individual rows.
-//
-// Args:
-//   title      – section heading string
-//   morning    – morning total (number)
-//   day        – day total (number)
-//   night      – night total (number)
-//   sectionTotal – pre-computed section grand total (number)
-//
-const renderSummarySection = (title, morning, day, night, sectionTotal) => {
-  const periods = [
-    { key: 'Morning', value: morning, dotClass: 'dot-morning' },
-    { key: 'Day',     value: day,     dotClass: 'dot-day'     },
-    { key: 'Night',   value: night,   dotClass: 'dot-night'   },
-  ];
-
-  // Only render periods that have a non-zero value
-  const activePeriods = periods.filter(p => p.value > 0);
+// ── Section renderer (detailed mode matching TID Sheet layout) ─────────────────
+const renderDetailedSection = (title, items, debtorItems, morningVal, dayVal, nightVal, sectionTotal) => {
+  let allItems = [];
+  if (items && Array.isArray(items)) allItems = allItems.concat(items);
+  if (debtorItems && Array.isArray(debtorItems)) allItems = allItems.concat(debtorItems);
 
   let html = `<div class="section-block">`;
   html += `<div class="section-header">${title}</div>`;
 
-  if (activePeriods.length === 0 && sectionTotal === 0) {
+  if (allItems.length === 0 && sectionTotal === 0) {
     html += `<div class="no-txn">No transactions</div>`;
     html += `</div><div class="divider"></div>`;
     return html;
   }
 
   html += `<table class="summary-rows">`;
-  activePeriods.forEach(p => {
-    html += `
-      <tr>
-        <td>
-          <span class="period-label">
-            <span class="period-dot ${p.dotClass}"></span>${p.key}
-          </span>
-          <span class="period-sub">${periodSubtitle[p.key]()}</span>
-        </td>
-        <td>${fmt(p.value)}</td>
-      </tr>`;
-  });
+  html += `
+    <thead>
+      <tr style="font-size: 8.5px; font-weight: 700; color: var(--muted); border-bottom: 1px solid var(--line);">
+        <th style="text-align: left; padding: 2px 0;">PERIOD</th>
+        <th style="text-align: left; padding: 2px 0;">TID</th>
+        <th style="text-align: left; padding: 2px 0;">BATCH NO</th>
+        <th style="text-align: right; padding: 2px 0;">AMOUNT</th>
+      </tr>
+    </thead>
+    <tbody>`;
 
-  // Section total row
+  if (allItems.length > 0) {
+    allItems.forEach(item => {
+      const label = item.shiftLabel || item.slot || '';
+      const tidVal = item.tid || '—';
+      const batchVal = item.batch || '—';
+      const amtVal = item.amount || 0;
+      html += `
+        <tr>
+          <td style="padding: 3px 0; font-size: 10px;">${label}</td>
+          <td class="mono" style="padding: 3px 0; font-size: 10px;">${tidVal}</td>
+          <td class="mono" style="padding: 3px 0; font-size: 10px;">${batchVal}</td>
+          <td class="mono" style="text-align: right; padding: 3px 0; font-size: 10px;">${fmt(amtVal)}</td>
+        </tr>`;
+    });
+  } else {
+    const slots = [
+      { name: 'Morning', val: morningVal },
+      { name: 'Day', val: dayVal },
+      { name: 'Night', val: nightVal }
+    ];
+    slots.filter(s => s.val > 0).forEach(s => {
+      html += `
+        <tr>
+          <td style="padding: 3px 0; font-size: 10px;">${s.name}</td>
+          <td class="mono" style="padding: 3px 0; font-size: 10px;">—</td>
+          <td class="mono" style="padding: 3px 0; font-size: 10px;">—</td>
+          <td class="mono" style="text-align: right; padding: 3px 0; font-size: 10px;">${fmt(s.val)}</td>
+        </tr>`;
+    });
+  }
+
   html += `
     <tr class="section-total-row">
-      <td>${title} Total</td>
-      <td>${fmt(sectionTotal)}</td>
-    </tr>`;
-
-  html += `</table>`;
+      <td colspan="3" style="font-weight: 700;">${title} Total</td>
+      <td class="mono" style="text-align: right; font-weight: 700;">${fmt(sectionTotal)}</td>
+    </tr>
+    </tbody>
+  </table>`;
   html += `</div><div class="divider"></div>`;
   return html;
 };
@@ -498,34 +512,39 @@ const renderSummarySection = (title, morning, day, night, sectionTotal) => {
 const container = document.getElementById('sectionsContainer');
 let html = '';
 
-// Helper: combine DSM + debtor repayment per slot
 const combined = (dsmVal, debtorVal) => (dsmVal || 0) + (debtorVal || 0);
 
-// Section 1 — PhonePe UPI (Direct + debtor repayments combined)
-html += renderSummarySection(
-  'PhonePe UPI',
-  combined(data.phonePeDirectMorning, data.debtorPhonePeRepaymentMorning),
-  combined(data.phonePeDirectDay,     data.debtorPhonePeRepaymentDay),
-  combined(data.phonePeDirectNight,   data.debtorPhonePeRepaymentNight),
-  combined(data.phonePeDirectTotal,   data.debtorPhonePeRepaymentTotal)
-);
-
-// Section 3 — PineLabs Card (+ debtor repayments combined)
-html += renderSummarySection(
-  'PineLabs Card',
+// Section 1 — PineLabs Card Settlement
+html += renderDetailedSection(
+  'PINELABS CARD SETTLEMENT',
+  data.cardPayments,
+  data.debtorCardRepayments,
   combined(data.pineLabsCardMorning, data.debtorCardRepaymentMorning),
   combined(data.pineLabsCardDay,     data.debtorCardRepaymentDay),
   combined(data.pineLabsCardNight,   data.debtorCardRepaymentNight),
   combined(data.pineLabsCardTotal,   data.debtorCardRepaymentTotal)
 );
 
-// Section 4 — Petro Card (no debtor repayments for this type)
-html += renderSummarySection(
-  'Petro Card',
-  data.petroCardMorning || 0,
-  data.petroCardDay     || 0,
-  data.petroCardNight   || 0,
-  data.petroCardTotal   || 0
+// Section 2 — PhonePe Digital Collection
+html += renderDetailedSection(
+  'PHONEPE DIGITAL COLLECTION',
+  data.phonePePayments,
+  data.debtorPhonePeRepayments,
+  combined(data.phonePeDirectMorning, data.debtorPhonePeRepaymentMorning),
+  combined(data.phonePeDirectDay,     data.debtorPhonePeRepaymentDay),
+  combined(data.phonePeDirectNight,   data.debtorPhonePeRepaymentNight),
+  combined(data.phonePeDirectTotal,   data.debtorPhonePeRepaymentTotal)
+);
+
+// Section 3 — Petro Card Settlement
+html += renderDetailedSection(
+  'PETRO CARD SETTLEMENT',
+  data.petroCardPayments,
+  data.debtorPetroCardRepayments,
+  combined(data.petroCardMorning, data.debtorPetroCardRepaymentMorning),
+  combined(data.petroCardDay,     data.debtorPetroCardRepaymentDay),
+  combined(data.petroCardNight,   data.debtorPetroCardRepaymentNight),
+  combined(data.petroCardTotal,   data.debtorPetroCardRepaymentTotal)
 );
 
 container.innerHTML = html;

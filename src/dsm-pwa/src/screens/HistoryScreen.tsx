@@ -60,7 +60,7 @@ export default function HistoryScreen({ onBack }: HistoryProps) {
     setLoading(true);
     setError('');
     try {
-      const data = await fetchSubmissionHistory(profile.id);
+      const data = await fetchSubmissionHistory(profile.id, profile.AuthUserId);
       setEntries(data as HistoryEntry[]);
     } catch (err: unknown) {
       if (err instanceof Error) setError(err.message);

@@ -152,9 +152,9 @@ public partial class DsmManagementViewModel : ObservableObject
             return;
         }
 
-        if (!NewEmail.Contains("@") || NewEmail.Trim().Length < 5)
+        if (string.IsNullOrWhiteSpace(NewEmail) || NewEmail.Trim().Length < 3)
         {
-            AccountStatusMessage = "❌ Invalid email address.";
+            AccountStatusMessage = "❌ Invalid email address or username (min 3 characters).";
             return;
         }
 

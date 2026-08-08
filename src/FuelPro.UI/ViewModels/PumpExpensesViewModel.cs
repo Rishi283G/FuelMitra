@@ -51,8 +51,11 @@ public partial class PumpExpensesViewModel : ObservableObject
     [ObservableProperty] private DateTime _historyStartDate = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
     [ObservableProperty] private DateTime _historyEndDate = DateTime.Today;
 
+    [ObservableProperty] private double _totalKpAmount;
+
     public ObservableCollection<PumpExpense> HistoryExpenses { get; } = new();
     public ObservableCollection<CategoryExpenseItemViewModel> CategoryExpenses { get; } = new();
+    public ObservableCollection<KhandharePetroleumEntry> HistoryKpEntries { get; } = new();
 
     public PumpExpensesViewModel()
     {
@@ -169,6 +172,32 @@ public partial class PumpExpensesViewModel : ObservableObject
             {
                 HistoryExpenses.Add(item);
             }
+        }
+
+        // Load Kandhare Petroleum Ledger Entries for selected date range
+        try
+        {
+            var startDate = HistoryStartDate.Date;
+            var endDate = HistoryEndDate.Date.AddDays(1).AddTicks(-1);
+            var kpEntries = await _dbContext.KhandharePetroleumEntries
+                .AsNoTracking()
+                .Where(kp => kp.Date >= startDate && kp.Date <= endDate)
+                .OrderByDescending(kp => kp.Date)
+                .ThenByDescending(kp => kp.Id)
+                .ToListAsync();
+
+            HistoryKpEntries.Clear();
+            double sum = 0;
+            foreach (var kp in kpEntries)
+            {
+                HistoryKpEntries.Add(kp);
+                sum += kp.Amount;
+            }
+            TotalKpAmount = sum;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to load KP history: {ex.Message}");
         }
     }
 

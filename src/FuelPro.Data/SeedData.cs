@@ -65,6 +65,28 @@ public static class SeedData
             Log.Error(ex, "Failed to create ProductMasters table");
         }
 
+        try
+        {
+            await context.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE IF NOT EXISTS KhandharePetroleumEntries (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    DsmEntryId INTEGER NULL,
+                    DsmName TEXT NOT NULL DEFAULT '',
+                    Name TEXT NOT NULL DEFAULT '',
+                    SlipNumber TEXT NOT NULL DEFAULT '',
+                    Amount REAL NOT NULL DEFAULT 0.0,
+                    Date TEXT NOT NULL DEFAULT '',
+                    CreatedAt TEXT NOT NULL DEFAULT '',
+                    SyncGuid TEXT NOT NULL DEFAULT '',
+                    FOREIGN KEY (DsmEntryId) REFERENCES DsmEntries (DsmEntryId) ON DELETE CASCADE
+                );
+            ");
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Failed to create KhandharePetroleumEntries table");
+        }
+
         // Add ProductId, OverrideSaleRate, AdjustmentQuantity, AdjustmentType to OilDefDailyLogs
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE OilDefDailyLogs ADD COLUMN ProductId INTEGER NOT NULL DEFAULT 0;"); } catch { }
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE OilDefDailyLogs ADD COLUMN OverrideSaleRate REAL NULL;"); } catch { }

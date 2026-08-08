@@ -154,16 +154,16 @@ public class ShiftRepository : IShiftRepository
         try
         {
             var dateOnly = date.Date;
-            var mappedShift = shiftType == "A" ? "I" : shiftType == "B" ? "II" : shiftType == "C" ? "III" : shiftType;
+            var altShift = shiftType == "A" ? "I" : (shiftType == "B" ? "II" : (shiftType == "C" ? "III" : (shiftType == "I" ? "A" : (shiftType == "II" ? "B" : (shiftType == "III" ? "C" : shiftType)))));
             var shift = await _context.Shifts
-                .FirstOrDefaultAsync(s => s.ShiftDate == dateOnly && s.ShiftType == mappedShift);
+                .FirstOrDefaultAsync(s => s.ShiftDate == dateOnly && (s.ShiftType == shiftType || s.ShiftType == altShift));
 
             if (shift == null)
             {
                 shift = new Shift
                 {
                     ShiftDate = dateOnly,
-                    ShiftType = mappedShift,
+                    ShiftType = shiftType,
                     IsLocked = false,
                     CreatedAt = DateTime.Now
                 };
@@ -185,10 +185,10 @@ public class ShiftRepository : IShiftRepository
         try
         {
             var dateOnly = date.Date;
-            var mappedShift = shiftType == "A" ? "I" : shiftType == "B" ? "II" : shiftType == "C" ? "III" : shiftType;
+            var altShift = shiftType == "A" ? "I" : (shiftType == "B" ? "II" : (shiftType == "C" ? "III" : (shiftType == "I" ? "A" : (shiftType == "II" ? "B" : (shiftType == "III" ? "C" : shiftType)))));
             var shift = await _context.Shifts
                 .Include(s => s.DsmEntries)
-                .FirstOrDefaultAsync(s => s.ShiftDate == dateOnly && s.ShiftType == mappedShift);
+                .FirstOrDefaultAsync(s => s.ShiftDate == dateOnly && (s.ShiftType == shiftType || s.ShiftType == altShift));
 
             return shift != null
                 ? Result<Shift>.Ok(shift)
@@ -347,6 +347,7 @@ public class DsmEntryRepository : IDsmEntryRepository
                 .Include(e => e.Expenses)
                 .Include(e => e.CashDenominations)
                 .Include(e => e.PersonalDebtors)
+                .Include(e => e.KhandharePetroleumEntries)
                 .Include(e => e.Shift)
                 .FirstOrDefaultAsync(e => e.DsmEntryId == dsmEntryId);
 
@@ -599,7 +600,8 @@ public class NozzleReadingRepository : INozzleReadingRepository
         try
         {
             var targetDate = date.Date;
-            var mappedShift = shiftType == "A" ? "I" : shiftType == "B" ? "II" : shiftType == "C" ? "III" : shiftType;
+            var altShift = shiftType == "A" ? "I" : (shiftType == "B" ? "II" : (shiftType == "C" ? "III" : (shiftType == "I" ? "A" : (shiftType == "II" ? "B" : (shiftType == "III" ? "C" : shiftType)))));
+            var isDayShift = shiftType == "B" || shiftType == "II";
             var closings = await _context.NozzleReadings
                 .Include(r => r.DsmEntry)
                 .ThenInclude(e => e!.Shift)
@@ -608,8 +610,8 @@ public class NozzleReadingRepository : INozzleReadingRepository
                     && r.DsmEntry.PumpId == pumpId
                     && (currentDsmEntryId == null || r.DsmEntryId != currentDsmEntryId.Value)
                     && (r.DsmEntry.Shift.ShiftDate < targetDate || 
-                       (r.DsmEntry.Shift.ShiftDate == targetDate && mappedShift == "II" && r.DsmEntry.Shift.ShiftType == "I") ||
-                       (r.DsmEntry.Shift.ShiftDate == targetDate && r.DsmEntry.Shift.ShiftType == mappedShift && (currentDsmEntryId == null || r.DsmEntryId < currentDsmEntryId.Value))))
+                       (r.DsmEntry.Shift.ShiftDate == targetDate && isDayShift && (r.DsmEntry.Shift.ShiftType == "A" || r.DsmEntry.Shift.ShiftType == "I")) ||
+                       (r.DsmEntry.Shift.ShiftDate == targetDate && (r.DsmEntry.Shift.ShiftType == shiftType || r.DsmEntry.Shift.ShiftType == altShift) && (currentDsmEntryId == null || r.DsmEntryId < currentDsmEntryId.Value))))
                 .GroupBy(r => r.NozzleNumber)
                 .Select(g => new { 
                     NozzleNumber = g.Key, 
@@ -1047,9 +1049,9 @@ public class ShiftOtherCashRepository : IShiftOtherCashRepository
         try
         {
             var dateOnly = date.Date;
-            var mappedShift = shiftNumber == "A" ? "I" : shiftNumber == "B" ? "II" : shiftNumber == "C" ? "III" : shiftNumber;
+            var altShift = shiftNumber == "A" ? "I" : (shiftNumber == "B" ? "II" : (shiftNumber == "C" ? "III" : (shiftNumber == "I" ? "A" : (shiftNumber == "II" ? "B" : (shiftNumber == "III" ? "C" : shiftNumber)))));
             var entries = await _context.ShiftOtherCash
-                .Where(e => e.ShiftDate == dateOnly && e.ShiftNumber == mappedShift)
+                .Where(e => e.ShiftDate == dateOnly && (e.ShiftNumber == shiftNumber || e.ShiftNumber == altShift))
                 .OrderBy(e => e.CreatedAt)
                 .ToListAsync();
             return Result<List<ShiftOtherCash>>.Ok(entries);
@@ -1130,9 +1132,9 @@ public class ShiftFuelRateRepository : IShiftFuelRateRepository
         try
         {
             var dateOnly = date.Date;
-            var mappedShift = shiftNumber == "A" ? "I" : shiftNumber == "B" ? "II" : shiftNumber == "C" ? "III" : shiftNumber;
+            var altShift = shiftNumber == "A" ? "I" : (shiftNumber == "B" ? "II" : (shiftNumber == "C" ? "III" : (shiftNumber == "I" ? "A" : (shiftNumber == "II" ? "B" : (shiftNumber == "III" ? "C" : shiftNumber)))));
             var rates = await _context.ShiftFuelRates
-                .Where(r => r.ShiftDate == dateOnly && r.ShiftNumber == mappedShift)
+                .Where(r => r.ShiftDate == dateOnly && (r.ShiftNumber == shiftNumber || r.ShiftNumber == altShift))
                 .ToListAsync();
             return Result<List<ShiftFuelRate>>.Ok(rates);
         }
@@ -1148,10 +1150,10 @@ public class ShiftFuelRateRepository : IShiftFuelRateRepository
         try
         {
             var dateOnly = rate.ShiftDate.Date;
-            var mappedShift = rate.ShiftNumber == "A" ? "I" : rate.ShiftNumber == "B" ? "II" : rate.ShiftNumber == "C" ? "III" : rate.ShiftNumber;
+            var altShift = rate.ShiftNumber == "A" ? "I" : (rate.ShiftNumber == "B" ? "II" : (rate.ShiftNumber == "C" ? "III" : (rate.ShiftNumber == "I" ? "A" : (rate.ShiftNumber == "II" ? "B" : (rate.ShiftNumber == "III" ? "C" : rate.ShiftNumber)))));
             var existing = await _context.ShiftFuelRates
                 .FirstOrDefaultAsync(r => r.ShiftDate == dateOnly
-                    && r.ShiftNumber == mappedShift
+                    && (r.ShiftNumber == rate.ShiftNumber || r.ShiftNumber == altShift)
                     && r.FuelType == rate.FuelType);
 
             if (existing != null)
@@ -1161,7 +1163,6 @@ public class ShiftFuelRateRepository : IShiftFuelRateRepository
             }
             else
             {
-                rate.ShiftNumber = mappedShift;
                 _context.ShiftFuelRates.Add(rate);
             }
             await _context.SaveChangesAsync();
@@ -1396,11 +1397,11 @@ public class AgsImportRepository : IAgsImportRepository
         try
         {
             var dateOnly = date.Date;
-            var mappedShift = shiftType == "A" ? "I" : shiftType == "B" ? "II" : shiftType == "C" ? "III" : shiftType;
+            var altShift = shiftType == "A" ? "I" : (shiftType == "B" ? "II" : (shiftType == "C" ? "III" : (shiftType == "I" ? "A" : (shiftType == "II" ? "B" : (shiftType == "III" ? "C" : shiftType)))));
             var record = await _context.AgsShiftImports
                 .Include(x => x.NozzleReadings)
                 .Include(x => x.TankStocks)
-                .FirstOrDefaultAsync(x => x.ImportDate == dateOnly && x.ShiftType == mappedShift && x.IsActive);
+                .FirstOrDefaultAsync(x => x.ImportDate == dateOnly && (x.ShiftType == shiftType || x.ShiftType == altShift) && x.IsActive);
             return Result<AgsShiftImport?>.Ok(record);
         }
         catch (Exception ex)

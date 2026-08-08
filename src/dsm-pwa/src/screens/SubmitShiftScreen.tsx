@@ -574,6 +574,33 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     loadCreditors();
   }, [profile]);
 
+  function updatePersonalDebtorDenomination(
+    denomField: "500" | "200" | "100" | "50" | "20" | "10" | "coins",
+    val: number,
+  ) {
+    const d500 = denomField === "500" ? val : newPersonalDebtorDenom500;
+    const d200 = denomField === "200" ? val : newPersonalDebtorDenom200;
+    const d100 = denomField === "100" ? val : newPersonalDebtorDenom100;
+    const d50 = denomField === "50" ? val : newPersonalDebtorDenom50;
+    const d20 = denomField === "20" ? val : newPersonalDebtorDenom20;
+    const d10 = denomField === "10" ? val : newPersonalDebtorDenom10;
+    const c = denomField === "coins" ? val : newPersonalDebtorCoins;
+
+    if (denomField === "500") setNewPersonalDebtorDenom500(val);
+    if (denomField === "200") setNewPersonalDebtorDenom200(val);
+    if (denomField === "100") setNewPersonalDebtorDenom100(val);
+    if (denomField === "50") setNewPersonalDebtorDenom50(val);
+    if (denomField === "20") setNewPersonalDebtorDenom20(val);
+    if (denomField === "10") setNewPersonalDebtorDenom10(val);
+    if (denomField === "coins") setNewPersonalDebtorCoins(val);
+
+    const total =
+      d500 * 500 + d200 * 200 + d100 * 100 + d50 * 50 + d20 * 20 + d10 * 10 + c;
+    if (total > 0) {
+      setNewPersonalDebtorAmount(total.toString());
+    }
+  }
+
   // ── Load nozzle config from Supabase (set by manager) ───────
   async function loadNozzleConfig() {
     if (!profile || !pumpId) return;
@@ -3336,10 +3363,12 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                         <input
                           type="number"
                           className="field-input"
-                          value={newPersonalDebtorDenom500}
+                          value={newPersonalDebtorDenom500 || ""}
+                          placeholder="0"
                           min={0}
+                          onFocus={(e) => e.target.select()}
                           onChange={(e) =>
-                            setNewPersonalDebtorDenom500(Number(e.target.value))
+                            updatePersonalDebtorDenomination("500", Number(e.target.value))
                           }
                         />
                       </div>
@@ -3348,10 +3377,12 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                         <input
                           type="number"
                           className="field-input"
-                          value={newPersonalDebtorDenom200}
+                          value={newPersonalDebtorDenom200 || ""}
+                          placeholder="0"
                           min={0}
+                          onFocus={(e) => e.target.select()}
                           onChange={(e) =>
-                            setNewPersonalDebtorDenom200(Number(e.target.value))
+                            updatePersonalDebtorDenomination("200", Number(e.target.value))
                           }
                         />
                       </div>
@@ -3362,10 +3393,12 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                         <input
                           type="number"
                           className="field-input"
-                          value={newPersonalDebtorDenom100}
+                          value={newPersonalDebtorDenom100 || ""}
+                          placeholder="0"
                           min={0}
+                          onFocus={(e) => e.target.select()}
                           onChange={(e) =>
-                            setNewPersonalDebtorDenom100(Number(e.target.value))
+                            updatePersonalDebtorDenomination("100", Number(e.target.value))
                           }
                         />
                       </div>
@@ -3374,10 +3407,12 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                         <input
                           type="number"
                           className="field-input"
-                          value={newPersonalDebtorDenom50}
+                          value={newPersonalDebtorDenom50 || ""}
+                          placeholder="0"
                           min={0}
-                          onChange={(e) =>
-                            setNewPersonalDebtorDenom50(Number(e.target.value))
+                           onFocus={(e) => e.target.select()}
+                         onChange={(e) =>
+                            updatePersonalDebtorDenomination("50", Number(e.target.value))
                           }
                         />
                       </div>
@@ -3388,10 +3423,12 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                         <input
                           type="number"
                           className="field-input"
-                          value={newPersonalDebtorDenom20}
+                          value={newPersonalDebtorDenom20 || ""}
+                          placeholder="0"
                           min={0}
+                          onFocus={(e) => e.target.select()}
                           onChange={(e) =>
-                            setNewPersonalDebtorDenom20(Number(e.target.value))
+                            updatePersonalDebtorDenomination("20", Number(e.target.value))
                           }
                         />
                       </div>
@@ -3400,10 +3437,12 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                         <input
                           type="number"
                           className="field-input"
-                          value={newPersonalDebtorDenom10}
+                          value={newPersonalDebtorDenom10 || ""}
+                          placeholder="0"
                           min={0}
+                          onFocus={(e) => e.target.select()}
                           onChange={(e) =>
-                            setNewPersonalDebtorDenom10(Number(e.target.value))
+                            updatePersonalDebtorDenomination("10", Number(e.target.value))
                           }
                         />
                       </div>
@@ -3413,10 +3452,12 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                       <input
                         type="number"
                         className="field-input"
-                        value={newPersonalDebtorCoins}
+                        value={newPersonalDebtorCoins || ""}
+                        placeholder="0"
                         min={0}
+                        onFocus={(e) => e.target.select()}
                         onChange={(e) =>
-                          setNewPersonalDebtorCoins(Number(e.target.value))
+                          updatePersonalDebtorDenomination("coins", Number(e.target.value))
                         }
                       />
                     </div>

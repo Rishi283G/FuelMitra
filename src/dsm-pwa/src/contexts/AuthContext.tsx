@@ -3,12 +3,37 @@ import { supabase, type DsmUserProfile } from '../lib/supabase';
 import type { User } from '@supabase/supabase-js';
 import { resetStationData } from '../lib/stationReset';
 
+export function getScopedAuthEmail(inputEmailOrUsername: string, stationId: string): string {
+  if (!inputEmailOrUsername) return '';
+
+  const trimmedInput = inputEmailOrUsername.trim().toLowerCase();
+  const cleanStation = (stationId || '').trim().toLowerCase().replace(/\s+/g, '_');
+
+  if (cleanStation && (trimmedInput.startsWith(`${cleanStation}.`) || trimmedInput.startsWith(`${cleanStation}_`))) {
+    return trimmedInput;
+  }
+
+  if (cleanStation) {
+    if (trimmedInput.includes('@')) {
+      const [user, domain] = trimmedInput.split('@');
+      return `${cleanStation}.${user}@${domain}`;
+    } else {
+      return `${cleanStation}.${trimmedInput}@fuelpro.local`;
+    }
+  }
+
+  if (trimmedInput.includes('@')) {
+    return trimmedInput;
+  }
+  return `${trimmedInput}@fuelpro.local`;
+}
+
 interface AuthContextType {
   user: User | null;
   profile: DsmUserProfile | null;
   loading: boolean;
   isResetting: boolean;
-  login: (email: string, password: string) => Promise<string | null>;
+  login: (email: string, password: string, stationId?: string) => Promise<string | null>;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -165,9 +190,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     registerDevice();
   }, [profile]);
 
-  async function login(email: string, password: string): Promise<string | null> {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) return error.message;
+  async function login(email: string, password: string, stationId?: string): Promise<string | null> {
+    const effectiveStationId = stationId || localStorage.getItem('current_station_id') || localStorage.getItem('last_station_id') || '';
+    const rawEmail = email.trim();
+    const scopedEmail = getScopedAuthEmail(rawEmail, effectiveStationId);
+
+    let authRes = await supabase.auth.signInWithPassword({ email: scopedEmail, password });
+
+    // Fallback: If scoped email login failed, try the exact raw email if it contains '@'
+    if (authRes.error && rawEmail.includes('@') && scopedEmail !== rawEmail.toLowerCase()) {
+      const fallbackRes = await supabase.auth.signInWithPassword({ email: rawEmail, password });
+      if (!fallbackRes.error) {
+        authRes = fallbackRes;
+      }
+    }
+
+    if (authRes.error) return authRes.error.message;
+
+    if (effectiveStationId) {
+      localStorage.setItem('current_station_id', effectiveStationId);
+      localStorage.setItem('last_station_id', effectiveStationId);
+    }
     return null;
   }
 

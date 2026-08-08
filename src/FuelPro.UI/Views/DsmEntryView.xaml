@@ -190,18 +190,15 @@
                                     <TextBox Grid.Row="1" Grid.Column="0" Text="{Binding PhonePeNight, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,0,8,0"
                                              materialDesign:HintAssist.Hint="Night (₹)" materialDesign:HintAssist.IsFloating="True"
                                              Style="{StaticResource MaterialDesignOutlinedTextBox}"
-                                             Visibility="{Binding IsNightShift, Converter={StaticResource BoolVisConv}}"
                                              PreviewTextInput="DecimalTextBox_PreviewTextInput"
                                              GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"
                                              LostKeyboardFocus="DecimalTextBox_LostKeyboardFocus"/>
                                     <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding PhonePeTidNight, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0"
                                              materialDesign:HintAssist.Hint="Night TID" materialDesign:HintAssist.IsFloating="True"
-                                             Style="{StaticResource MaterialDesignOutlinedTextBox}"
-                                             Visibility="{Binding IsNightShift, Converter={StaticResource BoolVisConv}}"/>
+                                             Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
                                     <TextBox Grid.Row="1" Grid.Column="2" Text="{Binding PhonePeBatchNight, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,0"
                                              materialDesign:HintAssist.Hint="Night Batch" materialDesign:HintAssist.IsFloating="True"
-                                             Style="{StaticResource MaterialDesignOutlinedTextBox}"
-                                             Visibility="{Binding IsNightShift, Converter={StaticResource BoolVisConv}}"/>
+                                             Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
                                 </Grid>
 
                                 <!-- Group 2: PineLab Card -->
@@ -234,18 +231,15 @@
                                     <TextBox Grid.Row="1" Grid.Column="0" Text="{Binding CreditCardNight, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,0,8,0"
                                              materialDesign:HintAssist.Hint="Night (₹)" materialDesign:HintAssist.IsFloating="True"
                                              Style="{StaticResource MaterialDesignOutlinedTextBox}"
-                                             Visibility="{Binding IsNightShift, Converter={StaticResource BoolVisConv}}"
                                              PreviewTextInput="DecimalTextBox_PreviewTextInput"
                                              GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"
                                              LostKeyboardFocus="DecimalTextBox_LostKeyboardFocus"/>
                                     <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding CreditCardTidNight, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0"
                                              materialDesign:HintAssist.Hint="Night TID" materialDesign:HintAssist.IsFloating="True"
-                                             Style="{StaticResource MaterialDesignOutlinedTextBox}"
-                                             Visibility="{Binding IsNightShift, Converter={StaticResource BoolVisConv}}"/>
+                                             Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
                                     <TextBox Grid.Row="1" Grid.Column="2" Text="{Binding CreditCardBatchNight, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,0"
                                              materialDesign:HintAssist.Hint="Night Batch" materialDesign:HintAssist.IsFloating="True"
-                                             Style="{StaticResource MaterialDesignOutlinedTextBox}"
-                                             Visibility="{Binding IsNightShift, Converter={StaticResource BoolVisConv}}"/>
+                                             Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
                                 </Grid>
 
                                 <!-- Group 3: Petro Card -->
@@ -278,18 +272,15 @@
                                     <TextBox Grid.Row="1" Grid.Column="0" Text="{Binding PetroCardNight, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,0,8,0"
                                              materialDesign:HintAssist.Hint="Night (₹)" materialDesign:HintAssist.IsFloating="True"
                                              Style="{StaticResource MaterialDesignOutlinedTextBox}"
-                                             Visibility="{Binding IsNightShift, Converter={StaticResource BoolVisConv}}"
                                              PreviewTextInput="DecimalTextBox_PreviewTextInput"
                                              GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"
                                              LostKeyboardFocus="DecimalTextBox_LostKeyboardFocus"/>
                                     <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding PetroCardTidNight, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0"
                                              materialDesign:HintAssist.Hint="Night TID" materialDesign:HintAssist.IsFloating="True"
-                                             Style="{StaticResource MaterialDesignOutlinedTextBox}"
-                                             Visibility="{Binding IsNightShift, Converter={StaticResource BoolVisConv}}"/>
+                                             Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
                                     <TextBox Grid.Row="1" Grid.Column="2" Text="{Binding PetroCardBatchNight, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,0"
                                              materialDesign:HintAssist.Hint="Night Batch" materialDesign:HintAssist.IsFloating="True"
-                                             Style="{StaticResource MaterialDesignOutlinedTextBox}"
-                                             Visibility="{Binding IsNightShift, Converter={StaticResource BoolVisConv}}"/>
+                                             Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
                                 </Grid>
 
                                 <!-- Group 5: Other Collections -->
@@ -733,18 +724,24 @@
                                     <DataTemplate>
                                         <Grid Margin="0,4">
                                             <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="1.5*"/>
+                                                <ColumnDefinition Width="1.2*"/>
+                                                <ColumnDefinition Width="1.2*"/>
+                                                <ColumnDefinition Width="Auto"/>
                                             </Grid.ColumnDefinitions>
-                                            <TextBox Text="{Binding SlipNumber, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0"
+                                            <TextBox Grid.Column="0" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0"
+                                                     materialDesign:HintAssist.Hint="Name / Person"
+                                                     Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                                            <TextBox Grid.Column="1" Text="{Binding SlipNumber, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0"
                                                      materialDesign:HintAssist.Hint="Slip No"
                                                      Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
-                                            <TextBox Grid.Column="1" Text="{Binding Amount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,0,8,0"
+                                            <TextBox Grid.Column="2" Text="{Binding Amount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,0,8,0"
                                                      materialDesign:HintAssist.Hint="Amount"
                                                      Style="{StaticResource MaterialDesignOutlinedTextBox}"
                                                      PreviewTextInput="DecimalTextBox_PreviewTextInput"
                                                      GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"
                                                      LostKeyboardFocus="DecimalTextBox_LostKeyboardFocus"/>
-                                            <Button Grid.Column="2" Style="{StaticResource MaterialDesignIconButton}"
+                                            <Button Grid.Column="3" Style="{StaticResource MaterialDesignIconButton}"
                                                     Command="{Binding DataContext.RemoveKhandharePetroleumEntryCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                     CommandParameter="{Binding}">
                                                 <materialDesign:PackIcon Kind="Delete" Foreground="#F44336"/>

@@ -4,6 +4,7 @@ import { Flame, Eye, EyeOff, AlertCircle } from 'lucide-react';
 
 export default function LoginScreen() {
   const { login } = useAuth();
+  const [stationId, setStationId] = useState(() => localStorage.getItem('current_station_id') || localStorage.getItem('last_station_id') || '');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
@@ -14,7 +15,7 @@ export default function LoginScreen() {
     e.preventDefault();
     setError('');
     setLoading(true);
-    const err = await login(email.trim(), password);
+    const err = await login(email.trim(), password, stationId.trim());
     setLoading(false);
     if (err) setError(err);
   }
@@ -49,14 +50,28 @@ export default function LoginScreen() {
 
         <form onSubmit={handleSubmit} className="login-form" id="login-form">
           <div className="field-group">
-            <label htmlFor="login-email" className="field-label">Email address</label>
+            <label htmlFor="login-station-id" className="field-label">Station ID / Client Code</label>
+            <input
+              id="login-station-id"
+              type="text"
+              className="field-input"
+              value={stationId}
+              onChange={e => setStationId(e.target.value)}
+              placeholder="e.g. Kandhare_Petroleum"
+              required
+              autoComplete="organization"
+            />
+          </div>
+
+          <div className="field-group">
+            <label htmlFor="login-email" className="field-label">Username / Email</label>
             <input
               id="login-email"
-              type="email"
+              type="text"
               className="field-input"
               value={email}
               onChange={e => setEmail(e.target.value)}
-              placeholder="you@station.com"
+              placeholder="Username or email"
               required
               autoComplete="username"
             />

@@ -595,17 +595,17 @@ public class DsmEntryService
         try
         {
             var dateOnly = date.Date;
-            var mappedShift = shiftType == "A" ? "I" : shiftType == "B" ? "II" : shiftType == "C" ? "III" : shiftType;
+            var altShift = shiftType == "A" ? "I" : (shiftType == "B" ? "II" : (shiftType == "C" ? "III" : (shiftType == "I" ? "A" : (shiftType == "II" ? "B" : (shiftType == "III" ? "C" : shiftType)))));
             
             // Check/Get/Create Shift
             var shift = await context.Set<Shift>()
-                .FirstOrDefaultAsync(s => s.ShiftDate == dateOnly && s.ShiftType == mappedShift);
+                .FirstOrDefaultAsync(s => s.ShiftDate == dateOnly && (s.ShiftType == shiftType || s.ShiftType == altShift));
             if (shift == null)
             {
                 shift = new Shift
                 {
                     ShiftDate = dateOnly,
-                    ShiftType = mappedShift,
+                    ShiftType = shiftType,
                     IsLocked = false,
                     CreatedAt = DateTime.Now
                 };
@@ -677,6 +677,7 @@ public class DsmEntryService
                             .Include(e => e.Expenses)
                             .Include(e => e.CashDenominations)
                             .Include(e => e.PersonalDebtors)
+                            .Include(e => e.KhandharePetroleumEntries)
                             .FirstOrDefaultAsync(e => e.DsmEntryId == existingMatch.DsmEntryId);
                         return Result<DsmEntry>.Ok(fullExisting ?? existingMatch);
                     }
@@ -941,6 +942,8 @@ public class DsmEntryService
                     .Include(e => e.TestingEntries)
                     .Include(e => e.Expenses)
                     .Include(e => e.CashDenominations)
+                    .Include(e => e.PersonalDebtors)
+                    .Include(e => e.KhandharePetroleumEntries)
                     .FirstOrDefaultAsync(e => e.DsmEntryId == savedConnEntryId);
 
                 if (fullConnEntry != null)
@@ -960,7 +963,7 @@ public class DsmEntryService
             {
                 // Clear any existing ReconciledToPumpId links for this primary pump in the shift
                 var candidates = await context.Set<DsmEntry>()
-                    .Where(e => e.ShiftId == shift.ShiftId && e.ReconciledToPumpId == pumpId && string.Equals(e.DsmName, dsmName, StringComparison.OrdinalIgnoreCase))
+                    .Where(e => e.ShiftId == shift.ShiftId && e.ReconciledToPumpId == pumpId && (e.DsmName != null && dsmName != null && e.DsmName.ToLower() == dsmName.ToLower()))
                     .ToListAsync();
                 foreach (var candidate in candidates)
                 {
@@ -1070,6 +1073,8 @@ public class DsmEntryService
                     .Include(e => e.TestingEntries)
                     .Include(e => e.Expenses)
                     .Include(e => e.CashDenominations)
+                    .Include(e => e.PersonalDebtors)
+                    .Include(e => e.KhandharePetroleumEntries)
                     .Where(e => e.ShiftId == currentShift.ShiftId)
                     .ToListAsync();
 

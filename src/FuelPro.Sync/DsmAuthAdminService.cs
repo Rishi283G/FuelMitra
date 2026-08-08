@@ -25,6 +25,32 @@ public class DsmAuthAdminService
     }
 
     /// <summary>
+    /// Scopes an input email or username with the client's Station ID to ensure global uniqueness in Supabase Auth across multiple stations.
+    /// </summary>
+    public static string FormatScopedAuthEmail(string inputEmailOrUsername, string stationId)
+    {
+        if (string.IsNullOrWhiteSpace(inputEmailOrUsername)) return string.Empty;
+
+        var trimmedInput = inputEmailOrUsername.Trim().ToLowerInvariant();
+        var cleanStation = (stationId ?? "default").Trim().ToLowerInvariant().Replace(" ", "_");
+
+        if (trimmedInput.StartsWith($"{cleanStation}.") || trimmedInput.StartsWith($"{cleanStation}_"))
+        {
+            return trimmedInput;
+        }
+
+        if (trimmedInput.Contains('@'))
+        {
+            var parts = trimmedInput.Split('@', 2);
+            return $"{cleanStation}.{parts[0]}@{parts[1]}";
+        }
+        else
+        {
+            return $"{cleanStation}.{trimmedInput}@fuelpro.local";
+        }
+    }
+
+    /// <summary>
     /// Creates a user in Supabase Auth via the Admin API.
     /// </summary>
     /// <returns>The Supabase Auth User ID (UUID) if successful; otherwise, null.</returns>
@@ -44,11 +70,12 @@ public class DsmAuthAdminService
             request.Headers.Add("apikey", settings.SupabaseServiceRoleKey);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", settings.SupabaseServiceRoleKey);
 
-            // Construct the payload for the Admin API
+            var scopedEmail = FormatScopedAuthEmail(email, settings.StationId);
+
+            // Construct the payload for the Admin API - scoped by Station ID
             var payload = new
             {
-                email = email.Trim(),
-                phone = mobileNumber.Trim(),
+                email = scopedEmail,
                 password = password,
                 email_confirm = true,
                 phone_confirm = true,
@@ -57,6 +84,8 @@ public class DsmAuthAdminService
                     full_name = fullName.Trim(),
                     station_id = settings.StationId,
                     employee_code = employeeCode.Trim(),
+                    original_email = email.Trim(),
+                    mobile_number = mobileNumber.Trim(),
                     role = "dsm"
                 }
             };

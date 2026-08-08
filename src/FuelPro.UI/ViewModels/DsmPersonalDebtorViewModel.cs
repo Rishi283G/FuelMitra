@@ -72,11 +72,21 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
     [ObservableProperty] private double _ledgerTotalRepayments;
     [ObservableProperty] private double _ledgerOutstandingBalance;
 
-    // Repayment Form fields
+    // Repayment / Advance Form fields
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsRepaymentMode))]
+    [NotifyPropertyChangedFor(nameof(IsAdvanceMode))]
+    private string _selectedActionType = "Repayment";
+    
+    public string[] ActionTypes { get; } = { "Repayment", "Advance" };
+    public bool IsRepaymentMode => SelectedActionType == "Repayment";
+    public bool IsAdvanceMode => SelectedActionType == "Advance";
+
     [ObservableProperty] private double _repaymentAmount;
     [ObservableProperty] private DateTime _repaymentDate = DateTime.Today;
     [ObservableProperty] private string _selectedPaymentMode = "Cash";
     [ObservableProperty] private string _repaymentRemarks = "";
+    [ObservableProperty] private string _advanceFuelProduct = "Cash Advance";
     [ObservableProperty] private string? _cardTid = "";
     [ObservableProperty] private string? _cardBatch = "";
     [ObservableProperty] private int? _denom500;
@@ -623,6 +633,77 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
         {
             _logger.Error(ex, "Failed to save personal debtor repayment");
             MessageBox.Show($"Error saving repayment: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    [RelayCommand]
+    private async Task SavePersonalAdvanceAsync()
+    {
+        if (SelectedSummary == null)
+        {
+            MessageBox.Show("Please select a DSM account to record an advance.", "Selection Required", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        if (RepaymentAmount <= 0)
+        {
+            MessageBox.Show("Please enter a valid advance amount.", "Invalid Amount", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        try
+        {
+            var dsmName = SelectedSummary.DsmName;
+            var entry = new DsmPersonalDebtor
+            {
+                DsmName = dsmName,
+                Date = RepaymentDate,
+                Time = DateTime.Now.ToString("HH:mm"),
+                Amount = RepaymentAmount,
+                FuelProduct = string.IsNullOrWhiteSpace(AdvanceFuelProduct) ? "Cash Advance" : AdvanceFuelProduct,
+                Remarks = string.IsNullOrWhiteSpace(RepaymentRemarks) ? "Admin Advance Entry" : RepaymentRemarks,
+                PaymentMethod = SelectedPaymentMode,
+                Denom500 = Denom500 ?? 0,
+                Denom200 = Denom200 ?? 0,
+                Denom100 = Denom100 ?? 0,
+                Denom50 = Denom50 ?? 0,
+                Denom20 = Denom20 ?? 0,
+                Denom10 = Denom10 ?? 0,
+                Coins = Coins ?? 0,
+                CardTid = CardTid,
+                CardBatch = CardBatch,
+                CreatedAt = DateTime.Now
+            };
+
+            _dbContext.DsmPersonalDebtors.Add(entry);
+            await _dbContext.SaveChangesAsync();
+
+            MessageBox.Show($"Advance of ₹{RepaymentAmount:N2} recorded successfully for {dsmName}.", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+
+            // Reset inputs
+            RepaymentAmount = 0;
+            RepaymentRemarks = "";
+            AdvanceFuelProduct = "Cash Advance";
+            CardTid = "";
+            CardBatch = "";
+            Denom500 = null;
+            Denom200 = null;
+            Denom100 = null;
+            Denom50 = null;
+            Denom20 = null;
+            Denom10 = null;
+            Coins = null;
+
+            await LoadLedgerAsync();
+            await LoadDataAsync();
+
+            var syncEngine = App.Services.GetRequiredService<FuelPro.Sync.SyncEngine>();
+            _ = syncEngine.ForceSyncAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to save personal debtor advance");
+            MessageBox.Show($"Error saving advance: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 

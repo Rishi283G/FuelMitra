@@ -312,13 +312,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                         continue;
                     }
 
-                    // Filter out expired submissions (older than 48 hours)
-                    DateTime submittedAt = item.SubmittedAt;
-                    if (DateTime.UtcNow - submittedAt > TimeSpan.FromHours(48))
-                    {
-                        // Submissions older than 48 hours are treated as expired
-                        continue;
-                    }
+                    // Keep all pending submissions regardless of age
 
                     PendingSubmissions.Add(new DsmPendingSubmission
                     {
@@ -328,7 +322,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                         PumpId = (int)item.PumpId,
                         ShiftDate = item.ShiftDate,
                         ShiftType = item.ShiftType,
-                        SubmittedAt = submittedAt,
+                        SubmittedAt = item.SubmittedAt,
                         Notes = item.Notes ?? "",
                         AttachmentUrl = item.AttachmentUrl,
                         MetadataJson = item.Metadata != null ? JsonConvert.SerializeObject(item.Metadata) : ""
@@ -827,6 +821,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
             string? petroCardBatchNight = null;
 
             bool isNight = string.Equals(SelectedSubmission.ShiftType, "A", StringComparison.OrdinalIgnoreCase);
+            bool isDay = string.Equals(SelectedSubmission.ShiftType, "B", StringComparison.OrdinalIgnoreCase);
 
             // Try structured settlements array first (new PWA format)
             bool hasStructuredSettlements = false;
@@ -970,6 +965,12 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                         petroCardTidNight = tid;
                         petroCardBatchNight = batch;
                     }
+                    else if (isDay || mode.Contains("Day", StringComparison.OrdinalIgnoreCase))
+                    {
+                        petroCardDay += amount;
+                        petroCardTidDay = tid;
+                        petroCardBatchDay = batch;
+                    }
                     else
                     {
                         petroCardMorning += amount;
@@ -1012,9 +1013,10 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                     if (isNight) creditCardNight = CardAmount;
                     else creditCardMorning = CardAmount;
                 }
-                if (petroCardMorning == 0 && petroCardNight == 0 && PetroCardAmount > 0)
+                if (petroCardMorning == 0 && petroCardDay == 0 && petroCardNight == 0 && PetroCardAmount > 0)
                 {
                     if (isNight) petroCardNight = PetroCardAmount;
+                    else if (isDay) petroCardDay = PetroCardAmount;
                     else petroCardMorning = PetroCardAmount;
                 }
             }
@@ -1620,7 +1622,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
             using var context = _serviceProvider.GetRequiredService<FuelProDbContext>();
             var localAudits = await context.DsmApprovalAudits
                 .OrderByDescending(a => a.ApprovedAt)
-                .Take(100)
+                .Take(500)
                 .ToListAsync();
 
             var auditMap = localAudits.ToDictionary(a => a.SubmissionId);
@@ -1723,6 +1725,36 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                             Mismatch = (double)entry.Mismatch
                         });
                     }
+                }
+            }
+
+            // Also include local DsmEntries in the approval history to display previous month entries
+            var existingEntryIds = new HashSet<int>(allApproved.Select(a => a.DsmEntryId).Where(id => id > 0));
+            var allLocalEntries = await context.DsmEntries
+                .Include(e => e.Shift)
+                .OrderByDescending(e => e.CreatedAt)
+                .ToListAsync();
+
+            foreach (var entry in allLocalEntries)
+            {
+                if (!existingEntryIds.Contains(entry.DsmEntryId))
+                {
+                    allApproved.Add(new DsmApprovedSubmissionDto
+                    {
+                        SubmissionId = Guid.NewGuid(),
+                        DsmEntryId = entry.DsmEntryId,
+                        DsmName = entry.DsmName,
+                        PumpId = entry.PumpId,
+                        ShiftDate = entry.Shift?.ShiftDate ?? DateTime.Today,
+                        ShiftType = entry.Shift?.ShiftType ?? "A",
+                        SubmittedAt = entry.CreatedAt,
+                        ApprovedAt = entry.CreatedAt,
+                        ApprovedBy = "Local System",
+                        Notes = "Saved Entry",
+                        GrossSales = (double)entry.GrossSales,
+                        TotalCollection = (double)entry.TotalCollection,
+                        Mismatch = (double)entry.Mismatch
+                    });
                 }
             }
 
@@ -1892,6 +1924,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                 .Include(e => e.Expenses)
                 .Include(e => e.CashDenominations)
                 .Include(e => e.PersonalDebtors)
+                .Include(e => e.KhandharePetroleumEntries)
                 .FirstOrDefaultAsync(e => e.DsmEntryId == approvedSub.DsmEntryId);
 
             DsmEntry? connectedEntry = null;
@@ -1901,7 +1934,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                     .Include(e => e.NozzleReadings)
                     .FirstOrDefaultAsync(e => e.ShiftId == entry.ShiftId
                         && e.PumpId == entry.ConnectedPumpId.Value
-                        && (e.ReconciledToPumpId == entry.PumpId || string.Equals(e.DsmName, entry.DsmName, StringComparison.OrdinalIgnoreCase)));
+                        && (e.ReconciledToPumpId == entry.PumpId || (e.DsmName != null && entry.DsmName != null && e.DsmName.ToLower() == entry.DsmName.ToLower())));
             }
 
             NozzleReadings.Clear();

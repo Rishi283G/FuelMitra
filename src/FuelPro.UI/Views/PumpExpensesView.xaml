@@ -125,68 +125,113 @@
                 </materialDesign:Card>
             </ScrollViewer>
 
-            <!-- Column 2: History Grid -->
-            <materialDesign:Card Grid.Column="2" Style="{StaticResource SectionCard}">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
-                    </Grid.RowDefinitions>
+            <!-- Column 2: History & Kandhare Petroleum Ledger -->
+            <Grid Grid.Column="2">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="1.2*"/>
+                    <RowDefinition Height="1*"/>
+                </Grid.RowDefinitions>
 
-                    <!-- History Search Bar -->
-                    <Grid Grid.Row="0" Margin="0,0,0,12">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
+                <!-- Top Card: Expense Log History -->
+                <materialDesign:Card Grid.Row="0" Style="{StaticResource SectionCard}" Margin="0,0,0,12">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
 
-                        <TextBlock Grid.Column="0" Text="Expense Log History" Style="{StaticResource SectionTitle}" VerticalAlignment="Center" Margin="0"/>
+                        <!-- History Search Bar -->
+                        <Grid Grid.Row="0" Margin="0,0,0,12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
 
-                        <!-- Range selector -->
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center">
-                            <DatePicker SelectedDate="{Binding HistoryStartDate}" materialDesign:HintAssist.Hint="From" Style="{StaticResource MaterialDesignOutlinedDatePicker}" Width="135" Margin="0,0,8,0" materialDesign:HintAssist.IsFloating="True"/>
-                            <DatePicker SelectedDate="{Binding HistoryEndDate}" materialDesign:HintAssist.Hint="To" Style="{StaticResource MaterialDesignOutlinedDatePicker}" Width="135" materialDesign:HintAssist.IsFloating="True"/>
-                        </StackPanel>
+                            <TextBlock Grid.Column="0" Text="Expense Log History" Style="{StaticResource SectionTitle}" VerticalAlignment="Center" Margin="0"/>
 
-                        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                            <Button Content="Print Log" Command="{Binding PrintCommand}" Style="{StaticResource MaterialDesignRaisedButton}" Background="#00695C" BorderBrush="#00695C" Height="40" Padding="12,0" Margin="0,0,8,0"/>
-                            <Button Content="Export Excel" Command="{Binding ExportExcelCommand}" Style="{StaticResource MaterialDesignRaisedButton}" Background="#1B5E20" BorderBrush="#1B5E20" Height="40" Padding="12,0"/>
-                        </StackPanel>
+                            <!-- Range selector -->
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center">
+                                <DatePicker SelectedDate="{Binding HistoryStartDate}" materialDesign:HintAssist.Hint="From" Style="{StaticResource MaterialDesignOutlinedDatePicker}" Width="135" Margin="0,0,8,0" materialDesign:HintAssist.IsFloating="True"/>
+                                <DatePicker SelectedDate="{Binding HistoryEndDate}" materialDesign:HintAssist.Hint="To" Style="{StaticResource MaterialDesignOutlinedDatePicker}" Width="135" materialDesign:HintAssist.IsFloating="True"/>
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                <Button Content="Print Log" Command="{Binding PrintCommand}" Style="{StaticResource MaterialDesignRaisedButton}" Background="#00695C" BorderBrush="#00695C" Height="40" Padding="12,0" Margin="0,0,8,0"/>
+                                <Button Content="Export Excel" Command="{Binding ExportExcelCommand}" Style="{StaticResource MaterialDesignRaisedButton}" Background="#1B5E20" BorderBrush="#1B5E20" Height="40" Padding="12,0"/>
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- History Table -->
+                        <DataGrid Grid.Row="1" ItemsSource="{Binding HistoryExpenses}" AutoGenerateColumns="False" IsReadOnly="True" VerticalScrollBarVisibility="Auto">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Date" Binding="{Binding ExpenseDate, StringFormat=dd-MMM-yyyy}" Width="1.2*" FontWeight="SemiBold"/>
+                                <DataGridTextColumn Header="Rent" Binding="{Binding Rent, Converter={StaticResource CurrencyConverter}}" Width="*"/>
+                                <DataGridTextColumn Header="Salary" Binding="{Binding Salary, Converter={StaticResource CurrencyConverter}}" Width="*"/>
+                                <DataGridTextColumn Header="Trip Loss" Binding="{Binding TripSheetLoss, Converter={StaticResource CurrencyConverter}}" Width="*"/>
+                                <DataGridTextColumn Header="DSM Short" Binding="{Binding DsmShort, Converter={StaticResource CurrencyConverter}}" Width="*"/>
+                                <DataGridTextColumn Header="Remarks" Binding="{Binding Remarks}" Width="2*"/>
+                                
+                                <DataGridTemplateColumn Width="Auto">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal">
+                                                <Button Command="{Binding DataContext.EditCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                        CommandParameter="{Binding}"
+                                                        Style="{StaticResource MaterialDesignIconForegroundButton}" ToolTip="Edit Entry" Margin="0,0,4,0">
+                                                    <materialDesign:PackIcon Kind="Pencil" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" />
+                                                </Button>
+                                                <Button Command="{Binding DataContext.DeleteCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                                        CommandParameter="{Binding}"
+                                                        Style="{StaticResource MaterialDesignIconForegroundButton}" ToolTip="Delete Entry">
+                                                    <materialDesign:PackIcon Kind="Delete" Foreground="Red" />
+                                                </Button>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                            </DataGrid.Columns>
+                        </DataGrid>
                     </Grid>
+                </materialDesign:Card>
 
-                    <!-- History Table -->
-                    <DataGrid Grid.Row="1" ItemsSource="{Binding HistoryExpenses}" AutoGenerateColumns="False" IsReadOnly="True" VerticalScrollBarVisibility="Auto">
-                        <DataGrid.Columns>
-                            <DataGridTextColumn Header="Date" Binding="{Binding ExpenseDate, StringFormat=dd-MMM-yyyy}" Width="1.2*" FontWeight="SemiBold"/>
-                            <DataGridTextColumn Header="Rent" Binding="{Binding Rent, Converter={StaticResource CurrencyConverter}}" Width="*"/>
-                            <DataGridTextColumn Header="Salary" Binding="{Binding Salary, Converter={StaticResource CurrencyConverter}}" Width="*"/>
-                            <DataGridTextColumn Header="Trip Loss" Binding="{Binding TripSheetLoss, Converter={StaticResource CurrencyConverter}}" Width="*"/>
-                            <DataGridTextColumn Header="DSM Short" Binding="{Binding DsmShort, Converter={StaticResource CurrencyConverter}}" Width="*"/>
-                            <DataGridTextColumn Header="Remarks" Binding="{Binding Remarks}" Width="2*"/>
-                            
-                            <DataGridTemplateColumn Width="Auto">
-                                <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <StackPanel Orientation="Horizontal">
-                                            <Button Command="{Binding DataContext.EditCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
-                                                    CommandParameter="{Binding}"
-                                                    Style="{StaticResource MaterialDesignIconForegroundButton}" ToolTip="Edit Entry" Margin="0,0,4,0">
-                                                <materialDesign:PackIcon Kind="Pencil" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" />
-                                            </Button>
-                                            <Button Command="{Binding DataContext.DeleteCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
-                                                    CommandParameter="{Binding}"
-                                                    Style="{StaticResource MaterialDesignIconForegroundButton}" ToolTip="Delete Entry">
-                                                <materialDesign:PackIcon Kind="Delete" Foreground="Red" />
-                                            </Button>
-                                        </StackPanel>
-                                    </DataTemplate>
-                                </DataGridTemplateColumn.CellTemplate>
-                            </DataGridTemplateColumn>
-                        </DataGrid.Columns>
-                    </DataGrid>
-                </Grid>
-            </materialDesign:Card>
+                <!-- Bottom Card: Kandhare Petroleum Ledger -->
+                <materialDesign:Card Grid.Row="1" Style="{StaticResource SectionCard}" Margin="0">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <Grid Grid.Row="0" Margin="0,0,0,12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="Bank" Width="22" Height="22" VerticalAlignment="Center" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" Margin="0,0,8,0"/>
+                                <TextBlock Text="🏛️ Kandhare Petroleum Ledger (PWA &amp; Admin Entries)" Style="{StaticResource SectionTitle}" VerticalAlignment="Center" Margin="0"/>
+                            </StackPanel>
+                            <Border Grid.Column="1" Background="#E8F5E9" CornerRadius="12" Padding="12,4">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="Total: " FontWeight="SemiBold" Foreground="#2E7D32"/>
+                                    <TextBlock Text="{Binding TotalKpAmount, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" Foreground="#2E7D32"/>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+
+                        <DataGrid Grid.Row="1" ItemsSource="{Binding HistoryKpEntries}" AutoGenerateColumns="False" IsReadOnly="True" VerticalScrollBarVisibility="Auto">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat=dd-MMM-yyyy}" Width="1.2*" FontWeight="SemiBold"/>
+                                <DataGridTextColumn Header="DSM Name" Binding="{Binding DsmName}" Width="1.5*"/>
+                                <DataGridTextColumn Header="Person / Purpose" Binding="{Binding Name}" Width="2*"/>
+                                <DataGridTextColumn Header="Slip No" Binding="{Binding SlipNumber}" Width="1.2*"/>
+                                <DataGridTextColumn Header="Amount (₹)" Binding="{Binding Amount, Converter={StaticResource CurrencyConverter}}" Width="1.2*" FontWeight="Bold" Foreground="#1565C0"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </Grid>
+                </materialDesign:Card>
+            </Grid>
         </Grid>
     </Grid>
 </UserControl>

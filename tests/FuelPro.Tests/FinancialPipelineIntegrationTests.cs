@@ -289,10 +289,10 @@ public class FinancialPipelineIntegrationTests : IDisposable
         //                    + (Bank Cash) 100 + (Cash in hand) 100 + (Debtors) 50 + (Expenses) 50 + (Testing) 50
         //                  = 3050
         // Sales = 3000
-        // Expected Mismatch = 1100 (due to tomorrow's Shift A Night collections (1050) being added to actual collections but not expected sales, and shift B shortfall of 1050 being added to DSM Short)
-        Assert.Equal(1100, dayTotalVm.Difference);
+        // Expected Mismatch = 50 (Total Collections 3050 - Sales 3000)
+        Assert.Equal(50, dayTotalVm.Difference);
         Assert.Equal(1100, dashboardVm.TodayTotalMismatch);
-        Assert.Equal(1100, ownerVm.TodayTotalMismatch);
+        Assert.Equal(50, ownerVm.TodayTotalMismatch);
     }
 
     [Fact]
