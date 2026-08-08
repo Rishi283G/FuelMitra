@@ -193,6 +193,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
     public ObservableCollection<DsmPersonalDebtor> PersonalDebtors { get; } = new();
     public ObservableCollection<KhandharePetroleumEntry> KhandhareEntries { get; } = new();
     public ObservableCollection<DsmOilDefSaleRow> OilDefSales { get; } = new();
+    public ObservableCollection<Expense> SubmissionExpenses { get; } = new();
 
     // Validations & Overrides
     [ObservableProperty] private bool _hasContinuityWarnings;
@@ -571,6 +572,26 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                                 });
                             }
                         }
+
+                        SubmissionExpenses.Clear();
+                        var expRawList = metadata.expenseEntries ?? metadata.expensesList;
+                        if (expRawList != null)
+                        {
+                            foreach (var exp in expRawList)
+                            {
+                                string desc = (exp.description ?? exp.Description ?? exp.notes ?? exp.Notes ?? "DSM PWA Expense").ToString();
+                                double amt = Convert.ToDouble((object?)(exp.amount ?? exp.Amount ?? 0.0));
+                                if (amt > 0)
+                                {
+                                    SubmissionExpenses.Add(new Expense { Description = desc, Amount = amt });
+                                }
+                            }
+                        }
+                        if (SubmissionExpenses.Count > 0)
+                        {
+                            ExpenseAmount = SubmissionExpenses.Sum(e => e.Amount);
+                            ExpenseNotes = string.Join(", ", SubmissionExpenses.Select(e => e.Description));
+                        }
                     }
                 }
                 catch (Exception ex)
@@ -612,18 +633,13 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
     private void RecalculateTotals()
     {
         GrossSales = NozzleReadings.Sum(r => r.Amount);
-        double totalTestingAmount = SubmissionTestingEntries.Sum(t => 
-        {
-            if (t.RupeeAmount.HasValue)
-                return t.RupeeAmount.Value;
-            var nozzleRow = NozzleReadings.FirstOrDefault(n => n.NozzleId == t.NozzleId);
-            return t.Amount * (nozzleRow != null ? nozzleRow.Rate : 0.0);
-        });
-        double totalKpAmount = KhandhareEntries.Sum(k => k.Amount);
-        TotalCollections = UpiAmount + CardAmount + CashAmount + CreditAmount + PetroCardAmount + CashDepositAmount + totalTestingAmount + ExpenseAmount + totalKpAmount;
-        
-        // Mismatch is computed: Collections + Expense - (GrossSales + Excess/Short)
-        // Let's use the DsmCalculationService logic to keep it consistent!
+
+        var expenseDtos = (SubmissionExpenses.Count > 0
+            ? SubmissionExpenses.Select(e => new FuelPro.Core.DTOs.ExpenseDto { Amount = (decimal)e.Amount })
+            : new List<FuelPro.Core.DTOs.ExpenseDto> { new() { Amount = (decimal)ExpenseAmount } })
+            .Concat(KhandhareEntries.Select(k => new FuelPro.Core.DTOs.ExpenseDto { Amount = (decimal)k.Amount }))
+            .ToList();
+
         var dto = new FuelPro.Core.DTOs.DsmEntryDto
         {
             NozzleReadings = NozzleReadings.Select(n => new FuelPro.Core.DTOs.NozzleReadingDto { Amount = (decimal)n.Amount }).ToList(),
@@ -637,7 +653,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                 Others = (decimal)OthersAmount
             },
             DebitEntries = DebtorEntries.Select(d => new FuelPro.Core.DTOs.DebitEntryDto { Amount = (decimal)d.Amount }).ToList(),
-            Expenses = new List<FuelPro.Core.DTOs.ExpenseDto> { new() { Amount = (decimal)ExpenseAmount } },
+            Expenses = expenseDtos,
             TestingEntries = SubmissionTestingEntries.Select(t => 
             {
                 if (t.RupeeAmount.HasValue)
@@ -664,7 +680,11 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
 
         var calc = _dsmCalculationService.Calculate(dto);
         double oilDefSalesTotal = OilDefSales.Sum(s => s.Total);
-        MismatchAmount = (double)calc.Mismatch - oilDefSalesTotal;
+        TotalCollections = (double)calc.TotalCollection + oilDefSalesTotal;
+        MismatchAmount = TotalCollections - GrossSales;
+
+        ShortAmount = MismatchAmount < 0 ? Math.Abs(MismatchAmount) : 0;
+        ExcessAmount = MismatchAmount > 0 ? MismatchAmount : 0;
 
         // Check continuity warnings
         HasContinuityWarnings = NozzleReadings.Any(r => r.HasContinuityError);
@@ -1172,8 +1192,11 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                 }
             }
 
-            var expenseModels = new List<Expense>();
-            if (!string.IsNullOrEmpty(SelectedSubmission.MetadataJson))
+            var expenseModels = SubmissionExpenses.Count > 0
+                ? SubmissionExpenses.ToList()
+                : new List<Expense>();
+
+            if (expenseModels.Count == 0 && !string.IsNullOrEmpty(SelectedSubmission.MetadataJson))
             {
                 try
                 {

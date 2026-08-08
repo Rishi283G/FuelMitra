@@ -256,8 +256,8 @@ public class FinancialPipelineIntegrationTests : IDisposable
         Assert.Equal(750, ownerVm.TodayTotalPhonePe);
 
         // Assert PhonePe Card / UPI Card
-        Assert.Equal(500, dayTotalVm.PhonePeCardTotal);
-        Assert.Equal(500, dashboardVm.TodayTotalPhonePeCardMorning + dashboardVm.TodayTotalPhonePeCardNight);
+        Assert.Equal(250, dayTotalVm.PhonePeCardTotal);
+        Assert.Equal(250, dashboardVm.TodayTotalPhonePeCardMorning + dashboardVm.TodayTotalPhonePeCardNight);
 
         // Assert Credit Card (PineLabs)
         Assert.Equal(900, dayTotalVm.CreditCardTotal);

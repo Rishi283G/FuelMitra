@@ -597,7 +597,8 @@ public class ReportService : IReportService
             
             var totalCreditors = g.SelectMany(e => e.DebitEntries).Sum(d => d.Amount);
             var dsmTesting = g.SelectMany(e => e.TestingEntries).Sum(t => t.Amount > 0 ? t.Amount : t.Litres * t.Rate);
-            var totalExpenses = g.SelectMany(e => e.Expenses).Sum(ex => ex.Amount);
+            var totalExpenses = g.SelectMany(e => e.Expenses).Sum(ex => ex.Amount)
+                + g.SelectMany(e => e.KhandharePetroleumEntries ?? new List<KhandharePetroleumEntry>()).Sum(kp => kp.Amount);
             
             var totalCollection = totalInDirect + totalCreditors + dsmTesting + totalExpenses;
             var mismatch = totalCollection - gs;
