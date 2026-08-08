@@ -387,4 +387,51 @@ public class DsmEntryPipelineTests : IDisposable
         Assert.Equal("CC-TID-99", vm.CreditCardTidMorning);
         Assert.Equal("CC-BATCH-88", vm.CreditCardBatchMorning);
     }
+
+    [Fact]
+    public async Task Test5_ApprovedSubmissionWithKhandhareEntries_PersistsAndHydratesCorrectly()
+    {
+        var date = new DateTime(2026, 8, 9);
+        var kpEntries = new List<KhandharePetroleumEntry>
+        {
+            new() { Name = "Abhishek", SlipNumber = "01", Amount = 2500.0 }
+        };
+
+        var dsmService = _serviceProvider.GetRequiredService<DsmEntryService>();
+        var dbContext = _serviceProvider.GetRequiredService<FuelProDbContext>();
+
+        var result = await dsmService.SaveCompleteEntryWithContextAsync(
+            dbContext,
+            date, "A", "Naruto Uzumaki", 3,
+            new List<NozzleReading>(),
+            new PaymentCollection(),
+            new List<DebitEntry>(),
+            new List<TestingEntry>(),
+            new List<Expense>(),
+            new List<CashDenomination>(),
+            khandharePetroleumEntries: kpEntries);
+
+        Assert.True(result.Success, result.Error);
+        var entryId = result.Data!.DsmEntryId;
+
+        // Reopen entry
+        var repo = _serviceProvider.GetRequiredService<IDsmEntryRepository>();
+        var fullEntry = await repo.GetFullEntryAsync(entryId);
+
+        Assert.True(fullEntry.Success);
+        Assert.NotNull(fullEntry.Data!.KhandharePetroleumEntries);
+        Assert.Single(fullEntry.Data.KhandharePetroleumEntries);
+        Assert.Equal("Abhishek", fullEntry.Data.KhandharePetroleumEntries.First().Name);
+        Assert.Equal("01", fullEntry.Data.KhandharePetroleumEntries.First().SlipNumber);
+        Assert.Equal(2500.0, fullEntry.Data.KhandharePetroleumEntries.First().Amount);
+
+        // Hydrate ViewModel
+        var vm = _serviceProvider.GetRequiredService<DsmEntryViewModel>();
+        await vm.HydrateFromEntryAsync(fullEntry.Data);
+
+        Assert.Single(vm.KhandharePetroleumEntries);
+        Assert.Equal("Abhishek", vm.KhandharePetroleumEntries.First().Name);
+        Assert.Equal("01", vm.KhandharePetroleumEntries.First().SlipNumber);
+        Assert.Equal(2500.0, vm.KhandharePetroleumEntries.First().Amount);
+    }
 }

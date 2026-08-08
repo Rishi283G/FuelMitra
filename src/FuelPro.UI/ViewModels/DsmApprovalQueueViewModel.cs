@@ -525,17 +525,22 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                         }
 
                         KhandhareEntries.Clear();
-                        if (metadata.khandhareEntries != null)
+                        var kpRawList = metadata.khandhareEntries ?? metadata.khandharePetroleumEntries;
+                        if (kpRawList != null)
                         {
-                            foreach (var kp in metadata.khandhareEntries)
+                            foreach (var kp in kpRawList)
                             {
+                                string name = (kp.name ?? kp.Name ?? string.Empty).ToString();
+                                string slipNumber = (kp.slipNumber ?? kp.SlipNumber ?? string.Empty).ToString();
+                                double amount = Convert.ToDouble((object?)(kp.amount ?? kp.Amount ?? 0.0));
+
                                 KhandhareEntries.Add(new KhandharePetroleumEntry
                                 {
                                     DsmName = submission.DsmName,
                                     Date = submission.ShiftDate,
-                                    Name = (kp.name ?? string.Empty).ToString(),
-                                    SlipNumber = (kp.slipNumber ?? string.Empty).ToString(),
-                                    Amount = Convert.ToDouble((object?)(kp.amount ?? 0.0))
+                                    Name = name,
+                                    SlipNumber = slipNumber,
+                                    Amount = amount
                                 });
                             }
                         }

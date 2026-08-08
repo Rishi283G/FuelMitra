@@ -45,6 +45,7 @@ export function useSubmissionService() {
           settlements: draft.settlements || [],
           debtorEntries: draft.debtorEntries || [],
           personalDebtors: draft.personalDebtors || [],
+          khandhareEntries: draft.khandhareEntries || [],
           cashDenominations: (draft as any).cashDenominations || null,
           cash1Denominations: (draft as any).cash1Denominations || null,
           testingEntries: (draft as any).testingEntries || [],
