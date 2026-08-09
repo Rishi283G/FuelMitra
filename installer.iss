@@ -1,5 +1,5 @@
 #define MyAppName "PyroSync"
-#define MyAppVersion "1.3.8"
+#define MyAppVersion "1.3.9"
 #define MyAppPublisher "PyroSync"
 #define MyAppExeName "FuelPro.UI.exe"
 
