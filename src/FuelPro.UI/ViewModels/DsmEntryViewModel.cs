@@ -624,9 +624,22 @@ public partial class DsmEntryViewModel : ObservableObject
             return;
         }
 
-        var connectedEntry = entriesResult.Data.FirstOrDefault(e =>
-            e.PumpId == SelectedConnectedPump.PumpId
-            && string.Equals(e.DsmName, DsmName, StringComparison.OrdinalIgnoreCase));
+        DsmEntry? connectedEntry = null;
+        if (EditingEntryId.HasValue)
+        {
+            connectedEntry = entriesResult.Data.FirstOrDefault(e =>
+                e.PumpId == SelectedConnectedPump.PumpId
+                && e.ReconciledToPumpId == EditingEntryId.Value);
+        }
+
+        if (connectedEntry == null)
+        {
+            connectedEntry = entriesResult.Data
+                .Where(e => e.PumpId == SelectedConnectedPump.PumpId
+                    && string.Equals(e.DsmName, DsmName, StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(e => e.DsmEntryId)
+                .FirstOrDefault();
+        }
 
         if (connectedEntry == null)
         {

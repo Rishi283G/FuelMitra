@@ -151,35 +151,6 @@ public class RecalculationMigrationService
     {
         try
         {
-            // 0. Purge invalid/mismatched slave entries (e.g. duplicate slaves with mismatched DsmName or orphan ReconciledToPumpId)
-            var allDsmEntries = await _dbContext.DsmEntries.Include(e => e.NozzleReadings).ToListAsync();
-            var primaryEntriesList = allDsmEntries.Where(e => !e.ReconciledToPumpId.HasValue).ToList();
-            var slaveEntriesList = allDsmEntries.Where(e => e.ReconciledToPumpId.HasValue).ToList();
-
-            var slavesToRemove = new List<DsmEntry>();
-            foreach (var slave in slaveEntriesList)
-            {
-                var parentPrimary = primaryEntriesList.FirstOrDefault(p => p.DsmEntryId == slave.ReconciledToPumpId!.Value);
-                if (parentPrimary == null || !string.Equals((parentPrimary.DsmName ?? "").Trim(), (slave.DsmName ?? "").Trim(), StringComparison.OrdinalIgnoreCase))
-                {
-                    slavesToRemove.Add(slave);
-                }
-            }
-
-            if (slavesToRemove.Any())
-            {
-                foreach (var st in slavesToRemove)
-                {
-                    if (st.NozzleReadings != null && st.NozzleReadings.Any())
-                    {
-                        _dbContext.NozzleReadings.RemoveRange(st.NozzleReadings);
-                    }
-                    _dbContext.DsmEntries.Remove(st);
-                }
-                await _dbContext.SaveChangesAsync();
-                _logger.Information("Purged {Count} mismatched/duplicate slave entries.", slavesToRemove.Count);
-            }
-
             var audits = await _dbContext.DsmApprovalAudits.ToListAsync();
             if (!audits.Any()) return;
 
@@ -189,22 +160,15 @@ public class RecalculationMigrationService
                 if (string.IsNullOrWhiteSpace(audit.OriginalDataJson) || string.IsNullOrWhiteSpace(audit.ApprovedDataJson))
                     continue;
 
-                int primaryEntryId = 0;
+                int approvedEntryId = 0;
                 try
                 {
                     var appObj = JsonConvert.DeserializeObject<AuditApprovedDataDto>(audit.ApprovedDataJson);
-                    primaryEntryId = appObj?.GetDsmEntryId() ?? 0;
+                    approvedEntryId = appObj?.GetDsmEntryId() ?? 0;
                 }
                 catch {}
 
-                if (primaryEntryId <= 0) continue;
-
-                var primaryEntry = await _dbContext.DsmEntries
-                    .Include(e => e.NozzleReadings)
-                    .Include(e => e.Shift)
-                    .FirstOrDefaultAsync(e => e.DsmEntryId == primaryEntryId);
-
-                if (primaryEntry == null) continue;
+                if (approvedEntryId <= 0) continue;
 
                 AuditOriginalDataDto? origObj = null;
                 try
@@ -223,18 +187,48 @@ public class RecalculationMigrationService
 
                 if (!expectedReadings.Any()) continue;
 
-                DsmEntry? slaveEntry = null;
-                if (primaryEntry.ConnectedPumpId.HasValue)
+                // Find primary entry matching this audit by entry ID or matching DSM name and shift
+                var entry = await _dbContext.DsmEntries
+                    .Include(e => e.NozzleReadings)
+                    .Include(e => e.Shift)
+                    .FirstOrDefaultAsync(e => e.DsmEntryId == approvedEntryId);
+
+                if (entry == null) continue;
+
+                DsmEntry primaryEntry = entry;
+                // If approvedEntryId points to a slave entry, find its primary entry
+                if (entry.ReconciledToPumpId.HasValue)
                 {
-                    slaveEntry = await _dbContext.DsmEntries
+                    var realPrimary = await _dbContext.DsmEntries
                         .Include(e => e.NozzleReadings)
-                        .FirstOrDefaultAsync(e => e.ShiftId == primaryEntry.ShiftId
-                            && e.PumpId == primaryEntry.ConnectedPumpId.Value
-                            && e.ReconciledToPumpId == primaryEntry.DsmEntryId);
+                        .Include(e => e.Shift)
+                        .FirstOrDefaultAsync(e => e.DsmEntryId == entry.ReconciledToPumpId.Value);
+
+                    if (realPrimary == null)
+                    {
+                        // Convert entry to primary
+                        entry.ReconciledToPumpId = null;
+                        entry.PumpId = 1;
+                        entry.ConnectedPumpId = 2;
+                        realPrimary = entry;
+                    }
+                    primaryEntry = realPrimary;
                 }
 
-                // If slave entry missing for a connected pump entry, auto-create it
-                if (primaryEntry.ConnectedPumpId.HasValue && slaveEntry == null)
+                if (!primaryEntry.ConnectedPumpId.HasValue)
+                {
+                    primaryEntry.ConnectedPumpId = 2;
+                }
+
+                // Look for slave entry linked to primaryEntry.DsmEntryId
+                DsmEntry? slaveEntry = await _dbContext.DsmEntries
+                    .Include(e => e.NozzleReadings)
+                    .FirstOrDefaultAsync(e => e.ShiftId == primaryEntry.ShiftId
+                        && e.PumpId == primaryEntry.ConnectedPumpId.Value
+                        && e.ReconciledToPumpId == primaryEntry.DsmEntryId);
+
+                // If slave entry missing or incorrectly linked, repair link or create it
+                if (slaveEntry == null)
                 {
                     var connNozzles = PumpConfiguration.GetNozzlesForPump(primaryEntry.ConnectedPumpId.Value, primaryEntry.Shift?.ShiftDate ?? DateTime.Today);
                     var targetNozzleIds = connNozzles != null && connNozzles.Length > 0 ? connNozzles : (primaryEntry.ConnectedPumpId.Value == 2 ? new int[] { 2, 4 } : Array.Empty<int>());
@@ -242,36 +236,64 @@ public class RecalculationMigrationService
                     var connReadings = expectedReadings.Where(r => targetNozzleIds.Contains(r.NozzleId)).ToList();
                     if (connReadings.Any())
                     {
-                        slaveEntry = new DsmEntry
-                        {
-                            ShiftId = primaryEntry.ShiftId,
-                            PumpId = primaryEntry.ConnectedPumpId.Value,
-                            ReconciledToPumpId = primaryEntry.DsmEntryId,
-                            DsmName = primaryEntry.DsmName,
-                            GrossSales = 0m,
-                            TotalCollection = 0m,
-                            Mismatch = 0m,
-                            CreatedAt = primaryEntry.CreatedAt,
-                            UpdatedAt = DateTime.Now
-                        };
-                        _dbContext.DsmEntries.Add(slaveEntry);
-                        await _dbContext.SaveChangesAsync();
+                        // Check if there is an unlinked/mismatched slave entry we can re-assign
+                        slaveEntry = await _dbContext.DsmEntries
+                            .Include(e => e.NozzleReadings)
+                            .FirstOrDefaultAsync(e => e.ShiftId == primaryEntry.ShiftId
+                                && e.PumpId == primaryEntry.ConnectedPumpId.Value
+                                && e.ReconciledToPumpId.HasValue
+                                && string.Equals(e.DsmName, primaryEntry.DsmName, StringComparison.OrdinalIgnoreCase));
 
-                        slaveEntry.NozzleReadings = new List<NozzleReading>();
+                        if (slaveEntry != null)
+                        {
+                            slaveEntry.ReconciledToPumpId = primaryEntry.DsmEntryId;
+                        }
+                        else
+                        {
+                            slaveEntry = new DsmEntry
+                            {
+                                ShiftId = primaryEntry.ShiftId,
+                                PumpId = primaryEntry.ConnectedPumpId.Value,
+                                ReconciledToPumpId = primaryEntry.DsmEntryId,
+                                DsmName = primaryEntry.DsmName,
+                                GrossSales = 0m,
+                                TotalCollection = 0m,
+                                Mismatch = 0m,
+                                CreatedAt = primaryEntry.CreatedAt,
+                                UpdatedAt = DateTime.Now
+                            };
+                            _dbContext.DsmEntries.Add(slaveEntry);
+                            await _dbContext.SaveChangesAsync();
+                        }
+
+                        if (slaveEntry.NozzleReadings == null) slaveEntry.NozzleReadings = new List<NozzleReading>();
+
                         foreach (var cr in connReadings)
                         {
-                            var nr = new NozzleReading
+                            var existingNr = slaveEntry.NozzleReadings.FirstOrDefault(n => n.NozzleNumber == cr.NozzleId);
+                            if (existingNr != null)
                             {
-                                DsmEntryId = slaveEntry.DsmEntryId,
-                                NozzleNumber = cr.NozzleId,
-                                OpeningReading = cr.Opening,
-                                ClosingReading = cr.Closing,
-                                SaleLitres = cr.Closing - cr.Opening,
-                                Rate = cr.Rate,
-                                Amount = (cr.Closing - cr.Opening) * cr.Rate
-                            };
-                            _dbContext.NozzleReadings.Add(nr);
-                            slaveEntry.NozzleReadings.Add(nr);
+                                existingNr.OpeningReading = cr.Opening;
+                                existingNr.ClosingReading = cr.Closing;
+                                existingNr.SaleLitres = cr.Closing - cr.Opening;
+                                existingNr.Rate = cr.Rate;
+                                existingNr.Amount = (cr.Closing - cr.Opening) * cr.Rate;
+                            }
+                            else
+                            {
+                                var nr = new NozzleReading
+                                {
+                                    DsmEntryId = slaveEntry.DsmEntryId,
+                                    NozzleNumber = cr.NozzleId,
+                                    OpeningReading = cr.Opening,
+                                    ClosingReading = cr.Closing,
+                                    SaleLitres = cr.Closing - cr.Opening,
+                                    Rate = cr.Rate,
+                                    Amount = (cr.Closing - cr.Opening) * cr.Rate
+                                };
+                                _dbContext.NozzleReadings.Add(nr);
+                                slaveEntry.NozzleReadings.Add(nr);
+                            }
                         }
                         slaveEntry.GrossSales = (decimal)slaveEntry.NozzleReadings.Sum(r => r.Amount);
                         await _dbContext.SaveChangesAsync();

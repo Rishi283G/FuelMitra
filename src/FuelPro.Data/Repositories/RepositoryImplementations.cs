@@ -602,16 +602,25 @@ public class NozzleReadingRepository : INozzleReadingRepository
             var targetDate = date.Date;
             var altShift = shiftType == "A" ? "I" : (shiftType == "B" ? "II" : (shiftType == "C" ? "III" : (shiftType == "I" ? "A" : (shiftType == "II" ? "B" : (shiftType == "III" ? "C" : shiftType)))));
             var isDayShift = shiftType == "B" || shiftType == "II";
-            var closings = await _context.NozzleReadings
+            var query = _context.NozzleReadings
                 .Include(r => r.DsmEntry)
                 .ThenInclude(e => e!.Shift)
                 .Where(r => r.DsmEntry != null
                     && r.DsmEntry.Shift != null
-                    && (r.DsmEntry.PumpId == pumpId || r.DsmEntry.ReconciledToPumpId == pumpId)
-                    && (currentDsmEntryId == null || r.DsmEntryId != currentDsmEntryId.Value)
-                    && (r.DsmEntry.Shift.ShiftDate < targetDate || 
+                    && (r.DsmEntry.PumpId == pumpId || r.DsmEntry.ReconciledToPumpId == pumpId));
+
+            if (currentDsmEntryId.HasValue)
+            {
+                int cId = currentDsmEntryId.Value;
+                query = query.Where(r => r.DsmEntryId != cId 
+                    && r.DsmEntry.ReconciledToPumpId != cId
+                    && (r.DsmEntry.DsmEntryId < cId && (r.DsmEntry.ReconciledToPumpId == null || r.DsmEntry.ReconciledToPumpId.Value < cId)));
+            }
+
+            var closings = await query
+                .Where(r => r.DsmEntry!.Shift!.ShiftDate < targetDate || 
                        (r.DsmEntry.Shift.ShiftDate == targetDate && isDayShift && (r.DsmEntry.Shift.ShiftType == "A" || r.DsmEntry.Shift.ShiftType == "I")) ||
-                       (r.DsmEntry.Shift.ShiftDate == targetDate && (r.DsmEntry.Shift.ShiftType == shiftType || r.DsmEntry.Shift.ShiftType == altShift) && (currentDsmEntryId == null || r.DsmEntryId < currentDsmEntryId.Value))))
+                       (r.DsmEntry.Shift.ShiftDate == targetDate && (r.DsmEntry.Shift.ShiftType == shiftType || r.DsmEntry.Shift.ShiftType == altShift)))
                 .GroupBy(r => r.NozzleNumber)
                 .Select(g => new { 
                     NozzleNumber = g.Key, 
