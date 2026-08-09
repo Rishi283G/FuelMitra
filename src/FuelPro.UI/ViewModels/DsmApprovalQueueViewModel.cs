@@ -1725,6 +1725,11 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
 
                     if (entryId > 0 && localEntries.TryGetValue(entryId, out var entry))
                     {
+                        if (entry.ReconciledToPumpId.HasValue && localEntries.TryGetValue(entry.ReconciledToPumpId.Value, out var realPrimary))
+                        {
+                            entryId = realPrimary.DsmEntryId;
+                            entry = realPrimary;
+                        }
                         gross = (double)entry.GrossSales;
                         coll = (double)entry.TotalCollection;
                         mismatch = (double)entry.Mismatch;
@@ -1765,22 +1770,31 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
 
                     if (entryId > 0 && localEntries.TryGetValue(entryId, out var entry))
                     {
-                        allApproved.Add(new DsmApprovedSubmissionDto
+                        if (entry.ReconciledToPumpId.HasValue && localEntries.TryGetValue(entry.ReconciledToPumpId.Value, out var realPrimary))
                         {
-                            SubmissionId = audit.SubmissionId,
-                            DsmEntryId = entryId,
-                            DsmName = entry.DsmName,
-                            PumpId = entry.PumpId,
-                            ShiftDate = entry.Shift?.ShiftDate ?? DateTime.Today,
-                            ShiftType = entry.Shift?.ShiftType ?? "A",
-                            SubmittedAt = audit.ApprovedAt.AddHours(-2),
-                            ApprovedAt = audit.ApprovedAt,
-                            ApprovedBy = audit.ApprovedBy,
-                            Notes = audit.Remarks ?? "",
-                            GrossSales = (double)entry.GrossSales,
-                            TotalCollection = (double)entry.TotalCollection,
-                            Mismatch = (double)entry.Mismatch
-                        });
+                            entryId = realPrimary.DsmEntryId;
+                            entry = realPrimary;
+                        }
+
+                        if (!allApproved.Any(a => a.DsmEntryId == entryId))
+                        {
+                            allApproved.Add(new DsmApprovedSubmissionDto
+                            {
+                                SubmissionId = audit.SubmissionId,
+                                DsmEntryId = entryId,
+                                DsmName = entry.DsmName,
+                                PumpId = entry.PumpId,
+                                ShiftDate = entry.Shift?.ShiftDate ?? DateTime.Today,
+                                ShiftType = entry.Shift?.ShiftType ?? "A",
+                                SubmittedAt = audit.ApprovedAt.AddHours(-2),
+                                ApprovedAt = audit.ApprovedAt,
+                                ApprovedBy = audit.ApprovedBy,
+                                Notes = audit.Remarks ?? "",
+                                GrossSales = (double)entry.GrossSales,
+                                TotalCollection = (double)entry.TotalCollection,
+                                Mismatch = (double)entry.Mismatch
+                            });
+                        }
                     }
                 }
             }
@@ -1789,6 +1803,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
             var existingEntryIds = new HashSet<int>(allApproved.Select(a => a.DsmEntryId).Where(id => id > 0));
             var allLocalEntries = await context.DsmEntries
                 .Include(e => e.Shift)
+                .Where(e => !e.ReconciledToPumpId.HasValue)
                 .OrderByDescending(e => e.CreatedAt)
                 .ToListAsync();
 
