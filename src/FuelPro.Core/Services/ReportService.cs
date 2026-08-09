@@ -562,40 +562,13 @@ public class ReportService : IReportService
     private double CalculateDsmShort(List<DsmEntry> entries)
     {
         double totalDsmShort = 0;
-        var mismatchGroups = entries.GroupBy(e => new { e.ShiftId, e.DsmName, GroupPumpId = e.ReconciledToPumpId ?? e.PumpId });
-        foreach (var g in mismatchGroups)
+        var merged = MergeConnectedPumpEntries(entries);
+        foreach (var e in merged)
         {
-            var gs = g.SelectMany(e => e.NozzleReadings).Any()
-                ? g.SelectMany(e => e.NozzleReadings).Sum(n => n.Amount)
-                : (double)g.Sum(e => e.GrossSales);
-            var cash1Total = g.SelectMany(e => e.CashDenominations).Where(c => c.CashType == "Cash1").Sum(c => c.TotalAmount);
-            var cash2Total = g.SelectMany(e => e.CashDenominations).Where(c => c.CashType == "Cash2").Sum(c => c.TotalAmount);
-            
-            var pp = g.Sum(e => (e.PaymentCollection?.PhonePeMorning ?? 0) 
-                                   + (e.PaymentCollection?.PhonePeDay ?? 0)
-                                   + (e.PaymentCollection?.PhonePeNight ?? 0) 
-                                   + (e.PaymentCollection?.PhonePeCardMorning ?? 0) 
-                                   + (e.PaymentCollection?.PhonePeCardDay ?? 0)
-                                   + (e.PaymentCollection?.PhonePeCardNight ?? 0));
-                                   
-            var cc = g.Sum(e => (e.PaymentCollection?.CreditCardMorning ?? 0) 
-                                       + (e.PaymentCollection?.CreditCardDay ?? 0)
-                                       + (e.PaymentCollection?.CreditCardNight ?? 0) 
-                                       + (e.PaymentCollection?.PetroCardMorning ?? 0) 
-                                       + (e.PaymentCollection?.PetroCardDay ?? 0)
-                                       + (e.PaymentCollection?.PetroCardNight ?? 0));
-                                       
-            var cashDepositVal = cash1Total > 0 ? cash1Total : g.Sum(e => e.PaymentCollection?.CashDeposit ?? 0);
-            var totalInDirect = (double)(pp + cc + cashDepositVal + cash2Total);
-            
-            var totalCreditors = g.SelectMany(e => e.DebitEntries).Sum(d => d.Amount);
-            var dsmTesting = g.SelectMany(e => e.TestingEntries).Sum(t => t.Amount > 0 ? t.Amount : t.Litres * t.Rate);
-            var totalExpenses = g.SelectMany(e => e.Expenses).Sum(ex => ex.Amount)
-                + g.SelectMany(e => e.KhandharePetroleumEntries ?? new List<KhandharePetroleumEntry>()).Sum(kp => kp.Amount);
-            
-            var totalCollection = totalInDirect + totalCreditors + dsmTesting + totalExpenses;
-            var mismatch = totalCollection - gs;
-            
+            double gs = (double)e.GrossSales;
+            double totalCollection = (double)e.TotalCollection;
+            double mismatch = totalCollection - gs;
+
             if (mismatch < -0.01)
             {
                 totalDsmShort += Math.Abs(mismatch);
@@ -622,78 +595,67 @@ public class ReportService : IReportService
     {
         if (entries == null || entries.Count == 0) return new List<DsmEntry>();
 
+        var primaryEntries = entries.Where(e => !e.ReconciledToPumpId.HasValue).OrderBy(e => e.DsmEntryId).ToList();
+        var slaveEntries = entries.Where(e => e.ReconciledToPumpId.HasValue).ToList();
+        var usedSlaveIds = new HashSet<int>();
         var mergedEntries = new List<DsmEntry>();
-        // Group entries by ShiftId, DsmName (case-insensitive), and the Effective Primary Pump ID.
-        // Effective Primary Pump ID is ReconciledToPumpId if set, otherwise PumpId.
-        var groups = entries.GroupBy(e => new { 
-            e.ShiftId, 
-            DsmName = (e.DsmName ?? "").Trim().ToLower(), 
-            PrimaryPumpId = e.ReconciledToPumpId ?? e.PumpId 
-        });
 
-        foreach (var group in groups)
+        foreach (var primary in primaryEntries)
         {
-            // The primary entry is the one that has ReconciledToPumpId == null
-            var primary = group.FirstOrDefault(e => e.ReconciledToPumpId == null) ?? group.First();
-            
-            // Create a new merged DsmEntry to avoid mutating EF tracked instances
+            var slave = slaveEntries
+                .Where(e => !usedSlaveIds.Contains(e.DsmEntryId)
+                    && e.ReconciledToPumpId == primary.PumpId
+                    && string.Equals((e.DsmName ?? "").Trim(), (primary.DsmName ?? "").Trim(), StringComparison.OrdinalIgnoreCase))
+                .OrderBy(e => e.DsmEntryId >= primary.DsmEntryId ? (e.DsmEntryId - primary.DsmEntryId) : (100000 + Math.Abs(e.DsmEntryId - primary.DsmEntryId)))
+                .FirstOrDefault();
+
+            if (slave != null)
+            {
+                usedSlaveIds.Add(slave.DsmEntryId);
+            }
+
+            var group = slave != null ? new List<DsmEntry> { primary, slave } : new List<DsmEntry> { primary };
+
+            decimal grossSales = primary.GrossSales > 0 
+                ? primary.GrossSales 
+                : (decimal)group.SelectMany(e => e.NozzleReadings ?? new List<NozzleReading>()).Sum(n => n.Amount);
+
             var merged = new DsmEntry
             {
                 DsmEntryId = primary.DsmEntryId,
                 ShiftId = primary.ShiftId,
                 Shift = primary.Shift,
                 DsmName = primary.DsmName,
-                PumpId = primary.PumpId, // Main primary pump
-                ConnectedPumpId = primary.ConnectedPumpId,
+                PumpId = primary.PumpId,
+                ConnectedPumpId = primary.ConnectedPumpId ?? slave?.PumpId,
                 ReconciledToPumpId = null,
                 StartTime = primary.StartTime,
                 EndTime = primary.EndTime,
-                GrossSales = group.SelectMany(e => e.NozzleReadings ?? new List<NozzleReading>()).Any()
-                    ? (decimal)group.SelectMany(e => e.NozzleReadings ?? new List<NozzleReading>()).Sum(n => n.Amount)
-                    : group.Sum(e => e.GrossSales),
+                GrossSales = grossSales,
                 TotalInDirect = primary.TotalInDirect,
                 TotalCreditors = primary.TotalCreditors,
                 TotalCollection = primary.TotalCollection,
-                Mismatch = primary.TotalCollection - (group.SelectMany(e => e.NozzleReadings ?? new List<NozzleReading>()).Any()
-                    ? (decimal)group.SelectMany(e => e.NozzleReadings ?? new List<NozzleReading>()).Sum(n => n.Amount)
-                    : group.Sum(e => e.GrossSales))
+                Mismatch = primary.TotalCollection - grossSales,
+                CreatedAt = primary.CreatedAt,
+                UpdatedAt = primary.UpdatedAt
             };
 
-            // Merge child collections
+            // Merge child collections for THIS specific submission group only
             merged.NozzleReadings = group.SelectMany(e => e.NozzleReadings ?? new List<NozzleReading>()).ToList();
-            merged.CashDenominations = group.SelectMany(e => e.CashDenominations ?? new List<CashDenomination>()).ToList();
-            merged.DebitEntries = group.SelectMany(e => e.DebitEntries ?? new List<DebitEntry>()).ToList();
-            merged.Expenses = group.SelectMany(e => e.Expenses ?? new List<Expense>()).ToList();
+            merged.CashDenominations = primary.CashDenominations ?? new List<CashDenomination>();
+            merged.DebitEntries = primary.DebitEntries ?? new List<DebitEntry>();
+            merged.Expenses = primary.Expenses ?? new List<Expense>();
             merged.TestingEntries = group.SelectMany(e => e.TestingEntries ?? new List<TestingEntry>()).ToList();
-            merged.PersonalDebtors = group.SelectMany(e => e.PersonalDebtors ?? new List<DsmPersonalDebtor>()).ToList();
-            merged.KhandharePetroleumEntries = group.SelectMany(e => e.KhandharePetroleumEntries ?? new List<KhandharePetroleumEntry>()).ToList();
-            
-            // Merge PaymentCollection
-            var mainPayment = group.FirstOrDefault(e => e.PaymentCollection != null)?.PaymentCollection;
-            if (mainPayment != null)
-            {
-                merged.PaymentCollection = new PaymentCollection
-                {
-                    PaymentId = mainPayment.PaymentId,
-                    DsmEntryId = merged.DsmEntryId,
-                    PhonePeMorning = group.Sum(e => e.PaymentCollection?.PhonePeMorning ?? 0),
-                    PhonePeDay = group.Sum(e => e.PaymentCollection?.PhonePeDay ?? 0),
-                    PhonePeNight = group.Sum(e => e.PaymentCollection?.PhonePeNight ?? 0),
-                    PhonePeCardMorning = group.Sum(e => e.PaymentCollection?.PhonePeCardMorning ?? 0),
-                    PhonePeCardDay = group.Sum(e => e.PaymentCollection?.PhonePeCardDay ?? 0),
-                    PhonePeCardNight = group.Sum(e => e.PaymentCollection?.PhonePeCardNight ?? 0),
-                    CreditCardMorning = group.Sum(e => e.PaymentCollection?.CreditCardMorning ?? 0),
-                    CreditCardDay = group.Sum(e => e.PaymentCollection?.CreditCardDay ?? 0),
-                    CreditCardNight = group.Sum(e => e.PaymentCollection?.CreditCardNight ?? 0),
-                    PetroCardMorning = group.Sum(e => e.PaymentCollection?.PetroCardMorning ?? 0),
-                    PetroCardDay = group.Sum(e => e.PaymentCollection?.PetroCardDay ?? 0),
-                    PetroCardNight = group.Sum(e => e.PaymentCollection?.PetroCardNight ?? 0),
-                    CashDeposit = group.Sum(e => e.PaymentCollection?.CashDeposit ?? 0),
-                    Others = group.Sum(e => e.PaymentCollection?.Others ?? 0)
-                };
-            }
+            merged.PersonalDebtors = primary.PersonalDebtors ?? new List<DsmPersonalDebtor>();
+            merged.KhandharePetroleumEntries = primary.KhandharePetroleumEntries ?? new List<KhandharePetroleumEntry>();
+            merged.PaymentCollection = primary.PaymentCollection;
 
             mergedEntries.Add(merged);
+        }
+
+        foreach (var slave in slaveEntries.Where(e => !usedSlaveIds.Contains(e.DsmEntryId)))
+        {
+            mergedEntries.Add(slave);
         }
 
         return mergedEntries;
