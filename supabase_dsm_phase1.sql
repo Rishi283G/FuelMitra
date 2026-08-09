@@ -72,8 +72,7 @@ CREATE TABLE IF NOT EXISTS "DsmSubmissions" (
     "AttachmentUrl" TEXT, -- Nullable attachment path
     "Notes" TEXT,
     "created_at" TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-    "updated_at" TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-    CONSTRAINT uq_station_pump_shift UNIQUE ("StationId", "PumpId", "ShiftDate", "ShiftType")
+    "updated_at" TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
 -- 5. DsmSubmissionReadings (Supabase exclusive)
