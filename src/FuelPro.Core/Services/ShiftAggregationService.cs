@@ -56,7 +56,9 @@ public class ShiftAggregationService : IShiftAggregationService
                     Expenses = totalExpenses,
                     Testing = totalTesting,
                     CashInHand = cash2,
-                    GrossSales = (double)entry.GrossSales
+                    GrossSales = entry.NozzleReadings != null && entry.NozzleReadings.Count > 0
+                        ? entry.NozzleReadings.Sum(n => (double)n.Amount)
+                        : (double)entry.GrossSales
                 });
             }
             return rows;
