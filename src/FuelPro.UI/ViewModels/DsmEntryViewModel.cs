@@ -438,14 +438,14 @@ public partial class DsmEntryViewModel : ObservableObject
         var (hsdRate, msIRate, msIIRate, cngRate) = await _dsmService.GetCurrentRatesAsync();
         
         // Fetch previous shift closings for primary pump
-        var previousResult = await _nozzleRepository.GetPreviousShiftClosingsAsync(SelectedDate, SelectedShift, SelectedPump.PumpId);
+        var previousResult = await _nozzleRepository.GetPreviousShiftClosingsAsync(SelectedDate, SelectedShift, SelectedPump.PumpId, EditingEntryId);
         var previousClosings = previousResult.Success ? previousResult.Data! : new Dictionary<int, double>();
 
         // Fetch previous shift closings for connected pump if active
         var connectedPreviousClosings = new Dictionary<int, double>();
         if (SelectedConnectedPump != null)
         {
-            var connPrevResult = await _nozzleRepository.GetPreviousShiftClosingsAsync(SelectedDate, SelectedShift, SelectedConnectedPump.PumpId);
+            var connPrevResult = await _nozzleRepository.GetPreviousShiftClosingsAsync(SelectedDate, SelectedShift, SelectedConnectedPump.PumpId, EditingEntryId);
             if (connPrevResult.Success && connPrevResult.Data != null)
             {
                 connectedPreviousClosings = connPrevResult.Data;
