@@ -602,12 +602,14 @@ public class NozzleReadingRepository : INozzleReadingRepository
             var targetDate = date.Date;
             var altShift = shiftType == "A" ? "I" : (shiftType == "B" ? "II" : (shiftType == "C" ? "III" : (shiftType == "I" ? "A" : (shiftType == "II" ? "B" : (shiftType == "III" ? "C" : shiftType)))));
             var isDayShift = shiftType == "B" || shiftType == "II";
+            var pumpNozzles = PumpConfiguration.GetNozzlesForPump(pumpId, targetDate);
             var query = _context.NozzleReadings
                 .Include(r => r.DsmEntry)
                 .ThenInclude(e => e!.Shift)
                 .Where(r => r.DsmEntry != null
                     && r.DsmEntry.Shift != null
-                    && (r.DsmEntry.PumpId == pumpId || r.DsmEntry.ReconciledToPumpId == pumpId));
+                    && (r.DsmEntry.PumpId == pumpId || r.DsmEntry.ReconciledToPumpId == pumpId)
+                    && (pumpNozzles == null || pumpNozzles.Length == 0 || pumpNozzles.Contains(r.NozzleNumber)));
 
             if (currentDsmEntryId.HasValue)
             {

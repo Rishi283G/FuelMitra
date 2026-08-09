@@ -489,8 +489,10 @@ public partial class DsmEntryViewModel : ObservableObject
             AgsNozzleReading? currentAgsRow = null;
             var hasCurrentAgs = currentAgsReadings != null && currentAgsReadings.TryGetValue(n, out currentAgsRow);
             
-            var hasPreviousDsm = previousClosings.TryGetValue(n, out var previousDsmClosing)
-                || connectedPreviousClosings.TryGetValue(n, out previousDsmClosing);
+            var isConnectedNozzle = SelectedConnectedPump != null && nozzlePumpId == SelectedConnectedPump.PumpId;
+            var hasPreviousDsm = isConnectedNozzle
+                ? (connectedPreviousClosings.TryGetValue(n, out var previousDsmClosing) || previousClosings.TryGetValue(n, out previousDsmClosing))
+                : (previousClosings.TryGetValue(n, out previousDsmClosing) || connectedPreviousClosings.TryGetValue(n, out previousDsmClosing));
 
             double? openingReading = (hasCurrentAgs ? currentAgsRow?.OpeningReading : null)
                                      ?? openingFromAgsPreviousShift
