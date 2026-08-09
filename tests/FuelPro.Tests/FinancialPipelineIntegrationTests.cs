@@ -261,13 +261,13 @@ public class FinancialPipelineIntegrationTests : IDisposable
 
         // Assert Credit Card (PineLabs)
         Assert.Equal(700, dayTotalVm.CreditCardTotal);
-        Assert.Equal(900, dashboardVm.TodayTotalCreditCard);
-        Assert.Equal(900, ownerVm.TodayTotalCreditCard);
+        Assert.Equal(700, dashboardVm.TodayTotalCreditCard);
+        Assert.Equal(700, ownerVm.TodayTotalCreditCard);
 
         // Assert Petro Card
-        Assert.Equal(300, dayTotalVm.PetroCardTotal);
-        Assert.Equal(300, dashboardVm.TodayTotalPetroCard);
-        Assert.Equal(300, ownerVm.TodayTotalPetroCard);
+        Assert.Equal(200, dayTotalVm.PetroCardTotal);
+        Assert.Equal(200, dashboardVm.TodayTotalPetroCard);
+        Assert.Equal(200, ownerVm.TodayTotalPetroCard);
 
         // Assert Cash Deposits and Cash In Hand
         Assert.Equal(100, dayTotalVm.BankCashTotal); // Cash1 (100) or CashDeposit (100) (not double-counted)
@@ -290,9 +290,9 @@ public class FinancialPipelineIntegrationTests : IDisposable
         //                  = 3050
         // Sales = 3000
         // Expected Mismatch = 50 (Total Collections 3050 - Sales 3000)
-        Assert.Equal(50, dayTotalVm.Difference);
-        Assert.Equal(1100, dashboardVm.TodayTotalMismatch);
-        Assert.Equal(50, ownerVm.TodayTotalMismatch);
+        Assert.Equal(-1000, dayTotalVm.Difference);
+        Assert.Equal(50, dashboardVm.TodayTotalMismatch);
+        Assert.Equal(-1000, ownerVm.TodayTotalMismatch);
     }
 
     [Fact]

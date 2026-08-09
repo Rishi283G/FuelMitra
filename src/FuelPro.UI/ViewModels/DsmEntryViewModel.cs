@@ -856,13 +856,11 @@ public partial class DsmEntryViewModel : ObservableObject
 
             if (result.Success)
             {
-                if (result.Data != null)
-                {
-                    EditingEntryId = result.Data.DsmEntryId;
-                }
+                EditingEntryId = null;
                 StatusMessage = "✅ DSM Entry saved successfully!";
                 _draftService.ClearDraft();
                 await LoadShiftEntriesAsync();
+                await LoadNozzlesForPumpAsync();
 
                 // Trigger background sync now that transaction is fully committed
                 var syncEngine = App.Services.GetRequiredService<FuelPro.Sync.SyncEngine>();
