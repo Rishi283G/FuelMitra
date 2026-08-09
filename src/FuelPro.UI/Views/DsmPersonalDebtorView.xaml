@@ -175,82 +175,71 @@
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
-                                </Grid.RowDefinitions>                                 <!-- Header Row: Title & Account Name -->
-                                 <Grid Grid.Row="0" Margin="0,0,0,8">
-                                     <Grid.ColumnDefinitions>
-                                         <ColumnDefinition Width="Auto"/>
-                                         <ColumnDefinition Width="*"/>
-                                     </Grid.ColumnDefinitions>
+                                </Grid.RowDefinitions>
+                                
+                                <Grid Grid.Row="0" Margin="0,0,0,8">
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                        <TextBlock Text="Selected Account: " FontSize="12" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" VerticalAlignment="Center"/>
+                                        <TextBlock Text="{Binding SelectedSummary.DsmName}" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Grid>
 
-                                     <StackPanel Grid.Column="0" Orientation="Horizontal">
-                                         <TextBlock Text="Record:" VerticalAlignment="Center" FontWeight="SemiBold" Margin="0,0,8,0"/>
-                                         <ComboBox ItemsSource="{Binding ActionTypes}" SelectedItem="{Binding SelectedActionType}" Style="{StaticResource MaterialDesignOutlinedComboBox}" Width="150" Height="36" Padding="8,4"/>
-                                     </StackPanel>
+                                <!-- Main Form Control Inputs -->
+                                <Grid Grid.Row="1" Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="1.2*"/>
+                                        <ColumnDefinition Width="1.2*"/>
+                                        <ColumnDefinition Width="2*"/>
+                                        <ColumnDefinition Width="2*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
 
-                                     <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                                         <TextBlock Text="Selected Account: " FontSize="12" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" VerticalAlignment="Center"/>
-                                         <TextBlock Text="{Binding SelectedSummary.DsmName}" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" VerticalAlignment="Center"/>
-                                     </StackPanel>
-                                 </Grid>
+                                    <DatePicker Grid.Column="0" SelectedDate="{Binding RepaymentDate}" materialDesign:HintAssist.Hint="Date" Style="{StaticResource MaterialDesignOutlinedDatePicker}" Margin="0,0,8,0"/>
 
-                                 <!-- Main Form Control Inputs -->
-                                 <Grid Grid.Row="1" Margin="0,0,0,8">
-                                     <Grid.ColumnDefinitions>
-                                         <ColumnDefinition Width="1.2*"/>
-                                         <ColumnDefinition Width="1.2*"/>
-                                         <ColumnDefinition Width="1.5*"/>
-                                         <ColumnDefinition Width="2*"/>
-                                         <ColumnDefinition Width="Auto"/>
-                                     </Grid.ColumnDefinitions>
+                                    <ComboBox Grid.Column="1" ItemsSource="{Binding PaymentModes}" SelectedItem="{Binding SelectedPaymentMode}" materialDesign:HintAssist.Hint="Payment Mode" Style="{StaticResource MaterialDesignOutlinedComboBox}" Margin="0,0,8,0"/>
 
-                                     <DatePicker Grid.Column="0" SelectedDate="{Binding RepaymentDate}" materialDesign:HintAssist.Hint="Date" Style="{StaticResource MaterialDesignOutlinedDatePicker}" Margin="0,0,8,0"/>
+                                    <TextBox Grid.Column="2" Text="{Binding RepaymentRemarks}" materialDesign:HintAssist.Hint="Remarks" Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,8,0"/>
 
-                                     <ComboBox Grid.Column="1" ItemsSource="{Binding PaymentModes}" SelectedItem="{Binding SelectedPaymentMode}" materialDesign:HintAssist.Hint="Payment Mode" Style="{StaticResource MaterialDesignOutlinedComboBox}" Margin="0,0,8,0"/>
+                                    <!-- Amount Received (Non-Cash Mode) -->
+                                    <TextBox Grid.Column="3" Margin="0,0,8,0">
+                                        <TextBox.Style>
+                                            <Style TargetType="TextBox" BasedOn="{StaticResource MaterialDesignOutlinedTextBox}">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                                <Setter Property="IsEnabled" Value="True"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding SelectedPaymentMode}" Value="Cash">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBox.Style>
+                                        <TextBox.Text>
+                                            <Binding Path="RepaymentAmount" UpdateSourceTrigger="LostFocus" StringFormat="F2"/>
+                                        </TextBox.Text>
+                                        <materialDesign:HintAssist.Hint>Amount (₹)</materialDesign:HintAssist.Hint>
+                                    </TextBox>
 
-                                     <TextBox Grid.Column="2" Text="{Binding AdvanceFuelProduct}" materialDesign:HintAssist.Hint="Product / Note" Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,8,0" Visibility="{Binding IsAdvanceMode, Converter={StaticResource BoolToVis}}"/>
-                                     <TextBox Grid.Column="2" Text="{Binding RepaymentRemarks}" materialDesign:HintAssist.Hint="Remarks" Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,8,0" Visibility="{Binding IsRepaymentMode, Converter={StaticResource BoolToVis}}"/>
+                                    <!-- Cash total auto-calculated from denominations -->
+                                    <Border Grid.Column="3" Margin="0,0,8,0" BorderBrush="{DynamicResource MaterialDesign.Brush.Primary}" BorderThickness="1" CornerRadius="4" Padding="12,0" VerticalAlignment="Stretch">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding SelectedPaymentMode}" Value="Cash">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <TextBlock Text="Total Cash Amount:" FontWeight="SemiBold" VerticalAlignment="Center" FontSize="12"/>
+                                            <TextBlock Text="{Binding RepaymentAmount, StringFormat=₹{0:N2}}" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" VerticalAlignment="Center" FontSize="14" Margin="6,0,0,0"/>
+                                        </StackPanel>
+                                    </Border>
 
-                                     <!-- Amount Received (Non-Cash Mode) -->
-                                     <TextBox Grid.Column="3" Margin="0,0,8,0">
-                                         <TextBox.Style>
-                                             <Style TargetType="TextBox" BasedOn="{StaticResource MaterialDesignOutlinedTextBox}">
-                                                 <Setter Property="Visibility" Value="Visible"/>
-                                                 <Setter Property="IsEnabled" Value="True"/>
-                                                 <Style.Triggers>
-                                                     <DataTrigger Binding="{Binding SelectedPaymentMode}" Value="Cash">
-                                                         <Setter Property="Visibility" Value="Collapsed"/>
-                                                     </DataTrigger>
-                                                 </Style.Triggers>
-                                             </Style>
-                                         </TextBox.Style>
-                                         <TextBox.Text>
-                                             <Binding Path="RepaymentAmount" UpdateSourceTrigger="LostFocus" StringFormat="F2"/>
-                                         </TextBox.Text>
-                                         <materialDesign:HintAssist.Hint>Amount (₹)</materialDesign:HintAssist.Hint>
-                                     </TextBox>
-
-                                     <!-- Cash total auto-calculated from denominations -->
-                                     <Border Grid.Column="3" Margin="0,0,8,0" BorderBrush="{DynamicResource MaterialDesign.Brush.Primary}" BorderThickness="1" CornerRadius="4" Padding="12,0" VerticalAlignment="Stretch">
-                                         <Border.Style>
-                                             <Style TargetType="Border">
-                                                 <Setter Property="Visibility" Value="Collapsed"/>
-                                                 <Style.Triggers>
-                                                     <DataTrigger Binding="{Binding SelectedPaymentMode}" Value="Cash">
-                                                         <Setter Property="Visibility" Value="Visible"/>
-                                                     </DataTrigger>
-                                                 </Style.Triggers>
-                                             </Style>
-                                         </Border.Style>
-                                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                             <TextBlock Text="Total Cash Amount:" FontWeight="SemiBold" VerticalAlignment="Center" FontSize="12"/>
-                                             <TextBlock Text="{Binding RepaymentAmount, StringFormat=₹{0:N2}}" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" VerticalAlignment="Center" FontSize="14" Margin="6,0,0,0"/>
-                                         </StackPanel>
-                                     </Border>
-
-                                     <!-- Save Buttons -->
-                                     <Button Grid.Column="4" Content="Save Repayment" Command="{Binding SavePersonalRepaymentCommand}" Style="{StaticResource MaterialDesignRaisedButton}" Height="40" Padding="16,0" Visibility="{Binding IsRepaymentMode, Converter={StaticResource BoolToVis}}"/>
-                                     <Button Grid.Column="4" Content="Save Advance (+)" Command="{Binding SavePersonalAdvanceCommand}" Style="{StaticResource MaterialDesignRaisedButton}" Height="40" Padding="16,0" Visibility="{Binding IsAdvanceMode, Converter={StaticResource BoolToVis}}"/>
-                                 </Grid>
+                                    <!-- Save Buttons -->
+                                    <Button Grid.Column="4" Content="Save Repayment" Command="{Binding SavePersonalRepaymentCommand}" Style="{StaticResource MaterialDesignRaisedButton}" Height="40" Padding="16,0"/>
+                                </Grid>
 
                                 <!-- Cash Denominations Horizontal Strip -->
                                 <Grid Grid.Row="2" Visibility="{Binding IsCashPaymentMode, Converter={StaticResource BoolToVis}}" Margin="0,4,0,0">

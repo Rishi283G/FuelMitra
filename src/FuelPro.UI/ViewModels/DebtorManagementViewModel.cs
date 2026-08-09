@@ -524,12 +524,6 @@ public partial class DebtorManagementViewModel : ObservableObject
         }
 
         var debtorRow = Debtors.FirstOrDefault(d => d.Name.Equals(SelectedDebtorName, StringComparison.OrdinalIgnoreCase));
-        double outstanding = debtorRow?.OutstandingBalance ?? 0;
-        if (RepaymentAmount > outstanding)
-        {
-            RepaymentStatus = $"❌ Repayment exceeds outstanding balance of ₹{outstanding:F2}.";
-            return;
-        }
 
         // Auto-assign ShiftNumber for TID-sheet slot attribution:
         //   before 20:00 → Shift B (Day slot on the business day)
@@ -1615,7 +1609,7 @@ public partial class DebtorManagementViewModel : ObservableObject
                         TotalRepaid = totalRepaid
                     };
                 })
-                .Where(s => s.Balance > 0 || s.TotalBorrowed > 0)
+                .Where(s => Math.Abs(s.Balance) > 0.001 || s.TotalBorrowed > 0 || s.TotalRepaid > 0)
                 .OrderBy(s => s.DsmName)
                 .ToList();
 
@@ -1704,15 +1698,11 @@ public partial class DebtorManagementViewModel : ObservableObject
             return;
         }
 
-        var remaining = SelectedDsmPersonalDebtorEntry.Amount - SelectedDsmPersonalDebtorEntry.RepaidAmount;
-        if (PersonalRepaymentAmount > remaining + 0.01)
-        {
-            MessageBox.Show($"Repayment amount cannot exceed the remaining balance of ₹{remaining:N2}.", "Excess Repayment", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-
         try
         {
+            SelectedDsmPersonalDebtorEntry.RepaidAmount += PersonalRepaymentAmount;
+            _dbContext.DsmPersonalDebtors.Update(SelectedDsmPersonalDebtorEntry);
+
             var repayment = new DsmPersonalDebtorRepayment
             {
                 DsmPersonalDebtorId = SelectedDsmPersonalDebtorEntry.Id,

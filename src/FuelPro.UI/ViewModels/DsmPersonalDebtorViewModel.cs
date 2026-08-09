@@ -563,13 +563,6 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
                 .ThenBy(b => b.Id)
                 .ToListAsync();
 
-            double totalOutstanding = outstandingBorrowings.Sum(b => b.Amount - b.RepaidAmount);
-            if (RepaymentAmount > totalOutstanding + 0.01)
-            {
-                MessageBox.Show($"Repayment amount cannot exceed the total outstanding balance of ₹{totalOutstanding:N2}.", "Excess Repayment", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
             double remainingAmountToDistribute = RepaymentAmount;
             bool isFirst = true;
 
@@ -604,6 +597,56 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
 
                 _dbContext.DsmPersonalDebtorRepayments.Add(repayment);
                 isFirst = false;
+            }
+
+            if (remainingAmountToDistribute > 0)
+            {
+                var existingBorrow = await _dbContext.DsmPersonalDebtors
+                    .Where(b => b.DsmName == dsmName)
+                    .OrderByDescending(b => b.Date)
+                    .ThenByDescending(b => b.Id)
+                    .FirstOrDefaultAsync();
+
+                if (existingBorrow == null)
+                {
+                    existingBorrow = new DsmPersonalDebtor
+                    {
+                        DsmName = dsmName,
+                        Date = RepaymentDate,
+                        Time = DateTime.Now.ToString("HH:mm"),
+                        Amount = 0,
+                        RepaidAmount = remainingAmountToDistribute,
+                        Remarks = string.IsNullOrWhiteSpace(RepaymentRemarks) ? "Advance Payment" : RepaymentRemarks.Trim(),
+                        PaymentMethod = SelectedPaymentMode,
+                        CreatedAt = DateTime.Now
+                    };
+                    _dbContext.DsmPersonalDebtors.Add(existingBorrow);
+                    await _dbContext.SaveChangesAsync();
+                }
+                else
+                {
+                    existingBorrow.RepaidAmount += remainingAmountToDistribute;
+                    _dbContext.DsmPersonalDebtors.Update(existingBorrow);
+                }
+
+                var repayment = new DsmPersonalDebtorRepayment
+                {
+                    DsmPersonalDebtorId = existingBorrow.Id,
+                    Amount = remainingAmountToDistribute,
+                    Date = RepaymentDate,
+                    PaymentMethod = SelectedPaymentMode,
+                    Source = "OwnerPayroll",
+                    Denom500 = isFirst ? (Denom500 ?? 0) : 0,
+                    Denom200 = isFirst ? (Denom200 ?? 0) : 0,
+                    Denom100 = isFirst ? (Denom100 ?? 0) : 0,
+                    Denom50 = isFirst ? (Denom50 ?? 0) : 0,
+                    Denom20 = isFirst ? (Denom20 ?? 0) : 0,
+                    Denom10 = isFirst ? (Denom10 ?? 0) : 0,
+                    Coins = isFirst ? (Coins ?? 0) : 0,
+                    CardTid = isFirst ? CardTid : "",
+                    CardBatch = isFirst ? CardBatch : ""
+                };
+                _dbContext.DsmPersonalDebtorRepayments.Add(repayment);
             }
 
             await _dbContext.SaveChangesAsync();

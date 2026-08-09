@@ -696,13 +696,6 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
                 .Sum(r => r.Amount);
         }
 
-        double outstandingBalance = totalDebit - totalRepayments;
-        if (NewRepaymentAmount > outstandingBalance)
-        {
-            RepaymentStatusMessage = $"❌ Repayment exceeds outstanding balance of ₹{outstandingBalance:F2}.";
-            return;
-        }
-
         var repayment = new CreditorRepayment
         {
             CreditorName = NewDebtorName.Trim(),

@@ -226,16 +226,15 @@ public class DsmEntryService
             // Save the connected pump entry if one is specified
             if (connectedPumpId.HasValue)
             {
-                var shiftEntriesResult = await _dsmRepo.GetEntriesForShiftAsync(shift.ShiftId);
                 DsmEntry? existingConnectedEntry = null;
-                if (shiftEntriesResult.Success && shiftEntriesResult.Data != null)
+                if (existingEntryId.HasValue)
                 {
-                    existingConnectedEntry = shiftEntriesResult.Data.FirstOrDefault(e =>
-                        e.PumpId == connectedPumpId.Value
-                        && string.Equals(e.DsmName, dsmName, StringComparison.OrdinalIgnoreCase)
-                        && (existingEntryId != null
-                            ? (e.ReconciledToPumpId == savedEntry.DsmEntryId || e.ReconciledToPumpId == pumpId)
-                            : e.PaymentCollection == null));
+                    var shiftEntriesResult = await _dsmRepo.GetEntriesForShiftAsync(shift.ShiftId);
+                    if (shiftEntriesResult.Success && shiftEntriesResult.Data != null)
+                    {
+                        existingConnectedEntry = shiftEntriesResult.Data.FirstOrDefault(e =>
+                            e.ReconciledToPumpId == savedEntry.DsmEntryId);
+                    }
                 }
 
                 var connectedEntry = new DsmEntry
@@ -244,7 +243,7 @@ public class DsmEntryService
                     ShiftId = shift.ShiftId,
                     DsmName = dsmName,
                     PumpId = connectedPumpId.Value,
-                    ReconciledToPumpId = pumpId,
+                    ReconciledToPumpId = savedEntry.DsmEntryId,
                     StartTime = startTime,
                     EndTime = endTime
                 };
@@ -276,59 +275,19 @@ public class DsmEntryService
                     }
                 }
             }
-            else
-            {
-                // Clear any existing ReconciledToPumpId links for this primary pump in the shift
-                var shiftEntriesResult = await _dsmRepo.GetEntriesForShiftAsync(shift.ShiftId);
-                if (shiftEntriesResult.Success && shiftEntriesResult.Data != null)
-                {
-                    foreach (var candidate in shiftEntriesResult.Data)
-                    {
-                        if (candidate.ReconciledToPumpId == pumpId && string.Equals(candidate.DsmName, dsmName, StringComparison.OrdinalIgnoreCase))
-                        {
-                            candidate.ReconciledToPumpId = null;
-                            await _dsmRepo.SaveEntryAsync(candidate);
-                        }
-                    }
-                }
-            }
 
-            // Sync pairing properties for other entries if relevant
+            // Sync ConnectedPumpId for saved primary entry
             var finalShiftEntriesResult = await _dsmRepo.GetEntriesForShiftAsync(shift.ShiftId);
             if (finalShiftEntriesResult.Success && finalShiftEntriesResult.Data != null)
             {
                 var shiftEntries = finalShiftEntriesResult.Data;
                 var firstEntry = shiftEntries.FirstOrDefault(e => e.DsmEntryId == savedEntry.DsmEntryId);
-                if (firstEntry != null)
+                if (firstEntry != null && firstEntry.ConnectedPumpId != connectedPumpId)
                 {
                     firstEntry.ConnectedPumpId = connectedPumpId;
                     await _dsmRepo.SaveEntryAsync(firstEntry);
                 }
-
-                foreach (var candidate in shiftEntries.Where(e =>
-                             e.DsmEntryId != savedEntry.DsmEntryId
-                             && string.Equals(e.DsmName, dsmName, StringComparison.OrdinalIgnoreCase)))
-                {
-                    if (connectedPumpId.HasValue && candidate.PumpId == connectedPumpId.Value)
-                    {
-                        candidate.ReconciledToPumpId = pumpId;
-                        await _dsmRepo.SaveEntryAsync(candidate);
-                    }
-
-                    if (candidate.ConnectedPumpId == pumpId)
-                    {
-                        var current = shiftEntries.FirstOrDefault(e => e.DsmEntryId == savedEntry.DsmEntryId);
-                        if (current != null)
-                        {
-                            current.ReconciledToPumpId = candidate.PumpId;
-                            await _dsmRepo.SaveEntryAsync(current);
-                        }
-                    }
-                }
             }
-
-            // Propagate nozzle readings downstream
-            await PropagateNozzleReadingsAsync(date, shiftType);
 
             _logger.Information("DSM entry saved successfully: {DsmName} Pump {PumpId}", dsmName, pumpId);
             RaiseDsmEntryChanged();
@@ -485,115 +444,9 @@ public class DsmEntryService
 
     public async Task<Result> PropagateNozzleReadingsAsync(DateTime startDate, string startShiftType)
     {
-        try
-        {
-            using var scope = _serviceProvider.CreateScope();
-            var shiftRepo = scope.ServiceProvider.GetRequiredService<IShiftRepository>();
-            var dsmRepo = scope.ServiceProvider.GetRequiredService<IDsmEntryRepository>();
-            var nozzleRepo = scope.ServiceProvider.GetRequiredService<INozzleReadingRepository>();
-
-            // Load shifts from startDate onwards (up to 30 days forward to keep it bounded)
-            var shiftsResult = await shiftRepo.GetShiftsByDateRangeAsync(startDate.Date, startDate.Date.AddDays(30));
-            if (!shiftsResult.Success || shiftsResult.Data == null) return Result.Ok();
-
-            // Sort operationally: Date ascending, then Shift B (Day) before Shift A (Night)
-            var sortedShifts = shiftsResult.Data
-                .OrderBy(s => s.ShiftDate)
-                .ThenBy(s => s.ShiftType == "A")
-                .ToList();
-
-            var startIdx = sortedShifts.FindIndex(s => s.ShiftDate.Date == startDate.Date && s.ShiftType == startShiftType);
-            if (startIdx < 0) return Result.Ok();
-
-            // Build a map of previous nozzle closings from the shift before startIdx
-            var prevClosings = new Dictionary<int, double>();
-            if (startIdx > 0)
-            {
-                var prevShift = sortedShifts[startIdx - 1];
-                var prevEntriesResult = await dsmRepo.GetEntriesForShiftAsync(prevShift.ShiftId);
-                if (prevEntriesResult.Success && prevEntriesResult.Data != null)
-                {
-                    foreach (var entry in prevEntriesResult.Data)
-                    {
-                        foreach (var r in entry.NozzleReadings)
-                        {
-                            prevClosings[r.NozzleNumber] = r.ClosingReading;
-                        }
-                    }
-                }
-            }
-
-            for (int i = startIdx; i < sortedShifts.Count; i++)
-            {
-                var currentShift = sortedShifts[i];
-                var entriesResult = await dsmRepo.GetEntriesForShiftAsync(currentShift.ShiftId);
-                if (!entriesResult.Success || entriesResult.Data == null) continue;
-
-                foreach (var entry in entriesResult.Data)
-                {
-                    bool entryChanged = false;
-                    var updatedReadings = new List<NozzleReading>();
-
-                    foreach (var reading in entry.NozzleReadings)
-                    {
-                        double newOpening = reading.OpeningReading;
-
-                        if (prevClosings.TryGetValue(reading.NozzleNumber, out var prevClosing))
-                        {
-                            newOpening = prevClosing;
-                            if (newOpening > reading.ClosingReading)
-                            {
-                                newOpening = reading.ClosingReading;
-                                _logger.Warning("Nozzle {NozzleNumber} prev closing {PrevClosing} > current closing {CurrentClosing} in {Date} {Shift}. Capping.",
-                                    reading.NozzleNumber, prevClosing, reading.ClosingReading, currentShift.ShiftDate, currentShift.ShiftType);
-                            }
-                        }
-
-                        if (Math.Abs(reading.OpeningReading - newOpening) > 0.001)
-                        {
-                            reading.OpeningReading = newOpening;
-                            reading.SaleLitres = reading.ClosingReading - reading.OpeningReading;
-                            reading.Amount = reading.SaleLitres * reading.Rate;
-                            entryChanged = true;
-                        }
-
-                        updatedReadings.Add(reading);
-                    }
-
-                    if (entryChanged)
-                    {
-                        await nozzleRepo.SaveReadingsAsync(entry.DsmEntryId, updatedReadings);
-
-                        // Re-load and recalculate totals
-                        var fullResult = await dsmRepo.GetFullEntryAsync(entry.DsmEntryId);
-                        if (fullResult.Success && fullResult.Data != null)
-                        {
-                            var calc = _dsmCalculationService.Calculate(ToCalculationDto(fullResult.Data));
-                            var connectedGross = entry.ReconciledToPumpId.HasValue ? 0m : 0m;
-                            entry.GrossSales = calc.GrossSales;
-                            entry.TotalInDirect = calc.TotalInDirect;
-                            entry.TotalCreditors = calc.TotalCreditors;
-                            entry.TotalCollection = calc.TotalCollection;
-                            entry.Mismatch = calc.TotalCollection - entry.GrossSales;
-                            await dsmRepo.SaveEntryAsync(entry);
-                        }
-                    }
-
-                    // Update prevClosings map with this entry's nozzle closings
-                    foreach (var r in updatedReadings)
-                    {
-                        prevClosings[r.NozzleNumber] = r.ClosingReading;
-                    }
-                }
-            }
-
-            return Result.Ok();
-        }
-        catch (Exception ex)
-        {
-            _logger.Error(ex, "Failed to propagate nozzle readings starting from {Date} {Shift}", startDate, startShiftType);
-            return Result.Fail($"Failed to propagate nozzle readings: {ex.Message}");
-        }
+        // Saved entries are finalized upon submission and must not be retroactively mutated.
+        await Task.CompletedTask;
+        return Result.Ok();
     }
 
     public async Task<Result<DsmEntry>> SaveCompleteEntryWithContextAsync(
@@ -866,19 +719,21 @@ public class DsmEntryService
             // Save connected pump entry if specified
             if (connectedPumpId.HasValue)
             {
-                var shiftEntries = await context.Set<DsmEntry>()
-                    .Where(e => e.ShiftId == shift.ShiftId)
-                    .ToListAsync();
-                
-                var existingConnectedEntry = shiftEntries.FirstOrDefault(e =>
-                    e.PumpId == connectedPumpId.Value &&
-                    string.Equals(e.DsmName, dsmName, StringComparison.OrdinalIgnoreCase) &&
-                    (existingEntryId != null ? (e.ReconciledToPumpId == entry.DsmEntryId || e.ReconciledToPumpId == pumpId) : e.PaymentCollection == null));
+                DsmEntry? existingConnectedEntry = null;
+                if (existingEntryId.HasValue)
+                {
+                    var shiftEntries = await context.Set<DsmEntry>()
+                        .Where(e => e.ShiftId == shift.ShiftId)
+                        .ToListAsync();
+                    
+                    existingConnectedEntry = shiftEntries.FirstOrDefault(e =>
+                        e.ReconciledToPumpId == entry.DsmEntryId);
+                }
 
                 DsmEntry connectedEntry;
                 if (existingConnectedEntry != null)
                 {
-                    existingConnectedEntry.ReconciledToPumpId = pumpId;
+                    existingConnectedEntry.ReconciledToPumpId = entry.DsmEntryId;
                     existingConnectedEntry.StartTime = startTime;
                     existingConnectedEntry.EndTime = endTime;
                     existingConnectedEntry.UpdatedAt = DateTime.Now;
@@ -891,7 +746,7 @@ public class DsmEntryService
                         ShiftId = shift.ShiftId,
                         DsmName = dsmName,
                         PumpId = connectedPumpId.Value,
-                        ReconciledToPumpId = pumpId,
+                        ReconciledToPumpId = entry.DsmEntryId,
                         StartTime = startTime,
                         EndTime = endTime,
                         CreatedAt = DateTime.Now,
@@ -958,53 +813,15 @@ public class DsmEntryService
                     await context.SaveChangesAsync();
                 }
             }
-            else
-            {
-                // Clear any existing ReconciledToPumpId links for this primary pump in the shift
-                var candidates = await context.Set<DsmEntry>()
-                    .Where(e => e.ShiftId == shift.ShiftId && e.ReconciledToPumpId == pumpId && (e.DsmName != null && dsmName != null && e.DsmName.ToLower() == dsmName.ToLower()))
-                    .ToListAsync();
-                foreach (var candidate in candidates)
-                {
-                    candidate.ReconciledToPumpId = null;
-                    candidate.UpdatedAt = DateTime.Now;
-                }
-                await context.SaveChangesAsync();
-            }
 
-            // Sync pairing properties for other entries if relevant
-            var shiftEntriesList = await context.Set<DsmEntry>()
-                .Where(e => e.ShiftId == shift.ShiftId)
-                .ToListAsync();
-            
-            var firstEntry = shiftEntriesList.FirstOrDefault(e => e.DsmEntryId == savedEntryId);
-            if (firstEntry != null)
+            // Sync ConnectedPumpId on saved primary entry
+            var firstEntry = await context.Set<DsmEntry>().FirstOrDefaultAsync(e => e.DsmEntryId == savedEntryId);
+            if (firstEntry != null && firstEntry.ConnectedPumpId != connectedPumpId)
             {
                 firstEntry.ConnectedPumpId = connectedPumpId;
                 context.Entry(firstEntry).State = EntityState.Modified;
+                await context.SaveChangesAsync();
             }
-
-            foreach (var candidate in shiftEntriesList.Where(e =>
-                         e.DsmEntryId != savedEntryId
-                         && string.Equals(e.DsmName, dsmName, StringComparison.OrdinalIgnoreCase)))
-            {
-                if (connectedPumpId.HasValue && candidate.PumpId == connectedPumpId.Value)
-                {
-                    candidate.ReconciledToPumpId = pumpId;
-                    context.Entry(candidate).State = EntityState.Modified;
-                }
-
-                if (candidate.ConnectedPumpId == pumpId)
-                {
-                    var current = shiftEntriesList.FirstOrDefault(e => e.DsmEntryId == savedEntryId);
-                    if (current != null)
-                    {
-                        current.ReconciledToPumpId = candidate.PumpId;
-                        context.Entry(current).State = EntityState.Modified;
-                    }
-                }
-            }
-            await context.SaveChangesAsync();
 
             // Propagate nozzle readings downstream
             await PropagateNozzleReadingsWithContextAsync(context, date, shiftType);
@@ -1026,128 +843,9 @@ public class DsmEntryService
 
     public async Task<Result> PropagateNozzleReadingsWithContextAsync(DbContext context, DateTime startDate, string startShiftType)
     {
-        try
-        {
-            // Load shifts from startDate onwards (up to 30 days forward to keep it bounded)
-            var shifts = await context.Set<Shift>()
-                .Where(s => s.ShiftDate >= startDate.Date && s.ShiftDate <= startDate.Date.AddDays(30))
-                .ToListAsync();
-
-            // Sort operationally: Date ascending, then Shift B (Day) before Shift A (Night)
-            var sortedShifts = shifts
-                .OrderBy(s => s.ShiftDate)
-                .ThenBy(s => s.ShiftType == "A")
-                .ToList();
-
-            var startIdx = sortedShifts.FindIndex(s => s.ShiftDate.Date == startDate.Date && string.Equals(s.ShiftType, startShiftType, StringComparison.OrdinalIgnoreCase));
-            if (startIdx < 0) return Result.Ok();
-
-            // Build a map of previous nozzle closings from the shift before startIdx
-            var prevClosings = new Dictionary<int, double>();
-            if (startIdx > 0)
-            {
-                var prevShift = sortedShifts[startIdx - 1];
-                var prevEntries = await context.Set<DsmEntry>()
-                    .AsNoTracking()
-                    .Include(e => e.NozzleReadings)
-                    .Where(e => e.ShiftId == prevShift.ShiftId)
-                    .ToListAsync();
-                
-                foreach (var entry in prevEntries)
-                {
-                    foreach (var r in entry.NozzleReadings)
-                    {
-                        prevClosings[r.NozzleNumber] = r.ClosingReading;
-                    }
-                }
-            }
-
-            for (int i = startIdx; i < sortedShifts.Count; i++)
-            {
-                var currentShift = sortedShifts[i];
-                var entries = await context.Set<DsmEntry>()
-                    .Include(e => e.NozzleReadings)
-                    .Include(e => e.PaymentCollection)
-                    .Include(e => e.DebitEntries)
-                    .Include(e => e.TestingEntries)
-                    .Include(e => e.Expenses)
-                    .Include(e => e.CashDenominations)
-                    .Include(e => e.PersonalDebtors)
-                    .Include(e => e.KhandharePetroleumEntries)
-                    .Where(e => e.ShiftId == currentShift.ShiftId)
-                    .ToListAsync();
-
-                foreach (var entry in entries)
-                {
-                    bool entryChanged = false;
-                    var updatedReadings = new List<NozzleReading>();
-
-                    foreach (var reading in entry.NozzleReadings)
-                    {
-                        double newOpening = reading.OpeningReading;
-
-                        if (prevClosings.TryGetValue(reading.NozzleNumber, out var prevClosing))
-                        {
-                            newOpening = prevClosing;
-                            if (newOpening > reading.ClosingReading)
-                            {
-                                newOpening = reading.ClosingReading;
-                                _logger.Warning("Nozzle {NozzleNumber} prev closing {PrevClosing} > current closing {CurrentClosing} in {Date} {Shift}. Capping.",
-                                    reading.NozzleNumber, prevClosing, reading.ClosingReading, currentShift.ShiftDate, currentShift.ShiftType);
-                            }
-                        }
-
-                        if (Math.Abs(reading.OpeningReading - newOpening) > 0.001)
-                        {
-                            reading.OpeningReading = newOpening;
-                            reading.SaleLitres = reading.ClosingReading - reading.OpeningReading;
-                            reading.Amount = reading.SaleLitres * reading.Rate;
-                            entryChanged = true;
-                        }
-
-                        updatedReadings.Add(reading);
-                    }
-
-                    if (entryChanged)
-                    {
-                        // Save nozzle readings directly to context
-                        var existingReadings = await context.Set<NozzleReading>().Where(r => r.DsmEntryId == entry.DsmEntryId).ToListAsync();
-                        context.Set<NozzleReading>().RemoveRange(existingReadings);
-                        foreach (var ur in updatedReadings)
-                        {
-                            ur.DsmEntryId = entry.DsmEntryId;
-                            ur.DsmEntry = null;
-                        }
-                        context.Set<NozzleReading>().AddRange(updatedReadings);
-                        await context.SaveChangesAsync();
-
-                        // Recalculate totals
-                        var calc = _dsmCalculationService.Calculate(ToCalculationDto(entry));
-                        entry.GrossSales = calc.GrossSales;
-                        entry.TotalInDirect = calc.TotalInDirect;
-                        entry.TotalCreditors = calc.TotalCreditors;
-                        entry.TotalCollection = calc.TotalCollection;
-                        entry.Mismatch = calc.TotalCollection - entry.GrossSales;
-                        entry.UpdatedAt = DateTime.Now;
-                        context.Entry(entry).State = EntityState.Modified;
-                        await context.SaveChangesAsync();
-                    }
-
-                    // Update prevClosings map with this entry's nozzle closings
-                    foreach (var r in entry.NozzleReadings)
-                    {
-                        prevClosings[r.NozzleNumber] = r.ClosingReading;
-                    }
-                }
-            }
-
-            return Result.Ok();
-        }
-        catch (Exception ex)
-        {
-            _logger.Error(ex, "Failed to propagate nozzle readings starting from {Date} {Shift} using context", startDate, startShiftType);
-            return Result.Fail($"Failed to propagate nozzle readings: {ex.Message}");
-        }
+        // Saved entries are finalized upon submission and must not be retroactively mutated.
+        await Task.CompletedTask;
+        return Result.Ok();
     }
 }
 
