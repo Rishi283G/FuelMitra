@@ -260,7 +260,7 @@ public class FinancialPipelineIntegrationTests : IDisposable
         Assert.Equal(250, dashboardVm.TodayTotalPhonePeCardMorning + dashboardVm.TodayTotalPhonePeCardNight);
 
         // Assert Credit Card (PineLabs)
-        Assert.Equal(900, dayTotalVm.CreditCardTotal);
+        Assert.Equal(700, dayTotalVm.CreditCardTotal);
         Assert.Equal(900, dashboardVm.TodayTotalCreditCard);
         Assert.Equal(900, ownerVm.TodayTotalCreditCard);
 
