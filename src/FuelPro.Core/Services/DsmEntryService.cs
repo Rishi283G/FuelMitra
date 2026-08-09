@@ -390,15 +390,23 @@ public class DsmEntryService
 
                 var connectedSlaves = connectedSlave != null ? new List<DsmEntry> { connectedSlave } : new List<DsmEntry>();
 
-                double totalGrossSales = primary.NozzleReadings != null && primary.NozzleReadings.Count > 0
-                    ? primary.NozzleReadings.Sum(n => (double)n.Amount)
-                    : (double)primary.GrossSales;
-
-                foreach (var slave in connectedSlaves)
+                double totalGrossSales;
+                if ((double)primary.GrossSales > 0)
                 {
-                    totalGrossSales += slave.NozzleReadings != null && slave.NozzleReadings.Count > 0
-                        ? slave.NozzleReadings.Sum(n => (double)n.Amount)
-                        : (double)slave.GrossSales;
+                    totalGrossSales = (double)primary.GrossSales;
+                }
+                else
+                {
+                    totalGrossSales = primary.NozzleReadings != null && primary.NozzleReadings.Count > 0
+                        ? primary.NozzleReadings.Sum(n => (double)n.Amount)
+                        : 0;
+
+                    foreach (var slave in connectedSlaves)
+                    {
+                        totalGrossSales += slave.NozzleReadings != null && slave.NozzleReadings.Count > 0
+                            ? slave.NozzleReadings.Sum(n => (double)n.Amount)
+                            : (double)slave.GrossSales;
+                    }
                 }
 
                 double totalCollection = (double)primary.TotalCollection;
