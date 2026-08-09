@@ -626,6 +626,7 @@ public class NozzleReadingRepository : INozzleReadingRepository
                     NozzleNumber = g.Key, 
                     Closing = g.OrderByDescending(x => x.DsmEntry!.Shift!.ShiftDate)
                                .ThenByDescending(x => x.DsmEntry!.Shift!.ShiftType)
+                               .ThenByDescending(x => x.ClosingReading)
                                .ThenByDescending(x => x.DsmEntryId)
                                .ThenByDescending(x => x.NozzleReadingId)
                                .Select(x => x.ClosingReading)
