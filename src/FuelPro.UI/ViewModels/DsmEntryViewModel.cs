@@ -953,9 +953,11 @@ public partial class DsmEntryViewModel : ObservableObject
                 var entriesResult = await repo.GetEntriesForShiftAsync(shiftId);
                 if (entriesResult.Success && entriesResult.Data != null)
                 {
-                    var rawConn = entriesResult.Data.FirstOrDefault(e =>
-                        e.PumpId == targetConnectedPumpId.Value
-                        && (e.ReconciledToPumpId == entry.PumpId || string.Equals(e.DsmName, entry.DsmName, StringComparison.OrdinalIgnoreCase)));
+                    var rawConn = entriesResult.Data
+                        .Where(e => e.PumpId == targetConnectedPumpId.Value
+                            && (e.ReconciledToPumpId == entry.PumpId || string.Equals(e.DsmName, entry.DsmName, StringComparison.OrdinalIgnoreCase)))
+                        .OrderBy(e => e.DsmEntryId >= entry.DsmEntryId ? (e.DsmEntryId - entry.DsmEntryId) : (100000 + Math.Abs(e.DsmEntryId - entry.DsmEntryId)))
+                        .FirstOrDefault();
                     if (rawConn != null)
                     {
                         var fullConnected = await repo.GetFullEntryAsync(rawConn.DsmEntryId);
@@ -1020,9 +1022,12 @@ public partial class DsmEntryViewModel : ObservableObject
 
                 if (savedReading != null)
                 {
-                    nozzleRow.OpeningReading = savedReading.OpeningReading;
+                    if (savedReading.OpeningReading > 0 || !nozzleRow.OpeningReading.HasValue || nozzleRow.OpeningReading == 0)
+                    {
+                        nozzleRow.OpeningReading = savedReading.OpeningReading;
+                    }
                     nozzleRow.ClosingReading = savedReading.ClosingReading;
-                    nozzleRow.Rate = savedReading.Rate;
+                    if (savedReading.Rate > 0) nozzleRow.Rate = savedReading.Rate;
                 }
             }
 
@@ -1341,9 +1346,11 @@ public partial class DsmEntryViewModel : ObservableObject
                 var entriesResult = await repo.GetEntriesForShiftAsync(shiftId);
                 if (entriesResult.Success && entriesResult.Data != null)
                 {
-                    var connectedRaw = entriesResult.Data.FirstOrDefault(e =>
-                        e.ReconciledToPumpId == entry.PumpId
-                        && string.Equals(e.DsmName, entry.DsmName, StringComparison.OrdinalIgnoreCase));
+                    var connectedRaw = entriesResult.Data
+                        .Where(e => e.ReconciledToPumpId == entry.PumpId
+                            && string.Equals(e.DsmName, entry.DsmName, StringComparison.OrdinalIgnoreCase))
+                        .OrderBy(e => e.DsmEntryId >= entry.DsmEntryId ? (e.DsmEntryId - entry.DsmEntryId) : (100000 + Math.Abs(e.DsmEntryId - entry.DsmEntryId)))
+                        .FirstOrDefault();
                     if (connectedRaw != null)
                     {
                         entry.ConnectedPumpId = connectedRaw.PumpId;

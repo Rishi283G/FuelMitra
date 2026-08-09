@@ -1985,11 +1985,15 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
             DsmEntry? connectedEntry = null;
             if (entry != null && entry.ConnectedPumpId.HasValue)
             {
-                connectedEntry = await context.DsmEntries
+                var connCandidates = await context.DsmEntries
                     .Include(e => e.NozzleReadings)
-                    .FirstOrDefaultAsync(e => e.ShiftId == entry.ShiftId
+                    .Where(e => e.ShiftId == entry.ShiftId
                         && e.PumpId == entry.ConnectedPumpId.Value
-                        && (e.ReconciledToPumpId == entry.PumpId || (e.DsmName != null && entry.DsmName != null && e.DsmName.ToLower() == entry.DsmName.ToLower())));
+                        && (e.ReconciledToPumpId == entry.PumpId || (e.DsmName != null && entry.DsmName != null && e.DsmName.ToLower() == entry.DsmName.ToLower())))
+                    .ToListAsync();
+                connectedEntry = connCandidates
+                    .OrderBy(e => e.DsmEntryId >= entry.DsmEntryId ? (e.DsmEntryId - entry.DsmEntryId) : (100000 + Math.Abs(e.DsmEntryId - entry.DsmEntryId)))
+                    .FirstOrDefault();
             }
 
             NozzleReadings.Clear();
