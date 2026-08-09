@@ -159,4 +159,59 @@ public class ShiftAggregationServiceTests
         // Assert
         Assert.Equal(0, diff);
     }
+
+    [Fact]
+    public void BuildDsmShiftTotals_ShouldGroupMultipleSessionsForSameDSM()
+    {
+        // Arrange
+        var rows = new List<DsmSummaryRowDto>
+        {
+            new DsmSummaryRowDto
+            {
+                DsmName = "Ramesh",
+                PumpId = 1,
+                GrossSales = 10000,
+                PhonePe = 2000,
+                CashDeposit = 3000,
+                CashInHand = 1000,
+                Debit = 4000
+            },
+            new DsmSummaryRowDto
+            {
+                DsmName = "Suresh",
+                PumpId = 1,
+                GrossSales = 5000,
+                PhonePe = 1000,
+                CashDeposit = 2000,
+                CashInHand = 500,
+                Debit = 1500
+            },
+            new DsmSummaryRowDto
+            {
+                DsmName = "Ramesh",
+                PumpId = 1,
+                GrossSales = 8000,
+                PhonePe = 1500,
+                CashDeposit = 2500,
+                CashInHand = 1000,
+                Debit = 3000
+            }
+        };
+
+        // Act
+        var totals = _sut.BuildDsmShiftTotals(rows);
+
+        // Assert
+        Assert.Equal(2, totals.Count);
+        var ramesh = totals.FirstOrDefault(t => t.DsmName == "Ramesh");
+        Assert.NotNull(ramesh);
+        Assert.Equal(2, ramesh!.SessionsCount);
+        Assert.Equal(18000, ramesh.GrossSales); // 10000 + 8000
+        Assert.Equal(3500, ramesh.PhonePe);    // 2000 + 1500
+        Assert.Equal(5500, ramesh.CashDeposit); // 3000 + 2500
+        Assert.Equal(2000, ramesh.CashInHand);  // 1000 + 1000
+        Assert.Equal(7000, ramesh.Debit);       // 4000 + 3000
+        Assert.Equal(18000, ramesh.TotalCollection);
+        Assert.Equal(0, ramesh.Mismatch);
+    }
 }

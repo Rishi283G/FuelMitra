@@ -83,7 +83,7 @@ public class DuplicateDataInspectionService : IDuplicateDataInspectionService
                     e.PumpId,
                     DsmName = (e.DsmName ?? string.Empty).Trim().ToLowerInvariant()
                 })
-                .Where(g => g.Count() > 1)
+                .Where(g => g.Count() > 1 && g.Any(e => e.PaymentCollection == null || IsIdenticalNozzleReadings(g.ToList())))
                 .ToList();
 
             var result = new List<DsmEntryDuplicateGroup>();
@@ -94,7 +94,7 @@ public class DuplicateDataInspectionService : IDuplicateDataInspectionService
                 {
                     OriginalRecord = ordered.First(),
                     DuplicateRecords = ordered.Skip(1).ToList(),
-                    Reason = "Same ShiftId + PumpId + DsmName (case-insensitive)"
+                    Reason = "Orphaned or duplicate nozzle reading entries for same ShiftId + PumpId + DsmName"
                 });
             }
 
@@ -305,6 +305,34 @@ public class DuplicateDataInspectionService : IDuplicateDataInspectionService
             _logger.Error(ex, "Failed to count broken foreign keys");
             return 0;
         }
+    }
+
+    private static bool IsIdenticalNozzleReadings(List<DsmEntry> entries)
+    {
+        if (entries == null || entries.Count < 2) return false;
+        for (int i = 0; i < entries.Count; i++)
+        {
+            for (int j = i + 1; j < entries.Count; j++)
+            {
+                var r1 = entries[i].NozzleReadings.OrderBy(n => n.NozzleNumber).ToList();
+                var r2 = entries[j].NozzleReadings.OrderBy(n => n.NozzleNumber).ToList();
+                if (r1.Count > 0 && r1.Count == r2.Count)
+                {
+                    bool match = true;
+                    for (int k = 0; k < r1.Count; k++)
+                    {
+                        if (Math.Abs(r1[k].OpeningReading - r2[k].OpeningReading) > 0.01 ||
+                            Math.Abs(r1[k].ClosingReading - r2[k].ClosingReading) > 0.01)
+                        {
+                            match = false;
+                            break;
+                        }
+                    }
+                    if (match) return true;
+                }
+            }
+        }
+        return false;
     }
 
     private static DbContext GetDbContext(IServiceScope scope)

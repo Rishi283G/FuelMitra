@@ -104,6 +104,51 @@ public class ShiftCalculationService
                 });
             }
 
+            // Group by DSM Name for shift-level totals
+            dto.DsmShiftTotals = dto.DsmSummaryRows
+                .GroupBy(r => (r.DsmName ?? string.Empty).Trim(), StringComparer.OrdinalIgnoreCase)
+                .Select(g =>
+                {
+                    var dsmName = g.Key;
+                    var pumpsList = g.Select(r => r.PumpLabel).Where(p => !string.IsNullOrEmpty(p)).Distinct().ToList();
+                    var pumpsDisplay = string.Join(", ", pumpsList);
+
+                    double grossSales = g.Sum(r => r.GrossSales);
+                    double cashDeposit = g.Sum(r => r.CashDeposit);
+                    double cashInHand = g.Sum(r => r.CashInHand);
+                    double phonePe = g.Sum(r => r.PhonePe);
+                    double phonePeCard = g.Sum(r => r.PhonePeCard);
+                    double creditCard = g.Sum(r => r.CreditCardMorning + r.CreditCardNight);
+                    double petroCard = g.Sum(r => r.PetroCard);
+                    double debit = g.Sum(r => r.Debit);
+                    double expenses = g.Sum(r => r.Expenses);
+                    double testing = g.Sum(r => r.Testing);
+
+                    double totalCollection = cashDeposit + cashInHand + phonePe + phonePeCard + creditCard + petroCard + debit + expenses + testing;
+                    double mismatch = totalCollection - grossSales;
+
+                    return new DsmShiftTotalDto
+                    {
+                        DsmName = dsmName,
+                        SessionsCount = g.Count(),
+                        AssignedPumpsDisplay = pumpsDisplay,
+                        GrossSales = grossSales,
+                        TotalCollection = totalCollection,
+                        CashDeposit = cashDeposit,
+                        CashInHand = cashInHand,
+                        PhonePe = phonePe,
+                        PhonePeCard = phonePeCard,
+                        CreditCard = creditCard,
+                        PetroCard = petroCard,
+                        Debit = debit,
+                        Expenses = expenses,
+                        Testing = testing,
+                        Mismatch = mismatch
+                    };
+                })
+                .OrderBy(s => s.DsmName)
+                .ToList();
+
             // TABLE B — Cash Aggregates
             dto.Cash1Aggregate = AggregateCash(entries, "Cash1");
             dto.Cash2Aggregate = AggregateCash(entries, "Cash2");

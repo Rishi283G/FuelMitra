@@ -46,6 +46,7 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
     // TABLE A
     [ObservableProperty] private ObservableCollection<DsmSummaryRowDto> _dsmSummaryRows = new();
     [ObservableProperty] private DsmSummaryRowDto? _dsmSummaryTotals;
+    [ObservableProperty] private ObservableCollection<DsmShiftTotalDto> _dsmShiftTotals = new();
 
     // TABLE B
     [ObservableProperty] private ObservableCollection<CashDenomDisplayRow> _cash1Rows = new();
@@ -236,6 +237,7 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
             // Bind values to existing properties so UI bindings don't break
             DsmSummaryRows = new ObservableCollection<DsmSummaryRowDto>(report.DsmSummaryRows);
             DsmSummaryTotals = report.DsmSummaryTotals;
+            DsmShiftTotals = new ObservableCollection<DsmShiftTotalDto>(report.DsmShiftTotals ?? new List<DsmShiftTotalDto>());
 
             Cash1Rows = new ObservableCollection<CashDenomDisplayRow>(report.Cash1.ToDisplayRows(true));
             Cash1Total = report.Cash1.GrandTotal;

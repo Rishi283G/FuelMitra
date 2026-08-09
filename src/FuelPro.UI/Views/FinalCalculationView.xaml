@@ -169,6 +169,29 @@
                         </StackPanel>
                     </materialDesign:Card>
 
+                    <!-- COMBINED DSM SHIFT TOTALS -->
+                    <materialDesign:Card Style="{StaticResource SectionCard}" Margin="0,0,0,16">
+                        <StackPanel>
+                            <TextBlock Text="DSM Shift Totals Summary (Combined per DSM)" Style="{StaticResource SectionTitle}" />
+                            <DataGrid ItemsSource="{Binding DsmShiftTotals}" AutoGenerateColumns="False" IsReadOnly="True" MaxHeight="220">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="DSM" Binding="{Binding DsmName}" FontWeight="Bold"/>
+                                    <DataGridTextColumn Header="Sessions" Binding="{Binding SessionsCount}" Width="70" />
+                                    <DataGridTextColumn Header="Pumps" Binding="{Binding AssignedPumpsDisplay}" />
+                                    <DataGridTextColumn Header="Gross Sale" Binding="{Binding GrossSales, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" Foreground="Green" />
+                                    <DataGridTextColumn Header="Digital Total" Binding="{Binding DigitalTotal, Converter={StaticResource CurrencyConverter}}" />
+                                    <DataGridTextColumn Header="Bank Cash" Binding="{Binding CashDeposit, Converter={StaticResource CurrencyConverter}}" />
+                                    <DataGridTextColumn Header="Hand Cash" Binding="{Binding CashInHand, Converter={StaticResource CurrencyConverter}}" />
+                                    <DataGridTextColumn Header="Debtors" Binding="{Binding Debit, Converter={StaticResource CurrencyConverter}}" Foreground="Red" />
+                                    <DataGridTextColumn Header="Expenses" Binding="{Binding Expenses, Converter={StaticResource CurrencyConverter}}" Foreground="Red"/>
+                                    <DataGridTextColumn Header="Testing" Binding="{Binding Testing, Converter={StaticResource CurrencyConverter}}" />
+                                    <DataGridTextColumn Header="Total Collection" Binding="{Binding TotalCollection, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" />
+                                    <DataGridTextColumn Header="Mismatch" Binding="{Binding Mismatch, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </StackPanel>
+                    </materialDesign:Card>
+
                     <!-- TABLE C: CREDITORS -->
                     <materialDesign:Card Style="{StaticResource SectionCard}">
                         <StackPanel>

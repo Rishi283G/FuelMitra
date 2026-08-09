@@ -245,6 +245,7 @@ public partial class DsmEntryViewModel : ObservableObject
     [ObservableProperty] private double _connectedPumpGrossSales;
     [ObservableProperty] private string _connectedPumpStatus = "";
     [ObservableProperty] private string _statusMessage = "";
+    [ObservableProperty] private string _dsmCumulativeShiftSummaryMessage = "";
     [ObservableProperty] private bool _isSaving;
     [ObservableProperty] private int? _editingEntryId;
     [ObservableProperty] private string _startTime = "08:00 AM";
@@ -396,7 +397,11 @@ public partial class DsmEntryViewModel : ObservableObject
         OnPropertyChanged(nameof(MorningBatchLabel));
         if (!_isEditing) LoadNozzlesForPump();
     }
-    partial void OnDsmNameChanged(string value) => _ = RefreshConnectedPumpGrossSalesAsync();
+    partial void OnDsmNameChanged(string value)
+    {
+        _ = RefreshConnectedPumpGrossSalesAsync();
+        UpdateDsmCumulativeSummary();
+    }
     partial void OnSelectedConnectedPumpChanged(PumpDisplayItem? value)
     {
         _ = RefreshConnectedPumpGrossSalesAsync();
@@ -1377,6 +1382,29 @@ public partial class DsmEntryViewModel : ObservableObject
         ShiftEntries.Clear();
         if (summaries.Success)
             foreach (var s in summaries.Data!) ShiftEntries.Add(s);
+
+        UpdateDsmCumulativeSummary();
+    }
+
+    private void UpdateDsmCumulativeSummary()
+    {
+        if (string.IsNullOrWhiteSpace(DsmName) || ShiftEntries.Count == 0)
+        {
+            DsmCumulativeShiftSummaryMessage = string.Empty;
+            return;
+        }
+
+        var dsmEntries = ShiftEntries.Where(e => string.Equals(e.DsmName, DsmName, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (dsmEntries.Count > 1)
+        {
+            double totalSales = dsmEntries.Sum(e => (double)e.GrossSales);
+            double totalCollection = dsmEntries.Sum(e => (double)e.TotalCollection);
+            DsmCumulativeShiftSummaryMessage = $"ℹ️ {DsmName} has {dsmEntries.Count} sessions in Shift {SelectedShift}. Combined Gross Sales: ₹{totalSales:N2}, Combined Collection: ₹{totalCollection:N2}";
+        }
+        else
+        {
+            DsmCumulativeShiftSummaryMessage = string.Empty;
+        }
     }
 
     private async Task LoadSuggestionsAsync()

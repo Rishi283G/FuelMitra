@@ -101,9 +101,24 @@ public class DsmEntryService
             if (shift.IsLocked)
                 return Result<DsmEntry>.Fail("This shift is locked and cannot be edited.");
 
-            // Check duplicate — but if the existing entry is an orphan from a
-            // previously failed save (no PaymentCollection), treat it as the
-            // entry to update rather than blocking.
+            // Check duplicate — if an uncompleted orphan (no PaymentCollection) exists
+            // from a failed save, reuse it. Otherwise create a new session entry.
+            if (existingEntryId == null)
+            {
+                var existingEntries = await _dsmRepo.GetEntriesForShiftAsync(shift.ShiftId);
+                var orphanEntry = existingEntries.Data?.FirstOrDefault(e =>
+                    e.PumpId == pumpId &&
+                    string.Equals(e.DsmName, dsmName, StringComparison.OrdinalIgnoreCase) &&
+                    e.PaymentCollection == null);
+
+                if (orphanEntry != null)
+                {
+                    _logger.Information("Found orphaned DSM entry {Id} for {Dsm}/Pump {Pump}, reusing",
+                        orphanEntry.DsmEntryId, dsmName, pumpId);
+                    existingEntryId = orphanEntry.DsmEntryId;
+                }
+            }
+
             // Pre-calculate nozzle readings SaleLitres and Amount in memory so they are available for gross sales calculations
             foreach (var nr in nozzleReadings)
             {
@@ -126,45 +141,6 @@ public class DsmEntryService
                 else
                 {
                     primaryReadings.Add(nr);
-                }
-            }
-
-            // Check duplicate for primary — three outcomes:
-            //   1. No duplicate → proceed with insert.
-            //   2. Orphan (no PaymentCollection) from a failed save → reuse it.
-            //   3. Fully-approved entry already exists → return it as-is (idempotent).
-            if (existingEntryId == null)
-            {
-                var dupResult = await _dsmRepo.IsDuplicateAsync(shift.ShiftId, pumpId, dsmName);
-                if (dupResult.Success && dupResult.Data)
-                {
-                    var existingEntries = await _dsmRepo.GetEntriesForShiftAsync(shift.ShiftId);
-                    var matchingEntry = existingEntries.Data?.FirstOrDefault(e =>
-                        e.PumpId == pumpId &&
-                        string.Equals(e.DsmName, dsmName, StringComparison.OrdinalIgnoreCase));
-
-                    if (matchingEntry == null)
-                    {
-                        return Result<DsmEntry>.Fail($"A DSM entry for '{dsmName}' on Pump {pumpId} already exists in this shift.");
-                    }
-                    else if (matchingEntry.PaymentCollection == null)
-                    {
-                        // Orphan from a failed save — reuse it
-                        _logger.Information("Found orphaned DSM entry {Id} for {Dsm}/Pump {Pump}, reusing",
-                            matchingEntry.DsmEntryId, dsmName, pumpId);
-                        existingEntryId = matchingEntry.DsmEntryId;
-                    }
-                    else
-                    {
-                        // Fully-approved entry already present — return it unchanged (idempotent re-approval)
-                        _logger.Warning(
-                            "Idempotent save: DsmEntry {Id} for {Dsm}/Pump {Pump} is already fully approved. Returning existing record.",
-                            matchingEntry.DsmEntryId, dsmName, pumpId);
-                        var fullEntry = await _dsmRepo.GetFullEntryAsync(matchingEntry.DsmEntryId);
-                        return fullEntry.Success
-                            ? Result<DsmEntry>.Ok(fullEntry.Data!)
-                            : Result<DsmEntry>.Ok(matchingEntry);
-                    }
                 }
             }
 
@@ -256,7 +232,8 @@ public class DsmEntryService
                 {
                     existingConnectedEntry = shiftEntriesResult.Data.FirstOrDefault(e =>
                         e.PumpId == connectedPumpId.Value
-                        && string.Equals(e.DsmName, dsmName, StringComparison.OrdinalIgnoreCase));
+                        && string.Equals(e.DsmName, dsmName, StringComparison.OrdinalIgnoreCase)
+                        && e.PaymentCollection == null);
                 }
 
                 var connectedEntry = new DsmEntry

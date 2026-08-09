@@ -11,6 +11,7 @@ public interface IShiftAggregationService
 {
     List<DsmSummaryRowDto> BuildDsmSummaryRows(List<DsmEntry> entries);
     DsmSummaryRowDto BuildDsmSummaryTotalRow(List<DsmSummaryRowDto> rows);
+    List<DsmShiftTotalDto> BuildDsmShiftTotals(List<DsmSummaryRowDto> rows);
     CashAggregateDto AggregateCash(List<DsmEntry> entries, string cashType);
     List<DebitRegisterRowDto> BuildCreditorRows(List<DsmEntry> entries);
     List<ExpenseRegisterRowDto> BuildExpenseRows(List<DsmEntry> entries, List<Expense> shiftExpenses);

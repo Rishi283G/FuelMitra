@@ -65,6 +65,7 @@ public partial class OwnerDashboardViewModel : ObservableObject, IDisposable
     [ObservableProperty] private ShiftSummaryDto? _morningShift;
     [ObservableProperty] private ShiftSummaryDto? _afternoonShift;
     [ObservableProperty] private ShiftSummaryDto? _nightShift;
+    [ObservableProperty] private ObservableCollection<DsmShiftTotalDto> _dsmShiftTotals = new();
 
     // Sync status (bound prominently on the dashboard)
     [ObservableProperty] private string _lastSyncDisplay = "—";
@@ -248,6 +249,11 @@ public partial class OwnerDashboardViewModel : ObservableObject, IDisposable
                 stationName);
 
             TotalDsmEntries = entries.Count;
+
+            var aggregationService = App.Services.GetRequiredService<IShiftAggregationService>();
+            var summaryRows = aggregationService.BuildDsmSummaryRows(entries);
+            var shiftTotals = aggregationService.BuildDsmShiftTotals(summaryRows);
+            DsmShiftTotals = new ObservableCollection<DsmShiftTotalDto>(shiftTotals);
 
             TodayTotalSale = dayReport.TotalFuelAmount + dayReport.OtherCashTotal + dayReport.OilDefSalesTotal;
             TodayTotalCollection = dayReport.ActualCollection;

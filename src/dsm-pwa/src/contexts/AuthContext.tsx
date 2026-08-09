@@ -57,9 +57,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (error || !data) return null;
 
-      const activeAssignment = (data.DsmPumpAssignments as any[])?.find(
+      const activeAssignments = (data.DsmPumpAssignments as any[])?.filter(
         (a: any) => a.IsActive === true
       );
+      const activeAssignment = activeAssignments && activeAssignments.length > 0
+        ? activeAssignments.sort((a: any, b: any) => new Date(b.AssignedDate).getTime() - new Date(a.AssignedDate).getTime())[0]
+        : null;
 
       return {
         id: data.SyncGuid,

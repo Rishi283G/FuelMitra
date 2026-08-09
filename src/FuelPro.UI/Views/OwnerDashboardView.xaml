@@ -18,6 +18,7 @@
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
             <!-- Header Row: Title + Date Picker + Sync Status -->
@@ -308,8 +309,33 @@
                 </StackPanel>
             </materialDesign:Card>
 
-            <!-- Summary Footer -->
+            <!-- DSM Shift Totals Summary -->
             <materialDesign:Card Grid.Row="4" Margin="4,0,4,16" Padding="16"
+                                 materialDesign:ElevationAssist.Elevation="Dp1" UniformCornerRadius="8">
+                <StackPanel>
+                    <TextBlock Text="DSM Shift Totals Summary (Combined per DSM)" FontSize="14" FontWeight="SemiBold"
+                               Margin="0,0,0,12" Opacity="0.7"/>
+                    <DataGrid ItemsSource="{Binding DsmShiftTotals}" AutoGenerateColumns="False" IsReadOnly="True" MaxHeight="220">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="DSM Name" Binding="{Binding DsmName}" FontWeight="Bold"/>
+                            <DataGridTextColumn Header="Sessions" Binding="{Binding SessionsCount}" Width="70"/>
+                            <DataGridTextColumn Header="Pumps" Binding="{Binding AssignedPumpsDisplay}"/>
+                            <DataGridTextColumn Header="Gross Sales" Binding="{Binding GrossSales, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" Foreground="Green"/>
+                            <DataGridTextColumn Header="Digital" Binding="{Binding DigitalTotal, Converter={StaticResource CurrencyConverter}}"/>
+                            <DataGridTextColumn Header="Bank Cash" Binding="{Binding CashDeposit, Converter={StaticResource CurrencyConverter}}"/>
+                            <DataGridTextColumn Header="Hand Cash" Binding="{Binding CashInHand, Converter={StaticResource CurrencyConverter}}"/>
+                            <DataGridTextColumn Header="Debtors" Binding="{Binding Debit, Converter={StaticResource CurrencyConverter}}" Foreground="Red"/>
+                            <DataGridTextColumn Header="Expenses" Binding="{Binding Expenses, Converter={StaticResource CurrencyConverter}}" Foreground="Red"/>
+                            <DataGridTextColumn Header="Testing" Binding="{Binding Testing, Converter={StaticResource CurrencyConverter}}"/>
+                            <DataGridTextColumn Header="Total Collection" Binding="{Binding TotalCollection, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold"/>
+                            <DataGridTextColumn Header="Mismatch" Binding="{Binding Mismatch, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </StackPanel>
+            </materialDesign:Card>
+
+            <!-- Summary Footer -->
+            <materialDesign:Card Grid.Row="5" Margin="4,0,4,16" Padding="16"
                                  materialDesign:ElevationAssist.Elevation="Dp1" UniformCornerRadius="8">
                 <Grid>
                     <Grid.ColumnDefinitions>

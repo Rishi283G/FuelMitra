@@ -10,6 +10,7 @@
         <converters:DifferenceColorConverter x:Key="DiffColorConv"/>
         <converters:BoolToVisibilityConverter x:Key="BoolVisConv"/>
         <converters:DenomAmountConverter x:Key="DenomAmountConv"/>
+        <converters:StringToVisibilityConverter x:Key="StringToVis"/>
     </UserControl.Resources>
 
     <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="32,24">
@@ -54,6 +55,21 @@
                               Style="{StaticResource MaterialDesignOutlinedComboBox}" MinWidth="220"/>
                 </Grid>
             </materialDesign:Card>
+
+            <!-- DSM Cumulative Shift Summary Banner -->
+            <Border Background="#E8F5E9" Padding="12" CornerRadius="8" Margin="0,0,0,16">
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Setter Property="Visibility" Value="Collapsed"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding DsmCumulativeShiftSummaryMessage, Converter={StaticResource StringToVis}}" Value="Visible">
+                                <Setter Property="Visibility" Value="Visible"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+                <TextBlock Text="{Binding DsmCumulativeShiftSummaryMessage}" FontSize="13" FontWeight="SemiBold" Foreground="#1B5E20"/>
+            </Border>
 
             <!-- TABLE 1: NOZZLE READINGS -->
             <materialDesign:Card Padding="20" UniformCornerRadius="12" Margin="0,0,0,20"

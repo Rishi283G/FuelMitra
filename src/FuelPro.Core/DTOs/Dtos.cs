@@ -12,6 +12,7 @@ public class DsmEntrySummaryDto
     public int? ReconciledToPumpId { get; set; }
     public double GrossSales { get; set; }
     public double TotalPaymentIn { get; set; }
+    public double TotalCollection { get => TotalPaymentIn; set => TotalPaymentIn = value; }
     public double Difference { get; set; }
     public DateTime CreatedAt { get; set; }
 
@@ -83,6 +84,7 @@ public class FinalCalculationDto
 
     // TABLE A — DSM Summary
     public List<DsmSummaryRowDto> DsmSummaryRows { get; set; } = new();
+    public List<DsmShiftTotalDto> DsmShiftTotals { get; set; } = new();
 
     // TABLE B — Cash Totals
     public CashAggregateDto Cash1Aggregate { get; set; } = new();
@@ -325,4 +327,27 @@ public class DebtorLogEntryDto
     public string DebtorName { get; set; } = string.Empty;
     public string? ChequeNo { get; set; }
     public double Amount { get; set; }
+}
+
+/// <summary>
+/// Aggregated totals per DSM for a shift across multiple sessions/entries.
+/// </summary>
+public class DsmShiftTotalDto
+{
+    public string DsmName { get; set; } = string.Empty;
+    public int SessionsCount { get; set; }
+    public string AssignedPumpsDisplay { get; set; } = string.Empty;
+    public double GrossSales { get; set; }
+    public double TotalCollection { get; set; }
+    public double CashDeposit { get; set; } // Cash1
+    public double CashInHand { get; set; }  // Cash2
+    public double PhonePe { get; set; }
+    public double PhonePeCard { get; set; }
+    public double CreditCard { get; set; }
+    public double PetroCard { get; set; }
+    public double DigitalTotal => PhonePe + PhonePeCard + CreditCard + PetroCard;
+    public double Debit { get; set; }
+    public double Expenses { get; set; }
+    public double Testing { get; set; }
+    public double Mismatch { get; set; }
 }
