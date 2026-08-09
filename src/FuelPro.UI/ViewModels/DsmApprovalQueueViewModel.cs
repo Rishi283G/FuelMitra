@@ -1680,6 +1680,8 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                 .Take(500)
                 .ToListAsync();
 
+            await HealCorruptedApprovedEntriesAsync(context, localAudits);
+
             var auditMap = localAudits.ToDictionary(a => a.SubmissionId);
 
             var entryIds = new List<int>();
@@ -1989,10 +1991,11 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                     .Include(e => e.NozzleReadings)
                     .Where(e => e.ShiftId == entry.ShiftId
                         && e.PumpId == entry.ConnectedPumpId.Value
-                        && (e.ReconciledToPumpId == entry.PumpId || (e.DsmName != null && entry.DsmName != null && e.DsmName.ToLower() == entry.DsmName.ToLower())))
+                        && (e.ReconciledToPumpId == entry.DsmEntryId || e.ReconciledToPumpId == entry.PumpId || (e.DsmName != null && entry.DsmName != null && e.DsmName.ToLower() == entry.DsmName.ToLower())))
                     .ToListAsync();
                 connectedEntry = connCandidates
-                    .OrderBy(e => e.DsmEntryId >= entry.DsmEntryId ? (e.DsmEntryId - entry.DsmEntryId) : (100000 + Math.Abs(e.DsmEntryId - entry.DsmEntryId)))
+                    .OrderBy(e => e.ReconciledToPumpId == entry.DsmEntryId ? 0 : 1)
+                    .ThenBy(e => e.DsmEntryId >= entry.DsmEntryId ? (e.DsmEntryId - entry.DsmEntryId) : (100000 + Math.Abs(e.DsmEntryId - entry.DsmEntryId)))
                     .FirstOrDefault();
             }
 
@@ -2185,6 +2188,132 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
         catch (Exception ex)
         {
             return Result<List<dynamic>>.Fail(ex.Message);
+        }
+    }
+
+    private async Task HealCorruptedApprovedEntriesAsync(FuelProDbContext context, List<DsmApprovalAudit> localAudits)
+    {
+        try
+        {
+            bool anyRepaired = false;
+            foreach (var audit in localAudits)
+            {
+                if (string.IsNullOrWhiteSpace(audit.OriginalDataJson) || string.IsNullOrWhiteSpace(audit.ApprovedDataJson))
+                    continue;
+
+                int primaryEntryId = 0;
+                try
+                {
+                    var appObj = JsonConvert.DeserializeObject<dynamic>(audit.ApprovedDataJson);
+                    primaryEntryId = (int)(appObj?.DsmEntryId ?? 0);
+                }
+                catch {}
+
+                if (primaryEntryId <= 0) continue;
+
+                var primaryEntry = await context.DsmEntries
+                    .Include(e => e.NozzleReadings)
+                    .FirstOrDefaultAsync(e => e.DsmEntryId == primaryEntryId);
+
+                if (primaryEntry == null) continue;
+
+                // Load slave entry linked to this primary entry
+                DsmEntry? slaveEntry = null;
+                if (primaryEntry.ConnectedPumpId.HasValue)
+                {
+                    slaveEntry = await context.DsmEntries
+                        .Include(e => e.NozzleReadings)
+                        .FirstOrDefaultAsync(e => e.ShiftId == primaryEntry.ShiftId
+                            && e.PumpId == primaryEntry.ConnectedPumpId.Value
+                            && (e.ReconciledToPumpId == primaryEntry.DsmEntryId || (e.ReconciledToPumpId == primaryEntry.PumpId && e.DsmName == primaryEntry.DsmName)));
+                }
+
+                // Parse original readings
+                var origObj = JsonConvert.DeserializeObject<dynamic>(audit.OriginalDataJson);
+                var readingsToken = origObj?.Readings;
+                if (readingsToken == null) continue;
+
+                var expectedReadings = new List<(int NozzleId, double Opening, double Closing, double Rate)>();
+                foreach (var r in readingsToken)
+                {
+                    int nId = (int)(r.NozzleId ?? r.nozzleId ?? 0);
+                    double op = (double)(r.OpeningReading ?? r.openingReading ?? 0);
+                    double cl = (double)(r.ClosingReading ?? r.closingReading ?? 0);
+                    double rt = (double)(r.Rate ?? r.rate ?? 0);
+                    if (nId > 0) expectedReadings.Add((nId, op, cl, rt));
+                }
+
+                if (expectedReadings.Count == 0) continue;
+
+                bool entryHealed = false;
+
+                // Check and fix slave entry readings
+                if (slaveEntry != null && slaveEntry.NozzleReadings != null)
+                {
+                    foreach (var sReading in slaveEntry.NozzleReadings)
+                    {
+                        var exp = expectedReadings.FirstOrDefault(x => x.NozzleId == sReading.NozzleNumber);
+                        if (exp.NozzleId > 0)
+                        {
+                            if (Math.Abs(sReading.OpeningReading - exp.Opening) > 0.001 || Math.Abs(sReading.ClosingReading - exp.Closing) > 0.001)
+                            {
+                                sReading.OpeningReading = exp.Opening;
+                                sReading.ClosingReading = exp.Closing;
+                                sReading.SaleLitres = sReading.ClosingReading - sReading.OpeningReading;
+                                sReading.Amount = sReading.SaleLitres * sReading.Rate;
+                                entryHealed = true;
+                            }
+                        }
+                    }
+
+                    if (entryHealed)
+                    {
+                        slaveEntry.GrossSales = (decimal)slaveEntry.NozzleReadings.Sum(r => r.Amount);
+                        slaveEntry.Mismatch = 0m;
+                        context.Entry(slaveEntry).State = EntityState.Modified;
+                    }
+                }
+
+                // Check and fix primary entry readings
+                if (primaryEntry.NozzleReadings != null)
+                {
+                    foreach (var pReading in primaryEntry.NozzleReadings)
+                    {
+                        var exp = expectedReadings.FirstOrDefault(x => x.NozzleId == pReading.NozzleNumber);
+                        if (exp.NozzleId > 0)
+                        {
+                            if (Math.Abs(pReading.OpeningReading - exp.Opening) > 0.001 || Math.Abs(pReading.ClosingReading - exp.Closing) > 0.001)
+                            {
+                                pReading.OpeningReading = exp.Opening;
+                                pReading.ClosingReading = exp.Closing;
+                                pReading.SaleLitres = pReading.ClosingReading - pReading.OpeningReading;
+                                pReading.Amount = pReading.SaleLitres * pReading.Rate;
+                                entryHealed = true;
+                            }
+                        }
+                    }
+                }
+
+                if (entryHealed)
+                {
+                    double primaryGross = primaryEntry.NozzleReadings?.Sum(r => r.Amount) ?? (double)primaryEntry.GrossSales;
+                    double slaveGross = slaveEntry?.NozzleReadings?.Sum(r => r.Amount) ?? (double)(slaveEntry?.GrossSales ?? 0m);
+                    primaryEntry.GrossSales = (decimal)(primaryGross + slaveGross);
+                    primaryEntry.Mismatch = primaryEntry.TotalCollection - primaryEntry.GrossSales;
+                    context.Entry(primaryEntry).State = EntityState.Modified;
+                    anyRepaired = true;
+                }
+            }
+
+            if (anyRepaired)
+            {
+                await context.SaveChangesAsync();
+                _logger.Information("Successfully auto-healed corrupted nozzle readings for approved submissions.");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to auto-heal corrupted approved entries.");
         }
     }
 }
