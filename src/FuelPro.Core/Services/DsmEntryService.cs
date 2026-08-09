@@ -368,15 +368,26 @@ public class DsmEntryService
             if (!entriesResult.Success) return Result<List<DsmEntrySummaryDto>>.Fail(entriesResult.Error);
 
             var allEntries = entriesResult.Data!;
-            var primaryEntries = allEntries.Where(e => !e.ReconciledToPumpId.HasValue).ToList();
+            var primaryEntries = allEntries.Where(e => !e.ReconciledToPumpId.HasValue).OrderBy(e => e.DsmEntryId).ToList();
+            var allSlaves = allEntries.Where(e => e.ReconciledToPumpId.HasValue).ToList();
+            var usedSlaveIds = new HashSet<int>();
             var summaries = new List<DsmEntrySummaryDto>();
 
             foreach (var primary in primaryEntries)
             {
-                var connectedSlaves = allEntries
-                    .Where(e => e.ReconciledToPumpId == primary.PumpId &&
-                                string.Equals((e.DsmName ?? "").Trim(), (primary.DsmName ?? "").Trim(), StringComparison.OrdinalIgnoreCase))
-                    .ToList();
+                var connectedSlave = allSlaves
+                    .Where(e => !usedSlaveIds.Contains(e.DsmEntryId)
+                        && e.ReconciledToPumpId == primary.PumpId
+                        && string.Equals((e.DsmName ?? "").Trim(), (primary.DsmName ?? "").Trim(), StringComparison.OrdinalIgnoreCase))
+                    .OrderBy(e => e.DsmEntryId >= primary.DsmEntryId ? (e.DsmEntryId - primary.DsmEntryId) : (100000 + Math.Abs(e.DsmEntryId - primary.DsmEntryId)))
+                    .FirstOrDefault();
+
+                if (connectedSlave != null)
+                {
+                    usedSlaveIds.Add(connectedSlave.DsmEntryId);
+                }
+
+                var connectedSlaves = connectedSlave != null ? new List<DsmEntry> { connectedSlave } : new List<DsmEntry>();
 
                 double totalGrossSales = primary.NozzleReadings != null && primary.NozzleReadings.Count > 0
                     ? primary.NozzleReadings.Sum(n => (double)n.Amount)
@@ -397,7 +408,7 @@ public class DsmEntryService
                     DsmEntryId = primary.DsmEntryId,
                     DsmName = primary.DsmName,
                     PumpId = primary.PumpId,
-                    ConnectedPumpId = primary.ConnectedPumpId,
+                    ConnectedPumpId = primary.ConnectedPumpId ?? connectedSlave?.PumpId,
                     ReconciledToPumpId = null,
                     GrossSales = totalGrossSales,
                     TotalPaymentIn = totalCollection,
