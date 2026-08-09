@@ -106,16 +106,15 @@ public class DsmEntryService
             if (existingEntryId == null)
             {
                 var existingEntries = await _dsmRepo.GetEntriesForShiftAsync(shift.ShiftId);
-                var orphanEntry = existingEntries.Data?.FirstOrDefault(e =>
+                var existingEntry = existingEntries.Data?.LastOrDefault(e =>
                     e.PumpId == pumpId &&
-                    string.Equals(e.DsmName, dsmName, StringComparison.OrdinalIgnoreCase) &&
-                    e.PaymentCollection == null);
+                    string.Equals(e.DsmName, dsmName, StringComparison.OrdinalIgnoreCase));
 
-                if (orphanEntry != null)
+                if (existingEntry != null)
                 {
-                    _logger.Information("Found orphaned DSM entry {Id} for {Dsm}/Pump {Pump}, reusing",
-                        orphanEntry.DsmEntryId, dsmName, pumpId);
-                    existingEntryId = orphanEntry.DsmEntryId;
+                    _logger.Information("Found existing DSM entry {Id} for {Dsm}/Pump {Pump}, reusing",
+                        existingEntry.DsmEntryId, dsmName, pumpId);
+                    existingEntryId = existingEntry.DsmEntryId;
                 }
             }
 
@@ -233,7 +232,9 @@ public class DsmEntryService
                     existingConnectedEntry = shiftEntriesResult.Data.FirstOrDefault(e =>
                         e.PumpId == connectedPumpId.Value
                         && string.Equals(e.DsmName, dsmName, StringComparison.OrdinalIgnoreCase)
-                        && e.PaymentCollection == null);
+                        && (existingEntryId != null
+                            ? (e.ReconciledToPumpId == savedEntry.DsmEntryId || e.ReconciledToPumpId == pumpId)
+                            : e.PaymentCollection == null));
                 }
 
                 var connectedEntry = new DsmEntry

@@ -510,7 +510,7 @@ public partial class DsmEntryViewModel : ObservableObject
             // Restore temp reading if available
             if (tempReadings.TryGetValue(n, out var temp))
             {
-                if (temp.Opening.HasValue) openingReading = temp.Opening;
+                if (temp.Override && temp.Opening.HasValue) openingReading = temp.Opening;
                 if (temp.Closing.HasValue) closingReading = temp.Closing;
                 if (temp.Rate.HasValue) rate = temp.Rate.Value;
             }
@@ -856,6 +856,10 @@ public partial class DsmEntryViewModel : ObservableObject
 
             if (result.Success)
             {
+                if (result.Data != null)
+                {
+                    EditingEntryId = result.Data.DsmEntryId;
+                }
                 StatusMessage = "✅ DSM Entry saved successfully!";
                 _draftService.ClearDraft();
                 await LoadShiftEntriesAsync();

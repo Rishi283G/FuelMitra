@@ -83,7 +83,7 @@ public class DuplicateDataInspectionService : IDuplicateDataInspectionService
                     e.PumpId,
                     DsmName = (e.DsmName ?? string.Empty).Trim().ToLowerInvariant()
                 })
-                .Where(g => g.Count() > 1 && g.Any(e => e.PaymentCollection == null || IsIdenticalNozzleReadings(g.ToList())))
+                .Where(g => g.Count() > 1 && (g.Any(e => e.PaymentCollection == null || e.NozzleReadings == null || e.NozzleReadings.Count == 0) || IsIdenticalNozzleReadings(g.ToList())))
                 .ToList();
 
             var result = new List<DsmEntryDuplicateGroup>();
@@ -94,7 +94,7 @@ public class DuplicateDataInspectionService : IDuplicateDataInspectionService
                 {
                     OriginalRecord = ordered.First(),
                     DuplicateRecords = ordered.Skip(1).ToList(),
-                    Reason = "Orphaned or duplicate nozzle reading entries for same ShiftId + PumpId + DsmName"
+                    Reason = "Same ShiftId + PumpId + DsmName (case-insensitive)"
                 });
             }
 

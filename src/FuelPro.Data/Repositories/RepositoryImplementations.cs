@@ -607,7 +607,7 @@ public class NozzleReadingRepository : INozzleReadingRepository
                 .ThenInclude(e => e!.Shift)
                 .Where(r => r.DsmEntry != null
                     && r.DsmEntry.Shift != null
-                    && r.DsmEntry.PumpId == pumpId
+                    && (r.DsmEntry.PumpId == pumpId || r.DsmEntry.ReconciledToPumpId == pumpId)
                     && (currentDsmEntryId == null || r.DsmEntryId != currentDsmEntryId.Value)
                     && (r.DsmEntry.Shift.ShiftDate < targetDate || 
                        (r.DsmEntry.Shift.ShiftDate == targetDate && isDayShift && (r.DsmEntry.Shift.ShiftType == "A" || r.DsmEntry.Shift.ShiftType == "I")) ||
