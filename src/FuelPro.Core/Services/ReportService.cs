@@ -458,25 +458,18 @@ public class ReportService : IReportService
             var rawType = entry.Shift?.ShiftType ?? "";
             var sType = (rawType == "I" || rawType == "Shift I") ? "A" : (rawType == "II" || rawType == "Shift II") ? "B" : (rawType == "III" || rawType == "Shift III") ? "C" : rawType;
 
-            if (sType == "A")
-            {
-                // Shift I stores Morning AND Night in the same entry
-                phonePeDirectMorning += pc.PhonePeMorning;
-                phonePeCardMorning += pc.PhonePeCardMorning;
-                pineLabsCardMorning += pc.CreditCardMorning;
-                petroCardMorning += pc.PetroCardMorning;
-                phonePeDirectNight += pc.PhonePeNight;
-                phonePeCardNight += pc.PhonePeCardNight;
-                pineLabsCardNight += pc.CreditCardNight;
-                petroCardNight += pc.PetroCardNight;
-            }
-            else if (sType == "B")
-            {
-                phonePeDirectDay += pc.PhonePeDay;
-                phonePeCardDay += pc.PhonePeCardDay;
-                pineLabsCardDay += pc.CreditCardDay;
-                petroCardDay += pc.PetroCardDay;
-            }
+            phonePeDirectMorning += pc.PhonePeMorning;
+            phonePeCardMorning += pc.PhonePeCardMorning;
+            pineLabsCardMorning += pc.CreditCardMorning;
+            petroCardMorning += pc.PetroCardMorning;
+            phonePeDirectNight += pc.PhonePeNight;
+            phonePeCardNight += pc.PhonePeCardNight;
+            pineLabsCardNight += pc.CreditCardNight;
+            petroCardNight += pc.PetroCardNight;
+            phonePeDirectDay += pc.PhonePeDay;
+            phonePeCardDay += pc.PhonePeCardDay;
+            pineLabsCardDay += pc.CreditCardDay;
+            petroCardDay += pc.PetroCardDay;
         }
 
         // Standardize categories for Day (Aggregates Morning+Day as Morning, and Night as Night)
