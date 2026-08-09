@@ -151,6 +151,35 @@ public class RecalculationMigrationService
     {
         try
         {
+            // 0. Purge invalid/mismatched slave entries (e.g. duplicate slaves with mismatched DsmName or orphan ReconciledToPumpId)
+            var allDsmEntries = await _dbContext.DsmEntries.Include(e => e.NozzleReadings).ToListAsync();
+            var primaryEntriesList = allDsmEntries.Where(e => !e.ReconciledToPumpId.HasValue).ToList();
+            var slaveEntriesList = allDsmEntries.Where(e => e.ReconciledToPumpId.HasValue).ToList();
+
+            var slavesToRemove = new List<DsmEntry>();
+            foreach (var slave in slaveEntriesList)
+            {
+                var parentPrimary = primaryEntriesList.FirstOrDefault(p => p.DsmEntryId == slave.ReconciledToPumpId!.Value);
+                if (parentPrimary == null || !string.Equals((parentPrimary.DsmName ?? "").Trim(), (slave.DsmName ?? "").Trim(), StringComparison.OrdinalIgnoreCase))
+                {
+                    slavesToRemove.Add(slave);
+                }
+            }
+
+            if (slavesToRemove.Any())
+            {
+                foreach (var st in slavesToRemove)
+                {
+                    if (st.NozzleReadings != null && st.NozzleReadings.Any())
+                    {
+                        _dbContext.NozzleReadings.RemoveRange(st.NozzleReadings);
+                    }
+                    _dbContext.DsmEntries.Remove(st);
+                }
+                await _dbContext.SaveChangesAsync();
+                _logger.Information("Purged {Count} mismatched/duplicate slave entries.", slavesToRemove.Count);
+            }
+
             var audits = await _dbContext.DsmApprovalAudits.ToListAsync();
             if (!audits.Any()) return;
 
@@ -299,7 +328,7 @@ public class RecalculationMigrationService
                     }
                 }
 
-                if (entryHealed)
+                if (entryHealed || (primaryEntry.ConnectedPumpId.HasValue && slaveEntry != null))
                 {
                     double primaryGross = primaryEntry.NozzleReadings?.Sum(r => r.Amount) ?? (double)primaryEntry.GrossSales;
                     double slaveGross = slaveEntry?.NozzleReadings?.Sum(r => r.Amount) ?? (double)(slaveEntry?.GrossSales ?? 0m);

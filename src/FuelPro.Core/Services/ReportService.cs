@@ -604,9 +604,9 @@ public class ReportService : IReportService
         {
             var slave = slaveEntries
                 .Where(e => !usedSlaveIds.Contains(e.DsmEntryId)
-                    && e.ReconciledToPumpId == primary.PumpId
-                    && string.Equals((e.DsmName ?? "").Trim(), (primary.DsmName ?? "").Trim(), StringComparison.OrdinalIgnoreCase))
-                .OrderBy(e => e.DsmEntryId >= primary.DsmEntryId ? (e.DsmEntryId - primary.DsmEntryId) : (100000 + Math.Abs(e.DsmEntryId - primary.DsmEntryId)))
+                    && (e.ReconciledToPumpId == primary.DsmEntryId || (e.ReconciledToPumpId == primary.PumpId && string.Equals((e.DsmName ?? "").Trim(), (primary.DsmName ?? "").Trim(), StringComparison.OrdinalIgnoreCase))))
+                .OrderBy(e => e.ReconciledToPumpId == primary.DsmEntryId ? 0 : 1)
+                .ThenBy(e => e.DsmEntryId >= primary.DsmEntryId ? (e.DsmEntryId - primary.DsmEntryId) : (100000 + Math.Abs(e.DsmEntryId - primary.DsmEntryId)))
                 .FirstOrDefault();
 
             if (slave != null)
