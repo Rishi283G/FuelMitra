@@ -655,10 +655,9 @@ public class DsmEntryService
                 }
             }
 
-            // Check duplicate for primary — three outcomes:
-            //   1. No duplicate → proceed with insert.
-            //   2. Orphan (no PaymentCollection) from a failed save → reuse it.
-            //   3. Fully-approved entry already exists → return it as-is (idempotent).
+            // Check duplicate for primary:
+            // If an orphan entry (no PaymentCollection) exists from a failed save, reuse it.
+            // Otherwise, create a new DsmEntry to allow multiple shift sessions/entries per DSM/pump.
             if (existingEntryId == null)
             {
                 var existingMatch = await context.Set<DsmEntry>()
@@ -666,35 +665,14 @@ public class DsmEntryService
                     .FirstOrDefaultAsync(e =>
                         e.ShiftId == shift.ShiftId &&
                         e.PumpId == pumpId &&
-                        e.DsmName == dsmName);
+                        e.DsmName == dsmName &&
+                        e.PaymentCollection == null);
 
                 if (existingMatch != null)
                 {
-                    if (existingMatch.PaymentCollection == null)
-                    {
-                        // Orphan from a failed save — reuse it
-                        _logger.Information("Found orphaned DSM entry {Id} for {Dsm}/Pump {Pump}, reusing",
-                            existingMatch.DsmEntryId, dsmName, pumpId);
-                        existingEntryId = existingMatch.DsmEntryId;
-                    }
-                    else
-                    {
-                        // Fully-approved entry already present — return it unchanged (idempotent re-approval)
-                        _logger.Warning(
-                            "Idempotent save: DsmEntry {Id} for {Dsm}/Pump {Pump} is already fully approved. Returning existing record.",
-                            existingMatch.DsmEntryId, dsmName, pumpId);
-                        var fullExisting = await context.Set<DsmEntry>()
-                            .Include(e => e.NozzleReadings)
-                            .Include(e => e.PaymentCollection)
-                            .Include(e => e.DebitEntries)
-                            .Include(e => e.TestingEntries)
-                            .Include(e => e.Expenses)
-                            .Include(e => e.CashDenominations)
-                            .Include(e => e.PersonalDebtors)
-                            .Include(e => e.KhandharePetroleumEntries)
-                            .FirstOrDefaultAsync(e => e.DsmEntryId == existingMatch.DsmEntryId);
-                        return Result<DsmEntry>.Ok(fullExisting ?? existingMatch);
-                    }
+                    _logger.Information("Found orphaned DSM entry {Id} for {Dsm}/Pump {Pump}, reusing",
+                        existingMatch.DsmEntryId, dsmName, pumpId);
+                    existingEntryId = existingMatch.DsmEntryId;
                 }
             }
 
