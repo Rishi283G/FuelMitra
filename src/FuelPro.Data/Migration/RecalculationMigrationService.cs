@@ -1,3 +1,4 @@
+using FuelPro.Core.Common;
 using FuelPro.Core.DTOs;
 using FuelPro.Core.Models;
 using FuelPro.Core.Services;
@@ -6,6 +7,36 @@ using Newtonsoft.Json;
 using Serilog;
 
 namespace FuelPro.Data.AppMigration;
+
+public class AuditOriginalDataDto
+{
+    public List<AuditNozzleReadingDto>? Readings { get; set; }
+    public List<AuditNozzleReadingDto>? nozzleReadings { get; set; }
+}
+
+public class AuditNozzleReadingDto
+{
+    public int NozzleId { get; set; }
+    public int nozzleId { get; set; }
+    public double OpeningReading { get; set; }
+    public double openingReading { get; set; }
+    public double ClosingReading { get; set; }
+    public double closingReading { get; set; }
+    public double Rate { get; set; }
+    public double rate { get; set; }
+
+    public int GetNozzleId() => NozzleId > 0 ? NozzleId : nozzleId;
+    public double GetOpening() => OpeningReading > 0 ? OpeningReading : openingReading;
+    public double GetClosing() => ClosingReading > 0 ? ClosingReading : closingReading;
+    public double GetRate() => Rate > 0 ? Rate : rate;
+}
+
+public class AuditApprovedDataDto
+{
+    public int DsmEntryId { get; set; }
+    public int dsmEntryId { get; set; }
+    public int GetDsmEntryId() => DsmEntryId > 0 ? DsmEntryId : dsmEntryId;
+}
 
 public class RecalculationMigrationService
 {
@@ -46,7 +77,6 @@ public class RecalculationMigrationService
                     NozzleReadings = entry.NozzleReadings.Select(n => new NozzleReadingDto { Amount = (decimal)n.Amount }).ToList(),
                     PaymentCollection = new PaymentCollectionDto
                     {
-                        // Others is NOT included in TotalInDirect — it is informational only
                         PhonePe      = (decimal)((entry.PaymentCollection?.PhonePe ?? 0)
                                                 + (entry.PaymentCollection?.PhonePeCard ?? 0)),
                         CreditCard   = (decimal)((entry.PaymentCollection?.CreditCard ?? 0) + (entry.PaymentCollection?.PetroCard ?? 0)),
@@ -94,7 +124,6 @@ public class RecalculationMigrationService
         {
             if (primary.ConnectedPumpId.HasValue) continue;
 
-            // Find if there is a connected entry in the same shift for the same DSM that reconciles to this primary pump
             var match = connectedEntries.FirstOrDefault(c =>
                 c.ShiftId == primary.ShiftId
                 && c.ReconciledToPumpId == primary.PumpId
@@ -134,8 +163,8 @@ public class RecalculationMigrationService
                 int primaryEntryId = 0;
                 try
                 {
-                    var appObj = JsonConvert.DeserializeObject<dynamic>(audit.ApprovedDataJson);
-                    primaryEntryId = (int)(appObj?.DsmEntryId ?? 0);
+                    var appObj = JsonConvert.DeserializeObject<AuditApprovedDataDto>(audit.ApprovedDataJson);
+                    primaryEntryId = appObj?.GetDsmEntryId() ?? 0;
                 }
                 catch {}
 
@@ -143,11 +172,28 @@ public class RecalculationMigrationService
 
                 var primaryEntry = await _dbContext.DsmEntries
                     .Include(e => e.NozzleReadings)
+                    .Include(e => e.Shift)
                     .FirstOrDefaultAsync(e => e.DsmEntryId == primaryEntryId);
 
                 if (primaryEntry == null) continue;
 
-                // Load slave entry linked to this primary entry
+                AuditOriginalDataDto? origObj = null;
+                try
+                {
+                    origObj = JsonConvert.DeserializeObject<AuditOriginalDataDto>(audit.OriginalDataJson);
+                }
+                catch {}
+
+                var rawReadings = origObj?.Readings ?? origObj?.nozzleReadings;
+                if (rawReadings == null || !rawReadings.Any()) continue;
+
+                var expectedReadings = rawReadings
+                    .Select(r => (NozzleId: r.GetNozzleId(), Opening: r.GetOpening(), Closing: r.GetClosing(), Rate: r.GetRate()))
+                    .Where(x => x.NozzleId > 0)
+                    .ToList();
+
+                if (!expectedReadings.Any()) continue;
+
                 DsmEntry? slaveEntry = null;
                 if (primaryEntry.ConnectedPumpId.HasValue)
                 {
@@ -155,29 +201,58 @@ public class RecalculationMigrationService
                         .Include(e => e.NozzleReadings)
                         .FirstOrDefaultAsync(e => e.ShiftId == primaryEntry.ShiftId
                             && e.PumpId == primaryEntry.ConnectedPumpId.Value
-                            && (e.ReconciledToPumpId == primaryEntry.DsmEntryId || (e.ReconciledToPumpId == primaryEntry.PumpId && e.DsmName == primaryEntry.DsmName)));
+                            && e.ReconciledToPumpId == primaryEntry.DsmEntryId);
                 }
 
-                // Parse original readings from audit
-                var origObj = JsonConvert.DeserializeObject<dynamic>(audit.OriginalDataJson);
-                var readingsToken = origObj?.Readings;
-                if (readingsToken == null) continue;
-
-                var expectedReadings = new List<(int NozzleId, double Opening, double Closing, double Rate)>();
-                foreach (var r in readingsToken)
+                // If slave entry missing for a connected pump entry, auto-create it
+                if (primaryEntry.ConnectedPumpId.HasValue && slaveEntry == null)
                 {
-                    int nId = (int)(r.NozzleId ?? r.nozzleId ?? 0);
-                    double op = (double)(r.OpeningReading ?? r.openingReading ?? 0);
-                    double cl = (double)(r.ClosingReading ?? r.closingReading ?? 0);
-                    double rt = (double)(r.Rate ?? r.rate ?? 0);
-                    if (nId > 0) expectedReadings.Add((nId, op, cl, rt));
-                }
+                    var connNozzles = PumpConfiguration.GetNozzlesForPump(primaryEntry.ConnectedPumpId.Value, primaryEntry.Shift?.ShiftDate ?? DateTime.Today);
+                    var targetNozzleIds = connNozzles != null && connNozzles.Length > 0 ? connNozzles : (primaryEntry.ConnectedPumpId.Value == 2 ? new int[] { 2, 4 } : Array.Empty<int>());
 
-                if (expectedReadings.Count == 0) continue;
+                    var connReadings = expectedReadings.Where(r => targetNozzleIds.Contains(r.NozzleId)).ToList();
+                    if (connReadings.Any())
+                    {
+                        slaveEntry = new DsmEntry
+                        {
+                            ShiftId = primaryEntry.ShiftId,
+                            PumpId = primaryEntry.ConnectedPumpId.Value,
+                            ReconciledToPumpId = primaryEntry.DsmEntryId,
+                            DsmName = primaryEntry.DsmName,
+                            GrossSales = 0m,
+                            TotalCollection = 0m,
+                            Mismatch = 0m,
+                            CreatedAt = primaryEntry.CreatedAt,
+                            UpdatedAt = DateTime.Now
+                        };
+                        _dbContext.DsmEntries.Add(slaveEntry);
+                        await _dbContext.SaveChangesAsync();
+
+                        slaveEntry.NozzleReadings = new List<NozzleReading>();
+                        foreach (var cr in connReadings)
+                        {
+                            var nr = new NozzleReading
+                            {
+                                DsmEntryId = slaveEntry.DsmEntryId,
+                                NozzleNumber = cr.NozzleId,
+                                OpeningReading = cr.Opening,
+                                ClosingReading = cr.Closing,
+                                SaleLitres = cr.Closing - cr.Opening,
+                                Rate = cr.Rate,
+                                Amount = (cr.Closing - cr.Opening) * cr.Rate
+                            };
+                            _dbContext.NozzleReadings.Add(nr);
+                            slaveEntry.NozzleReadings.Add(nr);
+                        }
+                        slaveEntry.GrossSales = (decimal)slaveEntry.NozzleReadings.Sum(r => r.Amount);
+                        await _dbContext.SaveChangesAsync();
+                        anyRepaired = true;
+                    }
+                }
 
                 bool entryHealed = false;
 
-                // Check and fix slave entry readings
+                // Fix slave entry readings if slave exists
                 if (slaveEntry != null && slaveEntry.NozzleReadings != null)
                 {
                     foreach (var sReading in slaveEntry.NozzleReadings)
@@ -204,7 +279,7 @@ public class RecalculationMigrationService
                     }
                 }
 
-                // Check and fix primary entry readings
+                // Fix primary entry readings
                 if (primaryEntry.NozzleReadings != null)
                 {
                     foreach (var pReading in primaryEntry.NozzleReadings)

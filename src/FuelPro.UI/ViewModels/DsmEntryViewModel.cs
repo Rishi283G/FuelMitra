@@ -953,8 +953,9 @@ public partial class DsmEntryViewModel : ObservableObject
                 {
                     var rawConn = entriesResult.Data
                         .Where(e => e.PumpId == targetConnectedPumpId.Value
-                            && (e.ReconciledToPumpId == entry.PumpId || string.Equals(e.DsmName, entry.DsmName, StringComparison.OrdinalIgnoreCase)))
-                        .OrderBy(e => e.DsmEntryId >= entry.DsmEntryId ? (e.DsmEntryId - entry.DsmEntryId) : (100000 + Math.Abs(e.DsmEntryId - entry.DsmEntryId)))
+                            && (e.ReconciledToPumpId == entry.DsmEntryId || e.ReconciledToPumpId == entry.PumpId || string.Equals(e.DsmName, entry.DsmName, StringComparison.OrdinalIgnoreCase)))
+                        .OrderBy(e => e.ReconciledToPumpId == entry.DsmEntryId ? 0 : 1)
+                        .ThenBy(e => e.DsmEntryId >= entry.DsmEntryId ? (e.DsmEntryId - entry.DsmEntryId) : (100000 + Math.Abs(e.DsmEntryId - entry.DsmEntryId)))
                         .FirstOrDefault();
                     if (rawConn != null)
                     {

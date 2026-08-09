@@ -21,7 +21,8 @@ public class ShiftAggregationService : IShiftAggregationService
         try
         {
             var rows = new List<DsmSummaryRowDto>();
-            foreach (var entry in entries)
+            var primaryEntries = entries.Where(e => !e.ReconciledToPumpId.HasValue).ToList();
+            foreach (var entry in primaryEntries)
             {
                 var cash1 = entry.CashDenominations
                     .Where(c => c.CashType == "Cash1")
