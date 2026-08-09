@@ -612,9 +612,8 @@ public class NozzleReadingRepository : INozzleReadingRepository
             if (currentDsmEntryId.HasValue)
             {
                 int cId = currentDsmEntryId.Value;
-                query = query.Where(r => r.DsmEntryId != cId 
-                    && r.DsmEntry.ReconciledToPumpId != cId
-                    && (r.DsmEntry.DsmEntryId < cId && (r.DsmEntry.ReconciledToPumpId == null || r.DsmEntry.ReconciledToPumpId.Value < cId)));
+                query = query.Where(r => 
+                    (r.DsmEntry!.ReconciledToPumpId.HasValue ? r.DsmEntry.ReconciledToPumpId.Value : r.DsmEntry.DsmEntryId) < cId);
             }
 
             var closings = await query
@@ -626,8 +625,8 @@ public class NozzleReadingRepository : INozzleReadingRepository
                     NozzleNumber = g.Key, 
                     Closing = g.OrderByDescending(x => x.DsmEntry!.Shift!.ShiftDate)
                                .ThenByDescending(x => x.DsmEntry!.Shift!.ShiftType)
+                               .ThenByDescending(x => x.DsmEntry!.ReconciledToPumpId.HasValue ? x.DsmEntry.ReconciledToPumpId.Value : x.DsmEntry.DsmEntryId)
                                .ThenByDescending(x => x.ClosingReading)
-                               .ThenByDescending(x => x.DsmEntryId)
                                .ThenByDescending(x => x.NozzleReadingId)
                                .Select(x => x.ClosingReading)
                                .FirstOrDefault() 
