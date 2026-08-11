@@ -146,6 +146,9 @@ public static class SeedData
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE SyncChangeLogs ADD COLUMN SyncGuid TEXT NULL;"); } catch { }
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE SyncChangeLogs ADD COLUMN RecordGuid TEXT NULL;"); } catch { }
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE Settings ADD COLUMN CngRate REAL NOT NULL DEFAULT 85.0;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE Settings ADD COLUMN Shift1Manager TEXT NULL;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE Settings ADD COLUMN Shift2Manager TEXT NULL;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE Settings ADD COLUMN Shift3Manager TEXT NULL;"); } catch { }
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE DsmProfiles ADD COLUMN MobileNumber TEXT NULL;"); } catch { }
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE DebitEntries ADD COLUMN SlipNumber TEXT NULL;"); } catch { }
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE DebitEntries ADD COLUMN Remarks TEXT NULL;"); } catch { }

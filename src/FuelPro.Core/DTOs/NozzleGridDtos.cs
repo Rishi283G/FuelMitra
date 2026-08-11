@@ -13,10 +13,12 @@ public class NozzleDisplayItem
     public double ClosingReading { get; set; }
     public double SaleLitres { get; set; }
     public bool HasReading { get; set; }
+    public string NozzleName => $"Nozzle {NozzleNumber}";
 }
 
 public class NozzleGroupDto : INotifyPropertyChanged
 {
+    public int PumpId { get; set; }
     public event PropertyChangedEventHandler? PropertyChanged;
 
     protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
@@ -42,62 +44,62 @@ public class NozzleGroupDto : INotifyPropertyChanged
     public double Dip
     {
         get => _dip;
-        set { _dip = value; OnPropertyChanged(); }
+        set { _dip = Math.Round(value, 2); OnPropertyChanged(); }
     }
 
     private double _stock;
     public double Stock
     {
         get => _stock;
-        set { _stock = value; OnPropertyChanged(); }
+        set { _stock = Math.Round(value, 2); OnPropertyChanged(); }
     }
 
     private double _density;
     public double Density
     {
         get => _density;
-        set { _density = value; OnPropertyChanged(); }
+        set { _density = Math.Round(value, 2); OnPropertyChanged(); }
     }
 
     private double _openingStock;
     public double OpeningStock
     {
         get => _openingStock;
-        set { _openingStock = value; OnPropertyChanged(); RecalcCalculatedStock(); }
+        set { _openingStock = Math.Round(value, 2); OnPropertyChanged(); RecalcCalculatedStock(); }
     }
 
     private double _fuelDispensed;
     public double FuelDispensed
     {
         get => _fuelDispensed;
-        set { _fuelDispensed = value; OnPropertyChanged(); RecalcCalculatedStock(); }
+        set { _fuelDispensed = Math.Round(value, 2); OnPropertyChanged(); RecalcCalculatedStock(); }
     }
 
     private double _testingLitres;
     public double TestingLitres
     {
         get => _testingLitres;
-        set { _testingLitres = value; OnPropertyChanged(); RecalcCalculatedStock(); }
+        set { _testingLitres = Math.Round(value, 2); OnPropertyChanged(); RecalcCalculatedStock(); }
     }
 
     private double _receipts;
     public double Receipts
     {
         get => _receipts;
-        set { _receipts = value; OnPropertyChanged(); RecalcCalculatedStock(); }
+        set { _receipts = Math.Round(value, 2); OnPropertyChanged(); RecalcCalculatedStock(); }
     }
 
     private double _calculatedStock;
     public double CalculatedStock
     {
         get => _calculatedStock;
-        private set { _calculatedStock = value; OnPropertyChanged(); }
+        private set { _calculatedStock = Math.Round(value, 2); OnPropertyChanged(); }
     }
 
     private void RecalcCalculatedStock()
     {
         double oldCalculated = _calculatedStock;
-        CalculatedStock = OpeningStock - FuelDispensed + TestingLitres + Receipts;
+        CalculatedStock = Math.Round(OpeningStock - FuelDispensed + TestingLitres + Receipts, 2);
         if (Stock == 0 || Math.Abs(Stock - oldCalculated) < 0.001)
         {
             Stock = CalculatedStock;
@@ -107,4 +109,10 @@ public class NozzleGroupDto : INotifyPropertyChanged
     public List<List<NozzleDisplayItem>> Rows { get; set; } = new();
 
     public IEnumerable<NozzleDisplayItem> FlatNozzles => Rows?.SelectMany(r => r) ?? Enumerable.Empty<NozzleDisplayItem>();
+    public IEnumerable<NozzleDisplayItem> Nozzles => FlatNozzles;
+
+    public double DipMm => Dip;
+    public double StockLtr => Stock;
+    public double SaleLitres => FuelDispensed;
+    public double StockVariance => Stock - CalculatedStock;
 }

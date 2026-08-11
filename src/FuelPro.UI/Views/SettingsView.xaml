@@ -48,6 +48,25 @@
                                  Style="{StaticResource MaterialDesignOutlinedTextBox}" FontSize="16"/>
                     </Grid>
 
+                    <!-- Shift Managers Assignment -->
+                    <TextBlock Text="Shift Managers Assignment" FontSize="14" FontWeight="SemiBold" Margin="0,4,0,8" Opacity="0.8"/>
+                    <Grid Margin="0,0,0,16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBox Grid.Column="0" Text="{Binding Shift1Manager, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0"
+                                 materialDesign:HintAssist.Hint="Shift 1 Manager Name" materialDesign:HintAssist.IsFloating="True"
+                                 Style="{StaticResource MaterialDesignOutlinedTextBox}" FontSize="15"/>
+                        <TextBox Grid.Column="1" Text="{Binding Shift2Manager, UpdateSourceTrigger=PropertyChanged}" Margin="4,0,4,0"
+                                 materialDesign:HintAssist.Hint="Shift 2 Manager Name" materialDesign:HintAssist.IsFloating="True"
+                                 Style="{StaticResource MaterialDesignOutlinedTextBox}" FontSize="15"/>
+                        <TextBox Grid.Column="2" Text="{Binding Shift3Manager, UpdateSourceTrigger=PropertyChanged}" Margin="8,0,0,0"
+                                 materialDesign:HintAssist.Hint="Shift 3 Manager Name (Optional)" materialDesign:HintAssist.IsFloating="True"
+                                 Style="{StaticResource MaterialDesignOutlinedTextBox}" FontSize="15"/>
+                    </Grid>
+
                     <StackPanel Orientation="Horizontal">
                         <Button Content="Save Settings" Command="{Binding SaveSettingsCommand}" Height="40" Padding="24,0"
                                 Style="{StaticResource MaterialDesignRaisedButton}" Margin="0,0,16,0"/>

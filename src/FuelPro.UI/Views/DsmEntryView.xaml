@@ -729,7 +729,7 @@
                                          materialDesign:ElevationAssist.Elevation="Dp3">
                         <StackPanel>
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                <TextBlock Text="🏛️ Khandhare Petroleum" FontSize="16" FontWeight="SemiBold"
+                                <TextBlock Text="🏛️ Kandhare Petroleum" FontSize="16" FontWeight="SemiBold"
                                            Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}"/>
                                 <Button Content="+ Add" Margin="16,0,0,0"
                                         Style="{StaticResource MaterialDesignOutlinedButton}"
@@ -814,6 +814,7 @@
                 <Button Grid.Column="0" Content="💾 Save DSM Entry" Height="44" Padding="24,0"
                         Style="{StaticResource MaterialDesignRaisedButton}"
                         Command="{Binding SaveEntryCommand}"
+                        IsEnabled="{Binding CanSaveCurrentEntry}"
                         Margin="0,0,12,0"/>
                 <Button Grid.Column="1" Content="🔄 Clear Form" Height="44" Padding="24,0"
                         Style="{StaticResource MaterialDesignOutlinedButton}"
@@ -848,6 +849,7 @@
                               HeadersVisibility="Column"
                               PreviewMouseWheel="DataGrid_PreviewMouseWheel">
                         <DataGrid.Columns>
+                            <DataGridTextColumn Header="#" Binding="{Binding SequenceDisplay}" Width="50"/>
                             <DataGridTextColumn Header="DSM Name" Binding="{Binding DsmName}" Width="*"/>
                             <DataGridTextColumn Header="Pump" Binding="{Binding PumpDisplay}" Width="160"/>
 

@@ -122,8 +122,8 @@ public partial class ExpenseAnalysisViewModel : ObservableObject, IDisposable
                                 ExpenseId = kp.Id,
                                 Date = kp.Date,
                                 ShiftType = entry.Shift?.ShiftType ?? "—",
-                                Source = $"DSM: {entry.DsmName} (Khandhare Draw)",
-                                Description = $"Khandhare Petroleum Drawing: {kp.Name} (Slip: {kp.SlipNumber})",
+                                Source = $"DSM: {entry.DsmName} (Kandhare Petroleum)",
+                                Description = $"Kandhare Petroleum: {kp.Name} (Slip: {kp.SlipNumber})",
                                 Amount = kp.Amount
                             });
                         }

@@ -5,6 +5,8 @@ namespace FuelPro.Core.DTOs;
 /// </summary>
 public class DsmEntrySummaryDto
 {
+    public int SequenceNo { get; set; }
+    public string SequenceDisplay => SequenceNo > 0 ? $"#{SequenceNo}" : string.Empty;
     public int DsmEntryId { get; set; }
     public string DsmName { get; set; } = string.Empty;
     public int PumpId { get; set; }
@@ -146,6 +148,7 @@ public class DsmSummaryRowDto
 {
     public string DsmName { get; set; } = string.Empty;
     public string Shift { get; set; } = string.Empty;
+    public string ShiftLabel => Shift;
     public int PumpId { get; set; }
     public int? ConnectedPumpId { get; set; }
 
@@ -191,6 +194,13 @@ public class DsmSummaryRowDto
     public double Testing { get; set; }      // HSD Testing + MS Testing
     public double CashInHand { get; set; }   // Cash 2
     public double GrossSales { get; set; }
+
+    public double PhonePeTotal => PhonePeMorning + PhonePeNight + PhonePe;
+    public double CreditCardTotal => CreditCardMorning + CreditCardNight;
+    public double BankCash => CashDeposit;
+    public double DebtorSales => Debit;
+    public double GrossSale => GrossSales;
+    public double Difference => (CashDeposit + CashInHand + PhonePeMorning + PhonePeNight + PhonePe + CreditCardMorning + CreditCardNight + PetroCard + Debit + Expenses + Testing) - GrossSales;
 }
 
 /// <summary>
@@ -308,6 +318,7 @@ public class OtherCashRowDto
 public class ReconciliationRowDto
 {
     public string Description { get; set; } = string.Empty;
+    public string DescriptionWithBreakdown => Description;
     public double Amount { get; set; }
 }
 

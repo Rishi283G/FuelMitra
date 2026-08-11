@@ -6,6 +6,7 @@
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
              xmlns:converters="clr-namespace:FuelPro.UI.Converters"
              xmlns:viewmodels="clr-namespace:FuelPro.UI.ViewModels"
+             xmlns:views="clr-namespace:FuelPro.UI.Views"
              mc:Ignorable="d" 
              d:DataContext="{d:DesignInstance Type=viewmodels:FinalCalculationViewModel}"
              d:DesignHeight="800" d:DesignWidth="1200"
@@ -91,7 +92,15 @@
 
                 <StackPanel Grid.Column="4" Orientation="Horizontal">
                     <Button Content="Load/Refresh" Command="{Binding RefreshCommand}" Style="{StaticResource MaterialDesignOutlinedButton}" Margin="0,0,8,0" />
-                    <Button Content="Export CSV" Command="{Binding ExportCsvCommand}" Style="{StaticResource MaterialDesignOutlinedButton}" Margin="0,0,8,0" IsEnabled="{Binding HasData}" />
+                    <Button Command="{Binding ExportExcelCommand}" Style="{StaticResource MaterialDesignFlatMidBgButton}" Height="36" Padding="12,0" Margin="0,0,8,0" Background="#1B5E20" BorderBrush="#1B5E20" ToolTip="Export Shift Total to Excel" IsEnabled="{Binding HasData}">
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="FileExcel" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                            <TextBlock Text="Export Excel" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <ComboBox ItemsSource="{Binding ManagerOptions}" SelectedItem="{Binding SelectedManager}" IsEditable="True"
+                              materialDesign:HintAssist.Hint="Manager Name" Style="{StaticResource MaterialDesignFloatingHintComboBox}"
+                              Width="140" Margin="0,0,8,0" VerticalAlignment="Center" IsEnabled="{Binding HasData}"/>
                     <Button Content="Print" Click="PrintButton_Click" Style="{StaticResource MaterialDesignOutlinedButton}" Margin="0,0,8,0" IsEnabled="{Binding HasData}" />
                     <Button Content="Lock Shift" Command="{Binding LockShiftCommand}" Style="{StaticResource MaterialDesignRaisedButton}"
                             IsEnabled="{Binding HasData}" Visibility="{Binding IsShiftLocked, Converter={StaticResource InverseBoolToVis}}" />
@@ -412,7 +421,7 @@
                         <StackPanel>
                             <TextBlock Text="F. Final Reconciliation" Style="{StaticResource SectionTitle}" />
                             
-                            <DataGrid ItemsSource="{Binding ReconciliationRows}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="None" MaxHeight="250">
+                            <DataGrid ItemsSource="{Binding ReconciliationRows}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="None" MaxHeight="500">
                                 <DataGrid.Columns>
                                     <DataGridTextColumn Binding="{Binding Description}" Width="*" />
                                     <DataGridTextColumn Binding="{Binding Amount, Converter={StaticResource CurrencyConverter}}" Width="120">
@@ -502,51 +511,50 @@
                                                      <ColumnDefinition Width="*" />
                                                  </Grid.ColumnDefinitions>
 
-                                                 <!-- Row 0: Dip and Receipts -->
+                                                 <!-- Row 0: Dip (Top Left) and Stock (Top Right) editable inputs -->
                                                  <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" Margin="4,2" VerticalAlignment="Center">
-                                                     <TextBlock Text="Dip: " FontWeight="SemiBold" Opacity="0.7" VerticalAlignment="Center"/>
-                                                     <TextBox Text="{Binding Dip, UpdateSourceTrigger=PropertyChanged}" FontWeight="Bold" Width="55" 
+                                                     <TextBlock Text="Dip: " FontWeight="Bold" FontSize="13" Opacity="0.85" VerticalAlignment="Center"/>
+                                                     <TextBox Text="{Binding Dip, UpdateSourceTrigger=LostFocus, StringFormat={}{0:N2}}" FontWeight="Bold" FontSize="13" Width="60" 
                                                               IsEnabled="{Binding DataContext.IsShiftLocked, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource InverseBool}}"/>
-                                                     <TextBlock Text=" mm" Opacity="0.7" VerticalAlignment="Center"/>
+                                                     <TextBlock Text=" mm" Opacity="0.75" FontSize="13" VerticalAlignment="Center"/>
                                                  </StackPanel>
                                                  <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="4,2" VerticalAlignment="Center">
-                                                     <TextBlock Text="Receipts: " FontWeight="SemiBold" Opacity="0.7" VerticalAlignment="Center"/>
-                                                     <TextBox Text="{Binding Receipts, UpdateSourceTrigger=PropertyChanged}" FontWeight="Bold" Width="55" 
-                                                              IsEnabled="False"/>
-                                                     <TextBlock Text=" L" Opacity="0.7" VerticalAlignment="Center"/>
+                                                     <TextBlock Text="Stock: " FontWeight="Bold" FontSize="13" Foreground="Green" VerticalAlignment="Center"/>
+                                                     <TextBox Text="{Binding Stock, UpdateSourceTrigger=LostFocus, StringFormat={}{0:N2}}" FontWeight="Bold" FontSize="13" Foreground="Green" Width="70" 
+                                                              IsEnabled="{Binding DataContext.IsShiftLocked, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource InverseBool}}"/>
+                                                     <TextBlock Text=" Ltr" FontWeight="Bold" FontSize="13" Foreground="Green" VerticalAlignment="Center"/>
                                                  </StackPanel>
 
-                                                 <!-- Row 1: Opening Stock and Fuel Dispensed -->
+                                                 <!-- Row 1: Opening Stock and Sales -->
                                                  <StackPanel Grid.Row="1" Grid.Column="0" Orientation="Horizontal" Margin="4,2" VerticalAlignment="Center">
                                                      <TextBlock Text="Opening: " Opacity="0.6" FontSize="11" VerticalAlignment="Center"/>
-                                                     <TextBlock Text="{Binding OpeningStock, StringFormat={}{0:N1}}" FontWeight="SemiBold" Opacity="0.8" FontSize="11" VerticalAlignment="Center"/>
+                                                     <TextBlock Text="{Binding OpeningStock, StringFormat={}{0:N2}}" FontWeight="SemiBold" Opacity="0.8" FontSize="11" VerticalAlignment="Center"/>
                                                      <TextBlock Text=" L" Opacity="0.6" FontSize="11" VerticalAlignment="Center"/>
                                                  </StackPanel>
                                                  <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="4,2" VerticalAlignment="Center">
                                                      <TextBlock Text="Sales: " Opacity="0.6" FontSize="11" VerticalAlignment="Center"/>
-                                                     <TextBlock Text="{Binding FuelDispensed, StringFormat={}{0:N1}}" FontWeight="SemiBold" Opacity="0.8" FontSize="11" VerticalAlignment="Center"/>
+                                                     <TextBlock Text="{Binding FuelDispensed, StringFormat={}{0:N2}}" FontWeight="SemiBold" Opacity="0.8" FontSize="11" VerticalAlignment="Center"/>
                                                      <TextBlock Text=" L" Opacity="0.6" FontSize="11" VerticalAlignment="Center"/>
                                                  </StackPanel>
 
-                                                 <!-- Row 2: Testing and Calculated Stock -->
+                                                 <!-- Row 2: Testing and Receipts -->
                                                  <StackPanel Grid.Row="2" Grid.Column="0" Orientation="Horizontal" Margin="4,2" VerticalAlignment="Center">
                                                      <TextBlock Text="Testing: " Opacity="0.6" FontSize="11" VerticalAlignment="Center"/>
-                                                     <TextBlock Text="{Binding TestingLitres, StringFormat={}{0:N1}}" FontWeight="SemiBold" Opacity="0.8" FontSize="11" VerticalAlignment="Center"/>
+                                                     <TextBlock Text="{Binding TestingLitres, StringFormat={}{0:N2}}" FontWeight="SemiBold" Opacity="0.8" FontSize="11" VerticalAlignment="Center"/>
                                                      <TextBlock Text=" L" Opacity="0.6" FontSize="11" VerticalAlignment="Center"/>
                                                  </StackPanel>
                                                  <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="4,2" VerticalAlignment="Center">
-                                                     <TextBlock Text="Calculated: " Opacity="0.7" FontWeight="SemiBold" FontSize="11" VerticalAlignment="Center"/>
-                                                     <TextBlock Text="{Binding CalculatedStock, StringFormat={}{0:N1}}" FontWeight="Bold" Opacity="0.9" FontSize="11" VerticalAlignment="Center"/>
-                                                     <TextBlock Text=" L" Opacity="0.7" FontSize="11" VerticalAlignment="Center"/>
+                                                     <TextBlock Text="Receipts: " Opacity="0.6" FontSize="11" VerticalAlignment="Center"/>
+                                                     <TextBlock Text="{Binding Receipts, StringFormat={}{0:N2}}" FontWeight="SemiBold" Opacity="0.8" FontSize="11" VerticalAlignment="Center"/>
+                                                     <TextBlock Text=" L" Opacity="0.6" FontSize="11" VerticalAlignment="Center"/>
                                                  </StackPanel>
 
-                                                 <!-- Row 3: Actual Stock -->
+                                                 <!-- Row 3: Calculated Stock -->
                                                  <Border Grid.Row="3" Grid.ColumnSpan="2" BorderBrush="{DynamicResource MaterialDesign.Brush.Divider}" BorderThickness="0,1,0,0" Margin="0,4,0,0" Padding="0,4,0,0">
-                                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                                         <TextBlock Text="Actual Stock: " FontWeight="Bold" Foreground="Green" VerticalAlignment="Center"/>
-                                                         <TextBox Text="{Binding Stock, UpdateSourceTrigger=PropertyChanged}" FontWeight="Bold" Foreground="Green" Width="70"
-                                                                  IsEnabled="{Binding DataContext.IsShiftLocked, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource InverseBool}}"/>
-                                                         <TextBlock Text=" Ltr" FontWeight="Bold" Foreground="Green" VerticalAlignment="Center"/>
+                                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="4,2">
+                                                         <TextBlock Text="Calculated: " Opacity="0.7" FontWeight="SemiBold" FontSize="11" VerticalAlignment="Center"/>
+                                                         <TextBlock Text="{Binding CalculatedStock, StringFormat={}{0:N2}}" FontWeight="Bold" Opacity="0.9" FontSize="11" VerticalAlignment="Center"/>
+                                                         <TextBlock Text=" L" Opacity="0.7" FontSize="11" VerticalAlignment="Center"/>
                                                      </StackPanel>
                                                  </Border>
                                              </Grid>
@@ -591,8 +599,8 @@
                                                                         <ColumnDefinition Width="*" />
                                                                     </Grid.ColumnDefinitions>
                                                                     <TextBlock Grid.Column="0" Text="{Binding NozzleNumber, StringFormat='N{0}'}" FontWeight="Bold" VerticalAlignment="Center" Margin="4,0,0,0"/>
-                                                                    <TextBlock Grid.Column="1" Text="{Binding OpeningReading, StringFormat='{}{0:F0}'}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
-                                                                    <TextBlock Grid.Column="2" Text="{Binding ClosingReading, StringFormat='{}{0:F0}'}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                                                    <TextBlock Grid.Column="1" Text="{Binding OpeningReading, StringFormat='{}{0:F2}'}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                                                    <TextBlock Grid.Column="2" Text="{Binding ClosingReading, StringFormat='{}{0:F2}'}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                                                                     <TextBlock Grid.Column="3" Text="{Binding SaleLitres, Converter={StaticResource LitreConverter}}" FontWeight="Bold" Foreground="Green" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,4,0"/>
                                                                 </Grid>
                                                             </Border>
@@ -606,6 +614,11 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
                     </StackPanel>
+                </materialDesign:Card>
+
+                <!-- DEBTOR MANAGEMENT SECTION -->
+                <materialDesign:Card Grid.Row="3" Grid.ColumnSpan="2" Margin="0,16,0,0" Padding="0" UniformCornerRadius="12" materialDesign:ElevationAssist.Elevation="Dp3">
+                    <views:DebtorManagementView DataContext="{Binding DebtorManagementVm}" MinHeight="650"/>
                 </materialDesign:Card>
 
             </Grid>

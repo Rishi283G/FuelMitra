@@ -247,6 +247,22 @@ public partial class DsmEntryViewModel : ObservableObject
     [ObservableProperty] private string _statusMessage = "";
     [ObservableProperty] private string _dsmCumulativeShiftSummaryMessage = "";
     [ObservableProperty] private bool _isSaving;
+    [ObservableProperty] private bool _isSaved;
+    public bool IsNotSaving => !IsSaving;
+    public bool CanSaveCurrentEntry => !IsSaving && !IsSaved;
+
+    partial void OnIsSavedChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CanSaveCurrentEntry));
+        SaveEntryCommand.NotifyCanExecuteChanged();
+    }
+
+    partial void OnIsSavingChanged(bool value)
+    {
+        OnPropertyChanged(nameof(IsNotSaving));
+        OnPropertyChanged(nameof(CanSaveCurrentEntry));
+        SaveEntryCommand.NotifyCanExecuteChanged();
+    }
     [ObservableProperty] private int? _editingEntryId;
     [ObservableProperty] private string _startTime = "08:00 AM";
     [ObservableProperty] private string _endTime = "08:00 PM";
@@ -729,6 +745,10 @@ public partial class DsmEntryViewModel : ObservableObject
 
     public void RecalculateAll()
     {
+        if (_isSaved && !_isEditing)
+        {
+            IsSaved = false;
+        }
         TotalLitres = NozzleReadings.Sum(n => n.SaleLitres);
         var calc = _dsmCalculationService.Calculate(BuildCalculationDto());
         GrossSales = (double)calc.GrossSales;
@@ -756,9 +776,13 @@ public partial class DsmEntryViewModel : ObservableObject
     [RelayCommand]
     private void RemoveKhandharePetroleumEntry(KhandharePetroleumRow? row) { if (row != null) KhandharePetroleumEntries.Remove(row); RecalculateAll(); }
 
-    [RelayCommand]
+    private bool CanSaveEntry() => !IsSaving && !IsSaved;
+
+    [RelayCommand(CanExecute = nameof(CanSaveEntry))]
     private async Task SaveEntryAsync()
     {
+        if (IsSaving) return;
+
         var validationErrors = ValidateBeforeSave();
         if (validationErrors.Count > 0)
         {
@@ -844,7 +868,7 @@ public partial class DsmEntryViewModel : ObservableObject
                 .Where(kp => !string.IsNullOrWhiteSpace(kp.Name) || !string.IsNullOrWhiteSpace(kp.SlipNumber) || (kp.Amount ?? 0) > 0)
                 .Select(kp => new KhandharePetroleumEntry
                 {
-                    Name = !string.IsNullOrWhiteSpace(kp.Name) ? kp.Name : (!string.IsNullOrWhiteSpace(kp.SlipNumber) ? $"Slip #{kp.SlipNumber}" : "Khandhare Petroleum"),
+                    Name = !string.IsNullOrWhiteSpace(kp.Name) ? kp.Name : (!string.IsNullOrWhiteSpace(kp.SlipNumber) ? $"Slip #{kp.SlipNumber}" : "Kandhare Petroleum"),
                     SlipNumber = kp.SlipNumber ?? "",
                     Amount = kp.Amount ?? 0
                 }).ToList();
@@ -871,7 +895,8 @@ public partial class DsmEntryViewModel : ObservableObject
 
             if (result.Success)
             {
-                EditingEntryId = null;
+                EditingEntryId = result.Data?.DsmEntryId ?? EditingEntryId;
+                IsSaved = true;
                 StatusMessage = "✅ DSM Entry saved successfully!";
                 _draftService.ClearDraft();
                 await LoadShiftEntriesAsync();
@@ -890,7 +915,10 @@ public partial class DsmEntryViewModel : ObservableObject
         {
             StatusMessage = $"❌ Save failed: {ex.Message}";
         }
-        finally { IsSaving = false; }
+        finally
+        {
+            IsSaving = false;
+        }
     }
 
 
@@ -899,6 +927,7 @@ public partial class DsmEntryViewModel : ObservableObject
     {
         DsmName = "";
         EditingEntryId = null;
+        IsSaved = false;
         StartTime = "08:00 AM";
         EndTime = "08:00 PM";
         PhonePeCardMorning = PhonePeCardNight = PhonePeMorning = PhonePeNight = CreditCardMorning = CreditCardNight = PetroCardMorning = PetroCardNight = Others = CashDeposit = null;
@@ -923,6 +952,7 @@ public partial class DsmEntryViewModel : ObservableObject
     public async Task HydrateFromEntryAsync(DsmEntry entry)
     {
         _isEditing = true;
+        IsSaved = true;
         try
         {
             EditingEntryId = entry.DsmEntryId;
@@ -1036,7 +1066,11 @@ public partial class DsmEntryViewModel : ObservableObject
 
                 if (savedReading != null)
                 {
-                    if (savedReading.OpeningReading > 0 || !nozzleRow.OpeningReading.HasValue || nozzleRow.OpeningReading == 0)
+                    if (savedReading.OpeningReading > 0)
+                    {
+                        nozzleRow.OpeningReading = savedReading.OpeningReading;
+                    }
+                    else if (!nozzleRow.OpeningReading.HasValue || nozzleRow.OpeningReading == 0)
                     {
                         nozzleRow.OpeningReading = savedReading.OpeningReading;
                     }
@@ -1166,7 +1200,7 @@ public partial class DsmEntryViewModel : ObservableObject
                                     DsmEntryId = entry.DsmEntryId,
                                     DsmName = entry.DsmName,
                                     Date = entry.Shift?.ShiftDate ?? SelectedDate,
-                                    Name = !string.IsNullOrWhiteSpace(name) ? name : (!string.IsNullOrWhiteSpace(slipNumber) ? $"Slip #{slipNumber}" : "Khandhare Petroleum"),
+                                    Name = !string.IsNullOrWhiteSpace(name) ? name : (!string.IsNullOrWhiteSpace(slipNumber) ? $"Slip #{slipNumber}" : "Kandhare Petroleum"),
                                     SlipNumber = slipNumber,
                                     Amount = amount
                                 };

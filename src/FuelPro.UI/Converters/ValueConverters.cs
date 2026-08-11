@@ -359,3 +359,32 @@ public class IntToVisibilityConverter : IValueConverter
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
         => throw new NotImplementedException();
 }
+
+/// <summary>
+/// Returns Neon Green for Cash/PhonePe/Card, Orange for Cheque/Bank Transfer, Red for DSM Short.
+/// </summary>
+public class PaymentCategoryToColorConverter : IValueConverter
+{
+    private static readonly SolidColorBrush NeonGreen = new(Color.FromRgb(0, 200, 83)); // #00C853
+    private static readonly SolidColorBrush Orange = new(Color.FromRgb(255, 152, 0));   // #FF9800
+    private static readonly SolidColorBrush Red = new(Color.FromRgb(211, 47, 47));      // #D32F2F
+    private static readonly SolidColorBrush DefaultBrush = new(Color.FromRgb(33, 33, 33));
+
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is string cat)
+        {
+            var lower = cat.ToLowerInvariant();
+            if (lower.Contains("cash") || lower.Contains("phonepe") || lower.Contains("card") || lower.Contains("upi"))
+                return NeonGreen;
+            if (lower.Contains("cheque") || lower.Contains("bank") || lower.Contains("transfer"))
+                return Orange;
+            if (lower.Contains("short") || lower.Contains("loss"))
+                return Red;
+        }
+        return DefaultBrush;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotImplementedException();
+}

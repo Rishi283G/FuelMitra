@@ -55,7 +55,7 @@
 
                 <StackPanel Orientation="Horizontal" Grid.Column="0">
                     <materialDesign:PackIcon Kind="AccountCashOutline" Width="28" Height="28" VerticalAlignment="Center" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" Margin="0,0,10,0"/>
-                    <TextBlock Text="DSM Personal Debtors Management" FontSize="22" FontWeight="Bold" VerticalAlignment="Center" />
+                    <TextBlock Text="DSM Loss Management" FontSize="22" FontWeight="Bold" VerticalAlignment="Center" />
                 </StackPanel>
 
                 <Button Grid.Column="2" Content="Refresh" Command="{Binding LoadDataCommand}" Style="{StaticResource MaterialDesignOutlinedButton}"/>
@@ -64,7 +64,7 @@
 
         <!-- MAIN LAYOUT -->
         <TabControl Grid.Row="1" Margin="16,0,16,16" Style="{StaticResource MaterialDesignNavigationRailTabControl}">
-            <TabItem Header="DSM Personal Debtors" Height="45">
+            <TabItem Header="DSM Loss" Height="45">
                 <Grid Margin="0,16,0,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="4*"/>
@@ -346,7 +346,7 @@
                 </Grid>
             </TabItem>
             
-            <TabItem Header="Khandhare Petroleum Entries" Height="45">
+            <TabItem Header="Kandhare Petroleum Entries" Height="45">
                 <Grid Margin="0,16,0,0">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -371,15 +371,15 @@
                             
                             <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
                                 <Button Content="Export Excel" Command="{Binding ExportKpExcelCommand}" Style="{StaticResource MaterialDesignRaisedButton}" Margin="0,0,8,0"/>
-                                <Button Content="Print Drawings" Command="{Binding PrintKpLedgerCommand}" Style="{StaticResource MaterialDesignOutlinedButton}" IsEnabled="{Binding KpEntries.Count}"/>
+                                <Button Content="Print Kandhare Petroleum" Command="{Binding PrintKpLedgerCommand}" Style="{StaticResource MaterialDesignOutlinedButton}" IsEnabled="{Binding KpEntries.Count}"/>
                             </StackPanel>
                         </Grid>
                     </materialDesign:Card>
 
-                    <!-- Drawings DataGrid -->
+                    <!-- Kandhare Petroleum DataGrid -->
                     <materialDesign:Card Grid.Row="1" Style="{StaticResource SectionCard}">
                         <DockPanel LastChildFill="True">
-                            <TextBlock DockPanel.Dock="Top" Text="Drawings &amp; Expenses Ledger" Style="{StaticResource SectionTitle}"/>
+                            <TextBlock DockPanel.Dock="Top" Text="Kandhare Petroleum Ledger" Style="{StaticResource SectionTitle}"/>
                             <DataGrid ItemsSource="{Binding KpEntries}" AutoGenerateColumns="False" IsReadOnly="True" VerticalScrollBarVisibility="Auto">
                                 <DataGrid.Columns>
                                     <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat={}{0:dd-MMM-yyyy}}" Width="1.5*"/>
@@ -395,7 +395,7 @@
                     <!-- Bottom summary -->
                     <materialDesign:Card Grid.Row="2" Margin="0,8,0,0" Padding="12" UniformCornerRadius="6" Background="{DynamicResource MaterialDesign.Brush.Primary.Light}">
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                            <TextBlock Text="Total Drawings &amp; Expenses: " Foreground="White" FontSize="14" Opacity="0.8"/>
+                            <TextBlock Text="Total Kandhare Petroleum: " Foreground="White" FontSize="14" Opacity="0.8"/>
                             <TextBlock Text="{Binding KpTotalAmount, Converter={StaticResource CurrencyConverter}}" Foreground="White" FontSize="16" FontWeight="Bold"/>
                         </StackPanel>
                     </materialDesign:Card>

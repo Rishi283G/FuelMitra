@@ -22,21 +22,7 @@ interface NozzleRow extends DraftNozzleReading {
   isOpeningReadOnly?: boolean;
 }
 
-interface PersonalDebtorRow {
-  amount: number;
-  fuelProduct: string;
-  remarks: string;
-  paymentMethod: "Cash" | "Card";
-  tid: string;
-  batch: string;
-  denom500: number;
-  denom200: number;
-  denom100: number;
-  denom50: number;
-  denom20: number;
-  denom10: number;
-  coins: number;
-}
+
 
 interface KhandharePetroleumRow {
   name: string;
@@ -124,43 +110,17 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   const [newDebtorVehicle, setNewDebtorVehicle] = useState("");
   const [newDebtorSlip, setNewDebtorSlip] = useState("");
   const [customVehicle, setCustomVehicle] = useState(false);
-
-  const [personalDebtors, setPersonalDebtors] = useState<PersonalDebtorRow[]>(
-    [],
-  );
   const [khandhareEntries, setKhandhareEntries] = useState<KhandharePetroleumRow[]>([]);
   const [newKpName, setNewKpName] = useState("");
   const [newKpSlipNumber, setNewKpSlipNumber] = useState("");
   const [newKpAmount, setNewKpAmount] = useState("");
-  const [newPersonalDebtorAmount, setNewPersonalDebtorAmount] = useState("");
-  const [newPersonalDebtorFuelProduct, setNewPersonalDebtorFuelProduct] =
-    useState("");
-  const [newPersonalDebtorRemarks, setNewPersonalDebtorRemarks] = useState("");
-  const [newPersonalDebtorPaymentMethod, setNewPersonalDebtorPaymentMethod] =
-    useState<"Cash" | "Card">("Cash");
-  const [newPersonalDebtorTid, setNewPersonalDebtorTid] = useState("");
-  const [newPersonalDebtorBatch, setNewPersonalDebtorBatch] = useState("");
-  const [newPersonalDebtorDenom500, setNewPersonalDebtorDenom500] =
-    useState<number>(0);
-  const [newPersonalDebtorDenom200, setNewPersonalDebtorDenom200] =
-    useState<number>(0);
-  const [newPersonalDebtorDenom100, setNewPersonalDebtorDenom100] =
-    useState<number>(0);
-  const [newPersonalDebtorDenom50, setNewPersonalDebtorDenom50] =
-    useState<number>(0);
-  const [newPersonalDebtorDenom20, setNewPersonalDebtorDenom20] =
-    useState<number>(0);
-  const [newPersonalDebtorDenom10, setNewPersonalDebtorDenom10] =
-    useState<number>(0);
-  const [newPersonalDebtorCoins, setNewPersonalDebtorCoins] =
-    useState<number>(0);
-
-  // Cash 1 Denominations
+  // Cash 1 Deposit Amount
+  const [cash1Amount, setCash1Amount] = useState<number>(0);
   const [cash1Denom500, setCash1Denom500] = useState<number>(0);
   const [cash1Denom200, setCash1Denom200] = useState<number>(0);
   const [cash1Denom100, setCash1Denom100] = useState<number>(0);
   const cashDeposit =
-    cash1Denom500 * 500 + cash1Denom200 * 200 + cash1Denom100 * 100;
+    cash1Amount || (cash1Denom500 * 500 + cash1Denom200 * 200 + cash1Denom100 * 100);
 
   const [others, setOthers] = useState(0);
   const [expenseEntries, setExpenseEntries] = useState<ExpenseRow[]>([]);
@@ -294,26 +254,11 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       setDenom20(parsed.denom20 ?? 0);
       setDenom10(parsed.denom10 ?? 0);
       setCoins(parsed.coins ?? 0);
+      setCash1Amount(parsed.cash1Amount ?? 0);
       setCash1Denom500(parsed.cash1Denom500 ?? 0);
       setCash1Denom200(parsed.cash1Denom200 ?? 0);
       setCash1Denom100(parsed.cash1Denom100 ?? 0);
-      setNewPersonalDebtorAmount(parsed.newPersonalDebtorAmount ?? "");
-      setNewPersonalDebtorFuelProduct(
-        parsed.newPersonalDebtorFuelProduct ?? "",
-      );
-      setNewPersonalDebtorRemarks(parsed.newPersonalDebtorRemarks ?? "");
-      setNewPersonalDebtorPaymentMethod(
-        parsed.newPersonalDebtorPaymentMethod ?? "Cash",
-      );
-      setNewPersonalDebtorTid(parsed.newPersonalDebtorTid ?? "");
-      setNewPersonalDebtorBatch(parsed.newPersonalDebtorBatch ?? "");
-      setNewPersonalDebtorDenom500(parsed.newPersonalDebtorDenom500 ?? 0);
-      setNewPersonalDebtorDenom200(parsed.newPersonalDebtorDenom200 ?? 0);
-      setNewPersonalDebtorDenom100(parsed.newPersonalDebtorDenom100 ?? 0);
-      setNewPersonalDebtorDenom50(parsed.newPersonalDebtorDenom50 ?? 0);
-      setNewPersonalDebtorDenom20(parsed.newPersonalDebtorDenom20 ?? 0);
-      setNewPersonalDebtorDenom10(parsed.newPersonalDebtorDenom10 ?? 0);
-      setNewPersonalDebtorCoins(parsed.newPersonalDebtorCoins ?? 0);
+
       setNewDebtorName(parsed.newDebtorName ?? "");
       setNewDebtorAmount(parsed.newDebtorAmount ?? "");
       setNewDebtorVehicle(parsed.newDebtorVehicle ?? "");
@@ -359,7 +304,6 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       setDebtorEntries(parsed.debtorEntries ?? []);
       setCardSwipeDetails(parsed.cardSwipeDetails ?? []);
       setSalesQuantities(parsed.salesQuantities ?? {});
-      setPersonalDebtors(parsed.personalDebtors ?? []);
       setKhandhareEntries(parsed.khandhareEntries ?? []);
       setStep(parsed.step ?? "readings");
 
@@ -389,22 +333,11 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       denom20,
       denom10,
       coins,
+      cash1Amount,
       cash1Denom500,
       cash1Denom200,
       cash1Denom100,
-      newPersonalDebtorAmount,
-      newPersonalDebtorFuelProduct,
-      newPersonalDebtorRemarks,
-      newPersonalDebtorPaymentMethod,
-      newPersonalDebtorTid,
-      newPersonalDebtorBatch,
-      newPersonalDebtorDenom500,
-      newPersonalDebtorDenom200,
-      newPersonalDebtorDenom100,
-      newPersonalDebtorDenom50,
-      newPersonalDebtorDenom20,
-      newPersonalDebtorDenom10,
-      newPersonalDebtorCoins,
+
       newDebtorName,
       newDebtorAmount,
       newDebtorVehicle,
@@ -446,7 +379,6 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       debtorEntries,
       cardSwipeDetails,
       salesQuantities,
-      personalDebtors,
       khandhareEntries,
       step,
       nozzleRows,
@@ -472,19 +404,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     cash1Denom500,
     cash1Denom200,
     cash1Denom100,
-    newPersonalDebtorAmount,
-    newPersonalDebtorFuelProduct,
-    newPersonalDebtorRemarks,
-    newPersonalDebtorPaymentMethod,
-    newPersonalDebtorTid,
-    newPersonalDebtorBatch,
-    newPersonalDebtorDenom500,
-    newPersonalDebtorDenom200,
-    newPersonalDebtorDenom100,
-    newPersonalDebtorDenom50,
-    newPersonalDebtorDenom20,
-    newPersonalDebtorDenom10,
-    newPersonalDebtorCoins,
+
     newDebtorName,
     newDebtorAmount,
     newDebtorVehicle,
@@ -523,7 +443,6 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     debtorEntries,
     cardSwipeDetails,
     salesQuantities,
-    personalDebtors,
     khandhareEntries,
     step,
     nozzleRows,
@@ -595,32 +514,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     loadCreditors();
   }, [profile]);
 
-  function updatePersonalDebtorDenomination(
-    denomField: "500" | "200" | "100" | "50" | "20" | "10" | "coins",
-    val: number,
-  ) {
-    const d500 = denomField === "500" ? val : newPersonalDebtorDenom500;
-    const d200 = denomField === "200" ? val : newPersonalDebtorDenom200;
-    const d100 = denomField === "100" ? val : newPersonalDebtorDenom100;
-    const d50 = denomField === "50" ? val : newPersonalDebtorDenom50;
-    const d20 = denomField === "20" ? val : newPersonalDebtorDenom20;
-    const d10 = denomField === "10" ? val : newPersonalDebtorDenom10;
-    const c = denomField === "coins" ? val : newPersonalDebtorCoins;
 
-    if (denomField === "500") setNewPersonalDebtorDenom500(val);
-    if (denomField === "200") setNewPersonalDebtorDenom200(val);
-    if (denomField === "100") setNewPersonalDebtorDenom100(val);
-    if (denomField === "50") setNewPersonalDebtorDenom50(val);
-    if (denomField === "20") setNewPersonalDebtorDenom20(val);
-    if (denomField === "10") setNewPersonalDebtorDenom10(val);
-    if (denomField === "coins") setNewPersonalDebtorCoins(val);
-
-    const total =
-      d500 * 500 + d200 * 200 + d100 * 100 + d50 * 50 + d20 * 20 + d10 * 10 + c;
-    if (total > 0) {
-      setNewPersonalDebtorAmount(total.toString());
-    }
-  }
 
   // ── Load nozzle config from Supabase (set by manager) ───────
   async function loadNozzleConfig() {
@@ -878,6 +772,30 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         console.error("Failed to fetch from IndexedDB drafts:", e);
       }
 
+      // Read existing draft readings from localStorage to avoid overwriting typed values on refresh or app minimize
+      const draftMap: Record<number, { closingReading: number; testing: number; openingReading?: number }> = {};
+      if (draftStorageKey) {
+        try {
+          const savedDraft = localStorage.getItem(draftStorageKey);
+          if (savedDraft) {
+            const parsed = JSON.parse(savedDraft);
+            if (parsed.nozzleRows && Array.isArray(parsed.nozzleRows)) {
+              parsed.nozzleRows.forEach((r: any) => {
+                if (r.nozzleId) {
+                  draftMap[r.nozzleId] = {
+                    closingReading: Number(r.closingReading) || 0,
+                    testing: Number(r.testing) || 0,
+                    openingReading: Number(r.openingReading) || 0,
+                  };
+                }
+              });
+            }
+          }
+        } catch (e) {
+          console.error("Failed to read draft map for nozzle rows:", e);
+        }
+      }
+
       const rows: NozzleRow[] = configRows.map((n, index) => {
         let rate = msIRate;
         if (n.fuelType) {
@@ -892,17 +810,22 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         }
 
         const prevClosing = prevClosings[n.nozzleId] || 0;
+        const draftEntry = draftMap[n.nozzleId];
+
+        const opening = (prevClosing === 0 && draftEntry && draftEntry.openingReading)
+          ? draftEntry.openingReading
+          : prevClosing;
 
         return {
           rowId: index + 1,
           nozzleId: n.nozzleId,
           fuelType: n.fuelType,
-          openingReading: prevClosing,
-          closingReading: 0,
+          openingReading: opening,
+          closingReading: draftEntry?.closingReading ?? 0,
           rate,
           isOpeningReadOnly: prevClosing > 0,
           pumpId: n.pumpId,
-          testing: 0,
+          testing: draftEntry?.testing ?? 0,
         };
       });
 
@@ -1090,110 +1013,27 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     return errs;
   }
 
-  // ── Step navigation ──────────────────────────────────────────
-  function goToCollections() {
-    const errs = validateReadings();
-    if (errs.length) {
-      setValidationErrors(errs);
-      return;
-    }
-    setValidationErrors([]);
-    setStep("collections");
-  }
 
-  function goToReview() {
-    const errs = validateCollections();
-    if (errs.length) {
-      setValidationErrors(errs);
-      return;
-    }
-    setValidationErrors([]);
-
-    const cardSwipes = [];
-    if (shiftType === "B") {
-      if (phonePeDay > 0) {
-        cardSwipes.push({
-          mode: "PhonePe Day",
-          amount: phonePeDay,
-          tid: phonePeTidDay,
-          batch: phonePeBatchDay,
-        });
-      }
-      if (creditCardDay > 0) {
-        cardSwipes.push({
-          mode: "PineLabs Card Day",
-          amount: creditCardDay,
-          tid: creditCardTidDay,
-          batch: creditCardBatchDay,
-        });
-      }
-      if (petroCardDay > 0) {
-        cardSwipes.push({
-          mode: "PetroCard Day",
-          amount: petroCardDay,
-          tid: petroCardTidDay,
-          batch: petroCardBatchDay,
-        });
-      }
-    } else {
-      if (phonePeMorning > 0) {
-        cardSwipes.push({
-          mode: "PhonePe Morning",
-          amount: phonePeMorning,
-          tid: phonePeTidMorning,
-          batch: phonePeBatchMorning,
-        });
-      }
-      if (phonePeNight > 0) {
-        cardSwipes.push({
-          mode: "PhonePe Night",
-          amount: phonePeNight,
-          tid: phonePeTidNight,
-          batch: phonePeBatchNight,
-        });
-      }
-      if (creditCardMorning > 0) {
-        cardSwipes.push({
-          mode: "PineLabs Card Morning",
-          amount: creditCardMorning,
-          tid: creditCardTidMorning,
-          batch: creditCardBatchMorning,
-        });
-      }
-      if (creditCardNight > 0) {
-        cardSwipes.push({
-          mode: "PineLabs Card Night",
-          amount: creditCardNight,
-          tid: creditCardTidNight,
-          batch: creditCardBatchNight,
-        });
-      }
-      if (petroCardMorning > 0) {
-        cardSwipes.push({
-          mode: "PetroCard Morning",
-          amount: petroCardMorning,
-          tid: petroCardTidMorning,
-          batch: petroCardBatchMorning,
-        });
-      }
-      if (petroCardNight > 0) {
-        cardSwipes.push({
-          mode: "PetroCard Night",
-          amount: petroCardNight,
-          tid: petroCardTidNight,
-          batch: petroCardBatchNight,
-        });
-      }
-    }
-    setCardSwipeDetails(cardSwipes);
-
-    setStep("review");
-  }
 
   // ── Submit ───────────────────────────────────────────────────
   async function handleSubmit() {
     if (!profile) return;
     setError("");
+
+    const readingErrs = validateReadings();
+    const collectionErrs = validateCollections();
+    const allErrs = [...readingErrs, ...collectionErrs];
+    if (allErrs.length > 0) {
+      setValidationErrors(allErrs);
+      const errBox = document.getElementById("validation-errors-box");
+      if (errBox) {
+        errBox.scrollIntoView({ behavior: "smooth" });
+      } else {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+      return;
+    }
+    setValidationErrors([]);
 
     const cardSwipes = [];
     const settlementsList = [];
@@ -1380,8 +1220,9 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       cardSwipeDetails: cardSwipes,
       settlements: settlementsList,
       debtorEntries,
-      personalDebtors,
+      personalDebtors: [],
       khandhareEntries,
+      cash1Amount,
       cash1Denominations: {
         denom500: cash1Denom500,
         denom200: cash1Denom200,
@@ -1497,10 +1338,6 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     );
   }
 
-  const steps = ["Readings", "Collections", "Review"];
-  const currentStepIdx =
-    step === "readings" ? 0 : step === "collections" ? 1 : 2;
-
   return (
     <div className="screen submit-screen">
       {/* Header */}
@@ -1517,86 +1354,15 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         )}
       </header>
 
-      {/* Step Indicator */}
-      <div className="step-indicator">
-        {steps.map((s, i) => (
-          <div
-            key={s}
-            className={`step-dot-row ${i < currentStepIdx ? "done" : i === currentStepIdx ? "active" : ""}`}
-          >
-            <div className="step-dot">{i < currentStepIdx ? "✓" : i + 1}</div>
-            <span className="step-label">{s}</span>
-            {i < steps.length - 1 && <div className="step-connector" />}
-          </div>
-        ))}
-      </div>
+      <main className="submit-main" style={{ paddingBottom: "30px" }}>
+        <div className="form-section" id="single-page-shift-entry">
+          {/* ── SECTION 1: SHIFT INFO & NOZZLE READINGS ── */}
+          <h2 className="section-heading">Shift Information</h2>
 
-      <main className="submit-main">
-        {/* ── Step 1: Readings ─────────────────────────────── */}
-        {step === "readings" && (
-          <div className="form-section" id="step-readings">
-            <h2 className="section-heading">Shift Information</h2>
-
-            {/* Pump & Shift — read-only, assigned by manager */}
-            <div className="field-row-2">
-              <div className="field-group">
-                <label className="field-label">Assigned Pump</label>
-                <div
-                  className="field-input"
-                  style={{
-                    background: "#1e293b",
-                    display: "flex",
-                    alignItems: "center",
-                    minHeight: "42px",
-                    paddingLeft: "12px",
-                    fontWeight: "bold",
-                    color: "#f8fafc",
-                    borderRadius: "0.375rem",
-                  }}
-                >
-                  Pump {pumpId}
-                  {profile?.ConnectedPump
-                    ? ` + Pump ${profile.ConnectedPump} (Connected)`
-                    : ""}
-                </div>
-                {profile?.ConnectedPump && (
-                  <span
-                    style={{
-                      fontSize: "0.7rem",
-                      color: "#38bdf8",
-                      marginTop: "4px",
-                      display: "block",
-                      lineHeight: "1.2",
-                    }}
-                  >
-                    ℹ️ You are entering readings for both Pump {pumpId} and
-                    Connected Pump {profile.ConnectedPump}.
-                  </span>
-                )}
-              </div>
-              <div className="field-group">
-                <label className="field-label">Assigned Shift</label>
-                <div
-                  className="field-input"
-                  style={{
-                    background: "#1e293b",
-                    display: "flex",
-                    alignItems: "center",
-                    minHeight: "42px",
-                    paddingLeft: "12px",
-                    fontWeight: "bold",
-                    color: "#f8fafc",
-                    borderRadius: "0.375rem",
-                  }}
-                >
-                  Shift {shiftType} (
-                  {shiftType === "A" ? "Night/Morning" : "Day"})
-                </div>
-              </div>
-            </div>
-
+          {/* Pump & Shift — read-only, assigned by manager */}
+          <div className="field-row-2">
             <div className="field-group">
-              <label className="field-label">Shift Date</label>
+              <label className="field-label">Assigned Pump</label>
               <div
                 className="field-input"
                 style={{
@@ -1610,2816 +1376,1737 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                   borderRadius: "0.375rem",
                 }}
               >
-                {new Date(shiftDate + "T00:00:00").toLocaleDateString("en-IN", {
-                  day: "numeric",
-                  month: "long",
-                  year: "numeric",
-                })}
+                Pump {pumpId}
+                {profile?.ConnectedPump
+                  ? ` + Pump ${profile.ConnectedPump} (Connected)`
+                  : ""}
               </div>
+              {profile?.ConnectedPump && (
+                <span
+                  style={{
+                    fontSize: "0.7rem",
+                    color: "#38bdf8",
+                    marginTop: "4px",
+                    display: "block",
+                    lineHeight: "1.2",
+                  }}
+                >
+                  ℹ️ You are entering readings for both Pump {pumpId} and
+                  Connected Pump {profile.ConnectedPump}.
+                </span>
+              )}
             </div>
-
-            <h2 className="section-heading" style={{ marginTop: "1.5rem" }}>
-              Nozzle Readings
-            </h2>
-
-            {/* Loading / Error states for nozzle config */}
-            {nozzleLoading ? (
+            <div className="field-group">
+              <label className="field-label">Assigned Shift</label>
               <div
+                className="field-input"
                 style={{
+                  background: "#1e293b",
                   display: "flex",
                   alignItems: "center",
-                  gap: "10px",
-                  padding: "20px",
-                  background: "#1e293b",
-                  borderRadius: "0.5rem",
-                  color: "#94a3b8",
+                  minHeight: "42px",
+                  paddingLeft: "12px",
+                  fontWeight: "bold",
+                  color: "#f8fafc",
+                  borderRadius: "0.375rem",
                 }}
               >
-                <Loader2 size={20} className="spin" />
-                <span>Loading nozzle configuration for Pump {pumpId}...</span>
+                Shift {shiftType} ({shiftType === "A" ? "Night/Morning" : "Day"})
               </div>
-            ) : nozzleError ? (
-              <div className="validation-errors">
-                <AlertTriangle size={16} />
-                <span style={{ flex: 1 }}>{nozzleError}</span>
-                <button
-                  className="btn-outline"
-                  style={{ padding: "4px 12px", fontSize: "0.75rem" }}
-                  onClick={loadNozzleConfig}
-                >
-                  <RefreshCw size={14} /> Retry
-                </button>
-              </div>
-            ) : null}
+            </div>
+          </div>
 
-            {!nozzleLoading &&
-              !nozzleError &&
-              nozzleRows.map((row) => (
-                <div key={row.rowId} className="nozzle-card">
-                  <div
-                    className="nozzle-card-header"
-                    style={{
-                      borderBottom: "1px solid #334155",
-                      paddingBottom: "8px",
-                      marginBottom: "12px",
-                    }}
+          <div className="field-group">
+            <label className="field-label">Shift Date</label>
+            <div
+              className="field-input"
+              style={{
+                background: "#1e293b",
+                display: "flex",
+                alignItems: "center",
+                minHeight: "42px",
+                paddingLeft: "12px",
+                fontWeight: "bold",
+                color: "#f8fafc",
+                borderRadius: "0.375rem",
+              }}
+            >
+              {new Date(shiftDate + "T00:00:00").toLocaleDateString("en-IN", {
+                day: "numeric",
+                month: "long",
+                year: "numeric",
+              })}
+            </div>
+          </div>
+
+          <h2 className="section-heading" style={{ marginTop: "1.5rem" }}>
+            Nozzle Readings
+          </h2>
+
+          {/* Loading / Error states for nozzle config */}
+          {nozzleLoading ? (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+                padding: "20px",
+                background: "#1e293b",
+                borderRadius: "0.5rem",
+                color: "#94a3b8",
+              }}
+            >
+              <Loader2 size={20} className="spin" />
+              <span>Loading nozzle configuration for Pump {pumpId}...</span>
+            </div>
+          ) : nozzleError ? (
+            <div className="validation-errors">
+              <AlertTriangle size={16} />
+              <span style={{ flex: 1 }}>{nozzleError}</span>
+              <button
+                className="btn-outline"
+                style={{ padding: "4px 12px", fontSize: "0.75rem" }}
+                onClick={loadNozzleConfig}
+              >
+                <RefreshCw size={14} /> Retry
+              </button>
+            </div>
+          ) : null}
+
+          {!nozzleLoading &&
+            !nozzleError &&
+            nozzleRows.map((row) => (
+              <div key={row.rowId} className="nozzle-card">
+                <div
+                  className="nozzle-card-header"
+                  style={{
+                    borderBottom: "1px solid #334155",
+                    paddingBottom: "8px",
+                    marginBottom: "12px",
+                  }}
+                >
+                  <span
+                    className="nozzle-num"
+                    style={{ fontSize: "1.05rem", fontWeight: "bold" }}
                   >
-                    <span
-                      className="nozzle-num"
-                      style={{ fontSize: "1.05rem", fontWeight: "bold" }}
-                    >
-                      Nozzle {row.nozzleId} ({row.fuelType})
-                    </span>
-                    <span
-                      style={{
-                        fontSize: "0.85rem",
-                        color: "#94a3b8",
-                        fontWeight: "500",
-                      }}
-                    >
-                      Rate: ₹{row.rate.toFixed(2)} / L
-                    </span>
-                  </div>
-                  <div
+                    Nozzle {row.nozzleId} ({row.fuelType})
+                  </span>
+                  <span
                     style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr 1fr 1fr",
-                      gap: "8px",
-                    }}
-                  >
-                    <div
-                      className="field-group"
-                      style={{ marginBottom: "8px" }}
-                    >
-                      <label
-                        className="field-label"
-                        style={{ fontSize: "0.75rem" }}
-                      >
-                        Opening (L)
-                      </label>
-                      <input
-                        type="number"
-                        className="field-input"
-                        value={row.openingReading || ""}
-                        step="0.01"
-                        min="0"
-                        readOnly={row.isOpeningReadOnly}
-                        style={
-                          row.isOpeningReadOnly
-                            ? {
-                                backgroundColor: "#1e293b",
-                                color: "#64748b",
-                                border: "1px solid #334155",
-                                cursor: "not-allowed",
-                                padding: "6px",
-                              }
-                            : { padding: "6px" }
-                        }
-                        onChange={(e) =>
-                          updateNozzle(
-                            row.rowId,
-                            "openingReading",
-                            e.target.value,
-                          )
-                        }
-                      />
-                    </div>
-                    <div
-                      className="field-group"
-                      style={{ marginBottom: "8px" }}
-                    >
-                      <label
-                        className="field-label"
-                        style={{ fontSize: "0.75rem" }}
-                      >
-                        Closing (L)
-                      </label>
-                      <input
-                        type="number"
-                        className={`field-input ${row.closingReading < row.openingReading && row.closingReading > 0 ? "input-error" : ""}`}
-                        value={row.closingReading || ""}
-                        step="0.01"
-                        min="0"
-                        style={{ padding: "6px" }}
-                        onChange={(e) =>
-                          updateNozzle(
-                            row.rowId,
-                            "closingReading",
-                            e.target.value,
-                          )
-                        }
-                      />
-                    </div>
-                    <div
-                      className="field-group"
-                      style={{ marginBottom: "8px" }}
-                    >
-                      <label
-                        className="field-label"
-                        style={{ fontSize: "0.75rem" }}
-                      >
-                        Testing (L)
-                      </label>
-                      <input
-                        type="number"
-                        className="field-input"
-                        value={row.testing || ""}
-                        step="0.01"
-                        min="0"
-                        style={{ padding: "6px" }}
-                        onChange={(e) =>
-                          updateNozzle(row.rowId, "testing", e.target.value)
-                        }
-                      />
-                    </div>
-                  </div>
-                  <div
-                    className="nozzle-sale-summary"
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
                       fontSize: "0.85rem",
-                      color: "#e2e8f0",
-                      marginTop: "6px",
+                      color: "#94a3b8",
+                      fontWeight: "500",
                     }}
                   >
-                    <span>
-                      Net Sale:{" "}
-                      {Math.max(
-                        0,
-                        row.closingReading -
-                          row.openingReading -
-                          (row.testing || 0),
-                      ).toFixed(2)}{" "}
-                      L (Dispensed:{" "}
-                      {Math.max(
-                        0,
-                        row.closingReading - row.openingReading,
-                      ).toFixed(2)}{" "}
-                      L)
-                    </span>
-                    <span style={{ fontWeight: "bold" }}>
-                      = ₹
-                      {(
-                        Math.max(0, row.closingReading - row.openingReading) *
-                        row.rate
-                      ).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                    </span>
+                    Rate: ₹{row.rate.toFixed(2)} / L
+                  </span>
+                </div>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr 1fr",
+                    gap: "8px",
+                  }}
+                >
+                  <div
+                    className="field-group"
+                    style={{ marginBottom: "8px" }}
+                  >
+                    <label
+                      className="field-label"
+                      style={{ fontSize: "0.75rem" }}
+                    >
+                      Opening (L)
+                    </label>
+                    <input
+                      type="number"
+                      className="field-input"
+                      value={row.openingReading || ""}
+                      step="0.01"
+                      min="0"
+                      readOnly={row.isOpeningReadOnly}
+                      style={
+                        row.isOpeningReadOnly
+                          ? {
+                              backgroundColor: "#1e293b",
+                              color: "#64748b",
+                              border: "1px solid #334155",
+                              cursor: "not-allowed",
+                              padding: "6px",
+                            }
+                          : { padding: "6px" }
+                      }
+                      onChange={(e) =>
+                        updateNozzle(
+                          row.rowId,
+                          "openingReading",
+                          e.target.value,
+                        )
+                      }
+                    />
+                  </div>
+                  <div
+                    className="field-group"
+                    style={{ marginBottom: "8px" }}
+                  >
+                    <label
+                      className="field-label"
+                      style={{ fontSize: "0.75rem" }}
+                    >
+                      Closing (L)
+                    </label>
+                    <input
+                      type="number"
+                      className={`field-input ${row.closingReading < row.openingReading && row.closingReading > 0 ? "input-error" : ""}`}
+                      value={row.closingReading || ""}
+                      step="0.01"
+                      min="0"
+                      style={{ padding: "6px" }}
+                      onChange={(e) =>
+                        updateNozzle(
+                          row.rowId,
+                          "closingReading",
+                          e.target.value,
+                        )
+                      }
+                    />
+                  </div>
+                  <div
+                    className="field-group"
+                    style={{ marginBottom: "8px" }}
+                  >
+                    <label
+                      className="field-label"
+                      style={{ fontSize: "0.75rem" }}
+                    >
+                      Testing (L)
+                    </label>
+                    <input
+                      type="number"
+                      className="field-input"
+                      value={row.testing || ""}
+                      step="0.01"
+                      min="0"
+                      style={{ padding: "6px" }}
+                      onChange={(e) =>
+                        updateNozzle(row.rowId, "testing", e.target.value)
+                      }
+                    />
                   </div>
                 </div>
-              ))}
-
-            {!nozzleLoading && !nozzleError && nozzleRows.length > 0 && (
-              <div className="gross-sales-bar">
-                <span>Gross Sales</span>
-                <span className="gross-amount">
-                  ₹
-                  {grossSales.toLocaleString("en-IN", {
-                    minimumFractionDigits: 2,
-                  })}
-                </span>
+                <div
+                  className="nozzle-sale-summary"
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    fontSize: "0.85rem",
+                    color: "#e2e8f0",
+                    marginTop: "6px",
+                  }}
+                >
+                  <span>
+                    Net Sale:{" "}
+                    {Math.max(
+                      0,
+                      row.closingReading -
+                        row.openingReading -
+                        (row.testing || 0),
+                    ).toFixed(2)}{" "}
+                    L (Dispensed:{" "}
+                    {Math.max(
+                      0,
+                      row.closingReading - row.openingReading,
+                    ).toFixed(2)}{" "}
+                    L)
+                  </span>
+                  <span style={{ fontWeight: "bold" }}>
+                    = ₹
+                    {(
+                      Math.max(0, row.closingReading - row.openingReading) *
+                      row.rate
+                    ).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
               </div>
-            )}
+            ))}
 
-            {/* Quick Cash 1 entry on readings page */}
-            <div
-              className="nozzle-card"
-              style={{ marginBottom: "16px", padding: "16px" }}
+          {!nozzleLoading && !nozzleError && nozzleRows.length > 0 && (
+            <div className="gross-sales-bar" style={{ marginBottom: "24px" }}>
+              <span>Gross Sales</span>
+              <span className="gross-amount">
+                ₹
+                {grossSales.toLocaleString("en-IN", {
+                  minimumFractionDigits: 2,
+                })}
+              </span>
+            </div>
+          )}
+
+          {/* ── SECTION 2: PAYMENT COLLECTIONS ── */}
+          {/* Requested Sequence: Petro Card -> Credit Card -> PhonePe -> Cash Deposit (Cash 1) -> Debtors -> Expenses -> Others -> Cash 2 */}
+          <h2 className="section-heading" style={{ marginTop: "2rem" }}>
+            Payment Collections
+          </h2>
+
+          {/* 1. Petro Card */}
+          <div
+            className="nozzle-card"
+            style={{ marginBottom: "16px", padding: "16px" }}
+          >
+            <h3
+              style={{
+                fontSize: "1rem",
+                fontWeight: "bold",
+                marginBottom: "12px",
+                borderBottom: "1px solid #334155",
+                paddingBottom: "6px",
+              }}
             >
-              <h3
-                style={{
-                  fontSize: "1rem",
-                  fontWeight: "bold",
-                  marginBottom: "12px",
-                  borderBottom: "1px solid #334155",
-                  paddingBottom: "6px",
-                }}
-              >
-                Cash 1 (Denominations)
-              </h3>
+              Petro Card
+            </h3>
+
+            {shiftType === "B" ? (
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: "10px 16px",
-                  marginBottom: "12px",
-                }}
-              >
-                <div
-                  style={{ display: "flex", alignItems: "center", gap: "8px" }}
-                >
-                  <span
-                    style={{
-                      width: "45px",
-                      fontWeight: "bold",
-                      fontSize: "0.9rem",
-                    }}
-                  >
-                    ₹500 x
-                  </span>
-                  <input
-                    type="number"
-                    className="field-input"
-                    style={{ padding: "6px" }}
-                    value={cash1Denom500 || ""}
-                    min="0"
-                    onChange={(e) =>
-                      setCash1Denom500(
-                        Math.max(0, parseInt(e.target.value) || 0),
-                      )
-                    }
-                  />
-                </div>
-                <div
-                  style={{ display: "flex", alignItems: "center", gap: "8px" }}
-                >
-                  <span
-                    style={{
-                      width: "45px",
-                      fontWeight: "bold",
-                      fontSize: "0.9rem",
-                    }}
-                  >
-                    ₹200 x
-                  </span>
-                  <input
-                    type="number"
-                    className="field-input"
-                    style={{ padding: "6px" }}
-                    value={cash1Denom200 || ""}
-                    min="0"
-                    onChange={(e) =>
-                      setCash1Denom200(
-                        Math.max(0, parseInt(e.target.value) || 0),
-                      )
-                    }
-                  />
-                </div>
-                <div
-                  style={{ display: "flex", alignItems: "center", gap: "8px" }}
-                >
-                  <span
-                    style={{
-                      width: "45px",
-                      fontWeight: "bold",
-                      fontSize: "0.9rem",
-                    }}
-                  >
-                    ₹100 x
-                  </span>
-                  <input
-                    type="number"
-                    className="field-input"
-                    style={{ padding: "6px" }}
-                    value={cash1Denom100 || ""}
-                    min="0"
-                    onChange={(e) =>
-                      setCash1Denom100(
-                        Math.max(0, parseInt(e.target.value) || 0),
-                      )
-                    }
-                  />
-                </div>
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  borderTop: "1px solid #334155",
-                  paddingTop: "10px",
-                  marginTop: "10px",
-                  fontSize: "1rem",
-                  fontWeight: "bold",
-                  color: "#10b981",
-                }}
-              >
-                <span>Total Cash 1:</span>
-                <span>
-                  ₹
-                  {cashDeposit.toLocaleString("en-IN", {
-                    minimumFractionDigits: 2,
-                  })}
-                </span>
-              </div>
-            </div>
-
-            {/* Quick Debtor entry on readings page */}
-            <div
-              className="nozzle-card"
-              style={{ marginBottom: "16px", padding: "16px" }}
-            >
-              <h3
-                style={{
-                  fontSize: "1rem",
-                  fontWeight: "bold",
-                  marginBottom: "12px",
-                  borderBottom: "1px solid #334155",
-                  paddingBottom: "6px",
-                }}
-              >
-                Debtor Entries
-              </h3>
-              <div className="field-row-2">
-                <div className="field-group">
-                  <label className="field-label">Debtor Name</label>
-                  <select
-                    className="field-input"
-                    value={selectedCreditorId}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setSelectedCreditorId(val);
-                      const c = creditorList.find((x) => x.id === val);
-                      setNewDebtorName(c ? c.name : "");
-                      setNewDebtorVehicle("");
-                    }}
-                  >
-                    <option value="">-- Select Debtor --</option>
-                    {creditorList.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="field-group">
-                  <label className="field-label">Amount (₹)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    className="field-input"
-                    placeholder="0.00"
-                    value={newDebtorAmount}
-                    onChange={(e) => setNewDebtorAmount(e.target.value)}
-                  />
-                </div>
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
+                  gridTemplateColumns: "1.2fr 1fr 1fr",
                   gap: "8px",
-                  margin: "10px 0 6px 0",
                 }}
               >
-                <input
-                  type="checkbox"
-                  id="custom-vehicle-check-readings"
-                  checked={customVehicle}
-                  onChange={(e) => {
-                    setCustomVehicle(e.target.checked);
-                    setNewDebtorVehicle("");
-                  }}
-                />
-                <label
-                  htmlFor="custom-vehicle-check-readings"
-                  style={{
-                    fontSize: "0.85rem",
-                    fontWeight: "500",
-                    color: "#94a3b8",
-                    cursor: "pointer",
-                  }}
-                >
-                  Type custom vehicle number
-                </label>
-              </div>
-              <div className="field-row-2">
                 <div className="field-group">
-                  <label className="field-label">Vehicle No.</label>
-                  {customVehicle ? (
-                    <input
-                      type="text"
-                      className="field-input"
-                      placeholder="MH-12-XX-XXXX"
-                      value={newDebtorVehicle}
-                      onChange={(e) => setNewDebtorVehicle(e.target.value)}
-                    />
-                  ) : (
-                    <select
-                      className="field-input"
-                      value={newDebtorVehicle}
-                      onChange={(e) => setNewDebtorVehicle(e.target.value)}
-                      disabled={!selectedCreditorId}
-                    >
-                      <option value="">-- Select Vehicle --</option>
-                      {vehicleList
-                        .filter((v) => v.creditorId === selectedCreditorId)
-                        .map((v, i) => (
-                          <option key={i} value={v.vehicleNumber}>
-                            {v.vehicleNumber}
-                          </option>
-                        ))}
-                    </select>
-                  )}
+                  <label className="field-label">Day (8am - 8pm) (₹)</label>
+                  <input
+                    type="number"
+                    className="field-input"
+                    value={petroCardDay || ""}
+                    step="0.01"
+                    min="0"
+                    onChange={(e) => setPetroCardDay(Number(e.target.value))}
+                  />
                 </div>
                 <div className="field-group">
-                  <label className="field-label">Slip No.</label>
+                  <label className="field-label">TID</label>
                   <input
                     type="text"
                     className="field-input"
-                    placeholder="Slip No."
-                    value={newDebtorSlip}
-                    onChange={(e) => setNewDebtorSlip(e.target.value)}
+                    placeholder="TID"
+                    value={petroCardTidDay}
+                    onChange={(e) => setPetroCardTidDay(e.target.value)}
+                  />
+                </div>
+                <div className="field-group">
+                  <label className="field-label">Batch</label>
+                  <input
+                    type="text"
+                    className="field-input"
+                    placeholder="Batch"
+                    value={petroCardBatchDay}
+                    onChange={(e) => setPetroCardBatchDay(e.target.value)}
                   />
                 </div>
               </div>
-              <button
-                type="button"
-                className="btn-outline"
-                style={{ marginTop: "12px", width: "100%", padding: "8px" }}
-                onClick={() => {
-                  if (
-                    !newDebtorName ||
-                    !newDebtorAmount ||
-                    Number(newDebtorAmount) <= 0
-                  )
-                    return;
-
-                  const time = new Date().toLocaleTimeString("en-US", {
-                    hour12: false,
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  });
-                  setDebtorEntries((prev) => [
-                    ...prev,
-                    {
-                      debtorName: newDebtorName,
-                      amount: Number(newDebtorAmount),
-                      vehicleNumber: newDebtorVehicle,
-                      slipNumber: newDebtorSlip,
-                      time,
-                    },
-                  ]);
-
-                  setNewDebtorAmount("");
-                  setNewDebtorVehicle("");
-                  setNewDebtorSlip("");
-                  setSelectedCreditorId("");
-                  setNewDebtorName("");
-                  setCustomVehicle(false);
-                }}
-              >
-                + Add Debtor Entry
-              </button>
-              {debtorEntries.length > 0 && (
+            ) : (
+              <>
                 <div
-                  className="debtor-entry-list"
-                  style={{ marginTop: "16px" }}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1.2fr 1fr 1fr",
+                    gap: "8px",
+                    marginBottom: "10px",
+                  }}
                 >
-                  {debtorEntries.map((item, idx) => (
-                    <div
-                      key={idx}
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        background: "#0f172a",
-                        padding: "8px 12px",
-                        borderRadius: "4px",
-                        marginBottom: "4px",
-                        fontSize: "0.85rem",
-                      }}
-                    >
-                      <div>
-                        <strong>{item.debtorName}</strong>: ₹
-                        {item.amount.toFixed(2)} <br />
-                        <span style={{ color: "#94a3b8" }}>
-                          Veh: {item.vehicleNumber || "N/A"} | Slip:{" "}
-                          {item.slipNumber || "N/A"} | Time: {item.time}
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        style={{
-                          color: "#ef4444",
-                          background: "none",
-                          border: "none",
-                          cursor: "pointer",
-                          fontWeight: "bold",
-                        }}
-                        onClick={() => {
-                          setDebtorEntries((prev) =>
-                            prev.filter((_, i) => i !== idx),
-                          );
-                        }}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  ))}
+                  <div className="field-group">
+                    <label className="field-label">Morning (12am - 8pm) (₹)</label>
+                    <input
+                      type="number"
+                      className="field-input"
+                      value={petroCardMorning || ""}
+                      step="0.01"
+                      min="0"
+                      onChange={(e) =>
+                        setPetroCardMorning(Number(e.target.value))
+                      }
+                    />
+                  </div>
+                  <div className="field-group">
+                    <label className="field-label">TID</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      placeholder="TID"
+                      value={petroCardTidMorning}
+                      onChange={(e) => setPetroCardTidMorning(e.target.value)}
+                    />
+                  </div>
+                  <div className="field-group">
+                    <label className="field-label">Batch</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      placeholder="Batch"
+                      value={petroCardBatchMorning}
+                      onChange={(e) =>
+                        setPetroCardBatchMorning(e.target.value)
+                      }
+                    />
+                  </div>
                 </div>
-              )}
-            </div>
-
-            {validationErrors.length > 0 && (
-              <div className="validation-errors">
-                <AlertTriangle size={16} />
-                <ul>
-                  {validationErrors.map((e, i) => (
-                    <li key={i}>{e}</li>
-                  ))}
-                </ul>
-              </div>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1.2fr 1fr 1fr",
+                    gap: "8px",
+                  }}
+                >
+                  <div className="field-group">
+                    <label className="field-label">Night (8pm - 12am) (₹)</label>
+                    <input
+                      type="number"
+                      className="field-input"
+                      value={petroCardNight || ""}
+                      step="0.01"
+                      min="0"
+                      onChange={(e) =>
+                        setPetroCardNight(Number(e.target.value))
+                      }
+                    />
+                  </div>
+                  <div className="field-group">
+                    <label className="field-label">TID</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      placeholder="TID"
+                      value={petroCardTidNight}
+                      onChange={(e) => setPetroCardTidNight(e.target.value)}
+                    />
+                  </div>
+                  <div className="field-group">
+                    <label className="field-label">Batch</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      placeholder="Batch"
+                      value={petroCardBatchNight}
+                      onChange={(e) => setPetroCardBatchNight(e.target.value)}
+                    />
+                  </div>
+                </div>
+              </>
             )}
-
-            <button
-              id="next-collections-btn"
-              className="btn-primary"
-              onClick={goToCollections}
-              disabled={nozzleLoading || nozzleRows.length === 0}
-            >
-              Continue to Collections →
-            </button>
           </div>
-        )}
 
-        {/* ── Step 2: Collections ──────────────────────────── */}
-        {step === "collections" && (
-          <div className="form-section" id="step-collections">
-            <h2 className="section-heading">Payment Collections</h2>
-
-            {/* Cash in Hand (Denominations) */}
-            <div
-              className="nozzle-card"
-              style={{ marginBottom: "16px", padding: "16px" }}
+          {/* 2. Credit Card (Card / PineLabs Credit Card) */}
+          <div
+            className="nozzle-card"
+            style={{ marginBottom: "16px", padding: "16px" }}
+          >
+            <h3
+              style={{
+                fontSize: "1rem",
+                fontWeight: "bold",
+                marginBottom: "12px",
+                borderBottom: "1px solid #334155",
+                paddingBottom: "6px",
+              }}
             >
-              <h3
-                style={{
-                  fontSize: "1rem",
-                  fontWeight: "bold",
-                  marginBottom: "12px",
-                  borderBottom: "1px solid #334155",
-                  paddingBottom: "6px",
-                }}
-              >
-                Cash in Hand (Denominations)
-              </h3>
+              Credit Card (Card)
+            </h3>
 
+            {shiftType === "B" ? (
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: "10px 16px",
-                  marginBottom: "12px",
+                  gridTemplateColumns: "1.2fr 1fr 1fr",
+                  gap: "8px",
                 }}
               >
-                <div
-                  style={{ display: "flex", alignItems: "center", gap: "8px" }}
-                >
-                  <span
-                    style={{
-                      width: "45px",
-                      fontWeight: "bold",
-                      fontSize: "0.9rem",
-                    }}
-                  >
-                    ₹500 x
-                  </span>
+                <div className="field-group">
+                  <label className="field-label">Day (8am - 8pm) (₹)</label>
                   <input
                     type="number"
                     className="field-input"
-                    style={{ padding: "6px" }}
-                    value={denom500 || ""}
-                    min="0"
-                    onChange={(e) =>
-                      setDenom500(Math.max(0, parseInt(e.target.value) || 0))
-                    }
-                  />
-                </div>
-                <div
-                  style={{ display: "flex", alignItems: "center", gap: "8px" }}
-                >
-                  <span
-                    style={{
-                      width: "45px",
-                      fontWeight: "bold",
-                      fontSize: "0.9rem",
-                    }}
-                  >
-                    ₹200 x
-                  </span>
-                  <input
-                    type="number"
-                    className="field-input"
-                    style={{ padding: "6px" }}
-                    value={denom200 || ""}
-                    min="0"
-                    onChange={(e) =>
-                      setDenom200(Math.max(0, parseInt(e.target.value) || 0))
-                    }
-                  />
-                </div>
-                <div
-                  style={{ display: "flex", alignItems: "center", gap: "8px" }}
-                >
-                  <span
-                    style={{
-                      width: "45px",
-                      fontWeight: "bold",
-                      fontSize: "0.9rem",
-                    }}
-                  >
-                    ₹100 x
-                  </span>
-                  <input
-                    type="number"
-                    className="field-input"
-                    style={{ padding: "6px" }}
-                    value={denom100 || ""}
-                    min="0"
-                    onChange={(e) =>
-                      setDenom100(Math.max(0, parseInt(e.target.value) || 0))
-                    }
-                  />
-                </div>
-                <div
-                  style={{ display: "flex", alignItems: "center", gap: "8px" }}
-                >
-                  <span
-                    style={{
-                      width: "45px",
-                      fontWeight: "bold",
-                      fontSize: "0.9rem",
-                    }}
-                  >
-                    ₹50 x
-                  </span>
-                  <input
-                    type="number"
-                    className="field-input"
-                    style={{ padding: "6px" }}
-                    value={denom50 || ""}
-                    min="0"
-                    onChange={(e) =>
-                      setDenom50(Math.max(0, parseInt(e.target.value) || 0))
-                    }
-                  />
-                </div>
-                <div
-                  style={{ display: "flex", alignItems: "center", gap: "8px" }}
-                >
-                  <span
-                    style={{
-                      width: "45px",
-                      fontWeight: "bold",
-                      fontSize: "0.9rem",
-                    }}
-                  >
-                    ₹20 x
-                  </span>
-                  <input
-                    type="number"
-                    className="field-input"
-                    style={{ padding: "6px" }}
-                    value={denom20 || ""}
-                    min="0"
-                    onChange={(e) =>
-                      setDenom20(Math.max(0, parseInt(e.target.value) || 0))
-                    }
-                  />
-                </div>
-                <div
-                  style={{ display: "flex", alignItems: "center", gap: "8px" }}
-                >
-                  <span
-                    style={{
-                      width: "45px",
-                      fontWeight: "bold",
-                      fontSize: "0.9rem",
-                    }}
-                  >
-                    ₹10 x
-                  </span>
-                  <input
-                    type="number"
-                    className="field-input"
-                    style={{ padding: "6px" }}
-                    value={denom10 || ""}
-                    min="0"
-                    onChange={(e) =>
-                      setDenom10(Math.max(0, parseInt(e.target.value) || 0))
-                    }
-                  />
-                </div>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                    gridColumn: "span 2",
-                  }}
-                >
-                  <span
-                    style={{
-                      fontWeight: "bold",
-                      fontSize: "0.9rem",
-                      marginRight: "6px",
-                    }}
-                  >
-                    Coins/Other (₹)
-                  </span>
-                  <input
-                    type="number"
-                    className="field-input"
-                    style={{ padding: "6px" }}
-                    value={coins || ""}
-                    min="0"
-                    onChange={(e) =>
-                      setCoins(Math.max(0, parseFloat(e.target.value) || 0))
-                    }
-                  />
-                </div>
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  borderTop: "1px solid #334155",
-                  paddingTop: "10px",
-                  marginTop: "10px",
-                  fontSize: "1rem",
-                  fontWeight: "bold",
-                  color: "#10b981",
-                }}
-              >
-                <span>Total Cash 2 (Cash in Hand):</span>
-                <span>
-                  ₹{cash.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                </span>
-              </div>
-            </div>
-
-            {/* PhonePe UPI */}
-            <div
-              className="nozzle-card"
-              style={{ marginBottom: "16px", padding: "16px" }}
-            >
-              <h3
-                style={{
-                  fontSize: "1rem",
-                  fontWeight: "bold",
-                  marginBottom: "12px",
-                  borderBottom: "1px solid #334155",
-                  paddingBottom: "6px",
-                }}
-              >
-                PhonePe UPI
-              </h3>
-
-              {shiftType === "B" ? (
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1.2fr 1fr 1fr",
-                    gap: "8px",
-                  }}
-                >
-                  <div className="field-group">
-                    <label className="field-label">Day (8am - 8pm) (₹)</label>
-                    <input
-                      type="number"
-                      className="field-input"
-                      value={phonePeDay || ""}
-                      step="0.01"
-                      min="0"
-                      onChange={(e) => setPhonePeDay(Number(e.target.value))}
-                    />
-                  </div>
-                  <div className="field-group">
-                    <label className="field-label">TID</label>
-                    <input
-                      type="text"
-                      className="field-input"
-                      placeholder="TID"
-                      value={phonePeTidDay}
-                      onChange={(e) => setPhonePeTidDay(e.target.value)}
-                    />
-                  </div>
-                  <div className="field-group">
-                    <label className="field-label">Batch</label>
-                    <input
-                      type="text"
-                      className="field-input"
-                      placeholder="Batch"
-                      value={phonePeBatchDay}
-                      onChange={(e) => setPhonePeBatchDay(e.target.value)}
-                    />
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1.2fr 1fr 1fr",
-                      gap: "8px",
-                      marginBottom: "12px",
-                    }}
-                  >
-                    <div className="field-group">
-                      <label className="field-label">
-                        Morning (12am - 8am) (₹)
-                      </label>
-                      <input
-                        type="number"
-                        className="field-input"
-                        value={phonePeMorning || ""}
-                        step="0.01"
-                        min="0"
-                        onChange={(e) =>
-                          setPhonePeMorning(Number(e.target.value))
-                        }
-                      />
-                    </div>
-                    <div className="field-group">
-                      <label className="field-label">TID</label>
-                      <input
-                        type="text"
-                        className="field-input"
-                        placeholder="TID"
-                        value={phonePeTidMorning}
-                        onChange={(e) => setPhonePeTidMorning(e.target.value)}
-                      />
-                    </div>
-                    <div className="field-group">
-                      <label className="field-label">Batch</label>
-                      <input
-                        type="text"
-                        className="field-input"
-                        placeholder="Batch"
-                        value={phonePeBatchMorning}
-                        onChange={(e) => setPhonePeBatchMorning(e.target.value)}
-                      />
-                    </div>
-                  </div>
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1.2fr 1fr 1fr",
-                      gap: "8px",
-                    }}
-                  >
-                    <div className="field-group">
-                      <label className="field-label">
-                        Night (8pm - 12am) (₹)
-                      </label>
-                      <input
-                        type="number"
-                        className="field-input"
-                        value={phonePeNight || ""}
-                        step="0.01"
-                        min="0"
-                        onChange={(e) =>
-                          setPhonePeNight(Number(e.target.value))
-                        }
-                      />
-                    </div>
-                    <div className="field-group">
-                      <label className="field-label">TID</label>
-                      <input
-                        type="text"
-                        className="field-input"
-                        placeholder="TID"
-                        value={phonePeTidNight}
-                        onChange={(e) => setPhonePeTidNight(e.target.value)}
-                      />
-                    </div>
-                    <div className="field-group">
-                      <label className="field-label">Batch</label>
-                      <input
-                        type="text"
-                        className="field-input"
-                        placeholder="Batch"
-                        value={phonePeBatchNight}
-                        onChange={(e) => setPhonePeBatchNight(e.target.value)}
-                      />
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* PineLabs Credit Card */}
-            <div
-              className="nozzle-card"
-              style={{ marginBottom: "16px", padding: "16px" }}
-            >
-              <h3
-                style={{
-                  fontSize: "1rem",
-                  fontWeight: "bold",
-                  marginBottom: "12px",
-                  borderBottom: "1px solid #334155",
-                  paddingBottom: "6px",
-                }}
-              >
-                PineLab Credit Card
-              </h3>
-
-              {shiftType === "B" ? (
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1.2fr 1fr 1fr",
-                    gap: "8px",
-                  }}
-                >
-                  <div className="field-group">
-                    <label className="field-label">Day (8am - 8pm) (₹)</label>
-                    <input
-                      type="number"
-                      className="field-input"
-                      value={creditCardDay || ""}
-                      step="0.01"
-                      min="0"
-                      onChange={(e) => setCreditCardDay(Number(e.target.value))}
-                    />
-                  </div>
-                  <div className="field-group">
-                    <label className="field-label">TID</label>
-                    <input
-                      type="text"
-                      className="field-input"
-                      placeholder="TID"
-                      value={creditCardTidDay}
-                      onChange={(e) => setCreditCardTidDay(e.target.value)}
-                    />
-                  </div>
-                  <div className="field-group">
-                    <label className="field-label">Batch</label>
-                    <input
-                      type="text"
-                      className="field-input"
-                      placeholder="Batch"
-                      value={creditCardBatchDay}
-                      onChange={(e) => setCreditCardBatchDay(e.target.value)}
-                    />
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1.2fr 1fr 1fr",
-                      gap: "8px",
-                      marginBottom: "12px",
-                    }}
-                  >
-                    <div className="field-group">
-                      <label className="field-label">
-                        Morning (12am - 8am) (₹)
-                      </label>
-                      <input
-                        type="number"
-                        className="field-input"
-                        value={creditCardMorning || ""}
-                        step="0.01"
-                        min="0"
-                        onChange={(e) =>
-                          setCreditCardMorning(Number(e.target.value))
-                        }
-                      />
-                    </div>
-                    <div className="field-group">
-                      <label className="field-label">TID</label>
-                      <input
-                        type="text"
-                        className="field-input"
-                        placeholder="TID"
-                        value={creditCardTidMorning}
-                        onChange={(e) =>
-                          setCreditCardTidMorning(e.target.value)
-                        }
-                      />
-                    </div>
-                    <div className="field-group">
-                      <label className="field-label">Batch</label>
-                      <input
-                        type="text"
-                        className="field-input"
-                        placeholder="Batch"
-                        value={creditCardBatchMorning}
-                        onChange={(e) =>
-                          setCreditCardBatchMorning(e.target.value)
-                        }
-                      />
-                    </div>
-                  </div>
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1.2fr 1fr 1fr",
-                      gap: "8px",
-                    }}
-                  >
-                    <div className="field-group">
-                      <label className="field-label">
-                        Night (8pm - 12am) (₹)
-                      </label>
-                      <input
-                        type="number"
-                        className="field-input"
-                        value={creditCardNight || ""}
-                        step="0.01"
-                        min="0"
-                        onChange={(e) =>
-                          setCreditCardNight(Number(e.target.value))
-                        }
-                      />
-                    </div>
-                    <div className="field-group">
-                      <label className="field-label">TID</label>
-                      <input
-                        type="text"
-                        className="field-input"
-                        placeholder="TID"
-                        value={creditCardTidNight}
-                        onChange={(e) => setCreditCardTidNight(e.target.value)}
-                      />
-                    </div>
-                    <div className="field-group">
-                      <label className="field-label">Batch</label>
-                      <input
-                        type="text"
-                        className="field-input"
-                        placeholder="Batch"
-                        value={creditCardBatchNight}
-                        onChange={(e) =>
-                          setCreditCardBatchNight(e.target.value)
-                        }
-                      />
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* Petro Card */}
-            <div
-              className="nozzle-card"
-              style={{ marginBottom: "16px", padding: "16px" }}
-            >
-              <h3
-                style={{
-                  fontSize: "1rem",
-                  fontWeight: "bold",
-                  marginBottom: "12px",
-                  borderBottom: "1px solid #334155",
-                  paddingBottom: "6px",
-                }}
-              >
-                Petro Card
-              </h3>
-
-              {shiftType === "B" ? (
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1.2fr 1fr 1fr",
-                    gap: "8px",
-                  }}
-                >
-                  <div className="field-group">
-                    <label className="field-label">Day (8am - 8pm) (₹)</label>
-                    <input
-                      type="number"
-                      className="field-input"
-                      value={petroCardDay || ""}
-                      step="0.01"
-                      min="0"
-                      onChange={(e) => setPetroCardDay(Number(e.target.value))}
-                    />
-                  </div>
-                  <div className="field-group">
-                    <label className="field-label">TID</label>
-                    <input
-                      type="text"
-                      className="field-input"
-                      placeholder="TID"
-                      value={petroCardTidDay}
-                      onChange={(e) => setPetroCardTidDay(e.target.value)}
-                    />
-                  </div>
-                  <div className="field-group">
-                    <label className="field-label">Batch</label>
-                    <input
-                      type="text"
-                      className="field-input"
-                      placeholder="Batch"
-                      value={petroCardBatchDay}
-                      onChange={(e) => setPetroCardBatchDay(e.target.value)}
-                    />
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1.2fr 1fr 1fr",
-                      gap: "8px",
-                      marginBottom: "12px",
-                    }}
-                  >
-                    <div className="field-group">
-                      <label className="field-label">
-                        Morning (12am - 8am) (₹)
-                      </label>
-                      <input
-                        type="number"
-                        className="field-input"
-                        value={petroCardMorning || ""}
-                        step="0.01"
-                        min="0"
-                        onChange={(e) =>
-                          setPetroCardMorning(Number(e.target.value))
-                        }
-                      />
-                    </div>
-                    <div className="field-group">
-                      <label className="field-label">TID</label>
-                      <input
-                        type="text"
-                        className="field-input"
-                        placeholder="TID"
-                        value={petroCardTidMorning}
-                        onChange={(e) => setPetroCardTidMorning(e.target.value)}
-                      />
-                    </div>
-                    <div className="field-group">
-                      <label className="field-label">Batch</label>
-                      <input
-                        type="text"
-                        className="field-input"
-                        placeholder="Batch"
-                        value={petroCardBatchMorning}
-                        onChange={(e) =>
-                          setPetroCardBatchMorning(e.target.value)
-                        }
-                      />
-                    </div>
-                  </div>
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1.2fr 1fr 1fr",
-                      gap: "8px",
-                    }}
-                  >
-                    <div className="field-group">
-                      <label className="field-label">
-                        Night (8pm - 12am) (₹)
-                      </label>
-                      <input
-                        type="number"
-                        className="field-input"
-                        value={petroCardNight || ""}
-                        step="0.01"
-                        min="0"
-                        onChange={(e) =>
-                          setPetroCardNight(Number(e.target.value))
-                        }
-                      />
-                    </div>
-                    <div className="field-group">
-                      <label className="field-label">TID</label>
-                      <input
-                        type="text"
-                        className="field-input"
-                        placeholder="TID"
-                        value={petroCardTidNight}
-                        onChange={(e) => setPetroCardTidNight(e.target.value)}
-                      />
-                    </div>
-                    <div className="field-group">
-                      <label className="field-label">Batch</label>
-                      <input
-                        type="text"
-                        className="field-input"
-                        placeholder="Batch"
-                        value={petroCardBatchNight}
-                        onChange={(e) => setPetroCardBatchNight(e.target.value)}
-                      />
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* Cash 1 (Denominations) */}
-            <div
-              className="nozzle-card"
-              style={{ marginBottom: "16px", padding: "16px" }}
-            >
-              <h3
-                style={{
-                  fontSize: "1rem",
-                  fontWeight: "bold",
-                  marginBottom: "12px",
-                  borderBottom: "1px solid #334155",
-                  paddingBottom: "6px",
-                }}
-              >
-                Cash 1 (Denominations)
-              </h3>
-
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: "10px 16px",
-                  marginBottom: "12px",
-                }}
-              >
-                <div
-                  style={{ display: "flex", alignItems: "center", gap: "8px" }}
-                >
-                  <span
-                    style={{
-                      width: "45px",
-                      fontWeight: "bold",
-                      fontSize: "0.9rem",
-                    }}
-                  >
-                    ₹500 x
-                  </span>
-                  <input
-                    type="number"
-                    className="field-input"
-                    style={{ padding: "6px" }}
-                    value={cash1Denom500 || ""}
-                    min="0"
-                    onChange={(e) =>
-                      setCash1Denom500(
-                        Math.max(0, parseInt(e.target.value) || 0),
-                      )
-                    }
-                  />
-                </div>
-                <div
-                  style={{ display: "flex", alignItems: "center", gap: "8px" }}
-                >
-                  <span
-                    style={{
-                      width: "45px",
-                      fontWeight: "bold",
-                      fontSize: "0.9rem",
-                    }}
-                  >
-                    ₹200 x
-                  </span>
-                  <input
-                    type="number"
-                    className="field-input"
-                    style={{ padding: "6px" }}
-                    value={cash1Denom200 || ""}
-                    min="0"
-                    onChange={(e) =>
-                      setCash1Denom200(
-                        Math.max(0, parseInt(e.target.value) || 0),
-                      )
-                    }
-                  />
-                </div>
-                <div
-                  style={{ display: "flex", alignItems: "center", gap: "8px" }}
-                >
-                  <span
-                    style={{
-                      width: "45px",
-                      fontWeight: "bold",
-                      fontSize: "0.9rem",
-                    }}
-                  >
-                    ₹100 x
-                  </span>
-                  <input
-                    type="number"
-                    className="field-input"
-                    style={{ padding: "6px" }}
-                    value={cash1Denom100 || ""}
-                    min="0"
-                    onChange={(e) =>
-                      setCash1Denom100(
-                        Math.max(0, parseInt(e.target.value) || 0),
-                      )
-                    }
-                  />
-                </div>
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  borderTop: "1px solid #334155",
-                  paddingTop: "10px",
-                  marginTop: "10px",
-                  fontSize: "1rem",
-                  fontWeight: "bold",
-                  color: "#10b981",
-                }}
-              >
-                <span>Total Cash 1:</span>
-                <span>
-                  ₹
-                  {cashDeposit.toLocaleString("en-IN", {
-                    minimumFractionDigits: 2,
-                  })}
-                </span>
-              </div>
-            </div>
-
-            {/* Other Collections */}
-            <div
-              className="nozzle-card"
-              style={{ marginBottom: "16px", padding: "16px" }}
-            >
-              <h3
-                style={{
-                  fontSize: "1rem",
-                  fontWeight: "bold",
-                  marginBottom: "12px",
-                  borderBottom: "1px solid #334155",
-                  paddingBottom: "6px",
-                }}
-              >
-                Other Collections
-              </h3>
-              <div className="field-row">
-                <div className="field-group" style={{ marginBottom: 0 }}>
-                  <label className="field-label">
-                    Others (Not in Total) (₹)
-                  </label>
-                  <input
-                    type="number"
-                    className="field-input"
-                    value={others || ""}
+                    value={creditCardDay || ""}
                     step="0.01"
                     min="0"
-                    onChange={(e) => setOthers(Number(e.target.value))}
+                    onChange={(e) => setCreditCardDay(Number(e.target.value))}
+                  />
+                </div>
+                <div className="field-group">
+                  <label className="field-label">TID</label>
+                  <input
+                    type="text"
+                    className="field-input"
+                    placeholder="TID"
+                    value={creditCardTidDay}
+                    onChange={(e) => setCreditCardTidDay(e.target.value)}
+                  />
+                </div>
+                <div className="field-group">
+                  <label className="field-label">Batch</label>
+                  <input
+                    type="text"
+                    className="field-input"
+                    placeholder="Batch"
+                    value={creditCardBatchDay}
+                    onChange={(e) => setCreditCardBatchDay(e.target.value)}
                   />
                 </div>
               </div>
-            </div>
-
-            {/* Adjustments (Expenses Log) */}
-            <div
-              className="nozzle-card"
-              style={{ marginBottom: "16px", padding: "16px" }}
-            >
-              <h3
-                style={{
-                  fontSize: "1rem",
-                  fontWeight: "bold",
-                  marginBottom: "12px",
-                  borderBottom: "1px solid #334155",
-                  paddingBottom: "6px",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
-              >
-                <span>Expenses / Adjustments</span>
-                <span
+            ) : (
+              <>
+                <div
                   style={{
-                    fontSize: "0.85rem",
-                    fontWeight: "normal",
-                    color: "#f87171",
+                    display: "grid",
+                    gridTemplateColumns: "1.2fr 1fr 1fr",
+                    gap: "8px",
+                    marginBottom: "10px",
                   }}
                 >
-                  Total: ₹{expense.toFixed(2)}
-                </span>
-              </h3>
+                  <div className="field-group">
+                    <label className="field-label">Morning (12am - 8pm) (₹)</label>
+                    <input
+                      type="number"
+                      className="field-input"
+                      value={creditCardMorning || ""}
+                      step="0.01"
+                      min="0"
+                      onChange={(e) => setCreditCardMorning(Number(e.target.value))}
+                    />
+                  </div>
+                  <div className="field-group">
+                    <label className="field-label">TID</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      placeholder="TID"
+                      value={creditCardTidMorning}
+                      onChange={(e) => setCreditCardTidMorning(e.target.value)}
+                    />
+                  </div>
+                  <div className="field-group">
+                    <label className="field-label">Batch</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      placeholder="Batch"
+                      value={creditCardBatchMorning}
+                      onChange={(e) => setCreditCardBatchMorning(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1.2fr 1fr 1fr",
+                    gap: "8px",
+                  }}
+                >
+                  <div className="field-group">
+                    <label className="field-label">Night (8pm - 12am) (₹)</label>
+                    <input
+                      type="number"
+                      className="field-input"
+                      value={creditCardNight || ""}
+                      step="0.01"
+                      min="0"
+                      onChange={(e) => setCreditCardNight(Number(e.target.value))}
+                    />
+                  </div>
+                  <div className="field-group">
+                    <label className="field-label">TID</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      placeholder="TID"
+                      value={creditCardTidNight}
+                      onChange={(e) => setCreditCardTidNight(e.target.value)}
+                    />
+                  </div>
+                  <div className="field-group">
+                    <label className="field-label">Batch</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      placeholder="Batch"
+                      value={creditCardBatchNight}
+                      onChange={(e) => setCreditCardBatchNight(e.target.value)}
+                    />
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
 
-              <div className="field-group" style={{ marginBottom: "12px" }}>
-                <label className="field-label">Expense Description / Purpose</label>
+          {/* 3. PhonePe */}
+          <div
+            className="nozzle-card"
+            style={{ marginBottom: "16px", padding: "16px" }}
+          >
+            <h3
+              style={{
+                fontSize: "1rem",
+                fontWeight: "bold",
+                marginBottom: "12px",
+                borderBottom: "1px solid #334155",
+                paddingBottom: "6px",
+              }}
+            >
+              PhonePe
+            </h3>
+
+            {shiftType === "B" ? (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1.2fr 1fr 1fr",
+                  gap: "8px",
+                }}
+              >
+                <div className="field-group">
+                  <label className="field-label">Day (8am - 8pm) (₹)</label>
+                  <input
+                    type="number"
+                    className="field-input"
+                    value={phonePeDay || ""}
+                    step="0.01"
+                    min="0"
+                    onChange={(e) => setPhonePeDay(Number(e.target.value))}
+                  />
+                </div>
+                <div className="field-group">
+                  <label className="field-label">TID</label>
+                  <input
+                    type="text"
+                    className="field-input"
+                    placeholder="TID"
+                    value={phonePeTidDay}
+                    onChange={(e) => setPhonePeTidDay(e.target.value)}
+                  />
+                </div>
+                <div className="field-group">
+                  <label className="field-label">Batch</label>
+                  <input
+                    type="text"
+                    className="field-input"
+                    placeholder="Batch"
+                    value={phonePeBatchDay}
+                    onChange={(e) => setPhonePeBatchDay(e.target.value)}
+                  />
+                </div>
+              </div>
+            ) : (
+              <>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1.2fr 1fr 1fr",
+                    gap: "8px",
+                    marginBottom: "10px",
+                  }}
+                >
+                  <div className="field-group">
+                    <label className="field-label">Morning (12am - 8pm) (₹)</label>
+                    <input
+                      type="number"
+                      className="field-input"
+                      value={phonePeMorning || ""}
+                      step="0.01"
+                      min="0"
+                      onChange={(e) =>
+                        setPhonePeMorning(Number(e.target.value))
+                      }
+                    />
+                  </div>
+                  <div className="field-group">
+                    <label className="field-label">TID</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      placeholder="TID"
+                      value={phonePeTidMorning}
+                      onChange={(e) => setPhonePeTidMorning(e.target.value)}
+                    />
+                  </div>
+                  <div className="field-group">
+                    <label className="field-label">Batch</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      placeholder="Batch"
+                      value={phonePeBatchMorning}
+                      onChange={(e) => setPhonePeBatchMorning(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1.2fr 1fr 1fr",
+                    gap: "8px",
+                  }}
+                >
+                  <div className="field-group">
+                    <label className="field-label">Night (8pm - 12am) (₹)</label>
+                    <input
+                      type="number"
+                      className="field-input"
+                      value={phonePeNight || ""}
+                      step="0.01"
+                      min="0"
+                      onChange={(e) => setPhonePeNight(Number(e.target.value))}
+                    />
+                  </div>
+                  <div className="field-group">
+                    <label className="field-label">TID</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      placeholder="TID"
+                      value={phonePeTidNight}
+                      onChange={(e) => setPhonePeTidNight(e.target.value)}
+                    />
+                  </div>
+                  <div className="field-group">
+                    <label className="field-label">Batch</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      placeholder="Batch"
+                      value={phonePeBatchNight}
+                      onChange={(e) => setPhonePeBatchNight(e.target.value)}
+                    />
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* 4. Cash Deposit (Cash 1) */}
+          <div
+            className="nozzle-card"
+            style={{ marginBottom: "16px", padding: "16px" }}
+          >
+            <h3
+              style={{
+                fontSize: "1rem",
+                fontWeight: "bold",
+                marginBottom: "12px",
+                borderBottom: "1px solid #334155",
+                paddingBottom: "6px",
+              }}
+            >
+              Cash Deposit (Cash 1)
+            </h3>
+            <div className="field-group" style={{ marginBottom: "8px" }}>
+              <label className="field-label">Total Cash 1 Deposit Amount (₹)</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                className="field-input"
+                placeholder="Enter Cash 1 Amount (₹)"
+                value={cash1Amount || ""}
+                onChange={(e) => setCash1Amount(Math.max(0, parseFloat(e.target.value) || 0))}
+              />
+            </div>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                borderTop: "1px solid #334155",
+                paddingTop: "10px",
+                marginTop: "10px",
+                fontSize: "1rem",
+                fontWeight: "bold",
+                color: "#10b981",
+              }}
+            >
+              <span>Total Cash Deposit:</span>
+              <span>
+                ₹
+                {cashDeposit.toLocaleString("en-IN", {
+                  minimumFractionDigits: 2,
+                })}
+              </span>
+            </div>
+          </div>
+
+          {/* 5. Debtors Register */}
+          <div
+            className="nozzle-card"
+            style={{ marginBottom: "16px", padding: "16px" }}
+          >
+            <h3
+              style={{
+                fontSize: "1rem",
+                fontWeight: "bold",
+                marginBottom: "12px",
+                borderBottom: "1px solid #334155",
+                paddingBottom: "6px",
+              }}
+            >
+              Debtors Register (Credit Sales)
+            </h3>
+            <div className="field-row-2">
+              <div className="field-group">
+                <label className="field-label">Debtor Name</label>
+                <select
+                  className="field-input"
+                  value={selectedCreditorId}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setSelectedCreditorId(val);
+                    const c = creditorList.find((x) => x.id === val);
+                    setNewDebtorName(c ? c.name : "");
+                    setNewDebtorVehicle("");
+                  }}
+                >
+                  <option value="">-- Select Debtor --</option>
+                  {creditorList.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field-group">
+                <label className="field-label">Amount (₹)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  className="field-input"
+                  placeholder="0.00"
+                  value={newDebtorAmount}
+                  onChange={(e) => setNewDebtorAmount(e.target.value)}
+                />
+              </div>
+            </div>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                margin: "10px 0 6px 0",
+              }}
+            >
+              <input
+                type="checkbox"
+                id="custom-vehicle-check-single"
+                checked={customVehicle}
+                onChange={(e) => {
+                  setCustomVehicle(e.target.checked);
+                  setNewDebtorVehicle("");
+                }}
+              />
+              <label
+                htmlFor="custom-vehicle-check-single"
+                style={{
+                  fontSize: "0.85rem",
+                  fontWeight: "500",
+                  color: "#94a3b8",
+                  cursor: "pointer",
+                }}
+              >
+                Type custom vehicle number
+              </label>
+            </div>
+            <div className="field-row-2">
+              <div className="field-group">
+                <label className="field-label">Vehicle No.</label>
+                {customVehicle ? (
+                  <input
+                    type="text"
+                    className="field-input"
+                    placeholder="MH-12-XX-XXXX"
+                    value={newDebtorVehicle}
+                    onChange={(e) => setNewDebtorVehicle(e.target.value)}
+                  />
+                ) : (
+                  <select
+                    className="field-input"
+                    value={newDebtorVehicle}
+                    onChange={(e) => setNewDebtorVehicle(e.target.value)}
+                    disabled={!selectedCreditorId}
+                  >
+                    <option value="">-- Select Vehicle --</option>
+                    {vehicleList
+                      .filter((v) => v.creditorId === selectedCreditorId)
+                      .map((v, i) => (
+                        <option key={i} value={v.vehicleNumber}>
+                          {v.vehicleNumber}
+                        </option>
+                      ))}
+                  </select>
+                )}
+              </div>
+              <div className="field-group">
+                <label className="field-label">Slip No.</label>
                 <input
                   type="text"
                   className="field-input"
-                  placeholder="e.g. Tea / Refreshment, Dinner, Repair"
-                  value={newExpenseDescription}
-                  onChange={(e) => setNewExpenseDescription(e.target.value)}
+                  placeholder="Slip No."
+                  value={newDebtorSlip}
+                  onChange={(e) => setNewDebtorSlip(e.target.value)}
                 />
               </div>
-              <div className="field-group" style={{ marginBottom: "12px" }}>
-                <label className="field-label">Amount (₹)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  className="field-input"
-                  placeholder="0.00"
-                  value={newExpenseAmount}
-                  onChange={(e) => setNewExpenseAmount(e.target.value)}
-                />
-              </div>
-
-              <button
-                type="button"
-                className="btn-outline"
-                style={{ marginTop: "4px", width: "100%", padding: "8px" }}
-                onClick={() => {
-                  if (
-                    !newExpenseDescription.trim() ||
-                    !newExpenseAmount ||
-                    Number(newExpenseAmount) <= 0
-                  )
-                    return;
-                  setExpenseEntries((prev) => [
-                    ...prev,
-                    {
-                      description: newExpenseDescription.trim(),
-                      amount: Number(newExpenseAmount),
-                    },
-                  ]);
-                  setNewExpenseDescription("");
-                  setNewExpenseAmount("");
-                }}
-              >
-                + Add Expense Entry
-              </button>
-
-              {expenseEntries.length > 0 && (
-                <div
-                  className="debtor-entry-list"
-                  style={{ marginTop: "16px" }}
-                >
-                  {expenseEntries.map((item, idx) => (
-                    <div
-                      key={idx}
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        background: "#0f172a",
-                        padding: "8px 12px",
-                        borderRadius: "4px",
-                        marginBottom: "4px",
-                        fontSize: "0.85rem",
-                      }}
-                    >
-                      <div>
-                        <strong style={{ color: "#f87171" }}>
-                          ₹{item.amount.toFixed(2)}
-                        </strong>{" "}
-                        <span>{item.description}</span>
-                      </div>
-                      <button
-                        type="button"
-                        style={{
-                          background: "transparent",
-                          border: "none",
-                          color: "#ef4444",
-                          cursor: "pointer",
-                          fontWeight: "bold",
-                          fontSize: "1rem",
-                        }}
-                        onClick={() =>
-                          setExpenseEntries((prev) =>
-                            prev.filter((_, i) => i !== idx),
-                          )
-                        }
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
+            <button
+              type="button"
+              className="btn-outline"
+              style={{ marginTop: "12px", width: "100%", padding: "8px" }}
+              onClick={() => {
+                if (
+                  !newDebtorName ||
+                  !newDebtorAmount ||
+                  Number(newDebtorAmount) <= 0
+                )
+                  return;
 
-            {/* Debtors Log */}
-            <div
-              className="nozzle-card"
-              style={{ marginBottom: "16px", padding: "16px" }}
+                const time = new Date().toLocaleTimeString("en-US", {
+                  hour12: false,
+                  hour: "2-digit",
+                  minute: "2-digit",
+                });
+                setDebtorEntries((prev) => [
+                  ...prev,
+                  {
+                    debtorName: newDebtorName,
+                    amount: Number(newDebtorAmount),
+                    vehicleNumber: newDebtorVehicle,
+                    slipNumber: newDebtorSlip,
+                    time,
+                  },
+                ]);
+
+                setNewDebtorAmount("");
+                setNewDebtorVehicle("");
+                setNewDebtorSlip("");
+                setSelectedCreditorId("");
+                setNewDebtorName("");
+                setCustomVehicle(false);
+              }}
             >
-              <h3
-                style={{
-                  fontSize: "1rem",
-                  fontWeight: "bold",
-                  marginBottom: "12px",
-                  borderBottom: "1px solid #334155",
-                  paddingBottom: "6px",
-                }}
-              >
-                Debtors (Credit/Debit)
-              </h3>
-
-              <div
-                className="debtor-entry-form"
-                style={{
-                  background: "#0f172a",
-                  padding: "12px",
-                  borderRadius: "6px",
-                  marginBottom: "12px",
-                }}
-              >
-                <div className="field-row-2">
-                  <div className="field-group">
-                    <label className="field-label">Debtor Name</label>
-                    <select
-                      className="field-input"
-                      value={selectedCreditorId}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setSelectedCreditorId(val);
-                        const c = creditorList.find((x) => x.id === val);
-                        setNewDebtorName(c ? c.name : "");
-                        setNewDebtorVehicle("");
-                      }}
-                    >
-                      <option value="">-- Select Debtor --</option>
-                      {creditorList.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="field-group">
-                    <label className="field-label">Amount (₹)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      className="field-input"
-                      placeholder="0.00"
-                      value={newDebtorAmount}
-                      onChange={(e) => setNewDebtorAmount(e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                    margin: "10px 0 6px 0",
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    id="custom-vehicle-check"
-                    checked={customVehicle}
-                    onChange={(e) => {
-                      setCustomVehicle(e.target.checked);
-                      setNewDebtorVehicle("");
-                    }}
-                  />
-                  <label
-                    htmlFor="custom-vehicle-check"
-                    style={{
-                      fontSize: "0.85rem",
-                      fontWeight: "500",
-                      color: "#94a3b8",
-                      cursor: "pointer",
-                    }}
-                  >
-                    Type custom vehicle number
-                  </label>
-                </div>
-
-                <div className="field-row-2">
-                  <div className="field-group">
-                    <label className="field-label">Vehicle No.</label>
-                    {customVehicle ? (
-                      <input
-                        type="text"
-                        className="field-input"
-                        placeholder="MH-12-XX-XXXX"
-                        value={newDebtorVehicle}
-                        onChange={(e) => setNewDebtorVehicle(e.target.value)}
-                      />
-                    ) : (
-                      <select
-                        className="field-input"
-                        value={newDebtorVehicle}
-                        onChange={(e) => setNewDebtorVehicle(e.target.value)}
-                        disabled={!selectedCreditorId}
-                      >
-                        <option value="">-- Select Vehicle --</option>
-                        {vehicleList
-                          .filter((v) => v.creditorId === selectedCreditorId)
-                          .map((v, i) => (
-                            <option key={i} value={v.vehicleNumber}>
-                              {v.vehicleNumber}
-                            </option>
-                          ))}
-                      </select>
-                    )}
-                  </div>
-                  <div className="field-group">
-                    <label className="field-label">Slip No.</label>
-                    <input
-                      type="text"
-                      className="field-input"
-                      placeholder="Slip No."
-                      value={newDebtorSlip}
-                      onChange={(e) => setNewDebtorSlip(e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  className="btn-outline"
-                  style={{ marginTop: "12px", width: "100%", padding: "8px" }}
-                  onClick={() => {
-                    if (
-                      !newDebtorName ||
-                      !newDebtorAmount ||
-                      Number(newDebtorAmount) <= 0
-                    )
-                      return;
-
-                    const time = new Date().toLocaleTimeString("en-US", {
-                      hour12: false,
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    });
-                    setDebtorEntries((prev) => [
-                      ...prev,
-                      {
-                        debtorName: newDebtorName,
-                        amount: Number(newDebtorAmount),
-                        vehicleNumber: newDebtorVehicle,
-                        slipNumber: newDebtorSlip,
-                        time,
-                      },
-                    ]);
-
-                    // Reset fields
-                    setNewDebtorAmount("");
-                    setNewDebtorVehicle("");
-                    setNewDebtorSlip("");
-                    setSelectedCreditorId("");
-                    setNewDebtorName("");
-                    setCustomVehicle(false);
-                  }}
-                >
-                  + Add Debtor Entry
-                </button>
-              </div>
-
-              {debtorEntries.length > 0 && (
-                <div className="debtor-entry-list">
-                  {debtorEntries.map((item, idx) => (
-                    <div
-                      key={idx}
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        background: "#0f172a",
-                        padding: "8px 12px",
-                        borderRadius: "4px",
-                        marginBottom: "4px",
-                        fontSize: "0.85rem",
-                      }}
-                    >
-                      <div>
-                        <strong>{item.debtorName}</strong>: ₹
-                        {item.amount.toFixed(2)} <br />
-                        <span style={{ color: "#94a3b8" }}>
-                          Veh: {item.vehicleNumber || "N/A"} | Slip:{" "}
-                          {item.slipNumber || "N/A"} | Time: {item.time}
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        style={{
-                          color: "#ef4444",
-                          background: "none",
-                          border: "none",
-                          cursor: "pointer",
-                          fontWeight: "bold",
-                        }}
-                        onClick={() => {
-                          setDebtorEntries((prev) =>
-                            prev.filter((_, i) => i !== idx),
-                          );
-                        }}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <div
-                className="nozzle-card"
-                style={{ marginBottom: "16px", padding: "16px" }}
-              >
-                <h3
-                  style={{
-                    fontSize: "1rem",
-                    fontWeight: "bold",
-                    marginBottom: "12px",
-                    borderBottom: "1px solid #334155",
-                    paddingBottom: "6px",
-                  }}
-                >
-                  DSM Personal Debtors
-                </h3>
-                <div className="field-row-2">
-                  <div className="field-group">
-                    <label className="field-label">Amount (₹)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      className="field-input"
-                      placeholder="0.00"
-                      value={newPersonalDebtorAmount}
-                      onChange={(e) =>
-                        setNewPersonalDebtorAmount(e.target.value)
-                      }
-                    />
-                  </div>
-                  <div className="field-group">
-                    <label className="field-label">Fuel Product</label>
-                    <input
-                      type="text"
-                      className="field-input"
-                      placeholder="e.g. Petrol 92"
-                      value={newPersonalDebtorFuelProduct}
-                      onChange={(e) =>
-                        setNewPersonalDebtorFuelProduct(e.target.value)
-                      }
-                    />
-                  </div>
-                </div>
-
-                <div className="field-row-2">
-                  <div className="field-group">
-                    <label className="field-label">Payment Method</label>
-                    <select
-                      className="field-input"
-                      value={newPersonalDebtorPaymentMethod}
-                      onChange={(e) =>
-                        setNewPersonalDebtorPaymentMethod(
-                          e.target.value as "Cash" | "Card",
-                        )
-                      }
-                    >
-                      <option value="Cash">Cash</option>
-                      <option value="Card">Card</option>
-                    </select>
-                  </div>
-                  <div className="field-group">
-                    <label className="field-label">Remarks</label>
-                    <input
-                      type="text"
-                      className="field-input"
-                      placeholder="Payment note or description"
-                      value={newPersonalDebtorRemarks}
-                      onChange={(e) =>
-                        setNewPersonalDebtorRemarks(e.target.value)
-                      }
-                    />
-                  </div>
-                </div>
-
-                {newPersonalDebtorPaymentMethod === "Card" && (
-                  <div className="field-row-2">
-                    <div className="field-group">
-                      <label className="field-label">Card TID</label>
-                      <input
-                        type="text"
-                        className="field-input"
-                        placeholder="TID"
-                        value={newPersonalDebtorTid}
-                        onChange={(e) =>
-                          setNewPersonalDebtorTid(e.target.value)
-                        }
-                      />
-                    </div>
-                    <div className="field-group">
-                      <label className="field-label">Card Batch</label>
-                      <input
-                        type="text"
-                        className="field-input"
-                        placeholder="Batch"
-                        value={newPersonalDebtorBatch}
-                        onChange={(e) =>
-                          setNewPersonalDebtorBatch(e.target.value)
-                        }
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {newPersonalDebtorPaymentMethod === "Cash" && (
-                  <div
-                    style={{
-                      marginTop: "12px",
-                      border: "1px solid #334155",
-                      borderRadius: "8px",
-                      padding: "12px",
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: "0.85rem",
-                        color: "#94a3b8",
-                        marginBottom: "8px",
-                      }}
-                    >
-                      Cash denominations (optional)
-                    </div>
-                    <div className="field-row-2">
-                      <div className="field-group">
-                        <label className="field-label">₹500</label>
-                        <input
-                          type="number"
-                          className="field-input"
-                          value={newPersonalDebtorDenom500 || ""}
-                          placeholder="0"
-                          min={0}
-                          onFocus={(e) => e.target.select()}
-                          onChange={(e) =>
-                            updatePersonalDebtorDenomination("500", Number(e.target.value))
-                          }
-                        />
-                      </div>
-                      <div className="field-group">
-                        <label className="field-label">₹200</label>
-                        <input
-                          type="number"
-                          className="field-input"
-                          value={newPersonalDebtorDenom200 || ""}
-                          placeholder="0"
-                          min={0}
-                          onFocus={(e) => e.target.select()}
-                          onChange={(e) =>
-                            updatePersonalDebtorDenomination("200", Number(e.target.value))
-                          }
-                        />
-                      </div>
-                    </div>
-                    <div className="field-row-2">
-                      <div className="field-group">
-                        <label className="field-label">₹100</label>
-                        <input
-                          type="number"
-                          className="field-input"
-                          value={newPersonalDebtorDenom100 || ""}
-                          placeholder="0"
-                          min={0}
-                          onFocus={(e) => e.target.select()}
-                          onChange={(e) =>
-                            updatePersonalDebtorDenomination("100", Number(e.target.value))
-                          }
-                        />
-                      </div>
-                      <div className="field-group">
-                        <label className="field-label">₹50</label>
-                        <input
-                          type="number"
-                          className="field-input"
-                          value={newPersonalDebtorDenom50 || ""}
-                          placeholder="0"
-                          min={0}
-                           onFocus={(e) => e.target.select()}
-                         onChange={(e) =>
-                            updatePersonalDebtorDenomination("50", Number(e.target.value))
-                          }
-                        />
-                      </div>
-                    </div>
-                    <div className="field-row-2">
-                      <div className="field-group">
-                        <label className="field-label">₹20</label>
-                        <input
-                          type="number"
-                          className="field-input"
-                          value={newPersonalDebtorDenom20 || ""}
-                          placeholder="0"
-                          min={0}
-                          onFocus={(e) => e.target.select()}
-                          onChange={(e) =>
-                            updatePersonalDebtorDenomination("20", Number(e.target.value))
-                          }
-                        />
-                      </div>
-                      <div className="field-group">
-                        <label className="field-label">₹10</label>
-                        <input
-                          type="number"
-                          className="field-input"
-                          value={newPersonalDebtorDenom10 || ""}
-                          placeholder="0"
-                          min={0}
-                          onFocus={(e) => e.target.select()}
-                          onChange={(e) =>
-                            updatePersonalDebtorDenomination("10", Number(e.target.value))
-                          }
-                        />
-                      </div>
-                    </div>
-                    <div className="field-group" style={{ marginTop: "12px" }}>
-                      <label className="field-label">Coins</label>
-                      <input
-                        type="number"
-                        className="field-input"
-                        value={newPersonalDebtorCoins || ""}
-                        placeholder="0"
-                        min={0}
-                        onFocus={(e) => e.target.select()}
-                        onChange={(e) =>
-                          updatePersonalDebtorDenomination("coins", Number(e.target.value))
-                        }
-                      />
-                    </div>
-                  </div>
-                )}
-
-                <button
-                  type="button"
-                  className="btn-outline"
-                  style={{ marginTop: "12px", width: "100%", padding: "8px" }}
-                  onClick={() => {
-                    if (
-                      !newPersonalDebtorAmount ||
-                      Number(newPersonalDebtorAmount) <= 0
-                    )
-                      return;
-                    setPersonalDebtors((prev) => [
-                      ...prev,
-                      {
-                        amount: Number(newPersonalDebtorAmount),
-                        fuelProduct: newPersonalDebtorFuelProduct,
-                        remarks: newPersonalDebtorRemarks,
-                        paymentMethod: newPersonalDebtorPaymentMethod,
-                        tid: newPersonalDebtorTid,
-                        batch: newPersonalDebtorBatch,
-                        denom500: newPersonalDebtorDenom500,
-                        denom200: newPersonalDebtorDenom200,
-                        denom100: newPersonalDebtorDenom100,
-                        denom50: newPersonalDebtorDenom50,
-                        denom20: newPersonalDebtorDenom20,
-                        denom10: newPersonalDebtorDenom10,
-                        coins: newPersonalDebtorCoins,
-                      },
-                    ]);
-
-                    setNewPersonalDebtorAmount("");
-                    setNewPersonalDebtorFuelProduct("");
-                    setNewPersonalDebtorRemarks("");
-                    setNewPersonalDebtorPaymentMethod("Cash");
-                    setNewPersonalDebtorTid("");
-                    setNewPersonalDebtorBatch("");
-                    setNewPersonalDebtorDenom500(0);
-                    setNewPersonalDebtorDenom200(0);
-                    setNewPersonalDebtorDenom100(0);
-                    setNewPersonalDebtorDenom50(0);
-                    setNewPersonalDebtorDenom20(0);
-                    setNewPersonalDebtorDenom10(0);
-                    setNewPersonalDebtorCoins(0);
-                  }}
-                >
-                  + Add Personal Debtor
-                </button>
-
-                {personalDebtors.length > 0 && (
-                  <div
-                    className="debtor-entry-list"
-                    style={{ marginTop: "16px" }}
-                  >
-                    {personalDebtors.map((item, idx) => (
-                      <div
-                        key={idx}
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          background: "#0f172a",
-                          padding: "8px 12px",
-                          borderRadius: "4px",
-                          marginBottom: "4px",
-                          fontSize: "0.85rem",
-                        }}
-                      >
-                        <div>
-                          <strong>₹{item.amount.toFixed(2)}</strong>{" "}
-                          {item.paymentMethod}
-                          <div style={{ color: "#94a3b8" }}>
-                            {item.fuelProduct ? `${item.fuelProduct} • ` : ""}
-                            {item.remarks || "No remarks"}
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          style={{
-                            color: "#ef4444",
-                            background: "none",
-                            border: "none",
-                            cursor: "pointer",
-                            fontWeight: "bold",
-                          }}
-                          onClick={() => {
-                            setPersonalDebtors((prev) =>
-                              prev.filter((_, i) => i !== idx),
-                            );
-                          }}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Khandhare Petroleum Drawings */}
-            <div
-              className="nozzle-card"
-              style={{ marginBottom: "16px", padding: "16px" }}
-            >
-              <h3
-                style={{
-                  fontSize: "1rem",
-                  fontWeight: "bold",
-                  marginBottom: "12px",
-                  borderBottom: "1px solid #334155",
-                  paddingBottom: "6px",
-                }}
-              >
-                Khandhare Petroleum Drawings
-              </h3>
-              <div className="field-row-2">
-                <div className="field-group">
-                  <label className="field-label">Person Name</label>
-                  <input
-                    type="text"
-                    className="field-input"
-                    placeholder="Enter name"
-                    value={newKpName}
-                    onChange={(e) => setNewKpName(e.target.value)}
-                  />
-                </div>
-                <div className="field-group">
-                  <label className="field-label">Slip Number</label>
-                  <input
-                    type="text"
-                    className="field-input"
-                    placeholder="Enter slip no"
-                    value={newKpSlipNumber}
-                    onChange={(e) => setNewKpSlipNumber(e.target.value)}
-                  />
-                </div>
-              </div>
-              <div className="field-group" style={{ marginTop: "12px" }}>
-                <label className="field-label">Amount (₹)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  className="field-input"
-                  placeholder="0.00"
-                  value={newKpAmount}
-                  onChange={(e) => setNewKpAmount(e.target.value)}
-                />
-              </div>
-
-              <button
-                type="button"
-                className="btn-outline"
-                style={{ marginTop: "12px", width: "100%", padding: "8px" }}
-                onClick={() => {
-                  if (!newKpName.trim() || !newKpAmount || Number(newKpAmount) <= 0)
-                    return;
-                  setKhandhareEntries((prev) => [
-                    ...prev,
-                    {
-                      name: newKpName,
-                      slipNumber: newKpSlipNumber,
-                      amount: Number(newKpAmount),
-                    },
-                  ]);
-                  setNewKpName("");
-                  setNewKpSlipNumber("");
-                  setNewKpAmount("");
-                }}
-              >
-                + Add Drawing Entry
-              </button>
-
-              {khandhareEntries.length > 0 && (
-                <div
-                  className="debtor-entry-list"
-                  style={{ marginTop: "16px" }}
-                >
-                  {khandhareEntries.map((item, idx) => (
-                    <div
-                      key={idx}
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        background: "#0f172a",
-                        padding: "8px 12px",
-                        borderRadius: "4px",
-                        marginBottom: "4px",
-                        fontSize: "0.85rem",
-                      }}
-                    >
-                      <div>
-                        <strong>₹{item.amount.toFixed(2)}</strong>{" "}
-                        <span>{item.name}</span>
-                        <div style={{ color: "#94a3b8" }}>
-                          {item.slipNumber ? `Slip: ${item.slipNumber}` : "No slip number"}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        style={{
-                          color: "#ef4444",
-                          background: "none",
-                          border: "none",
-                          cursor: "pointer",
-                          fontWeight: "bold",
-                        }}
-                        onClick={() => {
-                          setKhandhareEntries((prev) =>
-                            prev.filter((_, i) => i !== idx),
-                          );
-                        }}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Oil & DEF Product Sales */}
-            {availableProducts.length > 0 && (
-              <div
-                className="nozzle-card"
-                style={{ marginBottom: "16px", padding: "16px" }}
-              >
-                <h3
-                  style={{
-                    fontSize: "1rem",
-                    fontWeight: "bold",
-                    marginBottom: "12px",
-                    borderBottom: "1px solid #334155",
-                    paddingBottom: "6px",
-                  }}
-                >
-                  Oil &amp; DEF Product Sales
-                </h3>
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "12px",
-                  }}
-                >
-                  {availableProducts.map((p) => {
-                    const stock = productStocks[p.id] || 0;
-                    const qty = salesQuantities[p.id] || 0;
-                    const total = qty * p.defaultSaleRate;
-
-                    return (
-                      <div
-                        key={p.id}
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          gap: "8px",
-                          borderBottom: "1px solid #1e293b",
-                          paddingBottom: "8px",
-                        }}
-                      >
-                        <div style={{ flex: "1" }}>
-                          <div
-                            style={{ fontWeight: "500", fontSize: "0.9rem" }}
-                          >
-                            {p.productName}
-                          </div>
-                          <div
-                            style={{ fontSize: "0.75rem", color: "#94a3b8" }}
-                          >
-                            Price: ₹{p.defaultSaleRate.toFixed(2)} / {p.unit} |
-                            Stock:{" "}
-                            <span
-                              style={{
-                                color: stock > 0 ? "#4ade80" : "#f87171",
-                                fontWeight: "bold",
-                              }}
-                            >
-                              {stock} {p.unit}
-                            </span>
-                          </div>
-                        </div>
-                        <div style={{ width: "100px" }}>
-                          <input
-                            type="number"
-                            min="0"
-                            max={stock}
-                            step="any"
-                            className="field-input"
-                            style={{
-                              padding: "6px 8px",
-                              fontSize: "0.85rem",
-                              textAlign: "right",
-                            }}
-                            placeholder="0"
-                            value={salesQuantities[p.id] || ""}
-                            onChange={(e) => {
-                              const val = parseFloat(e.target.value);
-                              const cleanVal = isNaN(val) ? 0 : val;
-                              if (cleanVal < 0) return;
-                              if (cleanVal > stock) {
-                                alert(
-                                  `Cannot sell more than available stock of ${stock} ${p.unit}.`,
-                                );
-                                return;
-                              }
-                              setSalesQuantities((prev) => ({
-                                ...prev,
-                                [p.id]: cleanVal,
-                              }));
-                            }}
-                          />
-                        </div>
-                        <div
-                          style={{
-                            width: "80px",
-                            textAlign: "right",
-                            fontSize: "0.9rem",
-                            fontWeight: "bold",
-                          }}
-                        >
-                          ₹{total.toFixed(2)}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <div
-                  style={{
-                    marginTop: "12px",
-                    borderTop: "1px dashed #334155",
-                    paddingTop: "10px",
-                    fontSize: "0.85rem",
-                    color: "#94a3b8",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      marginBottom: "4px",
-                    }}
-                  >
-                    <span>Shift Oil Total:</span>
-                    <span>₹{shiftOilTotal.toFixed(2)}</span>
-                  </div>
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      marginBottom: "4px",
-                    }}
-                  >
-                    <span>Shift DEF Total:</span>
-                    <span>₹{shiftDefTotal.toFixed(2)}</span>
-                  </div>
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      fontWeight: "bold",
-                      color: "#fff",
-                      fontSize: "0.95rem",
-                      marginTop: "6px",
-                      borderTop: "1px solid #334155",
-                      paddingTop: "6px",
-                    }}
-                  >
-                    <span>Grand Product Sales:</span>
-                    <span>₹{grandProductSales.toFixed(2)}</span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Mismatch Preview */}
-            <div
-              className={`mismatch-preview ${Math.abs(mismatch) > 500 ? "mismatch-warn" : "mismatch-ok"}`}
-            >
-              <div className="mismatch-row">
-                <span>Gross Sales (Fuel)</span>
-                <span>
-                  ₹
-                  {grossSales.toLocaleString("en-IN", {
-                    minimumFractionDigits: 2,
-                  })}
-                </span>
-              </div>
-              {grandProductSales > 0 && (
-                <div className="mismatch-row">
-                  <span>Product Sales (Oil/DEF)</span>
-                  <span>
-                    ₹
-                    {grandProductSales.toLocaleString("en-IN", {
-                      minimumFractionDigits: 2,
-                    })}
-                  </span>
-                </div>
-              )}
-              <div className="mismatch-row">
-                <span>Total Collections</span>
-                <span>
-                  ₹
-                  {totalCollections.toLocaleString("en-IN", {
-                    minimumFractionDigits: 2,
-                  })}
-                </span>
-              </div>
-              <div className="mismatch-row mismatch-total">
-                <span>Mismatch</span>
-                <span
-                  className={Math.abs(mismatch) > 500 ? "text-warn" : "text-ok"}
-                >
-                  ₹{mismatch.toFixed(2)}
-                </span>
-              </div>
-            </div>
-
-            {validationErrors.length > 0 && (
-              <div className="validation-errors">
-                <AlertTriangle size={16} />
-                <ul>
-                  {validationErrors.map((e, i) => (
-                    <li key={i}>{e}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            <div className="btn-row">
-              <button
-                className="btn-outline"
-                onClick={() => setStep("readings")}
-              >
-                ← Back
-              </button>
-              <button
-                id="next-review-btn"
-                className="btn-primary"
-                onClick={goToReview}
-              >
-                Review →
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* ── Step 3: Review ───────────────────────────────── */}
-        {step === "review" && (
-          <div className="form-section" id="step-review">
-            <h2 className="section-heading">Review Submission</h2>
-
-            <div className="review-block">
-              <div className="review-row">
-                <span>Pump</span>
-                <strong>
-                  Pump {pumpId}
-                  {profile?.ConnectedPump
-                    ? ` + Pump ${profile.ConnectedPump} (Connected)`
-                    : ""}
-                </strong>
-              </div>
-
-              <div className="review-row">
-                <span>Date</span>
-                <strong>
-                  {new Date(shiftDate + "T00:00:00").toLocaleDateString(
-                    "en-IN",
-                    { day: "numeric", month: "long", year: "numeric" },
-                  )}
-                </strong>
-              </div>
-              <div className="review-row">
-                <span>Shift</span>
-                <strong>
-                  Shift {shiftType} (
-                  {shiftType === "A" ? "Night/Morning" : "Day"})
-                </strong>
-              </div>
-            </div>
-
-            <div className="review-block">
-              <p className="review-block-title">Nozzle Readings</p>
-              {nozzleRows.map((r) => (
-                <div
-                  key={r.rowId}
-                  className="review-row"
-                  style={{
-                    flexDirection: "column",
-                    alignItems: "stretch",
-                    marginBottom: "8px",
-                  }}
-                >
-                  <div
-                    style={{ display: "flex", justifyContent: "space-between" }}
-                  >
-                    <span>
-                      Nozzle {r.nozzleId} ({r.fuelType})
-                    </span>
-                    <strong>
-                      {Math.max(0, r.closingReading - r.openingReading).toFixed(
-                        2,
-                      )}
-                      L = ₹
-                      {(
-                        Math.max(0, r.closingReading - r.openingReading) *
-                        r.rate
-                      ).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                    </strong>
-                  </div>
-                  {(r.testing || 0) > 0 && (
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        fontSize: "0.8rem",
-                        color: "#94a3b8",
-                        paddingLeft: "8px",
-                        marginTop: "2px",
-                      }}
-                    >
-                      <span>└ Testing Quantity</span>
-                      <span>
-                        -{r.testing} L (₹
-                        {((r.testing || 0) * r.rate).toFixed(2)})
-                      </span>
-                    </div>
-                  )}
-                </div>
-              ))}
-              <div
-                className="review-row review-total"
-                style={{
-                  borderTop: "1px solid #334155",
-                  paddingTop: "8px",
-                  marginTop: "8px",
-                }}
-              >
-                <span>Gross Sales (Fuel)</span>
-                <strong>
-                  ₹
-                  {grossSales.toLocaleString("en-IN", {
-                    minimumFractionDigits: 2,
-                  })}
-                </strong>
-              </div>
-            </div>
-
-            <div className="review-block">
-              <p className="review-block-title">
-                Collections &amp; Adjustments
-              </p>
-              {cash > 0 && (
-                <>
-                  <div className="review-row">
-                    <span>Cash (Total)</span>
-                    <strong>
-                      ₹
-                      {cash.toLocaleString("en-IN", {
-                        minimumFractionDigits: 2,
-                      })}
-                    </strong>
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "0.8rem",
-                      color: "#94a3b8",
-                      paddingLeft: "12px",
-                      marginBottom: "8px",
-                      borderLeft: "2px solid #334155",
-                    }}
-                  >
-                    {denom500 > 0 && (
-                      <div>
-                        500 x {denom500} = ₹{denom500 * 500}
-                      </div>
-                    )}
-                    {denom200 > 0 && (
-                      <div>
-                        200 x {denom200} = ₹{denom200 * 200}
-                      </div>
-                    )}
-                    {denom100 > 0 && (
-                      <div>
-                        100 x {denom100} = ₹{denom100 * 100}
-                      </div>
-                    )}
-                    {denom50 > 0 && (
-                      <div>
-                        50 x {denom50} = ₹{denom50 * 50}
-                      </div>
-                    )}
-                    {denom20 > 0 && (
-                      <div>
-                        20 x {denom20} = ₹{denom20 * 20}
-                      </div>
-                    )}
-                    {denom10 > 0 && (
-                      <div>
-                        10 x {denom10} = ₹{denom10 * 10}
-                      </div>
-                    )}
-                    {coins > 0 && <div>Coins/Other = ₹{coins}</div>}
-                  </div>
-                </>
-              )}
-              {upiTotal > 0 && (
-                <div className="review-row">
-                  <span>UPI</span>
-                  <strong>
-                    ₹
-                    {upiTotal.toLocaleString("en-IN", {
-                      minimumFractionDigits: 2,
-                    })}
-                  </strong>
-                </div>
-              )}
-              {cardTotal > 0 && (
-                <div className="review-row">
-                  <span>Card</span>
-                  <strong>
-                    ₹
-                    {cardTotal.toLocaleString("en-IN", {
-                      minimumFractionDigits: 2,
-                    })}
-                  </strong>
-                </div>
-              )}
-              {creditTotal > 0 && (
-                <div className="review-row">
-                  <span>Credit (Debtors)</span>
-                  <strong>
-                    ₹
-                    {creditTotal.toLocaleString("en-IN", {
-                      minimumFractionDigits: 2,
-                    })}
-                  </strong>
-                </div>
-              )}
-              {totalTesting > 0 && (
-                <div className="review-row">
-                  <span>Testing Credit</span>
-                  <strong>
-                    ₹
-                    {totalTesting.toLocaleString("en-IN", {
-                      minimumFractionDigits: 2,
-                    })}
-                  </strong>
-                </div>
-              )}
-              {expenseEntries.length > 0 && (
-                <div
-                  style={{
-                    marginTop: "8px",
-                    borderTop: "1px dashed #334155",
-                    paddingTop: "8px",
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: "0.85rem",
-                      fontWeight: "bold",
-                      color: "#94a3b8",
-                      marginBottom: "4px",
-                    }}
-                  >
-                    Expenses Breakdown ({expenseEntries.length}):
-                  </div>
-                  {expenseEntries.map((item, idx) => (
-                    <div
-                      key={idx}
-                      className="review-row"
-                      style={{ fontSize: "0.85rem", padding: "2px 0" }}
-                    >
-                      <span>{item.description}</span>
-                      <strong style={{ color: "#f87171" }}>
-                        ₹{item.amount.toFixed(2)}
-                      </strong>
-                    </div>
-                  ))}
-                  <div
-                    className="review-row"
-                    style={{ marginTop: "4px", fontWeight: "bold" }}
-                  >
-                    <span>Total Expenses</span>
-                    <strong style={{ color: "#f87171" }}>
-                      ₹{expense.toFixed(2)}
-                    </strong>
-                  </div>
-                </div>
-              )}
-              <div
-                className={`review-row review-total ${Math.abs(mismatch) > 500 ? "review-warn" : ""}`}
-                style={{
-                  borderTop: "1px solid #334155",
-                  paddingTop: "8px",
-                  marginTop: "8px",
-                }}
-              >
-                <span>Mismatch</span>
-                <strong>₹{mismatch.toFixed(2)}</strong>
-              </div>
-            </div>
-
-            {cardSwipeDetails.length > 0 && (
-              <div className="review-block">
-                <p className="review-block-title">Card Swipe Details</p>
-                {cardSwipeDetails.map((item, idx) => (
-                  <div key={idx} className="review-row">
-                    <span>
-                      {item.mode} (TID: {item.tid || "N/A"}, Batch:{" "}
-                      {item.batch || "N/A"})
-                    </span>
-                    <strong>₹{item.amount.toFixed(2)}</strong>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {khandhareEntries.length > 0 && (
-              <div className="review-block">
-                <p className="review-block-title">Khandhare Petroleum Drawings</p>
-                {khandhareEntries.map((item, idx) => (
-                  <div key={idx} className="review-row">
-                    <span>
-                      {item.name} {item.slipNumber ? `(Slip: ${item.slipNumber})` : ""}
-                    </span>
-                    <strong>₹{item.amount.toFixed(2)}</strong>
-                  </div>
-                ))}
-              </div>
-            )}
-
+              + Add Debtor Entry
+            </button>
             {debtorEntries.length > 0 && (
-              <div className="review-block">
-                <p className="review-block-title">Debtor Entries Log</p>
+              <div
+                className="debtor-entry-list"
+                style={{ marginTop: "16px" }}
+              >
                 {debtorEntries.map((item, idx) => (
-                  <div key={idx} className="review-row">
-                    <span>
-                      {item.debtorName} ({item.time})
-                    </span>
-                    <strong>₹{item.amount.toFixed(2)}</strong>
+                  <div
+                    key={idx}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      background: "#0f172a",
+                      padding: "8px 12px",
+                      borderRadius: "4px",
+                      marginBottom: "4px",
+                      fontSize: "0.85rem",
+                    }}
+                  >
+                    <div>
+                      <strong>{item.debtorName}</strong>: ₹
+                      {item.amount.toFixed(2)} <br />
+                      <span style={{ color: "#94a3b8" }}>
+                        Veh: {item.vehicleNumber || "N/A"} | Slip:{" "}
+                        {item.slipNumber || "N/A"} | Time: {item.time}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      style={{
+                        color: "#ef4444",
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        fontWeight: "bold",
+                      }}
+                      onClick={() => {
+                        setDebtorEntries((prev) =>
+                          prev.filter((_, i) => i !== idx),
+                        );
+                      }}
+                    >
+                      Delete
+                    </button>
                   </div>
                 ))}
               </div>
             )}
+          </div>
 
-            {/* Oil & DEF Product Sales */}
-            {availableProducts.some(
-              (p) => (salesQuantities[p.id] || 0) > 0,
-            ) && (
-              <div className="review-block">
-                <p className="review-block-title">
-                  Oil &amp; DEF Product Sales
-                </p>
-                {availableProducts
-                  .filter((p) => (salesQuantities[p.id] || 0) > 0)
-                  .map((p) => (
-                    <div key={p.id} className="review-row">
-                      <span>
-                        {p.productName} ({salesQuantities[p.id]} {p.unit} × ₹
-                        {p.defaultSaleRate.toFixed(2)})
-                      </span>
-                      <strong>
-                        ₹
-                        {(
-                          (salesQuantities[p.id] || 0) * p.defaultSaleRate
-                        ).toFixed(2)}
-                      </strong>
-                    </div>
-                  ))}
-                <div
-                  className="review-row review-total"
-                  style={{
-                    borderTop: "1px solid #334155",
-                    paddingTop: "8px",
-                    marginTop: "8px",
-                  }}
-                >
-                  <span>Product Sales Total</span>
-                  <strong>₹{grandProductSales.toFixed(2)}</strong>
-                </div>
-              </div>
-            )}
+          {/* 6. Expenses */}
+          <div
+            className="nozzle-card"
+            style={{ marginBottom: "16px", padding: "16px" }}
+          >
+            <h3
+              style={{
+                fontSize: "1rem",
+                fontWeight: "bold",
+                marginBottom: "12px",
+                borderBottom: "1px solid #334155",
+                paddingBottom: "6px",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <span>Expenses / Adjustments</span>
+              <span
+                style={{
+                  fontSize: "0.85rem",
+                  fontWeight: "normal",
+                  color: "#f87171",
+                }}
+              >
+                Total: ₹{expense.toFixed(2)}
+              </span>
+            </h3>
 
-            <div className="field-group">
-              <label className="field-label" htmlFor="submission-notes">
-                Notes (optional)
-              </label>
-              <textarea
-                id="submission-notes"
-                className="field-input field-textarea"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Any remarks for the manager..."
-                rows={3}
+            <div className="field-group" style={{ marginBottom: "12px" }}>
+              <label className="field-label">Expense Description / Purpose</label>
+              <input
+                type="text"
+                className="field-input"
+                placeholder="e.g. Tea / Refreshment, Dinner, Repair"
+                value={newExpenseDescription}
+                onChange={(e) => setNewExpenseDescription(e.target.value)}
+              />
+            </div>
+            <div className="field-group" style={{ marginBottom: "12px" }}>
+              <label className="field-label">Amount (₹)</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                className="field-input"
+                placeholder="0.00"
+                value={newExpenseAmount}
+                onChange={(e) => setNewExpenseAmount(e.target.value)}
               />
             </div>
 
-            {error && (
-              <div className="alert-error" role="alert">
-                <AlertTriangle size={16} />
-                <span>{error}</span>
+            <button
+              type="button"
+              className="btn-outline"
+              style={{ marginTop: "4px", width: "100%", padding: "8px" }}
+              onClick={() => {
+                if (
+                  !newExpenseDescription.trim() ||
+                  !newExpenseAmount ||
+                  Number(newExpenseAmount) <= 0
+                )
+                  return;
+                setExpenseEntries((prev) => [
+                  ...prev,
+                  {
+                    description: newExpenseDescription.trim(),
+                    amount: Number(newExpenseAmount),
+                  },
+                ]);
+                setNewExpenseDescription("");
+                setNewExpenseAmount("");
+              }}
+            >
+              + Add Expense Entry
+            </button>
+
+            {expenseEntries.length > 0 && (
+              <div
+                className="debtor-entry-list"
+                style={{ marginTop: "16px" }}
+              >
+                {expenseEntries.map((item, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      background: "#0f172a",
+                      padding: "8px 12px",
+                      borderRadius: "4px",
+                      marginBottom: "4px",
+                      fontSize: "0.85rem",
+                    }}
+                  >
+                    <div>
+                      <strong style={{ color: "#f87171" }}>
+                        ₹{item.amount.toFixed(2)}
+                      </strong>{" "}
+                      <span>{item.description}</span>
+                    </div>
+                    <button
+                      type="button"
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        color: "#ef4444",
+                        cursor: "pointer",
+                        fontWeight: "bold",
+                        fontSize: "1rem",
+                      }}
+                      onClick={() =>
+                        setExpenseEntries((prev) =>
+                          prev.filter((_, i) => i !== idx),
+                        )
+                      }
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
               </div>
             )}
+          </div>
 
-            {!online && (
-              <div className="alert-info">
-                <WifiOff size={16} />
+          {/* 7. Others */}
+          <div
+            className="nozzle-card"
+            style={{ marginBottom: "16px", padding: "16px" }}
+          >
+            <h3
+              style={{
+                fontSize: "1rem",
+                fontWeight: "bold",
+                marginBottom: "12px",
+                borderBottom: "1px solid #334155",
+                paddingBottom: "6px",
+              }}
+            >
+              Other Collections
+            </h3>
+            <div className="field-row">
+              <div className="field-group" style={{ marginBottom: 0 }}>
+                <label className="field-label">
+                  Others (Not in Total) (₹)
+                </label>
+                <input
+                  type="number"
+                  className="field-input"
+                  value={others || ""}
+                  step="0.01"
+                  min="0"
+                  onChange={(e) => setOthers(Number(e.target.value))}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* 8. Cash 2 (Cash in Hand / Denominations) - AT THE END OF COLLECTIONS */}
+          {/* ── SECTION 3: KANDHARE PETROLEUM LEDGER ── */}
+          <h2 className="section-heading" style={{ marginTop: "2rem" }}>
+            Kandhare Petroleum Ledger
+          </h2>
+
+          <div
+            className="nozzle-card"
+            style={{ marginBottom: "16px", padding: "16px" }}
+          >
+            <h3
+              style={{
+                fontSize: "1rem",
+                fontWeight: "bold",
+                marginBottom: "12px",
+                borderBottom: "1px solid #334155",
+                paddingBottom: "6px",
+              }}
+            >
+              Kandhare Petroleum
+            </h3>
+            <div className="field-row-2">
+              <div className="field-group">
+                <label className="field-label">Person Name</label>
+                <input
+                  type="text"
+                  className="field-input"
+                  placeholder="Enter name"
+                  value={newKpName}
+                  onChange={(e) => setNewKpName(e.target.value)}
+                />
+              </div>
+              <div className="field-group">
+                <label className="field-label">Slip Number</label>
+                <input
+                  type="text"
+                  className="field-input"
+                  placeholder="Enter slip no"
+                  value={newKpSlipNumber}
+                  onChange={(e) => setNewKpSlipNumber(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="field-group" style={{ marginTop: "12px" }}>
+              <label className="field-label">Amount (₹)</label>
+              <input
+                type="number"
+                step="0.01"
+                className="field-input"
+                placeholder="0.00"
+                value={newKpAmount}
+                onChange={(e) => setNewKpAmount(e.target.value)}
+              />
+            </div>
+
+            <button
+              type="button"
+              className="btn-outline"
+              style={{ marginTop: "12px", width: "100%", padding: "8px" }}
+              onClick={() => {
+                if (!newKpName.trim() || !newKpAmount || Number(newKpAmount) <= 0)
+                  return;
+                setKhandhareEntries((prev) => [
+                  ...prev,
+                  {
+                    name: newKpName,
+                    slipNumber: newKpSlipNumber,
+                    amount: Number(newKpAmount),
+                  },
+                ]);
+                setNewKpName("");
+                setNewKpSlipNumber("");
+                setNewKpAmount("");
+              }}
+            >
+              + Add Kandhare Petroleum Entry
+            </button>
+
+            {khandhareEntries.length > 0 && (
+              <div
+                className="debtor-entry-list"
+                style={{ marginTop: "16px" }}
+              >
+                {khandhareEntries.map((item, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      background: "#0f172a",
+                      padding: "8px 12px",
+                      borderRadius: "4px",
+                      marginBottom: "4px",
+                      fontSize: "0.85rem",
+                    }}
+                  >
+                    <div>
+                      <strong>₹{item.amount.toFixed(2)}</strong>{" "}
+                      <span>{item.name}</span>
+                      <div style={{ color: "#94a3b8" }}>
+                        {item.slipNumber ? `Slip: ${item.slipNumber}` : "No slip number"}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      style={{
+                        color: "#ef4444",
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        fontWeight: "bold",
+                      }}
+                      onClick={() => {
+                        setKhandhareEntries((prev) =>
+                          prev.filter((_, i) => i !== idx),
+                        );
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div
+            className="nozzle-card"
+            style={{ marginBottom: "16px", padding: "16px" }}
+          >
+            <h3
+              style={{
+                fontSize: "1rem",
+                fontWeight: "bold",
+                marginBottom: "12px",
+                borderBottom: "1px solid #334155",
+                paddingBottom: "6px",
+              }}
+            >
+              Cash 2 - Cash in Hand (Denominations)
+            </h3>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: "10px 16px",
+                marginBottom: "12px",
+              }}
+            >
+              <div
+                style={{ display: "flex", alignItems: "center", gap: "8px" }}
+              >
+                <span
+                  style={{
+                    width: "45px",
+                    fontWeight: "bold",
+                    fontSize: "0.9rem",
+                  }}
+                >
+                  ₹500 x
+                </span>
+                <input
+                  type="number"
+                  className="field-input"
+                  style={{ padding: "6px" }}
+                  value={denom500 || ""}
+                  min="0"
+                  onChange={(e) =>
+                    setDenom500(Math.max(0, parseInt(e.target.value) || 0))
+                  }
+                />
+              </div>
+              <div
+                style={{ display: "flex", alignItems: "center", gap: "8px" }}
+              >
+                <span
+                  style={{
+                    width: "45px",
+                    fontWeight: "bold",
+                    fontSize: "0.9rem",
+                  }}
+                >
+                  ₹200 x
+                </span>
+                <input
+                  type="number"
+                  className="field-input"
+                  style={{ padding: "6px" }}
+                  value={denom200 || ""}
+                  min="0"
+                  onChange={(e) =>
+                    setDenom200(Math.max(0, parseInt(e.target.value) || 0))
+                  }
+                />
+              </div>
+              <div
+                style={{ display: "flex", alignItems: "center", gap: "8px" }}
+              >
+                <span
+                  style={{
+                    width: "45px",
+                    fontWeight: "bold",
+                    fontSize: "0.9rem",
+                  }}
+                >
+                  ₹100 x
+                </span>
+                <input
+                  type="number"
+                  className="field-input"
+                  style={{ padding: "6px" }}
+                  value={denom100 || ""}
+                  min="0"
+                  onChange={(e) =>
+                    setDenom100(Math.max(0, parseInt(e.target.value) || 0))
+                  }
+                />
+              </div>
+              <div
+                style={{ display: "flex", alignItems: "center", gap: "8px" }}
+              >
+                <span
+                  style={{
+                    width: "45px",
+                    fontWeight: "bold",
+                    fontSize: "0.9rem",
+                  }}
+                >
+                  ₹50 x
+                </span>
+                <input
+                  type="number"
+                  className="field-input"
+                  style={{ padding: "6px" }}
+                  value={denom50 || ""}
+                  min="0"
+                  onChange={(e) =>
+                    setDenom50(Math.max(0, parseInt(e.target.value) || 0))
+                  }
+                />
+              </div>
+              <div
+                style={{ display: "flex", alignItems: "center", gap: "8px" }}
+              >
+                <span
+                  style={{
+                    width: "45px",
+                    fontWeight: "bold",
+                    fontSize: "0.9rem",
+                  }}
+                >
+                  ₹20 x
+                </span>
+                <input
+                  type="number"
+                  className="field-input"
+                  style={{ padding: "6px" }}
+                  value={denom20 || ""}
+                  min="0"
+                  onChange={(e) =>
+                    setDenom20(Math.max(0, parseInt(e.target.value) || 0))
+                  }
+                />
+              </div>
+              <div
+                style={{ display: "flex", alignItems: "center", gap: "8px" }}
+              >
+                <span
+                  style={{
+                    width: "45px",
+                    fontWeight: "bold",
+                    fontSize: "0.9rem",
+                  }}
+                >
+                  ₹10 x
+                </span>
+                <input
+                  type="number"
+                  className="field-input"
+                  style={{ padding: "6px" }}
+                  value={denom10 || ""}
+                  min="0"
+                  onChange={(e) =>
+                    setDenom10(Math.max(0, parseInt(e.target.value) || 0))
+                  }
+                />
+              </div>
+              <div
+                style={{ display: "flex", alignItems: "center", gap: "8px" }}
+              >
+                <span
+                  style={{
+                    width: "45px",
+                    fontWeight: "bold",
+                    fontSize: "0.9rem",
+                  }}
+                >
+                  Coins
+                </span>
+                <input
+                  type="number"
+                  className="field-input"
+                  style={{ padding: "6px" }}
+                  value={coins || ""}
+                  min="0"
+                  onChange={(e) =>
+                    setCoins(Math.max(0, parseFloat(e.target.value) || 0))
+                  }
+                />
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                borderTop: "1px solid #334155",
+                paddingTop: "10px",
+                marginTop: "10px",
+                fontSize: "1rem",
+                fontWeight: "bold",
+                color: "#10b981",
+              }}
+            >
+              <span>Total Cash in Hand (Cash 2):</span>
+              <span>
+                ₹
+                {cash.toLocaleString("en-IN", {
+                  minimumFractionDigits: 2,
+                })}
+              </span>
+            </div>
+          </div>
+
+          {/* ── SECTION 4: OIL & DEF PRODUCT SALES (IF AVAILABLE) ── */}
+          {availableProducts.length > 0 && (
+            <div
+              className="nozzle-card"
+              style={{ marginBottom: "16px", padding: "16px" }}
+            >
+              <h3
+                style={{
+                  fontSize: "1rem",
+                  fontWeight: "bold",
+                  marginBottom: "12px",
+                  borderBottom: "1px solid #334155",
+                  paddingBottom: "6px",
+                }}
+              >
+                Oil &amp; DEF Product Sales
+              </h3>
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "12px",
+                }}
+              >
+                {availableProducts.map((p) => {
+                  const stock = productStocks[p.id] || 0;
+                  const qty = salesQuantities[p.id] || 0;
+                  const total = qty * p.defaultSaleRate;
+
+                  return (
+                    <div
+                      key={p.id}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        gap: "8px",
+                        borderBottom: "1px solid #1e293b",
+                        paddingBottom: "8px",
+                      }}
+                    >
+                      <div style={{ flex: "1" }}>
+                        <div
+                          style={{ fontWeight: "500", fontSize: "0.9rem" }}
+                        >
+                          {p.productName}
+                        </div>
+                        <div
+                          style={{ fontSize: "0.75rem", color: "#94a3b8" }}
+                        >
+                          Price: ₹{p.defaultSaleRate.toFixed(2)} / {p.unit} |
+                          Stock:{" "}
+                          <span
+                            style={{
+                              color: stock > 0 ? "#4ade80" : "#f87171",
+                              fontWeight: "bold",
+                            }}
+                          >
+                            {stock} {p.unit}
+                          </span>
+                        </div>
+                      </div>
+                      <div style={{ width: "100px" }}>
+                        <input
+                          type="number"
+                          min="0"
+                          max={stock}
+                          step="any"
+                          className="field-input"
+                          style={{
+                            padding: "6px 8px",
+                            fontSize: "0.85rem",
+                            textAlign: "right",
+                          }}
+                          placeholder="0"
+                          value={salesQuantities[p.id] || ""}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value);
+                            const cleanVal = isNaN(val) ? 0 : val;
+                            if (cleanVal < 0) return;
+                            if (cleanVal > stock) {
+                              alert(
+                                `Cannot sell more than available stock of ${stock} ${p.unit}.`,
+                              );
+                              return;
+                            }
+                            setSalesQuantities((prev) => ({
+                              ...prev,
+                              [p.id]: cleanVal,
+                            }));
+                          }}
+                        />
+                      </div>
+                      <div
+                        style={{
+                          width: "80px",
+                          textAlign: "right",
+                          fontSize: "0.9rem",
+                          fontWeight: "bold",
+                        }}
+                      >
+                        ₹{total.toFixed(2)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div
+                style={{
+                  marginTop: "12px",
+                  borderTop: "1px dashed #334155",
+                  paddingTop: "10px",
+                  fontSize: "0.85rem",
+                  color: "#94a3b8",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    marginBottom: "4px",
+                  }}
+                >
+                  <span>Shift Oil Total:</span>
+                  <span>₹{shiftOilTotal.toFixed(2)}</span>
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    marginBottom: "4px",
+                  }}
+                >
+                  <span>Shift DEF Total:</span>
+                  <span>₹{shiftDefTotal.toFixed(2)}</span>
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    fontWeight: "bold",
+                    color: "#fff",
+                    fontSize: "0.95rem",
+                    marginTop: "6px",
+                    borderTop: "1px solid #334155",
+                    paddingTop: "6px",
+                  }}
+                >
+                  <span>Grand Product Sales:</span>
+                  <span>₹{grandProductSales.toFixed(2)}</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+
+
+          {/* ── SECTION 6: SHIFT SUMMARY & SUBMISSION ── */}
+          <h2 className="section-heading" style={{ marginTop: "2rem" }}>
+            Shift Summary &amp; Submission
+          </h2>
+
+          <div
+            className={`mismatch-preview ${Math.abs(mismatch) > 500 ? "mismatch-warn" : "mismatch-ok"}`}
+            style={{ marginBottom: "16px" }}
+          >
+            <div className="mismatch-row">
+              <span>Gross Sales (Fuel)</span>
+              <span>
+                ₹
+                {grossSales.toLocaleString("en-IN", {
+                  minimumFractionDigits: 2,
+                })}
+              </span>
+            </div>
+            {grandProductSales > 0 && (
+              <div className="mismatch-row">
+                <span>Product Sales (Oil/DEF)</span>
                 <span>
-                  You are offline. This entry will be saved locally and
-                  submitted when online.
+                  ₹
+                  {grandProductSales.toLocaleString("en-IN", {
+                    minimumFractionDigits: 2,
+                  })}
                 </span>
               </div>
             )}
-
-            <div className="btn-row">
-              <button
-                className="btn-outline"
-                onClick={() => setStep("collections")}
+            <div className="mismatch-row">
+              <span>Total Collections</span>
+              <span>
+                ₹
+                {totalCollections.toLocaleString("en-IN", {
+                  minimumFractionDigits: 2,
+                })}
+              </span>
+            </div>
+            <div className="mismatch-row mismatch-total">
+              <span>Mismatch</span>
+              <span
+                className={Math.abs(mismatch) > 500 ? "text-warn" : "text-ok"}
               >
-                ← Back
-              </button>
-              <button
-                id="submit-btn"
-                className={`btn-primary ${syncing ? "btn-loading" : ""}`}
-                onClick={handleSubmit}
-                disabled={syncing}
-              >
-                {syncing ? (
-                  <Loader2 size={18} className="spin" />
-                ) : (
-                  <Send size={18} />
-                )}
-                {syncing
-                  ? "Submitting..."
-                  : online
-                    ? "Submit Entry"
-                    : "Save Offline"}
-              </button>
+                ₹{mismatch.toFixed(2)}
+              </span>
             </div>
           </div>
-        )}
+
+          <div className="field-group" style={{ marginBottom: "16px" }}>
+            <label className="field-label" htmlFor="submission-notes">
+              Notes / Remarks (optional)
+            </label>
+            <textarea
+              id="submission-notes"
+              className="field-input field-textarea"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Any remarks for the manager..."
+              rows={3}
+            />
+          </div>
+
+          {validationErrors.length > 0 && (
+            <div
+              id="validation-errors-box"
+              className="validation-errors"
+              style={{ marginBottom: "16px" }}
+            >
+              <AlertTriangle size={16} />
+              <ul>
+                {validationErrors.map((e, i) => (
+                  <li key={i}>{e}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {error && (
+            <div className="alert-error" role="alert" style={{ marginBottom: "16px" }}>
+              <AlertTriangle size={16} />
+              <span>{error}</span>
+            </div>
+          )}
+
+          {!online && (
+            <div className="alert-info" style={{ marginBottom: "16px" }}>
+              <WifiOff size={16} />
+              <span>
+                You are offline. This entry will be saved locally and
+                submitted when online.
+              </span>
+            </div>
+          )}
+
+          <div className="btn-row" style={{ marginTop: "16px" }}>
+            <button
+              id="submit-btn"
+              className={`btn-primary ${syncing ? "btn-loading" : ""}`}
+              style={{ width: "100%", padding: "14px", fontSize: "1.1rem" }}
+              onClick={handleSubmit}
+              disabled={syncing || nozzleLoading || nozzleRows.length === 0}
+            >
+              {syncing ? (
+                <Loader2 size={20} className="spin" />
+              ) : (
+                <Send size={20} />
+              )}
+              {syncing
+                ? "Submitting Shift Entry..."
+                : online
+                  ? "Submit Shift Entry"
+                  : "Save Shift Entry Offline"}
+            </button>
+          </div>
+        </div>
       </main>
     </div>
   );

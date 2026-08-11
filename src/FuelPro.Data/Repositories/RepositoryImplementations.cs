@@ -1954,6 +1954,45 @@ public class DsmPersonalDebtorRepository : IDsmPersonalDebtorRepository
             return Result.Fail($"Failed to save personal debtors: {ex.Message}");
         }
     }
+
+    public async Task<Result<List<DsmPersonalDebtorRepayment>>> GetRepaymentsByDateAsync(DateTime date)
+    {
+        try
+        {
+            var dateOnly = date.Date;
+            var list = await _context.DsmPersonalDebtorRepayments
+                .Include(r => r.DsmPersonalDebtor)
+                .Include(r => r.Shift)
+                .Where(r => r.Date.Date == dateOnly)
+                .ToListAsync();
+            return Result<List<DsmPersonalDebtorRepayment>>.Ok(list);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to get personal debtor repayments for date {Date}", date);
+            return Result<List<DsmPersonalDebtorRepayment>>.Fail(ex.Message);
+        }
+    }
+
+    public async Task<Result<List<DsmPersonalDebtorRepayment>>> GetRepaymentsByDateRangeAsync(DateTime startDate, DateTime endDate)
+    {
+        try
+        {
+            var start = startDate.Date;
+            var end = endDate.Date;
+            var list = await _context.DsmPersonalDebtorRepayments
+                .Include(r => r.DsmPersonalDebtor)
+                .Include(r => r.Shift)
+                .Where(r => r.Date.Date >= start && r.Date.Date <= end)
+                .ToListAsync();
+            return Result<List<DsmPersonalDebtorRepayment>>.Ok(list);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to get personal debtor repayments for range {Start}-{End}", startDate, endDate);
+            return Result<List<DsmPersonalDebtorRepayment>>.Fail(ex.Message);
+        }
+    }
 }
 
 

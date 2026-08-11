@@ -908,4 +908,676 @@ public class ExcelExportService
             return filePath;
         });
     }
+
+    #region Shift Total & Day Total Excel Exports
+
+    public async Task<string> ExportShiftTotalReportAsync(ShiftReportDto report, string? customFilePath = null)
+    {
+        return await Task.Run(() =>
+        {
+            string filePath = customFilePath ?? "";
+            if (string.IsNullOrWhiteSpace(filePath))
+            {
+                var downloadsPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
+                if (!Directory.Exists(downloadsPath)) downloadsPath = AppDomain.CurrentDomain.BaseDirectory;
+                var fileName = $"ShiftTotal_Shift{report.ShiftLabel}_{report.Date:yyyyMMdd}_{DateTime.Now:HHmmss}.xlsx";
+                filePath = Path.Combine(downloadsPath, fileName);
+            }
+
+            using var workbook = new XLWorkbook();
+            var worksheet = workbook.Worksheets.Add("Shift Total");
+            worksheet.ShowGridLines = true;
+
+            int r = 1;
+            int maxCols = 14;
+
+            // Header Block
+            worksheet.Cell(r, 1).Value = string.IsNullOrWhiteSpace(report.StationName) ? "Kandhare Petroleum" : report.StationName;
+            worksheet.Cell(r, 1).Style.Font.Bold = true;
+            worksheet.Cell(r, 1).Style.Font.FontSize = 16;
+            worksheet.Cell(r, 1).Style.Font.FontColor = XLColor.White;
+            worksheet.Cell(r, 1).Style.Fill.BackgroundColor = XLColor.FromHtml("#004D40");
+            worksheet.Cell(r, 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            worksheet.Range(r, 1, r, maxCols).Merge();
+            r++;
+
+            worksheet.Cell(r, 1).Value = $"SHIFT TOTAL REPORT — Shift {report.ShiftLabel} — {report.DateString}";
+            worksheet.Cell(r, 1).Style.Font.Bold = true;
+            worksheet.Cell(r, 1).Style.Font.FontSize = 12;
+            worksheet.Cell(r, 1).Style.Font.FontColor = XLColor.White;
+            worksheet.Cell(r, 1).Style.Fill.BackgroundColor = XLColor.FromHtml("#00695C");
+            worksheet.Cell(r, 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            worksheet.Range(r, 1, r, maxCols).Merge();
+            r++;
+
+            if (!string.IsNullOrWhiteSpace(report.ManagerName))
+            {
+                worksheet.Cell(r, 1).Value = $"Shift Manager: {report.ManagerName}";
+                worksheet.Cell(r, 1).Style.Font.Italic = true;
+                worksheet.Cell(r, 1).Style.Font.FontSize = 10;
+                worksheet.Cell(r, 1).Style.Font.FontColor = XLColor.White;
+                worksheet.Cell(r, 1).Style.Fill.BackgroundColor = XLColor.FromHtml("#00796B");
+                worksheet.Cell(r, 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+                worksheet.Range(r, 1, r, maxCols).Merge();
+                r++;
+            }
+            r++;
+
+            // 1. Tank Dip & Stock Status
+            if (report.TankSummary != null && report.TankSummary.Count > 0)
+            {
+                WriteSectionHeader(worksheet, ref r, "1. Tank Dip & Stock Status", maxCols);
+                var tankHeaders = new List<string> { "Fuel / Tank", "Dip (mm)", "Stock (Ltr)", "Opening (Ltr)", "Receipts (Ltr)", "Sales (Ltr)", "Testing (Ltr)", "Calculated Stock (Ltr)", "Variance (Ltr)" };
+                WriteTableHeaders(worksheet, ref r, tankHeaders);
+
+                bool isAlt = false;
+                foreach (var tank in report.TankSummary)
+                {
+                    worksheet.Cell(r, 1).Value = tank.FuelType;
+                    worksheet.Cell(r, 2).Value = tank.DipMm; worksheet.Cell(r, 2).Style.NumberFormat.Format = "#,##0.00";
+                    worksheet.Cell(r, 3).Value = tank.StockLtr; worksheet.Cell(r, 3).Style.NumberFormat.Format = "#,##0.00";
+                    worksheet.Cell(r, 4).Value = tank.OpeningStock; worksheet.Cell(r, 4).Style.NumberFormat.Format = "#,##0.00";
+                    worksheet.Cell(r, 5).Value = tank.Receipts; worksheet.Cell(r, 5).Style.NumberFormat.Format = "#,##0.00";
+                    worksheet.Cell(r, 6).Value = tank.SaleLitres; worksheet.Cell(r, 6).Style.NumberFormat.Format = "#,##0.00";
+                    worksheet.Cell(r, 7).Value = tank.TestingLitres; worksheet.Cell(r, 7).Style.NumberFormat.Format = "#,##0.00";
+                    worksheet.Cell(r, 8).Value = tank.CalculatedStock; worksheet.Cell(r, 8).Style.NumberFormat.Format = "#,##0.00";
+                    worksheet.Cell(r, 9).Value = tank.StockVariance; worksheet.Cell(r, 9).Style.NumberFormat.Format = "#,##0.00";
+                    
+                    ApplyRowBorders(worksheet, r, 9, isAlt);
+                    isAlt = !isAlt;
+                    r++;
+                }
+                r++;
+            }
+
+            // 2. Nozzle Readings
+            if (report.NozzleGroups != null && report.NozzleGroups.Count > 0)
+            {
+                WriteSectionHeader(worksheet, ref r, "2. Nozzle Opening & Closing Readings", maxCols);
+                var nozzleHeaders = new List<string> { "Pump No", "Nozzle Name", "Fuel Type", "Opening Reading", "Closing Reading", "Sale Litres" };
+                WriteTableHeaders(worksheet, ref r, nozzleHeaders);
+
+                bool isAlt = false;
+                foreach (var group in report.NozzleGroups)
+                {
+                    foreach (var n in group.Nozzles)
+                    {
+                        worksheet.Cell(r, 1).Value = $"Pump #{group.PumpId}";
+                        worksheet.Cell(r, 2).Value = n.NozzleName;
+                        worksheet.Cell(r, 3).Value = group.FuelType;
+                        worksheet.Cell(r, 4).Value = n.OpeningReading; worksheet.Cell(r, 4).Style.NumberFormat.Format = "#,##0.00";
+                        worksheet.Cell(r, 5).Value = n.ClosingReading; worksheet.Cell(r, 5).Style.NumberFormat.Format = "#,##0.00";
+                        worksheet.Cell(r, 6).Value = n.SaleLitres; worksheet.Cell(r, 6).Style.NumberFormat.Format = "#,##0.00";
+                        ApplyRowBorders(worksheet, r, 6, isAlt);
+                        isAlt = !isAlt;
+                        r++;
+                    }
+                }
+                r++;
+            }
+
+            // 3. DSM Sales & Collection Summary (Table A)
+            if (report.DsmSummaryRows != null && report.DsmSummaryRows.Count > 0)
+            {
+                WriteSectionHeader(worksheet, ref r, "3. DSM Sales & Collection Summary", maxCols);
+                var dsmHeaders = new List<string> { "DSM Name", "Pump", "PhonePe (M)", "PhonePe (N)", "Card (M)", "Card (N)", "PetroCard", "Bank Cash", "Cash In Hand", "Debtors", "Expenses", "Testing", "Gross Sales", "Difference" };
+                WriteTableHeaders(worksheet, ref r, dsmHeaders);
+
+                bool isAlt = false;
+                foreach (var row in report.DsmSummaryRows)
+                {
+                    worksheet.Cell(r, 1).Value = row.DsmName;
+                    worksheet.Cell(r, 2).Value = row.PumpId > 0 ? $"Pump #{row.PumpId}" : "—";
+                    worksheet.Cell(r, 3).Value = row.PhonePeMorning; worksheet.Cell(r, 3).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 4).Value = row.PhonePeNight; worksheet.Cell(r, 4).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 5).Value = row.CreditCardMorning; worksheet.Cell(r, 5).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 6).Value = row.CreditCardNight; worksheet.Cell(r, 6).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 7).Value = row.PetroCard; worksheet.Cell(r, 7).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 8).Value = row.BankCash; worksheet.Cell(r, 8).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 9).Value = row.CashInHand; worksheet.Cell(r, 9).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 10).Value = row.DebtorSales; worksheet.Cell(r, 10).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 11).Value = row.Expenses; worksheet.Cell(r, 11).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 12).Value = row.Testing; worksheet.Cell(r, 12).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 13).Value = row.GrossSale; worksheet.Cell(r, 13).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 14).Value = row.Difference; worksheet.Cell(r, 14).Style.NumberFormat.Format = "₹#,##0.00";
+                    ApplyRowBorders(worksheet, r, 14, isAlt);
+                    isAlt = !isAlt;
+                    r++;
+                }
+
+                if (report.DsmSummaryTotals != null)
+                {
+                    var t = report.DsmSummaryTotals;
+                    worksheet.Cell(r, 1).Value = "TOTAL";
+                    worksheet.Cell(r, 2).Value = "";
+                    worksheet.Cell(r, 3).Value = t.PhonePeMorning; worksheet.Cell(r, 3).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 4).Value = t.PhonePeNight; worksheet.Cell(r, 4).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 5).Value = t.CreditCardMorning; worksheet.Cell(r, 5).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 6).Value = t.CreditCardNight; worksheet.Cell(r, 6).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 7).Value = t.PetroCard; worksheet.Cell(r, 7).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 8).Value = t.BankCash; worksheet.Cell(r, 8).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 9).Value = t.CashInHand; worksheet.Cell(r, 9).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 10).Value = t.DebtorSales; worksheet.Cell(r, 10).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 11).Value = t.Expenses; worksheet.Cell(r, 11).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 12).Value = t.Testing; worksheet.Cell(r, 12).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 13).Value = t.GrossSale; worksheet.Cell(r, 13).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 14).Value = t.Difference; worksheet.Cell(r, 14).Style.NumberFormat.Format = "₹#,##0.00";
+                    ApplyTotalRowBorders(worksheet, r, 14);
+                    r++;
+                }
+                r++;
+            }
+
+            // 4. Debtors / Credit Sales & Recoveries
+            if (report.CreditorRows != null && report.CreditorRows.Count > 0)
+            {
+                WriteSectionHeader(worksheet, ref r, "4. Debtor Credit Sales", maxCols);
+                var debHeaders = new List<string> { "DSM Name", "Pump", "Debtor Name", "Cheque / Vehicle No", "Amount (₹)" };
+                WriteTableHeaders(worksheet, ref r, debHeaders);
+
+                bool isAlt = false;
+                foreach (var c in report.CreditorRows)
+                {
+                    worksheet.Cell(r, 1).Value = c.DsmName;
+                    worksheet.Cell(r, 2).Value = c.PumpId > 0 ? $"Pump #{c.PumpId}" : "—";
+                    worksheet.Cell(r, 3).Value = c.DebtorName;
+                    worksheet.Cell(r, 4).Value = c.ChequeNo;
+                    worksheet.Cell(r, 5).Value = c.Amount; worksheet.Cell(r, 5).Style.NumberFormat.Format = "₹#,##0.00";
+                    ApplyRowBorders(worksheet, r, 5, isAlt);
+                    isAlt = !isAlt;
+                    r++;
+                }
+                r++;
+            }
+
+            if (report.DebtorRepayments != null && report.DebtorRepayments.Count > 0)
+            {
+                WriteSectionHeader(worksheet, ref r, "4B. Debtor Recoveries (Collections)", maxCols);
+                var repHeaders = new List<string> { "Debtor Name", "Payment Mode", "TID / Batch / Details", "Amount (₹)" };
+                WriteTableHeaders(worksheet, ref r, repHeaders);
+
+                bool isAlt = false;
+                foreach (var dr in report.DebtorRepayments)
+                {
+                    worksheet.Cell(r, 1).Value = dr.DebtorName;
+                    worksheet.Cell(r, 2).Value = dr.PaymentMode;
+                    worksheet.Cell(r, 3).Value = string.IsNullOrWhiteSpace(dr.RefNo) ? "—" : dr.RefNo;
+                    worksheet.Cell(r, 4).Value = dr.Amount; worksheet.Cell(r, 4).Style.NumberFormat.Format = "₹#,##0.00";
+                    ApplyRowBorders(worksheet, r, 4, isAlt);
+                    isAlt = !isAlt;
+                    r++;
+                }
+                r++;
+            }
+
+            // 5. Expenses & Oil/DEF Sales
+            if (report.ExpenseRows != null && report.ExpenseRows.Count > 0)
+            {
+                WriteSectionHeader(worksheet, ref r, "5. Shift Expenses Register", maxCols);
+                var expHeaders = new List<string> { "DSM Name", "Pump", "Description", "Amount (₹)" };
+                WriteTableHeaders(worksheet, ref r, expHeaders);
+
+                bool isAlt = false;
+                foreach (var exp in report.ExpenseRows)
+                {
+                    worksheet.Cell(r, 1).Value = exp.DsmName;
+                    worksheet.Cell(r, 2).Value = exp.PumpId > 0 ? $"Pump #{exp.PumpId}" : "—";
+                    worksheet.Cell(r, 3).Value = exp.Description;
+                    worksheet.Cell(r, 4).Value = exp.Amount; worksheet.Cell(r, 4).Style.NumberFormat.Format = "₹#,##0.00";
+                    ApplyRowBorders(worksheet, r, 4, isAlt);
+                    isAlt = !isAlt;
+                    r++;
+                }
+                r++;
+            }
+
+            if (report.OilDefSales != null && report.OilDefSales.Count > 0)
+            {
+                WriteSectionHeader(worksheet, ref r, "5B. Oil & DEF Product Sales", maxCols);
+                var oilHeaders = new List<string> { "Product Name", "Category", "Quantity", "Rate (₹)", "Amount (₹)" };
+                WriteTableHeaders(worksheet, ref r, oilHeaders);
+
+                bool isAlt = false;
+                foreach (var oil in report.OilDefSales)
+                {
+                    worksheet.Cell(r, 1).Value = oil.ProductName;
+                    worksheet.Cell(r, 2).Value = oil.Category;
+                    worksheet.Cell(r, 3).Value = oil.Quantity; worksheet.Cell(r, 3).Style.NumberFormat.Format = "#,##0.00";
+                    worksheet.Cell(r, 4).Value = oil.Rate; worksheet.Cell(r, 4).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 5).Value = oil.Total; worksheet.Cell(r, 5).Style.NumberFormat.Format = "₹#,##0.00";
+                    ApplyRowBorders(worksheet, r, 5, isAlt);
+                    isAlt = !isAlt;
+                    r++;
+                }
+                r++;
+            }
+
+            // 6. Fuel Dispensed Summary
+            if (report.FuelSales != null && report.FuelSales.Count > 0)
+            {
+                WriteSectionHeader(worksheet, ref r, "6. Fuel Dispensed Summary", maxCols);
+                var fuelHeaders = new List<string> { "Product / Fuel Type", "Litres Dispensed", "Rate (₹)", "Total Amount (₹)" };
+                WriteTableHeaders(worksheet, ref r, fuelHeaders);
+
+                bool isAlt = false;
+                foreach (var fs in report.FuelSales)
+                {
+                    worksheet.Cell(r, 1).Value = fs.Description;
+                    worksheet.Cell(r, 2).Value = fs.Litres; worksheet.Cell(r, 2).Style.NumberFormat.Format = "#,##0.00";
+                    worksheet.Cell(r, 3).Value = fs.Rate; worksheet.Cell(r, 3).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 4).Value = fs.Amount; worksheet.Cell(r, 4).Style.NumberFormat.Format = "₹#,##0.00";
+                    ApplyRowBorders(worksheet, r, 4, isAlt);
+                    isAlt = !isAlt;
+                    r++;
+                }
+
+                worksheet.Cell(r, 1).Value = "TOTAL FUEL SALE";
+                worksheet.Cell(r, 2).Value = report.TotalFuelLitres; worksheet.Cell(r, 2).Style.NumberFormat.Format = "#,##0.00";
+                worksheet.Cell(r, 3).Value = "";
+                worksheet.Cell(r, 4).Value = report.TotalFuelAmount; worksheet.Cell(r, 4).Style.NumberFormat.Format = "₹#,##0.00";
+                ApplyTotalRowBorders(worksheet, r, 4);
+                r++;
+                r++;
+            }
+
+            // 7. Final Reconciliation
+            if (report.CollectionBreakdown != null && report.CollectionBreakdown.Count > 0)
+            {
+                WriteSectionHeader(worksheet, ref r, "7. Final Reconciliation", maxCols);
+                var recHeaders = new List<string> { "Category / Description", "Amount (₹)" };
+                WriteTableHeaders(worksheet, ref r, recHeaders);
+
+                bool isAlt = false;
+                foreach (var cat in report.CollectionBreakdown)
+                {
+                    worksheet.Cell(r, 1).Value = cat.DescriptionWithBreakdown;
+                    worksheet.Cell(r, 2).Value = cat.Amount; worksheet.Cell(r, 2).Style.NumberFormat.Format = "₹#,##0.00";
+                    ApplyRowBorders(worksheet, r, 2, isAlt);
+                    isAlt = !isAlt;
+                    r++;
+                }
+
+                worksheet.Cell(r, 1).Value = "Total Amount (A)";
+                worksheet.Cell(r, 2).Value = report.ActualCollection; worksheet.Cell(r, 2).Style.NumberFormat.Format = "₹#,##0.00";
+                ApplyTotalRowBorders(worksheet, r, 2);
+                r++;
+
+                worksheet.Cell(r, 1).Value = "Gross Sale (B)";
+                worksheet.Cell(r, 2).Value = report.ExpectedCollection; worksheet.Cell(r, 2).Style.NumberFormat.Format = "₹#,##0.00";
+                ApplyTotalRowBorders(worksheet, r, 2);
+                r++;
+
+                worksheet.Cell(r, 1).Value = "Difference";
+                var diffStr = report.Difference >= 0 ? $"Short ₹{Math.Abs(report.Difference):N2}" : $"Excess ₹{Math.Abs(report.Difference):N2}";
+                worksheet.Cell(r, 2).Value = diffStr;
+                worksheet.Cell(r, 2).Style.Font.Bold = true;
+                worksheet.Cell(r, 2).Style.Font.FontColor = report.Difference > 0.01 ? XLColor.Red : XLColor.FromHtml("#2E7D32");
+                ApplyTotalRowBorders(worksheet, r, 2);
+                r++;
+                r++;
+            }
+
+            WriteSignatures(worksheet, ref r);
+
+            worksheet.Columns(1, maxCols).AdjustToContents();
+            workbook.SaveAs(filePath);
+            return filePath;
+        });
+    }
+
+    public async Task<string> ExportDayTotalReportAsync(DayReportDto report, string? customFilePath = null)
+    {
+        return await Task.Run(() =>
+        {
+            string filePath = customFilePath ?? "";
+            if (string.IsNullOrWhiteSpace(filePath))
+            {
+                var downloadsPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
+                if (!Directory.Exists(downloadsPath)) downloadsPath = AppDomain.CurrentDomain.BaseDirectory;
+                var fileName = $"DayTotal_{report.StartDate:yyyyMMdd}_to_{report.EndDate:yyyyMMdd}_{DateTime.Now:HHmmss}.xlsx";
+                filePath = Path.Combine(downloadsPath, fileName);
+            }
+
+            using var workbook = new XLWorkbook();
+            var worksheet = workbook.Worksheets.Add("Day Total");
+            worksheet.ShowGridLines = true;
+
+            int r = 1;
+            int maxCols = 13;
+
+            // Header Block
+            worksheet.Cell(r, 1).Value = string.IsNullOrWhiteSpace(report.StationName) ? "Kandhare Petroleum" : report.StationName;
+            worksheet.Cell(r, 1).Style.Font.Bold = true;
+            worksheet.Cell(r, 1).Style.Font.FontSize = 16;
+            worksheet.Cell(r, 1).Style.Font.FontColor = XLColor.White;
+            worksheet.Cell(r, 1).Style.Fill.BackgroundColor = XLColor.FromHtml("#004D40");
+            worksheet.Cell(r, 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            worksheet.Range(r, 1, r, maxCols).Merge();
+            r++;
+
+            worksheet.Cell(r, 1).Value = $"DAY TOTAL RECONCILIATION REPORT — {report.DateString}";
+            worksheet.Cell(r, 1).Style.Font.Bold = true;
+            worksheet.Cell(r, 1).Style.Font.FontSize = 12;
+            worksheet.Cell(r, 1).Style.Font.FontColor = XLColor.White;
+            worksheet.Cell(r, 1).Style.Fill.BackgroundColor = XLColor.FromHtml("#00695C");
+            worksheet.Cell(r, 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            worksheet.Range(r, 1, r, maxCols).Merge();
+            r++;
+
+            var managersText = $"Shift 1 Manager: {report.Shift1Manager ?? "—"} | Shift 2 Manager: {report.Shift2Manager ?? "—"}";
+            worksheet.Cell(r, 1).Value = managersText;
+            worksheet.Cell(r, 1).Style.Font.Italic = true;
+            worksheet.Cell(r, 1).Style.Font.FontSize = 10;
+            worksheet.Cell(r, 1).Style.Font.FontColor = XLColor.White;
+            worksheet.Cell(r, 1).Style.Fill.BackgroundColor = XLColor.FromHtml("#00796B");
+            worksheet.Cell(r, 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            worksheet.Range(r, 1, r, maxCols).Merge();
+            r++;
+            r++;
+
+            // 1. Tank Dip & Stock Status
+            if (report.TankSummary != null && report.TankSummary.Count > 0)
+            {
+                WriteSectionHeader(worksheet, ref r, "1. Tank Dip & Stock Status", maxCols);
+                var tankHeaders = new List<string> { "Fuel / Tank", "Dip (mm)", "Stock (Ltr)", "Opening (Ltr)", "Receipts (Ltr)", "Sales (Ltr)", "Testing (Ltr)", "Calculated Stock (Ltr)", "Variance (Ltr)" };
+                WriteTableHeaders(worksheet, ref r, tankHeaders);
+
+                bool isAlt = false;
+                foreach (var tank in report.TankSummary)
+                {
+                    worksheet.Cell(r, 1).Value = tank.FuelType;
+                    worksheet.Cell(r, 2).Value = tank.DipMm; worksheet.Cell(r, 2).Style.NumberFormat.Format = "#,##0.00";
+                    worksheet.Cell(r, 3).Value = tank.StockLtr; worksheet.Cell(r, 3).Style.NumberFormat.Format = "#,##0.00";
+                    worksheet.Cell(r, 4).Value = tank.OpeningStock; worksheet.Cell(r, 4).Style.NumberFormat.Format = "#,##0.00";
+                    worksheet.Cell(r, 5).Value = tank.Receipts; worksheet.Cell(r, 5).Style.NumberFormat.Format = "#,##0.00";
+                    worksheet.Cell(r, 6).Value = tank.SaleLitres; worksheet.Cell(r, 6).Style.NumberFormat.Format = "#,##0.00";
+                    worksheet.Cell(r, 7).Value = tank.TestingLitres; worksheet.Cell(r, 7).Style.NumberFormat.Format = "#,##0.00";
+                    worksheet.Cell(r, 8).Value = tank.CalculatedStock; worksheet.Cell(r, 8).Style.NumberFormat.Format = "#,##0.00";
+                    worksheet.Cell(r, 9).Value = tank.StockVariance; worksheet.Cell(r, 9).Style.NumberFormat.Format = "#,##0.00";
+                    ApplyRowBorders(worksheet, r, 9, isAlt);
+                    isAlt = !isAlt;
+                    r++;
+                }
+                r++;
+            }
+
+            // 2. DSM Sales & Collection Summary
+            if (report.DsmSummaryRows != null && report.DsmSummaryRows.Count > 0)
+            {
+                WriteSectionHeader(worksheet, ref r, "2. DSM Sales & Collection Summary", maxCols);
+                var dsmHeaders = new List<string> { "DSM Name", "Shift", "Pump", "PhonePe", "Card", "PetroCard", "Cash 1 (Bank)", "Cash 2 (Hand)", "Debtors", "Expenses", "Testing", "Gross Sales", "Difference" };
+                WriteTableHeaders(worksheet, ref r, dsmHeaders);
+
+                bool isAlt = false;
+                foreach (var row in report.DsmSummaryRows)
+                {
+                    worksheet.Cell(r, 1).Value = row.DsmName;
+                    worksheet.Cell(r, 2).Value = string.IsNullOrWhiteSpace(row.ShiftLabel) ? "—" : $"Shift {row.ShiftLabel}";
+                    worksheet.Cell(r, 3).Value = row.PumpId > 0 ? $"Pump #{row.PumpId}" : "—";
+                    worksheet.Cell(r, 4).Value = row.PhonePeTotal; worksheet.Cell(r, 4).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 5).Value = row.CreditCardTotal; worksheet.Cell(r, 5).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 6).Value = row.PetroCard; worksheet.Cell(r, 6).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 7).Value = row.BankCash; worksheet.Cell(r, 7).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 8).Value = row.CashInHand; worksheet.Cell(r, 8).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 9).Value = row.DebtorSales; worksheet.Cell(r, 9).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 10).Value = row.Expenses; worksheet.Cell(r, 10).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 11).Value = row.Testing; worksheet.Cell(r, 11).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 12).Value = row.GrossSale; worksheet.Cell(r, 12).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 13).Value = row.Difference; worksheet.Cell(r, 13).Style.NumberFormat.Format = "₹#,##0.00";
+                    ApplyRowBorders(worksheet, r, 13, isAlt);
+                    isAlt = !isAlt;
+                    r++;
+                }
+
+                if (report.DsmSummaryTotals != null)
+                {
+                    var t = report.DsmSummaryTotals;
+                    worksheet.Cell(r, 1).Value = "TOTAL";
+                    worksheet.Cell(r, 2).Value = "";
+                    worksheet.Cell(r, 3).Value = "";
+                    worksheet.Cell(r, 4).Value = t.PhonePeTotal; worksheet.Cell(r, 4).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 5).Value = t.CreditCardTotal; worksheet.Cell(r, 5).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 6).Value = t.PetroCard; worksheet.Cell(r, 6).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 7).Value = t.BankCash; worksheet.Cell(r, 7).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 8).Value = t.CashInHand; worksheet.Cell(r, 8).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 9).Value = t.DebtorSales; worksheet.Cell(r, 9).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 10).Value = t.Expenses; worksheet.Cell(r, 10).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 11).Value = t.Testing; worksheet.Cell(r, 11).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 12).Value = t.GrossSale; worksheet.Cell(r, 12).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 13).Value = t.Difference; worksheet.Cell(r, 13).Style.NumberFormat.Format = "₹#,##0.00";
+                    ApplyTotalRowBorders(worksheet, r, 13);
+                    r++;
+                }
+                r++;
+            }
+
+            // 3. Debtors / Credit Sales & Recoveries
+            if (report.CreditorRows != null && report.CreditorRows.Count > 0)
+            {
+                WriteSectionHeader(worksheet, ref r, "3. Debtor Credit Sales", maxCols);
+                var debHeaders = new List<string> { "DSM Name", "Pump", "Debtor Name", "Cheque / Vehicle No", "Amount (₹)" };
+                WriteTableHeaders(worksheet, ref r, debHeaders);
+
+                bool isAlt = false;
+                foreach (var c in report.CreditorRows)
+                {
+                    worksheet.Cell(r, 1).Value = c.DsmName;
+                    worksheet.Cell(r, 2).Value = c.PumpId > 0 ? $"Pump #{c.PumpId}" : "—";
+                    worksheet.Cell(r, 3).Value = c.DebtorName;
+                    worksheet.Cell(r, 4).Value = c.ChequeNo;
+                    worksheet.Cell(r, 5).Value = c.Amount; worksheet.Cell(r, 5).Style.NumberFormat.Format = "₹#,##0.00";
+                    ApplyRowBorders(worksheet, r, 5, isAlt);
+                    isAlt = !isAlt;
+                    r++;
+                }
+                r++;
+            }
+
+            if (report.DebtorRepayments != null && report.DebtorRepayments.Count > 0)
+            {
+                WriteSectionHeader(worksheet, ref r, "3B. Debtor Recoveries (Collections)", maxCols);
+                var repHeaders = new List<string> { "Debtor Name", "Payment Mode", "TID / Batch / Details", "Amount (₹)" };
+                WriteTableHeaders(worksheet, ref r, repHeaders);
+
+                bool isAlt = false;
+                foreach (var dr in report.DebtorRepayments)
+                {
+                    worksheet.Cell(r, 1).Value = dr.DebtorName;
+                    worksheet.Cell(r, 2).Value = dr.PaymentMode;
+                    worksheet.Cell(r, 3).Value = string.IsNullOrWhiteSpace(dr.RefNo) ? "—" : dr.RefNo;
+                    worksheet.Cell(r, 4).Value = dr.Amount; worksheet.Cell(r, 4).Style.NumberFormat.Format = "₹#,##0.00";
+                    ApplyRowBorders(worksheet, r, 4, isAlt);
+                    isAlt = !isAlt;
+                    r++;
+                }
+                r++;
+            }
+
+            // 4. Expenses & Oil/DEF Sales
+            if (report.ExpenseRows != null && report.ExpenseRows.Count > 0)
+            {
+                WriteSectionHeader(worksheet, ref r, "4. Day Expenses Register", maxCols);
+                var expHeaders = new List<string> { "DSM / Shift", "Description", "Amount (₹)" };
+                WriteTableHeaders(worksheet, ref r, expHeaders);
+
+                bool isAlt = false;
+                foreach (var exp in report.ExpenseRows)
+                {
+                    worksheet.Cell(r, 1).Value = exp.DsmName;
+                    worksheet.Cell(r, 2).Value = exp.Description;
+                    worksheet.Cell(r, 3).Value = exp.Amount; worksheet.Cell(r, 3).Style.NumberFormat.Format = "₹#,##0.00";
+                    ApplyRowBorders(worksheet, r, 3, isAlt);
+                    isAlt = !isAlt;
+                    r++;
+                }
+                r++;
+            }
+
+            if (report.OilDefSales != null && report.OilDefSales.Count > 0)
+            {
+                WriteSectionHeader(worksheet, ref r, "4B. Oil & DEF Product Sales", maxCols);
+                var oilHeaders = new List<string> { "Product Name", "Category", "Quantity", "Rate (₹)", "Amount (₹)" };
+                WriteTableHeaders(worksheet, ref r, oilHeaders);
+
+                bool isAlt = false;
+                foreach (var oil in report.OilDefSales)
+                {
+                    worksheet.Cell(r, 1).Value = oil.ProductName;
+                    worksheet.Cell(r, 2).Value = oil.Category;
+                    worksheet.Cell(r, 3).Value = oil.Quantity; worksheet.Cell(r, 3).Style.NumberFormat.Format = "#,##0.00";
+                    worksheet.Cell(r, 4).Value = oil.Rate; worksheet.Cell(r, 4).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 5).Value = oil.Total; worksheet.Cell(r, 5).Style.NumberFormat.Format = "₹#,##0.00";
+                    ApplyRowBorders(worksheet, r, 5, isAlt);
+                    isAlt = !isAlt;
+                    r++;
+                }
+                r++;
+            }
+
+            // 5. Fuel Sales Summary
+            if (report.FuelSales != null && report.FuelSales.Count > 0)
+            {
+                WriteSectionHeader(worksheet, ref r, "5. Fuel Dispensed Summary", maxCols);
+                var fuelHeaders = new List<string> { "Product / Fuel Type", "Litres Dispensed", "Rate (₹)", "Total Amount (₹)" };
+                WriteTableHeaders(worksheet, ref r, fuelHeaders);
+
+                bool isAlt = false;
+                foreach (var fs in report.FuelSales)
+                {
+                    worksheet.Cell(r, 1).Value = fs.Description;
+                    worksheet.Cell(r, 2).Value = fs.Litres; worksheet.Cell(r, 2).Style.NumberFormat.Format = "#,##0.00";
+                    worksheet.Cell(r, 3).Value = fs.Rate; worksheet.Cell(r, 3).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 4).Value = fs.Amount; worksheet.Cell(r, 4).Style.NumberFormat.Format = "₹#,##0.00";
+                    ApplyRowBorders(worksheet, r, 4, isAlt);
+                    isAlt = !isAlt;
+                    r++;
+                }
+
+                worksheet.Cell(r, 1).Value = "TOTAL FUEL SALE";
+                worksheet.Cell(r, 2).Value = report.TotalFuelLitres; worksheet.Cell(r, 2).Style.NumberFormat.Format = "#,##0.00";
+                worksheet.Cell(r, 3).Value = "";
+                worksheet.Cell(r, 4).Value = report.TotalFuelAmount; worksheet.Cell(r, 4).Style.NumberFormat.Format = "₹#,##0.00";
+                ApplyTotalRowBorders(worksheet, r, 4);
+                r++;
+                r++;
+            }
+
+            // 6. Final Day Reconciliation
+            if (report.CollectionBreakdown != null && report.CollectionBreakdown.Count > 0)
+            {
+                WriteSectionHeader(worksheet, ref r, "6. Final Day Reconciliation", maxCols);
+                var recHeaders = new List<string> { "Category / Description", "Amount (₹)" };
+                WriteTableHeaders(worksheet, ref r, recHeaders);
+
+                bool isAlt = false;
+                foreach (var cat in report.CollectionBreakdown)
+                {
+                    worksheet.Cell(r, 1).Value = cat.DescriptionWithBreakdown;
+                    worksheet.Cell(r, 2).Value = cat.Amount; worksheet.Cell(r, 2).Style.NumberFormat.Format = "₹#,##0.00";
+                    ApplyRowBorders(worksheet, r, 2, isAlt);
+                    isAlt = !isAlt;
+                    r++;
+                }
+
+                worksheet.Cell(r, 1).Value = "Total Collection (A)";
+                worksheet.Cell(r, 2).Value = report.ActualCollection; worksheet.Cell(r, 2).Style.NumberFormat.Format = "₹#,##0.00";
+                ApplyTotalRowBorders(worksheet, r, 2);
+                r++;
+
+                worksheet.Cell(r, 1).Value = "Total Day Sale (B)";
+                worksheet.Cell(r, 2).Value = report.ExpectedCollection; worksheet.Cell(r, 2).Style.NumberFormat.Format = "₹#,##0.00";
+                ApplyTotalRowBorders(worksheet, r, 2);
+                r++;
+
+                worksheet.Cell(r, 1).Value = "Difference";
+                var diffStr = report.Difference >= 0 ? $"Short ₹{Math.Abs(report.Difference):N2}" : $"Excess ₹{Math.Abs(report.Difference):N2}";
+                worksheet.Cell(r, 2).Value = diffStr;
+                worksheet.Cell(r, 2).Style.Font.Bold = true;
+                worksheet.Cell(r, 2).Style.Font.FontColor = report.Difference > 0.01 ? XLColor.Red : XLColor.FromHtml("#2E7D32");
+                ApplyTotalRowBorders(worksheet, r, 2);
+                r++;
+                r++;
+            }
+
+            WriteSignatures(worksheet, ref r);
+
+            worksheet.Columns(1, maxCols).AdjustToContents();
+            workbook.SaveAs(filePath);
+            return filePath;
+        });
+    }
+
+    private static void WriteSectionHeader(IXLWorksheet ws, ref int r, string title, int maxCols)
+    {
+        ws.Cell(r, 1).Value = title;
+        ws.Cell(r, 1).Style.Font.Bold = true;
+        ws.Cell(r, 1).Style.Font.FontSize = 11;
+        ws.Cell(r, 1).Style.Font.FontColor = XLColor.White;
+        ws.Cell(r, 1).Style.Fill.BackgroundColor = XLColor.FromHtml("#2E7D32");
+        ws.Cell(r, 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Left;
+        ws.Range(r, 1, r, maxCols).Merge();
+        r++;
+    }
+
+    private static void WriteTableHeaders(IXLWorksheet ws, ref int r, List<string> headers)
+    {
+        for (int col = 0; col < headers.Count; col++)
+        {
+            var cell = ws.Cell(r, col + 1);
+            cell.Value = headers[col];
+            cell.Style.Font.Bold = true;
+            cell.Style.Font.FontSize = 10;
+            cell.Style.Font.FontColor = XLColor.White;
+            cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#00796B");
+            cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            cell.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+            cell.Style.Border.OutsideBorderColor = XLColor.FromHtml("#004D40");
+        }
+        r++;
+    }
+
+    private static void ApplyRowBorders(IXLWorksheet ws, int r, int colCount, bool isAlt)
+    {
+        for (int col = 1; col <= colCount; col++)
+        {
+            var cell = ws.Cell(r, col);
+            cell.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+            cell.Style.Border.OutsideBorderColor = XLColor.LightGray;
+            if (isAlt)
+            {
+                cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#F9F9F9");
+            }
+        }
+    }
+
+    private static void ApplyTotalRowBorders(IXLWorksheet ws, int r, int colCount)
+    {
+        for (int col = 1; col <= colCount; col++)
+        {
+            var cell = ws.Cell(r, col);
+            cell.Style.Font.Bold = true;
+            cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#E8F5E9");
+            cell.Style.Border.TopBorder = XLBorderStyleValues.Thin;
+            cell.Style.Border.BottomBorder = XLBorderStyleValues.Double;
+            cell.Style.Border.TopBorderColor = XLColor.FromHtml("#2E7D32");
+            cell.Style.Border.BottomBorderColor = XLColor.FromHtml("#2E7D32");
+        }
+    }
+
+    private static void WriteSignatures(IXLWorksheet ws, ref int r)
+    {
+        r += 2;
+        ws.Cell(r, 1).Value = "Supervisor Signature";
+        ws.Range(r, 1, r, 3).Merge();
+        ws.Cell(r, 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        ws.Cell(r, 1).Style.Font.Italic = true;
+
+        ws.Cell(r, 5).Value = "Manager Signature";
+        ws.Range(r, 5, r, 7).Merge();
+        ws.Cell(r, 5).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        ws.Cell(r, 5).Style.Font.Italic = true;
+        r++;
+    }
+
+    #endregion
 }

@@ -101,19 +101,17 @@ public class DsmEntryService
             if (shift.IsLocked)
                 return Result<DsmEntry>.Fail("This shift is locked and cannot be edited.");
 
-            // Check duplicate — if an uncompleted orphan (no PaymentCollection) exists
-            // from a failed save, reuse it. Otherwise create a new session entry.
+            // Check duplicate — if an entry exists for this shift, pump, and DSM, update it instead of creating duplicate entries.
             if (existingEntryId == null)
             {
                 var existingEntries = await _dsmRepo.GetEntriesForShiftAsync(shift.ShiftId);
                 var existingEntry = existingEntries.Data?.LastOrDefault(e =>
                     e.PumpId == pumpId &&
-                    string.Equals(e.DsmName, dsmName, StringComparison.OrdinalIgnoreCase) &&
-                    e.PaymentCollection == null);
+                    string.Equals(e.DsmName, dsmName, StringComparison.OrdinalIgnoreCase));
 
                 if (existingEntry != null)
                 {
-                    _logger.Information("Found uncompleted orphaned DSM entry {Id} for {Dsm}/Pump {Pump}, reusing",
+                    _logger.Information("Found existing DSM entry {Id} for {Dsm}/Pump {Pump}, reusing/updating",
                         existingEntry.DsmEntryId, dsmName, pumpId);
                     existingEntryId = existingEntry.DsmEntryId;
                 }
@@ -227,14 +225,12 @@ public class DsmEntryService
             if (connectedPumpId.HasValue)
             {
                 DsmEntry? existingConnectedEntry = null;
-                if (existingEntryId.HasValue)
+                var shiftEntriesResult = await _dsmRepo.GetEntriesForShiftAsync(shift.ShiftId);
+                if (shiftEntriesResult.Success && shiftEntriesResult.Data != null)
                 {
-                    var shiftEntriesResult = await _dsmRepo.GetEntriesForShiftAsync(shift.ShiftId);
-                    if (shiftEntriesResult.Success && shiftEntriesResult.Data != null)
-                    {
-                        existingConnectedEntry = shiftEntriesResult.Data.FirstOrDefault(e =>
-                            e.ReconciledToPumpId == savedEntry.DsmEntryId);
-                    }
+                    existingConnectedEntry = shiftEntriesResult.Data.FirstOrDefault(e =>
+                        (savedEntry.DsmEntryId != 0 && e.ReconciledToPumpId == savedEntry.DsmEntryId) ||
+                        (e.PumpId == connectedPumpId.Value && string.Equals(e.DsmName, dsmName, StringComparison.OrdinalIgnoreCase)));
                 }
 
                 var connectedEntry = new DsmEntry
@@ -328,16 +324,24 @@ public class DsmEntryService
             if (!entriesResult.Success) return Result<List<DsmEntrySummaryDto>>.Fail(entriesResult.Error);
 
             var allEntries = entriesResult.Data!;
-            var primaryEntries = allEntries.Where(e => !e.ReconciledToPumpId.HasValue).OrderBy(e => e.DsmEntryId).ToList();
+            var primaryEntries = allEntries
+                .Where(e => !e.ReconciledToPumpId.HasValue)
+                .GroupBy(e => (e.PumpId, (e.DsmName ?? "").Trim().ToLower()))
+                .Select(g => g.OrderByDescending(e => e.DsmEntryId).First())
+                .OrderBy(e => e.DsmEntryId)
+                .ToList();
             var allSlaves = allEntries.Where(e => e.ReconciledToPumpId.HasValue).ToList();
             var usedSlaveIds = new HashSet<int>();
             var summaries = new List<DsmEntrySummaryDto>();
 
+            int sequenceCounter = 1;
             foreach (var primary in primaryEntries)
             {
                 var connectedSlave = allSlaves
                     .Where(e => !usedSlaveIds.Contains(e.DsmEntryId)
-                        && (e.ReconciledToPumpId == primary.DsmEntryId || (e.ReconciledToPumpId == primary.PumpId && string.Equals((e.DsmName ?? "").Trim(), (primary.DsmName ?? "").Trim(), StringComparison.OrdinalIgnoreCase))))
+                        && (e.ReconciledToPumpId == primary.DsmEntryId 
+                            || (primary.ConnectedPumpId.HasValue && e.PumpId == primary.ConnectedPumpId.Value && string.Equals((e.DsmName ?? "").Trim(), (primary.DsmName ?? "").Trim(), StringComparison.OrdinalIgnoreCase))
+                            || (e.ReconciledToPumpId == primary.PumpId && string.Equals((e.DsmName ?? "").Trim(), (primary.DsmName ?? "").Trim(), StringComparison.OrdinalIgnoreCase))))
                     .OrderBy(e => e.ReconciledToPumpId == primary.DsmEntryId ? 0 : 1)
                     .ThenBy(e => e.DsmEntryId >= primary.DsmEntryId ? (e.DsmEntryId - primary.DsmEntryId) : (100000 + Math.Abs(e.DsmEntryId - primary.DsmEntryId)))
                     .FirstOrDefault();
@@ -371,6 +375,7 @@ public class DsmEntryService
 
                 summaries.Add(new DsmEntrySummaryDto
                 {
+                    SequenceNo = sequenceCounter++,
                     DsmEntryId = primary.DsmEntryId,
                     DsmName = primary.DsmName,
                     PumpId = primary.PumpId,
@@ -515,21 +520,18 @@ public class DsmEntryService
             }
 
             // Check duplicate for primary:
-            // If an orphan entry (no PaymentCollection) exists from a failed save, reuse it.
-            // Otherwise, create a new DsmEntry to allow multiple shift sessions/entries per DSM/pump.
+            // If an entry exists for this shift, pump, and DSM, update it instead of creating duplicate entries.
             if (existingEntryId == null)
             {
                 var existingMatch = await context.Set<DsmEntry>()
-                    .Include(e => e.PaymentCollection)
                     .FirstOrDefaultAsync(e =>
                         e.ShiftId == shift.ShiftId &&
                         e.PumpId == pumpId &&
-                        e.DsmName == dsmName &&
-                        e.PaymentCollection == null);
+                        e.DsmName == dsmName);
 
                 if (existingMatch != null)
                 {
-                    _logger.Information("Found orphaned DSM entry {Id} for {Dsm}/Pump {Pump}, reusing",
+                    _logger.Information("Found existing DSM entry {Id} for {Dsm}/Pump {Pump}, reusing/updating",
                         existingMatch.DsmEntryId, dsmName, pumpId);
                     existingEntryId = existingMatch.DsmEntryId;
                 }
@@ -712,6 +714,33 @@ public class DsmEntryService
                 entry.TotalCollection = calc.TotalCollection;
                 entry.Mismatch = calc.TotalCollection - entry.GrossSales;
                 entry.UpdatedAt = DateTime.Now;
+
+                // Automatic threshold check for DSM Loss vs Short (> 10)
+                if (entry.Mismatch < 0 && Math.Abs(entry.Mismatch) > 10m)
+                {
+                    var existingAutoLoss = await context.Set<DsmPersonalDebtor>()
+                        .FirstOrDefaultAsync(p => p.DsmEntryId == savedEntryId);
+                    if (existingAutoLoss == null)
+                    {
+                        var autoLoss = new DsmPersonalDebtor
+                        {
+                            DsmEntryId = savedEntryId,
+                            DsmName = dsmName,
+                            Date = shift.ShiftDate,
+                            Time = DateTime.Now.ToString("hh:mm tt"),
+                            Amount = (double)Math.Abs(entry.Mismatch),
+                            Remarks = $"Auto Shift Shortage (Pump {pumpId}, Shift {shiftType})",
+                            PaymentMethod = "Cash"
+                        };
+                        context.Set<DsmPersonalDebtor>().Add(autoLoss);
+                    }
+                    else
+                    {
+                        existingAutoLoss.Amount = (double)Math.Abs(entry.Mismatch);
+                        context.Entry(existingAutoLoss).State = EntityState.Modified;
+                    }
+                }
+
                 context.Entry(entry).State = EntityState.Modified;
                 await context.SaveChangesAsync();
             }
@@ -720,15 +749,13 @@ public class DsmEntryService
             if (connectedPumpId.HasValue)
             {
                 DsmEntry? existingConnectedEntry = null;
-                if (existingEntryId.HasValue)
-                {
-                    var shiftEntries = await context.Set<DsmEntry>()
-                        .Where(e => e.ShiftId == shift.ShiftId)
-                        .ToListAsync();
-                    
-                    existingConnectedEntry = shiftEntries.FirstOrDefault(e =>
-                        e.ReconciledToPumpId == entry.DsmEntryId);
-                }
+                var shiftEntries = await context.Set<DsmEntry>()
+                    .Where(e => e.ShiftId == shift.ShiftId)
+                    .ToListAsync();
+                
+                existingConnectedEntry = shiftEntries.FirstOrDefault(e =>
+                    (entry.DsmEntryId != 0 && e.ReconciledToPumpId == entry.DsmEntryId) ||
+                    (e.PumpId == connectedPumpId.Value && string.Equals(e.DsmName, dsmName, StringComparison.OrdinalIgnoreCase)));
 
                 DsmEntry connectedEntry;
                 if (existingConnectedEntry != null)

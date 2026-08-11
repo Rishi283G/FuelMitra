@@ -9,6 +9,7 @@ public class ShiftReportDto
     public string DateString { get; set; } = string.Empty;
     public string ShiftLabel { get; set; } = string.Empty; // "I", "II", "III"
     public string StationName { get; set; } = string.Empty;
+    public string? ManagerName { get; set; }
     
     // Fuel Summary
     public List<FuelSaleRowDto> FuelSales { get; set; } = new();
@@ -72,7 +73,9 @@ public class DayReportDto
     public DateTime EndDate { get; set; }
     public string DateString { get; set; } = string.Empty;
     public string StationName { get; set; } = string.Empty;
-
+    public string? Shift1Manager { get; set; }
+    public string? Shift2Manager { get; set; }
+    
     // Fuel Summary
     public List<FuelSaleRowDto> FuelSales { get; set; } = new();
     public double TotalFuelLitres { get; set; }
@@ -133,11 +136,14 @@ public class CollectionCategoryDto
     public double Amount { get; set; }
     public double BaseAmount { get; set; }
     public double RecoveryAmount { get; set; }
+    public double Volume { get; set; }
 
     public string DescriptionWithBreakdown =>
-        RecoveryAmount > 0 
-            ? $"{Category} (Fuel: ₹{BaseAmount:N2} | Recovery: ₹{RecoveryAmount:N2})"
-            : Category;
+        Volume > 0
+            ? $"{Category} ({Volume:N2} Ltr)"
+            : (RecoveryAmount > 0 
+                ? $"{Category} (Fuel: ₹{BaseAmount:N2} | Recovery: ₹{RecoveryAmount:N2})"
+                : Category);
 }
 
 public class RepaymentBreakdownDto

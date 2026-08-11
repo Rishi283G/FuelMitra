@@ -386,7 +386,7 @@ public partial class ProfitLossViewModel : ObservableObject, IDisposable
 
             if (totalKpDrawings > 0)
             {
-                expensesByCategory["Khandhare Petroleum Drawing"] = totalKpDrawings;
+                expensesByCategory["Khandhare Petroleum"] = totalKpDrawings;
             }
 
             var shiftExpResult = await _expenseRepo.GetExpensesByShiftIdsAsync(shiftIds);

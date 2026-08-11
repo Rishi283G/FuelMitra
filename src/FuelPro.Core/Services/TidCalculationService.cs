@@ -13,15 +13,18 @@ public class TidCalculationService : ITidCalculationService
     private readonly IShiftRepository _shiftRepo;
     private readonly IDsmEntryRepository _dsmRepo;
     private readonly ICreditorRepaymentRepository _repaymentRepo;
+    private readonly IDsmPersonalDebtorRepository _personalDebtorRepo;
 
     public TidCalculationService(
         IShiftRepository shiftRepo,
         IDsmEntryRepository dsmRepo,
-        ICreditorRepaymentRepository repaymentRepo)
+        ICreditorRepaymentRepository repaymentRepo,
+        IDsmPersonalDebtorRepository personalDebtorRepo)
     {
         _shiftRepo = shiftRepo;
         _dsmRepo = dsmRepo;
         _repaymentRepo = repaymentRepo;
+        _personalDebtorRepo = personalDebtorRepo;
     }
 
     public async Task<BusinessDayTidSheet> GetTidSheetAsync(DateTime date)
@@ -454,6 +457,125 @@ public class TidCalculationService : ITidCalculationService
                     case "Morning": sheet.DebtorPetroCardRepaymentMorning += r.Amount; break;
                     case "Day":     sheet.DebtorPetroCardRepaymentDay     += r.Amount; break;
                     case "Night":   sheet.DebtorPetroCardRepaymentNight   += r.Amount; break;
+                }
+            }
+        }
+
+        // Populate DSM Loss (Personal Debtor) repayments (PhonePe / Card / PetroCard)
+        if (_personalDebtorRepo != null)
+        {
+            var pdDateRes = await _personalDebtorRepo.GetRepaymentsByDateAsync(date.Date);
+            var pdNextRes = await _personalDebtorRepo.GetRepaymentsByDateAsync(tomorrowDate);
+
+            var allPdRepayments = new List<DsmPersonalDebtorRepayment>();
+            if (pdDateRes.Success && pdDateRes.Data != null) allPdRepayments.AddRange(pdDateRes.Data);
+            if (pdNextRes.Success && pdNextRes.Data != null) allPdRepayments.AddRange(pdNextRes.Data);
+
+            foreach (var r in allPdRepayments)
+            {
+                bool isPhonePe = string.Equals(r.PaymentMethod, "PhonePe", StringComparison.OrdinalIgnoreCase) ||
+                                 string.Equals(r.PaymentMethod, "PhonePe UPI", StringComparison.OrdinalIgnoreCase) ||
+                                 string.Equals(r.PaymentMethod, "UPI Terminal", StringComparison.OrdinalIgnoreCase);
+
+                bool isPineLabs = string.Equals(r.PaymentMethod, "PineLabs Card", StringComparison.OrdinalIgnoreCase) ||
+                                  string.Equals(r.PaymentMethod, "Credit Card", StringComparison.OrdinalIgnoreCase) ||
+                                  string.Equals(r.PaymentMethod, "Card", StringComparison.OrdinalIgnoreCase) ||
+                                  string.Equals(r.PaymentMethod, "PineLabs", StringComparison.OrdinalIgnoreCase);
+
+                bool isPetro = string.Equals(r.PaymentMethod, "Petro Card", StringComparison.OrdinalIgnoreCase) ||
+                               string.Equals(r.PaymentMethod, "PetroCard", StringComparison.OrdinalIgnoreCase);
+
+                if (!isPhonePe && !isPineLabs && !isPetro) continue;
+
+                var fakeCreditorRep = new CreditorRepayment
+                {
+                    CreditorRepaymentId = r.Id,
+                    CreditorName = r.DsmPersonalDebtor?.DsmName ?? "DSM Loss",
+                    RepaymentDate = r.Date,
+                    ShiftNumber = r.Shift?.ShiftType ?? "A",
+                    PaymentMode = r.PaymentMethod,
+                    CardTid = r.CardTid ?? "",
+                    CardBatch = r.CardBatch ?? "",
+                    Amount = r.Amount,
+                    CreatedAt = r.CreatedAt
+                };
+
+                var classified = SettlementWindowResolver.Classify(fakeCreditorRep);
+                if (!classified.IsValid || classified.BusinessDate != date.Date)
+                {
+                    continue;
+                }
+
+                string slot = classified.SettlementWindow!;
+                string shiftLabel = "";
+                string slotDate = date.Date.ToString("dd-MMM-yyyy");
+                string timeWindow = "";
+                string slotSubtitle = "";
+
+                if (slot == "Morning")
+                {
+                    shiftLabel = "Morning (12am - 8am)";
+                    timeWindow = "12:00 AM – 8:00 AM";
+                    slotSubtitle = $"({date.Date:dd MMM} | 12:00 AM – 8:00 AM)";
+                }
+                else if (slot == "Day")
+                {
+                    shiftLabel = "Day (8am - 8pm)";
+                    timeWindow = "8:00 AM – 8:00 PM";
+                    slotSubtitle = $"({date.Date:dd MMM} | 8:00 AM – 8:00 PM)";
+                }
+                else if (slot == "Night")
+                {
+                    shiftLabel = "Night (8pm - 12am)";
+                    timeWindow = "8:00 PM – 12:00 AM";
+                    slotSubtitle = $"({date.Date:dd MMM} | 8:00 PM – 12:00 AM)";
+                }
+                else continue;
+
+                var item = new TidItemDto
+                {
+                    DsmName = r.DsmPersonalDebtor?.DsmName ?? "DSM Loss",
+                    PumpId = 0,
+                    RomanIndex = "DSM Loss",
+                    Amount = r.Amount,
+                    Tid = string.IsNullOrWhiteSpace(r.CardTid) ? "—" : r.CardTid,
+                    Batch = string.IsNullOrWhiteSpace(r.CardBatch) ? "—" : r.CardBatch,
+                    Slot = slot,
+                    ShiftLabel = shiftLabel,
+                    SlotDate = slotDate,
+                    TimeWindow = timeWindow,
+                    SlotDisplaySubtitle = slotSubtitle
+                };
+
+                if (isPhonePe)
+                {
+                    sheet.DebtorPhonePeRepayments.Add(item);
+                    switch (slot)
+                    {
+                        case "Morning": sheet.DebtorPhonePeRepaymentMorning += r.Amount; break;
+                        case "Day":     sheet.DebtorPhonePeRepaymentDay     += r.Amount; break;
+                        case "Night":   sheet.DebtorPhonePeRepaymentNight   += r.Amount; break;
+                    }
+                }
+                else if (isPineLabs)
+                {
+                    sheet.DebtorCardRepayments.Add(item);
+                    switch (slot)
+                    {
+                        case "Morning": sheet.DebtorCardRepaymentMorning += r.Amount; break;
+                        case "Day":     sheet.DebtorCardRepaymentDay     += r.Amount; break;
+                        case "Night":   sheet.DebtorCardRepaymentNight   += r.Amount; break;
+                    }
+                }
+                else if (isPetro)
+                {
+                    sheet.DebtorPetroCardRepayments.Add(item);
+                    switch (slot)
+                    {
+                        case "Morning": sheet.DebtorPetroCardRepaymentMorning += r.Amount; break;
+                        case "Day":     sheet.DebtorPetroCardRepaymentDay     += r.Amount; break;
+                        case "Night":   sheet.DebtorPetroCardRepaymentNight   += r.Amount; break;
+                    }
                 }
             }
         }

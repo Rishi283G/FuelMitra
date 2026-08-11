@@ -6,6 +6,7 @@ using FuelPro.Core.Repositories;
 using FuelPro.Core.Services;
 using Microsoft.Extensions.DependencyInjection;
 using System.Collections.ObjectModel;
+using System.Windows;
 using Serilog;
 
 using FuelPro.Core.Models.AGS;
@@ -33,6 +34,9 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string _selectedPreset = "Today";
 
     public string[] Presets { get; } = { "Today", "Yesterday", "This Week", "This Month", "Last 7 Days", "Last 30 Days", "Custom" };
+    [ObservableProperty] private string _selectedShift1Manager = "";
+    [ObservableProperty] private string _selectedShift2Manager = "";
+    public ObservableCollection<string> ManagerOptions { get; } = new();
     [ObservableProperty] private bool _isLoading;
     [ObservableProperty] private bool _hasData;
     [ObservableProperty] private string _statusMessage = "";
@@ -96,10 +100,19 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
     [ObservableProperty] private double _totalDsmShort;
     [ObservableProperty] private ObservableCollection<CreditorRepayment> _debtorRepayments = new();
     private readonly ICreditorRepaymentRepository _repaymentRepo;
+    private readonly IDsmPersonalDebtorRepository _personalDebtorRepo;
     [ObservableProperty] private double _msTesting;
     [ObservableProperty] private double _hsdTesting;
     [ObservableProperty] private double _hsdTesting2;
     [ObservableProperty] private double _cngTesting;
+    [ObservableProperty] private double _msTestingLitres;
+    [ObservableProperty] private double _hsdTestingLitres;
+    [ObservableProperty] private double _hsdTesting2Litres;
+    [ObservableProperty] private double _cngTestingLitres;
+    [ObservableProperty] private string _msTestingLabel = "MS Testing";
+    [ObservableProperty] private string _hsdTestingLabel = "HSD Testing I";
+    [ObservableProperty] private string _hsdTesting2Label = "HSD Testing II";
+    [ObservableProperty] private string _cngTestingLabel = "CNG Testing";
     [ObservableProperty] private double _totalTesting;
 
     public DayTotalViewModel()
@@ -111,6 +124,7 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
         _fuelRateRepo = App.Services.GetRequiredService<IShiftFuelRateRepository>();
         _aggregation = App.Services.GetRequiredService<IShiftAggregationService>();
         _repaymentRepo = App.Services.GetRequiredService<ICreditorRepaymentRepository>();
+        _personalDebtorRepo = App.Services.GetRequiredService<IDsmPersonalDebtorRepository>();
         _tidService = App.Services.GetRequiredService<ITidCalculationService>();
         _inventoryService = App.Services.GetRequiredService<IAgsInventoryService>();
         _reportService = App.Services.GetRequiredService<IReportService>();
@@ -209,6 +223,16 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
         }
     }
 
+    partial void OnSelectedShift1ManagerChanged(string value)
+    {
+        if (CurrentReport != null) CurrentReport.Shift1Manager = value;
+    }
+
+    partial void OnSelectedShift2ManagerChanged(string value)
+    {
+        if (CurrentReport != null) CurrentReport.Shift2Manager = value;
+    }
+
     [RelayCommand]
     private async Task LoadDayDataAsync()
     {
@@ -243,6 +267,30 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
             DebtorRepayments.Clear();
             var repaymentsRes = await _repaymentRepo.GetByDateRangeAsync(StartDate.Date, EndDate.Date.AddDays(1));
             var repayments = repaymentsRes.Success && repaymentsRes.Data != null ? repaymentsRes.Data : new List<CreditorRepayment>();
+
+            // Also merge DSM Loss (Personal Debtor) repayments
+            if (_personalDebtorRepo != null)
+            {
+                var pdRepaymentsRes = await _personalDebtorRepo.GetRepaymentsByDateRangeAsync(StartDate.Date, EndDate.Date.AddDays(1));
+                if (pdRepaymentsRes.Success && pdRepaymentsRes.Data != null)
+                {
+                    foreach (var pr in pdRepaymentsRes.Data)
+                    {
+                        repayments.Add(new CreditorRepayment
+                        {
+                            CreditorRepaymentId = 900000 + pr.Id,
+                            CreditorName = (pr.DsmPersonalDebtor?.DsmName ?? "DSM Loss") + " (DSM Loss)",
+                            RepaymentDate = pr.Date,
+                            ShiftNumber = pr.Shift?.ShiftType ?? "A",
+                            PaymentMode = pr.PaymentMethod,
+                            CardTid = pr.CardTid ?? "",
+                            CardBatch = pr.CardBatch ?? "",
+                            Amount = pr.Amount,
+                            CreatedAt = pr.CreatedAt
+                        });
+                    }
+                }
+            }
             
             // Only add today's repayments to the UI list of debtor repayments on-screen (tomorrow's Shift A repayments are silently aggregated into the report)
             foreach (var r in repayments.Where(x => x.RepaymentDate.Date >= StartDate.Date && x.RepaymentDate.Date <= EndDate.Date))
@@ -279,6 +327,26 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
             }
 
             CurrentReport = report;
+
+            var settingsRes = await _settingsRepo.GetSettingsAsync();
+            if (settingsRes.Success && settingsRes.Data != null)
+            {
+                var set = settingsRes.Data;
+                ManagerOptions.Clear();
+                if (!string.IsNullOrWhiteSpace(set.Shift1Manager)) ManagerOptions.Add(set.Shift1Manager.Trim());
+                if (!string.IsNullOrWhiteSpace(set.Shift2Manager)) ManagerOptions.Add(set.Shift2Manager.Trim());
+                if (!string.IsNullOrWhiteSpace(set.Shift3Manager)) ManagerOptions.Add(set.Shift3Manager.Trim());
+
+                if (string.IsNullOrWhiteSpace(SelectedShift1Manager))
+                    SelectedShift1Manager = set.Shift1Manager ?? "";
+                if (string.IsNullOrWhiteSpace(SelectedShift2Manager))
+                    SelectedShift2Manager = set.Shift2Manager ?? "";
+            }
+            if (CurrentReport != null)
+            {
+                CurrentReport.Shift1Manager = SelectedShift1Manager;
+                CurrentReport.Shift2Manager = SelectedShift2Manager;
+            }
 
             // 1. Calculate Nozzle-wise Sale
             CalculateNozzleWiseSale(allEntries);
@@ -330,10 +398,10 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
             OthersTotal = report.OtherCashTotal;
 
             // Testing
-            double msTesting = 0;
-            double hsdTesting = 0;
-            double hsdTesting2 = 0;
-            double cngTesting = 0;
+            double msTesting = 0, msTestingLitres = 0;
+            double hsdTesting = 0, hsdTestingLitres = 0;
+            double hsdTesting2 = 0, hsdTesting2Litres = 0;
+            double cngTesting = 0, cngTestingLitres = 0;
 
             foreach (var entry in allEntries)
             {
@@ -341,16 +409,25 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
                 {
                     var cat = FuelPro.Core.Common.PumpConfiguration.GetTestingTankCategory(t.FuelType, entry.PumpId, SelectedDate.Date);
                     double tAmt = t.Amount > 0 ? (double)t.Amount : (double)(t.Litres * t.Rate);
-                    if (cat == "MS") msTesting += tAmt;
-                    else if (cat == "HSD") hsdTesting += tAmt;
-                    else if (cat == "HSD-II") hsdTesting2 += tAmt;
-                    else if (cat == "CNG") cngTesting += tAmt;
+                    double tVol = (double)t.Litres;
+                    if (cat == "MS") { msTesting += tAmt; msTestingLitres += tVol; }
+                    else if (cat == "HSD") { hsdTesting += tAmt; hsdTestingLitres += tVol; }
+                    else if (cat == "HSD-II") { hsdTesting2 += tAmt; hsdTesting2Litres += tVol; }
+                    else if (cat == "CNG") { cngTesting += tAmt; cngTestingLitres += tVol; }
                 }
             }
             MsTesting = msTesting;
             HsdTesting = hsdTesting;
             HsdTesting2 = hsdTesting2;
             CngTesting = cngTesting;
+            MsTestingLitres = msTestingLitres;
+            HsdTestingLitres = hsdTestingLitres;
+            HsdTesting2Litres = hsdTesting2Litres;
+            CngTestingLitres = cngTestingLitres;
+            MsTestingLabel = msTestingLitres > 0 ? $"MS Testing ({msTestingLitres:N2} Ltr)" : "MS Testing";
+            HsdTestingLabel = hsdTestingLitres > 0 ? $"HSD Testing I ({hsdTestingLitres:N2} Ltr)" : "HSD Testing I";
+            HsdTesting2Label = hsdTesting2Litres > 0 ? $"HSD Testing II ({hsdTesting2Litres:N2} Ltr)" : "HSD Testing II";
+            CngTestingLabel = cngTestingLitres > 0 ? $"CNG Testing ({cngTestingLitres:N2} Ltr)" : "CNG Testing";
             TotalTesting = msTesting + hsdTesting + hsdTesting2 + cngTesting;
 
             ReconciliationTotalAmount = report.ActualCollection;
@@ -458,4 +535,37 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
 
     [RelayCommand]
     private async Task RefreshAsync() => await LoadDayDataAsync();
+
+    private readonly ExcelExportService _excelExportService = App.Services.GetRequiredService<ExcelExportService>();
+
+    [RelayCommand]
+    private async Task ExportExcelAsync()
+    {
+        if (CurrentReport == null)
+        {
+            MessageBox.Show("No day total data available to export.", "Export Notice", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        try
+        {
+            var dialog = new Microsoft.Win32.SaveFileDialog
+            {
+                FileName = $"DayTotal_{StartDate:yyyyMMdd}_to_{EndDate:yyyyMMdd}.xlsx",
+                DefaultExt = ".xlsx",
+                Filter = "Excel Worksheets (*.xlsx)|*.xlsx"
+            };
+
+            if (dialog.ShowDialog() == true)
+            {
+                var filePath = await _excelExportService.ExportDayTotalReportAsync(CurrentReport, dialog.FileName);
+                MessageBox.Show($"Day Total report exported successfully to:\n{filePath}", "Export Successful", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to export Day Total report to Excel");
+            MessageBox.Show($"Export failed: {ex.Message}", "Export Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
 }

@@ -669,10 +669,15 @@ public partial class DebtorManagementViewModel : ObservableObject
                     bool within48Hours = (DateTime.Now - x.Debit.CreatedAt).TotalHours <= 48;
                     bool canEdit = isOwner || (!isLocked && within48Hours);
 
+                    var details = new List<string>();
+                    if (!string.IsNullOrWhiteSpace(x.Debit.SlipNumber)) details.Add($"Slip: {x.Debit.SlipNumber}");
+                    if (!string.IsNullOrWhiteSpace(x.Debit.VehicleNumber)) details.Add($"Vehicle: {x.Debit.VehicleNumber}");
+                    string detailsStr = details.Count > 0 ? $" ({string.Join(", ", details)})" : "";
+
                     return new LedgerTransactionRow
                     {
                         Date = x.Date,
-                        Description = $"Debt (Pump {x.PumpId}){(string.IsNullOrEmpty(x.Debit.SlipNumber) ? "" : $" [Slip: {x.Debit.SlipNumber}]")}",
+                        Description = $"Debt{detailsStr}",
                         Debit = x.Debit.Amount,
                         Credit = 0,
                         TransactionType = "Debt",

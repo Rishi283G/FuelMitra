@@ -184,8 +184,8 @@
             </ScrollViewer>
         </TabItem>
 
-        <!-- Tab 2: Personal Debtors Dashboard -->
-        <TabItem Header="Personal Debtors Dashboard">
+        <!-- Tab 2: DSM Loss Dashboard -->
+        <TabItem Header="DSM Loss Dashboard">
             <Grid Margin="0,16,0,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="4*"/>

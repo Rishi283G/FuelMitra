@@ -134,13 +134,19 @@ public class DsmTestingRow
     public double? RupeeAmount { get; set; }
 }
 
-public class DsmOilDefSaleRow
+public partial class DsmOilDefSaleRow : ObservableObject
 {
-    public string ProductName { get; set; } = string.Empty;
-    public double Quantity { get; set; }
-    public double Price { get; set; }
+    [ObservableProperty] private int _productId;
+    [ObservableProperty] private string _productName = string.Empty;
+    [ObservableProperty] private string _category = "Oil";
+    [ObservableProperty] private double _quantity;
+    [ObservableProperty] private double _price;
+    [ObservableProperty] private string _unit = "Litre";
+
     public double Total => Quantity * Price;
-    public string Unit { get; set; } = string.Empty;
+
+    partial void OnQuantityChanged(double value) => OnPropertyChanged(nameof(Total));
+    partial void OnPriceChanged(double value) => OnPropertyChanged(nameof(Total));
 }
 
 public partial class DsmApprovalQueueViewModel : ObservableObject
@@ -194,6 +200,16 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
     public ObservableCollection<KhandharePetroleumEntry> KhandhareEntries { get; } = new();
     public ObservableCollection<DsmOilDefSaleRow> OilDefSales { get; } = new();
     public ObservableCollection<Expense> SubmissionExpenses { get; } = new();
+
+    // Master Product Catalog & Editing Options
+    public ObservableCollection<ProductMaster> AvailableProducts { get; } = new();
+    [ObservableProperty] private bool _showProductCatalogPanel;
+    [ObservableProperty] private string _newProductName = "";
+    [ObservableProperty] private string _newProductCategory = "Oil";
+    [ObservableProperty] private string _newProductUnit = "Litre";
+    [ObservableProperty] private double _newProductDefaultRate;
+    public List<string> ProductCategories { get; } = new() { "Oil", "DEF" };
+    public List<string> ProductUnits { get; } = new() { "Litre", "Bottle", "Can", "Piece", "Bucket" };
 
     // Validations & Overrides
     [ObservableProperty] private bool _hasContinuityWarnings;
@@ -264,6 +280,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
 
         _ = RefreshQueueAsync();
         _ = LoadApprovedHistoryAsync();
+        _ = LoadProductsAsync();
     }
 
     [RelayCommand]
@@ -563,13 +580,17 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                         {
                             foreach (var sale in metadata.oilDefSales)
                             {
-                                OilDefSales.Add(new DsmOilDefSaleRow
+                                var row = new DsmOilDefSaleRow
                                 {
+                                    ProductId = (int)(sale.productId ?? 0),
                                     ProductName = sale.productName ?? "",
+                                    Category = sale.category ?? "Oil",
                                     Quantity = (double)(sale.quantity ?? 0.0),
                                     Price = (double)(sale.price ?? 0.0),
                                     Unit = sale.unit ?? ""
-                                });
+                                };
+                                row.PropertyChanged += (s, e) => RecalculateTotals();
+                                OilDefSales.Add(row);
                             }
                         }
 
@@ -683,7 +704,15 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
         TotalCollections = (double)calc.TotalCollection + oilDefSalesTotal;
         MismatchAmount = TotalCollections - GrossSales;
 
-        ShortAmount = MismatchAmount < 0 ? Math.Abs(MismatchAmount) : 0;
+        double rawShortage = MismatchAmount < 0 ? Math.Abs(MismatchAmount) : 0;
+        if (rawShortage > 10)
+        {
+            ShortAmount = 0; // Transferred to DSM Loss Ledger (> 10)
+        }
+        else
+        {
+            ShortAmount = rawShortage; // Shift Short (<= 10)
+        }
         ExcessAmount = MismatchAmount > 0 ? MismatchAmount : 0;
 
         // Check continuity warnings
@@ -711,6 +740,124 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
     partial void OnOthersAmountChanged(double value) => RecalculateTotals();
     partial void OnCreditAmountChanged(double value) => RecalculateTotals();
     partial void OnExpenseAmountChanged(double value) => RecalculateTotals();
+
+    public async Task LoadProductsAsync()
+    {
+        try
+        {
+            using var scope = _serviceProvider.CreateScope();
+            using var context = scope.ServiceProvider.GetRequiredService<FuelProDbContext>();
+            var list = await context.ProductMasters.Where(p => p.IsActive).ToListAsync();
+            AvailableProducts.Clear();
+            foreach (var p in list)
+            {
+                AvailableProducts.Add(p);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to load product masters");
+        }
+    }
+
+    [RelayCommand]
+    private void AddOilDefSale()
+    {
+        var firstProd = AvailableProducts.FirstOrDefault();
+        var newRow = new DsmOilDefSaleRow
+        {
+            ProductId = firstProd?.Id ?? 0,
+            ProductName = firstProd?.ProductName ?? "Castrol CRB 20W40",
+            Category = firstProd?.Category ?? "Oil",
+            Unit = firstProd?.Unit ?? "Litre",
+            Quantity = 1.0,
+            Price = firstProd?.DefaultSaleRate ?? 350.0
+        };
+        newRow.PropertyChanged += (s, e) => RecalculateTotals();
+        OilDefSales.Add(newRow);
+        RecalculateTotals();
+    }
+
+    [RelayCommand]
+    private void DeleteOilDefSale(DsmOilDefSaleRow? row)
+    {
+        if (row != null && OilDefSales.Contains(row))
+        {
+            OilDefSales.Remove(row);
+            RecalculateTotals();
+        }
+    }
+
+    [RelayCommand]
+    private void ToggleProductCatalogPanel()
+    {
+        ShowProductCatalogPanel = !ShowProductCatalogPanel;
+    }
+
+    [RelayCommand]
+    private async Task AddProductMasterAsync()
+    {
+        if (string.IsNullOrWhiteSpace(NewProductName))
+        {
+            MessageBox.Show("Please enter a valid Product Name.", "Validation", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        try
+        {
+            using var scope = _serviceProvider.CreateScope();
+            using var context = scope.ServiceProvider.GetRequiredService<FuelProDbContext>();
+            
+            var prod = new ProductMaster
+            {
+                ProductName = NewProductName.Trim(),
+                Category = string.IsNullOrWhiteSpace(NewProductCategory) ? "Oil" : NewProductCategory,
+                Unit = string.IsNullOrWhiteSpace(NewProductUnit) ? "Litre" : NewProductUnit,
+                DefaultSaleRate = NewProductDefaultRate,
+                IsActive = true
+            };
+
+            context.ProductMasters.Add(prod);
+            await context.SaveChangesAsync();
+
+            NewProductName = "";
+            NewProductDefaultRate = 0;
+            await LoadProductsAsync();
+
+            MessageBox.Show($"Product '{prod.ProductName}' successfully added to catalog!", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to add product master");
+            MessageBox.Show($"Error adding product: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    [RelayCommand]
+    private async Task DeleteProductMasterAsync(ProductMaster? product)
+    {
+        if (product == null) return;
+        var res = MessageBox.Show($"Are you sure you want to delete product '{product.ProductName}' from catalog?", "Confirm Delete", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (res != MessageBoxResult.Yes) return;
+
+        try
+        {
+            using var scope = _serviceProvider.CreateScope();
+            using var context = scope.ServiceProvider.GetRequiredService<FuelProDbContext>();
+            var tracked = await context.ProductMasters.FindAsync(product.Id);
+            if (tracked != null)
+            {
+                tracked.IsActive = false; // soft delete
+                await context.SaveChangesAsync();
+            }
+            await LoadProductsAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to delete product master");
+            MessageBox.Show($"Error deleting product: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
 
     private List<DsmPersonalDebtor> ParsePersonalDebtorsFromMetadata(string? metadataJson)
     {
@@ -1114,8 +1261,21 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                 });
             }
 
-            // Parse Personal Debtors
-            var personalDebtors = PersonalDebtors.Count > 0 ? PersonalDebtors.ToList() : ParsePersonalDebtorsFromMetadata(SelectedSubmission.MetadataJson);
+            // Automatic DSM Loss calculation based on mismatch threshold (> 10)
+            double shiftShortage = MismatchAmount < 0 ? Math.Abs(MismatchAmount) : 0;
+            var personalDebtors = new List<DsmPersonalDebtor>();
+            if (shiftShortage > 10)
+            {
+                personalDebtors.Add(new DsmPersonalDebtor
+                {
+                    DsmName = SelectedSubmission.DsmName,
+                    Date = SelectedSubmission.ShiftDate,
+                    Time = DateTime.Now.ToString("hh:mm tt"),
+                    Amount = shiftShortage,
+                    Remarks = $"Auto Shift Shortage (Pump {SelectedSubmission.PumpId}, Shift {SelectedSubmission.ShiftType})",
+                    PaymentMethod = "Cash"
+                });
+            }
 
             // Parse cash denominations, connected pump, and testing entries
             int denom500 = 0, denom200 = 0, denom100 = 0, denom50 = 0, denom20 = 0, denom10 = 0, coins = 0;
@@ -1284,56 +1444,79 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
 
                 var savedEntry = localSaveResult.Data!;
 
-                // Process Oil & DEF Sales from PWA Submission Metadata
-                if (!string.IsNullOrEmpty(SelectedSubmission.MetadataJson))
+                // Process Oil & DEF Sales from edited Owner collection
+                if (OilDefSales.Count > 0)
                 {
                     try
                     {
-                        var metadata = JsonConvert.DeserializeObject<dynamic>(SelectedSubmission.MetadataJson);
-                        if (metadata != null && metadata.oilDefSales != null)
+                        foreach (var sale in OilDefSales)
                         {
-                            foreach (var sale in metadata.oilDefSales)
+                            if (sale.Quantity <= 0) continue;
+                            int productId = sale.ProductId;
+                            if (productId <= 0)
                             {
-                                int productId = (int)(sale.productId ?? 0);
-                                double quantity = (double)(sale.quantity ?? 0.0);
-                                double price = (double)(sale.price ?? 0.0);
-
-                                if (productId <= 0 || quantity <= 0) continue;
-
-                                var productMaster = await context.ProductMasters.FindAsync(productId);
-                                if (productMaster == null) continue;
-
-                                double defaultSaleRate = productMaster.DefaultSaleRate;
-
-                                var log = await context.OilDefDailyLogs
-                                    .FirstOrDefaultAsync(l => l.ProductId == productId && l.LogDate == SelectedSubmission.ShiftDate.Date);
-
-                                if (log != null)
-                                {
-                                    log.SoldQuantity += quantity;
-                                    if (Math.Abs(price - defaultSaleRate) > 0.01)
-                                    {
-                                        log.OverrideSaleRate = price;
-                                    }
-                                    context.Entry(log).State = EntityState.Modified;
-                                }
-                                else
-                                {
-                                    log = new OilDefDailyLog
-                                    {
-                                        LogDate = SelectedSubmission.ShiftDate.Date,
-                                        ProductId = productId,
-                                        ProductType = productMaster.Category,
-                                        SoldQuantity = quantity,
-                                        OverrideSaleRate = Math.Abs(price - defaultSaleRate) > 0.01 ? price : null
-                                    };
-                                    context.OilDefDailyLogs.Add(log);
-                                }
-
-                                await context.SaveChangesAsync();
-                                await RecalculateRunningBalancesAsync(context, productId, SelectedSubmission.ShiftDate.Date);
+                                var matchedProd = await context.ProductMasters.FirstOrDefaultAsync(p => p.ProductName == sale.ProductName);
+                                if (matchedProd != null) productId = matchedProd.Id;
                             }
+                            if (productId <= 0) continue;
+
+                            var productMaster = await context.ProductMasters.FindAsync(productId);
+                            if (productMaster == null) continue;
+
+                            double defaultSaleRate = productMaster.DefaultSaleRate;
+                            double price = sale.Price;
+                            double quantity = sale.Quantity;
+
+                            var log = await context.OilDefDailyLogs
+                                .FirstOrDefaultAsync(l => l.ProductId == productId && l.LogDate == SelectedSubmission.ShiftDate.Date);
+
+                            if (log != null)
+                            {
+                                log.SoldQuantity += quantity;
+                                if (Math.Abs(price - defaultSaleRate) > 0.01)
+                                {
+                                    log.OverrideSaleRate = price;
+                                }
+                                context.Entry(log).State = EntityState.Modified;
+                            }
+                            else
+                            {
+                                log = new OilDefDailyLog
+                                {
+                                    LogDate = SelectedSubmission.ShiftDate.Date,
+                                    ProductId = productId,
+                                    ProductType = productMaster.Category,
+                                    SoldQuantity = quantity,
+                                    OverrideSaleRate = Math.Abs(price - defaultSaleRate) > 0.01 ? price : null
+                                };
+                                context.OilDefDailyLogs.Add(log);
+                            }
+
+                            await context.SaveChangesAsync();
+                            await RecalculateRunningBalancesAsync(context, productId, SelectedSubmission.ShiftDate.Date);
                         }
+
+                        // Sync edited OilDefSales back to MetadataJson
+                        try
+                        {
+                            var metaObj = string.IsNullOrEmpty(SelectedSubmission.MetadataJson)
+                                ? new Newtonsoft.Json.Linq.JObject()
+                                : Newtonsoft.Json.Linq.JObject.Parse(SelectedSubmission.MetadataJson);
+
+                            var salesArray = Newtonsoft.Json.Linq.JArray.FromObject(OilDefSales.Select(s => new
+                            {
+                                productId = s.ProductId,
+                                productName = s.ProductName,
+                                category = s.Category,
+                                unit = s.Unit,
+                                quantity = s.Quantity,
+                                price = s.Price,
+                                total = s.Total
+                            }));
+                            metaObj["oilDefSales"] = salesArray;
+                            SelectedSubmission.MetadataJson = metaObj.ToString(Newtonsoft.Json.Formatting.None);
+                        }
+                        catch {}
                     }
                     catch (Exception ex)
                     {

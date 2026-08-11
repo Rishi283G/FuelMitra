@@ -42,6 +42,9 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string _msIRate = "";
     [ObservableProperty] private string _msIIRate = "";
     [ObservableProperty] private string _cngRate = "";
+    [ObservableProperty] private string _shift1Manager = "";
+    [ObservableProperty] private string _shift2Manager = "";
+    [ObservableProperty] private string _shift3Manager = "";
     [ObservableProperty] private string _lastUpdated = "";
     [ObservableProperty] private string _statusMessage = "";
 
@@ -137,6 +140,9 @@ public partial class SettingsViewModel : ObservableObject
             MsIRate = _settings.MsIRate.ToString(CultureInfo.CurrentCulture);
             MsIIRate = _settings.MsIIRate.ToString(CultureInfo.CurrentCulture);
             CngRate = _settings.CngRate.ToString(CultureInfo.CurrentCulture);
+            Shift1Manager = _settings.Shift1Manager ?? "";
+            Shift2Manager = _settings.Shift2Manager ?? "";
+            Shift3Manager = _settings.Shift3Manager ?? "";
             LastUpdated = _settings.LastUpdated.ToString("dd MMM yyyy hh:mm tt");
         }
 
@@ -181,6 +187,9 @@ public partial class SettingsViewModel : ObservableObject
         _settings.MsIRate = ms1;
         _settings.MsIIRate = ms2;
         _settings.CngRate = cng;
+        _settings.Shift1Manager = Shift1Manager?.Trim();
+        _settings.Shift2Manager = Shift2Manager?.Trim();
+        _settings.Shift3Manager = Shift3Manager?.Trim();
 
         var result = await _settingsRepo.SaveSettingsAsync(_settings);
         if (result.Success)

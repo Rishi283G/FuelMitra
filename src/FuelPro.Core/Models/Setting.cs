@@ -18,6 +18,15 @@ public class Setting
     [MaxLength(300)]
     public string PumpStationName { get; set; } = "Mitali Service Station";
 
+    [MaxLength(100)]
+    public string? Shift1Manager { get; set; }
+
+    [MaxLength(100)]
+    public string? Shift2Manager { get; set; }
+
+    [MaxLength(100)]
+    public string? Shift3Manager { get; set; }
+
     [NotMapped]
     public string StationDisplayName
     {

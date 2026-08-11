@@ -48,6 +48,11 @@ public class ShiftCalculationService
             if (!entriesResult.Success) return Result<FinalCalculationDto>.Fail(entriesResult.Error);
 
             var entries = entriesResult.Data!;
+            var primaryEntries = entries
+                .Where(e => !e.ReconciledToPumpId.HasValue)
+                .GroupBy(e => (e.PumpId, (e.DsmName ?? "").Trim().ToLower()))
+                .Select(g => g.OrderByDescending(e => e.DsmEntryId).First())
+                .ToList();
             var shiftExpensesResult = await _expenseRepo.GetByShiftIdAsync(shift.ShiftId);
             var shiftExpenses = shiftExpensesResult.Success ? shiftExpensesResult.Data! : new List<Expense>();
 
@@ -60,7 +65,7 @@ public class ShiftCalculationService
             };
 
             // TABLE A — DSM Summary
-            foreach (var entry in entries)
+            foreach (var entry in primaryEntries)
             {
                 var cash1 = entry.CashDenominations.Where(c => c.CashType == "Cash1").Sum(c => c.TotalAmount);
                 var cash2 = entry.CashDenominations.Where(c => c.CashType == "Cash2").Sum(c => c.TotalAmount);

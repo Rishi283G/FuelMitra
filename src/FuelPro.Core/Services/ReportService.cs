@@ -203,10 +203,10 @@ public class ReportService : IReportService
         double finalPhonePeCardNight = phonePeCardNight;
 
         // 9. Testing summary totals
-        double msTesting = 0;
-        double hsdTesting = 0;
-        double hsdTesting2 = 0;
-        double cngTesting = 0;
+        double msTesting = 0, msTestingVol = 0;
+        double hsdTesting = 0, hsdTestingVol = 0;
+        double hsdTesting2 = 0, hsdTesting2Vol = 0;
+        double cngTesting = 0, cngTestingVol = 0;
 
         foreach (var entry in entriesList)
         {
@@ -214,10 +214,11 @@ public class ReportService : IReportService
             {
                 var cat = PumpConfiguration.GetTestingTankCategory(t.FuelType, entry.PumpId, date.Date);
                 double tAmt = t.Amount > 0 ? (double)t.Amount : (double)(t.Litres * t.Rate);
-                if (cat == "MS") msTesting += tAmt;
-                else if (cat == "HSD") hsdTesting += tAmt;
-                else if (cat == "HSD-II") hsdTesting2 += tAmt;
-                else if (cat == "CNG") cngTesting += tAmt;
+                double tVol = (double)t.Litres;
+                if (cat == "MS") { msTesting += tAmt; msTestingVol += tVol; }
+                else if (cat == "HSD") { hsdTesting += tAmt; hsdTestingVol += tVol; }
+                else if (cat == "HSD-II") { hsdTesting2 += tAmt; hsdTesting2Vol += tVol; }
+                else if (cat == "CNG") { cngTesting += tAmt; cngTestingVol += tVol; }
             }
         }
         double testingTotal = msTesting + hsdTesting + hsdTesting2 + cngTesting;
@@ -226,28 +227,35 @@ public class ReportService : IReportService
         double totalDsmShort = CalculateDsmShort(entriesList);
         dto.TotalDsmShort = totalDsmShort;
 
-        // 11. Build standardized collection categories with audit breakdown
-        dto.CollectionBreakdown = new List<CollectionCategoryDto>
+        // 11. Standardized collection categories with audit breakdown (Oil & DEF sales excluded from Final Reconciliation)
+        var breakdownList = new List<CollectionCategoryDto>
         {
             new() { Category = "Cash Deposit", Amount = finalCashDeposit, BaseAmount = dto.Cash1.GrandTotal, RecoveryAmount = 0 },
-            new() { Category = "Cash In Hand", Amount = finalCashInHand, BaseAmount = dto.Cash2.GrandTotal, RecoveryAmount = dto.CashRepayments },
-            new() { Category = "PhonePe Morning", Amount = finalPhonePeMorning, BaseAmount = phonePeMorning, RecoveryAmount = shiftType == "B" ? dto.PhonePeRepayments : 0 },
-            new() { Category = "PhonePe Night", Amount = finalPhonePeNight, BaseAmount = phonePeNight, RecoveryAmount = shiftType != "B" ? dto.PhonePeRepayments : 0 },
-            new() { Category = "PhonePe Card Morning", Amount = finalPhonePeCardMorning, BaseAmount = phonePeCardMorning, RecoveryAmount = 0 },
-            new() { Category = "PhonePe Card Night", Amount = finalPhonePeCardNight, BaseAmount = phonePeCardNight, RecoveryAmount = 0 },
-            new() { Category = "PineLabs Morning", Amount = finalCreditCardMorning, BaseAmount = creditCardMorning, RecoveryAmount = shiftType == "B" ? dto.CreditCardRepayments : 0 },
-            new() { Category = "PineLabs Night", Amount = finalCreditCardNight, BaseAmount = creditCardNight, RecoveryAmount = shiftType != "B" ? dto.CreditCardRepayments : 0 },
-            new() { Category = "Petro Card", Amount = finalPetroCard, BaseAmount = petroCard, RecoveryAmount = dto.PetroCardRepayments },
-            new() { Category = "Debtors", Amount = dto.CreditorsTotal, BaseAmount = dto.CreditorsTotal, RecoveryAmount = 0 },
-            new() { Category = "Oil Sales", Amount = 0, BaseAmount = 0, RecoveryAmount = 0 },
-            new() { Category = "DEF Sales", Amount = 0, BaseAmount = 0, RecoveryAmount = 0 },
-            new() { Category = "Expenses", Amount = dto.ExpensesTotal, BaseAmount = dto.ExpensesTotal, RecoveryAmount = 0 },
-            new() { Category = "MS Testing", Amount = msTesting, BaseAmount = msTesting, RecoveryAmount = 0 },
-            new() { Category = "HSD Testing I", Amount = hsdTesting, BaseAmount = hsdTesting, RecoveryAmount = 0 },
-            new() { Category = "HSD Testing II", Amount = hsdTesting2, BaseAmount = hsdTesting2, RecoveryAmount = 0 },
-            new() { Category = "CNG Testing", Amount = cngTesting, BaseAmount = cngTesting, RecoveryAmount = 0 },
-            new() { Category = "DSM Short", Amount = totalDsmShort, BaseAmount = totalDsmShort, RecoveryAmount = 0 }
+            new() { Category = "Cash In Hand", Amount = finalCashInHand, BaseAmount = dto.Cash2.GrandTotal, RecoveryAmount = dto.CashRepayments }
         };
+
+        if (shiftType == "B")
+        {
+            breakdownList.Add(new() { Category = "PhonePe", Amount = finalPhonePeMorning + finalPhonePeNight, BaseAmount = phonePeMorning + phonePeNight, RecoveryAmount = dto.PhonePeRepayments });
+            breakdownList.Add(new() { Category = "Card", Amount = finalCreditCardMorning + finalCreditCardNight, BaseAmount = creditCardMorning + creditCardNight, RecoveryAmount = dto.CreditCardRepayments });
+        }
+        else
+        {
+            breakdownList.Add(new() { Category = "PhonePe Morning", Amount = finalPhonePeMorning, BaseAmount = phonePeMorning, RecoveryAmount = 0 });
+            breakdownList.Add(new() { Category = "PhonePe Night", Amount = finalPhonePeNight, BaseAmount = phonePeNight, RecoveryAmount = dto.PhonePeRepayments });
+            breakdownList.Add(new() { Category = "Card Morning", Amount = finalCreditCardMorning, BaseAmount = creditCardMorning, RecoveryAmount = 0 });
+            breakdownList.Add(new() { Category = "Card Night", Amount = finalCreditCardNight, BaseAmount = creditCardNight, RecoveryAmount = dto.CreditCardRepayments });
+        }
+
+        breakdownList.Add(new() { Category = "Petro Card", Amount = finalPetroCard, BaseAmount = petroCard, RecoveryAmount = dto.PetroCardRepayments });
+        breakdownList.Add(new() { Category = "Debtors", Amount = dto.CreditorsTotal, BaseAmount = dto.CreditorsTotal, RecoveryAmount = 0 });
+        breakdownList.Add(new() { Category = "Expenses", Amount = dto.ExpensesTotal, BaseAmount = dto.ExpensesTotal, RecoveryAmount = 0 });
+        breakdownList.Add(new() { Category = "MS Testing", Amount = msTesting, BaseAmount = msTesting, RecoveryAmount = 0, Volume = msTestingVol });
+        breakdownList.Add(new() { Category = "HSD Testing I", Amount = hsdTesting, BaseAmount = hsdTesting, RecoveryAmount = 0, Volume = hsdTestingVol });
+        breakdownList.Add(new() { Category = "HSD Testing II", Amount = hsdTesting2, BaseAmount = hsdTesting2, RecoveryAmount = 0, Volume = hsdTesting2Vol });
+        breakdownList.Add(new() { Category = "DSM Short", Amount = totalDsmShort, BaseAmount = totalDsmShort, RecoveryAmount = 0 });
+
+        dto.CollectionBreakdown = breakdownList;
 
         dto.ActualCollection = dto.CollectionBreakdown.Where(c => c.Category != "DSM Short").Sum(c => c.Amount);
         dto.ExpectedCollection = dto.TotalFuelAmount + dto.OilDefSalesTotal + reconcilableRecoveriesTotal;
@@ -482,10 +490,10 @@ public class ReportService : IReportService
         double finalPetroCard = petroCardMorning + petroCardDay + petroCardNight + dto.PetroCardRepayments;
 
         // 9. Testing summary totals
-        double msTesting = 0;
-        double hsdTesting = 0;
-        double hsdTesting2 = 0;
-        double cngTesting = 0;
+        double msTesting = 0, msTestingVol = 0;
+        double hsdTesting = 0, hsdTestingVol = 0;
+        double hsdTesting2 = 0, hsdTesting2Vol = 0;
+        double cngTesting = 0, cngTestingVol = 0;
 
         foreach (var entry in todayEntries)
         {
@@ -493,10 +501,11 @@ public class ReportService : IReportService
             {
                 var cat = PumpConfiguration.GetTestingTankCategory(t.FuelType, entry.PumpId, startDate.Date);
                 double tAmt = t.Amount > 0 ? (double)t.Amount : (double)(t.Litres * t.Rate);
-                if (cat == "MS") msTesting += tAmt;
-                else if (cat == "HSD") hsdTesting += tAmt;
-                else if (cat == "HSD-II") hsdTesting2 += tAmt;
-                else if (cat == "CNG") cngTesting += tAmt;
+                double tVol = (double)t.Litres;
+                if (cat == "MS") { msTesting += tAmt; msTestingVol += tVol; }
+                else if (cat == "HSD") { hsdTesting += tAmt; hsdTestingVol += tVol; }
+                else if (cat == "HSD-II") { hsdTesting2 += tAmt; hsdTesting2Vol += tVol; }
+                else if (cat == "CNG") { cngTesting += tAmt; cngTestingVol += tVol; }
             }
         }
         double testingTotal = msTesting + hsdTesting + hsdTesting2 + cngTesting;
@@ -505,26 +514,26 @@ public class ReportService : IReportService
         double totalDsmShort = CalculateDsmShort(todayEntries);
         dto.TotalDsmShort = totalDsmShort;
 
-        // 11. Build standardized collection categories with audit breakdown
+        // 11. Oil & DEF Sales
+        var oilDefResult = ExtractOilDefSales(todayEntries);
+        dto.OilDefSales = oilDefResult.Rows;
+        dto.OilDefSalesTotal = oilDefResult.Total;
+
+        // 12. Build standardized collection categories with audit breakdown (Oil & DEF sales excluded from Final Reconciliation)
         dto.CollectionBreakdown = new List<CollectionCategoryDto>
         {
             new() { Category = "Cash Deposit", Amount = dto.Cash1.GrandTotal, BaseAmount = dto.Cash1.GrandTotal, RecoveryAmount = 0 },
             new() { Category = "Cash In Hand", Amount = dto.Cash2.GrandTotal + dto.CashRepayments, BaseAmount = dto.Cash2.GrandTotal, RecoveryAmount = dto.CashRepayments },
             new() { Category = "PhonePe Morning", Amount = finalPhonePeMorning, BaseAmount = phonePeDirectMorning + phonePeDirectDay, RecoveryAmount = dto.PhonePeRepayments },
             new() { Category = "PhonePe Night", Amount = finalPhonePeNight, BaseAmount = phonePeDirectNight, RecoveryAmount = 0 },
-            new() { Category = "PhonePe Card Morning", Amount = finalPhonePeCardMorning, BaseAmount = phonePeCardMorning + phonePeCardDay, RecoveryAmount = 0 },
-            new() { Category = "PhonePe Card Night", Amount = finalPhonePeCardNight, BaseAmount = phonePeCardNight, RecoveryAmount = 0 },
-            new() { Category = "PineLabs Morning", Amount = finalCreditCardMorning, BaseAmount = pineLabsCardMorning + pineLabsCardDay, RecoveryAmount = dto.CreditCardRepayments },
-            new() { Category = "PineLabs Night", Amount = finalCreditCardNight, BaseAmount = pineLabsCardNight, RecoveryAmount = 0 },
+            new() { Category = "Card Morning", Amount = finalCreditCardMorning, BaseAmount = pineLabsCardMorning + pineLabsCardDay, RecoveryAmount = dto.CreditCardRepayments },
+            new() { Category = "Card Night", Amount = finalCreditCardNight, BaseAmount = pineLabsCardNight, RecoveryAmount = 0 },
             new() { Category = "Petro Card", Amount = finalPetroCard, BaseAmount = petroCardMorning + petroCardDay + petroCardNight, RecoveryAmount = dto.PetroCardRepayments },
             new() { Category = "Debtors", Amount = dto.CreditorsTotal, BaseAmount = dto.CreditorsTotal, RecoveryAmount = 0 },
-            new() { Category = "Oil Sales", Amount = 0, BaseAmount = 0, RecoveryAmount = 0 },
-            new() { Category = "DEF Sales", Amount = 0, BaseAmount = 0, RecoveryAmount = 0 },
             new() { Category = "Expenses", Amount = dto.ExpensesTotal, BaseAmount = dto.ExpensesTotal, RecoveryAmount = 0 },
-            new() { Category = "MS Testing", Amount = msTesting, BaseAmount = msTesting, RecoveryAmount = 0 },
-            new() { Category = "HSD Testing I", Amount = hsdTesting, BaseAmount = hsdTesting, RecoveryAmount = 0 },
-            new() { Category = "HSD Testing II", Amount = hsdTesting2, BaseAmount = hsdTesting2, RecoveryAmount = 0 },
-            new() { Category = "CNG Testing", Amount = cngTesting, BaseAmount = cngTesting, RecoveryAmount = 0 },
+            new() { Category = "MS Testing", Amount = msTesting, BaseAmount = msTesting, RecoveryAmount = 0, Volume = msTestingVol },
+            new() { Category = "HSD Testing I", Amount = hsdTesting, BaseAmount = hsdTesting, RecoveryAmount = 0, Volume = hsdTestingVol },
+            new() { Category = "HSD Testing II", Amount = hsdTesting2, BaseAmount = hsdTesting2, RecoveryAmount = 0, Volume = hsdTesting2Vol },
             new() { Category = "DSM Short", Amount = totalDsmShort, BaseAmount = totalDsmShort, RecoveryAmount = 0 }
         };
 
@@ -659,5 +668,11 @@ public class ReportService : IReportService
         }
 
         return mergedEntries;
+    }
+
+    private static (List<OilDefSaleDisplayRow> Rows, double Total) ExtractOilDefSales(IEnumerable<DsmEntry> entries)
+    {
+        var list = new List<OilDefSaleDisplayRow>();
+        return (list, list.Sum(s => s.Total));
     }
 }

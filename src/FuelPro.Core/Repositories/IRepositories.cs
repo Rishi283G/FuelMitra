@@ -159,6 +159,8 @@ public interface IDsmPersonalDebtorRepository
 {
     Task<Result<List<DsmPersonalDebtor>>> GetByDsmEntryIdAsync(int dsmEntryId);
     Task<Result> SavePersonalDebtorsAsync(int dsmEntryId, List<DsmPersonalDebtor> personalDebtors);
+    Task<Result<List<DsmPersonalDebtorRepayment>>> GetRepaymentsByDateAsync(DateTime date);
+    Task<Result<List<DsmPersonalDebtorRepayment>>> GetRepaymentsByDateRangeAsync(DateTime startDate, DateTime endDate);
 }
 
 public interface IFuelTankerRepository

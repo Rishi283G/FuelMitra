@@ -92,7 +92,10 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
           <div class="rpt-sub">Day Total Reconciliation &mdash; Full Day (Shift A + B)</div>
         </div>
       </div>
-      <div class="day-pill">&#128197; DAY TOTAL</div>
+      <div>
+        <div class="day-pill">&#128197; DAY TOTAL</div>
+        <div style="font-size:11px;font-weight:600;text-align:right;margin-top:4px;opacity:0.95;" id="hManager">Shift 1: &ndash; / Shift 2: &ndash;</div>
+      </div>
     </div>
     <div class="rpt-meta">
       <span>Date <strong id="hDate">&ndash;</strong></span>
@@ -112,7 +115,7 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
   <!-- SECTION 2: DSM SUMMARY (ALL SHIFTS) -->
   <div class="sec">
     <div class="sec-title">2. DSM Summary &mdash; All Shifts</div>
-    <table><thead><tr><th>DSM Name</th><th>Shift</th><th>Pump</th><th>PhonePe (M)</th><th>PhonePe (N)</th><th>PineLabs Card</th><th>Petro Card</th><th>Bank Cash</th><th>Debtors</th><th>Expenses</th><th>Testing</th><th>Hand Cash</th><th>Gross Sale</th><th>Mismatch</th></tr></thead><tbody id="tDsm"></tbody></table>
+    <table><thead><tr><th>DSM Name</th><th>Shift</th><th>Pump</th><th>PhonePe (M)</th><th>PhonePe (N)</th><th>Card</th><th>Petro Card</th><th>Bank Cash</th><th>Debtors</th><th>Expenses</th><th>Testing</th><th>Hand Cash</th><th>Gross Sale</th><th>Mismatch</th></tr></thead><tbody id="tDsm"></tbody></table>
   </div>
   <hr class="div">
 
@@ -157,8 +160,21 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
           <tbody id="tFuel"></tbody>
         </table>
       </div>
+      <div id="secOilDef" style="display:none; margin-top: 12px;">
+        <div class="mini-hdr">Oil &amp; DEF Sales</div>
+        <table>
+          <thead>
+            <tr>
+              <th style="text-align:left;">Product</th>
+              <th style="text-align:right;">Sold Units</th>
+              <th style="text-align:right;">Amount (&#8377;)</th>
+            </tr>
+          </thead>
+          <tbody id="tOilDef"></tbody>
+        </table>
+      </div>
       <div id="secPersonalDebtors" style="display:none; margin-top: 12px;">
-        <div class="mini-hdr">DSM Personal Debtors</div>
+        <div class="mini-hdr">DSM Loss</div>
         <table>
           <thead>
             <tr>
@@ -177,7 +193,7 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
         <table><thead><tr><th>DSM / Shift</th><th>Description</th><th>Amount (&#8377;)</th></tr></thead><tbody id="tExp"></tbody></table>
       </div>
       <div id="secKhandhare" style="display:none; margin-top: 12px;">
-        <div class="mini-hdr">Khandhare Petroleum Drawing</div>
+        <div class="mini-hdr">Kandhare Petroleum</div>
         <table>
           <thead>
             <tr>
@@ -265,6 +281,12 @@ function renderData(){
   document.getElementById('hStation').textContent=station;
   document.getElementById('hShifts').textContent='Shift A + Shift B';
   document.getElementById('hPrinted').textContent=new Date().toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+  var mgrEl = document.getElementById('hManager');
+  if(mgrEl){
+    var m1 = d.shift1Manager || d.Shift1Manager || '\u2013';
+    var m2 = d.shift2Manager || d.Shift2Manager || '\u2013';
+    mgrEl.textContent = 'Shift 1: ' + m1 + ' / Shift 2: ' + m2;
+  }
 
   // DSM Summary
   var tb=document.getElementById('tDsm');tb.innerHTML='';
@@ -331,11 +353,16 @@ function renderData(){
       var stock = getVal(g, 'stock') || 0;
       var rows = getVal(g, 'rows') || [];
       
+      var isMs1 = groupName.indexOf('Petrol') !== -1 || groupName.indexOf('MS') !== -1 || groupName.indexOf('Tank 1') !== -1;
+      var borderColor = isMs1 ? '#FF9800' : '#03A9F4';
+      var headerBg = isMs1 ? '#E65100' : '#0288D1';
+      var cardBg = isMs1 ? '#FFF8E1' : '#E3F2FD';
+
       var card = document.createElement('div');
-      card.style.cssText = 'flex: 1; border: 1.5px solid #1a3a6b; border-radius: 6px; padding: 10px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.05);';
+      card.style.cssText = 'flex: 1; border: 1.5px solid ' + borderColor + '; border-radius: 6px; padding: 10px; background: ' + cardBg + '; box-shadow: 0 1px 3px rgba(0,0,0,0.05);';
       
       var header = document.createElement('div');
-      header.style.cssText = 'background: #1a3a6b; color: #fff; text-align: center; padding: 4px; font-weight: bold; border-radius: 4px; font-size: 11px;';
+      header.style.cssText = 'background: ' + headerBg + '; color: #fff; text-align: center; padding: 4px; font-weight: bold; border-radius: 4px; font-size: 11px;';
       header.textContent = groupName;
       card.appendChild(header);
       
@@ -350,14 +377,17 @@ function renderData(){
       var variance = stock - calculated;
 
       tankInfo.innerHTML = 
+        '<div style="display:flex; justify-content:space-between; align-items:center; background:#fff; padding:4px 6px; margin:4px 0 6px 0; border-radius:4px; border:1px solid #ddd;">' +
+        '  <span style="font-weight:bold; font-size:11px; color:#222;">Dip: ' + dip + ' mm</span>' +
+        '  <span style="font-weight:bold; font-size:11px; color:#0B6E4F;">Stock: ' + parseFloat(stock).toFixed(2) + ' Ltr</span>' +
+        '</div>' +
         '<table style="width:100%; border-collapse:collapse; font-size:9.5px; line-height:1.2; margin-bottom: 4px;">' +
-        '<tr><td style="color:#555; padding:1px 0;">Opening Stock:</td><td style="text-align:right; font-weight:500; padding:1px 0;">' + parseFloat(opening).toFixed(1) + ' L</td></tr>' +
-        '<tr><td style="color:#555; padding:1px 0;">Receipts:</td><td style="text-align:right; font-weight:500; padding:1px 0;">+' + parseFloat(receipts).toFixed(1) + ' L</td></tr>' +
-        '<tr><td style="color:#555; padding:1px 0;">Sales:</td><td style="text-align:right; font-weight:500; padding:1px 0;">-' + parseFloat(sales).toFixed(1) + ' L</td></tr>' +
-        '<tr><td style="color:#555; padding:1px 0;">Testing:</td><td style="text-align:right; font-weight:500; padding:1px 0;">+' + parseFloat(testing).toFixed(1) + ' L</td></tr>' +
-        '<tr style="border-top:1px dashed #ccc; font-weight:bold; color:#16211C;"><td style="padding:2px 0 1px 0;">Calculated Stock:</td><td style="text-align:right; padding:2px 0 1px 0;">' + parseFloat(calculated).toFixed(1) + ' L</td></tr>' +
-        '<tr style="font-weight:bold; color:#0B6E4F;"><td style="padding:1px 0;">Actual Stock:</td><td style="text-align:right; padding:1px 0;">' + parseFloat(stock).toFixed(1) + ' L (' + dip + ' mm)</td></tr>' +
-        '<tr style="font-weight:bold; border-top:1px solid #ddd; border-bottom:1px solid #ddd; padding:2px 0;"><td style="padding:2px 0;">Variance:</td><td style="text-align:right; padding:2px 0; color:' + (variance >= 0 ? '#0B6E4F' : '#D32F2F') + ';">' + (variance >= 0 ? '+' : '') + parseFloat(variance).toFixed(1) + ' L</td></tr>' +
+        '<tr><td style="color:#555; padding:1px 0;">Opening Stock:</td><td style="text-align:right; font-weight:500; padding:1px 0;">' + parseFloat(opening).toFixed(2) + ' L</td></tr>' +
+        '<tr><td style="color:#555; padding:1px 0;">Receipts:</td><td style="text-align:right; font-weight:500; padding:1px 0;">+' + parseFloat(receipts).toFixed(2) + ' L</td></tr>' +
+        '<tr><td style="color:#555; padding:1px 0;">Sales:</td><td style="text-align:right; font-weight:500; padding:1px 0;">-' + parseFloat(sales).toFixed(2) + ' L</td></tr>' +
+        '<tr><td style="color:#555; padding:1px 0;">Testing:</td><td style="text-align:right; font-weight:500; padding:1px 0;">+' + parseFloat(testing).toFixed(2) + ' L</td></tr>' +
+        '<tr style="border-top:1px dashed #ccc; font-weight:bold; color:#16211C;"><td style="padding:2px 0 1px 0;">Calculated Stock:</td><td style="text-align:right; padding:2px 0 1px 0;">' + parseFloat(calculated).toFixed(2) + ' L</td></tr>' +
+        '<tr style="font-weight:bold; border-top:1px solid #ddd; border-bottom:1px solid #ddd; padding:2px 0;"><td style="padding:2px 0;">Variance:</td><td style="text-align:right; padding:2px 0; color:' + (variance >= 0 ? '#0B6E4F' : '#D32F2F') + ';">' + (variance >= 0 ? '+' : '') + parseFloat(variance).toFixed(2) + ' L</td></tr>' +
         '</table>';
       card.appendChild(tankInfo);
       
@@ -384,8 +414,8 @@ function renderData(){
           var tr = document.createElement('tr');
           tr.style.opacity = opacity;
           tr.innerHTML = '<td style="text-align: left; padding: 3px 2px; border-bottom: 1px solid #f5f5f5;">N' + nozNum + '</td>' +
-            '<td style="text-align: right; padding: 3px 2px; border-bottom: 1px solid #f5f5f5;">' + parseFloat(opening).toFixed(0) + '</td>' +
-            '<td style="text-align: right; padding: 3px 2px; border-bottom: 1px solid #f5f5f5;">' + parseFloat(closing).toFixed(0) + '</td>' +
+            '<td style="text-align: right; padding: 3px 2px; border-bottom: 1px solid #f5f5f5;">' + parseFloat(opening).toFixed(2) + '</td>' +
+            '<td style="text-align: right; padding: 3px 2px; border-bottom: 1px solid #f5f5f5;">' + parseFloat(closing).toFixed(2) + '</td>' +
             '<td style="text-align: right; padding: 3px 2px; border-bottom: 1px solid #f5f5f5; font-weight: bold; color: #00663a;">' + parseFloat(sale).toFixed(2) + '</td>';
           tbody.appendChild(tr);
         });
@@ -479,7 +509,7 @@ function renderData(){
     });
     var trTot = document.createElement('tr');
     trTot.className = 'tr-total';
-    trTot.innerHTML = '<td colspan="3" style="text-align:left;">Total DSM Personal Debtors</td><td>' + inrZ(persTot) + '</td>';
+    trTot.innerHTML = '<td colspan="3" style="text-align:left;">Total DSM Loss</td><td>' + inrZ(persTot) + '</td>';
     tPers.appendChild(trTot);
   } else {
     if (secPers) secPers.style.display = 'none';
@@ -503,7 +533,7 @@ function renderData(){
     });
     var trTot = document.createElement('tr');
     trTot.className = 'tr-total';
-    trTot.innerHTML = '<td colspan="2" style="text-align:left;">Total Drawings</td><td>' + inrZ(kpTot) + '</td>';
+    trTot.innerHTML = '<td colspan="2" style="text-align:left;">Total Kandhare Petroleum</td><td>' + inrZ(kpTot) + '</td>';
     tKp.appendChild(trTot);
   } else {
     if (secKp) secKp.style.display = 'none';
@@ -542,6 +572,32 @@ function renderData(){
     tf.appendChild(trTotal);
   }
 
+  // Render Oil & DEF Sales
+  var oilDefSales = d.oilDefSales || [];
+  var secOilDef = document.getElementById('secOilDef');
+  var tOilDef   = document.getElementById('tOilDef');
+  if (tOilDef && oilDefSales.length > 0) {
+    tOilDef.innerHTML = '';
+    if (secOilDef) secOilDef.style.display = 'block';
+    var oilDefTot = 0;
+    oilDefSales.forEach(function(s) {
+      var qty = getVal(s, 'quantity') || 0;
+      var amt = getVal(s, 'total') || getVal(s, 'amount') || 0;
+      oilDefTot += amt;
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td style="text-align:left;">' + (getVal(s, 'productName') || getVal(s, 'category') || 'Oil/DEF') + '</td>' +
+                     '<td style="text-align:right;">' + parseFloat(qty).toFixed(2) + '</td>' +
+                     '<td style="text-align:right;">' + inrZ(amt) + '</td>';
+      tOilDef.appendChild(tr);
+    });
+    var trTot = document.createElement('tr');
+    trTot.className = 'tr-total';
+    trTot.innerHTML = '<td style="text-align:left;">Total Oil &amp; DEF Sales</td><td style="text-align:right;">\u2013</td><td style="text-align:right;">' + inrZ(oilDefTot) + '</td>';
+    tOilDef.appendChild(trTot);
+  } else {
+    if (secOilDef) secOilDef.style.display = 'none';
+  }
+
   // Expenses
   var et=document.getElementById('tExp');et.innerHTML='';var expTot=d.expensesTotal||0;
   (d.expenseRows||d.expenses||[]).forEach(function(e){
@@ -557,9 +613,24 @@ function renderData(){
   if (tRecon) {
     tRecon.innerHTML = '';
     (d.collectionBreakdown || []).forEach(function(c) {
-      var tr = document.createElement('tr');
       var name = c.descriptionWithBreakdown || c.category;
-      tr.innerHTML = '<td>' + name + '</td><td>' + inr(c.amount) + '</td>';
+      var vol = c.volume || c.litres || c.testingLitres || 0;
+      if (vol > 0 && name.indexOf('Ltr') === -1) {
+        name = name + ' (' + parseFloat(vol).toFixed(2) + ' Ltr)';
+      }
+      var catLower = (c.category || '').toLowerCase();
+      // Skip Oil Sales and DEF Sales from Final Reconciliation
+      if (catLower.indexOf('oil sales') !== -1 || catLower.indexOf('def sales') !== -1) return;
+      var colorStyle = "";
+      if (catLower.indexOf('cash') !== -1 || catLower.indexOf('phonepe') !== -1 || catLower.indexOf('card') !== -1) {
+        colorStyle = "color:#00C853; font-weight:bold;";
+      } else if (catLower.indexOf('cheque') !== -1 || catLower.indexOf('bank') !== -1 || catLower.indexOf('transfer') !== -1) {
+        colorStyle = "color:#E65100; font-weight:bold;";
+      } else if (catLower.indexOf('short') !== -1) {
+        colorStyle = "color:#D32F2F; font-weight:bold;";
+      }
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td>' + name + '</td><td style="' + colorStyle + '">' + inr(c.amount) + '</td>';
       tRecon.appendChild(tr);
     });
   }

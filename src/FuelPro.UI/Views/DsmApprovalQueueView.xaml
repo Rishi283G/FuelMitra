@@ -9,6 +9,7 @@
 
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
     </UserControl.Resources>
 
     <Grid>
@@ -434,7 +435,7 @@
                     <!-- Personal Debtors Card -->
                     <materialDesign:Card Padding="20" UniformCornerRadius="12" Margin="0,0,0,16" materialDesign:ElevationAssist.Elevation="Dp3">
                         <StackPanel>
-                            <TextBlock Text="👥 Personal Debtors (PWA)" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}" Margin="0,0,0,12"/>
+                            <TextBlock Text="👥 DSM Loss (PWA)" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}" Margin="0,0,0,12"/>
                             <DataGrid ItemsSource="{Binding PersonalDebtors}" AutoGenerateColumns="False"
                                       IsReadOnly="{Binding IsReadOnlyMode}"
                                       CanUserAddRows="{Binding IsEditable}" CanUserDeleteRows="{Binding IsEditable}"
@@ -464,7 +465,7 @@
                             </Style>
                         </materialDesign:Card.Style>
                         <StackPanel>
-                            <TextBlock Text="🏢 Khandhare Petroleum Drawings" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}" Margin="0,0,0,12"/>
+                            <TextBlock Text="🏢 Kandhare Petroleum" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}" Margin="0,0,0,12"/>
                             <DataGrid ItemsSource="{Binding KhandhareEntries}" AutoGenerateColumns="False" IsReadOnly="True"
                                       HeadersVisibility="Column" GridLinesVisibility="Horizontal" materialDesign:DataGridAssist.CellPadding="12 8" materialDesign:DataGridAssist.ColumnHeaderPadding="12 8">
                                 <DataGrid.Columns>
@@ -502,26 +503,114 @@
 
                     <!-- Oil & DEF Product Sales Card -->
                     <materialDesign:Card Padding="20" UniformCornerRadius="12" Margin="0,0,0,16" materialDesign:ElevationAssist.Elevation="Dp3">
-                        <materialDesign:Card.Style>
-                            <Style TargetType="materialDesign:Card" BasedOn="{StaticResource {x:Type materialDesign:Card}}">
-                                <Setter Property="Visibility" Value="Visible"/>
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding OilDefSales.Count}" Value="0">
-                                        <Setter Property="Visibility" Value="Collapsed"/>
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </materialDesign:Card.Style>
                         <StackPanel>
-                            <TextBlock Text="🧴 Oil &amp; DEF Product Sales (PWA)" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}" Margin="0,0,0,12"/>
-                            <DataGrid ItemsSource="{Binding OilDefSales}" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" IsReadOnly="True"
-                                      HeadersVisibility="Column" GridLinesVisibility="Horizontal" materialDesign:DataGridAssist.CellPadding="12 8" materialDesign:DataGridAssist.ColumnHeaderPadding="12 8">
+                            <!-- Header with Title & Action Buttons -->
+                            <DockPanel Margin="0,0,0,12" LastChildFill="False">
+                                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <materialDesign:PackIcon Kind="Oil" Width="24" Height="24" Foreground="#00796B" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <TextBlock Text="🧴 Oil &amp; DEF Product Sales" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}" VerticalAlignment="Center"/>
+                                </StackPanel>
+                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                    <Button Content="➕ Add Sale Entry" Command="{Binding AddOilDefSaleCommand}"
+                                            Style="{StaticResource MaterialDesignRaisedButton}" Background="#00796B" BorderBrush="#00796B"
+                                            Height="32" Padding="12,0" Margin="0,0,8,0" FontSize="12"/>
+                                    <Button Content="⚙️ Product Catalog" Command="{Binding ToggleProductCatalogPanelCommand}"
+                                            Style="{StaticResource MaterialDesignOutlinedButton}"
+                                            Height="32" Padding="12,0" FontSize="12"/>
+                                </StackPanel>
+                            </DockPanel>
+
+                            <!-- Master Product Catalog Management Drawer (Expandable) -->
+                            <materialDesign:Card Margin="0,0,0,12" Padding="14" UniformCornerRadius="8" Background="#F5F5F5"
+                                                 Visibility="{Binding ShowProductCatalogPanel, Converter={StaticResource BoolToVis}}">
+                                <StackPanel>
+                                    <TextBlock Text="⚙️ Master Product Catalog (Add / Delete Products)" FontSize="14" FontWeight="Bold" Foreground="#004D40" Margin="0,0,0,10"/>
+                                    <Grid Margin="0,0,0,10">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="2*"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox Grid.Column="0" Text="{Binding NewProductName, UpdateSourceTrigger=PropertyChanged}"
+                                                 materialDesign:HintAssist.Hint="Product Name (e.g. Servo Pride 15W40)" Margin="0,0,8,0" Height="40"/>
+                                        <ComboBox Grid.Column="1" ItemsSource="{Binding ProductCategories}" SelectedItem="{Binding NewProductCategory}"
+                                                  materialDesign:HintAssist.Hint="Category" Margin="0,0,8,0" Height="40"/>
+                                        <ComboBox Grid.Column="2" ItemsSource="{Binding ProductUnits}" SelectedItem="{Binding NewProductUnit}"
+                                                  materialDesign:HintAssist.Hint="Unit" Margin="0,0,8,0" Height="40"/>
+                                        <TextBox Grid.Column="3" Text="{Binding NewProductDefaultRate, UpdateSourceTrigger=PropertyChanged}"
+                                                 materialDesign:HintAssist.Hint="Default Rate (₹)" Margin="0,0,8,0" Height="40"/>
+                                        <Button Grid.Column="4" Content="Save Product" Command="{Binding AddProductMasterCommand}"
+                                                Style="{StaticResource MaterialDesignRaisedButton}" Height="40" Background="#004D40" BorderBrush="#004D40"/>
+                                    </Grid>
+                                    
+                                    <!-- Product List -->
+                                    <DataGrid ItemsSource="{Binding AvailableProducts}" AutoGenerateColumns="False" CanUserAddRows="False" IsReadOnly="True"
+                                              MaxHeight="180" GridLinesVisibility="Horizontal" materialDesign:DataGridAssist.CellPadding="8 4">
+                                        <DataGrid.Columns>
+                                            <DataGridTextColumn Header="Product Name" Binding="{Binding ProductName}" Width="2*"/>
+                                            <DataGridTextColumn Header="Category" Binding="{Binding Category}" Width="*"/>
+                                            <DataGridTextColumn Header="Unit" Binding="{Binding Unit}" Width="*"/>
+                                            <DataGridTextColumn Header="Default Rate (₹)" Binding="{Binding DefaultSaleRate, StringFormat='{}{0:N2}'}" Width="*"/>
+                                            <DataGridTemplateColumn Header="Action" Width="80">
+                                                <DataGridTemplateColumn.CellTemplate>
+                                                    <DataTemplate>
+                                                        <Button Style="{StaticResource MaterialDesignIconButton}" Height="26" Width="26" ToolTip="Delete Product" Foreground="#D32F2F"
+                                                                Command="{Binding DataContext.DeleteProductMasterCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                CommandParameter="{Binding}">
+                                                            <materialDesign:PackIcon Kind="Delete" Width="16" Height="16"/>
+                                                        </Button>
+                                                    </DataTemplate>
+                                                </DataGridTemplateColumn.CellTemplate>
+                                            </DataGridTemplateColumn>
+                                        </DataGrid.Columns>
+                                    </DataGrid>
+                                </StackPanel>
+                            </materialDesign:Card>
+
+                            <!-- Sales DataGrid -->
+                            <DataGrid ItemsSource="{Binding OilDefSales}" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" IsReadOnly="False"
+                                      HeadersVisibility="Column" GridLinesVisibility="Horizontal" materialDesign:DataGridAssist.CellPadding="8 4" materialDesign:DataGridAssist.ColumnHeaderPadding="12 8">
                                 <DataGrid.Columns>
-                                    <DataGridTextColumn Header="Product Name" Binding="{Binding ProductName}" Width="2*"/>
-                                    <DataGridTextColumn Header="Quantity Sold" Binding="{Binding Quantity, StringFormat={}{0:F2}}" Width="*"/>
-                                    <DataGridTextColumn Header="Unit" Binding="{Binding Unit}" Width="80"/>
-                                    <DataGridTextColumn Header="Selling Price" Binding="{Binding Price, StringFormat='₹{0:F2}'}" Width="*"/>
-                                    <DataGridTextColumn Header="Total Amount" Binding="{Binding Total, StringFormat='₹{0:N2}'}" Width="120"/>
+                                    <DataGridTemplateColumn Header="Product Name" Width="2*">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <ComboBox ItemsSource="{Binding DataContext.AvailableProducts, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                          DisplayMemberPath="ProductName" SelectedValuePath="Id"
+                                                          SelectedValue="{Binding ProductId, UpdateSourceTrigger=PropertyChanged}"
+                                                          Text="{Binding ProductName, UpdateSourceTrigger=PropertyChanged}"
+                                                          IsEditable="True" Height="36"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="Quantity Sold" Width="*">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBox Text="{Binding Quantity, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:F2}}" Height="36" FontWeight="SemiBold"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTextColumn Header="Unit" Binding="{Binding Unit}" Width="70" IsReadOnly="True"/>
+                                    <DataGridTemplateColumn Header="Selling Price (₹)" Width="*">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBox Text="{Binding Price, UpdateSourceTrigger=PropertyChanged, StringFormat={}{0:F2}}" Height="36"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTextColumn Header="Total (₹)" Binding="{Binding Total, StringFormat='₹{0:N2}'}" Width="110" IsReadOnly="True" FontWeight="Bold"/>
+                                    <DataGridTemplateColumn Header="Action" Width="65">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <Button Style="{StaticResource MaterialDesignIconButton}" Height="28" Width="28" Foreground="#D32F2F" ToolTip="Remove Entry"
+                                                        Command="{Binding DataContext.DeleteOilDefSaleCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}">
+                                                    <materialDesign:PackIcon Kind="TrashCan" Width="18" Height="18"/>
+                                                </Button>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
                                 </DataGrid.Columns>
                             </DataGrid>
                         </StackPanel>

@@ -151,25 +151,9 @@
                         <materialDesign:PackIcon Kind="CalendarMonth" Width="28" Height="28"/>
                     </Button>
 
-                    <!-- Debtor Management -->
-                    <Button Command="{Binding NavigateToDebtorManagementCommand}" ToolTip="Debtor Management" Margin="0,4">
-                        <Button.Style>
-                            <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
-                                <Setter Property="Foreground" Value="White" />
-                                <Setter Property="Opacity" Value="0.5" />
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding SelectedNavIndex}" Value="4">
-                                        <Setter Property="Opacity" Value="1" />
-                                        <Setter Property="Background" Value="#33FFFFFF" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Button.Style>
-                        <materialDesign:PackIcon Kind="AccountCash" Width="28" Height="28"/>
-                    </Button>
 
-                    <!-- DSM Personal Debtors -->
-                    <Button Command="{Binding NavigateToDsmPersonalDebtorCommand}" ToolTip="DSM Personal Debtors" Margin="0,4">
+                    <!-- DSM Loss -->
+                    <Button Command="{Binding NavigateToDsmPersonalDebtorCommand}" ToolTip="DSM Loss" Margin="0,4">
                         <Button.Style>
                             <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
                                 <Setter Property="Foreground" Value="White" />

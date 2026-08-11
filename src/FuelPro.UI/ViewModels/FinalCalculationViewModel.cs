@@ -28,13 +28,17 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
     private readonly IShiftAggregationService _aggregation;
     private readonly ICreditorRepository _creditorRepo;
     private readonly ICreditorRepaymentRepository _repaymentRepo;
+    private readonly IDsmPersonalDebtorRepository _personalDebtorRepo;
     private readonly ITidCalculationService _tidService;
     private readonly IAgsInventoryService _inventoryService;
     private readonly IReportService _reportService;
     private readonly ILogger _logger = Log.ForContext<FinalCalculationViewModel>();
+    public DebtorManagementViewModel DebtorManagementVm { get; }
 
     [ObservableProperty] private DateTime _selectedDate = DateTime.Today;
     [ObservableProperty] private string _selectedShift = "A";
+    [ObservableProperty] private string _selectedManager = "";
+    public ObservableCollection<string> ManagerOptions { get; } = new();
     [ObservableProperty] private bool _isLoading;
     [ObservableProperty] private bool _hasData;
     [ObservableProperty] private string _statusMessage = "";
@@ -138,9 +142,11 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
         _aggregation = App.Services.GetRequiredService<IShiftAggregationService>();
         _creditorRepo = App.Services.GetRequiredService<ICreditorRepository>();
         _repaymentRepo = App.Services.GetRequiredService<ICreditorRepaymentRepository>();
+        _personalDebtorRepo = App.Services.GetRequiredService<IDsmPersonalDebtorRepository>();
         _tidService = App.Services.GetRequiredService<ITidCalculationService>();
         _inventoryService = App.Services.GetRequiredService<IAgsInventoryService>();
         _reportService = App.Services.GetRequiredService<IReportService>();
+        DebtorManagementVm = App.Services.GetRequiredService<DebtorManagementViewModel>();
 
         DsmEntryService.DsmEntryChanged += OnDataChanged;
         DsmEntryService.DebtorChanged += OnDataChanged;
@@ -160,6 +166,13 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
 
     partial void OnSelectedDateChanged(DateTime value) => _ = LoadShiftDataAsync();
     partial void OnSelectedShiftChanged(string value) => _ = LoadShiftDataAsync();
+    partial void OnSelectedManagerChanged(string value)
+    {
+        if (CurrentReport != null)
+        {
+            CurrentReport.ManagerName = value;
+        }
+    }
     partial void OnIncludeOtherCashInGrossSaleChanged(bool value) => RecalcReconciliation();
 
     [RelayCommand]
@@ -233,6 +246,32 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
                 stationName);
 
             CurrentReport = report;
+
+            var settingsRes = await _settingsRepo.GetSettingsAsync();
+            if (settingsRes.Success && settingsRes.Data != null)
+            {
+                var set = settingsRes.Data;
+                ManagerOptions.Clear();
+                if (!string.IsNullOrWhiteSpace(set.Shift1Manager)) ManagerOptions.Add(set.Shift1Manager.Trim());
+                if (!string.IsNullOrWhiteSpace(set.Shift2Manager)) ManagerOptions.Add(set.Shift2Manager.Trim());
+                if (!string.IsNullOrWhiteSpace(set.Shift3Manager)) ManagerOptions.Add(set.Shift3Manager.Trim());
+
+                if (string.IsNullOrWhiteSpace(SelectedManager) || !ManagerOptions.Contains(SelectedManager))
+                {
+                    if (SelectedShift == "A" || SelectedShift == "1" || SelectedShift == "I")
+                        SelectedManager = set.Shift1Manager ?? "";
+                    else if (SelectedShift == "B" || SelectedShift == "2" || SelectedShift == "II")
+                        SelectedManager = set.Shift2Manager ?? "";
+                    else if (SelectedShift == "C" || SelectedShift == "3" || SelectedShift == "III")
+                        SelectedManager = set.Shift3Manager ?? "";
+                    else if (ManagerOptions.Count > 0)
+                        SelectedManager = ManagerOptions[0];
+                }
+            }
+            if (CurrentReport != null)
+            {
+                CurrentReport.ManagerName = SelectedManager;
+            }
 
             // Bind values to existing properties so UI bindings don't break
             DsmSummaryRows = new ObservableCollection<DsmSummaryRowDto>(report.DsmSummaryRows);
@@ -527,6 +566,39 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
         else StatusMessage = $"❌ {result.Error}";
     }
 
+    private readonly ExcelExportService _excelExportService = App.Services.GetRequiredService<ExcelExportService>();
+
+    [RelayCommand]
+    private async Task ExportExcelAsync()
+    {
+        if (CurrentReport == null)
+        {
+            MessageBox.Show("No shift data available to export.", "Export Notice", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        try
+        {
+            var dialog = new Microsoft.Win32.SaveFileDialog
+            {
+                FileName = $"ShiftTotal_Shift{SelectedShift}_{SelectedDate:yyyyMMdd}.xlsx",
+                DefaultExt = ".xlsx",
+                Filter = "Excel Worksheets (*.xlsx)|*.xlsx"
+            };
+
+            if (dialog.ShowDialog() == true)
+            {
+                var filePath = await _excelExportService.ExportShiftTotalReportAsync(CurrentReport, dialog.FileName);
+                MessageBox.Show($"Shift Total report exported successfully to:\n{filePath}", "Export Successful", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to export Shift Total report to Excel");
+            MessageBox.Show($"Export failed: {ex.Message}", "Export Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
     [RelayCommand]
     private void ExportCsv()
     {
@@ -649,6 +721,49 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
                     if (match)
                     {
                         DebtorRepayments.Add(r);
+                    }
+                }
+            }
+        }
+
+        // Also merge DSM Loss (Personal Debtor) repayments
+        if (_personalDebtorRepo != null)
+        {
+            var pdRepaymentsRes = await _personalDebtorRepo.GetRepaymentsByDateRangeAsync(SelectedDate.Date.AddDays(-1), SelectedDate.Date.AddDays(1));
+            if (pdRepaymentsRes.Success && pdRepaymentsRes.Data != null)
+            {
+                foreach (var pr in pdRepaymentsRes.Data)
+                {
+                    var fakeCreditorRep = new CreditorRepayment
+                    {
+                        CreditorRepaymentId = 900000 + pr.Id,
+                        CreditorName = (pr.DsmPersonalDebtor?.DsmName ?? "DSM Loss") + " (DSM Loss)",
+                        RepaymentDate = pr.Date,
+                        ShiftNumber = pr.Shift?.ShiftType ?? "A",
+                        PaymentMode = pr.PaymentMethod,
+                        CardTid = pr.CardTid ?? "",
+                        CardBatch = pr.CardBatch ?? "",
+                        Amount = pr.Amount,
+                        CreatedAt = pr.CreatedAt
+                    };
+
+                    var classified = SettlementWindowResolver.Classify(fakeCreditorRep);
+                    if (classified.IsValid && classified.BusinessDate == SelectedDate.Date)
+                    {
+                        bool match = false;
+                        if (SelectedShift == "B")
+                        {
+                            match = classified.SettlementWindow == "Day";
+                        }
+                        else if (SelectedShift == "A")
+                        {
+                            match = classified.SettlementWindow == "Morning" || classified.SettlementWindow == "Night";
+                        }
+
+                        if (match)
+                        {
+                            DebtorRepayments.Add(fakeCreditorRep);
+                        }
                     }
                 }
             }

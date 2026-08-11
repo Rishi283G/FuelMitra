@@ -859,7 +859,7 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
         {
             var summaryCards = new List<GenericGridPrintCard>
             {
-                new() { Label = "Total Drawings", Value = "₹" + KpTotalAmount.ToString("N2"), Highlight = true }
+                new() { Label = "Total Kandhare Petroleum", Value = "₹" + KpTotalAmount.ToString("N2"), Highlight = true }
             };
 
             var headers = new List<string> { "Date", "Logged By", "Person Name", "Slip No", "Amount" };
@@ -879,7 +879,7 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
 
             var printData = new GenericGridPrintData
             {
-                Title = "Khandhare Petroleum Drawings Report",
+                Title = "Kandhare Petroleum Report",
                 Subtitle = $"Date Range: {KpStartDate:dd-MMM-yyyy} to {KpEndDate:dd-MMM-yyyy}" + 
                            (string.IsNullOrWhiteSpace(KpSearchText) ? "" : $" (Filtered by: '{KpSearchText}')"),
                 SummaryCards = summaryCards,
@@ -892,7 +892,7 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            _logger.Error(ex, "Failed to print Khandhare Petroleum Drawings report");
+            _logger.Error(ex, "Failed to print Kandhare Petroleum report");
             MessageBox.Show($"Print failed: {ex.Message}", "Print Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
@@ -904,7 +904,7 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
         {
             var summaryCards = new List<GenericGridPrintCard>
             {
-                new() { Label = "Total Drawings", Value = "₹" + KpTotalAmount.ToString("N2"), Highlight = true }
+                new() { Label = "Total Kandhare Petroleum", Value = "₹" + KpTotalAmount.ToString("N2"), Highlight = true }
             };
 
             var headers = new List<string> { "Date", "Logged By", "Person Name", "Slip No", "Amount" };
@@ -924,7 +924,7 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
 
             var printData = new GenericGridPrintData
             {
-                Title = "Khandhare Petroleum Drawings Report",
+                Title = "Kandhare Petroleum Report",
                 Subtitle = $"Date Range: {KpStartDate:dd-MMM-yyyy} to {KpEndDate:dd-MMM-yyyy}" + 
                            (string.IsNullOrWhiteSpace(KpSearchText) ? "" : $" (Filtered by: '{KpSearchText}')"),
                 SummaryCards = summaryCards,
@@ -933,12 +933,12 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
                 ShowSignatures = true
             };
 
-            var path = await _excelExportService.ExportGenericGridAsync(printData, "KhandharePetroleumDrawings");
+            var path = await _excelExportService.ExportGenericGridAsync(printData, "KandharePetroleum");
             MessageBox.Show($"Report exported successfully to:\n{path}", "Export Success", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)
         {
-            _logger.Error(ex, "Failed to export Khandhare Petroleum Drawings to Excel");
+            _logger.Error(ex, "Failed to export Kandhare Petroleum to Excel");
             MessageBox.Show($"Export failed: {ex.Message}", "Export Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }

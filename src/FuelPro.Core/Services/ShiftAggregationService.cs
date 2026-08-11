@@ -261,8 +261,8 @@ public class ShiftAggregationService : IShiftAggregationService
                             DsmName = entry.DsmName,
                             PumpId = entry.PumpId,
                             Description = string.IsNullOrWhiteSpace(kp.SlipNumber)
-                                ? $"Khandhare Drawing: {kp.Name}"
-                                : $"Khandhare Drawing: {kp.Name} (Slip #{kp.SlipNumber})",
+                                ? $"Kandhare Petroleum: {kp.Name}"
+                                : $"Kandhare Petroleum: {kp.Name} (Slip #{kp.SlipNumber})",
                             Amount = kp.Amount,
                             IsShiftLevel = false,
                             CanDelete = false
@@ -363,15 +363,12 @@ public class ShiftAggregationService : IShiftAggregationService
             new() { Description = "MS Testing", Amount = msTesting },
             new() { Description = "HSD Testing I", Amount = hsdTesting },
             new() { Description = "HSD Testing II", Amount = hsdTesting2 },
-            new() { Description = "CNG Testing", Amount = cngTesting },
-            new() { Description = "Phone Pe Card (Morning)", Amount = phonePeCardMorning },
-            new() { Description = "Phone Pe Card (Night)", Amount = phonePeCardNight },
             new() { Description = "Phone Pe (Morning)", Amount = phonePeMorning },
             new() { Description = "Phone Pe (Night)", Amount = phonePeNight },
             new() { Description = "P. Card", Amount = petroCard },
             new() { Description = "Debit", Amount = debit },
-            new() { Description = "PineLab Card (Morning)", Amount = creditCardMorning },
-            new() { Description = "PineLab Card (Night)", Amount = creditCardNight },
+            new() { Description = "Card (Morning)", Amount = creditCardMorning },
+            new() { Description = "Card (Night)", Amount = creditCardNight },
             new() { Description = "Bank Cash", Amount = bankCash },
             new() { Description = "Cash In Hand", Amount = cashInHand },
             new() { Description = "Expenses", Amount = expenses }
