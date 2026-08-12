@@ -385,6 +385,7 @@
                                     <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat={}{0:dd-MMM-yyyy}}" Width="1.5*"/>
                                     <DataGridTextColumn Header="Logged By (DSM)" Binding="{Binding DsmName}" Width="2*"/>
                                     <DataGridTextColumn Header="Person Name" Binding="{Binding Name}" Width="3*" FontWeight="SemiBold"/>
+                                    <DataGridTextColumn Header="Vehicle No" Binding="{Binding VehicleNumber}" Width="1.5*"/>
                                     <DataGridTextColumn Header="Slip No" Binding="{Binding SlipNumber}" Width="1.5*"/>
                                     <DataGridTextColumn Header="Amount" Binding="{Binding Amount, Converter={StaticResource CurrencyConverter}}" Width="2*" FontWeight="Bold" Foreground="Red"/>
                                 </DataGrid.Columns>

@@ -470,6 +470,7 @@
                                       HeadersVisibility="Column" GridLinesVisibility="Horizontal" materialDesign:DataGridAssist.CellPadding="12 8" materialDesign:DataGridAssist.ColumnHeaderPadding="12 8">
                                 <DataGrid.Columns>
                                     <DataGridTextColumn Header="Person Name" Binding="{Binding Name}" Width="2*"/>
+                                    <DataGridTextColumn Header="Vehicle No." Binding="{Binding VehicleNumber}" Width="*"/>
                                     <DataGridTextColumn Header="Slip No." Binding="{Binding SlipNumber}" Width="*"/>
                                     <DataGridTextColumn Header="Amount (₹)" Binding="{Binding Amount, StringFormat=N2}" Width="150"/>
                                 </DataGrid.Columns>

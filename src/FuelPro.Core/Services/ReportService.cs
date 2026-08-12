@@ -279,6 +279,7 @@ public class ReportService : IReportService
             .Select(kp => new KhandharePetroleumPrintDto
             {
                 Name = kp.Name,
+                VehicleNumber = kp.VehicleNumber ?? string.Empty,
                 SlipNumber = kp.SlipNumber,
                 Amount = kp.Amount
             })
@@ -560,6 +561,7 @@ public class ReportService : IReportService
             .Select(kp => new KhandharePetroleumPrintDto
             {
                 Name = kp.Name,
+                VehicleNumber = kp.VehicleNumber ?? string.Empty,
                 SlipNumber = kp.SlipNumber,
                 Amount = kp.Amount
             })

@@ -51,6 +51,7 @@ public partial class DsmManagementViewModel : ObservableObject
     [ObservableProperty] private int? _selectedPumpId;
     [ObservableProperty] private int? _selectedConnectedPumpId;
     [ObservableProperty] private string _selectedShift = "A";
+    [ObservableProperty] private DateTime _assignmentDate = DateTime.Today;
     [ObservableProperty] private string _assignmentStatusMessage = "";
 
     // Device Registrations
@@ -332,7 +333,7 @@ public partial class DsmManagementViewModel : ObservableObject
                 ConnectedPumpId = SelectedConnectedPumpId,
                 ShiftType = SelectedShift,
                 IsActive = true,
-                AssignedDate = DateTime.Now
+                AssignedDate = AssignmentDate.Date + DateTime.Now.TimeOfDay
             };
 
             context.DsmPumpAssignments.Add(assignment);

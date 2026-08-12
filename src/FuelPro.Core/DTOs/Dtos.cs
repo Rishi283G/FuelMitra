@@ -283,6 +283,7 @@ public class DsmPersonalDebtorPrintDto
 public class KhandharePetroleumPrintDto
 {
     public string Name { get; set; } = string.Empty;
+    public string VehicleNumber { get; set; } = string.Empty;
     public string SlipNumber { get; set; } = string.Empty;
     public double Amount { get; set; }
 }

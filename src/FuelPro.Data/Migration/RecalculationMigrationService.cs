@@ -242,7 +242,7 @@ public class RecalculationMigrationService
                             .FirstOrDefaultAsync(e => e.ShiftId == primaryEntry.ShiftId
                                 && e.PumpId == primaryEntry.ConnectedPumpId.Value
                                 && e.ReconciledToPumpId.HasValue
-                                && string.Equals(e.DsmName, primaryEntry.DsmName, StringComparison.OrdinalIgnoreCase));
+                                && e.DsmName.ToLower() == primaryEntry.DsmName.ToLower());
 
                         if (slaveEntry != null)
                         {

@@ -27,6 +27,9 @@ public class KhandharePetroleumEntry
     [MaxLength(50)]
     public string SlipNumber { get; set; } = string.Empty;
 
+    [MaxLength(50)]
+    public string? VehicleNumber { get; set; }
+
     public double Amount { get; set; }
 
     public DateTime Date { get; set; }

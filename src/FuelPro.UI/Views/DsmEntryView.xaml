@@ -743,21 +743,25 @@
                                                 <ColumnDefinition Width="1.5*"/>
                                                 <ColumnDefinition Width="1.2*"/>
                                                 <ColumnDefinition Width="1.2*"/>
+                                                <ColumnDefinition Width="1.2*"/>
                                                 <ColumnDefinition Width="Auto"/>
                                             </Grid.ColumnDefinitions>
                                             <TextBox Grid.Column="0" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0"
                                                      materialDesign:HintAssist.Hint="Name / Person"
                                                      Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
-                                            <TextBox Grid.Column="1" Text="{Binding SlipNumber, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0"
+                                            <TextBox Grid.Column="1" Text="{Binding VehicleNumber, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0"
+                                                     materialDesign:HintAssist.Hint="Vehicle No"
+                                                     Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                                            <TextBox Grid.Column="2" Text="{Binding SlipNumber, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0"
                                                      materialDesign:HintAssist.Hint="Slip No"
                                                      Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
-                                            <TextBox Grid.Column="2" Text="{Binding Amount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,0,8,0"
+                                            <TextBox Grid.Column="3" Text="{Binding Amount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,0,8,0"
                                                      materialDesign:HintAssist.Hint="Amount"
                                                      Style="{StaticResource MaterialDesignOutlinedTextBox}"
                                                      PreviewTextInput="DecimalTextBox_PreviewTextInput"
                                                      GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"
                                                      LostKeyboardFocus="DecimalTextBox_LostKeyboardFocus"/>
-                                            <Button Grid.Column="3" Style="{StaticResource MaterialDesignIconButton}"
+                                            <Button Grid.Column="4" Style="{StaticResource MaterialDesignIconButton}"
                                                     Command="{Binding DataContext.RemoveKhandharePetroleumEntryCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                     CommandParameter="{Binding}">
                                                 <materialDesign:PackIcon Kind="Delete" Foreground="#F44336"/>

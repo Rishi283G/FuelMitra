@@ -434,9 +434,7 @@ public class DsmEntryService
                 PhysicalCash = (decimal)cash2Total
             },
             DebitEntries   = entry.DebitEntries.Select(d => new DebitEntryDto { Amount = (decimal)d.Amount }).ToList(),
-            Expenses       = entry.Expenses.Select(e => new ExpenseDto { Amount = (decimal)e.Amount })
-                                .Concat(entry.KhandharePetroleumEntries?.Select(kp => new ExpenseDto { Amount = (decimal)kp.Amount }) ?? Array.Empty<ExpenseDto>())
-                                .ToList(),
+            Expenses       = entry.Expenses.Select(e => new ExpenseDto { Amount = (decimal)e.Amount }).ToList(),
             TestingEntries = entry.TestingEntries.Select(t => new TestingEntryDto
             {
                 FuelType = t.FuelType,

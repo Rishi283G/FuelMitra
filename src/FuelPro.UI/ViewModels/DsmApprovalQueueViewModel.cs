@@ -658,7 +658,6 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
         var expenseDtos = (SubmissionExpenses.Count > 0
             ? SubmissionExpenses.Select(e => new FuelPro.Core.DTOs.ExpenseDto { Amount = (decimal)e.Amount })
             : new List<FuelPro.Core.DTOs.ExpenseDto> { new() { Amount = (decimal)ExpenseAmount } })
-            .Concat(KhandhareEntries.Select(k => new FuelPro.Core.DTOs.ExpenseDto { Amount = (decimal)k.Amount }))
             .ToList();
 
         var dto = new FuelPro.Core.DTOs.DsmEntryDto
@@ -1529,7 +1528,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                 {
                     Readings = NozzleReadings.Select(r => new { r.NozzleId, r.OpeningReading, r.ClosingReading, r.Rate }),
                     Collections = new { Cash = CashAmount, UPI = UpiAmount, Card = CardAmount, Credit = CreditAmount, Expense = ExpenseAmount, ExpenseNotes },
-                    khandhareEntries = KhandhareEntries.Select(k => new { k.Name, k.SlipNumber, k.Amount })
+                    khandhareEntries = KhandhareEntries.Select(k => new { k.Name, k.VehicleNumber, k.SlipNumber, k.Amount })
                 };
 
                 var approvedData = new

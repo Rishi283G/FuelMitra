@@ -89,6 +89,7 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
         <img id="logo" style="display: none; height: 50px;" src="" alt="logo" />
         <div>
           <div class="rpt-title" id="rptTitle">MITALI SERVICE STATION</div>
+          <div class="rpt-tagline" style="font-size: 11px; font-weight: bold; letter-spacing: 0.08em; margin-top: 2px; color: #ffffff; opacity: 0.95;">KANDHARE NAGDE SURVE GROUP</div>
           <div class="rpt-sub">Day Total Reconciliation &mdash; Full Day (Shift A + B)</div>
         </div>
       </div>
@@ -198,6 +199,7 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
           <thead>
             <tr>
               <th style="text-align:left;">Person Name</th>
+              <th>Vehicle No</th>
               <th>Slip No</th>
               <th>Amount (&#8377;)</th>
             </tr>
@@ -527,13 +529,14 @@ function renderData(){
       kpTot += (kp.amount || 0);
       var tr = document.createElement('tr');
       tr.innerHTML = '<td style="text-align:left;">' + (kp.name || '') + '</td>' +
+                     '<td>' + (kp.vehicleNumber || '\u2013') + '</td>' +
                      '<td>' + (kp.slipNumber || '\u2013') + '</td>' +
                      '<td>' + inr(kp.amount) + '</td>';
       tKp.appendChild(tr);
     });
     var trTot = document.createElement('tr');
     trTot.className = 'tr-total';
-    trTot.innerHTML = '<td colspan="2" style="text-align:left;">Total Kandhare Petroleum</td><td>' + inrZ(kpTot) + '</td>';
+    trTot.innerHTML = '<td colspan="3" style="text-align:left;">Total Kandhare Petroleum</td><td>' + inrZ(kpTot) + '</td>';
     tKp.appendChild(trTot);
   } else {
     if (secKp) secKp.style.display = 'none';

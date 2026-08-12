@@ -108,6 +108,9 @@ CREATE TABLE IF NOT EXISTS "DsmSubmissions" (
 
 -- Table: Settings
 ALTER TABLE "Settings" ADD COLUMN IF NOT EXISTS "CngRate" float8 NOT NULL DEFAULT 85.0;
+ALTER TABLE "Settings" ADD COLUMN IF NOT EXISTS "Shift1Manager" text NULL;
+ALTER TABLE "Settings" ADD COLUMN IF NOT EXISTS "Shift2Manager" text NULL;
+ALTER TABLE "Settings" ADD COLUMN IF NOT EXISTS "Shift3Manager" text NULL;
 
 -- Table: DsmSubmissions
 ALTER TABLE "DsmSubmissions" ADD COLUMN IF NOT EXISTS "Metadata" jsonb NULL;

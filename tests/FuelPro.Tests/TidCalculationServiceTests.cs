@@ -83,7 +83,8 @@ public class TidCalculationServiceTests
         var mockShiftRepo = new MockShiftRepository(shifts);
         var mockDsmRepo = new MockDsmEntryRepository(entries);
         var mockRepaymentRepo = new MockCreditorRepaymentRepository();
-        var sut = new TidCalculationService(mockShiftRepo, mockDsmRepo, mockRepaymentRepo);
+        var mockPersonalDebtorRepo = new MockDsmPersonalDebtorRepository();
+        var sut = new TidCalculationService(mockShiftRepo, mockDsmRepo, mockRepaymentRepo, mockPersonalDebtorRepo);
 
         // Act
         var sheet = await sut.GetTidSheetAsync(testDate);
@@ -185,5 +186,24 @@ public class TidCalculationServiceTests
         public Task<Result> DeleteAsync(int id) => throw new NotImplementedException();
         public Task<Result<List<CreditorRepayment>>> GetByDateRangeAsync(DateTime startDate, DateTime endDate) => 
             Task.FromResult(Result<List<CreditorRepayment>>.Ok(new List<CreditorRepayment>()));
+    }
+
+    private class MockDsmPersonalDebtorRepository : IDsmPersonalDebtorRepository
+    {
+        public Task<Result<List<DsmPersonalDebtor>>> GetByDateAsync(DateTime date) =>
+            Task.FromResult(Result<List<DsmPersonalDebtor>>.Ok(new List<DsmPersonalDebtor>()));
+        public Task<Result<List<DsmPersonalDebtor>>> GetByDateRangeAsync(DateTime startDate, DateTime endDate) =>
+            Task.FromResult(Result<List<DsmPersonalDebtor>>.Ok(new List<DsmPersonalDebtor>()));
+        public Task<Result<List<DsmPersonalDebtorRepayment>>> GetRepaymentsByDateAsync(DateTime date) =>
+            Task.FromResult(Result<List<DsmPersonalDebtorRepayment>>.Ok(new List<DsmPersonalDebtorRepayment>()));
+        public Task<Result<List<DsmPersonalDebtorRepayment>>> GetRepaymentsByDateRangeAsync(DateTime startDate, DateTime endDate) =>
+            Task.FromResult(Result<List<DsmPersonalDebtorRepayment>>.Ok(new List<DsmPersonalDebtorRepayment>()));
+        public Task<Result<DsmPersonalDebtor>> AddAsync(DsmPersonalDebtor debtor) => throw new NotImplementedException();
+        public Task<Result<DsmPersonalDebtorRepayment>> AddRepaymentAsync(DsmPersonalDebtorRepayment repayment) => throw new NotImplementedException();
+        public Task<Result> DeleteAsync(int id) => throw new NotImplementedException();
+        public Task<Result> DeleteRepaymentAsync(int id) => throw new NotImplementedException();
+        public Task<Result<List<DsmPersonalDebtor>>> GetByDsmEntryIdAsync(int dsmEntryId) =>
+            Task.FromResult(Result<List<DsmPersonalDebtor>>.Ok(new List<DsmPersonalDebtor>()));
+        public Task<Result> SavePersonalDebtorsAsync(int dsmEntryId, List<DsmPersonalDebtor> debtors) => throw new NotImplementedException();
     }
 }

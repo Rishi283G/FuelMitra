@@ -1065,7 +1065,7 @@ public partial class App : Application
                         }
                         catch (Exception ex)
                         {
-                            Log.Error(ex, "Failed to copy logo via WPF resource stream: {ResourceName}", resourceName);
+                            Log.Debug(ex, "Optional logo WPF resource stream not found: {ResourceName}", resourceName);
                         }
                     }
                 }

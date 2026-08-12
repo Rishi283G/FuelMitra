@@ -130,10 +130,12 @@ public partial class KhandharePetroleumRow : ObservableObject
     public Action? OnRowChanged { get; set; }
 
     [ObservableProperty] private string _name = "";
+    [ObservableProperty] private string _vehicleNumber = "";
     [ObservableProperty] private string _slipNumber = "";
     [ObservableProperty] private double? _amount;
 
     partial void OnNameChanged(string value) => OnRowChanged?.Invoke();
+    partial void OnVehicleNumberChanged(string value) => OnRowChanged?.Invoke();
     partial void OnAmountChanged(double? value) => OnRowChanged?.Invoke();
     partial void OnSlipNumberChanged(string value) => OnRowChanged?.Invoke();
 }
@@ -865,10 +867,11 @@ public partial class DsmEntryViewModel : ObservableObject
                 .Select(e => new Expense { Description = e.Description, Amount = e.Amount ?? 0 }).ToList();
 
             var kpModels = KhandharePetroleumEntries
-                .Where(kp => !string.IsNullOrWhiteSpace(kp.Name) || !string.IsNullOrWhiteSpace(kp.SlipNumber) || (kp.Amount ?? 0) > 0)
+                .Where(kp => !string.IsNullOrWhiteSpace(kp.Name) || !string.IsNullOrWhiteSpace(kp.SlipNumber) || !string.IsNullOrWhiteSpace(kp.VehicleNumber) || (kp.Amount ?? 0) > 0)
                 .Select(kp => new KhandharePetroleumEntry
                 {
                     Name = !string.IsNullOrWhiteSpace(kp.Name) ? kp.Name : (!string.IsNullOrWhiteSpace(kp.SlipNumber) ? $"Slip #{kp.SlipNumber}" : "Kandhare Petroleum"),
+                    VehicleNumber = kp.VehicleNumber ?? "",
                     SlipNumber = kp.SlipNumber ?? "",
                     Amount = kp.Amount ?? 0
                 }).ToList();
@@ -1227,6 +1230,7 @@ public partial class DsmEntryViewModel : ObservableObject
                 KhandharePetroleumEntries.Add(new KhandharePetroleumRow
                 {
                     Name = kp.Name ?? "",
+                    VehicleNumber = kp.VehicleNumber ?? "",
                     SlipNumber = kp.SlipNumber ?? "",
                     Amount = kp.Amount,
                     OnRowChanged = RecalculateAll
@@ -1545,9 +1549,7 @@ public partial class DsmEntryViewModel : ObservableObject
                 PhysicalCash = (decimal)Cash2.TotalAmount
             },
             DebitEntries = Debits.Select(x => new DebitEntryDto { Amount = (decimal)(x.Amount ?? 0), ChequeNo = x.ChequeNo }).ToList(),
-            Expenses = Expenses.Select(x => new ExpenseDto { Amount = (decimal)(x.Amount ?? 0) })
-                .Concat(KhandharePetroleumEntries.Select(x => new ExpenseDto { Amount = (decimal)(x.Amount ?? 0) }))
-                .ToList(),
+            Expenses = Expenses.Select(x => new ExpenseDto { Amount = (decimal)(x.Amount ?? 0) }).ToList(),
             TestingEntries = TestingRows
                 .Where(x => x.Amount > 0)
                 .Select(x => new TestingEntryDto

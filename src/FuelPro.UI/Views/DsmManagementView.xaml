@@ -147,9 +147,13 @@
                                   materialDesign:HintAssist.Hint="Connected Pump (Optional)" materialDesign:HintAssist.IsFloating="True"
                                   Style="{StaticResource MaterialDesignOutlinedComboBox}"/>
 
-                        <ComboBox ItemsSource="{Binding ShiftOptions}" SelectedItem="{Binding SelectedShift}" Margin="0,0,0,16"
+                        <ComboBox ItemsSource="{Binding ShiftOptions}" SelectedItem="{Binding SelectedShift}" Margin="0,0,0,12"
                                   materialDesign:HintAssist.Hint="Select Shift" materialDesign:HintAssist.IsFloating="True"
                                   Style="{StaticResource MaterialDesignOutlinedComboBox}"/>
+
+                        <DatePicker SelectedDate="{Binding AssignmentDate}" Margin="0,0,0,16"
+                                    materialDesign:HintAssist.Hint="Assignment Date" materialDesign:HintAssist.IsFloating="True"
+                                    Style="{StaticResource MaterialDesignOutlinedDatePicker}"/>
 
                         <Button Content="Assign Pump" Command="{Binding CreateAssignmentCommand}" Height="40"
                                 Style="{StaticResource MaterialDesignRaisedButton}"/>
