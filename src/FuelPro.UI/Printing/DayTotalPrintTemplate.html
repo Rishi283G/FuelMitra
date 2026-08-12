@@ -116,7 +116,7 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
   <!-- SECTION 2: DSM SUMMARY (ALL SHIFTS) -->
   <div class="sec">
     <div class="sec-title">2. DSM Summary &mdash; All Shifts</div>
-    <table><thead><tr><th>DSM Name</th><th>Shift</th><th>Pump</th><th>PhonePe (M)</th><th>PhonePe (N)</th><th>Card</th><th>Petro Card</th><th>Bank Cash</th><th>Debtors</th><th>Expenses</th><th>Testing</th><th>Hand Cash</th><th>Gross Sale</th><th>Mismatch</th></tr></thead><tbody id="tDsm"></tbody></table>
+    <table><thead><tr><th>DSM Name</th><th>Shift</th><th>Pump</th><th>PhonePe (M)</th><th>PhonePe (N)</th><th>Card (M)</th><th>Card (N)</th><th>Petro (M)</th><th>Petro (N)</th><th>Bank Cash</th><th>Debtors</th><th>Expenses</th><th>Testing</th><th>Hand Cash</th><th>Gross Sale</th><th>Mismatch</th></tr></thead><tbody id="tDsm"></tbody></table>
   </div>
   <hr class="div">
 
@@ -307,7 +307,7 @@ function renderData(){
   // DSM Summary
   var tb=document.getElementById('tDsm');tb.innerHTML='';
   var prevShift='';
-  var tot={phM:0,phN:0,cc:0,pc:0,bk:0,deb:0,exp:0,test:0,c2:0,sale:0,mis:0};
+  var tot={phM:0,phN:0,ccM:0,ccN:0,pcM:0,pcN:0,bk:0,deb:0,exp:0,test:0,c2:0,sale:0,mis:0};
   (d.dsmSummaryRows||d.dsmEntries||[]).forEach(function(r){
     if(r.shift!==prevShift){
       var sh=document.createElement('tr');sh.className='tr-shift';
@@ -318,34 +318,32 @@ function renderData(){
         else if (upper.endsWith(' B') || upper === 'B') suffix = ' &mdash; Shift II';
         else if (upper.endsWith(' C') || upper === 'C') suffix = ' &mdash; Shift III';
       }
-      sh.innerHTML='<td colspan="14">'+shiftBadge(r.shift)+suffix+'</td>';
+      sh.innerHTML='<td colspan="16">'+shiftBadge(r.shift)+suffix+'</td>';
       tb.appendChild(sh);prevShift=r.shift;
     }
     var tr=document.createElement('tr');
     var ccM = r.creditCardMorning || 0;
     var ccN = r.creditCardNight || 0;
-    var cc = ccM + ccN;
-    var phcM = r.phonePeCardMorning || 0;
-    var phcN = r.phonePeCardNight || 0;
     var ph = r.phonePeMorning || r.phonePe || 0;
     var phN = r.phonePeNight || 0;
-    var petro = r.petroCard || 0;
+    var petroM = r.petroCardMorning || 0;
+    var petroN = r.petroCardNight || (r.petroCardMorning ? 0 : (r.petroCard || 0));
     var deb = r.debit || 0;
     var exp = r.expenses || 0;
     var test = r.testing || 0;
     var c1 = r.cashDeposit || r.cash1 || r.bankCash || 0;
     var c2 = r.cashInHand || r.cash2 || 0;
     var sale = r.grossSales || r.grossSale || 0;
-    var mismatch = (cc + ph + phN + petro + deb + exp + test + c1 + c2) - sale;
+    var mismatch = (ccM + ccN + ph + phN + petroM + petroN + deb + exp + test + c1 + c2) - sale;
     var pVal = getVal(r, 'pumpNoDisplay') || getVal(r, 'pumpNo') || getVal(r, 'pumpId') || '';
     var pDisp = pVal ? (pVal.toString().startsWith('P-') ? pVal : 'P-' + pVal) : '\u2013';
 
-    tr.innerHTML='<td>'+r.dsmName+'</td><td>'+shiftBadge(r.shift)+'</td><td>'+pDisp+'</td><td>'+inr(ph)+'</td><td>'+inr(phN)+'</td><td>'+inr(cc)+'</td><td>'+inr(petro)+'</td><td>'+inr(c1)+'</td><td>'+inr(deb)+'</td><td>'+inr(exp)+'</td><td>'+inr(test)+'</td><td>'+inr(c2)+'</td><td>'+inr(sale)+'</td><td>'+inr(mismatch)+'</td>';
+    tr.innerHTML='<td>'+r.dsmName+'</td><td>'+shiftBadge(r.shift)+'</td><td>'+pDisp+'</td><td>'+inr(ph)+'</td><td>'+inr(phN)+'</td><td>'+inr(ccM)+'</td><td>'+inr(ccN)+'</td><td>'+inr(petroM)+'</td><td>'+inr(petroN)+'</td><td>'+inr(c1)+'</td><td>'+inr(deb)+'</td><td>'+inr(exp)+'</td><td>'+inr(test)+'</td><td>'+inr(c2)+'</td><td>'+inr(sale)+'</td><td>'+inr(mismatch)+'</td>';
     tb.appendChild(tr);
-    tot.phM+=ph;tot.phN+=phN;tot.cc+=cc;tot.pc+=petro;tot.bk+=c1;tot.deb+=deb;tot.exp+=exp;tot.test+=test;tot.c2+=c2;tot.sale+=sale;tot.mis+=mismatch;
+    tot.phM+=ph;tot.phN+=phN;tot.ccM+=ccM;tot.ccN+=ccN;tot.pcM+=petroM;tot.pcN+=petroN;tot.bk+=c1;tot.deb+=deb;tot.exp+=exp;tot.test+=test;tot.c2+=c2;tot.sale+=sale;tot.mis+=mismatch;
   });
   var ttr=document.createElement('tr');ttr.className='tr-total';
-  ttr.innerHTML='<td>DAY TOTAL</td><td>\u2013</td><td>\u2013</td><td>'+inrZ(tot.phM)+'</td><td>'+inrZ(tot.phN)+'</td><td>'+inrZ(tot.cc)+'</td><td>'+inrZ(tot.pc)+'</td><td>'+inrZ(tot.bk)+'</td><td>'+inrZ(tot.deb)+'</td><td>'+inrZ(tot.exp)+'</td><td>'+inrZ(tot.test)+'</td><td>'+inrZ(tot.c2)+'</td><td>'+inrZ(tot.sale)+'</td><td>'+inrZ(tot.mis)+'</td>';
+  ttr.innerHTML='<td>DAY TOTAL</td><td>\u2013</td><td>\u2013</td><td>'+inrZ(tot.phM)+'</td><td>'+inrZ(tot.phN)+'</td><td>'+inrZ(tot.ccM)+'</td><td>'+inrZ(tot.ccN)+'</td><td>'+inrZ(tot.pcM)+'</td><td>'+inrZ(tot.pcN)+'</td><td>'+inrZ(tot.bk)+'</td><td>'+inrZ(tot.deb)+'</td><td>'+inrZ(tot.exp)+'</td><td>'+inrZ(tot.test)+'</td><td>'+inrZ(tot.c2)+'</td><td>'+inrZ(tot.sale)+'</td><td>'+inrZ(tot.mis)+'</td>';
   tb.appendChild(ttr);
 
   // getVal helper for case-insensitive JSON key lookup

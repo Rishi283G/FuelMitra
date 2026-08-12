@@ -46,6 +46,8 @@ public class ShiftReportDto
     public double PhonePeRepayments { get; set; }
     public double CreditCardRepayments { get; set; }
     public double PetroCardRepayments { get; set; }
+    public double PetroCardMorning { get; set; }
+    public double PetroCardNight { get; set; }
     public double BankCashRepayments { get; set; }
     public List<RepaymentBreakdownDto> RepaymentBreakdown { get; set; } = new();
     public List<DsmPersonalDebtorPrintDto> PersonalDebtors { get; set; } = new();
@@ -110,6 +112,8 @@ public class DayReportDto
     public double PhonePeRepayments { get; set; }
     public double CreditCardRepayments { get; set; }
     public double PetroCardRepayments { get; set; }
+    public double PetroCardMorning { get; set; }
+    public double PetroCardNight { get; set; }
     public double BankCashRepayments { get; set; }
     public List<RepaymentBreakdownDto> RepaymentBreakdown { get; set; } = new();
     public List<DsmPersonalDebtorPrintDto> PersonalDebtors { get; set; } = new();

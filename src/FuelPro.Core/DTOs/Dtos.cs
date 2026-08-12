@@ -131,6 +131,10 @@ public class FinalCalculationDto
     public double PhonePeCardMorningTotal { get; set; }
     public double PhonePeCardNightTotal { get; set; }
     public double PetroCardTotal { get; set; }
+    public double PetroCardMorningTotal { get; set; }
+    public double PetroCardNightTotal { get; set; }
+    public List<OilDefSaleDisplayRow> OilDefSales { get; set; } = new();
+    public double OilDefSalesTotal { get; set; }
     public double CreditCardTotal { get; set; } // Kept for legacy/combined display if needed
     public double CreditCardMorningTotal { get; set; }
     public double CreditCardNightTotal { get; set; }
@@ -187,6 +191,8 @@ public class DsmSummaryRowDto
     public double CreditCardMorning { get; set; }
     public double CreditCardNight { get; set; }
     public double PetroCard { get; set; }
+    public double PetroCardMorning { get; set; }
+    public double PetroCardNight { get; set; }
     public double Others { get; set; }
     public double CashDeposit { get; set; }  // Cash 1 — Bank Deposit
     public double Debit { get; set; }        // Sum of creditors/debit entries
@@ -200,7 +206,7 @@ public class DsmSummaryRowDto
     public double BankCash => CashDeposit;
     public double DebtorSales => Debit;
     public double GrossSale => GrossSales;
-    public double Difference => (CashDeposit + CashInHand + PhonePeMorning + PhonePeNight + PhonePe + CreditCardMorning + CreditCardNight + PetroCard + Debit + Expenses + Testing) - GrossSales;
+    public double Difference => (CashDeposit + CashInHand + PhonePeMorning + PhonePeNight + PhonePe + CreditCardMorning + CreditCardNight + PetroCardMorning + PetroCardNight + PetroCard + Debit + Expenses + Testing) - GrossSales;
 }
 
 /// <summary>

@@ -260,6 +260,8 @@ public class ShiftCalculationService
                 dto.PhonePeNightTotal = 0;
                 dto.PhonePeTotal = tidSheetToday.PhonePeDirectDay + tidSheetToday.PhonePeCardDay;
 
+                dto.PetroCardMorningTotal = tidSheetToday.PetroCardDay;
+                dto.PetroCardNightTotal = 0;
                 dto.PetroCardTotal = tidSheetToday.PetroCardDay;
 
                 dto.CreditCardMorningTotal = tidSheetToday.PineLabsCardDay;
@@ -276,12 +278,18 @@ public class ShiftCalculationService
                 dto.PhonePeNightTotal = tidSheetToday.PhonePeDirectNight;
                 dto.PhonePeTotal = dto.PhonePeMorningTotal + dto.PhonePeNightTotal + dto.PhonePeCardTotal;
 
-                dto.PetroCardTotal = tidSheetTomorrow.PetroCardMorning + tidSheetToday.PetroCardNight;
+                dto.PetroCardMorningTotal = tidSheetTomorrow.PetroCardMorning;
+                dto.PetroCardNightTotal = tidSheetToday.PetroCardNight;
+                dto.PetroCardTotal = dto.PetroCardMorningTotal + dto.PetroCardNightTotal;
 
                 dto.CreditCardMorningTotal = tidSheetTomorrow.PineLabsCardMorning;
                 dto.CreditCardNightTotal = tidSheetToday.PineLabsCardNight;
                 dto.CreditCardTotal = dto.CreditCardMorningTotal + dto.CreditCardNightTotal;
             }
+
+            var oilDefResult = ReportService.ExtractOilDefSales(entries);
+            dto.OilDefSales = oilDefResult.Rows;
+            dto.OilDefSalesTotal = oilDefResult.Total;
 
             dto.BankCash = dto.Cash1Aggregate.GrandTotal;
             dto.CashInHand = dto.Cash2Aggregate.GrandTotal;

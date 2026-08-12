@@ -166,6 +166,8 @@ public class ReportService : IReportService
         double phonePeCardNight = 0;
         double creditCardMorning = 0;
         double creditCardNight = 0;
+        double petroCardMorning = 0;
+        double petroCardNight = 0;
         double petroCard = 0;
 
         foreach (var entry in entriesList)
@@ -178,7 +180,8 @@ public class ReportService : IReportService
                 phonePeMorning += pc.PhonePeDay;
                 phonePeCardMorning += pc.PhonePeCardDay;
                 creditCardMorning += pc.CreditCardDay;
-                petroCard += pc.PetroCardDay;
+                petroCardMorning += pc.PetroCardDay > 0 ? pc.PetroCardDay : pc.PetroCardMorning;
+                petroCard += pc.PetroCardDay > 0 ? pc.PetroCardDay : pc.PetroCardMorning;
             }
             else
             {
@@ -188,9 +191,14 @@ public class ReportService : IReportService
                 phonePeCardNight += pc.PhonePeCardNight;
                 creditCardMorning += pc.CreditCardMorning;
                 creditCardNight += pc.CreditCardNight;
+                petroCardMorning += pc.PetroCardMorning;
+                petroCardNight += pc.PetroCardNight;
                 petroCard += pc.PetroCardMorning + pc.PetroCardNight;
             }
         }
+
+        dto.PetroCardMorning = petroCardMorning + (shiftType == "B" ? dto.PetroCardRepayments : 0);
+        dto.PetroCardNight = petroCardNight + (shiftType != "B" ? dto.PetroCardRepayments : 0);
 
 
         // Apply debtor repayments adjustments (silent additions per logic rules)
@@ -249,7 +257,15 @@ public class ReportService : IReportService
             breakdownList.Add(new() { Category = "Card Night", Amount = finalCreditCardNight, BaseAmount = creditCardNight, RecoveryAmount = dto.CreditCardRepayments });
         }
 
-        breakdownList.Add(new() { Category = "Petro Card", Amount = finalPetroCard, BaseAmount = petroCard, RecoveryAmount = dto.PetroCardRepayments });
+        if (shiftType == "B")
+        {
+            breakdownList.Add(new() { Category = "Petro Card", Amount = finalPetroCard, BaseAmount = petroCard, RecoveryAmount = dto.PetroCardRepayments });
+        }
+        else
+        {
+            breakdownList.Add(new() { Category = "Petro Card Morning", Amount = dto.PetroCardMorning, BaseAmount = petroCardMorning, RecoveryAmount = 0 });
+            breakdownList.Add(new() { Category = "Petro Card Night", Amount = dto.PetroCardNight, BaseAmount = petroCardNight, RecoveryAmount = dto.PetroCardRepayments });
+        }
         breakdownList.Add(new() { Category = "Debtors", Amount = dto.CreditorsTotal, BaseAmount = dto.CreditorsTotal, RecoveryAmount = 0 });
         double khandhareTotal = entriesList.SelectMany(e => e.KhandharePetroleumEntries ?? new List<KhandharePetroleumEntry>()).Sum(k => k.Amount);
         breakdownList.Add(new() { Category = "Expenses", Amount = dto.ExpensesTotal, BaseAmount = dto.ExpensesTotal, RecoveryAmount = 0 });
@@ -498,6 +514,8 @@ public class ReportService : IReportService
         double finalCreditCardMorning = pineLabsCardMorning + pineLabsCardDay + dto.CreditCardRepayments;
         double finalCreditCardNight = pineLabsCardNight;
         double finalPetroCard = petroCardMorning + petroCardDay + petroCardNight + dto.PetroCardRepayments;
+        dto.PetroCardMorning = petroCardMorning + petroCardDay + dto.PetroCardRepayments;
+        dto.PetroCardNight = petroCardNight;
 
         // 9. Testing summary totals
         double msTesting = 0, msTestingVol = 0;
@@ -538,7 +556,8 @@ public class ReportService : IReportService
             new() { Category = "PhonePe Night", Amount = finalPhonePeNight, BaseAmount = phonePeDirectNight, RecoveryAmount = 0 },
             new() { Category = "Card Morning", Amount = finalCreditCardMorning, BaseAmount = pineLabsCardMorning + pineLabsCardDay, RecoveryAmount = dto.CreditCardRepayments },
             new() { Category = "Card Night", Amount = finalCreditCardNight, BaseAmount = pineLabsCardNight, RecoveryAmount = 0 },
-            new() { Category = "Petro Card", Amount = finalPetroCard, BaseAmount = petroCardMorning + petroCardDay + petroCardNight, RecoveryAmount = dto.PetroCardRepayments },
+            new() { Category = "Petro Card Morning", Amount = dto.PetroCardMorning, BaseAmount = petroCardMorning + petroCardDay, RecoveryAmount = dto.PetroCardRepayments },
+            new() { Category = "Petro Card Night", Amount = dto.PetroCardNight, BaseAmount = petroCardNight, RecoveryAmount = 0 },
             new() { Category = "Debtors", Amount = dto.CreditorsTotal, BaseAmount = dto.CreditorsTotal, RecoveryAmount = 0 },
             new() { Category = "Expenses", Amount = dto.ExpensesTotal, BaseAmount = dto.ExpensesTotal, RecoveryAmount = 0 },
             new() { Category = "MS Testing", Amount = msTesting, BaseAmount = msTesting, RecoveryAmount = 0, Volume = msTestingVol },
@@ -689,7 +708,7 @@ public class ReportService : IReportService
         return mergedEntries;
     }
 
-    private static (List<OilDefSaleDisplayRow> Rows, double Total) ExtractOilDefSales(IEnumerable<DsmEntry> entries)
+    public static (List<OilDefSaleDisplayRow> Rows, double Total) ExtractOilDefSales(IEnumerable<DsmEntry> entries)
     {
         var list = new List<OilDefSaleDisplayRow>();
         if (entries == null) return (list, 0);

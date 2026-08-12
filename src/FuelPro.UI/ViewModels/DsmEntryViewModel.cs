@@ -893,7 +893,7 @@ public partial class DsmEntryViewModel : ObservableObject
                 EditingEntryId,
                 StartTime,
                 EndTime,
-                new List<DsmPersonalDebtor>(),
+                null,
                 kpModels);
 
             if (result.Success)

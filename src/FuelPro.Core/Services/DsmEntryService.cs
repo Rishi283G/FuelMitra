@@ -205,6 +205,56 @@ public class DsmEntryService
                 savedEntry.TotalCollection = calc.TotalCollection;
                 savedEntry.Mismatch = calc.TotalCollection - savedEntry.GrossSales;
                 await _dsmRepo.SaveEntryAsync(savedEntry);
+
+                // Automatic DSM Loss (Personal Debtor) handling based on shortage (> 10)
+                try
+                {
+                    double shiftShortage = savedEntry.Mismatch < -10m ? (double)Math.Abs(savedEntry.Mismatch) : 0;
+                    var currentPDsRes = await _personalDebtorRepo.GetByDsmEntryIdAsync(savedEntry.DsmEntryId);
+                    var pdList = currentPDsRes.Success && currentPDsRes.Data != null ? currentPDsRes.Data : new List<DsmPersonalDebtor>();
+                    bool pdChanged = false;
+
+                    var existingShortage = pdList.FirstOrDefault(p => p.Remarks != null && p.Remarks.Contains("Shortage"));
+                    if (shiftShortage > 10)
+                    {
+                        if (existingShortage != null)
+                        {
+                            if (Math.Abs(existingShortage.Amount - shiftShortage) > 0.01)
+                            {
+                                existingShortage.Amount = shiftShortage;
+                                pdChanged = true;
+                            }
+                        }
+                        else
+                        {
+                            pdList.Add(new DsmPersonalDebtor
+                            {
+                                DsmEntryId = savedEntry.DsmEntryId,
+                                DsmName = dsmName,
+                                Date = shift.ShiftDate,
+                                Time = DateTime.Now.ToString("hh:mm tt"),
+                                Amount = shiftShortage,
+                                Remarks = $"Auto Shift Shortage (Pump {pumpId}, Shift {shiftType})",
+                                PaymentMethod = "Cash"
+                            });
+                            pdChanged = true;
+                        }
+                    }
+                    else if (existingShortage != null)
+                    {
+                        pdList.Remove(existingShortage);
+                        pdChanged = true;
+                    }
+
+                    if (pdChanged)
+                    {
+                        await _personalDebtorRepo.SavePersonalDebtorsAsync(savedEntry.DsmEntryId, pdList);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error(ex, "Failed to auto-update DSM Personal Debtor shortage for DsmEntryId {DsmEntryId}", savedEntry.DsmEntryId);
+                }
             }
 
             // Save the connected pump entry if one is specified

@@ -307,7 +307,7 @@ function renderData(){
   var tot={
     ccM: 0, ccN: 0,
     phM: 0, phN: 0,
-    pc: 0, deb: 0, exp: 0, test: 0,
+    pcM: 0, pcN: 0, deb: 0, exp: 0, test: 0,
     c1: 0, c2: 0, sale: 0, mis: 0
   };
   (d.dsmSummaryRows||d.dsmEntries||[]).forEach(function(r){
@@ -316,14 +316,15 @@ function renderData(){
     var ccN = r.creditCardNight || 0;
     var phM = r.phonePeMorning || r.phonePe || 0;
     var phN = r.phonePeNight || 0;
-    var petro = r.petroCard || 0;
+    var pcM = r.petroCardMorning || 0;
+    var pcN = r.petroCardNight || 0;
     var deb = r.debit || 0;
     var exp = r.expenses || 0;
     var test = r.testing || 0;
     var c1 = r.cashDeposit || r.cash1 || r.bankCash || 0;
     var c2 = r.cashInHand || r.cash2 || 0;
     var sale = r.grossSales || r.grossSale || 0;
-    var mismatch = (ccM + ccN + phM + phN + petro + deb + exp + test + c1 + c2) - sale;
+    var mismatch = (ccM + ccN + phM + phN + pcM + pcN + deb + exp + test + c1 + c2) - sale;
     var pVal = r.pumpNoDisplay || (r.pumpId || r.pumpNo) || '';
     var pDisp = pVal ? (pVal.toString().startsWith('P-') ? pVal : 'P-' + pVal) : '\u2013';
 
@@ -333,7 +334,8 @@ function renderData(){
                  '<td>'+inr(ccN)+'</td>' +
                  '<td>'+inr(phM)+'</td>' +
                  '<td>'+inr(phN)+'</td>' +
-                 '<td>'+inr(petro)+'</td>' +
+                 '<td>'+inr(pcM)+'</td>' +
+                 '<td>'+inr(pcN)+'</td>' +
                  '<td>'+inr(deb)+'</td>' +
                  '<td>'+inr(exp)+'</td>' +
                  '<td>'+inr(test)+'</td>' +
@@ -343,7 +345,7 @@ function renderData(){
                  '<td>'+inr(mismatch)+'</td>';
     tb.appendChild(tr);
 
-    tot.ccM += ccM; tot.ccN += ccN; tot.phM += phM; tot.phN += phN; tot.pc += petro; tot.deb += deb; tot.exp += exp; tot.test += test; tot.c1 += c1; tot.c2 += c2; tot.sale += sale; tot.mis += mismatch;
+    tot.ccM += ccM; tot.ccN += ccN; tot.phM += phM; tot.phN += phN; tot.pcM += pcM; tot.pcN += pcN; tot.deb += deb; tot.exp += exp; tot.test += test; tot.c1 += c1; tot.c2 += c2; tot.sale += sale; tot.mis += mismatch;
   });
 
   var tr2=document.createElement('tr');tr2.className='tr-total';
@@ -353,7 +355,8 @@ function renderData(){
                 '<td>'+inrZ(tot.ccN)+'</td>' +
                 '<td>'+inrZ(tot.phM)+'</td>' +
                 '<td>'+inrZ(tot.phN)+'</td>' +
-                '<td>'+inrZ(tot.pc)+'</td>' +
+                '<td>'+inrZ(tot.pcM)+'</td>' +
+                '<td>'+inrZ(tot.pcN)+'</td>' +
                 '<td>'+inrZ(tot.deb)+'</td>' +
                 '<td>'+inrZ(tot.exp)+'</td>' +
                 '<td>'+inrZ(tot.test)+'</td>' +
