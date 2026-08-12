@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using FuelPro.Core.Common;
 using FuelPro.Core.DTOs;
 using FuelPro.Core.Models;
@@ -13,11 +14,13 @@ namespace FuelPro.Core.Services;
 public class ReportService : IReportService
 {
     private readonly IShiftAggregationService _aggregation;
+    private readonly IServiceProvider? _serviceProvider;
     private readonly ILogger _logger = Log.ForContext<ReportService>();
 
-    public ReportService(IShiftAggregationService aggregation)
+    public ReportService(IShiftAggregationService aggregation, IServiceProvider? serviceProvider = null)
     {
         _aggregation = aggregation;
+        _serviceProvider = serviceProvider;
     }
 
     public ShiftReportDto CalculateShiftReport(
@@ -155,7 +158,7 @@ public class ReportService : IReportService
             + dto.CreditCardRepayments + dto.PetroCardRepayments;
 
         // 7. Oil & DEF Sales (Phase 3/4 Product Sales)
-        var oilDefResult = ExtractOilDefSales(entriesList);
+        var oilDefResult = ExtractOilDefSales(entriesList, date, _serviceProvider);
         dto.OilDefSales = oilDefResult.Rows;
         dto.OilDefSalesTotal = oilDefResult.Total;
 
@@ -281,7 +284,8 @@ public class ReportService : IReportService
         dto.CollectionBreakdown = breakdownList;
 
         dto.ActualCollection = dto.CollectionBreakdown.Where(c => c.Category != "DSM Short").Sum(c => c.Amount);
-        dto.ExpectedCollection = dto.TotalFuelAmount + dto.OilDefSalesTotal + reconcilableRecoveriesTotal;
+        double testSum = msTesting + hsdTesting + hsdTesting2;
+        dto.ExpectedCollection = dto.TotalFuelAmount + dto.OilDefSalesTotal + dto.CreditorsTotal + reconcilableRecoveriesTotal + dto.ExpensesTotal + khandhareTotal + testSum;
         dto.Difference = dto.ActualCollection - dto.ExpectedCollection;
         dto.IsBalanced = Math.Abs(dto.Difference) < 0.01;
         dto.BalancedStatus = dto.IsBalanced ? "Balanced" : (dto.Difference < 0 ? "Short" : "Excess");
@@ -543,7 +547,7 @@ public class ReportService : IReportService
         dto.TotalDsmShort = totalDsmShort;
 
         // 11. Oil & DEF Sales
-        var oilDefResult = ExtractOilDefSales(todayEntries);
+        var oilDefResult = ExtractOilDefSales(todayEntries, startDate, _serviceProvider);
         dto.OilDefSales = oilDefResult.Rows;
         dto.OilDefSalesTotal = oilDefResult.Total;
 
@@ -574,7 +578,8 @@ public class ReportService : IReportService
 
         // 12. Final Reconciliation
         dto.ActualCollection = dto.CollectionBreakdown.Where(c => c.Category != "DSM Short").Sum(c => c.Amount);
-        dto.ExpectedCollection = dto.TotalFuelAmount + dto.OilDefSalesTotal + reconcilableRecoveriesTotal;
+        double testSum = msTesting + hsdTesting + hsdTesting2;
+        dto.ExpectedCollection = dto.TotalFuelAmount + dto.OilDefSalesTotal + dto.CreditorsTotal + reconcilableRecoveriesTotal + dto.ExpensesTotal + khandhareTotal + testSum;
         dto.Difference = dto.ActualCollection - dto.ExpectedCollection;
         dto.IsBalanced = Math.Abs(dto.Difference) < 0.01;
         dto.BalancedStatus = dto.IsBalanced ? "Balanced" : (dto.Difference < 0 ? "Short" : "Excess");
@@ -708,42 +713,102 @@ public class ReportService : IReportService
         return mergedEntries;
     }
 
-    public static (List<OilDefSaleDisplayRow> Rows, double Total) ExtractOilDefSales(IEnumerable<DsmEntry> entries)
+    public static (List<OilDefSaleDisplayRow> Rows, double Total) ExtractOilDefSales(IEnumerable<DsmEntry>? entries, DateTime? targetDate = null, IServiceProvider? sp = null)
     {
         var list = new List<OilDefSaleDisplayRow>();
-        if (entries == null || !entries.Any()) return (list, 0);
 
-        foreach (var entry in entries)
+        // 1. Try querying DbContext for OilDefDailyLogs
+        try
         {
-            var stringProps = entry.GetType().GetProperties()
-                .Where(p => p.PropertyType == typeof(string));
-
-            foreach (var prop in stringProps)
+            IServiceProvider? provider = sp;
+            if (provider == null)
             {
-                var val = prop.GetValue(entry) as string;
-                if (string.IsNullOrWhiteSpace(val) || !val.Contains("oilDefSales")) continue;
+                var appType = AppDomain.CurrentDomain.GetAssemblies()
+                    .SelectMany(a => a.GetTypes())
+                    .FirstOrDefault(t => t.Name == "App");
+                provider = appType?.GetProperty("Services")?.GetValue(null) as IServiceProvider;
+            }
 
-                try
+            if (provider != null)
+            {
+                using var scope = provider.CreateScope();
+                var dbCtxType = AppDomain.CurrentDomain.GetAssemblies()
+                    .SelectMany(a => a.GetTypes())
+                    .FirstOrDefault(t => t.Name == "FuelProDbContext");
+
+                var dbContext = (dbCtxType != null ? scope.ServiceProvider.GetService(dbCtxType) : null) as DbContext;
+                if (dbContext != null)
                 {
-                    using var doc = System.Text.Json.JsonDocument.Parse(val);
-                    var root = doc.RootElement;
-                    if (root.TryGetProperty("oilDefSales", out var salesElement) && salesElement.ValueKind == System.Text.Json.JsonValueKind.Array)
+                    var dates = new List<DateTime>();
+                    if (targetDate.HasValue) dates.Add(targetDate.Value.Date);
+                    if (entries != null) dates.AddRange(entries.Select(e => e.Shift?.ShiftDate.Date ?? e.CreatedAt.Date).Distinct());
+                    dates = dates.Distinct().ToList();
+
+                    if (dates.Any())
                     {
-                        ProcessSalesElement(salesElement, list);
-                    }
-                    else if (root.TryGetProperty("MetadataJson", out var metaElem))
-                    {
-                        if (metaElem.ValueKind == System.Text.Json.JsonValueKind.String)
+                        var logs = dbContext.Set<OilDefDailyLog>()
+                            .Include("Product")
+                            .Where(l => dates.Contains(l.LogDate.Date) && l.SoldQuantity > 0)
+                            .ToList();
+
+                        if (logs.Any())
                         {
-                            using var metaDoc = System.Text.Json.JsonDocument.Parse(metaElem.GetString()!);
-                            if (metaDoc.RootElement.TryGetProperty("oilDefSales", out var sElem))
+                            foreach (var log in logs)
                             {
-                                ProcessSalesElement(sElem, list);
+                                double rate = log.OverrideSaleRate ?? log.Product?.DefaultSaleRate ?? 0;
+                                double total = log.SoldQuantity * rate;
+                                list.Add(new OilDefSaleDisplayRow
+                                {
+                                    ProductName = log.Product?.ProductName ?? log.ProductType ?? "Oil/DEF",
+                                    Category = log.ProductType ?? "Oil",
+                                    Quantity = log.SoldQuantity,
+                                    Rate = rate,
+                                    Total = total
+                                });
                             }
+                            return (list, list.Sum(x => x.Total));
                         }
                     }
                 }
-                catch { }
+            }
+        }
+        catch { }
+
+        // 2. Fallback to reflection on entry string properties
+        if (entries != null)
+        {
+            foreach (var entry in entries)
+            {
+                var stringProps = entry.GetType().GetProperties()
+                    .Where(p => p.PropertyType == typeof(string));
+
+                foreach (var prop in stringProps)
+                {
+                    var val = prop.GetValue(entry) as string;
+                    if (string.IsNullOrWhiteSpace(val) || !val.Contains("oilDefSales")) continue;
+
+                    try
+                    {
+                        using var doc = System.Text.Json.JsonDocument.Parse(val);
+                        var root = doc.RootElement;
+                        if (root.TryGetProperty("oilDefSales", out var salesElement) && salesElement.ValueKind == System.Text.Json.JsonValueKind.Array)
+                        {
+                            ProcessSalesElement(salesElement, list);
+                        }
+                        else if (root.TryGetProperty("MetadataJson", out var metaElem))
+                        {
+                            if (metaElem.ValueKind == System.Text.Json.JsonValueKind.String)
+                            {
+                                using var metaDoc = System.Text.Json.JsonDocument.Parse(metaElem.GetString()!);
+                                if (metaDoc.RootElement.TryGetProperty("oilDefSales", out var sElem))
+                                {
+                                    ProcessSalesElement(sElem, list);
+                                }
+                            }
+                        }
+                    }
+                    catch { }
+                }
             }
         }
 

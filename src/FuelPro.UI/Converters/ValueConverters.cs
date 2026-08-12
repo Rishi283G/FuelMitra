@@ -394,9 +394,9 @@ public class PaymentCategoryToColorConverter : IValueConverter
 /// </summary>
 public class FuelTypeToBrushConverter : IValueConverter
 {
-    private static readonly SolidColorBrush GreenBrush = new(Color.FromRgb(46, 125, 50));   // #2E7D32
-    private static readonly SolidColorBrush OrangeBrush = new(Color.FromRgb(230, 81, 0));   // #E65100
-    private static readonly SolidColorBrush PurpleBrush = new(Color.FromRgb(74, 20, 140));   // #4A148C
+    private static readonly SolidColorBrush NeonGreenBrush = new(Color.FromRgb(0, 200, 83)); // Neon Green (#00C853)
+    private static readonly SolidColorBrush BlueBrush = new(Color.FromRgb(25, 118, 210));   // Blue (#1976D2)
+    private static readonly SolidColorBrush PurpleBrush = new(Color.FromRgb(123, 31, 162)); // Purple (#7B1FA2)
     private static readonly SolidColorBrush DefaultBrush = new(Color.FromRgb(15, 76, 129)); // #0F4C81
 
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
@@ -405,9 +405,9 @@ public class FuelTypeToBrushConverter : IValueConverter
         {
             var upper = fuel.ToUpperInvariant();
             if (upper.Contains("MS") || upper.Contains("PETROL"))
-                return GreenBrush;
+                return NeonGreenBrush;
             if (upper.Contains("HSD") || upper.Contains("DIESEL"))
-                return OrangeBrush;
+                return BlueBrush;
             if (upper.Contains("CNG"))
                 return PurpleBrush;
         }
