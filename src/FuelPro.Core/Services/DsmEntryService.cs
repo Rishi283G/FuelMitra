@@ -209,19 +209,20 @@ public class DsmEntryService
                 // Automatic DSM Loss (Personal Debtor) handling based on shortage (> 10)
                 try
                 {
-                    double shiftShortage = savedEntry.Mismatch < -10m ? (double)Math.Abs(savedEntry.Mismatch) : 0;
+                    double totalShortage = savedEntry.Mismatch < 0 ? (double)Math.Abs(savedEntry.Mismatch) : 0;
+                    double dsmLossAmount = totalShortage > 10.0 ? (totalShortage - 10.0) : 0.0;
                     var currentPDsRes = await _personalDebtorRepo.GetByDsmEntryIdAsync(savedEntry.DsmEntryId);
                     var pdList = currentPDsRes.Success && currentPDsRes.Data != null ? currentPDsRes.Data : new List<DsmPersonalDebtor>();
                     bool pdChanged = false;
 
                     var existingShortage = pdList.FirstOrDefault(p => p.Remarks != null && p.Remarks.Contains("Shortage"));
-                    if (shiftShortage > 10)
+                    if (dsmLossAmount > 0)
                     {
                         if (existingShortage != null)
                         {
-                            if (Math.Abs(existingShortage.Amount - shiftShortage) > 0.01)
+                            if (Math.Abs(existingShortage.Amount - dsmLossAmount) > 0.01)
                             {
-                                existingShortage.Amount = shiftShortage;
+                                existingShortage.Amount = dsmLossAmount;
                                 pdChanged = true;
                             }
                         }
@@ -233,7 +234,7 @@ public class DsmEntryService
                                 DsmName = dsmName,
                                 Date = shift.ShiftDate,
                                 Time = DateTime.Now.ToString("hh:mm tt"),
-                                Amount = shiftShortage,
+                                Amount = dsmLossAmount,
                                 Remarks = $"Auto Shift Shortage (Pump {pumpId}, Shift {shiftType})",
                                 PaymentMethod = "Cash"
                             });

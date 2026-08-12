@@ -367,6 +367,38 @@ public partial class OilDefDailyLogViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private async Task DeleteSaleLogAsync(OilDefDailyLog log)
+    {
+        if (log == null) return;
+
+        var result = System.Windows.MessageBox.Show($"Are you sure you want to delete this sale entry of {log.SoldQuantity} unit(s) for {log.Product?.ProductName ?? log.ProductType}?", "Confirm Delete", System.Windows.MessageBoxButton.YesNo, System.Windows.MessageBoxImage.Question);
+        if (result != System.Windows.MessageBoxResult.Yes) return;
+
+        try
+        {
+            var entity = await _dbContext.OilDefDailyLogs.FindAsync(log.Id);
+            if (entity != null)
+            {
+                _dbContext.OilDefDailyLogs.Remove(entity);
+                await _dbContext.SaveChangesAsync();
+            }
+
+            if (EditingSaleLog?.Id == log.Id)
+            {
+                CancelEditSale();
+            }
+
+            await LoadDashboardDataAsync();
+            await LoadHistoryAsync();
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to delete OilDefDailyLog {LogId}", log.Id);
+            System.Windows.MessageBox.Show($"Failed to delete sale log: {ex.Message}", "Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+        }
+    }
+
+    [RelayCommand]
     private void EditAdjustmentLog(OilDefDailyLog log)
     {
         if (log == null) return;

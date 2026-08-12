@@ -1261,17 +1261,18 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                 });
             }
 
-            // Automatic DSM Loss calculation based on mismatch threshold (> 10)
-            double shiftShortage = MismatchAmount < 0 ? Math.Abs(MismatchAmount) : 0;
+            // Automatic DSM Loss calculation based on mismatch threshold (only amount > 10 is DSM Loss)
+            double totalShortage = MismatchAmount < 0 ? Math.Abs(MismatchAmount) : 0;
+            double dsmLossAmount = totalShortage > 10.0 ? (totalShortage - 10.0) : 0.0;
             var personalDebtors = new List<DsmPersonalDebtor>();
-            if (shiftShortage > 10)
+            if (dsmLossAmount > 0)
             {
                 personalDebtors.Add(new DsmPersonalDebtor
                 {
                     DsmName = SelectedSubmission.DsmName,
                     Date = SelectedSubmission.ShiftDate,
                     Time = DateTime.Now.ToString("hh:mm tt"),
-                    Amount = shiftShortage,
+                    Amount = dsmLossAmount,
                     Remarks = $"Auto Shift Shortage (Pump {SelectedSubmission.PumpId}, Shift {SelectedSubmission.ShiftType})",
                     PaymentMethod = "Cash"
                 });

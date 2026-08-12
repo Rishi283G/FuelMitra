@@ -63,8 +63,8 @@
         </materialDesign:Card>
 
         <!-- MAIN LAYOUT -->
-        <TabControl Grid.Row="1" Margin="16,0,16,16" Style="{StaticResource MaterialDesignNavigationRailTabControl}">
-            <TabItem Header="DSM Loss" Height="45">
+        <TabControl Grid.Row="1" Margin="16,8,16,16" Style="{StaticResource MaterialDesignTabControl}">
+            <TabItem Header="DSM Loss &amp; Ledger" Height="45">
                 <Grid Margin="0,16,0,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="4*"/>
@@ -346,7 +346,7 @@
                 </Grid>
             </TabItem>
             
-            <TabItem Header="Kandhare Petroleum Entries" Height="45">
+            <TabItem Header="Kandhare Petroleum Ledger" Height="45">
                 <Grid Margin="0,16,0,0">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>

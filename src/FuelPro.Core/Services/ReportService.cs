@@ -285,7 +285,7 @@ public class ReportService : IReportService
 
         dto.ActualCollection = dto.CollectionBreakdown.Where(c => c.Category != "DSM Short").Sum(c => c.Amount);
         double testSum = msTesting + hsdTesting + hsdTesting2;
-        dto.ExpectedCollection = dto.TotalFuelAmount + dto.OilDefSalesTotal + dto.CreditorsTotal + reconcilableRecoveriesTotal + dto.ExpensesTotal + khandhareTotal + testSum;
+        dto.ExpectedCollection = dto.TotalFuelAmount + dto.CreditorsTotal + reconcilableRecoveriesTotal + dto.ExpensesTotal + khandhareTotal + testSum;
         dto.Difference = dto.ActualCollection - dto.ExpectedCollection;
         dto.IsBalanced = Math.Abs(dto.Difference) < 0.01;
         dto.BalancedStatus = dto.IsBalanced ? "Balanced" : (dto.Difference < 0 ? "Short" : "Excess");
@@ -579,7 +579,7 @@ public class ReportService : IReportService
         // 12. Final Reconciliation
         dto.ActualCollection = dto.CollectionBreakdown.Where(c => c.Category != "DSM Short").Sum(c => c.Amount);
         double testSum = msTesting + hsdTesting + hsdTesting2;
-        dto.ExpectedCollection = dto.TotalFuelAmount + dto.OilDefSalesTotal + dto.CreditorsTotal + reconcilableRecoveriesTotal + dto.ExpensesTotal + khandhareTotal + testSum;
+        dto.ExpectedCollection = dto.TotalFuelAmount + dto.CreditorsTotal + reconcilableRecoveriesTotal + dto.ExpensesTotal + khandhareTotal + testSum;
         dto.Difference = dto.ActualCollection - dto.ExpectedCollection;
         dto.IsBalanced = Math.Abs(dto.Difference) < 0.01;
         dto.BalancedStatus = dto.IsBalanced ? "Balanced" : (dto.Difference < 0 ? "Short" : "Excess");
@@ -623,7 +623,9 @@ public class ReportService : IReportService
 
             if (mismatch < -0.01)
             {
-                totalDsmShort += Math.Abs(mismatch);
+                double absMismatch = Math.Abs(mismatch);
+                double remainingShort = absMismatch > 10.0 ? 10.0 : absMismatch;
+                totalDsmShort += remainingShort;
             }
         }
         return totalDsmShort;

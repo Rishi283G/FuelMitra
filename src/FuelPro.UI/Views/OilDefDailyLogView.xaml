@@ -191,7 +191,6 @@
                                 <DataGridTextColumn Header="Supplier" Binding="{Binding SupplierName}" Width="1.5*"/>
                                 <DataGridTextColumn Header="Invoice #" Binding="{Binding InvoiceNumber}" Width="*"/>
                                 <DataGridTextColumn Header="Qty" Binding="{Binding Quantity, StringFormat='{}{0:N2}'}" Width="70"/>
-                                <DataGridTextColumn Header="Total" Binding="{Binding TotalCost, Converter={StaticResource CurrencyConverter}}" Width="100"/>
                                 <DataGridTemplateColumn Header="Action" Width="80">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
@@ -282,14 +281,21 @@
                                 <DataGridTextColumn Header="Sales Value (₹)" Binding="{Binding SalesValue, StringFormat='₹{0:N2}'}" Width="130"/>
                                 <DataGridTextColumn Header="Stock" Binding="{Binding RemainingStock, StringFormat='{}{0:N2}'}" Width="85"/>
                                 <DataGridTextColumn Header="Adj." Binding="{Binding AdjustmentQuantity, StringFormat='{}{0:N2}'}" Width="65"/>
-                                <DataGridTemplateColumn Header="Action" Width="80">
+                                <DataGridTemplateColumn Header="Action" Width="140">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
-                                            <Button Content="Edit" Style="{StaticResource MaterialDesignFlatButton}"
-                                                    Command="{Binding DataContext.EditSaleLogCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                    CommandParameter="{Binding}"
-                                                    IsEnabled="{Binding IsEditable}"
-                                                    Height="26" Padding="6,0"/>
+                                            <StackPanel Orientation="Horizontal">
+                                                <Button Content="Edit" Style="{StaticResource MaterialDesignFlatButton}"
+                                                        Command="{Binding DataContext.EditSaleLogCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}"
+                                                        IsEnabled="{Binding IsEditable}"
+                                                        Height="26" Padding="6,0" Margin="0,0,4,0"/>
+                                                <Button Content="Delete" Style="{StaticResource MaterialDesignFlatButton}" Foreground="Red"
+                                                        Command="{Binding DataContext.DeleteSaleLogCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}"
+                                                        IsEnabled="{Binding IsEditable}"
+                                                        Height="26" Padding="6,0"/>
+                                            </StackPanel>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>

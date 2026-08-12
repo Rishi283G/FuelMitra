@@ -417,3 +417,29 @@ public class FuelTypeToBrushConverter : IValueConverter
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
         => throw new NotImplementedException();
 }
+
+public class FuelTypeToLightBgBrushConverter : IValueConverter
+{
+    private static readonly SolidColorBrush LightGreenBrush = new(Color.FromRgb(232, 245, 233)); // Light Green (#E8F5E9)
+    private static readonly SolidColorBrush LightBlueBrush = new(Color.FromRgb(227, 242, 253));  // Light Blue (#E3F2FD)
+    private static readonly SolidColorBrush LightPurpleBrush = new(Color.FromRgb(243, 229, 245)); // Light Purple (#F3E5F5)
+    private static readonly SolidColorBrush DefaultBrush = new(Color.FromRgb(250, 250, 250));
+
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is string fuel)
+        {
+            var upper = fuel.ToUpperInvariant();
+            if (upper.Contains("MS") || upper.Contains("PETROL"))
+                return LightGreenBrush;
+            if (upper.Contains("HSD") || upper.Contains("DIESEL"))
+                return LightBlueBrush;
+            if (upper.Contains("CNG"))
+                return LightPurpleBrush;
+        }
+        return DefaultBrush;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotImplementedException();
+}

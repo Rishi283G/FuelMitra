@@ -20,6 +20,8 @@
         <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis" />
         <converters:InverseBoolConverter x:Key="InverseBool" />
         <converters:PumpIdDisplayConverter x:Key="PumpIdConverter" />
+        <converters:FuelTypeToBrushConverter x:Key="FuelTypeToBrushConverter" />
+        <converters:FuelTypeToLightBgBrushConverter x:Key="FuelTypeToLightBgBrushConverter" />
 
         <Style TargetType="materialDesign:Card" x:Key="SectionCard">
             <Setter Property="Margin" Value="0,0,0,16" />
@@ -339,7 +341,7 @@
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <materialDesign:Card Margin="8" Padding="12" materialDesign:ElevationAssist.Elevation="Dp1" Background="{DynamicResource MaterialDesign.Brush.Surface}">
+                                    <materialDesign:Card Margin="8" Padding="12" materialDesign:ElevationAssist.Elevation="Dp1" Background="{Binding GroupName, Converter={StaticResource FuelTypeToLightBgBrushConverter}}">
                                         <Grid>
                                             <Grid.RowDefinitions>
                                                 <RowDefinition Height="Auto" />
