@@ -101,21 +101,7 @@ public class DsmEntryService
             if (shift.IsLocked)
                 return Result<DsmEntry>.Fail("This shift is locked and cannot be edited.");
 
-            // Check duplicate — if an entry exists for this shift, pump, and DSM, update it instead of creating duplicate entries.
-            if (existingEntryId == null)
-            {
-                var existingEntries = await _dsmRepo.GetEntriesForShiftAsync(shift.ShiftId);
-                var existingEntry = existingEntries.Data?.LastOrDefault(e =>
-                    e.PumpId == pumpId &&
-                    string.Equals(e.DsmName, dsmName, StringComparison.OrdinalIgnoreCase));
 
-                if (existingEntry != null)
-                {
-                    _logger.Information("Found existing DSM entry {Id} for {Dsm}/Pump {Pump}, reusing/updating",
-                        existingEntry.DsmEntryId, dsmName, pumpId);
-                    existingEntryId = existingEntry.DsmEntryId;
-                }
-            }
 
             // Pre-calculate nozzle readings SaleLitres and Amount in memory so they are available for gross sales calculations
             foreach (var nr in nozzleReadings)
@@ -229,8 +215,7 @@ public class DsmEntryService
                 if (shiftEntriesResult.Success && shiftEntriesResult.Data != null)
                 {
                     existingConnectedEntry = shiftEntriesResult.Data.FirstOrDefault(e =>
-                        (savedEntry.DsmEntryId != 0 && e.ReconciledToPumpId == savedEntry.DsmEntryId) ||
-                        (e.PumpId == connectedPumpId.Value && string.Equals(e.DsmName, dsmName, StringComparison.OrdinalIgnoreCase)));
+                        savedEntry.DsmEntryId != 0 && e.ReconciledToPumpId == savedEntry.DsmEntryId);
                 }
 
                 var connectedEntry = new DsmEntry
@@ -519,23 +504,7 @@ public class DsmEntryService
                 }
             }
 
-            // Check duplicate for primary:
-            // If an entry exists for this shift, pump, and DSM, update it instead of creating duplicate entries.
-            if (existingEntryId == null)
-            {
-                var existingMatch = await context.Set<DsmEntry>()
-                    .FirstOrDefaultAsync(e =>
-                        e.ShiftId == shift.ShiftId &&
-                        e.PumpId == pumpId &&
-                        e.DsmName == dsmName);
 
-                if (existingMatch != null)
-                {
-                    _logger.Information("Found existing DSM entry {Id} for {Dsm}/Pump {Pump}, reusing/updating",
-                        existingMatch.DsmEntryId, dsmName, pumpId);
-                    existingEntryId = existingMatch.DsmEntryId;
-                }
-            }
 
             // Create or update DSM entry
             DsmEntry entry;
@@ -754,8 +723,7 @@ public class DsmEntryService
                     .ToListAsync();
                 
                 existingConnectedEntry = shiftEntries.FirstOrDefault(e =>
-                    (entry.DsmEntryId != 0 && e.ReconciledToPumpId == entry.DsmEntryId) ||
-                    (e.PumpId == connectedPumpId.Value && string.Equals(e.DsmName, dsmName, StringComparison.OrdinalIgnoreCase)));
+                    entry.DsmEntryId != 0 && e.ReconciledToPumpId == entry.DsmEntryId);
 
                 DsmEntry connectedEntry;
                 if (existingConnectedEntry != null)
