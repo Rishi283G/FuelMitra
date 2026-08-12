@@ -26,6 +26,7 @@ interface NozzleRow extends DraftNozzleReading {
 
 interface KhandharePetroleumRow {
   name: string;
+  vehicleNumber?: string;
   slipNumber: string;
   amount: number;
 }
@@ -112,6 +113,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   const [customVehicle, setCustomVehicle] = useState(false);
   const [khandhareEntries, setKhandhareEntries] = useState<KhandharePetroleumRow[]>([]);
   const [newKpName, setNewKpName] = useState("");
+  const [newKpVehicleNumber, setNewKpVehicleNumber] = useState("");
   const [newKpSlipNumber, setNewKpSlipNumber] = useState("");
   const [newKpAmount, setNewKpAmount] = useState("");
   // Cash 1 Deposit Amount
@@ -2531,6 +2533,18 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                 />
               </div>
               <div className="field-group">
+                <label className="field-label">Vehicle Number</label>
+                <input
+                  type="text"
+                  className="field-input"
+                  placeholder="Enter vehicle no"
+                  value={newKpVehicleNumber}
+                  onChange={(e) => setNewKpVehicleNumber(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="field-row-2" style={{ marginTop: "12px" }}>
+              <div className="field-group">
                 <label className="field-label">Slip Number</label>
                 <input
                   type="text"
@@ -2540,17 +2554,17 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                   onChange={(e) => setNewKpSlipNumber(e.target.value)}
                 />
               </div>
-            </div>
-            <div className="field-group" style={{ marginTop: "12px" }}>
-              <label className="field-label">Amount (₹)</label>
-              <input
-                type="number"
-                step="0.01"
-                className="field-input"
-                placeholder="0.00"
-                value={newKpAmount}
-                onChange={(e) => setNewKpAmount(e.target.value)}
-              />
+              <div className="field-group">
+                <label className="field-label">Amount (₹)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  className="field-input"
+                  placeholder="0.00"
+                  value={newKpAmount}
+                  onChange={(e) => setNewKpAmount(e.target.value)}
+                />
+              </div>
             </div>
 
             <button
@@ -2564,11 +2578,13 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                   ...prev,
                   {
                     name: newKpName,
+                    vehicleNumber: newKpVehicleNumber,
                     slipNumber: newKpSlipNumber,
                     amount: Number(newKpAmount),
                   },
                 ]);
                 setNewKpName("");
+                setNewKpVehicleNumber("");
                 setNewKpSlipNumber("");
                 setNewKpAmount("");
               }}
@@ -2599,6 +2615,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                       <strong>₹{item.amount.toFixed(2)}</strong>{" "}
                       <span>{item.name}</span>
                       <div style={{ color: "#94a3b8" }}>
+                        {item.vehicleNumber && <span>Vehicle: {item.vehicleNumber} | </span>}
                         {item.slipNumber ? `Slip: ${item.slipNumber}` : "No slip number"}
                       </div>
                     </div>
