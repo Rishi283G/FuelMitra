@@ -738,12 +738,19 @@ public class SyncEngine
                         if (!response.IsSuccessStatusCode)
                         {
                             var error = await response.Content.ReadAsStringAsync();
-                            if (error.Contains("PGRST205") || error.Contains("Could not find the table"))
+                            _logger.Warning("Supabase UPSERT returned HTTP {StatusCode} for table {Table}: {Error}", response.StatusCode, tableName, error);
+
+                            if (response.StatusCode == System.Net.HttpStatusCode.BadRequest ||
+                                response.StatusCode == System.Net.HttpStatusCode.NotFound ||
+                                response.StatusCode == System.Net.HttpStatusCode.Conflict ||
+                                response.StatusCode == System.Net.HttpStatusCode.UnprocessableEntity ||
+                                error.Contains("PGRST") || error.Contains("column") || error.Contains("constraint"))
                             {
-                                _logger.Warning("Table {Table} does not exist in Supabase schema cache (PGRST205). Skipping push for this table until Supabase schema migration is applied: {Error}", tableName, error);
+                                _logger.Warning("Skipping push for table {Table} due to Supabase schema/data issue until migration is applied: {Error}", tableName, error);
                                 hasPushError = true;
                                 break;
                             }
+
                             throw new HttpRequestException($"Supabase UPSERT failed for table {tableName}: {error}");
                         }
                     }
