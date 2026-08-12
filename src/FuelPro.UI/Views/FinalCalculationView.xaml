@@ -21,6 +21,7 @@
         <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis" />
         <converters:InverseBoolConverter x:Key="InverseBool" />
         <converters:PumpIdDisplayConverter x:Key="PumpIdConverter" />
+        <converters:FuelTypeToBrushConverter x:Key="FuelTypeToBrushConverter" />
 
         <Style TargetType="materialDesign:Card" x:Key="SectionCard">
             <Setter Property="Margin" Value="0,0,0,16" />
@@ -494,7 +495,7 @@
                                             </Grid.RowDefinitions>
                                             
                                             <!-- Group Header -->
-                                            <Border Grid.Row="0" Background="{DynamicResource MaterialDesign.Brush.Primary.Light}" CornerRadius="4" Padding="8" Margin="0,0,0,12">
+                                            <Border Grid.Row="0" Background="{Binding GroupName, Converter={StaticResource FuelTypeToBrushConverter}}" CornerRadius="4" Padding="8" Margin="0,0,0,12">
                                                 <TextBlock Text="{Binding GroupName}" FontWeight="Bold" Foreground="White" FontSize="15" HorizontalAlignment="Center"/>
                                             </Border>
                                             

@@ -339,6 +339,17 @@ public partial class DsmManagementViewModel : ObservableObject
             context.DsmPumpAssignments.Add(assignment);
             await context.SaveChangesAsync();
 
+            // Force immediate cloud push so PWA receives new assignment instantly
+            try
+            {
+                var syncEngine = App.Services?.GetService(typeof(FuelPro.Sync.SyncEngine)) as FuelPro.Sync.SyncEngine;
+                if (syncEngine != null)
+                {
+                    _ = syncEngine.ForceSyncAsync();
+                }
+            }
+            catch { }
+
             // Reset selection fields
             SelectedConnectedPumpId = null;
 
@@ -366,6 +377,16 @@ public partial class DsmManagementViewModel : ObservableObject
                 dbAssignment.IsActive = false;
                 context.Entry(dbAssignment).State = EntityState.Modified;
                 await context.SaveChangesAsync();
+
+                try
+                {
+                    var syncEngine = App.Services?.GetService(typeof(FuelPro.Sync.SyncEngine)) as FuelPro.Sync.SyncEngine;
+                    if (syncEngine != null)
+                    {
+                        _ = syncEngine.ForceSyncAsync();
+                    }
+                }
+                catch { }
             }
 
             AssignmentStatusMessage = "✅ Assignment deactivated.";

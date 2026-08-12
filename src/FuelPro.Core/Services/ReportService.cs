@@ -711,81 +711,95 @@ public class ReportService : IReportService
     public static (List<OilDefSaleDisplayRow> Rows, double Total) ExtractOilDefSales(IEnumerable<DsmEntry> entries)
     {
         var list = new List<OilDefSaleDisplayRow>();
-        if (entries == null) return (list, 0);
+        if (entries == null || !entries.Any()) return (list, 0);
 
         foreach (var entry in entries)
         {
-            string? metaJson = null;
-            var prop = entry.GetType().GetProperty("MetadataJson");
-            if (prop != null)
-            {
-                metaJson = prop.GetValue(entry) as string;
-            }
+            var stringProps = entry.GetType().GetProperties()
+                .Where(p => p.PropertyType == typeof(string));
 
-            if (string.IsNullOrWhiteSpace(metaJson)) continue;
-
-            try
+            foreach (var prop in stringProps)
             {
-                using var doc = System.Text.Json.JsonDocument.Parse(metaJson);
-                var root = doc.RootElement;
-                if (root.TryGetProperty("oilDefSales", out var salesElement) && salesElement.ValueKind == System.Text.Json.JsonValueKind.Array)
+                var val = prop.GetValue(entry) as string;
+                if (string.IsNullOrWhiteSpace(val) || !val.Contains("oilDefSales")) continue;
+
+                try
                 {
-                    foreach (var sale in salesElement.EnumerateArray())
+                    using var doc = System.Text.Json.JsonDocument.Parse(val);
+                    var root = doc.RootElement;
+                    if (root.TryGetProperty("oilDefSales", out var salesElement) && salesElement.ValueKind == System.Text.Json.JsonValueKind.Array)
                     {
-                        string productName = sale.TryGetProperty("productName", out var pn) ? pn.GetString() ?? "" : "";
-                        string category = sale.TryGetProperty("category", out var cat) ? cat.GetString() ?? "Oil" : "Oil";
-
-                        double qty = 0;
-                        if (sale.TryGetProperty("quantity", out var q))
+                        ProcessSalesElement(salesElement, list);
+                    }
+                    else if (root.TryGetProperty("MetadataJson", out var metaElem))
+                    {
+                        if (metaElem.ValueKind == System.Text.Json.JsonValueKind.String)
                         {
-                            if (q.ValueKind == System.Text.Json.JsonValueKind.Number) q.TryGetDouble(out qty);
-                            else if (q.ValueKind == System.Text.Json.JsonValueKind.String) double.TryParse(q.GetString(), out qty);
-                        }
-
-                        double price = 0;
-                        if (sale.TryGetProperty("price", out var pr))
-                        {
-                            if (pr.ValueKind == System.Text.Json.JsonValueKind.Number) pr.TryGetDouble(out price);
-                            else if (pr.ValueKind == System.Text.Json.JsonValueKind.String) double.TryParse(pr.GetString(), out price);
-                        }
-                        else if (sale.TryGetProperty("rate", out var r))
-                        {
-                            if (r.ValueKind == System.Text.Json.JsonValueKind.Number) r.TryGetDouble(out price);
-                            else if (r.ValueKind == System.Text.Json.JsonValueKind.String) double.TryParse(r.GetString(), out price);
-                        }
-
-                        double total = 0;
-                        if (sale.TryGetProperty("total", out var tot))
-                        {
-                            if (tot.ValueKind == System.Text.Json.JsonValueKind.Number) tot.TryGetDouble(out total);
-                            else if (tot.ValueKind == System.Text.Json.JsonValueKind.String) double.TryParse(tot.GetString(), out total);
-                        }
-                        if (total == 0 && qty > 0 && price > 0)
-                        {
-                            total = qty * price;
-                        }
-
-                        if (qty > 0 || total > 0 || !string.IsNullOrWhiteSpace(productName))
-                        {
-                            list.Add(new OilDefSaleDisplayRow
+                            using var metaDoc = System.Text.Json.JsonDocument.Parse(metaElem.GetString()!);
+                            if (metaDoc.RootElement.TryGetProperty("oilDefSales", out var sElem))
                             {
-                                ProductName = string.IsNullOrWhiteSpace(productName) ? category : productName,
-                                Category = category,
-                                Quantity = qty,
-                                Rate = price,
-                                Total = total
-                            });
+                                ProcessSalesElement(sElem, list);
+                            }
                         }
                     }
                 }
-            }
-            catch
-            {
-                // Ignore parsing errors for invalid MetadataJson
+                catch { }
             }
         }
 
-        return (list, list.Sum(s => s.Total));
+        return (list, list.Sum(x => x.Total));
+    }
+
+    private static void ProcessSalesElement(System.Text.Json.JsonElement salesElement, List<OilDefSaleDisplayRow> list)
+    {
+        if (salesElement.ValueKind != System.Text.Json.JsonValueKind.Array) return;
+        foreach (var sale in salesElement.EnumerateArray())
+        {
+            string productName = sale.TryGetProperty("productName", out var pn) ? pn.GetString() ?? "" : "";
+            string category = sale.TryGetProperty("category", out var cat) ? cat.GetString() ?? "Oil" : "Oil";
+
+            double qty = 0;
+            if (sale.TryGetProperty("quantity", out var q))
+            {
+                if (q.ValueKind == System.Text.Json.JsonValueKind.Number) q.TryGetDouble(out qty);
+                else if (q.ValueKind == System.Text.Json.JsonValueKind.String) double.TryParse(q.GetString(), out qty);
+            }
+
+            double price = 0;
+            if (sale.TryGetProperty("price", out var pr))
+            {
+                if (pr.ValueKind == System.Text.Json.JsonValueKind.Number) pr.TryGetDouble(out price);
+                else if (pr.ValueKind == System.Text.Json.JsonValueKind.String) double.TryParse(pr.GetString(), out price);
+            }
+            else if (sale.TryGetProperty("rate", out var r))
+            {
+                if (r.ValueKind == System.Text.Json.JsonValueKind.Number) r.TryGetDouble(out price);
+                else if (r.ValueKind == System.Text.Json.JsonValueKind.String) double.TryParse(r.GetString(), out price);
+            }
+
+            double total = 0;
+            if (sale.TryGetProperty("total", out var tot))
+            {
+                if (tot.ValueKind == System.Text.Json.JsonValueKind.Number) tot.TryGetDouble(out total);
+                else if (tot.ValueKind == System.Text.Json.JsonValueKind.String) double.TryParse(tot.GetString(), out total);
+            }
+            if (total == 0 && qty > 0 && price > 0)
+            {
+                total = qty * price;
+            }
+
+            if (qty > 0 || total > 0 || !string.IsNullOrWhiteSpace(productName))
+            {
+                list.Add(new OilDefSaleDisplayRow
+                {
+                    ProductName = string.IsNullOrWhiteSpace(productName) ? category : productName,
+                    Category = category,
+                    Quantity = qty,
+                    Rate = price,
+                    Total = total
+                });
+            }
+        }
     }
 
     private static List<DsmPersonalDebtorRepaymentPrintDto> ExtractPersonalDebtorRepayments(IEnumerable<DsmEntry> entries, DateTime date)

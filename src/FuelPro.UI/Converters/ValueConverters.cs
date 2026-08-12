@@ -388,3 +388,32 @@ public class PaymentCategoryToColorConverter : IValueConverter
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
         => throw new NotImplementedException();
 }
+
+/// <summary>
+/// Returns Green for Petrol (MS-I, MS-II, MS, Petrol), Orange for Diesel (HSD), Purple for CNG.
+/// </summary>
+public class FuelTypeToBrushConverter : IValueConverter
+{
+    private static readonly SolidColorBrush GreenBrush = new(Color.FromRgb(46, 125, 50));   // #2E7D32
+    private static readonly SolidColorBrush OrangeBrush = new(Color.FromRgb(230, 81, 0));   // #E65100
+    private static readonly SolidColorBrush PurpleBrush = new(Color.FromRgb(74, 20, 140));   // #4A148C
+    private static readonly SolidColorBrush DefaultBrush = new(Color.FromRgb(15, 76, 129)); // #0F4C81
+
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is string fuel)
+        {
+            var upper = fuel.ToUpperInvariant();
+            if (upper.Contains("MS") || upper.Contains("PETROL"))
+                return GreenBrush;
+            if (upper.Contains("HSD") || upper.Contains("DIESEL"))
+                return OrangeBrush;
+            if (upper.Contains("CNG"))
+                return PurpleBrush;
+        }
+        return DefaultBrush;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotImplementedException();
+}

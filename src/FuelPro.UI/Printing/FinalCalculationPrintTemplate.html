@@ -37,8 +37,7 @@ tr:nth-child(even) td{background:#f8fafb}
 .tr-sub td{background:#e8f1fb!important;color:#0f4c81!important;font-weight:600}
 .tr-hl td{background:#fef9e7!important;border-left:3px solid #e8c84a}
 .b-hsd{display:inline-block;padding:1px 6px;border-radius:3px;background:#fff5eb;color:#7c3a00;font-weight:700;font-size:10px}
-.b-ms1{display:inline-block;padding:1px 6px;border-radius:3px;background:#edfaf3;color:#005c2e;font-weight:700;font-size:10px}
-.b-ms2{display:inline-block;padding:1px 6px;border-radius:3px;background:#edf3fc;color:#1a3a6b;font-weight:700;font-size:10px}
+.b-ms1,.b-ms2{display:inline-block;padding:1px 6px;border-radius:3px;background:#edfaf3;color:#005c2e;font-weight:700;font-size:10px}
 .b-cng{display:inline-block;padding:1px 6px;border-radius:3px;background:#f3e5f5;color:#4a148c;font-weight:700;font-size:10px}
 .g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;padding:0 24px 16px}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:0 24px 16px}
@@ -140,7 +139,7 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
   <hr class="div">
   <div class="sec">
     <div class="sec-title">DSM Summary &mdash; All Pumps</div>
-    <table><thead><tr><th>DSM Name</th><th>Pump</th><th>Card M</th><th>Card N</th><th>PhonePe M</th><th>PhonePe N</th><th>Petro</th><th>Debit</th><th>Exp</th><th>Test</th><th>Cash 1</th><th>Cash 2</th><th>Gross Sale</th><th>Mismatch</th></tr></thead><tbody id="tDsm"></tbody></table>
+    <table><thead><tr><th>DSM Name</th><th>Pump</th><th>PhonePe (M)</th><th>PhonePe (N)</th><th>Card (M)</th><th>Card (N)</th><th>Petro (M)</th><th>Petro (N)</th><th>Bank Cash</th><th>Debtors</th><th>Expenses</th><th>Testing</th><th>Hand Cash</th><th>Gross Sale</th><th>Mismatch</th></tr></thead><tbody id="tDsm"></tbody></table>
   </div>
   <hr class="div">
 
@@ -151,9 +150,22 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
         <div class="mini-hdr">Debtors Register</div>
         <table><thead><tr><th>Name &amp; Description</th><th>Slip No</th><th>Amount (&#8377;)</th></tr></thead><tbody id="tCred"></tbody></table>
       </div>
-
-      <div>
-        <div class="mini-hdr">Fuel Dispensed &amp; Sale</div>
+      <div id="secRepayments" style="display:none; margin-top: 12px;">
+        <div class="mini-hdr">Debtor Recoveries (Collections)</div>
+        <table>
+          <thead>
+            <tr>
+              <th style="text-align:left;">Debtor Name</th>
+              <th>Mode</th>
+              <th>Ref / Details</th>
+              <th>Amount (&#8377;)</th>
+            </tr>
+          </thead>
+          <tbody id="tRepayments"></tbody>
+        </table>
+      </div>
+      <div style="margin-top: 12px;">
+        <div class="mini-hdr">Daily Sales Record (DSR)</div>
         <table><thead><tr><th>No.</th><th>Description</th><th>Qty (L/Kg)</th><th>Rate</th><th>Amount (&#8377;)</th></tr></thead><tbody id="tFuel"></tbody></table>
       </div>
       <div id="secOilDef" style="display:none; margin-top: 12px;">
@@ -195,20 +207,6 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
             </tr>
           </thead>
           <tbody id="tPersonalDebtorRepayments"></tbody>
-        </table>
-      </div>
-      <div id="secRepayments" style="display:none;">
-        <div class="mini-hdr">Debtor Recoveries (Collections)</div>
-        <table>
-          <thead>
-            <tr>
-              <th style="text-align:left;">Debtor Name</th>
-              <th>Mode</th>
-              <th>Ref / Details</th>
-              <th>Amount (&#8377;)</th>
-            </tr>
-          </thead>
-          <tbody id="tRepayments"></tbody>
         </table>
       </div>
     </div>
@@ -330,16 +328,16 @@ function renderData(){
 
     tr.innerHTML='<td>'+r.dsmName+'</td>' +
                  '<td>'+pDisp+'</td>' +
-                 '<td>'+inr(ccM)+'</td>' +
-                 '<td>'+inr(ccN)+'</td>' +
                  '<td>'+inr(phM)+'</td>' +
                  '<td>'+inr(phN)+'</td>' +
+                 '<td>'+inr(ccM)+'</td>' +
+                 '<td>'+inr(ccN)+'</td>' +
                  '<td>'+inr(pcM)+'</td>' +
                  '<td>'+inr(pcN)+'</td>' +
+                 '<td>'+inr(c1)+'</td>' +
                  '<td>'+inr(deb)+'</td>' +
                  '<td>'+inr(exp)+'</td>' +
                  '<td>'+inr(test)+'</td>' +
-                 '<td>'+inr(c1)+'</td>' +
                  '<td>'+inr(c2)+'</td>' +
                  '<td>'+inr(sale)+'</td>' +
                  '<td>'+inr(mismatch)+'</td>';
@@ -351,16 +349,16 @@ function renderData(){
   var tr2=document.createElement('tr');tr2.className='tr-total';
   tr2.innerHTML='<td>TOTAL</td>' +
                 '<td>\u2013</td>' +
-                '<td>'+inrZ(tot.ccM)+'</td>' +
-                '<td>'+inrZ(tot.ccN)+'</td>' +
                 '<td>'+inrZ(tot.phM)+'</td>' +
                 '<td>'+inrZ(tot.phN)+'</td>' +
+                '<td>'+inrZ(tot.ccM)+'</td>' +
+                '<td>'+inrZ(tot.ccN)+'</td>' +
                 '<td>'+inrZ(tot.pcM)+'</td>' +
                 '<td>'+inrZ(tot.pcN)+'</td>' +
+                '<td>'+inrZ(tot.c1)+'</td>' +
                 '<td>'+inrZ(tot.deb)+'</td>' +
                 '<td>'+inrZ(tot.exp)+'</td>' +
                 '<td>'+inrZ(tot.test)+'</td>' +
-                '<td>'+inrZ(tot.c1)+'</td>' +
                 '<td>'+inrZ(tot.c2)+'</td>' +
                 '<td>'+inrZ(tot.sale)+'</td>' +
                 '<td>'+inrZ(tot.mis)+'</td>';
