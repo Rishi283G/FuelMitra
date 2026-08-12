@@ -140,7 +140,7 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
   <hr class="div">
   <div class="sec">
     <div class="sec-title">DSM Summary &mdash; All Pumps</div>
-    <table><thead><tr><th>DSM Name</th><th>Pump</th><th>Card M</th><th>Card N</th><th>PhonePe M</th><th>PhonePe N</th><th>Petro</th><th>Debit</th><th>Exp</th><th>Test</th><th>Cash 1</th><th>Cash 2</th><th>Gross Sale</th></tr></thead><tbody id="tDsm"></tbody></table>
+    <table><thead><tr><th>DSM Name</th><th>Pump</th><th>Card M</th><th>Card N</th><th>PhonePe M</th><th>PhonePe N</th><th>Petro</th><th>Debit</th><th>Exp</th><th>Test</th><th>Cash 1</th><th>Cash 2</th><th>Gross Sale</th><th>Mismatch</th></tr></thead><tbody id="tDsm"></tbody></table>
   </div>
   <hr class="div">
 
@@ -181,6 +181,20 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
             </tr>
           </thead>
           <tbody id="tPersonalDebtors"></tbody>
+        </table>
+      </div>
+      <div id="secPersonalDebtorRepayments" style="display:none; margin-top: 12px;">
+        <div class="mini-hdr">DSM Loss Repayments</div>
+        <table>
+          <thead>
+            <tr>
+              <th style="text-align:left;">DSM Name</th>
+              <th>Mode</th>
+              <th>Ref No / TID</th>
+              <th>Amount (&#8377;)</th>
+            </tr>
+          </thead>
+          <tbody id="tPersonalDebtorRepayments"></tbody>
         </table>
       </div>
       <div id="secRepayments" style="display:none;">
@@ -294,7 +308,7 @@ function renderData(){
     ccM: 0, ccN: 0,
     phM: 0, phN: 0,
     pc: 0, deb: 0, exp: 0, test: 0,
-    c1: 0, c2: 0, sale: 0
+    c1: 0, c2: 0, sale: 0, mis: 0
   };
   (d.dsmSummaryRows||d.dsmEntries||[]).forEach(function(r){
     var tr=document.createElement('tr');
@@ -309,6 +323,7 @@ function renderData(){
     var c1 = r.cashDeposit || r.cash1 || r.bankCash || 0;
     var c2 = r.cashInHand || r.cash2 || 0;
     var sale = r.grossSales || r.grossSale || 0;
+    var mismatch = (ccM + ccN + phM + phN + petro + deb + exp + test + c1 + c2) - sale;
     var pVal = r.pumpNoDisplay || (r.pumpId || r.pumpNo) || '';
     var pDisp = pVal ? (pVal.toString().startsWith('P-') ? pVal : 'P-' + pVal) : '\u2013';
 
@@ -324,10 +339,11 @@ function renderData(){
                  '<td>'+inr(test)+'</td>' +
                  '<td>'+inr(c1)+'</td>' +
                  '<td>'+inr(c2)+'</td>' +
-                 '<td>'+inr(sale)+'</td>';
+                 '<td>'+inr(sale)+'</td>' +
+                 '<td>'+inr(mismatch)+'</td>';
     tb.appendChild(tr);
 
-    tot.ccM += ccM; tot.ccN += ccN; tot.phM += phM; tot.phN += phN; tot.pc += petro; tot.deb += deb; tot.exp += exp; tot.test += test; tot.c1 += c1; tot.c2 += c2; tot.sale += sale;
+    tot.ccM += ccM; tot.ccN += ccN; tot.phM += phM; tot.phN += phN; tot.pc += petro; tot.deb += deb; tot.exp += exp; tot.test += test; tot.c1 += c1; tot.c2 += c2; tot.sale += sale; tot.mis += mismatch;
   });
 
   var tr2=document.createElement('tr');tr2.className='tr-total';
@@ -343,7 +359,8 @@ function renderData(){
                 '<td>'+inrZ(tot.test)+'</td>' +
                 '<td>'+inrZ(tot.c1)+'</td>' +
                 '<td>'+inrZ(tot.c2)+'</td>' +
-                '<td>'+inrZ(tot.sale)+'</td>';
+                '<td>'+inrZ(tot.sale)+'</td>' +
+                '<td>'+inrZ(tot.mis)+'</td>';
   tb.appendChild(tr2);
 
   var tCash = document.getElementById('tCash'); tCash.innerHTML = '';
@@ -450,6 +467,31 @@ function renderData(){
     tPers.appendChild(trTot);
   } else {
     if (secPers) secPers.style.display = 'none';
+  }
+
+  // Render DSM Personal Debtor Repayments (DSM Loss Repayments)
+  var lossRepayments = d.personalDebtorRepayments || [];
+  var secLossRep = document.getElementById('secPersonalDebtorRepayments');
+  var tLossRep   = document.getElementById('tPersonalDebtorRepayments');
+  if (tLossRep && lossRepayments.length > 0) {
+    tLossRep.innerHTML = '';
+    if (secLossRep) secLossRep.style.display = 'block';
+    var lossRepTot = 0;
+    lossRepayments.forEach(function(p) {
+      lossRepTot += (p.amount || 0);
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td style="text-align:left;">' + (p.dsmName || '') + '</td>' +
+                     '<td>' + (p.paymentMethod || 'Cash') + '</td>' +
+                     '<td>' + (p.refNo || '\u2013') + '</td>' +
+                     '<td>' + inr(p.amount) + '</td>';
+      tLossRep.appendChild(tr);
+    });
+    var trTot = document.createElement('tr');
+    trTot.className = 'tr-total';
+    trTot.innerHTML = '<td colspan="3" style="text-align:left;">Total Loss Repayments</td><td>' + inrZ(lossRepTot) + '</td>';
+    tLossRep.appendChild(trTot);
+  } else {
+    if (secLossRep) secLossRep.style.display = 'none';
   }
 
   // Render Khandhare Petroleum Drawings

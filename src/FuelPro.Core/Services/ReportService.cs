@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using FuelPro.Core.Common;
 using FuelPro.Core.DTOs;
 using FuelPro.Core.Models;
@@ -291,6 +292,8 @@ public class ReportService : IReportService
             })
             .ToList();
 
+        dto.PersonalDebtorRepayments = ExtractPersonalDebtorRepayments(entriesList, date);
+
         return dto;
     }
 
@@ -579,6 +582,8 @@ public class ReportService : IReportService
             })
             .ToList();
 
+        dto.PersonalDebtorRepayments = ExtractPersonalDebtorRepayments(todayEntries, startDate);
+
         return dto;
     }
 
@@ -762,5 +767,47 @@ public class ReportService : IReportService
         }
 
         return (list, list.Sum(s => s.Total));
+    }
+
+    private static List<DsmPersonalDebtorRepaymentPrintDto> ExtractPersonalDebtorRepayments(IEnumerable<DsmEntry> entries, DateTime date)
+    {
+        var list = new List<DsmPersonalDebtorRepaymentPrintDto>();
+        try
+        {
+            var spProp = Type.GetType("FuelPro.UI.App, FuelPro.UI")?.GetProperty("Services");
+            var sp = spProp?.GetValue(null) as IServiceProvider;
+            if (sp != null)
+            {
+                var dbType = Type.GetType("FuelPro.Data.FuelProDbContext, FuelPro.Data");
+                if (dbType != null)
+                {
+                    var db = sp.GetService(dbType) as Microsoft.EntityFrameworkCore.DbContext;
+                    if (db != null)
+                    {
+                        var set = db.Set<DsmPersonalDebtorRepayment>();
+                        var startDate = date.Date;
+                        var endDate = startDate.AddDays(1);
+                        var repayments = set.Include(r => r.DsmPersonalDebtor)
+                            .Where(r => r.Date >= startDate && r.Date < endDate)
+                            .ToList();
+                        foreach (var r in repayments)
+                        {
+                            list.Add(new DsmPersonalDebtorRepaymentPrintDto
+                            {
+                                DsmName = r.DsmPersonalDebtor?.DsmName ?? "DSM",
+                                PaymentMethod = r.PaymentMethod ?? "Cash",
+                                RefNo = !string.IsNullOrWhiteSpace(r.CardTid) ? $"TID: {r.CardTid}" : (r.PaymentMethod ?? "Cash"),
+                                Amount = r.Amount
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // Ignore if missing
+        }
+        return list;
     }
 }

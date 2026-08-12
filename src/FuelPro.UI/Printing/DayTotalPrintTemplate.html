@@ -188,6 +188,20 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
           <tbody id="tPersonalDebtors"></tbody>
         </table>
       </div>
+      <div id="secPersonalDebtorRepayments" style="display:none; margin-top: 12px;">
+        <div class="mini-hdr">DSM Loss Repayments</div>
+        <table>
+          <thead>
+            <tr>
+              <th style="text-align:left;">DSM Name</th>
+              <th>Mode</th>
+              <th>Ref No / TID</th>
+              <th>Amount (&#8377;)</th>
+            </tr>
+          </thead>
+          <tbody id="tPersonalDebtorRepayments"></tbody>
+        </table>
+      </div>
     </div>
     <div class="col">
       <div><div class="mini-hdr">Day Expenses</div>
@@ -515,6 +529,31 @@ function renderData(){
     tPers.appendChild(trTot);
   } else {
     if (secPers) secPers.style.display = 'none';
+  }
+
+  // Render DSM Personal Debtor Repayments (DSM Loss Repayments)
+  var lossRepayments = d.personalDebtorRepayments || [];
+  var secLossRep = document.getElementById('secPersonalDebtorRepayments');
+  var tLossRep   = document.getElementById('tPersonalDebtorRepayments');
+  if (tLossRep && lossRepayments.length > 0) {
+    tLossRep.innerHTML = '';
+    if (secLossRep) secLossRep.style.display = 'block';
+    var lossRepTot = 0;
+    lossRepayments.forEach(function(p) {
+      lossRepTot += (p.amount || 0);
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td style="text-align:left;">' + (p.dsmName || '') + '</td>' +
+                     '<td>' + (p.paymentMethod || 'Cash') + '</td>' +
+                     '<td>' + (p.refNo || '\u2013') + '</td>' +
+                     '<td>' + inr(p.amount) + '</td>';
+      tLossRep.appendChild(tr);
+    });
+    var trTot = document.createElement('tr');
+    trTot.className = 'tr-total';
+    trTot.innerHTML = '<td colspan="3" style="text-align:left;">Total Loss Repayments</td><td>' + inrZ(lossRepTot) + '</td>';
+    tLossRep.appendChild(trTot);
+  } else {
+    if (secLossRep) secLossRep.style.display = 'none';
   }
 
   // Render Khandhare Petroleum Drawings

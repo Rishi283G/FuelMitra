@@ -311,8 +311,6 @@ public class DsmEntryService
             var allEntries = entriesResult.Data!;
             var primaryEntries = allEntries
                 .Where(e => !e.ReconciledToPumpId.HasValue)
-                .GroupBy(e => (e.PumpId, (e.DsmName ?? "").Trim().ToLower()))
-                .Select(g => g.OrderByDescending(e => e.DsmEntryId).First())
                 .OrderBy(e => e.DsmEntryId)
                 .ToList();
             var allSlaves = allEntries.Where(e => e.ReconciledToPumpId.HasValue).ToList();

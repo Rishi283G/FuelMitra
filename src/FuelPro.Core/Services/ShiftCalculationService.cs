@@ -50,8 +50,7 @@ public class ShiftCalculationService
             var entries = entriesResult.Data!;
             var primaryEntries = entries
                 .Where(e => !e.ReconciledToPumpId.HasValue)
-                .GroupBy(e => (e.PumpId, (e.DsmName ?? "").Trim().ToLower()))
-                .Select(g => g.OrderByDescending(e => e.DsmEntryId).First())
+                .OrderBy(e => e.DsmEntryId)
                 .ToList();
             var shiftExpensesResult = await _expenseRepo.GetByShiftIdAsync(shift.ShiftId);
             var shiftExpenses = shiftExpensesResult.Success ? shiftExpensesResult.Data! : new List<Expense>();

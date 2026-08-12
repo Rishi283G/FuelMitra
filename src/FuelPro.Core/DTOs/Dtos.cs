@@ -280,6 +280,14 @@ public class DsmPersonalDebtorPrintDto
     public double Amount { get; set; }
 }
 
+public class DsmPersonalDebtorRepaymentPrintDto
+{
+    public string DsmName { get; set; } = string.Empty;
+    public string PaymentMethod { get; set; } = string.Empty;
+    public string RefNo { get; set; } = string.Empty;
+    public double Amount { get; set; }
+}
+
 public class KhandharePetroleumPrintDto
 {
     public string Name { get; set; } = string.Empty;
