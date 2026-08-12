@@ -33,7 +33,7 @@ public class ShiftAggregationService : IShiftAggregationService
                     .Sum(c => c.TotalAmount);
 
                 var totalDebit = entry.DebitEntries.Sum(d => d.Amount);
-                var totalExpenses = entry.Expenses.Sum(e => e.Amount);
+                var totalExpenses = entry.Expenses.Sum(e => e.Amount) + (entry.KhandharePetroleumEntries != null ? entry.KhandharePetroleumEntries.Sum(kp => kp.Amount) : 0);
                 var totalTesting = entry.TestingEntries.Sum(t => t.Amount);
 
                 rows.Add(new DsmSummaryRowDto

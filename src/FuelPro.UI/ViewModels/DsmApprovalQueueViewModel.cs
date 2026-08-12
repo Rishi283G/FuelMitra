@@ -658,6 +658,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
         var expenseDtos = (SubmissionExpenses.Count > 0
             ? SubmissionExpenses.Select(e => new FuelPro.Core.DTOs.ExpenseDto { Amount = (decimal)e.Amount })
             : new List<FuelPro.Core.DTOs.ExpenseDto> { new() { Amount = (decimal)ExpenseAmount } })
+            .Concat(KhandhareEntries.Select(k => new FuelPro.Core.DTOs.ExpenseDto { Amount = (decimal)k.Amount }))
             .ToList();
 
         var dto = new FuelPro.Core.DTOs.DsmEntryDto

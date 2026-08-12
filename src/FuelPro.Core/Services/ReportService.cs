@@ -154,8 +154,9 @@ public class ReportService : IReportService
             + dto.CreditCardRepayments + dto.PetroCardRepayments;
 
         // 7. Oil & DEF Sales (Phase 3/4 Product Sales)
-        dto.OilDefSales = new List<OilDefSaleDisplayRow>();
-        dto.OilDefSalesTotal = 0;
+        var oilDefResult = ExtractOilDefSales(entriesList);
+        dto.OilDefSales = oilDefResult.Rows;
+        dto.OilDefSalesTotal = oilDefResult.Total;
 
         // 8. Aggregated Digital Collections from DB Entries
         double phonePeMorning = 0;
@@ -249,7 +250,12 @@ public class ReportService : IReportService
 
         breakdownList.Add(new() { Category = "Petro Card", Amount = finalPetroCard, BaseAmount = petroCard, RecoveryAmount = dto.PetroCardRepayments });
         breakdownList.Add(new() { Category = "Debtors", Amount = dto.CreditorsTotal, BaseAmount = dto.CreditorsTotal, RecoveryAmount = 0 });
+        double khandhareTotal = dto.KhandhareEntries.Sum(k => k.Amount);
         breakdownList.Add(new() { Category = "Expenses", Amount = dto.ExpensesTotal, BaseAmount = dto.ExpensesTotal, RecoveryAmount = 0 });
+        if (khandhareTotal > 0)
+        {
+            breakdownList.Add(new() { Category = "Kandhare Petroleum", Amount = khandhareTotal, BaseAmount = khandhareTotal, RecoveryAmount = 0 });
+        }
         breakdownList.Add(new() { Category = "MS Testing", Amount = msTesting, BaseAmount = msTesting, RecoveryAmount = 0, Volume = msTestingVol });
         breakdownList.Add(new() { Category = "HSD Testing I", Amount = hsdTesting, BaseAmount = hsdTesting, RecoveryAmount = 0, Volume = hsdTestingVol });
         breakdownList.Add(new() { Category = "HSD Testing II", Amount = hsdTesting2, BaseAmount = hsdTesting2, RecoveryAmount = 0, Volume = hsdTesting2Vol });
@@ -538,6 +544,12 @@ public class ReportService : IReportService
             new() { Category = "DSM Short", Amount = totalDsmShort, BaseAmount = totalDsmShort, RecoveryAmount = 0 }
         };
 
+        double khandhareTotal = dto.KhandhareEntries.Sum(k => k.Amount);
+        if (khandhareTotal > 0)
+        {
+            dto.CollectionBreakdown.Add(new() { Category = "Kandhare Petroleum", Amount = khandhareTotal, BaseAmount = khandhareTotal, RecoveryAmount = 0 });
+        }
+
         // 12. Final Reconciliation
         dto.ActualCollection = dto.CollectionBreakdown.Where(c => c.Category != "DSM Short").Sum(c => c.Amount);
         dto.ExpectedCollection = dto.TotalFuelAmount + dto.OilDefSalesTotal + reconcilableRecoveriesTotal;
@@ -654,11 +666,11 @@ public class ReportService : IReportService
             // Merge child collections for THIS specific submission group only
             merged.NozzleReadings = group.SelectMany(e => e.NozzleReadings ?? new List<NozzleReading>()).ToList();
             merged.CashDenominations = primary.CashDenominations ?? new List<CashDenomination>();
-            merged.DebitEntries = primary.DebitEntries ?? new List<DebitEntry>();
-            merged.Expenses = primary.Expenses ?? new List<Expense>();
+            merged.DebitEntries = group.SelectMany(e => e.DebitEntries ?? new List<DebitEntry>()).ToList();
+            merged.Expenses = group.SelectMany(e => e.Expenses ?? new List<Expense>()).ToList();
             merged.TestingEntries = group.SelectMany(e => e.TestingEntries ?? new List<TestingEntry>()).ToList();
-            merged.PersonalDebtors = primary.PersonalDebtors ?? new List<DsmPersonalDebtor>();
-            merged.KhandharePetroleumEntries = primary.KhandharePetroleumEntries ?? new List<KhandharePetroleumEntry>();
+            merged.PersonalDebtors = group.SelectMany(e => e.PersonalDebtors ?? new List<DsmPersonalDebtor>()).ToList();
+            merged.KhandharePetroleumEntries = group.SelectMany(e => e.KhandharePetroleumEntries ?? new List<KhandharePetroleumEntry>()).ToList();
             merged.PaymentCollection = primary.PaymentCollection;
 
             mergedEntries.Add(merged);
@@ -675,6 +687,80 @@ public class ReportService : IReportService
     private static (List<OilDefSaleDisplayRow> Rows, double Total) ExtractOilDefSales(IEnumerable<DsmEntry> entries)
     {
         var list = new List<OilDefSaleDisplayRow>();
+        if (entries == null) return (list, 0);
+
+        foreach (var entry in entries)
+        {
+            string? metaJson = null;
+            var prop = entry.GetType().GetProperty("MetadataJson");
+            if (prop != null)
+            {
+                metaJson = prop.GetValue(entry) as string;
+            }
+
+            if (string.IsNullOrWhiteSpace(metaJson)) continue;
+
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(metaJson);
+                var root = doc.RootElement;
+                if (root.TryGetProperty("oilDefSales", out var salesElement) && salesElement.ValueKind == System.Text.Json.JsonValueKind.Array)
+                {
+                    foreach (var sale in salesElement.EnumerateArray())
+                    {
+                        string productName = sale.TryGetProperty("productName", out var pn) ? pn.GetString() ?? "" : "";
+                        string category = sale.TryGetProperty("category", out var cat) ? cat.GetString() ?? "Oil" : "Oil";
+
+                        double qty = 0;
+                        if (sale.TryGetProperty("quantity", out var q))
+                        {
+                            if (q.ValueKind == System.Text.Json.JsonValueKind.Number) q.TryGetDouble(out qty);
+                            else if (q.ValueKind == System.Text.Json.JsonValueKind.String) double.TryParse(q.GetString(), out qty);
+                        }
+
+                        double price = 0;
+                        if (sale.TryGetProperty("price", out var pr))
+                        {
+                            if (pr.ValueKind == System.Text.Json.JsonValueKind.Number) pr.TryGetDouble(out price);
+                            else if (pr.ValueKind == System.Text.Json.JsonValueKind.String) double.TryParse(pr.GetString(), out price);
+                        }
+                        else if (sale.TryGetProperty("rate", out var r))
+                        {
+                            if (r.ValueKind == System.Text.Json.JsonValueKind.Number) r.TryGetDouble(out price);
+                            else if (r.ValueKind == System.Text.Json.JsonValueKind.String) double.TryParse(r.GetString(), out price);
+                        }
+
+                        double total = 0;
+                        if (sale.TryGetProperty("total", out var tot))
+                        {
+                            if (tot.ValueKind == System.Text.Json.JsonValueKind.Number) tot.TryGetDouble(out total);
+                            else if (tot.ValueKind == System.Text.Json.JsonValueKind.String) double.TryParse(tot.GetString(), out total);
+                        }
+                        if (total == 0 && qty > 0 && price > 0)
+                        {
+                            total = qty * price;
+                        }
+
+                        if (qty > 0 || total > 0 || !string.IsNullOrWhiteSpace(productName))
+                        {
+                            list.Add(new OilDefSaleDisplayRow
+                            {
+                                ProductName = string.IsNullOrWhiteSpace(productName) ? category : productName,
+                                Category = category,
+                                Quantity = qty,
+                                Rate = price,
+                                Total = total
+                            });
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // Ignore parsing errors for invalid MetadataJson
+            }
+        }
+
         return (list, list.Sum(s => s.Total));
     }
 }

@@ -1549,7 +1549,9 @@ public partial class DsmEntryViewModel : ObservableObject
                 PhysicalCash = (decimal)Cash2.TotalAmount
             },
             DebitEntries = Debits.Select(x => new DebitEntryDto { Amount = (decimal)(x.Amount ?? 0), ChequeNo = x.ChequeNo }).ToList(),
-            Expenses = Expenses.Select(x => new ExpenseDto { Amount = (decimal)(x.Amount ?? 0) }).ToList(),
+            Expenses = Expenses.Select(x => new ExpenseDto { Amount = (decimal)(x.Amount ?? 0) })
+                .Concat(KhandharePetroleumEntries.Select(x => new ExpenseDto { Amount = (decimal)(x.Amount ?? 0) }))
+                .ToList(),
             TestingEntries = TestingRows
                 .Where(x => x.Amount > 0)
                 .Select(x => new TestingEntryDto
