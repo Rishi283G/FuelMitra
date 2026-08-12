@@ -101,7 +101,7 @@ public class ShiftCalculationService
                     CreditCardNight = entry.PaymentCollection?.CreditCardNight ?? 0,
                     PetroCard = entry.PaymentCollection?.PetroCard ?? 0,
                     Debit = (double)calc.TotalCreditors,
-                    Expenses = entry.Expenses.Sum(e => e.Amount),
+                    Expenses = entry.Expenses.Sum(e => e.Amount) + (entry.KhandharePetroleumEntries?.Sum(kp => kp.Amount) ?? 0),
                     Testing = entry.TestingEntries.Sum(t => t.Amount),
                     CashDeposit = cash1,
                     CashInHand = cash2
@@ -287,7 +287,7 @@ public class ShiftCalculationService
             dto.CashInHand = dto.Cash2Aggregate.GrandTotal;
 
             dto.TotalAmounts = dto.MsTesting + dto.HsdTesting + dto.CngTesting + dto.PhonePeTotal + dto.PetroCardTotal + dto.CreditCardTotal + dto.TotalDebit
-                + dto.BankCash + dto.CashInHand;
+                + dto.BankCash + dto.CashInHand + dto.TotalExpenses;
 
             dto.ReconciliationDifference = dto.TotalFuelSaleAmount - dto.TotalAmounts;
 
