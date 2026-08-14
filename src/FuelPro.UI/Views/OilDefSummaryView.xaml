@@ -282,7 +282,7 @@
                                   IsReadOnly="True" materialDesign:DataGridAssist.CellPadding="8 6"
                                   MaxHeight="250" VerticalScrollBarVisibility="Auto">
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat='{}{0:dd-MMM-yyyy}'}" Width="120"/>
+                                <DataGridTextColumn Header="Date &amp; Time" Binding="{Binding Date, StringFormat='{}{0:dd-MMM-yyyy hh:mm tt}'}" Width="150"/>
                                 <DataGridTextColumn Header="Product" Binding="{Binding ProductName}" Width="2*"/>
                                 <DataGridTextColumn Header="Adj. Qty" Binding="{Binding AdjustmentQty, StringFormat='{}{0:N2}'}" Width="100"/>
                                 <DataGridTextColumn Header="Reason" Binding="{Binding Type}" Width="2*"/>

@@ -272,6 +272,11 @@
                                     <TextBox Grid.Column="0" Text="{Binding CardTid}" materialDesign:HintAssist.Hint="Terminal ID (TID)" Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,8,0"/>
                                     <TextBox Grid.Column="1" Text="{Binding CardBatch}" materialDesign:HintAssist.Hint="Batch No" Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,0,0"/>
                                 </Grid>
+
+                                <!-- Cheque Details -->
+                                <Grid Grid.Row="2" Visibility="{Binding IsChequePaymentMode, Converter={StaticResource BoolToVis}}" Margin="0,4,0,0">
+                                    <TextBox Text="{Binding CardTid}" materialDesign:HintAssist.Hint="Cheque Number" Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                                </Grid>
                             </Grid>
                         </materialDesign:Card>
 
@@ -367,7 +372,7 @@
                             <DatePicker Grid.Column="0" SelectedDate="{Binding KpStartDate}" materialDesign:HintAssist.Hint="Start Date" Style="{StaticResource MaterialDesignOutlinedDatePicker}" Foreground="#212121" FontSize="13" Margin="0,0,12,0"/>
                             <DatePicker Grid.Column="1" SelectedDate="{Binding KpEndDate}" materialDesign:HintAssist.Hint="End Date" Style="{StaticResource MaterialDesignOutlinedDatePicker}" Foreground="#212121" FontSize="13" Margin="0,0,12,0"/>
                             
-                            <TextBox Grid.Column="2" Text="{Binding KpSearchText, UpdateSourceTrigger=PropertyChanged}" materialDesign:HintAssist.Hint="Search Name / Slip / DSM..." materialDesign:TextFieldAssist.HasClearButton="True" Style="{StaticResource MaterialDesignOutlinedTextBox}" Foreground="#212121" CaretBrush="#212121" FontSize="13" FontWeight="Medium" Margin="0,0,12,0" Height="40"/>
+                            <TextBox Grid.Column="2" Text="{Binding KpSearchText, UpdateSourceTrigger=PropertyChanged}" materialDesign:HintAssist.Hint="Search Name / Slip / DSM / Vehicle..." materialDesign:TextFieldAssist.HasClearButton="True" materialDesign:TextFieldAssist.LeadingIcon="Magnify" Style="{StaticResource MaterialDesignOutlinedTextBox}" FontSize="13" FontWeight="Medium" Margin="0,0,12,0"/>
                             
                             <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
                                 <Button Content="Export Excel" Command="{Binding ExportKpExcelCommand}" Style="{StaticResource MaterialDesignRaisedButton}" Margin="0,0,8,0"/>

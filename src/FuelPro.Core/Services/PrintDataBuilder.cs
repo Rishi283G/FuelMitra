@@ -66,15 +66,17 @@ public class PrintDataBuilder
             {
                 DsmName    = r.DsmName,
                 PumpNo     = r.PumpNoDisplay,
-                CardAmount = (decimal)(r.CreditCardMorning + r.CreditCardNight),
-                CreditCardMorning = (decimal)r.CreditCardMorning,
+                CardAmount = (decimal)(r.CreditCardMorning + r.CreditCardNight + r.CreditCardDay),
+                CreditCardMorning = (decimal)(r.CreditCardMorning + r.CreditCardDay),
                 CreditCardNight   = (decimal)r.CreditCardNight,
-                PhonePay   = (decimal)(r.PhonePeMorning + r.PhonePeNight + r.PhonePeCardMorning + r.PhonePeCardNight),
-                PhonePeMorning = (decimal)r.PhonePeMorning,
+                PhonePay   = (decimal)(r.PhonePeMorning + r.PhonePeNight + r.PhonePeDay + r.PhonePeCardMorning + r.PhonePeCardNight + r.PhonePeCardDay + r.PhonePe),
+                PhonePeMorning = (decimal)(r.PhonePeMorning + r.PhonePeDay + r.PhonePe),
                 PhonePeNight   = (decimal)r.PhonePeNight,
-                PhonePeCardMorning = (decimal)r.PhonePeCardMorning,
+                PhonePeCardMorning = (decimal)(r.PhonePeCardMorning + r.PhonePeCardDay),
                 PhonePeCardNight = (decimal)r.PhonePeCardNight,
-                PetroCard  = (decimal)r.PetroCard,
+                PetroCard  = (decimal)r.PetroCardTotal,
+                PetroCardMorning = (decimal)(r.PetroCardMorning + r.PetroCardDay),
+                PetroCardNight = (decimal)r.PetroCardNight,
                 Debit      = (decimal)r.Debit,
                 Expenses   = (decimal)r.Expenses,
                 Testing    = (decimal)r.Testing,
@@ -227,14 +229,17 @@ public class PrintDataBuilder
                 {
                     string refNo = "";
                     if (r.PaymentMode == "PhonePe" || r.PaymentMode == "Credit Card" ||
-                        r.PaymentMode == "PineLabs Card" || r.PaymentMode == "PetroCard" ||
-                        r.PaymentMode == "Bank Transfer")
+                        r.PaymentMode == "PineLabs Card" || r.PaymentMode == "PetroCard")
                     {
-                        refNo = $"TID: {r.CardTid}, Batch: {r.CardBatch}";
+                        refNo = !string.IsNullOrWhiteSpace(r.CardTid) ? $"TID: {r.CardTid}, Batch: {r.CardBatch}" : "";
+                    }
+                    else if (r.PaymentMode == "Bank Transfer")
+                    {
+                        refNo = !string.IsNullOrWhiteSpace(r.CardTid) ? $"Ref: {r.CardTid}" : "";
                     }
                     else if (r.PaymentMode == "Cheque")
                     {
-                        refNo = $"Chq: {r.ChequeNo}";
+                        refNo = !string.IsNullOrWhiteSpace(r.ChequeNo) ? $"Chq: {r.ChequeNo}" : (!string.IsNullOrWhiteSpace(r.CardTid) ? $"Chq: {r.CardTid}" : "");
                     }
                     else if (r.PaymentMode == "Cash")
                     {

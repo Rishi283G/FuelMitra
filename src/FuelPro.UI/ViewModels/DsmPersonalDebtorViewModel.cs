@@ -99,7 +99,8 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
     
     public string[] PaymentModes { get; } = { "Cash", "PhonePe", "PineLabs Card", "PetroCard", "Bank Transfer", "Cheque" };
     public bool IsCashPaymentMode => SelectedPaymentMode == "Cash";
-    public bool IsCardPaymentMode => SelectedPaymentMode.Contains("Card");
+    public bool IsCardPaymentMode => SelectedPaymentMode.Contains("Card") || SelectedPaymentMode.Equals("PhonePe", StringComparison.OrdinalIgnoreCase);
+    public bool IsChequePaymentMode => SelectedPaymentMode.Equals("Cheque", StringComparison.OrdinalIgnoreCase);
 
     // Edit Form fields
     [ObservableProperty] private bool _isEditingTransaction;
@@ -134,6 +135,7 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(IsCashPaymentMode));
         OnPropertyChanged(nameof(IsCardPaymentMode));
+        OnPropertyChanged(nameof(IsChequePaymentMode));
         if (value == "Cash")
         {
             CardTid = "";
@@ -295,12 +297,28 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
 
             foreach (var c in repayments)
             {
+                string tidBatchInfo = "";
+                if (c.PaymentMethod == "Cheque")
+                {
+                    if (!string.IsNullOrWhiteSpace(c.CardTid))
+                    {
+                        tidBatchInfo = $" (Cheque No: {c.CardTid})";
+                    }
+                }
+                else if (!string.IsNullOrWhiteSpace(c.CardTid) || !string.IsNullOrWhiteSpace(c.CardBatch))
+                {
+                    var details = new List<string>();
+                    if (!string.IsNullOrWhiteSpace(c.CardTid)) details.Add($"TID: {c.CardTid}");
+                    if (!string.IsNullOrWhiteSpace(c.CardBatch)) details.Add($"Batch: {c.CardBatch}");
+                    tidBatchInfo = $" ({string.Join(", ", details)})";
+                }
+
                 list.Add(new DsmPersonalDebtorLedgerRow
                 {
                     TransactionId = c.Id,
                     TransactionType = "Repayment",
                     Date = c.Date,
-                    Description = $"Repayment via {c.PaymentMethod} ({(c.Source == "OwnerPayroll" ? "Salary Deduction" : "Cash Repayment")})",
+                    Description = $"Repayment via {c.PaymentMethod}{tidBatchInfo}",
                     Debit = 0,
                     Credit = c.Amount,
                     PaymentMethod = c.PaymentMethod,
@@ -447,6 +465,10 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
             }
 
             IsEditingTransaction = false;
+            if (SelectedSummary != null)
+            {
+                await RecalculateRepaidAmountsAsync(SelectedSummary.DsmName);
+            }
             await LoadLedgerAsync();
             await LoadDataAsync();
 
@@ -526,6 +548,10 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
                 }
             }
 
+            if (SelectedSummary != null)
+            {
+                await RecalculateRepaidAmountsAsync(SelectedSummary.DsmName);
+            }
             await LoadLedgerAsync();
             await LoadDataAsync();
 
@@ -537,6 +563,39 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
             _logger.Error(ex, "Failed to delete transaction");
             MessageBox.Show($"❌ Delete failed: {ex.Message}", "Delete Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
+    }
+
+    private async Task RecalculateRepaidAmountsAsync(string dsmName)
+    {
+        var borrowings = await _dbContext.DsmPersonalDebtors
+            .Where(b => b.DsmName == dsmName)
+            .OrderBy(b => b.Date)
+            .ThenBy(b => b.Id)
+            .ToListAsync();
+
+        if (borrowings.Count == 0) return;
+
+        var personalDebtorIds = borrowings.Select(b => b.Id).ToList();
+        var totalRepaidForDsm = await _dbContext.DsmPersonalDebtorRepayments
+            .Where(r => personalDebtorIds.Contains(r.DsmPersonalDebtorId))
+            .SumAsync(r => r.Amount);
+
+        double remainingToDistribute = totalRepaidForDsm;
+
+        foreach (var b in borrowings)
+        {
+            double allocated = Math.Min(b.Amount, remainingToDistribute);
+            b.RepaidAmount = allocated;
+            remainingToDistribute -= allocated;
+        }
+
+        if (remainingToDistribute > 0 && borrowings.Count > 0)
+        {
+            borrowings.Last().RepaidAmount += remainingToDistribute;
+        }
+
+        _dbContext.DsmPersonalDebtors.UpdateRange(borrowings);
+        await _dbContext.SaveChangesAsync();
     }
 
     [RelayCommand]
@@ -557,99 +616,61 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
         try
         {
             var dsmName = SelectedSummary.DsmName;
-            var outstandingBorrowings = await _dbContext.DsmPersonalDebtors
+
+            var primaryBorrow = await _dbContext.DsmPersonalDebtors
                 .Where(b => b.DsmName == dsmName && b.Amount > b.RepaidAmount)
                 .OrderBy(b => b.Date)
                 .ThenBy(b => b.Id)
-                .ToListAsync();
+                .FirstOrDefaultAsync();
 
-            double remainingAmountToDistribute = RepaymentAmount;
-            bool isFirst = true;
-
-            foreach (var borrow in outstandingBorrowings)
+            if (primaryBorrow == null)
             {
-                if (remainingAmountToDistribute <= 0) break;
-
-                double remainingForThisBorrow = borrow.Amount - borrow.RepaidAmount;
-                double allocatedAmount = Math.Min(remainingAmountToDistribute, remainingForThisBorrow);
-
-                borrow.RepaidAmount += allocatedAmount;
-                _dbContext.DsmPersonalDebtors.Update(borrow);
-                remainingAmountToDistribute -= allocatedAmount;
-
-                var repayment = new DsmPersonalDebtorRepayment
-                {
-                    DsmPersonalDebtorId = borrow.Id,
-                    Amount = allocatedAmount,
-                    Date = RepaymentDate,
-                    PaymentMethod = SelectedPaymentMode,
-                    Source = "OwnerPayroll",
-                    Denom500 = isFirst ? (Denom500 ?? 0) : 0,
-                    Denom200 = isFirst ? (Denom200 ?? 0) : 0,
-                    Denom100 = isFirst ? (Denom100 ?? 0) : 0,
-                    Denom50 = isFirst ? (Denom50 ?? 0) : 0,
-                    Denom20 = isFirst ? (Denom20 ?? 0) : 0,
-                    Denom10 = isFirst ? (Denom10 ?? 0) : 0,
-                    Coins = isFirst ? (Coins ?? 0) : 0,
-                    CardTid = isFirst ? CardTid : "",
-                    CardBatch = isFirst ? CardBatch : ""
-                };
-
-                _dbContext.DsmPersonalDebtorRepayments.Add(repayment);
-                isFirst = false;
-            }
-
-            if (remainingAmountToDistribute > 0)
-            {
-                var existingBorrow = await _dbContext.DsmPersonalDebtors
+                primaryBorrow = await _dbContext.DsmPersonalDebtors
                     .Where(b => b.DsmName == dsmName)
                     .OrderByDescending(b => b.Date)
                     .ThenByDescending(b => b.Id)
                     .FirstOrDefaultAsync();
-
-                if (existingBorrow == null)
-                {
-                    existingBorrow = new DsmPersonalDebtor
-                    {
-                        DsmName = dsmName,
-                        Date = RepaymentDate,
-                        Time = DateTime.Now.ToString("HH:mm"),
-                        Amount = 0,
-                        RepaidAmount = remainingAmountToDistribute,
-                        Remarks = string.IsNullOrWhiteSpace(RepaymentRemarks) ? "Advance Payment" : RepaymentRemarks.Trim(),
-                        PaymentMethod = SelectedPaymentMode,
-                        CreatedAt = DateTime.Now
-                    };
-                    _dbContext.DsmPersonalDebtors.Add(existingBorrow);
-                    await _dbContext.SaveChangesAsync();
-                }
-                else
-                {
-                    existingBorrow.RepaidAmount += remainingAmountToDistribute;
-                    _dbContext.DsmPersonalDebtors.Update(existingBorrow);
-                }
-
-                var repayment = new DsmPersonalDebtorRepayment
-                {
-                    DsmPersonalDebtorId = existingBorrow.Id,
-                    Amount = remainingAmountToDistribute,
-                    Date = RepaymentDate,
-                    PaymentMethod = SelectedPaymentMode,
-                    Source = "OwnerPayroll",
-                    Denom500 = isFirst ? (Denom500 ?? 0) : 0,
-                    Denom200 = isFirst ? (Denom200 ?? 0) : 0,
-                    Denom100 = isFirst ? (Denom100 ?? 0) : 0,
-                    Denom50 = isFirst ? (Denom50 ?? 0) : 0,
-                    Denom20 = isFirst ? (Denom20 ?? 0) : 0,
-                    Denom10 = isFirst ? (Denom10 ?? 0) : 0,
-                    Coins = isFirst ? (Coins ?? 0) : 0,
-                    CardTid = isFirst ? CardTid : "",
-                    CardBatch = isFirst ? CardBatch : ""
-                };
-                _dbContext.DsmPersonalDebtorRepayments.Add(repayment);
             }
 
+            if (primaryBorrow == null)
+            {
+                primaryBorrow = new DsmPersonalDebtor
+                {
+                    DsmName = dsmName,
+                    Date = RepaymentDate,
+                    Time = DateTime.Now.ToString("HH:mm"),
+                    Amount = 0,
+                    RepaidAmount = 0,
+                    Remarks = string.IsNullOrWhiteSpace(RepaymentRemarks) ? "Advance Payment" : RepaymentRemarks.Trim(),
+                    PaymentMethod = SelectedPaymentMode,
+                    CreatedAt = DateTime.Now
+                };
+                _dbContext.DsmPersonalDebtors.Add(primaryBorrow);
+                await _dbContext.SaveChangesAsync();
+            }
+
+            var repayment = new DsmPersonalDebtorRepayment
+            {
+                DsmPersonalDebtorId = primaryBorrow.Id,
+                Amount = RepaymentAmount,
+                Date = RepaymentDate,
+                PaymentMethod = SelectedPaymentMode,
+                Source = "OwnerPayroll",
+                Denom500 = Denom500 ?? 0,
+                Denom200 = Denom200 ?? 0,
+                Denom100 = Denom100 ?? 0,
+                Denom50 = Denom50 ?? 0,
+                Denom20 = Denom20 ?? 0,
+                Denom10 = Denom10 ?? 0,
+                Coins = Coins ?? 0,
+                CardTid = CardTid ?? "",
+                CardBatch = CardBatch ?? ""
+            };
+
+            _dbContext.DsmPersonalDebtorRepayments.Add(repayment);
             await _dbContext.SaveChangesAsync();
+
+            await RecalculateRepaidAmountsAsync(dsmName);
 
             MessageBox.Show("Repayment recorded successfully.", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
 
@@ -840,7 +861,8 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
         {
             query = query.Where(kp => kp.Name.Contains(KpSearchText, StringComparison.OrdinalIgnoreCase) ||
                                      kp.DsmName.Contains(KpSearchText, StringComparison.OrdinalIgnoreCase) ||
-                                     kp.SlipNumber.Contains(KpSearchText, StringComparison.OrdinalIgnoreCase));
+                                     kp.SlipNumber.Contains(KpSearchText, StringComparison.OrdinalIgnoreCase) ||
+                                     (kp.VehicleNumber != null && kp.VehicleNumber.Contains(KpSearchText, StringComparison.OrdinalIgnoreCase)));
         }
 
         var filtered = query.ToList();

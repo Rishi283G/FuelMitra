@@ -52,7 +52,15 @@ public class CreditorRepayment
         {
             if (string.Equals(PaymentMode, "Cheque", StringComparison.OrdinalIgnoreCase))
             {
-                return $"Cheque No: {ChequeNo ?? "—"}";
+                return !string.IsNullOrWhiteSpace(ChequeNo) ? $"Cheque No: {ChequeNo}" : (!string.IsNullOrWhiteSpace(CardTid) ? $"Cheque No: {CardTid}" : "—");
+            }
+            if (string.Equals(PaymentMode, "Bank Transfer", StringComparison.OrdinalIgnoreCase))
+            {
+                return !string.IsNullOrWhiteSpace(CardTid) ? $"Ref: {CardTid}" : "—";
+            }
+            if (string.Equals(PaymentMode, "Cash", StringComparison.OrdinalIgnoreCase))
+            {
+                return "—";
             }
             if (!string.IsNullOrWhiteSpace(CardTid) || !string.IsNullOrWhiteSpace(CardBatch))
             {

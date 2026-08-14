@@ -561,8 +561,8 @@ public partial class DebtorManagementViewModel : ObservableObject
             Amount = RepaymentAmount,
             CreatedAt = DateTime.Now,
             ShiftNumber = shiftNumber,
-            CardTid = (SelectedPaymentMode == "PhonePe" || SelectedPaymentMode == "PineLabs Card" || SelectedPaymentMode == "PetroCard" || SelectedPaymentMode == "Others") ? CardTid?.Trim() : null,
-            CardBatch = (SelectedPaymentMode == "PhonePe" || SelectedPaymentMode == "PineLabs Card" || SelectedPaymentMode == "PetroCard" || SelectedPaymentMode == "Others") ? CardBatch?.Trim() : null,
+            CardTid = (SelectedPaymentMode == "PhonePe" || SelectedPaymentMode == "PineLabs Card" || SelectedPaymentMode == "Credit Card" || SelectedPaymentMode == "PetroCard" || SelectedPaymentMode == "Petro Card" || SelectedPaymentMode == "Others") ? CardTid?.Trim() : null,
+            CardBatch = (SelectedPaymentMode == "PhonePe" || SelectedPaymentMode == "PineLabs Card" || SelectedPaymentMode == "Credit Card" || SelectedPaymentMode == "PetroCard" || SelectedPaymentMode == "Petro Card" || SelectedPaymentMode == "Others") ? CardBatch?.Trim() : null,
             Denom500 = SelectedPaymentMode == "Cash" ? (Denom500 ?? 0) : 0,
             Denom200 = SelectedPaymentMode == "Cash" ? (Denom200 ?? 0) : 0,
             Denom100 = SelectedPaymentMode == "Cash" ? (Denom100 ?? 0) : 0,
@@ -669,8 +669,9 @@ public partial class DebtorManagementViewModel : ObservableObject
                     bool within48Hours = (DateTime.Now - x.Debit.CreatedAt).TotalHours <= 48;
                     bool canEdit = isOwner || (!isLocked && within48Hours);
 
+                    var slipStr = !string.IsNullOrWhiteSpace(x.Debit.SlipNumber) ? x.Debit.SlipNumber : x.Debit.ChequeNo;
                     var details = new List<string>();
-                    if (!string.IsNullOrWhiteSpace(x.Debit.SlipNumber)) details.Add($"Slip: {x.Debit.SlipNumber}");
+                    if (!string.IsNullOrWhiteSpace(slipStr)) details.Add($"Slip: {slipStr}");
                     if (!string.IsNullOrWhiteSpace(x.Debit.VehicleNumber)) details.Add($"Vehicle: {x.Debit.VehicleNumber}");
                     string detailsStr = details.Count > 0 ? $" ({string.Join(", ", details)})" : "";
 
@@ -682,7 +683,7 @@ public partial class DebtorManagementViewModel : ObservableObject
                         Credit = 0,
                         TransactionType = "Debt",
                         TransactionId = x.Debit.DebitId,
-                        SlipNumber = x.Debit.SlipNumber,
+                        SlipNumber = slipStr,
                         Remarks = x.Debit.Remarks,
                         VehicleNumber = x.Debit.VehicleNumber,
                         Amount = x.Debit.Amount,

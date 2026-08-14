@@ -97,6 +97,7 @@ public partial class OilDefDailyLogViewModel : ObservableObject
 
     // Grids History Lists
     public ObservableCollection<OilDefDailyLog> HistoryLogs { get; } = new();
+    public ObservableCollection<OilDefDailyLog> HistoryAdjustments { get; } = new();
     public ObservableCollection<OilDefPurchase> HistoryPurchases { get; } = new();
 
     [ObservableProperty]
@@ -296,10 +297,22 @@ public partial class OilDefDailyLogViewModel : ObservableObject
             HistoryLogs.Clear();
             var logs = await _dbContext.OilDefDailyLogs
                 .Include(l => l.Product)
+                .Where(l => l.SoldQuantity > 0 || l.AddedQuantity > 0)
                 .OrderByDescending(l => l.LogDate)
+                .ThenByDescending(l => l.Id)
                 .Take(50)
                 .ToListAsync();
             foreach (var l in logs) HistoryLogs.Add(l);
+
+            HistoryAdjustments.Clear();
+            var adjustments = await _dbContext.OilDefDailyLogs
+                .Include(l => l.Product)
+                .Where(l => l.AdjustmentQuantity != 0)
+                .OrderByDescending(l => l.LogDate)
+                .ThenByDescending(l => l.Id)
+                .Take(50)
+                .ToListAsync();
+            foreach (var a in adjustments) HistoryAdjustments.Add(a);
 
             HistoryPurchases.Clear();
             var purchases = await _dbContext.OilDefPurchases
@@ -395,6 +408,41 @@ public partial class OilDefDailyLogViewModel : ObservableObject
         {
             Serilog.Log.Error(ex, "Failed to delete OilDefDailyLog {LogId}", log.Id);
             System.Windows.MessageBox.Show($"Failed to delete sale log: {ex.Message}", "Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+        }
+    }
+
+    [RelayCommand]
+    private async Task DeleteAdjustmentLogAsync(OilDefDailyLog log)
+    {
+        if (log == null) return;
+
+        var result = System.Windows.MessageBox.Show($"Are you sure you want to delete this stock adjustment of {log.AdjustmentQuantity} unit(s) for {log.Product?.ProductName ?? log.ProductType}?", "Confirm Delete", System.Windows.MessageBoxButton.YesNo, System.Windows.MessageBoxImage.Question);
+        if (result != System.Windows.MessageBoxResult.Yes) return;
+
+        try
+        {
+            var entity = await _dbContext.OilDefDailyLogs.FindAsync(log.Id);
+            if (entity != null)
+            {
+                var prodId = entity.ProductId;
+                var logDate = entity.LogDate.Date;
+                _dbContext.OilDefDailyLogs.Remove(entity);
+                await _dbContext.SaveChangesAsync();
+                await RecalculateRunningBalancesAsync(prodId, logDate);
+            }
+
+            if (EditingAdjustmentLog?.Id == log.Id)
+            {
+                CancelEditAdjustment();
+            }
+
+            await LoadDashboardDataAsync();
+            await LoadHistoryAsync();
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to delete adjustment log {LogId}", log.Id);
+            System.Windows.MessageBox.Show($"Failed to delete adjustment log: {ex.Message}", "Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
         }
     }
 
@@ -689,6 +737,15 @@ public partial class OilDefDailyLogViewModel : ObservableObject
         IsLoading = true;
         try
         {
+            // Determine effective adjustment quantity (Expired Items, Damaged Stock, Supplier Return reduce stock)
+            double effectiveQty = AdjustmentQty;
+            if (string.Equals(SelectedAdjustmentType, "Expired Item", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(SelectedAdjustmentType, "Damaged Stock", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(SelectedAdjustmentType, "Supplier Return", StringComparison.OrdinalIgnoreCase))
+            {
+                effectiveQty = -Math.Abs(AdjustmentQty);
+            }
+
             // If editing, validate same day edit restriction
             if (EditingAdjustmentLog != null)
             {
@@ -698,44 +755,36 @@ public partial class OilDefDailyLogViewModel : ObservableObject
                     return;
                 }
 
-                // If product or date changed, clean up the old log record
-                if (EditingAdjustmentLog.ProductId != SelectedProduct.Id || EditingAdjustmentLog.LogDate.Date != AdjustmentDate.Date)
+                var logToEdit = await _dbContext.OilDefDailyLogs.FindAsync(EditingAdjustmentLog.Id);
+                if (logToEdit != null)
                 {
-                    var oldLog = await _dbContext.OilDefDailyLogs.FindAsync(EditingAdjustmentLog.Id);
-                    if (oldLog != null)
-                    {
-                        oldLog.AdjustmentQuantity = 0;
-                        oldLog.AdjustmentType = null;
-                        oldLog.Remarks = null;
-                        _dbContext.Entry(oldLog).State = EntityState.Modified;
-                        await _dbContext.SaveChangesAsync();
-                        await RecalculateRunningBalancesAsync(oldLog.ProductId, oldLog.LogDate);
-                    }
+                    logToEdit.ProductId = SelectedProduct.Id;
+                    logToEdit.ProductType = SelectedProduct.Category;
+                    logToEdit.AdjustmentQuantity = effectiveQty;
+                    logToEdit.AdjustmentType = SelectedAdjustmentType;
+                    logToEdit.Remarks = AdjustmentRemarks;
+                    _dbContext.Entry(logToEdit).State = EntityState.Modified;
                 }
-            }
-
-            var log = await _dbContext.OilDefDailyLogs
-                .FirstOrDefaultAsync(l => l.ProductId == SelectedProduct.Id && l.LogDate == AdjustmentDate.Date);
-
-            if (log != null)
-            {
-                log.AdjustmentQuantity = AdjustmentQty;
-                log.AdjustmentType = SelectedAdjustmentType;
-                log.Remarks = AdjustmentRemarks;
-                _dbContext.Entry(log).State = EntityState.Modified;
             }
             else
             {
-                log = new OilDefDailyLog
+                var now = DateTime.Now;
+                DateTime entryTimeStamp = AdjustmentDate.Date == DateTime.Today
+                    ? now
+                    : AdjustmentDate.Date.Add(now.TimeOfDay);
+
+                var newAdjustmentLog = new OilDefDailyLog
                 {
-                    LogDate = AdjustmentDate.Date,
+                    LogDate = entryTimeStamp,
                     ProductId = SelectedProduct.Id,
                     ProductType = SelectedProduct.Category,
-                    AdjustmentQuantity = AdjustmentQty,
+                    AdjustmentQuantity = effectiveQty,
                     AdjustmentType = SelectedAdjustmentType,
-                    Remarks = AdjustmentRemarks
+                    Remarks = AdjustmentRemarks,
+                    AddedQuantity = 0,
+                    SoldQuantity = 0
                 };
-                _dbContext.OilDefDailyLogs.Add(log);
+                _dbContext.OilDefDailyLogs.Add(newAdjustmentLog);
             }
 
             await _dbContext.SaveChangesAsync();

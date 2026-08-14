@@ -215,7 +215,7 @@
                                     <DataGridTextColumn Header="DSM Name" Binding="{Binding DsmName}" Width="2*" />
                                     <DataGridTextColumn Header="Pump" Binding="{Binding PumpId, Converter={StaticResource PumpIdConverter}}" Width="*" />
                                     <DataGridTextColumn Header="Debtor Name" Binding="{Binding DebtorName}" Width="3*" />
-                                    <DataGridTextColumn Header="Slip No" Binding="{Binding ChequeNo}" Width="2*" />
+                                    <DataGridTextColumn Header="Cheque No" Binding="{Binding ChequeNo}" Width="2*" />
                                     <DataGridTextColumn Header="Amount" Binding="{Binding Amount, Converter={StaticResource CurrencyConverter}}" Width="2*" />
                                 </DataGrid.Columns>
                             </DataGrid>

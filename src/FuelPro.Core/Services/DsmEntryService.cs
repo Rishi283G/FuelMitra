@@ -465,7 +465,8 @@ public class DsmEntryService
                                        + (entry.PaymentCollection?.PetroCardDay ?? 0)
                                        + (entry.PaymentCollection?.PetroCardNight ?? 0)),
                 CashDeposit  = (decimal)(cash1Total > 0 ? cash1Total : (entry.PaymentCollection?.CashDeposit ?? 0)),
-                PhysicalCash = (decimal)cash2Total
+                PhysicalCash = (decimal)cash2Total,
+                Others       = (decimal)(entry.PaymentCollection?.Others ?? 0)
             },
             DebitEntries   = entry.DebitEntries.Select(d => new DebitEntryDto { Amount = (decimal)d.Amount }).ToList(),
             Expenses       = entry.Expenses.Select(e => new ExpenseDto { Amount = (decimal)e.Amount })

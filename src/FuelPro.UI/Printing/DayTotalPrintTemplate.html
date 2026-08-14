@@ -119,12 +119,6 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
   </div>
   <hr class="div">
 
-  <!-- SECTION 3: TOTAL DIGITAL & CASH COLLECTIONS -->
-  <div class="sec">
-    <div class="sec-title">3. Total Digital &amp; Cash Collections</div>
-    <div class="coll-grid" id="collGrid"></div>
-  </div>
-  <hr class="div">
 
   <!-- SECTION 4: CREDITORS & EXPENSES -->
   <div class="g2" style="padding-top:14px">
@@ -326,7 +320,9 @@ function renderData(){
     var ph = r.phonePeMorning || r.phonePe || 0;
     var phN = r.phonePeNight || 0;
     var petroM = r.petroCardMorning || 0;
-    var petroN = r.petroCardNight || (r.petroCardMorning ? 0 : (r.petroCard || 0));
+    var petroN = r.petroCardNight || 0;
+    var petroTotal = r.petroCard || (petroM + petroN);
+    if (petroM === 0 && petroN === 0 && petroTotal > 0) { petroM = petroTotal; }
     var deb = r.debit || 0;
     var exp = r.expenses || 0;
     var test = r.testing || 0;
@@ -367,9 +363,9 @@ function renderData(){
       var rows = getVal(g, 'rows') || [];
       
       var isMs1 = groupName.indexOf('Petrol') !== -1 || groupName.indexOf('MS') !== -1 || groupName.indexOf('Tank 1') !== -1;
-      var borderColor = isMs1 ? '#FF9800' : '#03A9F4';
-      var headerBg = isMs1 ? '#E65100' : '#0288D1';
-      var cardBg = isMs1 ? '#FFF8E1' : '#E3F2FD';
+      var borderColor = isMs1 ? '#00C853' : '#0288D1';
+      var headerBg = isMs1 ? '#00C853' : '#0288D1';
+      var cardBg = isMs1 ? '#E8F5E9' : '#E3F2FD';
 
       var card = document.createElement('div');
       card.style.cssText = 'flex: 1; border: 1.5px solid ' + borderColor + '; border-radius: 6px; padding: 10px; background: ' + cardBg + '; box-shadow: 0 1px 3px rgba(0,0,0,0.05);';
@@ -449,23 +445,28 @@ function renderData(){
   var cashAmt = getAmt("Cash Deposit") + getAmt("Cash In Hand");
   var phonePeAmt = getAmt("PhonePe Morning") + getAmt("PhonePe Night");
   var phonePeCardAmt = getAmt("PhonePe Card Morning") + getAmt("PhonePe Card Night");
-  var pineLabsAmt = getAmt("PineLabs Morning") + getAmt("PineLabs Night");
+  var pineLabsAmt = getAmt("Card Morning") + getAmt("Card Night") + getAmt("PineLabs Morning") + getAmt("PineLabs Night");
+  var petroCardAmt = getAmt("Petro Card Morning") + getAmt("Petro Card Night") + getAmt("Petro Card");
   var debtorsAmt = getAmt("Debtors");
   var otherAmt = d.otherCashTotal || d.otherCashTotalAmount || 0;
 
-  var cg=document.getElementById('collGrid');cg.innerHTML='';
-  var cols=[
-    {lbl:'Cash',val:cashAmt},
-    {lbl:'PhonePe',val:phonePeAmt},
-    {lbl:'PineLabs Card',val:pineLabsAmt},
-    {lbl:'Credit (Debtors)',val:debtorsAmt},
-    {lbl:'Other Collections',val:otherAmt}
-  ];
-  cols.forEach(function(c){
-    var div=document.createElement('div');div.className='coll-item';
-    div.innerHTML='<div class="coll-item-lbl">'+c.lbl+'</div><div class="coll-item-val">'+inrZ(c.val)+'</div>';
-    cg.appendChild(div);
-  });
+  var cg=document.getElementById('collGrid');
+  if (cg) {
+    cg.innerHTML='';
+    var cols=[
+      {lbl:'Cash',val:cashAmt},
+      {lbl:'PhonePe',val:phonePeAmt},
+      {lbl:'PineLabs Card',val:pineLabsAmt},
+      {lbl:'Petro Card',val:petroCardAmt},
+      {lbl:'Credit (Debtors)',val:debtorsAmt},
+      {lbl:'Other Collections',val:otherAmt}
+    ];
+    cols.forEach(function(c){
+      var div=document.createElement('div');div.className='coll-item';
+      div.innerHTML='<div class="coll-item-lbl">'+c.lbl+'</div><div class="coll-item-val">'+inrZ(c.val)+'</div>';
+      cg.appendChild(div);
+    });
+  }
 
   // Creditors
   var ct=document.getElementById('tCred');ct.innerHTML='';var credTot=d.creditorsTotal||0;

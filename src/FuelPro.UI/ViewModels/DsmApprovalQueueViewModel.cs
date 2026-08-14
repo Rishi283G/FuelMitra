@@ -491,11 +491,11 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                             {
                                 DebtorEntries.Add(new DsmDebitRow
                                 {
-                                    DebtorName = dbEntry.debtorName ?? "",
+                                    DebtorName = (string?)(dbEntry.debtorName ?? dbEntry.debtor_name ?? dbEntry.name ?? ""),
                                     Amount = (double)(dbEntry.amount ?? 0.0),
-                                    VehicleNumber = dbEntry.vehicleNumber,
-                                    SlipNumber = dbEntry.slipNumber ?? "",
-                                    EntryTime = dbEntry.time,
+                                    VehicleNumber = (string?)(dbEntry.vehicleNumber ?? dbEntry.vehicle_number ?? dbEntry.vehicleNo ?? dbEntry.vehicle ?? ""),
+                                    SlipNumber = (string?)(dbEntry.slipNumber ?? dbEntry.slip_number ?? dbEntry.slipNo ?? dbEntry.slip ?? ""),
+                                    EntryTime = (string?)(dbEntry.time ?? dbEntry.entryTime ?? ""),
                                     OnRowChanged = RecalculateTotals
                                 });
                             }
@@ -550,6 +550,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                             {
                                 string name = (kp.name ?? kp.Name ?? string.Empty).ToString();
                                 string slipNumber = (kp.slipNumber ?? kp.SlipNumber ?? string.Empty).ToString();
+                                string vehicleNumber = (kp.vehicleNumber ?? kp.VehicleNumber ?? kp.vehicle_number ?? kp.vehicleNo ?? string.Empty).ToString();
                                 double amount = Convert.ToDouble((object?)(kp.amount ?? kp.Amount ?? 0.0));
 
                                 KhandhareEntries.Add(new KhandharePetroleumEntry
@@ -558,6 +559,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                                     Date = submission.ShiftDate,
                                     Name = name,
                                     SlipNumber = slipNumber,
+                                    VehicleNumber = vehicleNumber,
                                     Amount = amount
                                 });
                             }
@@ -700,20 +702,46 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
         };
 
         var calc = _dsmCalculationService.Calculate(dto);
-        double oilDefSalesTotal = OilDefSales.Sum(s => s.Total);
-        TotalCollections = (double)calc.TotalCollection + oilDefSalesTotal;
+        TotalCollections = (double)calc.TotalCollection;
         MismatchAmount = TotalCollections - GrossSales;
 
         double rawShortage = MismatchAmount < 0 ? Math.Abs(MismatchAmount) : 0;
-        if (rawShortage > 10)
+        double dsmLossAmount = rawShortage > 10.0 ? (rawShortage - 10.0) : 0.0;
+        if (rawShortage > 10.0)
         {
-            ShortAmount = 0; // Transferred to DSM Loss Ledger (> 10)
+            ShortAmount = 10.0; // Max ₹10 kept as shift shortage
         }
         else
         {
             ShortAmount = rawShortage; // Shift Short (<= 10)
         }
         ExcessAmount = MismatchAmount > 0 ? MismatchAmount : 0;
+
+        // Auto update PersonalDebtors grid for shortage > ₹10
+        var autoLossItem = PersonalDebtors.FirstOrDefault(pd => pd.Remarks != null && pd.Remarks.Contains("Auto Shift Shortage"));
+        if (dsmLossAmount > 0)
+        {
+            if (autoLossItem != null)
+            {
+                autoLossItem.Amount = dsmLossAmount;
+            }
+            else if (SelectedSubmission != null)
+            {
+                PersonalDebtors.Add(new DsmPersonalDebtor
+                {
+                    DsmName = SelectedSubmission.DsmName,
+                    Date = SelectedSubmission.ShiftDate,
+                    Time = DateTime.Now.ToString("hh:mm tt"),
+                    Amount = dsmLossAmount,
+                    Remarks = $"Auto Shift Shortage (Pump {SelectedSubmission.PumpId}, Shift {SelectedSubmission.ShiftType})",
+                    PaymentMethod = "Cash"
+                });
+            }
+        }
+        else if (autoLossItem != null)
+        {
+            PersonalDebtors.Remove(autoLossItem);
+        }
 
         // Check continuity warnings
         HasContinuityWarnings = NozzleReadings.Any(r => r.HasContinuityError);
@@ -1243,9 +1271,10 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                 {
                     DebtorName = dbEntry.DebtorName,
                     Amount = dbEntry.Amount,
-                    VehicleNumber = string.IsNullOrEmpty(dbEntry.VehicleNumber) ? null : dbEntry.VehicleNumber,
-                    ChequeNo = string.IsNullOrEmpty(dbEntry.SlipNumber) ? null : dbEntry.SlipNumber,
-                    EntryTime = string.IsNullOrEmpty(dbEntry.EntryTime) ? null : dbEntry.EntryTime,
+                    VehicleNumber = string.IsNullOrWhiteSpace(dbEntry.VehicleNumber) ? null : dbEntry.VehicleNumber.Trim(),
+                    SlipNumber = string.IsNullOrWhiteSpace(dbEntry.SlipNumber) ? null : dbEntry.SlipNumber.Trim(),
+                    ChequeNo = string.IsNullOrWhiteSpace(dbEntry.SlipNumber) ? null : dbEntry.SlipNumber.Trim(),
+                    EntryTime = string.IsNullOrWhiteSpace(dbEntry.EntryTime) ? null : dbEntry.EntryTime.Trim(),
                     PaymentMethod = "Credit"
                 });
             }
@@ -1261,11 +1290,11 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                 });
             }
 
-            // Automatic DSM Loss calculation based on mismatch threshold (only amount > 10 is DSM Loss)
+            // Save personal debtors (including auto DSM loss shortage)
             double totalShortage = MismatchAmount < 0 ? Math.Abs(MismatchAmount) : 0;
             double dsmLossAmount = totalShortage > 10.0 ? (totalShortage - 10.0) : 0.0;
-            var personalDebtors = new List<DsmPersonalDebtor>();
-            if (dsmLossAmount > 0)
+            var personalDebtors = PersonalDebtors.ToList();
+            if (personalDebtors.Count == 0 && dsmLossAmount > 0)
             {
                 personalDebtors.Add(new DsmPersonalDebtor
                 {

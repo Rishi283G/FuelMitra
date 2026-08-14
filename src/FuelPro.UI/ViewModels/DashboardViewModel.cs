@@ -322,6 +322,10 @@ public partial class DashboardViewModel : ObservableObject
                     petroVal = pc?.PetroCardDay ?? 0;
                 }
 
+                var expenseDtos = entry.Expenses.Select(e => new ExpenseDto { Amount = (decimal)e.Amount })
+                    .Concat(entry.KhandharePetroleumEntries != null ? entry.KhandharePetroleumEntries.Select(k => new ExpenseDto { Amount = (decimal)k.Amount }) : Enumerable.Empty<ExpenseDto>())
+                    .ToList();
+
                 var calc = _dsmCalculationService.Calculate(new DsmEntryDto
                 {
                     DSMEntryId = entry.DsmEntryId,
@@ -331,6 +335,7 @@ public partial class DashboardViewModel : ObservableObject
                         PhonePe = (decimal)pp,
                         CreditCard = (decimal)cc,
                         PetroCard = (decimal)petro,
+                        Others = (decimal)(entry.PaymentCollection?.Others ?? 0),
                         CashDeposit = (decimal)(cash1 > 0 ? cash1 : (entry.PaymentCollection?.CashDeposit ?? 0)),
                         PhysicalCash = (decimal)cash2
                     },
@@ -340,7 +345,7 @@ public partial class DashboardViewModel : ObservableObject
                         FuelType = t.FuelType,
                         Amount = (decimal)t.Amount
                     }).ToList(),
-                    Expenses = entry.Expenses.Select(e => new ExpenseDto { Amount = (decimal)e.Amount }).ToList()
+                    Expenses = expenseDtos
                 });
 
                 double mismatch = (double)calc.Mismatch;

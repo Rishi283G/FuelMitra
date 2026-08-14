@@ -43,15 +43,19 @@ public class ShiftAggregationService : IShiftAggregationService
                     PumpId = entry.PumpId,
                     ConnectedPumpId = entry.ConnectedPumpId,
                     PhonePeCard = entry.PaymentCollection?.PhonePeCard ?? 0,
-                    PhonePeCardMorning = entry.PaymentCollection?.PhonePeCardMorning ?? 0,
+                    PhonePeCardMorning = (entry.PaymentCollection?.PhonePeCardMorning ?? 0) + (entry.PaymentCollection?.PhonePeCardDay ?? 0),
+                    PhonePeCardDay = entry.PaymentCollection?.PhonePeCardDay ?? 0,
                     PhonePeCardNight = entry.PaymentCollection?.PhonePeCardNight ?? 0,
                     PhonePe = entry.PaymentCollection?.PhonePe ?? 0,
-                    PhonePeMorning = entry.PaymentCollection?.PhonePeMorning ?? 0,
+                    PhonePeMorning = (entry.PaymentCollection?.PhonePeMorning ?? 0) + (entry.PaymentCollection?.PhonePeDay ?? 0),
+                    PhonePeDay = entry.PaymentCollection?.PhonePeDay ?? 0,
                     PhonePeNight = entry.PaymentCollection?.PhonePeNight ?? 0,
-                    CreditCardMorning = entry.PaymentCollection?.CreditCardMorning ?? 0,
+                    CreditCardMorning = (entry.PaymentCollection?.CreditCardMorning ?? 0) + (entry.PaymentCollection?.CreditCardDay ?? 0),
+                    CreditCardDay = entry.PaymentCollection?.CreditCardDay ?? 0,
                     CreditCardNight = entry.PaymentCollection?.CreditCardNight ?? 0,
                     PetroCard = entry.PaymentCollection?.PetroCard ?? 0,
-                    PetroCardMorning = entry.PaymentCollection?.PetroCardMorning ?? 0,
+                    PetroCardMorning = (entry.PaymentCollection?.PetroCardMorning ?? 0) + (entry.PaymentCollection?.PetroCardDay ?? 0),
+                    PetroCardDay = entry.PaymentCollection?.PetroCardDay ?? 0,
                     PetroCardNight = entry.PaymentCollection?.PetroCardNight ?? 0,
                     Others = entry.PaymentCollection?.Others ?? 0,
                     CashDeposit = cash1 > 0 ? cash1 : (entry.PaymentCollection?.CashDeposit ?? 0),
@@ -85,10 +89,12 @@ public class ShiftAggregationService : IShiftAggregationService
             PhonePeCard = rows.Sum(r => r.PhonePeCard),
             PhonePeCardMorning = rows.Sum(r => r.PhonePeCardMorning),
             PhonePeCardNight = rows.Sum(r => r.PhonePeCardNight),
-            PhonePe = rows.Sum(r => r.PhonePe),
+            PhonePe = rows.Sum(r => r.PhonePeTotal),
+            PhonePeMorning = rows.Sum(r => r.PhonePeMorning),
+            PhonePeNight = rows.Sum(r => r.PhonePeNight),
             CreditCardMorning = rows.Sum(r => r.CreditCardMorning),
             CreditCardNight = rows.Sum(r => r.CreditCardNight),
-            PetroCard = rows.Sum(r => r.PetroCard),
+            PetroCard = rows.Sum(r => r.PetroCardTotal),
             PetroCardMorning = rows.Sum(r => r.PetroCardMorning),
             PetroCardNight = rows.Sum(r => r.PetroCardNight),
             Others = rows.Sum(r => r.Others),
@@ -119,15 +125,16 @@ public class ShiftAggregationService : IShiftAggregationService
                 double grossSales = g.Sum(r => r.GrossSales);
                 double cashDeposit = g.Sum(r => r.CashDeposit);
                 double cashInHand = g.Sum(r => r.CashInHand);
-                double phonePe = g.Sum(r => r.PhonePe);
-                double phonePeCard = g.Sum(r => r.PhonePeCard);
-                double creditCard = g.Sum(r => r.CreditCardMorning + r.CreditCardNight);
-                double petroCard = g.Sum(r => r.PetroCard);
+                double phonePe = g.Sum(r => r.PhonePeTotal);
+                double phonePeCard = g.Sum(r => r.PhonePeCard + r.PhonePeCardMorning + r.PhonePeCardDay + r.PhonePeCardNight);
+                double creditCard = g.Sum(r => r.CreditCardTotal);
+                double petroCard = g.Sum(r => r.PetroCardTotal);
+                double others = g.Sum(r => r.Others);
                 double debit = g.Sum(r => r.Debit);
                 double expenses = g.Sum(r => r.Expenses);
                 double testing = g.Sum(r => r.Testing);
 
-                double totalCollection = cashDeposit + cashInHand + phonePe + phonePeCard + creditCard + petroCard + debit + expenses + testing;
+                double totalCollection = cashDeposit + cashInHand + phonePe + phonePeCard + creditCard + petroCard + others + debit + expenses + testing;
                 double mismatch = totalCollection - grossSales;
 
                 return new DsmShiftTotalDto

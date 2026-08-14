@@ -171,7 +171,7 @@
                                             <DatePicker Grid.Column="2" SelectedDate="{Binding RepaymentDate}" materialDesign:HintAssist.Hint="Repayment Date" Style="{StaticResource MaterialDesignOutlinedDatePicker}"/>
                                         </Grid>
 
-                                        <TextBox Text="{Binding ChequeNumber, UpdateSourceTrigger=PropertyChanged}" materialDesign:HintAssist.Hint="Slip No" Margin="0,0,0,12">
+                                        <TextBox Text="{Binding ChequeNumber, UpdateSourceTrigger=PropertyChanged}" materialDesign:HintAssist.Hint="Cheque Number" Margin="0,0,0,12">
                                             <TextBox.Style>
                                                 <Style TargetType="TextBox" BasedOn="{StaticResource MaterialDesignOutlinedTextBox}">
                                                     <Setter Property="Visibility" Value="Collapsed"/>
@@ -235,6 +235,15 @@
                                                              <Setter Property="Visibility" Value="Visible" />
                                                          </DataTrigger>
                                                          <DataTrigger Binding="{Binding SelectedPaymentMode}" Value="PineLabs Card">
+                                                             <Setter Property="Visibility" Value="Visible" />
+                                                         </DataTrigger>
+                                                         <DataTrigger Binding="{Binding SelectedPaymentMode}" Value="PetroCard">
+                                                             <Setter Property="Visibility" Value="Visible" />
+                                                         </DataTrigger>
+                                                         <DataTrigger Binding="{Binding SelectedPaymentMode}" Value="Petro Card">
+                                                             <Setter Property="Visibility" Value="Visible" />
+                                                         </DataTrigger>
+                                                         <DataTrigger Binding="{Binding SelectedPaymentMode}" Value="Credit Card">
                                                              <Setter Property="Visibility" Value="Visible" />
                                                          </DataTrigger>
                                                          <DataTrigger Binding="{Binding SelectedPaymentMode}" Value="Others">
@@ -615,7 +624,7 @@
                                         <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat='{}{0:dd MMM yyyy}'}" Width="110"/>
                                         <DataGridTextColumn Header="Debtor Name" Binding="{Binding DebtorName}" Width="*"/>
                                         <DataGridTextColumn Header="DSM Name" Binding="{Binding DsmName}" Width="100"/>
-                                        <DataGridTextColumn Header="Slip No" Binding="{Binding ChequeNo}" Width="100"/>
+                                        <DataGridTextColumn Header="Cheque No" Binding="{Binding ChequeNo}" Width="100"/>
                                         <DataGridTextColumn Header="Amount" Binding="{Binding Amount, Converter={StaticResource CurrencyConverter}}" Width="110"/>
                                     </DataGrid.Columns>
                                 </DataGrid>
@@ -630,7 +639,7 @@
                                         <DataGridTextColumn Header="Repayment Date" Binding="{Binding RepaymentDate, StringFormat='{}{0:dd MMM yyyy}'}" Width="110"/>
                                         <DataGridTextColumn Header="Debtor Name" Binding="{Binding CreditorName}" Width="*"/>
                                         <DataGridTextColumn Header="Payment Mode" Binding="{Binding PaymentMode}" Width="100"/>
-                                        <DataGridTextColumn Header="Slip No" Binding="{Binding ChequeNo}" Width="100"/>
+                                        <DataGridTextColumn Header="Cheque No" Binding="{Binding ChequeNo}" Width="100"/>
                                         <DataGridTextColumn Header="Amount" Binding="{Binding Amount, Converter={StaticResource CurrencyConverter}}" Width="110"/>
                                     </DataGrid.Columns>
                                 </DataGrid>

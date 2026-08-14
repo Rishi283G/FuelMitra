@@ -130,18 +130,21 @@ public class ReportService : IReportService
             else if (string.Equals(mode, "Bank Transfer", StringComparison.OrdinalIgnoreCase) || string.Equals(mode, "Cheque", StringComparison.OrdinalIgnoreCase)) dto.BankCashRepayments += r.Amount;
 
             string refNo = "";
-            if (r.PaymentMode == "PhonePe" || r.PaymentMode == "Credit Card" || r.PaymentMode == "PineLabs Card" || r.PaymentMode == "PetroCard" || r.PaymentMode == "Bank Transfer")
+            if (string.Equals(r.PaymentMode, "PhonePe", StringComparison.OrdinalIgnoreCase) || string.Equals(r.PaymentMode, "Credit Card", StringComparison.OrdinalIgnoreCase) || string.Equals(r.PaymentMode, "PineLabs Card", StringComparison.OrdinalIgnoreCase) || string.Equals(r.PaymentMode, "PetroCard", StringComparison.OrdinalIgnoreCase) || string.Equals(r.PaymentMode, "Petro Card", StringComparison.OrdinalIgnoreCase) || string.Equals(r.PaymentMode, "Bank Transfer", StringComparison.OrdinalIgnoreCase))
                 refNo = $"TID: {r.CardTid}, Batch: {r.CardBatch}";
-            else if (r.PaymentMode == "Cheque")
+            else if (string.Equals(r.PaymentMode, "Cheque", StringComparison.OrdinalIgnoreCase))
                 refNo = $"Chq: {r.ChequeNo}";
 
-            dto.DebtorRepayments.Add(new CreditorRepaymentPrintDto
+            if (!r.CreditorName.Contains("DSM Loss", StringComparison.OrdinalIgnoreCase))
             {
-                DebtorName = r.CreditorName,
-                PaymentMode = r.PaymentMode,
-                RefNo = refNo,
-                Amount = (decimal)r.Amount
-            });
+                dto.DebtorRepayments.Add(new CreditorRepaymentPrintDto
+                {
+                    DebtorName = r.CreditorName,
+                    PaymentMode = r.PaymentMode,
+                    RefNo = refNo,
+                    Amount = (decimal)r.Amount
+                });
+            }
         }
 
         // Build generic RepaymentBreakdown
@@ -284,8 +287,7 @@ public class ReportService : IReportService
         dto.CollectionBreakdown = breakdownList;
 
         dto.ActualCollection = dto.CollectionBreakdown.Where(c => c.Category != "DSM Short").Sum(c => c.Amount);
-        double testSum = msTesting + hsdTesting + hsdTesting2;
-        dto.ExpectedCollection = dto.TotalFuelAmount + dto.CreditorsTotal + reconcilableRecoveriesTotal + dto.ExpensesTotal + khandhareTotal + testSum;
+        dto.ExpectedCollection = dto.TotalFuelAmount + reconcilableRecoveriesTotal;
         dto.Difference = dto.ActualCollection - dto.ExpectedCollection;
         dto.IsBalanced = Math.Abs(dto.Difference) < 0.01;
         dto.BalancedStatus = dto.IsBalanced ? "Balanced" : (dto.Difference < 0 ? "Short" : "Excess");
@@ -443,18 +445,23 @@ public class ReportService : IReportService
             else if (string.Equals(mode, "Bank Transfer", StringComparison.OrdinalIgnoreCase) || string.Equals(mode, "Cheque", StringComparison.OrdinalIgnoreCase)) dto.BankCashRepayments += r.Amount;
 
             string refNo = "";
-            if (r.PaymentMode == "PhonePe" || r.PaymentMode == "Credit Card" || r.PaymentMode == "PineLabs Card" || r.PaymentMode == "PetroCard")
-                refNo = $"TID: {r.CardTid}, Batch: {r.CardBatch}";
-            else if (r.PaymentMode == "Cheque")
-                refNo = $"Chq: {r.ChequeNo}";
+            if (string.Equals(r.PaymentMode, "PhonePe", StringComparison.OrdinalIgnoreCase) || string.Equals(r.PaymentMode, "Credit Card", StringComparison.OrdinalIgnoreCase) || string.Equals(r.PaymentMode, "PineLabs Card", StringComparison.OrdinalIgnoreCase) || string.Equals(r.PaymentMode, "PetroCard", StringComparison.OrdinalIgnoreCase) || string.Equals(r.PaymentMode, "Petro Card", StringComparison.OrdinalIgnoreCase))
+                refNo = !string.IsNullOrWhiteSpace(r.CardTid) ? $"TID: {r.CardTid}, Batch: {r.CardBatch}" : "";
+            else if (string.Equals(r.PaymentMode, "Bank Transfer", StringComparison.OrdinalIgnoreCase))
+                refNo = !string.IsNullOrWhiteSpace(r.CardTid) ? $"Ref: {r.CardTid}" : "";
+            else if (string.Equals(r.PaymentMode, "Cheque", StringComparison.OrdinalIgnoreCase))
+                refNo = !string.IsNullOrWhiteSpace(r.ChequeNo) ? $"Chq: {r.ChequeNo}" : (!string.IsNullOrWhiteSpace(r.CardTid) ? $"Chq: {r.CardTid}" : "");
 
-            dto.DebtorRepayments.Add(new CreditorRepaymentPrintDto
+            if (!r.CreditorName.Contains("DSM Loss", StringComparison.OrdinalIgnoreCase))
             {
-                DebtorName = r.CreditorName,
-                PaymentMode = r.PaymentMode,
-                RefNo = refNo,
-                Amount = (decimal)r.Amount
-            });
+                dto.DebtorRepayments.Add(new CreditorRepaymentPrintDto
+                {
+                    DebtorName = r.CreditorName,
+                    PaymentMode = r.PaymentMode,
+                    RefNo = refNo,
+                    Amount = (decimal)r.Amount
+                });
+            }
         }
 
         // Build generic RepaymentBreakdown
@@ -578,8 +585,7 @@ public class ReportService : IReportService
 
         // 12. Final Reconciliation
         dto.ActualCollection = dto.CollectionBreakdown.Where(c => c.Category != "DSM Short").Sum(c => c.Amount);
-        double testSum = msTesting + hsdTesting + hsdTesting2;
-        dto.ExpectedCollection = dto.TotalFuelAmount + dto.CreditorsTotal + reconcilableRecoveriesTotal + dto.ExpensesTotal + khandhareTotal + testSum;
+        dto.ExpectedCollection = dto.TotalFuelAmount + reconcilableRecoveriesTotal;
         dto.Difference = dto.ActualCollection - dto.ExpectedCollection;
         dto.IsBalanced = Math.Abs(dto.Difference) < 0.01;
         dto.BalancedStatus = dto.IsBalanced ? "Balanced" : (dto.Difference < 0 ? "Short" : "Excess");
@@ -623,9 +629,7 @@ public class ReportService : IReportService
 
             if (mismatch < -0.01)
             {
-                double absMismatch = Math.Abs(mismatch);
-                double remainingShort = absMismatch > 10.0 ? 10.0 : absMismatch;
-                totalDsmShort += remainingShort;
+                totalDsmShort += Math.Abs(mismatch);
             }
         }
         return totalDsmShort;
@@ -892,11 +896,55 @@ public class ReportService : IReportService
                             .ToList();
                         foreach (var r in repayments)
                         {
+                            string pMode = r.PaymentMethod ?? "Cash";
+                            string refNo = "";
+                            if (string.Equals(pMode, "Bank Transfer", StringComparison.OrdinalIgnoreCase))
+                                refNo = !string.IsNullOrWhiteSpace(r.CardTid) ? $"Ref: {r.CardTid}" : "";
+                            else if (string.Equals(pMode, "Cheque", StringComparison.OrdinalIgnoreCase))
+                                refNo = !string.IsNullOrWhiteSpace(r.CardTid) ? $"Chq: {r.CardTid}" : "";
+                            else if (!string.IsNullOrWhiteSpace(r.CardTid) || !string.IsNullOrWhiteSpace(r.CardBatch))
+                            {
+                                var details = new List<string>();
+                                if (!string.IsNullOrWhiteSpace(r.CardTid)) details.Add($"TID: {r.CardTid}");
+                                if (!string.IsNullOrWhiteSpace(r.CardBatch)) details.Add($"Batch: {r.CardBatch}");
+                                refNo = string.Join(", ", details);
+                            }
+
                             list.Add(new DsmPersonalDebtorRepaymentPrintDto
                             {
                                 DsmName = r.DsmPersonalDebtor?.DsmName ?? "DSM",
-                                PaymentMethod = r.PaymentMethod ?? "Cash",
-                                RefNo = !string.IsNullOrWhiteSpace(r.CardTid) ? $"TID: {r.CardTid}" : (r.PaymentMethod ?? "Cash"),
+                                PaymentMethod = pMode,
+                                RefNo = refNo,
+                                Amount = r.Amount
+                            });
+                        }
+
+                        var creditorRepaymentsSet = db.Set<CreditorRepayment>();
+                        var creditorDsmLossRepayments = creditorRepaymentsSet
+                            .Where(r => r.RepaymentDate >= startDate && r.RepaymentDate < endDate && r.CreditorName.Contains("DSM Loss"))
+                            .ToList();
+                        foreach (var r in creditorDsmLossRepayments)
+                        {
+                            string pMode = r.PaymentMode ?? "Cash";
+                            string refNo = "";
+                            if (string.Equals(pMode, "Bank Transfer", StringComparison.OrdinalIgnoreCase))
+                                refNo = !string.IsNullOrWhiteSpace(r.CardTid) ? $"Ref: {r.CardTid}" : "";
+                            else if (string.Equals(pMode, "Cheque", StringComparison.OrdinalIgnoreCase))
+                                refNo = !string.IsNullOrWhiteSpace(r.ChequeNo) ? $"Chq: {r.ChequeNo}" : (!string.IsNullOrWhiteSpace(r.CardTid) ? $"Chq: {r.CardTid}" : "");
+                            else if (!string.IsNullOrWhiteSpace(r.CardTid) || !string.IsNullOrWhiteSpace(r.CardBatch))
+                            {
+                                var details = new List<string>();
+                                if (!string.IsNullOrWhiteSpace(r.CardTid)) details.Add($"TID: {r.CardTid}");
+                                if (!string.IsNullOrWhiteSpace(r.CardBatch)) details.Add($"Batch: {r.CardBatch}");
+                                refNo = string.Join(", ", details);
+                            }
+
+                            string dsmName = (r.CreditorName ?? "").Replace("(DSM Loss)", "").Replace("DSM Loss", "").Trim();
+                            list.Add(new DsmPersonalDebtorRepaymentPrintDto
+                            {
+                                DsmName = string.IsNullOrEmpty(dsmName) ? "DSM" : dsmName,
+                                PaymentMethod = pMode,
+                                RefNo = refNo,
                                 Amount = r.Amount
                             });
                         }

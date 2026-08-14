@@ -224,7 +224,7 @@
                                 <DataGrid.Columns>
                                     <DataGridTextColumn Header="DSM" Binding="{Binding DsmName}" Width="*" />
                                     <DataGridTextColumn Header="Debtor Name" Binding="{Binding DebtorName}" Width="2*" />
-                                    <DataGridTextColumn Header="Slip No" Binding="{Binding ChequeNo}" Width="*" />
+                                    <DataGridTextColumn Header="Cheque No" Binding="{Binding ChequeNo}" Width="*" />
                                     <DataGridTextColumn Header="Amount" Binding="{Binding Amount, Converter={StaticResource CurrencyConverter}}" Width="Auto" FontWeight="Bold"/>
                                 </DataGrid.Columns>
                             </DataGrid>
@@ -350,7 +350,7 @@
                                             </Grid.RowDefinitions>
                                             
                                             <!-- Group Header -->
-                                            <Border Grid.Row="0" Background="{DynamicResource MaterialDesign.Brush.Primary.Light}" CornerRadius="4" Padding="8" Margin="0,0,0,12">
+                                            <Border Grid.Row="0" Background="{Binding GroupName, Converter={StaticResource FuelTypeToBrushConverter}}" CornerRadius="4" Padding="8" Margin="0,0,0,12">
                                                 <TextBlock Text="{Binding GroupName}" FontWeight="Bold" Foreground="White" FontSize="15" HorizontalAlignment="Center"/>
                                             </Border>
                                             

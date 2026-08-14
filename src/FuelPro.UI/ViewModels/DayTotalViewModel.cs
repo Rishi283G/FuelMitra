@@ -268,29 +268,7 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
             var repaymentsRes = await _repaymentRepo.GetByDateRangeAsync(StartDate.Date, EndDate.Date.AddDays(1));
             var repayments = repaymentsRes.Success && repaymentsRes.Data != null ? repaymentsRes.Data : new List<CreditorRepayment>();
 
-            // Also merge DSM Loss (Personal Debtor) repayments
-            if (_personalDebtorRepo != null)
-            {
-                var pdRepaymentsRes = await _personalDebtorRepo.GetRepaymentsByDateRangeAsync(StartDate.Date, EndDate.Date.AddDays(1));
-                if (pdRepaymentsRes.Success && pdRepaymentsRes.Data != null)
-                {
-                    foreach (var pr in pdRepaymentsRes.Data)
-                    {
-                        repayments.Add(new CreditorRepayment
-                        {
-                            CreditorRepaymentId = 900000 + pr.Id,
-                            CreditorName = (pr.DsmPersonalDebtor?.DsmName ?? "DSM Loss") + " (DSM Loss)",
-                            RepaymentDate = pr.Date,
-                            ShiftNumber = pr.Shift?.ShiftType ?? "A",
-                            PaymentMode = pr.PaymentMethod,
-                            CardTid = pr.CardTid ?? "",
-                            CardBatch = pr.CardBatch ?? "",
-                            Amount = pr.Amount,
-                            CreatedAt = pr.CreatedAt
-                        });
-                    }
-                }
-            }
+            // Personal Debtor repayments are handled under DSM Loss section
             
             // Only add today's repayments to the UI list of debtor repayments on-screen (tomorrow's Shift A repayments are silently aggregated into the report)
             foreach (var r in repayments.Where(x => x.RepaymentDate.Date >= StartDate.Date && x.RepaymentDate.Date <= EndDate.Date))
@@ -374,9 +352,9 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
             PhonePeNightTotal = getAmt("PhonePe Night");
             PhonePeCardMorningTotal = getAmt("PhonePe Card Morning");
             PhonePeCardNightTotal = getAmt("PhonePe Card Night");
-            CreditCardMorningTotal = getAmt("PineLabs Morning");
-            CreditCardNightTotal = getAmt("PineLabs Night");
-            PetroCardTotal = getAmt("Petro Card");
+            CreditCardMorningTotal = getAmt("Card Morning") > 0 ? getAmt("Card Morning") : getAmt("PineLabs Morning");
+            CreditCardNightTotal = getAmt("Card Night") > 0 ? getAmt("Card Night") : getAmt("PineLabs Night");
+            PetroCardTotal = getAmt("Petro Card Morning") + getAmt("Petro Card Night") + getAmt("Petro Card");
 
             PhonePeTotal = PhonePeMorningTotal + PhonePeNightTotal;
             PhonePeCardTotal = PhonePeCardMorningTotal + PhonePeCardNightTotal;

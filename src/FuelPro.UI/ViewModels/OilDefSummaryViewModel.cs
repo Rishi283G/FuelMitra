@@ -207,11 +207,14 @@ public partial class OilDefSummaryViewModel : ObservableObject
         AdjustmentRows.Clear();
         try
         {
+            var start = StartDate.Date;
+            var end = EndDate.Date.AddDays(1);
             var adjustments = await _dbContext.OilDefDailyLogs
                 .Include(l => l.Product)
-                .Where(l => l.LogDate >= StartDate.Date && l.LogDate <= EndDate.Date
+                .Where(l => l.LogDate >= start && l.LogDate < end
                             && l.AdjustmentQuantity != 0)
                 .OrderByDescending(l => l.LogDate)
+                .ThenByDescending(l => l.Id)
                 .ToListAsync();
 
             double totalLoss = 0;

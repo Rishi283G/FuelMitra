@@ -47,6 +47,8 @@ public class DsmPrintRow
     public decimal PhonePeCardMorning { get; set; }
     public decimal PhonePeCardNight { get; set; }
     public decimal PetroCard { get; set; }
+    public decimal PetroCardMorning { get; set; }
+    public decimal PetroCardNight { get; set; }
     public decimal Debit { get; set; }
     public decimal Expenses { get; set; }
     public decimal Testing { get; set; }

@@ -120,10 +120,11 @@ public class ShiftCalculationService
                     double grossSales = g.Sum(r => r.GrossSales);
                     double cashDeposit = g.Sum(r => r.CashDeposit);
                     double cashInHand = g.Sum(r => r.CashInHand);
-                    double phonePe = g.Sum(r => r.PhonePe);
-                    double phonePeCard = g.Sum(r => r.PhonePeCard);
-                    double creditCard = g.Sum(r => r.CreditCardMorning + r.CreditCardNight);
-                    double petroCard = g.Sum(r => r.PetroCard);
+                    double phonePe = g.Sum(r => r.PhonePeTotal);
+                    double phonePeCard = g.Sum(r => r.PhonePeCard + r.PhonePeCardMorning + r.PhonePeCardDay + r.PhonePeCardNight);
+                    double creditCard = g.Sum(r => r.CreditCardTotal);
+                    double petroCard = g.Sum(r => r.PetroCardTotal);
+                    double others = g.Sum(r => r.Others);
                     double debit = g.Sum(r => r.Debit);
                     double expenses = g.Sum(r => r.Expenses);
                     double testing = g.Sum(r => r.Testing);

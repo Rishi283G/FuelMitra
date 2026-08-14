@@ -184,14 +184,18 @@ public class DsmSummaryRowDto
 
     public double PhonePeCard { get; set; }
     public double PhonePeCardMorning { get; set; }
+    public double PhonePeCardDay { get; set; }
     public double PhonePeCardNight { get; set; }
     public double PhonePe { get; set; }
     public double PhonePeMorning { get; set; }
+    public double PhonePeDay { get; set; }
     public double PhonePeNight { get; set; }
     public double CreditCardMorning { get; set; }
+    public double CreditCardDay { get; set; }
     public double CreditCardNight { get; set; }
     public double PetroCard { get; set; }
     public double PetroCardMorning { get; set; }
+    public double PetroCardDay { get; set; }
     public double PetroCardNight { get; set; }
     public double Others { get; set; }
     public double CashDeposit { get; set; }  // Cash 1 — Bank Deposit
@@ -201,12 +205,13 @@ public class DsmSummaryRowDto
     public double CashInHand { get; set; }   // Cash 2
     public double GrossSales { get; set; }
 
-    public double PhonePeTotal => PhonePeMorning + PhonePeNight + PhonePe;
-    public double CreditCardTotal => CreditCardMorning + CreditCardNight;
+    public double PhonePeTotal => PhonePeMorning + PhonePeDay + PhonePeNight + PhonePe;
+    public double CreditCardTotal => CreditCardMorning + CreditCardDay + CreditCardNight;
+    public double PetroCardTotal => PetroCardMorning + PetroCardDay + PetroCardNight + PetroCard;
     public double BankCash => CashDeposit;
     public double DebtorSales => Debit;
     public double GrossSale => GrossSales;
-    public double Difference => (CashDeposit + CashInHand + PhonePeMorning + PhonePeNight + PhonePe + CreditCardMorning + CreditCardNight + PetroCardMorning + PetroCardNight + PetroCard + Debit + Expenses + Testing) - GrossSales;
+    public double Difference => (CashDeposit + CashInHand + PhonePeMorning + PhonePeDay + PhonePeNight + PhonePe + PhonePeCardMorning + PhonePeCardDay + PhonePeCardNight + PhonePeCard + CreditCardMorning + CreditCardDay + CreditCardNight + PetroCardMorning + PetroCardDay + PetroCardNight + PetroCard + Others + Debit + Expenses + Testing) - GrossSales;
 }
 
 /// <summary>

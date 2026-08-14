@@ -269,11 +269,16 @@ public partial class OwnerDashboardViewModel : ObservableObject, IDisposable
             double ppCardNight = dayReport.CollectionBreakdown.FirstOrDefault(c => c.Category == "PhonePe Card Night")?.Amount ?? 0;
             TodayTotalPhonePe = ppMorning + ppNight + ppCardMorning + ppCardNight;
 
-            double ccMorning = dayReport.CollectionBreakdown.FirstOrDefault(c => c.Category == "PineLabs Morning")?.Amount ?? 0;
-            double ccNight = dayReport.CollectionBreakdown.FirstOrDefault(c => c.Category == "PineLabs Night")?.Amount ?? 0;
+            double ccMorning = (dayReport.CollectionBreakdown.FirstOrDefault(c => c.Category == "PineLabs Morning")?.Amount ?? 0)
+                             + (dayReport.CollectionBreakdown.FirstOrDefault(c => c.Category == "Card Morning")?.Amount ?? 0);
+            double ccNight = (dayReport.CollectionBreakdown.FirstOrDefault(c => c.Category == "PineLabs Night")?.Amount ?? 0)
+                           + (dayReport.CollectionBreakdown.FirstOrDefault(c => c.Category == "Card Night")?.Amount ?? 0);
             TodayTotalCreditCard = ccMorning + ccNight;
 
-            TodayTotalPetroCard = dayReport.CollectionBreakdown.FirstOrDefault(c => c.Category == "Petro Card")?.Amount ?? 0;
+            double pcMorning = dayReport.CollectionBreakdown.FirstOrDefault(c => c.Category == "Petro Card Morning")?.Amount ?? 0;
+            double pcNight = dayReport.CollectionBreakdown.FirstOrDefault(c => c.Category == "Petro Card Night")?.Amount ?? 0;
+            double pcDirect = dayReport.CollectionBreakdown.FirstOrDefault(c => c.Category == "Petro Card")?.Amount ?? 0;
+            TodayTotalPetroCard = pcMorning + pcNight + pcDirect;
             TodayTotalDebit = dayReport.CreditorsTotal;
 
             TodayHsdLitres = dayReport.FuelSales.FirstOrDefault(f => f.FuelType == "HSD")?.Litres ?? 0;

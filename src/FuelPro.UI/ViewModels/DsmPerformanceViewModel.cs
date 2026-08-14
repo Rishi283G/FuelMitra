@@ -459,12 +459,21 @@ public partial class DsmPerformanceViewModel : ObservableObject
 
             foreach (var c in repayments)
             {
+                string tidBatchInfo = "";
+                if (!string.IsNullOrWhiteSpace(c.CardTid) || !string.IsNullOrWhiteSpace(c.CardBatch))
+                {
+                    var details = new List<string>();
+                    if (!string.IsNullOrWhiteSpace(c.CardTid)) details.Add($"TID: {c.CardTid}");
+                    if (!string.IsNullOrWhiteSpace(c.CardBatch)) details.Add($"Batch: {c.CardBatch}");
+                    tidBatchInfo = $" ({string.Join(", ", details)})";
+                }
+
                 list.Add(new DsmPersonalDebtorLedgerRow
                 {
                     TransactionId = c.Id,
                     TransactionType = "Repayment",
                     Date = c.Date,
-                    Description = $"Repayment via {c.PaymentMethod} ({(c.Source == "OwnerPayroll" ? "Salary Deduction" : "Cash Repayment")})",
+                    Description = $"Repayment via {c.PaymentMethod}{tidBatchInfo}",
                     Debit = 0,
                     Credit = c.Amount,
                     PaymentMethod = c.PaymentMethod,

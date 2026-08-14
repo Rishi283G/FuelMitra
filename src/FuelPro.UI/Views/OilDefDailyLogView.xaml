@@ -364,23 +364,31 @@
                         </Grid.RowDefinitions>
                         <TextBlock Grid.Row="0" Text="Adjustment History" FontSize="15" FontWeight="Bold"
                                    Margin="0,0,0,10" Foreground="#E65100"/>
-                        <DataGrid Grid.Row="1" ItemsSource="{Binding HistoryLogs}" AutoGenerateColumns="False"
+                        <DataGrid Grid.Row="1" ItemsSource="{Binding HistoryAdjustments}" AutoGenerateColumns="False"
                                   IsReadOnly="True" materialDesign:DataGridAssist.CellPadding="8 6"
                                   VerticalScrollBarVisibility="Auto">
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="Date" Binding="{Binding LogDate, StringFormat='{}{0:dd-MMM}'}" Width="90"/>
+                                <DataGridTextColumn Header="Date &amp; Time" Binding="{Binding LogDate, StringFormat='{}{0:dd-MMM-yyyy hh:mm tt}'}" Width="140"/>
                                 <DataGridTextColumn Header="Product" Binding="{Binding Product.ProductName}" Width="2*"/>
                                 <DataGridTextColumn Header="Adj. Qty" Binding="{Binding AdjustmentQuantity, StringFormat='{}{0:N2}'}" Width="90"/>
-                                <DataGridTextColumn Header="Type" Binding="{Binding AdjustmentType}" Width="2*"/>
+                                <DataGridTextColumn Header="Type / Reason" Binding="{Binding AdjustmentType}" Width="1.5*"/>
+                                <DataGridTextColumn Header="Remarks" Binding="{Binding Remarks}" Width="2*"/>
                                 <DataGridTextColumn Header="Stock After" Binding="{Binding RemainingStock, StringFormat='{}{0:N2}'}" Width="90"/>
-                                <DataGridTemplateColumn Header="Action" Width="80">
+                                <DataGridTemplateColumn Header="Action" Width="140">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
-                                            <Button Content="Edit" Style="{StaticResource MaterialDesignFlatButton}"
-                                                    Command="{Binding DataContext.EditAdjustmentLogCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                    CommandParameter="{Binding}"
-                                                    IsEnabled="{Binding IsEditable}"
-                                                    Height="26" Padding="6,0"/>
+                                            <StackPanel Orientation="Horizontal">
+                                                <Button Content="Edit" Style="{StaticResource MaterialDesignFlatButton}"
+                                                        Command="{Binding DataContext.EditAdjustmentLogCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}"
+                                                        IsEnabled="{Binding IsEditable}"
+                                                        Height="26" Padding="6,0" Margin="0,0,4,0"/>
+                                                <Button Content="Delete" Style="{StaticResource MaterialDesignFlatButton}" Foreground="Red"
+                                                        Command="{Binding DataContext.DeleteAdjustmentLogCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}"
+                                                        IsEnabled="{Binding IsEditable}"
+                                                        Height="26" Padding="6,0"/>
+                                            </StackPanel>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>

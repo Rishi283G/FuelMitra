@@ -726,48 +726,7 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
             }
         }
 
-        // Also merge DSM Loss (Personal Debtor) repayments
-        if (_personalDebtorRepo != null)
-        {
-            var pdRepaymentsRes = await _personalDebtorRepo.GetRepaymentsByDateRangeAsync(SelectedDate.Date.AddDays(-1), SelectedDate.Date.AddDays(1));
-            if (pdRepaymentsRes.Success && pdRepaymentsRes.Data != null)
-            {
-                foreach (var pr in pdRepaymentsRes.Data)
-                {
-                    var fakeCreditorRep = new CreditorRepayment
-                    {
-                        CreditorRepaymentId = 900000 + pr.Id,
-                        CreditorName = (pr.DsmPersonalDebtor?.DsmName ?? "DSM Loss") + " (DSM Loss)",
-                        RepaymentDate = pr.Date,
-                        ShiftNumber = pr.Shift?.ShiftType ?? "A",
-                        PaymentMode = pr.PaymentMethod,
-                        CardTid = pr.CardTid ?? "",
-                        CardBatch = pr.CardBatch ?? "",
-                        Amount = pr.Amount,
-                        CreatedAt = pr.CreatedAt
-                    };
-
-                    var classified = SettlementWindowResolver.Classify(fakeCreditorRep);
-                    if (classified.IsValid && classified.BusinessDate == SelectedDate.Date)
-                    {
-                        bool match = false;
-                        if (SelectedShift == "B")
-                        {
-                            match = classified.SettlementWindow == "Day";
-                        }
-                        else if (SelectedShift == "A")
-                        {
-                            match = classified.SettlementWindow == "Morning" || classified.SettlementWindow == "Night";
-                        }
-
-                        if (match)
-                        {
-                            DebtorRepayments.Add(fakeCreditorRep);
-                        }
-                    }
-                }
-            }
-        }
+        // Personal Debtor repayments are handled under DSM Loss section
     }
 
     [RelayCommand]
@@ -820,8 +779,8 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
             ChequeNo = NewRepaymentMode == "Cheque" ? NewChequeNumber?.Trim() : null,
             Amount = NewRepaymentAmount,
             CreatedAt = DateTime.Now,
-            CardTid = (NewRepaymentMode == "PhonePe" || NewRepaymentMode == "Credit Card" || NewRepaymentMode == "PetroCard" || NewRepaymentMode == "Others") ? NewCardTid?.Trim() : null,
-            CardBatch = (NewRepaymentMode == "PhonePe" || NewRepaymentMode == "Credit Card" || NewRepaymentMode == "PetroCard" || NewRepaymentMode == "Others") ? NewCardBatch?.Trim() : null,
+            CardTid = (NewRepaymentMode == "PhonePe" || NewRepaymentMode == "Credit Card" || NewRepaymentMode == "PineLabs Card" || NewRepaymentMode == "PetroCard" || NewRepaymentMode == "Petro Card" || NewRepaymentMode == "Others") ? NewCardTid?.Trim() : null,
+            CardBatch = (NewRepaymentMode == "PhonePe" || NewRepaymentMode == "Credit Card" || NewRepaymentMode == "PineLabs Card" || NewRepaymentMode == "PetroCard" || NewRepaymentMode == "Petro Card" || NewRepaymentMode == "Others") ? NewCardBatch?.Trim() : null,
             Denom500 = NewRepaymentMode == "Cash" ? (NewDenom500 ?? 0) : 0,
             Denom200 = NewRepaymentMode == "Cash" ? (NewDenom200 ?? 0) : 0,
             Denom100 = NewRepaymentMode == "Cash" ? (NewDenom100 ?? 0) : 0,

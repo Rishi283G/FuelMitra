@@ -475,9 +475,11 @@ public class FinancialCalculationService : IFinancialCalculationService
             detail.OpeningStock += opening;
 
             // 2. Closing Stock: last daily log in range or before
+            var endOfDay = endDate.Date.AddDays(1);
             var lastLogInRange = await _dbContext.OilDefDailyLogs
-                .Where(l => l.ProductId == product.Id && l.LogDate >= startDate.Date && l.LogDate <= endDate.Date)
+                .Where(l => l.ProductId == product.Id && l.LogDate >= startDate.Date && l.LogDate < endOfDay)
                 .OrderByDescending(l => l.LogDate)
+                .ThenByDescending(l => l.Id)
                 .FirstOrDefaultAsync();
 
             double closing = 0.0;
@@ -518,7 +520,7 @@ public class FinancialCalculationService : IFinancialCalculationService
 
             // 4. Sales in range
             var logs = await _dbContext.OilDefDailyLogs
-                .Where(l => l.ProductId == product.Id && l.LogDate >= startDate.Date && l.LogDate <= endDate.Date)
+                .Where(l => l.ProductId == product.Id && l.LogDate >= startDate.Date && l.LogDate < endOfDay)
                 .ToListAsync();
 
             double salesQty = logs.Sum(l => l.SoldQuantity);

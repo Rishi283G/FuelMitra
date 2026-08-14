@@ -316,6 +316,8 @@ function renderData(){
     var phN = r.phonePeNight || 0;
     var pcM = r.petroCardMorning || 0;
     var pcN = r.petroCardNight || 0;
+    var pcTotal = r.petroCard || (pcM + pcN);
+    if (pcM === 0 && pcN === 0 && pcTotal > 0) { pcM = pcTotal; }
     var deb = r.debit || 0;
     var exp = r.expenses || 0;
     var test = r.testing || 0;
@@ -585,9 +587,9 @@ function renderData(){
       var rows = getVal(g, 'rows') || [];
       
       var isMs1 = groupName.indexOf('Petrol') !== -1 || groupName.indexOf('MS') !== -1 || groupName.indexOf('Tank 1') !== -1;
-      var borderColor = isMs1 ? '#FF9800' : '#03A9F4';
-      var headerBg = isMs1 ? '#E65100' : '#0288D1';
-      var cardBg = isMs1 ? '#FFF8E1' : '#E3F2FD';
+      var borderColor = isMs1 ? '#00C853' : '#0288D1';
+      var headerBg = isMs1 ? '#00C853' : '#0288D1';
+      var cardBg = isMs1 ? '#E8F5E9' : '#E3F2FD';
 
       var card = document.createElement('div');
       card.style.cssText = 'flex: 1; border: 1.5px solid ' + borderColor + '; border-radius: 6px; padding: 10px; background: ' + cardBg + '; box-shadow: 0 1px 3px rgba(0,0,0,0.05);';

@@ -304,6 +304,14 @@ public partial class App : Application
             EnsureColumnExists(connection, "DsmPumpAssignments", "CompletedDate", "ALTER TABLE DsmPumpAssignments ADD COLUMN CompletedDate TEXT NULL;");
         }
 
+        // Settings Manager columns
+        if (TableExists(connection, "Settings"))
+        {
+            EnsureColumnExists(connection, "Settings", "Shift1Manager", "ALTER TABLE Settings ADD COLUMN Shift1Manager TEXT NULL;");
+            EnsureColumnExists(connection, "Settings", "Shift2Manager", "ALTER TABLE Settings ADD COLUMN Shift2Manager TEXT NULL;");
+            EnsureColumnExists(connection, "Settings", "Shift3Manager", "ALTER TABLE Settings ADD COLUMN Shift3Manager TEXT NULL;");
+        }
+
         // Guard: skip column additions for tables that don't exist yet (e.g. fresh install)
         if (!TableExists(connection, "PaymentCollections") || !TableExists(connection, "DsmEntries"))
             return;
@@ -837,6 +845,7 @@ public partial class App : Application
                     ""DsmName"" TEXT NOT NULL DEFAULT '',
                     ""Name"" TEXT NOT NULL DEFAULT '',
                     ""SlipNumber"" TEXT NOT NULL DEFAULT '',
+                    ""VehicleNumber"" TEXT NULL,
                     ""Amount"" REAL NOT NULL DEFAULT 0.0,
                     ""Date"" TEXT NOT NULL DEFAULT '',
                     ""CreatedAt"" TEXT NOT NULL DEFAULT '',
@@ -845,6 +854,10 @@ public partial class App : Application
                 );";
             cmd.ExecuteNonQuery();
             Log.Information("Created KhandharePetroleumEntries table");
+        }
+        else
+        {
+            EnsureColumnExists(connection, "KhandharePetroleumEntries", "VehicleNumber", "ALTER TABLE KhandharePetroleumEntries ADD COLUMN VehicleNumber TEXT NULL;");
         }
 
         // Restore canonical shift types A/B/C so all queries match properly across PWA and Desktop

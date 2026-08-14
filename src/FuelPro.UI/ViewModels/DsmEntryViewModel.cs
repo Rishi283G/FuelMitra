@@ -811,16 +811,16 @@ public partial class DsmEntryViewModel : ObservableObject
             var isDay = SelectedShift == "B";
             var payment = new PaymentCollection
             {
-                PhonePeCardMorning = PhonePeCardMorning ?? 0,
+                PhonePeCardMorning = isDay ? 0 : (PhonePeCardMorning ?? 0),
                 PhonePeCardDay = isDay ? (PhonePeCardMorning ?? 0) : 0,
                 PhonePeCardNight = PhonePeCardNight ?? 0,
-                PhonePeMorning = PhonePeMorning ?? 0,
+                PhonePeMorning = isDay ? 0 : (PhonePeMorning ?? 0),
                 PhonePeDay = isDay ? (PhonePeMorning ?? 0) : 0,
                 PhonePeNight = PhonePeNight ?? 0,
-                CreditCardMorning = CreditCardMorning ?? 0,
+                CreditCardMorning = isDay ? 0 : (CreditCardMorning ?? 0),
                 CreditCardDay = isDay ? (CreditCardMorning ?? 0) : 0,
                 CreditCardNight = CreditCardNight ?? 0,
-                PetroCardMorning = PetroCardMorning ?? 0,
+                PetroCardMorning = isDay ? 0 : (PetroCardMorning ?? 0),
                 PetroCardDay = isDay ? (PetroCardMorning ?? 0) : 0,
                 PetroCardNight = PetroCardNight ?? 0,
                 Others = Others ?? 0,
@@ -1196,6 +1196,7 @@ public partial class DsmEntryViewModel : ObservableObject
                             {
                                 string name = (kp.name ?? kp.Name ?? string.Empty).ToString();
                                 string slipNumber = (kp.slipNumber ?? kp.SlipNumber ?? string.Empty).ToString();
+                                string vehicleNumber = (kp.vehicleNumber ?? kp.VehicleNumber ?? kp.vehicle_number ?? kp.vehicleNo ?? string.Empty).ToString();
                                 double amount = System.Convert.ToDouble((object?)(kp.amount ?? kp.Amount ?? 0.0));
 
                                 var model = new KhandharePetroleumEntry
@@ -1205,6 +1206,7 @@ public partial class DsmEntryViewModel : ObservableObject
                                     Date = entry.Shift?.ShiftDate ?? SelectedDate,
                                     Name = !string.IsNullOrWhiteSpace(name) ? name : (!string.IsNullOrWhiteSpace(slipNumber) ? $"Slip #{slipNumber}" : "Kandhare Petroleum"),
                                     SlipNumber = slipNumber,
+                                    VehicleNumber = string.IsNullOrWhiteSpace(vehicleNumber) ? null : vehicleNumber,
                                     Amount = amount
                                 };
                                 newKpModels.Add(model);
