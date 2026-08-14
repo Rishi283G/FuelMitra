@@ -87,6 +87,8 @@ public partial class MonthlyPerformanceViewModel : ObservableObject, IDisposable
         IsLoading = true;
         try
         {
+            try { var syncEngine = App.Services.GetRequiredService<FuelPro.Sync.SyncEngine>(); await syncEngine.ForceSyncAsync(); } catch { }
+
             var year = SelectedMonth.Year;
             var month = SelectedMonth.Month;
             var startDate = new DateTime(year, month, 1);

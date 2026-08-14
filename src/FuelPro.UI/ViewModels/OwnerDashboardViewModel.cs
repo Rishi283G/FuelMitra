@@ -216,6 +216,8 @@ public partial class OwnerDashboardViewModel : ObservableObject, IDisposable
         IsLoading = true;
         try
         {
+            try { await _syncEngine.ForceSyncAsync(); } catch { }
+
             var entriesResult = await _dsmEntryRepository.GetEntriesForDateRangeAsync(StartDate.Date, EndDate.Date.AddDays(1));
             var entries = entriesResult.Success && entriesResult.Data != null ? entriesResult.Data : new List<DsmEntry>();
 

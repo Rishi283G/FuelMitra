@@ -270,6 +270,8 @@ public partial class ProfitLossViewModel : ObservableObject, IDisposable
         IsLoading = true;
         try
         {
+            try { await _syncEngine.ForceSyncAsync(); } catch { }
+
             var result = await _financialCalcService.CalculateFinancialsAsync(StartDate, EndDate);
 
             HsdLitres = result.FuelProfit.HsdLitres;

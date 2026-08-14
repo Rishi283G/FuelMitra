@@ -49,7 +49,34 @@
 
                 <StackPanel Grid.Column="0" Orientation="Horizontal">
                     <materialDesign:PackIcon Kind="CashRegister" Width="28" Height="28" VerticalAlignment="Center" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" Margin="0,0,10,0"/>
-                    <TextBlock Text="Pump Expenses Management" FontSize="22" FontWeight="Bold" VerticalAlignment="Center" />
+                    <TextBlock Text="Expenses Management" FontSize="22" FontWeight="Bold" VerticalAlignment="Center" />
+                </StackPanel>
+
+                <!-- Summary Badges in Header -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <!-- Daily Pump Expenses -->
+                    <Border Background="#FFF3E0" CornerRadius="12" Padding="12,6" Margin="0,0,12,0">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Pump Exp: " FontWeight="SemiBold" Foreground="#E65100" FontSize="13"/>
+                            <TextBlock Text="{Binding TotalPumpExpensesAmount, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" Foreground="#E65100" FontSize="13"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- KP Ledger Total -->
+                    <Border Background="#E8F5E9" CornerRadius="12" Padding="12,6" Margin="0,0,12,0">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="KP Ledger: " FontWeight="SemiBold" Foreground="#2E7D32" FontSize="13"/>
+                            <TextBlock Text="{Binding TotalKpAmount, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" Foreground="#2E7D32" FontSize="13"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Grand Total Expenses -->
+                    <Border Background="#E1F5FE" CornerRadius="12" Padding="12,6">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Grand Total Expenses: " FontWeight="Bold" Foreground="#0277BD" FontSize="14"/>
+                            <TextBlock Text="{Binding GrandTotalExpensesAmount, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" Foreground="#0277BD" FontSize="14"/>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
 
                 <Button Grid.Column="2" Content="Refresh Log" Command="{Binding LoadCommand}" Style="{StaticResource MaterialDesignOutlinedButton}"/>

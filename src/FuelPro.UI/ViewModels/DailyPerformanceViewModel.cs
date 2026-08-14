@@ -186,6 +186,8 @@ public partial class DailyPerformanceViewModel : ObservableObject, IDisposable
         IsLoading = true;
         try
         {
+            try { var syncEngine = App.Services.GetRequiredService<FuelPro.Sync.SyncEngine>(); await syncEngine.ForceSyncAsync(); } catch { }
+
             var entriesResult = await _dsmEntryRepo.GetEntriesForDateRangeAsync(SelectedDate, SelectedDate);
             var entries = entriesResult.Success && entriesResult.Data != null ? entriesResult.Data : new List<DsmEntry>();
 

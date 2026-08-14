@@ -52,6 +52,8 @@ public partial class PumpExpensesViewModel : ObservableObject
     [ObservableProperty] private DateTime _historyEndDate = DateTime.Today;
 
     [ObservableProperty] private double _totalKpAmount;
+    [ObservableProperty] private double _totalPumpExpensesAmount;
+    [ObservableProperty] private double _grandTotalExpensesAmount;
 
     public ObservableCollection<PumpExpense> HistoryExpenses { get; } = new();
     public ObservableCollection<CategoryExpenseItemViewModel> CategoryExpenses { get; } = new();
@@ -166,13 +168,19 @@ public partial class PumpExpensesViewModel : ObservableObject
     {
         var result = await _pumpExpenseRepo.GetByDateRangeAsync(HistoryStartDate, HistoryEndDate);
         HistoryExpenses.Clear();
+        double pumpExpSum = 0;
         if (result.Success && result.Data != null)
         {
             foreach (var item in result.Data.OrderByDescending(e => e.ExpenseDate))
             {
                 HistoryExpenses.Add(item);
+                pumpExpSum += (item.Rent + item.Salary + item.TripSheetLoss + item.DsmShort + 
+                               item.BankingExpenses + item.BpclPortalExpenses + item.FuelAndTravel + 
+                               item.OilPurchase + item.RepairsAndMaintenance + item.ElectricityExpenses + 
+                               item.OfficeExpenses + item.PrintingExpense + item.OtherAmount);
             }
         }
+        TotalPumpExpensesAmount = pumpExpSum;
 
         // Load Kandhare Petroleum Ledger Entries for selected date range
         try
@@ -199,6 +207,8 @@ public partial class PumpExpensesViewModel : ObservableObject
         {
             System.Diagnostics.Debug.WriteLine($"Failed to load KP history: {ex.Message}");
         }
+
+        GrandTotalExpensesAmount = TotalPumpExpensesAmount + TotalKpAmount;
     }
 
     [RelayCommand]

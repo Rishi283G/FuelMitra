@@ -404,15 +404,16 @@ public class SyncEngine
 
             var authService = _serviceProvider.GetRequiredService<AuthService>();
             
-            bool shouldPull = forcePull || (DateTime.Now - _lastPullTime).TotalMinutes >= 10;
+            bool isOwner = authService.IsOwner;
+            bool shouldPull = forcePull || isOwner || (DateTime.Now - _lastPullTime).TotalMinutes >= 1;
 
             // Check roles and route accordingly
             if (authService.IsOwner)
             {
-                // Owner is read-only for transaction data at this terminal and only pulls updates
+                // Owner is read-only for transaction data at this terminal and pulls updates
                 if (shouldPull)
                 {
-                    await PerformPullAsync(settings);
+                    await PerformPullAsync(settings, forcePull);
                     _lastPullTime = DateTime.Now;
                 }
             }
@@ -424,7 +425,7 @@ public class SyncEngine
 
                     if (shouldPull)
                     {
-                        await PerformPullAsync(settings);
+                        await PerformPullAsync(settings, forcePull);
                         _lastPullTime = DateTime.Now;
                     }
                 }
@@ -787,7 +788,7 @@ public class SyncEngine
     // PULL SYNC — Supabase → Local changes (GUID-based)
     // ═══════════════════════════════════════════════════════════════════
 
-    private async Task PerformPullAsync(SyncSettings settings)
+    private async Task PerformPullAsync(SyncSettings settings, bool forcePull = false)
     {
         using var context = _serviceProvider.GetRequiredService<FuelProDbContext>();
 
@@ -809,7 +810,7 @@ public class SyncEngine
             if (tableDef.TableName == "SyncChangeLogs")
             {
                 // Special handling for pulling delete propagation logs
-                var logQueryTime = settings.LastSyncTime.ToUniversalTime().ToString("o");
+                var logQueryTime = (forcePull ? DateTime.MinValue : settings.LastSyncTime.AddMinutes(-5)).ToUniversalTime().ToString("o");
                 var logResponse = await _httpClient.SendRequestAsync(HttpMethod.Get,
                     $"SyncChangeLogs?station_id=eq.{settings.StationId}&Timestamp=gt.{logQueryTime}");
                 if (logResponse.IsSuccessStatusCode)
@@ -883,11 +884,11 @@ public class SyncEngine
             if (pkProp == null) continue;
 
             // Determine the query time for this specific table.
-            // If this table has no mappings yet, perform a full sync from the beginning.
+            // If forcePull is requested or table has no mappings yet, perform a full sync from beginning.
             var tableHasMappings = guidToLocal.TryGetValue(tableDef.TableName, out var mappings) && mappings.Count > 0;
-            var tableQueryTime = tableHasMappings 
-                ? settings.LastSyncTime.ToUniversalTime().ToString("o") 
-                : DateTime.MinValue.ToUniversalTime().ToString("o");
+            var tableQueryTime = (forcePull || !tableHasMappings)
+                ? DateTime.MinValue.ToUniversalTime().ToString("o") 
+                : settings.LastSyncTime.AddMinutes(-5).ToUniversalTime().ToString("o");
 
             // Fetch records updated since tableQueryTime for this StationId
             var response = await _httpClient.SendRequestAsync(HttpMethod.Get,
