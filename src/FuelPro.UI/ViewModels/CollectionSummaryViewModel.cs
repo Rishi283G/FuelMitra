@@ -139,10 +139,10 @@ public partial class CollectionSummaryViewModel : ObservableObject, IDisposable
 
                 var cashDeposit = dayReport.Cash1.GrandTotal;
                 var cashInHand = dayReport.Cash2.GrandTotal + dayReport.CashRepayments;
-                var phonePe = dayReport.DsmSummaryTotals.PhonePe + dayReport.PhonePeRepayments;
-                var phonePeCard = dayReport.DsmSummaryTotals.PhonePeCard;
-                var creditCard = dayReport.DsmSummaryTotals.CreditCardMorning + dayReport.DsmSummaryTotals.CreditCardNight + dayReport.CreditCardRepayments;
-                var petroCard = dayReport.DsmSummaryTotals.PetroCard + dayReport.PetroCardRepayments;
+                var phonePe = dayReport.DsmSummaryTotals.PhonePeTotal + dayReport.PhonePeRepayments;
+                var phonePeCard = dayReport.DsmSummaryTotals.PhonePeCardTotal;
+                var creditCard = dayReport.DsmSummaryTotals.CreditCardTotal + dayReport.CreditCardRepayments;
+                var petroCard = dayReport.DsmSummaryTotals.PetroCardTotal + dayReport.PetroCardRepayments;
                 var debit = dayReport.CreditorsTotal;
 
                 DayRows.Add(new CollectionDayRow

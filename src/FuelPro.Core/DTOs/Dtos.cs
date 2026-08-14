@@ -206,6 +206,7 @@ public class DsmSummaryRowDto
     public double GrossSales { get; set; }
 
     public double PhonePeTotal => PhonePeMorning + PhonePeDay + PhonePeNight + PhonePe;
+    public double PhonePeCardTotal => PhonePeCardMorning + PhonePeCardDay + PhonePeCardNight + PhonePeCard;
     public double CreditCardTotal => CreditCardMorning + CreditCardDay + CreditCardNight;
     public double PetroCardTotal => PetroCardMorning + PetroCardDay + PetroCardNight + PetroCard;
     public double BankCash => CashDeposit;

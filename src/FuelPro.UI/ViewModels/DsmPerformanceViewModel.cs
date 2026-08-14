@@ -140,6 +140,13 @@ public partial class DsmPerformanceViewModel : ObservableObject
                 }
 
                 var dsmResult = _ownerCalcService.Calculate(dsmGroup, Array.Empty<Expense>(), Array.Empty<ShiftOtherCash>());
+                var totalExpenses = dsmGroup.Sum(e => e.Expenses.Sum(x => x.Amount) + (e.KhandharePetroleumEntries != null ? e.KhandharePetroleumEntries.Sum(kp => kp.Amount) : 0));
+
+                var allNozzles = dsmGroup.SelectMany(e => e.NozzleReadings ?? Enumerable.Empty<NozzleReading>()).ToList();
+                double msILitres = allNozzles.Where(n => string.Equals(n.FuelType, "MS-I", StringComparison.OrdinalIgnoreCase) || string.Equals(n.FuelType, "MS", StringComparison.OrdinalIgnoreCase) || string.Equals(n.FuelType, "Petrol", StringComparison.OrdinalIgnoreCase)).Sum(n => n.SaleLitres);
+                double hsdLitres = allNozzles.Where(n => string.Equals(n.FuelType, "HSD", StringComparison.OrdinalIgnoreCase) || string.Equals(n.FuelType, "Diesel", StringComparison.OrdinalIgnoreCase)).Sum(n => n.SaleLitres);
+                double msIILitres = allNozzles.Where(n => string.Equals(n.FuelType, "MS-II", StringComparison.OrdinalIgnoreCase) || string.Equals(n.FuelType, "Speed", StringComparison.OrdinalIgnoreCase)).Sum(n => n.SaleLitres);
+                double cngKg = allNozzles.Where(n => string.Equals(n.FuelType, "CNG", StringComparison.OrdinalIgnoreCase)).Sum(n => n.SaleLitres);
 
                 _allDsmRows.Add(new DsmMonthlyRow
                 {
@@ -159,7 +166,12 @@ public partial class DsmPerformanceViewModel : ObservableObject
                     PhonePeCard = dsmResult.PhonePeCard,
                     CreditCard = dsmResult.CreditCard,
                     PetroCard = dsmResult.PetroCard,
-                    Debit = dsmResult.Debit
+                    Debit = dsmResult.Debit,
+                    Expenses = totalExpenses,
+                    PetrolLitres = msILitres,
+                    DieselLitres = hsdLitres,
+                    SpeedLitres = msIILitres,
+                    CngKg = cngKg
                 });
             }
 
@@ -575,4 +587,11 @@ public class DsmMonthlyRow
     public double PetroCard { get; set; }
     public double Debit { get; set; }
     public double TotalCash => CashDeposit + CashInHand;
+
+    // Fuel breakdown & expenses
+    public double Expenses { get; set; }
+    public double PetrolLitres { get; set; }
+    public double DieselLitres { get; set; }
+    public double SpeedLitres { get; set; }
+    public double CngKg { get; set; }
 }

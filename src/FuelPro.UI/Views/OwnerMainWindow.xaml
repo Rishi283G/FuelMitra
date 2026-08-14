@@ -162,23 +162,6 @@
                         <materialDesign:PackIcon Kind="CurrencyInr" Width="24" Height="24"/>
                     </Button>
 
-                    <!-- DSM Performance -->
-                    <Button Command="{Binding NavigateToDsmPerformanceCommand}" ToolTip="DSM Performance" Margin="0,3">
-                        <Button.Style>
-                            <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
-                                <Setter Property="Foreground" Value="White" />
-                                <Setter Property="Opacity" Value="0.5" />
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding SelectedNavIndex}" Value="4">
-                                        <Setter Property="Opacity" Value="1" />
-                                        <Setter Property="Background" Value="#33FFFFFF" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Button.Style>
-                        <materialDesign:PackIcon Kind="AccountGroup" Width="24" Height="24"/>
-                    </Button>
-
                     <!-- Expense Analysis -->
                     <Button Command="{Binding NavigateToExpenseAnalysisCommand}" ToolTip="Expense Analysis" Margin="0,3">
                         <Button.Style>
@@ -186,7 +169,7 @@
                                 <Setter Property="Foreground" Value="White" />
                                 <Setter Property="Opacity" Value="0.5" />
                                 <Style.Triggers>
-                                    <DataTrigger Binding="{Binding SelectedNavIndex}" Value="5">
+                                    <DataTrigger Binding="{Binding SelectedNavIndex}" Value="4">
                                         <Setter Property="Opacity" Value="1" />
                                         <Setter Property="Background" Value="#33FFFFFF" />
                                     </DataTrigger>
@@ -203,7 +186,7 @@
                                 <Setter Property="Foreground" Value="White" />
                                 <Setter Property="Opacity" Value="0.5" />
                                 <Style.Triggers>
-                                    <DataTrigger Binding="{Binding SelectedNavIndex}" Value="6">
+                                    <DataTrigger Binding="{Binding SelectedNavIndex}" Value="5">
                                         <Setter Property="Opacity" Value="1" />
                                         <Setter Property="Background" Value="#33FFFFFF" />
                                     </DataTrigger>
@@ -220,7 +203,7 @@
                                 <Setter Property="Foreground" Value="White" />
                                 <Setter Property="Opacity" Value="0.5" />
                                 <Style.Triggers>
-                                    <DataTrigger Binding="{Binding SelectedNavIndex}" Value="7">
+                                    <DataTrigger Binding="{Binding SelectedNavIndex}" Value="6">
                                         <Setter Property="Opacity" Value="1" />
                                         <Setter Property="Background" Value="#33FFFFFF" />
                                     </DataTrigger>
@@ -230,40 +213,6 @@
                         <materialDesign:PackIcon Kind="CreditCard" Width="24" Height="24"/>
                     </Button>
 
-                    <!-- Financial Summary -->
-                    <Button Command="{Binding NavigateToFinancialSummaryCommand}" ToolTip="Financial Summary" Margin="0,3">
-                        <Button.Style>
-                            <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
-                                <Setter Property="Foreground" Value="White" />
-                                <Setter Property="Opacity" Value="0.5" />
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding SelectedNavIndex}" Value="8">
-                                        <Setter Property="Opacity" Value="1" />
-                                        <Setter Property="Background" Value="#33FFFFFF" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Button.Style>
-                        <materialDesign:PackIcon Kind="Finance" Width="24" Height="24"/>
-                    </Button>
-
-                    <!-- Reports -->
-                    <Button Command="{Binding NavigateToReportsCommand}" ToolTip="Reports" Margin="0,3">
-                        <Button.Style>
-                            <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
-                                <Setter Property="Foreground" Value="White" />
-                                <Setter Property="Opacity" Value="0.5" />
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding SelectedNavIndex}" Value="9">
-                                        <Setter Property="Opacity" Value="1" />
-                                        <Setter Property="Background" Value="#33FFFFFF" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Button.Style>
-                        <materialDesign:PackIcon Kind="FileChart" Width="24" Height="24"/>
-                    </Button>
-
                     <!-- DSM Salary -->
                     <Button Command="{Binding NavigateToSalaryCalculationCommand}" ToolTip="DSM Salary &amp; Payroll" Margin="0,3">
                         <Button.Style>
@@ -271,7 +220,7 @@
                                 <Setter Property="Foreground" Value="White" />
                                 <Setter Property="Opacity" Value="0.5" />
                                 <Style.Triggers>
-                                    <DataTrigger Binding="{Binding SelectedNavIndex}" Value="10">
+                                    <DataTrigger Binding="{Binding SelectedNavIndex}" Value="7">
                                         <Setter Property="Opacity" Value="1" />
                                         <Setter Property="Background" Value="#33FFFFFF" />
                                     </DataTrigger>
@@ -288,7 +237,7 @@
                                 <Setter Property="Foreground" Value="White" />
                                 <Setter Property="Opacity" Value="0.5" />
                                 <Style.Triggers>
-                                    <DataTrigger Binding="{Binding SelectedNavIndex}" Value="11">
+                                    <DataTrigger Binding="{Binding SelectedNavIndex}" Value="8">
                                         <Setter Property="Opacity" Value="1" />
                                         <Setter Property="Background" Value="#33FFFFFF" />
                                     </DataTrigger>
@@ -298,23 +247,6 @@
                         <materialDesign:PackIcon Kind="ChartBar" Width="24" Height="24"/>
                     </Button>
 
-                    <!-- Outer Expenses -->
-                    <Button Command="{Binding NavigateToOuterExpensesCommand}" ToolTip="Outer Expenses" Margin="0,3">
-                        <Button.Style>
-                            <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
-                                <Setter Property="Foreground" Value="White" />
-                                <Setter Property="Opacity" Value="0.5" />
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding SelectedNavIndex}" Value="12">
-                                        <Setter Property="Opacity" Value="1" />
-                                        <Setter Property="Background" Value="#33FFFFFF" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Button.Style>
-                        <materialDesign:PackIcon Kind="CashMinus" Width="24" Height="24"/>
-                    </Button>
-
                     <!-- Card Settlement -->
                     <Button Command="{Binding NavigateToCardSettlementCommand}" ToolTip="TID Sheet" Margin="0,3">
                         <Button.Style>
@@ -322,7 +254,7 @@
                                 <Setter Property="Foreground" Value="White" />
                                 <Setter Property="Opacity" Value="0.5" />
                                 <Style.Triggers>
-                                    <DataTrigger Binding="{Binding SelectedNavIndex}" Value="13">
+                                    <DataTrigger Binding="{Binding SelectedNavIndex}" Value="9">
                                         <Setter Property="Opacity" Value="1" />
                                         <Setter Property="Background" Value="#33FFFFFF" />
                                     </DataTrigger>
@@ -332,7 +264,6 @@
                         <materialDesign:PackIcon Kind="CreditCardCheck" Width="24" Height="24"/>
                     </Button>
 
-
                     <!-- Debtors Directory -->
                     <Button Command="{Binding NavigateToDebtorManagementCommand}" ToolTip="Debtors Directory" Margin="0,3">
                         <Button.Style>
@@ -340,7 +271,7 @@
                                 <Setter Property="Foreground" Value="White" />
                                 <Setter Property="Opacity" Value="0.5" />
                                 <Style.Triggers>
-                                    <DataTrigger Binding="{Binding SelectedNavIndex}" Value="14">
+                                    <DataTrigger Binding="{Binding SelectedNavIndex}" Value="10">
                                         <Setter Property="Opacity" Value="1" />
                                         <Setter Property="Background" Value="#33FFFFFF" />
                                     </DataTrigger>
@@ -357,7 +288,7 @@
                                 <Setter Property="Foreground" Value="White" />
                                 <Setter Property="Opacity" Value="0.5" />
                                 <Style.Triggers>
-                                    <DataTrigger Binding="{Binding SelectedNavIndex}" Value="15">
+                                    <DataTrigger Binding="{Binding SelectedNavIndex}" Value="11">
                                         <Setter Property="Opacity" Value="1" />
                                         <Setter Property="Background" Value="#33FFFFFF" />
                                     </DataTrigger>
@@ -374,7 +305,7 @@
                                 <Setter Property="Foreground" Value="White" />
                                 <Setter Property="Opacity" Value="0.5" />
                                 <Style.Triggers>
-                                    <DataTrigger Binding="{Binding SelectedNavIndex}" Value="16">
+                                    <DataTrigger Binding="{Binding SelectedNavIndex}" Value="12">
                                         <Setter Property="Opacity" Value="1" />
                                         <Setter Property="Background" Value="#33FFFFFF" />
                                     </DataTrigger>
@@ -391,7 +322,7 @@
                                 <Setter Property="Foreground" Value="White" />
                                 <Setter Property="Opacity" Value="0.5" />
                                 <Style.Triggers>
-                                    <DataTrigger Binding="{Binding SelectedNavIndex}" Value="17">
+                                    <DataTrigger Binding="{Binding SelectedNavIndex}" Value="13">
                                         <Setter Property="Opacity" Value="1" />
                                         <Setter Property="Background" Value="#33FFFFFF" />
                                     </DataTrigger>
@@ -399,6 +330,23 @@
                             </Style>
                         </Button.Style>
                         <materialDesign:PackIcon Kind="AccountAlert" Width="24" Height="24"/>
+                    </Button>
+
+                    <!-- Reporting & Printing Center (Always at End) -->
+                    <Button Command="{Binding NavigateToReportsCommand}" ToolTip="Reporting &amp; Printing Center" Margin="0,3">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
+                                <Setter Property="Foreground" Value="White" />
+                                <Setter Property="Opacity" Value="0.5" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding SelectedNavIndex}" Value="14">
+                                        <Setter Property="Opacity" Value="1" />
+                                        <Setter Property="Background" Value="#33FFFFFF" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                        <materialDesign:PackIcon Kind="FileChart" Width="24" Height="24"/>
                     </Button>
                 </StackPanel>
                 </ScrollViewer>

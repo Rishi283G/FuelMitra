@@ -161,23 +161,16 @@
                     <DataGrid ItemsSource="{Binding DsmRows}" AutoGenerateColumns="False" IsReadOnly="True"
                               materialDesign:DataGridAssist.CellPadding="12 8" CanUserSortColumns="True">
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="DSM Name" Binding="{Binding DsmName}" Width="*"/>
-                            <DataGridTextColumn Header="Shifts Worked" Binding="{Binding ShiftCount}" Width="110"/>
-                            <DataGridTextColumn Header="Total Sales" Binding="{Binding TotalSale, Converter={StaticResource CurrencyConverter}}" Width="120"/>
-                            <DataGridTextColumn Header="Total Cash" Binding="{Binding TotalCash, Converter={StaticResource CurrencyConverter}}" Width="110"/>
-                            <DataGridTextColumn Header="Cash (Bank)" Binding="{Binding CashDeposit, Converter={StaticResource CurrencyConverter}}" Width="110"/>
-                            <DataGridTextColumn Header="Cash (Hand)" Binding="{Binding CashInHand, Converter={StaticResource CurrencyConverter}}" Width="110"/>
-                            <DataGridTextColumn Header="PhonePe" Binding="{Binding PhonePe, Converter={StaticResource CurrencyConverter}}" Width="110"/>
-                            <DataGridTextColumn Header="PhonePe Card" Binding="{Binding PhonePeCard, Converter={StaticResource CurrencyConverter}}" Width="120"/>
-                            <DataGridTextColumn Header="PineLab Card" Binding="{Binding CreditCard, Converter={StaticResource CurrencyConverter}}" Width="120"/>
-                            <DataGridTextColumn Header="Petro Card" Binding="{Binding PetroCard, Converter={StaticResource CurrencyConverter}}" Width="110"/>
-                            <DataGridTextColumn Header="Debits" Binding="{Binding Debit, Converter={StaticResource CurrencyConverter}}" Width="100"/>
-                            <DataGridTextColumn Header="Total Collection" Binding="{Binding TotalCollection, Converter={StaticResource CurrencyConverter}}" Width="130"/>
-                            <DataGridTextColumn Header="Total Short" Binding="{Binding TotalShortAmount, Converter={StaticResource CurrencyConverter}}" Width="120"/>
-                            <DataGridTextColumn Header="Average Short" Binding="{Binding AverageShort, Converter={StaticResource CurrencyConverter}}" Width="120"/>
-                            <DataGridTextColumn Header="Highest Short" Binding="{Binding HighestShort, Converter={StaticResource CurrencyConverter}}" Width="120"/>
-                            <DataGridTextColumn Header="Accuracy" Binding="{Binding CollectionAccuracy, StringFormat='{}{0:F2}%'}" Width="100"/>
-                            <DataGridTextColumn Header="Mismatch Count" Binding="{Binding MismatchCount}" Width="120"/>
+                            <DataGridTextColumn Header="DSM Name" Binding="{Binding DsmName}" Width="1.5*"/>
+                            <DataGridTextColumn Header="Shifts Worked" Binding="{Binding ShiftCount}" Width="*"/>
+                            <DataGridTextColumn Header="Total Sales" Binding="{Binding TotalSale, Converter={StaticResource CurrencyConverter}}" Width="*"/>
+                            <DataGridTextColumn Header="Total Collection" Binding="{Binding TotalCollection, Converter={StaticResource CurrencyConverter}}" Width="*"/>
+                            <DataGridTextColumn Header="Total Short" Binding="{Binding TotalShortAmount, Converter={StaticResource CurrencyConverter}}" Width="*"/>
+                            <DataGridTextColumn Header="Expenses" Binding="{Binding Expenses, Converter={StaticResource CurrencyConverter}}" Width="*"/>
+                            <DataGridTextColumn Header="Petrol (L)" Binding="{Binding PetrolLitres, StringFormat='{}{0:N2}'}" Width="*"/>
+                            <DataGridTextColumn Header="Diesel (L)" Binding="{Binding DieselLitres, StringFormat='{}{0:N2}'}" Width="*"/>
+                            <DataGridTextColumn Header="Speed (L)" Binding="{Binding SpeedLitres, StringFormat='{}{0:N2}'}" Width="*"/>
+                            <DataGridTextColumn Header="CNG (Kg)" Binding="{Binding CngKg, StringFormat='{}{0:N2}'}" Width="*"/>
                         </DataGrid.Columns>
                     </DataGrid>
                 </StackPanel>

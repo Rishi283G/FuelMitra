@@ -65,23 +65,27 @@ public partial class MismatchLedgerViewModel : ObservableObject
                 var cash1 = entry.CashDenominations.Where(x => x.CashType == "Cash1").Sum(x => x.TotalAmount);
                 var cash2 = entry.CashDenominations.Where(x => x.CashType == "Cash2").Sum(x => x.TotalAmount);
 
-                var calc = _calcService.Calculate(new DsmEntryDto
-                {
-                    DSMEntryId = entry.DsmEntryId,
-                    NozzleReadings = entry.NozzleReadings.Select(r => new NozzleReadingDto { Amount = (decimal)r.Amount }).ToList(),
-                    PaymentCollection = new PaymentCollectionDto
-                    {
-                        PhonePe = (decimal)((entry.PaymentCollection?.PhonePe ?? 0) + (entry.PaymentCollection?.PhonePeCardMorning ?? 0) + (entry.PaymentCollection?.PhonePeCardNight ?? 0)),
-                        CreditCard = (decimal)((entry.PaymentCollection?.CreditCard ?? 0) + (entry.PaymentCollection?.PetroCard ?? 0)),
-                        CashDeposit = (decimal)(cash1 + cash2 + (entry.PaymentCollection?.CashDeposit ?? 0)),
-                        PhysicalCash = 0
-                    },
-                    DebitEntries = entry.DebitEntries.Select(d => new DebitEntryDto { Amount = (decimal)d.Amount }).ToList(),
-                    TestingEntries = entry.TestingEntries.Select(t => new TestingEntryDto { FuelType = t.FuelType, Amount = (decimal)t.Amount }).ToList(),
-                    Expenses = entry.Expenses.Select(e => new ExpenseDto { Amount = (decimal)e.Amount }).ToList()
-                });
+                var cashDeposit = cash1 > 0 ? cash1 : (entry.PaymentCollection?.CashDeposit ?? 0);
+                var cashInHand = cash2;
 
-                var mismatch = (double)calc.Mismatch;
+                var pc = entry.PaymentCollection;
+                var digital = (pc?.PhonePe ?? 0) + (pc?.PhonePeMorning ?? 0) + (pc?.PhonePeDay ?? 0) + (pc?.PhonePeNight ?? 0)
+                            + (pc?.PhonePeCard ?? 0) + (pc?.PhonePeCardMorning ?? 0) + (pc?.PhonePeCardDay ?? 0) + (pc?.PhonePeCardNight ?? 0)
+                            + (pc?.CreditCardMorning ?? 0) + (pc?.CreditCardDay ?? 0) + (pc?.CreditCardNight ?? 0)
+                            + (pc?.PetroCard ?? 0) + (pc?.PetroCardMorning ?? 0) + (pc?.PetroCardDay ?? 0) + (pc?.PetroCardNight ?? 0)
+                            + (pc?.Others ?? 0);
+
+                var totalDebit = entry.DebitEntries.Sum(d => d.Amount);
+                var totalExpenses = entry.Expenses.Sum(e => e.Amount) + (entry.KhandharePetroleumEntries != null ? entry.KhandharePetroleumEntries.Sum(kp => kp.Amount) : 0);
+                var totalTesting = entry.TestingEntries.Sum(t => t.Amount);
+
+                var grossSales = entry.NozzleReadings != null && entry.NozzleReadings.Count > 0
+                    ? entry.NozzleReadings.Sum(n => (double)n.Amount)
+                    : (double)entry.GrossSales;
+
+                var totalCollection = cashDeposit + cashInHand + digital + totalDebit + totalExpenses + totalTesting;
+                var mismatch = totalCollection - grossSales;
+
                 var status = "Balanced";
                 if (mismatch < -0.01) status = "Short";
                 else if (mismatch > 0.01) status = "Excess";
@@ -97,8 +101,8 @@ public partial class MismatchLedgerViewModel : ObservableObject
                     Date = entry.Shift?.ShiftDate ?? DateTime.Today,
                     ShiftType = entry.Shift?.ShiftType ?? "—",
                     DsmName = entry.DsmName ?? "Unknown",
-                    SalesAmount = (double)calc.GrossSales,
-                    CollectionAmount = (double)calc.TotalCollection,
+                    SalesAmount = grossSales,
+                    CollectionAmount = totalCollection,
                     MismatchAmount = mismatch,
                     Status = status
                 });

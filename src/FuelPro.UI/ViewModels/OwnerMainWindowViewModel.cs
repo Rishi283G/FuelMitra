@@ -106,81 +106,51 @@ public partial class OwnerMainWindowViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void NavigateToDsmPerformance()
-    {
-        SelectedNavIndex = 4;
-        CurrentView = App.Services.GetRequiredService<DsmPerformanceViewModel>();
-    }
-
-    [RelayCommand]
     private void NavigateToExpenseAnalysis()
     {
-        SelectedNavIndex = 5;
+        SelectedNavIndex = 4;
         CurrentView = App.Services.GetRequiredService<ExpenseAnalysisViewModel>();
     }
 
     [RelayCommand]
     private void NavigateToMismatchLedger()
     {
-        SelectedNavIndex = 6;
+        SelectedNavIndex = 5;
         CurrentView = App.Services.GetRequiredService<MismatchLedgerViewModel>();
     }
 
     [RelayCommand]
     private void NavigateToCollectionSummary()
     {
-        SelectedNavIndex = 7;
+        SelectedNavIndex = 6;
         CurrentView = App.Services.GetRequiredService<CollectionSummaryViewModel>();
-    }
-
-    [RelayCommand]
-    private void NavigateToFinancialSummary()
-    {
-        SelectedNavIndex = 8;
-        var debtorVm = App.Services.GetRequiredService<DebtorManagementViewModel>();
-        debtorVm.SelectedTabIndex = 2; // Financial Summary tab
-        CurrentView = debtorVm;
-    }
-
-    [RelayCommand]
-    private void NavigateToReports()
-    {
-        SelectedNavIndex = 9;
-        CurrentView = App.Services.GetRequiredService<ReportsViewModel>();
     }
 
     [RelayCommand]
     private void NavigateToSalaryCalculation()
     {
-        SelectedNavIndex = 10;
+        SelectedNavIndex = 7;
         CurrentView = App.Services.GetRequiredService<SalaryCalculationViewModel>();
     }
 
     [RelayCommand]
     private void NavigateToOilDefInventory()
     {
-        SelectedNavIndex = 11;
+        SelectedNavIndex = 8;
         CurrentView = App.Services.GetRequiredService<OilDefSummaryViewModel>();
-    }
-
-    [RelayCommand]
-    private void NavigateToOuterExpenses()
-    {
-        SelectedNavIndex = 12;
-        CurrentView = App.Services.GetRequiredService<OuterExpensesViewModel>();
     }
 
     [RelayCommand]
     private void NavigateToCardSettlement()
     {
-        SelectedNavIndex = 13;
+        SelectedNavIndex = 9;
         CurrentView = App.Services.GetRequiredService<CardSettlementViewModel>();
     }
 
     [RelayCommand]
     private void NavigateToDebtorManagement()
     {
-        SelectedNavIndex = 14;
+        SelectedNavIndex = 10;
         var debtorVm = App.Services.GetRequiredService<DebtorManagementViewModel>();
         debtorVm.SelectedTabIndex = 0; // Debtors Directory tab
         CurrentView = debtorVm;
@@ -189,22 +159,29 @@ public partial class OwnerMainWindowViewModel : ObservableObject
     [RelayCommand]
     private void NavigateToPumpExpenses()
     {
-        SelectedNavIndex = 15;
+        SelectedNavIndex = 11;
         CurrentView = App.Services.GetRequiredService<PumpExpensesViewModel>();
     }
 
     [RelayCommand]
     private void NavigateToPettyCash()
     {
-        SelectedNavIndex = 16;
+        SelectedNavIndex = 12;
         CurrentView = App.Services.GetRequiredService<PettyCashViewModel>();
     }
 
     [RelayCommand]
     private void NavigateToDsmPersonalDebtor()
     {
-        SelectedNavIndex = 17;
+        SelectedNavIndex = 13;
         CurrentView = App.Services.GetRequiredService<DsmPersonalDebtorViewModel>();
+    }
+
+    [RelayCommand]
+    private void NavigateToReports()
+    {
+        SelectedNavIndex = 14;
+        CurrentView = App.Services.GetRequiredService<ReportsViewModel>();
     }
 
     partial void OnCurrentViewChanged(object? oldValue, object? newValue)
