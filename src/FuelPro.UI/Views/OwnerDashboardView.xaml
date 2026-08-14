@@ -154,7 +154,7 @@
                          VerticalAlignment="Bottom" Margin="0,0,0,-8"/>
 
             <!-- KPI Cards Row -->
-            <UniformGrid Grid.Row="1" Columns="3" Margin="0,0,0,16">
+            <UniformGrid Grid.Row="1" Columns="4" Margin="0,0,0,16">
                 <!-- Total Sale -->
                 <materialDesign:Card Margin="4" Padding="16" materialDesign:ElevationAssist.Elevation="Dp2"
                                      UniformCornerRadius="12">
@@ -165,7 +165,7 @@
                                        VerticalAlignment="Center"/>
                         </StackPanel>
                         <TextBlock Text="{Binding TodayTotalSale, Converter={StaticResource CurrencyConverter}}"
-                                   FontSize="22" FontWeight="Bold" Foreground="#1565C0"/>
+                                   FontSize="20" FontWeight="Bold" Foreground="#1565C0"/>
                     </StackPanel>
                 </materialDesign:Card>
 
@@ -179,7 +179,7 @@
                                        VerticalAlignment="Center"/>
                         </StackPanel>
                         <TextBlock Text="{Binding TodayTotalLitres, Converter={StaticResource LitresConverter}}"
-                                   FontSize="22" FontWeight="Bold" Foreground="#2E7D32"/>
+                                   FontSize="20" FontWeight="Bold" Foreground="#2E7D32"/>
                     </StackPanel>
                 </materialDesign:Card>
 
@@ -193,7 +193,7 @@
                                        VerticalAlignment="Center"/>
                         </StackPanel>
                         <TextBlock Text="{Binding TodayTotalCollection, Converter={StaticResource CurrencyConverter}}"
-                                   FontSize="22" FontWeight="Bold" Foreground="#F57F17"/>
+                                   FontSize="20" FontWeight="Bold" Foreground="#F57F17"/>
                     </StackPanel>
                 </materialDesign:Card>
 
@@ -207,7 +207,35 @@
                                        VerticalAlignment="Center"/>
                         </StackPanel>
                         <TextBlock Text="{Binding TodayTotalMismatch, Converter={StaticResource CurrencyConverter}}"
-                                   FontSize="22" FontWeight="Bold" Foreground="#C62828"/>
+                                   FontSize="20" FontWeight="Bold" Foreground="#C62828"/>
+                    </StackPanel>
+                </materialDesign:Card>
+
+                <!-- Oil & DEF Sales -->
+                <materialDesign:Card Margin="4" Padding="16" materialDesign:ElevationAssist.Elevation="Dp2"
+                                     UniformCornerRadius="12">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <materialDesign:PackIcon Kind="Oil" Foreground="#6A1B9A" Width="20" Height="20"/>
+                            <TextBlock Text="Oil &amp; DEF Sales" FontSize="12" Opacity="0.6" Margin="8,0,0,0"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <TextBlock Text="{Binding OilDefSalesTotal, Converter={StaticResource CurrencyConverter}}"
+                                   FontSize="20" FontWeight="Bold" Foreground="#6A1B9A"/>
+                    </StackPanel>
+                </materialDesign:Card>
+
+                <!-- Oil & DEF Profit -->
+                <materialDesign:Card Margin="4" Padding="16" materialDesign:ElevationAssist.Elevation="Dp2"
+                                     UniformCornerRadius="12">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <materialDesign:PackIcon Kind="ChartBox" Foreground="#283593" Width="20" Height="20"/>
+                            <TextBlock Text="Oil &amp; DEF Profit" FontSize="12" Opacity="0.6" Margin="8,0,0,0"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <TextBlock Text="{Binding OilDefProfitTotal, Converter={StaticResource CurrencyConverter}}"
+                                   FontSize="20" FontWeight="Bold" Foreground="#283593"/>
                     </StackPanel>
                 </materialDesign:Card>
 
@@ -221,7 +249,7 @@
                                        VerticalAlignment="Center"/>
                         </StackPanel>
                         <TextBlock Text="{Binding RangeNetProfit, Converter={StaticResource CurrencyConverter}}"
-                                   FontSize="22" FontWeight="Bold" Foreground="#00695C"/>
+                                   FontSize="20" FontWeight="Bold" Foreground="#00695C"/>
                     </StackPanel>
                 </materialDesign:Card>
 
@@ -231,11 +259,11 @@
                     <StackPanel>
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                             <materialDesign:PackIcon Kind="AccountAlert" Foreground="#BF360C" Width="20" Height="20"/>
-                            <TextBlock Text="Outstanding Debtors (Lifetime)" FontSize="12" Opacity="0.6" Margin="8,0,0,0"
+                            <TextBlock Text="Outstanding Debtors" FontSize="12" Opacity="0.6" Margin="8,0,0,0"
                                        VerticalAlignment="Center"/>
                         </StackPanel>
                         <TextBlock Text="{Binding OutstandingDebtors, Converter={StaticResource CurrencyConverter}}"
-                                   FontSize="22" FontWeight="Bold" Foreground="#BF360C"/>
+                                   FontSize="20" FontWeight="Bold" Foreground="#BF360C"/>
                     </StackPanel>
                 </materialDesign:Card>
             </UniformGrid>

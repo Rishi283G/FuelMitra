@@ -333,6 +333,23 @@
                     </Button>
 
 
+                    <!-- Debtors Directory -->
+                    <Button Command="{Binding NavigateToDebtorManagementCommand}" ToolTip="Debtors Directory" Margin="0,3">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
+                                <Setter Property="Foreground" Value="White" />
+                                <Setter Property="Opacity" Value="0.5" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding SelectedNavIndex}" Value="14">
+                                        <Setter Property="Opacity" Value="1" />
+                                        <Setter Property="Background" Value="#33FFFFFF" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                        <materialDesign:PackIcon Kind="AccountMultiple" Width="24" Height="24"/>
+                    </Button>
+
                     <!-- Pump Expenses -->
                     <Button Command="{Binding NavigateToPumpExpensesCommand}" ToolTip="Pump Expenses" Margin="0,3">
                         <Button.Style>
@@ -365,6 +382,23 @@
                             </Style>
                         </Button.Style>
                         <materialDesign:PackIcon Kind="Wallet" Width="24" Height="24"/>
+                    </Button>
+
+                    <!-- DSM Loss & Personal Debtors -->
+                    <Button Command="{Binding NavigateToDsmPersonalDebtorCommand}" ToolTip="DSM Loss &amp; Personal Debtors" Margin="0,3">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
+                                <Setter Property="Foreground" Value="White" />
+                                <Setter Property="Opacity" Value="0.5" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding SelectedNavIndex}" Value="17">
+                                        <Setter Property="Opacity" Value="1" />
+                                        <Setter Property="Background" Value="#33FFFFFF" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                        <materialDesign:PackIcon Kind="AccountAlert" Width="24" Height="24"/>
                     </Button>
                 </StackPanel>
                 </ScrollViewer>

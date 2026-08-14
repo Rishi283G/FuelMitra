@@ -200,6 +200,13 @@ public partial class OwnerMainWindowViewModel : ObservableObject
         CurrentView = App.Services.GetRequiredService<PettyCashViewModel>();
     }
 
+    [RelayCommand]
+    private void NavigateToDsmPersonalDebtor()
+    {
+        SelectedNavIndex = 17;
+        CurrentView = App.Services.GetRequiredService<DsmPersonalDebtorViewModel>();
+    }
+
     partial void OnCurrentViewChanged(object? oldValue, object? newValue)
     {
         if (oldValue is IDisposable disposable)

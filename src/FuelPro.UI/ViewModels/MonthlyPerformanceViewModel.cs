@@ -138,7 +138,7 @@ public partial class MonthlyPerformanceViewModel : ObservableObject, IDisposable
                     defaultHsd, defaultMsI, defaultMsII, defaultCng,
                     stationName);
 
-                double dayNetSale = dayReport.TotalFuelAmount - dayReport.DsmSummaryTotals.Testing;
+                double dayNetSale = dayReport.TotalFuelAmount + dayReport.OtherCashTotal + dayReport.OilDefSalesTotal - dayReport.DsmSummaryTotals.Testing;
                 double dayCollection = dayReport.ActualCollection;
 
                 DayRows.Add(new MonthDayRow

@@ -38,6 +38,9 @@ public partial class DailyPerformanceViewModel : ObservableObject, IDisposable
     [ObservableProperty] private double _totalHsd;
     [ObservableProperty] private double _totalMsI;
     [ObservableProperty] private double _totalMsII;
+    [ObservableProperty] private double _oilDefSalesTotal;
+    [ObservableProperty] private double _oilDefProfitTotal;
+    [ObservableProperty] private double _totalDsmShort;
 
     // DSM-wise breakdown
     public ObservableCollection<DsmDailyRow> DsmBreakdown { get; } = new();
@@ -217,11 +220,17 @@ public partial class DailyPerformanceViewModel : ObservableObject, IDisposable
                 defaultHsd, defaultMsI, defaultMsII, defaultCng,
                 stationName);
 
-            TotalSale = dayReport.TotalFuelAmount - dayReport.DsmSummaryTotals.Testing;
+            TotalSale = dayReport.TotalFuelAmount + dayReport.OtherCashTotal + dayReport.OilDefSalesTotal - dayReport.DsmSummaryTotals.Testing;
             TotalLitres = dayReport.TotalFuelLitres;
             TotalCollection = dayReport.ActualCollection;
             TotalExpenses = dayReport.ExpensesTotal;
             TotalMismatch = dayReport.Difference;
+            OilDefSalesTotal = dayReport.OilDefSalesTotal;
+            TotalDsmShort = dayReport.TotalDsmShort;
+
+            var finCalcService = App.Services.GetRequiredService<IFinancialCalculationService>();
+            var finResult = await finCalcService.CalculateFinancialsAsync(SelectedDate, SelectedDate);
+            OilDefProfitTotal = finResult.OilProfit.TotalProfit + finResult.DefProfit.TotalProfit;
 
             // Load liters breakdown
             foreach (var fRow in dayReport.FuelSales)

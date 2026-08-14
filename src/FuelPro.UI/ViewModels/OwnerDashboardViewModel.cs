@@ -60,6 +60,9 @@ public partial class OwnerDashboardViewModel : ObservableObject, IDisposable
     // Additional Range Metrics
     [ObservableProperty] private double _rangeNetProfit;
     [ObservableProperty] private double _outstandingDebtors;
+    [ObservableProperty] private double _oilDefSalesTotal;
+    [ObservableProperty] private double _oilDefProfitTotal;
+    [ObservableProperty] private double _todayTotalDsmShort;
 
     // Shift summaries
     [ObservableProperty] private ShiftSummaryDto? _morningShift;
@@ -287,10 +290,13 @@ public partial class OwnerDashboardViewModel : ObservableObject, IDisposable
             TodayCngLitres = dayReport.FuelSales.FirstOrDefault(f => f.FuelType == "CNG")?.Litres ?? 0;
             TodayTotalLitres = dayReport.TotalFuelLitres;
             TodayTotalMismatch = dayReport.Difference;
+            OilDefSalesTotal = dayReport.OilDefSalesTotal;
+            TodayTotalDsmShort = dayReport.TotalDsmShort;
 
             // Comprehensive Profit calculation from IFinancialCalculationService
             var finResult = await _financialCalcService.CalculateFinancialsAsync(StartDate.Date, EndDate.Date);
             RangeNetProfit = finResult.NetProfit;
+            OilDefProfitTotal = finResult.OilProfit.TotalProfit + finResult.DefProfit.TotalProfit;
 
             // Lifetime Outstanding Debtors (overall balance is a lifetime KPI)
             double totalDebits = await _dbContext.DebitEntries.SumAsync(d => d.Amount);

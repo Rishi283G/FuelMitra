@@ -40,19 +40,35 @@
             <UniformGrid Columns="4" Margin="0,0,0,16">
                 <materialDesign:Card Margin="4" Padding="12" UniformCornerRadius="8">
                     <StackPanel><TextBlock Text="Total Sale" FontSize="11" Opacity="0.5"/>
-                    <TextBlock Text="{Binding TotalSale, Converter={StaticResource CurrencyConverter}}" FontSize="18" FontWeight="Bold"/></StackPanel>
+                    <TextBlock Text="{Binding TotalSale, Converter={StaticResource CurrencyConverter}}" FontSize="18" FontWeight="Bold" Foreground="#1565C0"/></StackPanel>
                 </materialDesign:Card>
                 <materialDesign:Card Margin="4" Padding="12" UniformCornerRadius="8">
                     <StackPanel><TextBlock Text="Total Litres" FontSize="11" Opacity="0.5"/>
-                    <TextBlock Text="{Binding TotalLitres, Converter={StaticResource LitresConverter}}" FontSize="18" FontWeight="Bold"/></StackPanel>
+                    <TextBlock Text="{Binding TotalLitres, Converter={StaticResource LitresConverter}}" FontSize="18" FontWeight="Bold" Foreground="#2E7D32"/></StackPanel>
                 </materialDesign:Card>
                 <materialDesign:Card Margin="4" Padding="12" UniformCornerRadius="8">
                     <StackPanel><TextBlock Text="Collection" FontSize="11" Opacity="0.5"/>
-                    <TextBlock Text="{Binding TotalCollection, Converter={StaticResource CurrencyConverter}}" FontSize="18" FontWeight="Bold"/></StackPanel>
+                    <TextBlock Text="{Binding TotalCollection, Converter={StaticResource CurrencyConverter}}" FontSize="18" FontWeight="Bold" Foreground="#F57F17"/></StackPanel>
                 </materialDesign:Card>
                 <materialDesign:Card Margin="4" Padding="12" UniformCornerRadius="8">
                     <StackPanel><TextBlock Text="Mismatch" FontSize="11" Opacity="0.5"/>
                     <TextBlock Text="{Binding TotalMismatch, Converter={StaticResource CurrencyConverter}}" FontSize="18" FontWeight="Bold" Foreground="#C62828"/></StackPanel>
+                </materialDesign:Card>
+                <materialDesign:Card Margin="4" Padding="12" UniformCornerRadius="8">
+                    <StackPanel><TextBlock Text="Oil &amp; DEF Sales" FontSize="11" Opacity="0.5"/>
+                    <TextBlock Text="{Binding OilDefSalesTotal, Converter={StaticResource CurrencyConverter}}" FontSize="18" FontWeight="Bold" Foreground="#6A1B9A"/></StackPanel>
+                </materialDesign:Card>
+                <materialDesign:Card Margin="4" Padding="12" UniformCornerRadius="8">
+                    <StackPanel><TextBlock Text="Oil &amp; DEF Profit" FontSize="11" Opacity="0.5"/>
+                    <TextBlock Text="{Binding OilDefProfitTotal, Converter={StaticResource CurrencyConverter}}" FontSize="18" FontWeight="Bold" Foreground="#283593"/></StackPanel>
+                </materialDesign:Card>
+                <materialDesign:Card Margin="4" Padding="12" UniformCornerRadius="8">
+                    <StackPanel><TextBlock Text="Total Expenses" FontSize="11" Opacity="0.5"/>
+                    <TextBlock Text="{Binding TotalExpenses, Converter={StaticResource CurrencyConverter}}" FontSize="18" FontWeight="Bold" Foreground="#BF360C"/></StackPanel>
+                </materialDesign:Card>
+                <materialDesign:Card Margin="4" Padding="12" UniformCornerRadius="8">
+                    <StackPanel><TextBlock Text="DSM Loss / Short" FontSize="11" Opacity="0.5"/>
+                    <TextBlock Text="{Binding TotalDsmShort, Converter={StaticResource CurrencyConverter}}" FontSize="18" FontWeight="Bold" Foreground="#D84315"/></StackPanel>
                 </materialDesign:Card>
             </UniformGrid>
             <TextBlock Text="DSM-wise Breakdown" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,8"/>

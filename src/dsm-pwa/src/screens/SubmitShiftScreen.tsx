@@ -308,14 +308,19 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       setSalesQuantities(parsed.salesQuantities ?? {});
       setKhandhareEntries(parsed.khandhareEntries ?? []);
       setStep(parsed.step ?? "readings");
-
-      if (parsed.nozzleRows) {
-        setNozzleRows(
-          parsed.nozzleRows.map((row: any, idx: number) => ({
-            ...row,
-            rowId: row.rowId ?? idx,
-          })),
-        );
+      if (parsed.nozzleRows && Array.isArray(parsed.nozzleRows)) {
+        const uniqueNozzleRows: any[] = [];
+        const seenIds = new Set<number>();
+        parsed.nozzleRows.forEach((row: any) => {
+          if (row.nozzleId && !seenIds.has(row.nozzleId)) {
+            seenIds.add(row.nozzleId);
+            uniqueNozzleRows.push({
+              ...row,
+              rowId: uniqueNozzleRows.length + 1,
+            });
+          }
+        });
+        setNozzleRows(uniqueNozzleRows);
       }
     } catch (err) {
       console.error("Failed to restore draft:", err);
@@ -546,11 +551,14 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         cngRate = settingsData[0].CngRate ?? cngRate;
       }
 
-      // We load nozzles of both the primary and connected pump
-      const pumpsToFetch = [pumpId];
-      if (profile.ConnectedPump) {
-        pumpsToFetch.push(profile.ConnectedPump);
-      }
+      // We load nozzles of both the primary and connected pump (deduplicated)
+      const pumpsToFetch = Array.from(
+        new Set(
+          [pumpId, profile.ConnectedPump].filter(
+            (p): p is number => typeof p === "number" && p > 0,
+          ),
+        ),
+      );
 
       // Try to fetch nozzle config from Supabase PumpMappings table
       const { data: nozzleConfig, error: nozzleErr } = await supabase
@@ -565,23 +573,30 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         [];
 
       if (!nozzleErr && nozzleConfig && nozzleConfig.length > 0) {
-        // Use Supabase config
-        configRows = nozzleConfig.map((r: any) => ({
-          nozzleId: r.NozzleNumber,
-          fuelType: r.FuelType,
-          pumpId: r.PumpId,
-        }));
+        // Use Supabase config - deduplicate by NozzleNumber to prevent duplicate nozzle input cards
+        const seenNozzles = new Set<number>();
+        for (const r of nozzleConfig) {
+          const nId = Number(r.NozzleNumber);
+          if (nId && !seenNozzles.has(nId)) {
+            seenNozzles.add(nId);
+            configRows.push({
+              nozzleId: nId,
+              fuelType: r.FuelType,
+              pumpId: r.PumpId,
+            });
+          }
+        }
       } else {
         const FALLBACK_CONFIG: Record<
           number,
           { nozzleId: number; fuelType: string; pumpId: number }[]
         > = {
           1: [
-            { nozzleId: 1, fuelType: "MS-II", pumpId: 1 },
+            { nozzleId: 1, fuelType: "MS-I", pumpId: 1 },
             { nozzleId: 3, fuelType: "HSD", pumpId: 1 },
           ],
           2: [
-            { nozzleId: 2, fuelType: "MS-II", pumpId: 2 },
+            { nozzleId: 2, fuelType: "MS-I", pumpId: 2 },
             { nozzleId: 4, fuelType: "HSD", pumpId: 2 },
           ],
           3: [
@@ -593,22 +608,29 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
             { nozzleId: 8, fuelType: "HSD", pumpId: 4 },
           ],
           5: [
-            { nozzleId: 9, fuelType: "MS-II", pumpId: 5 },
+            { nozzleId: 9, fuelType: "MS-I", pumpId: 5 },
             { nozzleId: 11, fuelType: "HSD", pumpId: 5 },
           ],
           6: [
-            { nozzleId: 10, fuelType: "MS-II", pumpId: 6 },
+            { nozzleId: 10, fuelType: "MS-I", pumpId: 6 },
             { nozzleId: 12, fuelType: "HSD", pumpId: 6 },
           ],
         };
 
-        configRows = FALLBACK_CONFIG[pumpId] || [];
-        if (profile.ConnectedPump && FALLBACK_CONFIG[profile.ConnectedPump]) {
-          configRows = [
-            ...configRows,
-            ...FALLBACK_CONFIG[profile.ConnectedPump],
-          ];
-        }
+        const uniqueMap = new Map<
+          number,
+          { nozzleId: number; fuelType: string; pumpId: number }
+        >();
+        pumpsToFetch.forEach((pId) => {
+          if (FALLBACK_CONFIG[pId]) {
+            FALLBACK_CONFIG[pId].forEach((item) => {
+              if (!uniqueMap.has(item.nozzleId)) {
+                uniqueMap.set(item.nozzleId, item);
+              }
+            });
+          }
+        });
+        configRows = Array.from(uniqueMap.values());
       }
 
       if (configRows.length === 0) {
