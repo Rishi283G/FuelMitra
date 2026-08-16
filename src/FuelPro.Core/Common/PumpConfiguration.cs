@@ -258,6 +258,14 @@ public static class PumpConfiguration
 
     public static FuelType GetFuelType(int pumpId, int nozzleNumber, DateTime? date = null)
     {
+        // For active operation (after Legacy22CutoffDate), explicitly map nozzle numbers to tank fuel types:
+        if (!date.HasValue || date.Value.Date >= Legacy22PumpCutoffDate)
+        {
+            if (nozzleNumber == 7 || nozzleNumber == 8) return FuelType.MS_II;
+            if (nozzleNumber == 3 || nozzleNumber == 4 || nozzleNumber == 11 || nozzleNumber == 12) return FuelType.HSD;
+            if (nozzleNumber == 1 || nozzleNumber == 2 || nozzleNumber == 5 || nozzleNumber == 6 || nozzleNumber == 9 || nozzleNumber == 10) return FuelType.MS_I;
+        }
+
         var actualPumpId = GetPumpIdForNozzle(nozzleNumber, date);
         if (actualPumpId == 0)
         {
