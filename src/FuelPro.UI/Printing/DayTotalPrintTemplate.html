@@ -587,15 +587,19 @@ function renderData(){
     var totalL = d.totalFuelLitres||0;
     var totalA = d.totalFuelAmount||0;
     var fuelSales = d.fuelSales || d.nozzleRows || [];
-    var badges={'HSD':'<span class="b-hsd">Diesel</span>','MS-I':'<span class="b-ms1">Petrol</span>','MS-II':'<span class="b-hsd">Diesel</span>','CNG':'<span class="b-cng">CNG</span>'};
+    var badges={'HSD':'<span class="b-hsd">HSD 1</span>','MS-II':'<span class="b-hsd">HSD 2</span>','MS-I':'<span class="b-ms1">MS</span>','CNG':'<span class="b-cng">CNG</span>'};
 
     fuelSales.forEach(function(f) {
       var badge = badges[f.fuelType]||f.fuelType;
       var desc = f.description || '';
+      var labelStr = badge;
+      if (desc && desc !== 'HSD 1' && desc !== 'HSD 2' && desc !== 'MS' && desc !== 'CNG' && desc !== 'HSD - 20KL' && desc !== 'HSD - 20KL II' && desc !== 'MS - 20KL' && desc !== f.fuelType) {
+        labelStr += ' \u2014 ' + desc;
+      }
       var unit = f.fuelType === 'CNG' ? ' Kg' : ' L';
       var tr = document.createElement('tr');
       tr.innerHTML = '<td style="text-align: left;">' + index + '</td>' +
-                     '<td style="text-align: left;">' + badge + (desc ? ' \u2014 ' + desc : '') + '</td>' +
+                     '<td style="text-align: left;">' + labelStr + '</td>' +
                      '<td>' + parseFloat(f.litres||0).toFixed(4) + unit + '</td>' +
                      '<td>' + parseFloat(f.rate||0).toFixed(2) + '</td>' +
                      '<td style="font-weight: 700;">' + inrZ(f.amount) + '</td>';

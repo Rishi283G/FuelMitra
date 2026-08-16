@@ -340,23 +340,23 @@
                                         </Grid>
                                     </Border>
 
-                                    <!-- HSD -->
-                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="HSD - 20KL" Padding="8" VerticalAlignment="Center"/>
-                                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding HsdLitres, Converter={StaticResource LitreConverter}}" Padding="8" TextAlignment="Right" VerticalAlignment="Center"/>
-                                    <TextBlock Grid.Row="1" Grid.Column="2" Text="{Binding HsdRate, Converter={StaticResource CurrencyConverter}}" Padding="8" TextAlignment="Right" VerticalAlignment="Center"/>
-                                    <TextBlock Grid.Row="1" Grid.Column="3" Text="{Binding HsdAmount, Converter={StaticResource CurrencyConverter}}" Padding="8" TextAlignment="Right" FontWeight="Bold" VerticalAlignment="Center"/>
+                                     <!-- HSD 1 -->
+                                     <TextBlock Grid.Row="1" Grid.Column="0" Text="HSD 1" Padding="8" VerticalAlignment="Center"/>
+                                     <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding HsdLitres, Converter={StaticResource LitreConverter}}" Padding="8" TextAlignment="Right" VerticalAlignment="Center"/>
+                                     <TextBlock Grid.Row="1" Grid.Column="2" Text="{Binding HsdRate, Converter={StaticResource CurrencyConverter}}" Padding="8" TextAlignment="Right" VerticalAlignment="Center"/>
+                                     <TextBlock Grid.Row="1" Grid.Column="3" Text="{Binding HsdAmount, Converter={StaticResource CurrencyConverter}}" Padding="8" TextAlignment="Right" FontWeight="Bold" VerticalAlignment="Center"/>
 
-                                    <!-- MS-I -->
-                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="MS - 20KL" Padding="8" VerticalAlignment="Center"/>
-                                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding MsILitres, Converter={StaticResource LitreConverter}}" Padding="8" TextAlignment="Right" VerticalAlignment="Center"/>
-                                    <TextBlock Grid.Row="2" Grid.Column="2" Text="{Binding MsIRate, Converter={StaticResource CurrencyConverter}}" Padding="8" TextAlignment="Right" VerticalAlignment="Center"/>
-                                    <TextBlock Grid.Row="2" Grid.Column="3" Text="{Binding MsIAmount, Converter={StaticResource CurrencyConverter}}" Padding="8" TextAlignment="Right" FontWeight="Bold" VerticalAlignment="Center"/>
+                                     <!-- HSD 2 -->
+                                     <TextBlock Grid.Row="2" Grid.Column="0" Text="HSD 2" Padding="8" VerticalAlignment="Center"/>
+                                     <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding MsIILitres, Converter={StaticResource LitreConverter}}" Padding="8" TextAlignment="Right" VerticalAlignment="Center"/>
+                                     <TextBlock Grid.Row="2" Grid.Column="2" Text="{Binding MsIIRate, Converter={StaticResource CurrencyConverter}}" Padding="8" TextAlignment="Right" VerticalAlignment="Center"/>
+                                     <TextBlock Grid.Row="2" Grid.Column="3" Text="{Binding MsIIAmount, Converter={StaticResource CurrencyConverter}}" Padding="8" TextAlignment="Right" FontWeight="Bold" VerticalAlignment="Center"/>
 
-                                    <!-- MS-II -->
-                                    <TextBlock Grid.Row="3" Grid.Column="0" Text="HSD - 20KL II" Padding="8" VerticalAlignment="Center"/>
-                                    <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding MsIILitres, Converter={StaticResource LitreConverter}}" Padding="8" TextAlignment="Right" VerticalAlignment="Center"/>
-                                    <TextBlock Grid.Row="3" Grid.Column="2" Text="{Binding MsIIRate, Converter={StaticResource CurrencyConverter}}" Padding="8" TextAlignment="Right" VerticalAlignment="Center"/>
-                                    <TextBlock Grid.Row="3" Grid.Column="3" Text="{Binding MsIIAmount, Converter={StaticResource CurrencyConverter}}" Padding="8" TextAlignment="Right" FontWeight="Bold" VerticalAlignment="Center"/>
+                                     <!-- MS -->
+                                     <TextBlock Grid.Row="3" Grid.Column="0" Text="MS" Padding="8" VerticalAlignment="Center"/>
+                                     <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding MsILitres, Converter={StaticResource LitreConverter}}" Padding="8" TextAlignment="Right" VerticalAlignment="Center"/>
+                                     <TextBlock Grid.Row="3" Grid.Column="2" Text="{Binding MsIRate, Converter={StaticResource CurrencyConverter}}" Padding="8" TextAlignment="Right" VerticalAlignment="Center"/>
+                                     <TextBlock Grid.Row="3" Grid.Column="3" Text="{Binding MsIAmount, Converter={StaticResource CurrencyConverter}}" Padding="8" TextAlignment="Right" FontWeight="Bold" VerticalAlignment="Center"/>
 
                                     <!-- MS Total -->
                                     <Border Grid.Row="4" Grid.ColumnSpan="4" Background="#F5F5F5" BorderBrush="{DynamicResource MaterialDesign.Brush.Divider}" BorderThickness="0,1,0,0">

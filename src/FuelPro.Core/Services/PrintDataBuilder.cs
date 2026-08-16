@@ -137,9 +137,9 @@ public class PrintDataBuilder
             if (hsdLitres > 0 || hsdAmount > 0)
                 fuelRows.Add(new FuelSalePrintRow
                 {
-                    Description = "HSD - 20KL",
+                    Description = "HSD 1",
                     FuelType    = "HSD",
-                    TankLabel   = "20 KL",
+                    TankLabel   = "HSD 1",
                     Litres  = (decimal)hsdLitres,
                     Rate    = (decimal)Math.Round(hsdRate, 2),
                     Amount  = (decimal)hsdAmount
@@ -147,9 +147,9 @@ public class PrintDataBuilder
             if (msIILitres > 0 || msIIAmount > 0)
                 fuelRows.Add(new FuelSalePrintRow
                 {
-                    Description = "HSD - 20KL II",
+                    Description = "HSD 2",
                     FuelType    = "MS-II",
-                    TankLabel   = "20 KL II",
+                    TankLabel   = "HSD 2",
                     Litres  = (decimal)msIILitres,
                     Rate    = (decimal)Math.Round(msIIRate, 2),
                     Amount  = (decimal)msIIAmount
@@ -157,9 +157,9 @@ public class PrintDataBuilder
             if (msILitres > 0 || msIAmount > 0)
                 fuelRows.Add(new FuelSalePrintRow
                 {
-                    Description = "MS - 20KL",
+                    Description = "MS",
                     FuelType    = "MS-I",
-                    TankLabel   = "20 KL",
+                    TankLabel   = "MS",
                     Litres  = (decimal)msILitres,
                     Rate    = (decimal)Math.Round(msIRate, 2),
                     Amount  = (decimal)msIAmount
@@ -167,9 +167,9 @@ public class PrintDataBuilder
             if (cngLitres > 0 || cngAmount > 0)
                 fuelRows.Add(new FuelSalePrintRow
                 {
-                    Description = "CNG - Line",
+                    Description = "CNG",
                     FuelType    = "CNG",
-                    TankLabel   = "Line",
+                    TankLabel   = "CNG",
                     Litres  = (decimal)cngLitres,
                     Rate    = (decimal)Math.Round(cngRate, 2),
                     Amount  = (decimal)cngAmount

@@ -61,13 +61,13 @@ public class ReportService : IReportService
 
         dto.FuelSales = new List<FuelSaleRowDto>();
         if (hsdL > 0 || hsdA > 0)
-            dto.FuelSales.Add(new FuelSaleRowDto { Description = "HSD - 20KL", FuelType = "HSD", Litres = hsdL, Rate = hsdL > 0 ? Math.Round(hsdA / hsdL, 2) : hsdRate, Amount = hsdA });
+            dto.FuelSales.Add(new FuelSaleRowDto { Description = "HSD 1", FuelType = "HSD", Litres = hsdL, Rate = hsdL > 0 ? Math.Round(hsdA / hsdL, 2) : hsdRate, Amount = hsdA });
         if (msIIL > 0 || msIIA > 0)
-            dto.FuelSales.Add(new FuelSaleRowDto { Description = "HSD - 20KL II", FuelType = "MS-II", Litres = msIIL, Rate = msIIL > 0 ? Math.Round(msIIA / msIIL, 2) : msIIRate, Amount = msIIA });
+            dto.FuelSales.Add(new FuelSaleRowDto { Description = "HSD 2", FuelType = "MS-II", Litres = msIIL, Rate = msIIL > 0 ? Math.Round(msIIA / msIIL, 2) : msIIRate, Amount = msIIA });
         if (msIL > 0 || msIA > 0)
-            dto.FuelSales.Add(new FuelSaleRowDto { Description = "MS - 20KL", FuelType = "MS-I", Litres = msIL, Rate = msIL > 0 ? Math.Round(msIA / msIL, 2) : msIRate, Amount = msIA });
+            dto.FuelSales.Add(new FuelSaleRowDto { Description = "MS", FuelType = "MS-I", Litres = msIL, Rate = msIL > 0 ? Math.Round(msIA / msIL, 2) : msIRate, Amount = msIA });
         if (cngL > 0 || cngA > 0)
-            dto.FuelSales.Add(new FuelSaleRowDto { Description = "CNG - Line", FuelType = "CNG", Litres = cngL, Rate = cngL > 0 ? Math.Round(cngA / cngL, 2) : cngRate, Amount = cngA });
+            dto.FuelSales.Add(new FuelSaleRowDto { Description = "CNG", FuelType = "CNG", Litres = cngL, Rate = cngL > 0 ? Math.Round(cngA / cngL, 2) : cngRate, Amount = cngA });
 
         dto.TotalFuelLitres = dto.FuelSales.Sum(f => f.Litres);
         // Use actual nozzle reading amounts to ensure ExpectedCollection matches DSM Summary Gross Sales
@@ -357,13 +357,13 @@ public class ReportService : IReportService
 
         dto.FuelSales = new List<FuelSaleRowDto>();
         if (hsdL > 0 || hsdA > 0)
-            dto.FuelSales.Add(new FuelSaleRowDto { Description = "HSD - 20KL", FuelType = "HSD", Litres = hsdL, Rate = hsdL > 0 ? Math.Round(hsdA / hsdL, 2) : hsdRate, Amount = hsdA });
+            dto.FuelSales.Add(new FuelSaleRowDto { Description = "HSD 1", FuelType = "HSD", Litres = hsdL, Rate = hsdL > 0 ? Math.Round(hsdA / hsdL, 2) : hsdRate, Amount = hsdA });
         if (msIIL > 0 || msIIA > 0)
-            dto.FuelSales.Add(new FuelSaleRowDto { Description = "HSD - 20KL II", FuelType = "MS-II", Litres = msIIL, Rate = msIIL > 0 ? Math.Round(msIIA / msIIL, 2) : msIIRate, Amount = msIIA });
+            dto.FuelSales.Add(new FuelSaleRowDto { Description = "HSD 2", FuelType = "MS-II", Litres = msIIL, Rate = msIIL > 0 ? Math.Round(msIIA / msIIL, 2) : msIIRate, Amount = msIIA });
         if (msIL > 0 || msIA > 0)
-            dto.FuelSales.Add(new FuelSaleRowDto { Description = "MS - 20KL", FuelType = "MS-I", Litres = msIL, Rate = msIL > 0 ? Math.Round(msIA / msIL, 2) : msIRate, Amount = msIA });
+            dto.FuelSales.Add(new FuelSaleRowDto { Description = "MS", FuelType = "MS-I", Litres = msIL, Rate = msIL > 0 ? Math.Round(msIA / msIL, 2) : msIRate, Amount = msIA });
         if (cngL > 0 || cngA > 0)
-            dto.FuelSales.Add(new FuelSaleRowDto { Description = "CNG - Line", FuelType = "CNG", Litres = cngL, Rate = cngL > 0 ? Math.Round(cngA / cngL, 2) : cngRate, Amount = cngA });
+            dto.FuelSales.Add(new FuelSaleRowDto { Description = "CNG", FuelType = "CNG", Litres = cngL, Rate = cngL > 0 ? Math.Round(cngA / cngL, 2) : cngRate, Amount = cngA });
 
         dto.TotalFuelLitres = dto.FuelSales.Sum(f => f.Litres);
         // Use actual nozzle reading amounts to ensure ExpectedCollection matches DSM Summary Gross Sales
