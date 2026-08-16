@@ -629,7 +629,10 @@ public class ReportService : IReportService
 
             if (mismatch < -0.01)
             {
-                totalDsmShort += Math.Abs(mismatch);
+                double rawShort = Math.Abs(mismatch);
+                double dsmLoss = (double)(e.PersonalDebtors?.Sum(pd => pd.Amount) ?? 0);
+                double netShort = Math.Max(0, rawShort - dsmLoss);
+                totalDsmShort += netShort;
             }
         }
         return totalDsmShort;
