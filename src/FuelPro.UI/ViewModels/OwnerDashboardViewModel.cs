@@ -272,7 +272,8 @@ public partial class OwnerDashboardViewModel : ObservableObject, IDisposable
             double ppNight = dayReport.CollectionBreakdown.FirstOrDefault(c => c.Category == "PhonePe Night")?.Amount ?? 0;
             double ppCardMorning = dayReport.CollectionBreakdown.FirstOrDefault(c => c.Category == "PhonePe Card Morning")?.Amount ?? 0;
             double ppCardNight = dayReport.CollectionBreakdown.FirstOrDefault(c => c.Category == "PhonePe Card Night")?.Amount ?? 0;
-            TodayTotalPhonePe = ppMorning + ppNight + ppCardMorning + ppCardNight;
+            double ppDirect = dayReport.CollectionBreakdown.FirstOrDefault(c => c.Category == "PhonePe")?.Amount ?? 0;
+            TodayTotalPhonePe = ppMorning + ppNight + ppCardMorning + ppCardNight + ppDirect;
 
             double ccMorning = (dayReport.CollectionBreakdown.FirstOrDefault(c => c.Category == "PineLabs Morning")?.Amount ?? 0)
                              + (dayReport.CollectionBreakdown.FirstOrDefault(c => c.Category == "Card Morning")?.Amount ?? 0);

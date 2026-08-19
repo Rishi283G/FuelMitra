@@ -20,15 +20,30 @@ public static class SeedData
 {
     public static async Task InitializeAsync(FuelProDbContext context, ICredentialFileService? credentialFileService = null)
     {
-        // Ensure database is created and migrated
+        // Drop unique index on Shifts if present so migration and initial seeding won't fail on duplicates
         if (context.Database.IsRelational())
         {
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync("DROP INDEX IF EXISTS IX_Shifts_ShiftDate_ShiftType;");
+                await context.Database.ExecuteSqlRawAsync("CREATE INDEX IF NOT EXISTS IX_Shifts_ShiftDate_ShiftType ON Shifts (ShiftDate, ShiftType);");
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "Non-fatal: Failed to ensure non-unique index on Shifts before MigrateAsync");
+            }
+
             await context.Database.MigrateAsync();
         }
         else
         {
             await context.Database.EnsureCreatedAsync();
         }
+
+        // Ensure Settings manager columns exist for SyncEngine
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE Settings ADD COLUMN Shift1Manager TEXT NULL;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE Settings ADD COLUMN Shift2Manager TEXT NULL;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE Settings ADD COLUMN Shift3Manager TEXT NULL;"); } catch { }
 
         // Legacy dynamic columns added for database compatibility
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE PaymentCollections ADD COLUMN CashDeposit REAL NOT NULL DEFAULT 0.0;"); } catch { }

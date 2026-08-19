@@ -104,6 +104,75 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
     public ObservableCollection<RepaymentDuplicateGroupVm> DuplicateRepaymentGroups { get; } = new();
     public ObservableCollection<OrphanRecord> OrphanRecords { get; } = new();
 
+    // Data Integrity Selection States
+    [ObservableProperty] private bool _isAllDsmSelected;
+    [ObservableProperty] private int _selectedDsmCount;
+
+    [ObservableProperty] private bool _isAllDebitSelected;
+    [ObservableProperty] private int _selectedDebitCount;
+
+    [ObservableProperty] private bool _isAllRepaymentSelected;
+    [ObservableProperty] private int _selectedRepaymentCount;
+
+    private bool _isUpdatingSelection;
+
+    partial void OnIsAllDsmSelectedChanged(bool value)
+    {
+        if (_isUpdatingSelection) return;
+        _isUpdatingSelection = true;
+        foreach (var group in DuplicateDsmGroups)
+            group.IsSelected = value;
+        _isUpdatingSelection = false;
+        SelectedDsmCount = value ? DuplicateDsmGroups.Count : 0;
+    }
+
+    partial void OnIsAllDebitSelectedChanged(bool value)
+    {
+        if (_isUpdatingSelection) return;
+        _isUpdatingSelection = true;
+        foreach (var group in DuplicateDebitGroups)
+            group.IsSelected = value;
+        _isUpdatingSelection = false;
+        SelectedDebitCount = value ? DuplicateDebitGroups.Count : 0;
+    }
+
+    partial void OnIsAllRepaymentSelectedChanged(bool value)
+    {
+        if (_isUpdatingSelection) return;
+        _isUpdatingSelection = true;
+        foreach (var group in DuplicateRepaymentGroups)
+            group.IsSelected = value;
+        _isUpdatingSelection = false;
+        SelectedRepaymentCount = value ? DuplicateRepaymentGroups.Count : 0;
+    }
+
+    private void UpdateDsmSelectionState()
+    {
+        if (_isUpdatingSelection) return;
+        _isUpdatingSelection = true;
+        SelectedDsmCount = DuplicateDsmGroups.Count(g => g.IsSelected);
+        IsAllDsmSelected = DuplicateDsmGroups.Count > 0 && SelectedDsmCount == DuplicateDsmGroups.Count;
+        _isUpdatingSelection = false;
+    }
+
+    private void UpdateDebitSelectionState()
+    {
+        if (_isUpdatingSelection) return;
+        _isUpdatingSelection = true;
+        SelectedDebitCount = DuplicateDebitGroups.Count(g => g.IsSelected);
+        IsAllDebitSelected = DuplicateDebitGroups.Count > 0 && SelectedDebitCount == DuplicateDebitGroups.Count;
+        _isUpdatingSelection = false;
+    }
+
+    private void UpdateRepaymentSelectionState()
+    {
+        if (_isUpdatingSelection) return;
+        _isUpdatingSelection = true;
+        SelectedRepaymentCount = DuplicateRepaymentGroups.Count(g => g.IsSelected);
+        IsAllRepaymentSelected = DuplicateRepaymentGroups.Count > 0 && SelectedRepaymentCount == DuplicateRepaymentGroups.Count;
+        _isUpdatingSelection = false;
+    }
+
     public DeveloperMainWindowViewModel()
     {
         _serviceProvider = App.Services;
@@ -765,13 +834,28 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
             IntegrityScanTimestamp = $"Last scanned: {report.ScannedAt:dd MMM yyyy  hh:mm tt}";
 
             foreach (var g in report.DsmEntryGroups)
-                DuplicateDsmGroups.Add(DsmEntryDuplicateGroupVm.FromModel(g));
+            {
+                var vm = DsmEntryDuplicateGroupVm.FromModel(g);
+                vm.SelectionChangedAction = UpdateDsmSelectionState;
+                DuplicateDsmGroups.Add(vm);
+            }
+            UpdateDsmSelectionState();
 
             foreach (var g in report.DebitEntryGroups)
-                DuplicateDebitGroups.Add(DebitEntryDuplicateGroupVm.FromModel(g));
+            {
+                var vm = DebitEntryDuplicateGroupVm.FromModel(g);
+                vm.SelectionChangedAction = UpdateDebitSelectionState;
+                DuplicateDebitGroups.Add(vm);
+            }
+            UpdateDebitSelectionState();
 
             foreach (var g in report.RepaymentGroups)
-                DuplicateRepaymentGroups.Add(RepaymentDuplicateGroupVm.FromModel(g));
+            {
+                var vm = RepaymentDuplicateGroupVm.FromModel(g);
+                vm.SelectionChangedAction = UpdateRepaymentSelectionState;
+                DuplicateRepaymentGroups.Add(vm);
+            }
+            UpdateRepaymentSelectionState();
 
             foreach (var o in report.Orphans)
                 OrphanRecords.Add(o);
@@ -878,6 +962,210 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
         {
             DuplicateRepaymentGroups.Remove(group);
             IntegrityRepaymentDuplicates = DuplicateRepaymentGroups.Sum(g => g.DuplicateCount);
+            UpdateRepaymentSelectionState();
+            IntegrityScanMessage = $"✅ {result.Data}";
+        }
+        else
+        {
+            MessageBox.Show(result.Error, "Delete Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    [RelayCommand]
+    private async Task DeleteSelectedDsmEntriesAsync()
+    {
+        var selected = DuplicateDsmGroups.Where(g => g.IsSelected).ToList();
+        if (selected.Count == 0) return;
+
+        var confirm = MessageBox.Show(
+            $"Delete {selected.Count} selected duplicate DsmEntry record(s)?\n\n" +
+            "This will permanently delete all selected duplicates and their child rows.\n" +
+            "The original surviving records will not be affected.",
+            "Confirm Delete Selected Duplicates",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (confirm != MessageBoxResult.Yes) return;
+
+        var pairs = selected.Select(g => (g.DuplicateEntryId, g.OriginalEntryId));
+        var result = await _resolutionService.DeleteMultipleDuplicateDsmEntriesAsync(pairs);
+
+        if (result.Success)
+        {
+            foreach (var item in selected)
+                DuplicateDsmGroups.Remove(item);
+
+            IntegrityDsmDuplicates = DuplicateDsmGroups.Count;
+            UpdateDsmSelectionState();
+            IntegrityHasIssues = IntegrityDsmDuplicates > 0 || IntegrityDebitDuplicates > 0
+                || IntegrityRepaymentDuplicates > 0 || IntegrityOrphans > 0;
+            IntegrityScanMessage = $"✅ {result.Data}";
+        }
+        else
+        {
+            MessageBox.Show(result.Error, "Delete Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    [RelayCommand]
+    private async Task DeleteAllDsmEntriesAsync()
+    {
+        if (DuplicateDsmGroups.Count == 0) return;
+
+        var confirm = MessageBox.Show(
+            $"Delete ALL {DuplicateDsmGroups.Count} duplicate DsmEntry record(s)?\n\n" +
+            "This will permanently delete ALL duplicate DsmEntries and their child rows.\n" +
+            "The original surviving records will not be affected.",
+            "Confirm Delete ALL Duplicate DsmEntries",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (confirm != MessageBoxResult.Yes) return;
+
+        var pairs = DuplicateDsmGroups.Select(g => (g.DuplicateEntryId, g.OriginalEntryId)).ToList();
+        var result = await _resolutionService.DeleteMultipleDuplicateDsmEntriesAsync(pairs);
+
+        if (result.Success)
+        {
+            DuplicateDsmGroups.Clear();
+            IntegrityDsmDuplicates = 0;
+            UpdateDsmSelectionState();
+            IntegrityHasIssues = IntegrityDsmDuplicates > 0 || IntegrityDebitDuplicates > 0
+                || IntegrityRepaymentDuplicates > 0 || IntegrityOrphans > 0;
+            IntegrityScanMessage = $"✅ {result.Data}";
+        }
+        else
+        {
+            MessageBox.Show(result.Error, "Delete Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    [RelayCommand]
+    private async Task DeleteSelectedDebitGroupsAsync()
+    {
+        var selected = DuplicateDebitGroups.Where(g => g.IsSelected).ToList();
+        if (selected.Count == 0) return;
+
+        var allSelectedIds = selected.SelectMany(g => g.DuplicateIds).ToList();
+        var confirm = MessageBox.Show(
+            $"Delete {allSelectedIds.Count} duplicate DebitEntry row(s) across {selected.Count} selected group(s)?\n\n" +
+            "The original debit entry records will be preserved.",
+            "Confirm Delete Selected Duplicate Debits",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (confirm != MessageBoxResult.Yes) return;
+
+        var result = await _resolutionService.DeleteDuplicateDebitEntriesAsync(allSelectedIds);
+
+        if (result.Success)
+        {
+            foreach (var item in selected)
+                DuplicateDebitGroups.Remove(item);
+
+            IntegrityDebitDuplicates = DuplicateDebitGroups.Sum(g => g.DuplicateCount);
+            UpdateDebitSelectionState();
+            IntegrityHasIssues = IntegrityDsmDuplicates > 0 || IntegrityDebitDuplicates > 0
+                || IntegrityRepaymentDuplicates > 0 || IntegrityOrphans > 0;
+            IntegrityScanMessage = $"✅ {result.Data}";
+        }
+        else
+        {
+            MessageBox.Show(result.Error, "Delete Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    [RelayCommand]
+    private async Task DeleteAllDebitGroupsAsync()
+    {
+        if (DuplicateDebitGroups.Count == 0) return;
+
+        var allIds = DuplicateDebitGroups.SelectMany(g => g.DuplicateIds).ToList();
+        var confirm = MessageBox.Show(
+            $"Delete ALL {allIds.Count} duplicate DebitEntry row(s) across all {DuplicateDebitGroups.Count} group(s)?\n\n" +
+            "The original debit entry records will be preserved.",
+            "Confirm Delete ALL Duplicate Debits",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (confirm != MessageBoxResult.Yes) return;
+
+        var result = await _resolutionService.DeleteDuplicateDebitEntriesAsync(allIds);
+
+        if (result.Success)
+        {
+            DuplicateDebitGroups.Clear();
+            IntegrityDebitDuplicates = 0;
+            UpdateDebitSelectionState();
+            IntegrityHasIssues = IntegrityDsmDuplicates > 0 || IntegrityDebitDuplicates > 0
+                || IntegrityRepaymentDuplicates > 0 || IntegrityOrphans > 0;
+            IntegrityScanMessage = $"✅ {result.Data}";
+        }
+        else
+        {
+            MessageBox.Show(result.Error, "Delete Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    [RelayCommand]
+    private async Task DeleteSelectedRepaymentGroupsAsync()
+    {
+        var selected = DuplicateRepaymentGroups.Where(g => g.IsSelected).ToList();
+        if (selected.Count == 0) return;
+
+        var allSelectedIds = selected.SelectMany(g => g.DuplicateIds).ToList();
+        var confirm = MessageBox.Show(
+            $"Delete {allSelectedIds.Count} duplicate CreditorRepayment row(s) across {selected.Count} selected group(s)?\n\n" +
+            "The original repayment records will be preserved.",
+            "Confirm Delete Selected Duplicate Repayments",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (confirm != MessageBoxResult.Yes) return;
+
+        var result = await _resolutionService.DeleteDuplicateRepaymentsAsync(allSelectedIds);
+
+        if (result.Success)
+        {
+            foreach (var item in selected)
+                DuplicateRepaymentGroups.Remove(item);
+
+            IntegrityRepaymentDuplicates = DuplicateRepaymentGroups.Sum(g => g.DuplicateCount);
+            UpdateRepaymentSelectionState();
+            IntegrityHasIssues = IntegrityDsmDuplicates > 0 || IntegrityDebitDuplicates > 0
+                || IntegrityRepaymentDuplicates > 0 || IntegrityOrphans > 0;
+            IntegrityScanMessage = $"✅ {result.Data}";
+        }
+        else
+        {
+            MessageBox.Show(result.Error, "Delete Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    [RelayCommand]
+    private async Task DeleteAllRepaymentGroupsAsync()
+    {
+        if (DuplicateRepaymentGroups.Count == 0) return;
+
+        var allIds = DuplicateRepaymentGroups.SelectMany(g => g.DuplicateIds).ToList();
+        var confirm = MessageBox.Show(
+            $"Delete ALL {allIds.Count} duplicate CreditorRepayment row(s) across all {DuplicateRepaymentGroups.Count} group(s)?\n\n" +
+            "The original repayment records will be preserved.",
+            "Confirm Delete ALL Duplicate Repayments",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (confirm != MessageBoxResult.Yes) return;
+
+        var result = await _resolutionService.DeleteDuplicateRepaymentsAsync(allIds);
+
+        if (result.Success)
+        {
+            DuplicateRepaymentGroups.Clear();
+            IntegrityRepaymentDuplicates = 0;
+            UpdateRepaymentSelectionState();
+            IntegrityHasIssues = IntegrityDsmDuplicates > 0 || IntegrityDebitDuplicates > 0
+                || IntegrityRepaymentDuplicates > 0 || IntegrityOrphans > 0;
             IntegrityScanMessage = $"✅ {result.Data}";
         }
         else
@@ -918,8 +1206,16 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
 
 // ─── View-Model wrappers for the Data Integrity DataGrids ─────────────────────
 
-public class DsmEntryDuplicateGroupVm
+public partial class DsmEntryDuplicateGroupVm : ObservableObject
 {
+    [ObservableProperty] private bool _isSelected;
+    public Action? SelectionChangedAction { get; set; }
+
+    partial void OnIsSelectedChanged(bool value)
+    {
+        SelectionChangedAction?.Invoke();
+    }
+
     public int OriginalEntryId { get; set; }
     public int DuplicateEntryId { get; set; }
     public string DsmName { get; set; } = string.Empty;
@@ -951,8 +1247,16 @@ public class DsmEntryDuplicateGroupVm
     }
 }
 
-public class DebitEntryDuplicateGroupVm
+public partial class DebitEntryDuplicateGroupVm : ObservableObject
 {
+    [ObservableProperty] private bool _isSelected;
+    public Action? SelectionChangedAction { get; set; }
+
+    partial void OnIsSelectedChanged(bool value)
+    {
+        SelectionChangedAction?.Invoke();
+    }
+
     public int OriginalEntryId { get; set; }
     public List<int> DuplicateIds { get; set; } = new();
     public int DuplicateCount => DuplicateIds.Count;
@@ -973,8 +1277,16 @@ public class DebitEntryDuplicateGroupVm
     }
 }
 
-public class RepaymentDuplicateGroupVm
+public partial class RepaymentDuplicateGroupVm : ObservableObject
 {
+    [ObservableProperty] private bool _isSelected;
+    public Action? SelectionChangedAction { get; set; }
+
+    partial void OnIsSelectedChanged(bool value)
+    {
+        SelectionChangedAction?.Invoke();
+    }
+
     public int OriginalRepaymentId { get; set; }
     public List<int> DuplicateIds { get; set; } = new();
     public int DuplicateCount => DuplicateIds.Count;

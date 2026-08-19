@@ -56,35 +56,43 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
 .rpt-ftr strong{color:#fff}
 @media print{
   @page{size:A4 portrait;margin:0}
-  body{background:#fff;font-size:10px;margin:5mm}
+  body{background:#fff;font-size:10px;margin:4mm}
   .toolbar{display:none!important}
-  .page{box-shadow:none;border-radius:0;max-width:100%;margin:0}
+  .page{box-shadow:none;border-radius:0;max-width:100%;margin:0;overflow:visible!important}
   .stat-row{display:none!important}
   hr.div{display:none!important}
-  .rpt-hdr{padding:5px 10px}
+  .rpt-hdr{padding:4px 8px}
   .rpt-hdr-top{margin-bottom:2px}
   .rpt-title{font-size:13px}
   .rpt-sub{font-size:8px;margin-top:0}
-  .shift-pill{font-size:13px;padding:3px 10px}
-  .rpt-meta{padding-top:3px;gap:8px;font-size:8px;margin-top:0}
-  .sec{padding:3px 10px 2px}
+  .shift-pill{font-size:12px;padding:2px 8px}
+  .rpt-meta{padding-top:2px;gap:8px;font-size:8px;margin-top:0}
+  .sec{padding:2px 8px 1px;page-break-inside:auto;break-inside:auto}
   .sec-title{font-size:8px;padding-bottom:2px;margin-bottom:2px;border-bottom-width:1px}
   .sec-title::before{width:2px;height:10px}
   .mini-hdr{font-size:7.5px;padding:1px 4px;margin-bottom:2px}
-  th{padding:2px 3px;font-size:7px;letter-spacing:.03em}
-  td{padding:2px 3px;font-size:11px}
-  .tr-total td{font-size:11px}
-  .g3{gap:6px;padding:0 10px 3px}
-  .g2{gap:6px;padding:0 10px 3px}
-  .col{gap:3px}
+  th{padding:2px 2px;font-size:7.5px;letter-spacing:.02em}
+  td{padding:2px 2px;font-size:8.5px}
+  .tr-total td{font-size:8.5px}
+  #tDsm{width:100%!important;table-layout:auto!important}
+  #tDsm th,#tDsm td{padding:2px 1.5px!important;font-size:7.5px!important;white-space:nowrap!important}
+  #tDsm th{white-space:normal!important;line-height:1.1!important}
+  #nozzleGroupsContainer{gap:6px!important;margin-bottom:4px!important}
+  #nozzleGroupsContainer > div{padding:3px 5px!important}
+  #nozzleGroupsContainer table{font-size:7.5px!important;line-height:1.1!important;margin-top:1px!important;margin-bottom:2px!important}
+  #nozzleGroupsContainer th,#nozzleGroupsContainer td{padding:1px 1.5px!important;font-size:7.5px!important}
+  .g3{gap:4px;padding:0 8px 2px}
+  .g2{gap:6px;padding:0 8px 2px;page-break-inside:auto;break-inside:auto}
+  .col{gap:3px;page-break-inside:auto;break-inside:auto}
+  tr{page-break-inside:avoid;break-inside:avoid}
   .ms-box{padding:3px 6px;margin-top:1px;border-width:1px}
   .ms-box-title{font-size:7px;margin-bottom:2px}
-  .ms-row{font-size:10px;padding:1px 0}
-  .ms-row:last-child{font-size:11px;padding-top:2px;margin-top:1px}
+  .ms-row{font-size:9.5px;padding:1px 0}
+  .ms-row:last-child{font-size:10.5px;padding-top:2px;margin-top:1px}
   .recon-box{border-width:1px}
-  .tr-recon-total td{font-size:11px}
+  .tr-recon-total td{font-size:10px}
   .diff-ok,.diff-bad{font-size:10px;padding:3px!important}
-  .rpt-ftr{padding:3px 10px;font-size:7px}
+  .rpt-ftr{padding:3px 8px;font-size:7px}
   .b-hsd,.b-ms1,.b-ms2,.b-cng{font-size:8px;padding:0 4px}
   .rpt-hdr,.shift-pill,.tr-total td,.tr-recon-total td,.rpt-ftr,
   th,.stat-card,.ms-box,.recon-box,.b-hsd,.b-ms1,.b-ms2,.b-cng,
@@ -108,7 +116,7 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
         <img id="logo" style="display: none; height: 50px;" src="" alt="logo" />
         <div>
           <div class="rpt-title" id="rptTitle">MITALI SERVICE STATION</div>
-          <div class="rpt-tagline" style="font-size: 11px; font-weight: bold; letter-spacing: 0.08em; margin-top: 2px; color: #ffffff; opacity: 0.95;">KANDHARE NAGDE SURVE GROUP</div>
+          <div class="rpt-tagline" style="font-size: 11px; font-weight: bold; letter-spacing: 0.08em; margin-top: 2px; color: #ffffff; opacity: 0.95;">KANDHARE NANGADE SURVE GROUP</div>
           <div class="rpt-sub">Daily Shift Report &mdash; Final Calculation</div>
         </div>
       </div>
@@ -292,14 +300,15 @@ function renderData(){
   var recTotal = d.actualCollection || 0;
   var totalL = d.totalFuelLitres || 0;
   var diff = d.difference || 0;
+  var shortVal = diff < 0 ? ((d.totalDsmShort !== undefined && d.totalDsmShort >= 0) ? d.totalDsmShort : Math.abs(diff)) : Math.abs(diff);
 
   document.getElementById('sGross').textContent=inrZ(grossFuel);
   document.getElementById('sCollect').textContent=inrZ(recTotal);
   document.getElementById('sLitres').textContent=parseFloat(totalL).toFixed(4)+' L';
   document.getElementById('sCreditors').textContent=inrZ(d.creditorsTotal||0);
   var dEl=document.getElementById('sDiff');
-  if(Math.abs(diff)<0.01){dEl.textContent='\u2713 Balanced';dEl.className='stat-val ok';}
-  else{dEl.textContent=inrZ(Math.abs(diff));dEl.className='stat-val bad';}
+  if(Math.abs(shortVal)<0.01){dEl.textContent='\u2713 Balanced';dEl.className='stat-val ok';}
+  else{dEl.textContent=inrZ(shortVal);dEl.className='stat-val bad';}
 
   var tb=document.getElementById('tDsm');tb.innerHTML='';
   var tot={
@@ -559,7 +568,11 @@ function renderData(){
   document.getElementById('rGross').textContent=inrZ(expectedSale);
   var dCell=document.getElementById('rDiff');
   if(Math.abs(diff)<0.01){dCell.textContent='\u2713  BALANCED \u2014 Difference: \u20B90.00';dCell.className='diff-ok';}
-  else if(diff<0){dCell.textContent='\u26A0  SHORT \u2014 Difference: '+inrZ(Math.abs(diff));dCell.className='diff-bad';}
+  else if(diff<0){
+    var shortAmt = (d.totalDsmShort !== undefined && d.totalDsmShort >= 0) ? d.totalDsmShort : Math.abs(diff);
+    if(Math.abs(shortAmt)<0.01){dCell.textContent='\u2713  BALANCED \u2014 Difference: \u20B90.00';dCell.className='diff-ok';}
+    else{dCell.textContent='\u26A0  SHORT \u2014 Difference: '+inrZ(shortAmt);dCell.className='diff-bad';}
+  }
   else{dCell.textContent='\u26A0  EXCESS \u2014 Difference: '+inrZ(diff);dCell.className='diff-bad';}
 
   var et=document.getElementById('tExp');et.innerHTML='';var expTot=d.expensesTotal||0;

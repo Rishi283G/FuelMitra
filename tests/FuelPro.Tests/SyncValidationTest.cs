@@ -67,6 +67,9 @@ public class SyncValidationTest
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE SyncChangeLogs ADD COLUMN MachineId TEXT NULL;"); } catch { }
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE SyncChangeLogs ADD COLUMN SyncGuid TEXT NULL;"); } catch { }
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE SyncChangeLogs ADD COLUMN RecordGuid TEXT NULL;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE Settings ADD COLUMN Shift1Manager TEXT NULL;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE Settings ADD COLUMN Shift2Manager TEXT NULL;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE Settings ADD COLUMN Shift3Manager TEXT NULL;"); } catch { }
 
         // Ensure SyncIdMappings table has RemoteGuid column
         try { await context.Database.ExecuteSqlRawAsync(@"

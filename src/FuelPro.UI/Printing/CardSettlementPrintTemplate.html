@@ -380,7 +380,7 @@
   </div>
 
   <div class="print-footer" id="printFooter"></div>
-  <div style="text-align: center; font-weight: bold; letter-spacing: 0.1em; font-size: 11px; color: #0f172a; margin-top: 6px; text-transform: uppercase;">KANDHARE NAGDE SURVE GROUP</div>
+  <div style="text-align: center; font-weight: bold; letter-spacing: 0.1em; font-size: 11px; color: #0f172a; margin-top: 6px; text-transform: uppercase;">KANDHARE NANGADE SURVE GROUP</div>
 
   <div class="notches bottom"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
 </div>
@@ -409,6 +409,10 @@ const periodSubtitle = {
 // ── Station / header ──────────────────────────────────────────────────────────
 const station = data.stationName || 'Kandhare Petroleum';
 let cleanedStation = station
+  .replace(/\(KANDHARE NANGADE SURVE GROUP\)/gi, '')
+  .replace(/\(KANDHARE NANGADE GROUP\)/gi, '')
+  .replace(/KANDHARE NANGADE SURVE GROUP/gi, '')
+  .replace(/KANDHARE NANGADE GROUP/gi, '')
   .replace(/\(KANDHARE NAGDE SURVE GROUP\)/gi, '')
   .replace(/\(KANDHARE NAGDE GROUP\)/gi, '')
   .replace(/KANDHARE NAGDE SURVE GROUP/gi, '')

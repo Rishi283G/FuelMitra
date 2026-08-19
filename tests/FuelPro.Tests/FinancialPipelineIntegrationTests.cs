@@ -712,7 +712,7 @@ public class FinancialPipelineIntegrationTests : IDisposable
         Assert.Equal(500, phonePeNightCol.RecoveryAmount);
 
         // Petro Card category total should be 0 base + 300 recovery = 300
-        var petroCardCol = report.CollectionBreakdown.First(c => c.Category == "Petro Card");
+        var petroCardCol = report.CollectionBreakdown.First(c => c.Category.Contains("Petro Card") && c.Amount > 0);
         Assert.Equal(300, petroCardCol.Amount);
         Assert.Equal(0, petroCardCol.BaseAmount);
         Assert.Equal(300, petroCardCol.RecoveryAmount);

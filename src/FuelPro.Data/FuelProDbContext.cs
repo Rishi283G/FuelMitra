@@ -99,7 +99,7 @@ public class FuelProDbContext : DbContext
         // Shift
         modelBuilder.Entity<Shift>(entity =>
         {
-            entity.HasIndex(e => new { e.ShiftDate, e.ShiftType }).IsUnique();
+            entity.HasIndex(e => new { e.ShiftDate, e.ShiftType });
             entity.Property(e => e.IsLocked).HasDefaultValue(false);
             entity.Property(e => e.CardSettlementPosTotal).HasDefaultValue(0.0);
         });

@@ -676,16 +676,51 @@
                                                  materialDesign:ElevationAssist.Elevation="Dp2"
                                                  Visibility="{Binding IntegrityDsmDuplicates, Converter={StaticResource IntToVisibilityConverter}}">
                                 <StackPanel>
-                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                                        <materialDesign:PackIcon Kind="ContentDuplicate" Width="18" Height="18" Margin="0,0,8,0"
-                                                                  Foreground="#E53935" VerticalAlignment="Center"/>
-                                        <TextBlock Text="Duplicate DSM Entries" FontSize="15" FontWeight="SemiBold"
-                                                   Foreground="#E53935" VerticalAlignment="Center"/>
-                                    </StackPanel>
+                                    <Grid Margin="0,0,0,10">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <materialDesign:PackIcon Kind="ContentDuplicate" Width="18" Height="18" Margin="0,0,8,0"
+                                                                      Foreground="#E53935" VerticalAlignment="Center"/>
+                                            <TextBlock Text="Duplicate DSM Entries" FontSize="15" FontWeight="SemiBold"
+                                                       Foreground="#E53935" VerticalAlignment="Center"/>
+                                        </StackPanel>
+
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                            <CheckBox Content="Select All"
+                                                      IsChecked="{Binding IsAllDsmSelected, Mode=TwoWay}"
+                                                      VerticalAlignment="Center" Margin="0,0,16,0"
+                                                      FontSize="12" Foreground="#37474F"/>
+                                            <Button Style="{StaticResource MaterialDesignRaisedButton}"
+                                                    Background="#E53935" BorderBrush="#E53935" Foreground="White"
+                                                    Height="28" Padding="10,0" FontSize="11" Margin="0,0,8,0"
+                                                    Command="{Binding DeleteSelectedDsmEntriesCommand}">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <materialDesign:PackIcon Kind="DeleteSweep" Width="14" Height="14" Margin="0,0,4,0"/>
+                                                    <TextBlock Text="{Binding SelectedDsmCount, StringFormat='Delete Selected ({0})'}"/>
+                                                </StackPanel>
+                                            </Button>
+                                            <Button Content="Delete ALL Duplicates"
+                                                    Style="{StaticResource MaterialDesignOutlinedButton}"
+                                                    Foreground="#E53935" BorderBrush="#E53935"
+                                                    Height="28" Padding="10,0" FontSize="11"
+                                                    Command="{Binding DeleteAllDsmEntriesCommand}"/>
+                                        </StackPanel>
+                                    </Grid>
                                     <DataGrid ItemsSource="{Binding DuplicateDsmGroups}" AutoGenerateColumns="False"
                                               IsReadOnly="True" MaxHeight="240"
                                               materialDesign:DataGridAssist.CellPadding="10 6">
                                         <DataGrid.Columns>
+                                            <DataGridTemplateColumn Width="45">
+                                                <DataGridTemplateColumn.Header>
+                                                    <CheckBox IsChecked="{Binding DataContext.IsAllDsmSelected, RelativeSource={RelativeSource AncestorType=DataGrid}, Mode=TwoWay}"
+                                                              HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </DataGridTemplateColumn.Header>
+                                                <DataGridTemplateColumn.CellTemplate>
+                                                    <DataTemplate>
+                                                        <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                                  HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    </DataTemplate>
+                                                </DataGridTemplateColumn.CellTemplate>
+                                            </DataGridTemplateColumn>
                                             <DataGridTextColumn Header="Business Key" Binding="{Binding BusinessKey}" Width="*"/>
                                             <DataGridTextColumn Header="Original ID" Binding="{Binding OriginalEntryId}" Width="90"/>
                                             <DataGridTextColumn Header="Duplicate ID" Binding="{Binding DuplicateEntryId}" Width="90"/>
@@ -715,16 +750,51 @@
                                                  materialDesign:ElevationAssist.Elevation="Dp2"
                                                  Visibility="{Binding IntegrityDebitDuplicates, Converter={StaticResource IntToVisibilityConverter}}">
                                 <StackPanel>
-                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                                        <materialDesign:PackIcon Kind="ContentDuplicate" Width="18" Height="18" Margin="0,0,8,0"
-                                                                  Foreground="#F57C00" VerticalAlignment="Center"/>
-                                        <TextBlock Text="Duplicate Debit Entries" FontSize="15" FontWeight="SemiBold"
-                                                   Foreground="#F57C00" VerticalAlignment="Center"/>
-                                    </StackPanel>
+                                    <Grid Margin="0,0,0,10">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <materialDesign:PackIcon Kind="ContentDuplicate" Width="18" Height="18" Margin="0,0,8,0"
+                                                                      Foreground="#F57C00" VerticalAlignment="Center"/>
+                                            <TextBlock Text="Duplicate Debit Entries" FontSize="15" FontWeight="SemiBold"
+                                                       Foreground="#F57C00" VerticalAlignment="Center"/>
+                                        </StackPanel>
+
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                            <CheckBox Content="Select All"
+                                                      IsChecked="{Binding IsAllDebitSelected, Mode=TwoWay}"
+                                                      VerticalAlignment="Center" Margin="0,0,16,0"
+                                                      FontSize="12" Foreground="#37474F"/>
+                                            <Button Style="{StaticResource MaterialDesignRaisedButton}"
+                                                    Background="#F57C00" BorderBrush="#F57C00" Foreground="White"
+                                                    Height="28" Padding="10,0" FontSize="11" Margin="0,0,8,0"
+                                                    Command="{Binding DeleteSelectedDebitGroupsCommand}">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <materialDesign:PackIcon Kind="DeleteSweep" Width="14" Height="14" Margin="0,0,4,0"/>
+                                                    <TextBlock Text="{Binding SelectedDebitCount, StringFormat='Delete Selected ({0})'}"/>
+                                                </StackPanel>
+                                            </Button>
+                                            <Button Content="Delete ALL Duplicates"
+                                                    Style="{StaticResource MaterialDesignOutlinedButton}"
+                                                    Foreground="#F57C00" BorderBrush="#F57C00"
+                                                    Height="28" Padding="10,0" FontSize="11"
+                                                    Command="{Binding DeleteAllDebitGroupsCommand}"/>
+                                        </StackPanel>
+                                    </Grid>
                                     <DataGrid ItemsSource="{Binding DuplicateDebitGroups}" AutoGenerateColumns="False"
                                               IsReadOnly="True" MaxHeight="200"
                                               materialDesign:DataGridAssist.CellPadding="10 6">
                                         <DataGrid.Columns>
+                                            <DataGridTemplateColumn Width="45">
+                                                <DataGridTemplateColumn.Header>
+                                                    <CheckBox IsChecked="{Binding DataContext.IsAllDebitSelected, RelativeSource={RelativeSource AncestorType=DataGrid}, Mode=TwoWay}"
+                                                              HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </DataGridTemplateColumn.Header>
+                                                <DataGridTemplateColumn.CellTemplate>
+                                                    <DataTemplate>
+                                                        <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                                  HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    </DataTemplate>
+                                                </DataGridTemplateColumn.CellTemplate>
+                                            </DataGridTemplateColumn>
                                             <DataGridTextColumn Header="DsmEntry ID" Binding="{Binding DsmEntryId}" Width="90"/>
                                             <DataGridTextColumn Header="Debtor" Binding="{Binding DebtorName}" Width="*"/>
                                             <DataGridTextColumn Header="Amount" Binding="{Binding Amount, StringFormat='₹#,##0.00'}" Width="110"/>
@@ -751,16 +821,51 @@
                                                  materialDesign:ElevationAssist.Elevation="Dp2"
                                                  Visibility="{Binding IntegrityRepaymentDuplicates, Converter={StaticResource IntToVisibilityConverter}}">
                                 <StackPanel>
-                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                                        <materialDesign:PackIcon Kind="ContentDuplicate" Width="18" Height="18" Margin="0,0,8,0"
-                                                                  Foreground="#F57C00" VerticalAlignment="Center"/>
-                                        <TextBlock Text="Duplicate Creditor Repayments" FontSize="15" FontWeight="SemiBold"
-                                                   Foreground="#F57C00" VerticalAlignment="Center"/>
-                                    </StackPanel>
+                                    <Grid Margin="0,0,0,10">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <materialDesign:PackIcon Kind="ContentDuplicate" Width="18" Height="18" Margin="0,0,8,0"
+                                                                      Foreground="#F57C00" VerticalAlignment="Center"/>
+                                            <TextBlock Text="Duplicate Creditor Repayments" FontSize="15" FontWeight="SemiBold"
+                                                       Foreground="#F57C00" VerticalAlignment="Center"/>
+                                        </StackPanel>
+
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                            <CheckBox Content="Select All"
+                                                      IsChecked="{Binding IsAllRepaymentSelected, Mode=TwoWay}"
+                                                      VerticalAlignment="Center" Margin="0,0,16,0"
+                                                      FontSize="12" Foreground="#37474F"/>
+                                            <Button Style="{StaticResource MaterialDesignRaisedButton}"
+                                                    Background="#F57C00" BorderBrush="#F57C00" Foreground="White"
+                                                    Height="28" Padding="10,0" FontSize="11" Margin="0,0,8,0"
+                                                    Command="{Binding DeleteSelectedRepaymentGroupsCommand}">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <materialDesign:PackIcon Kind="DeleteSweep" Width="14" Height="14" Margin="0,0,4,0"/>
+                                                    <TextBlock Text="{Binding SelectedRepaymentCount, StringFormat='Delete Selected ({0})'}"/>
+                                                </StackPanel>
+                                            </Button>
+                                            <Button Content="Delete ALL Duplicates"
+                                                    Style="{StaticResource MaterialDesignOutlinedButton}"
+                                                    Foreground="#F57C00" BorderBrush="#F57C00"
+                                                    Height="28" Padding="10,0" FontSize="11"
+                                                    Command="{Binding DeleteAllRepaymentGroupsCommand}"/>
+                                        </StackPanel>
+                                    </Grid>
                                     <DataGrid ItemsSource="{Binding DuplicateRepaymentGroups}" AutoGenerateColumns="False"
                                               IsReadOnly="True" MaxHeight="200"
                                               materialDesign:DataGridAssist.CellPadding="10 6">
                                         <DataGrid.Columns>
+                                            <DataGridTemplateColumn Width="45">
+                                                <DataGridTemplateColumn.Header>
+                                                    <CheckBox IsChecked="{Binding DataContext.IsAllRepaymentSelected, RelativeSource={RelativeSource AncestorType=DataGrid}, Mode=TwoWay}"
+                                                              HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </DataGridTemplateColumn.Header>
+                                                <DataGridTemplateColumn.CellTemplate>
+                                                    <DataTemplate>
+                                                        <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                                  HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    </DataTemplate>
+                                                </DataGridTemplateColumn.CellTemplate>
+                                            </DataGridTemplateColumn>
                                             <DataGridTextColumn Header="Creditor" Binding="{Binding CreditorName}" Width="*"/>
                                             <DataGridTextColumn Header="Date" Binding="{Binding RepaymentDate, StringFormat=dd-MMM-yy}" Width="90"/>
                                             <DataGridTextColumn Header="Amount" Binding="{Binding Amount, StringFormat='₹#,##0.00'}" Width="110"/>

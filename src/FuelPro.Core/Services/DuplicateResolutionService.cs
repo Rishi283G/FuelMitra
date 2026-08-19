@@ -145,6 +145,103 @@ public class DuplicateResolutionService
         }
     }
 
+    /// <summary>
+    /// Permanently deletes multiple duplicate DsmEntries and all their child rows in a single transaction.
+    /// The surviving entries are never touched.
+    /// </summary>
+    public async Task<Result<string>> DeleteMultipleDuplicateDsmEntriesAsync(IEnumerable<(int DuplicateEntryId, int SurvivingEntryId)> pairs)
+    {
+        var pairList = pairs?.ToList() ?? new List<(int, int)>();
+        if (pairList.Count == 0)
+            return Result<string>.Fail("No duplicate DsmEntry pairs provided.");
+
+        var duplicateIds = pairList.Select(p => p.DuplicateEntryId).Distinct().ToList();
+
+        try
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<DbContext>();
+
+            var duplicates = await db.Set<DsmEntry>()
+                .Include(e => e.NozzleReadings)
+                .Include(e => e.PaymentCollection)
+                .Include(e => e.DebitEntries)
+                .Include(e => e.TestingEntries)
+                .Include(e => e.Expenses)
+                .Include(e => e.CashDenominations)
+                .Include(e => e.PersonalDebtors)
+                .Where(e => duplicateIds.Contains(e.DsmEntryId))
+                .ToListAsync();
+
+            if (duplicates.Count == 0)
+                return Result<string>.Fail("None of the specified duplicate DsmEntries were found.");
+
+            await using var transaction = await db.Database.BeginTransactionAsync();
+            try
+            {
+                int childCount = 0;
+                foreach (var duplicate in duplicates)
+                {
+                    if (duplicate.NozzleReadings?.Count > 0)
+                    {
+                        db.Set<NozzleReading>().RemoveRange(duplicate.NozzleReadings);
+                        childCount += duplicate.NozzleReadings.Count;
+                    }
+                    if (duplicate.DebitEntries?.Count > 0)
+                    {
+                        db.Set<DebitEntry>().RemoveRange(duplicate.DebitEntries);
+                        childCount += duplicate.DebitEntries.Count;
+                    }
+                    if (duplicate.TestingEntries?.Count > 0)
+                    {
+                        db.Set<TestingEntry>().RemoveRange(duplicate.TestingEntries);
+                        childCount += duplicate.TestingEntries.Count;
+                    }
+                    if (duplicate.Expenses?.Count > 0)
+                    {
+                        db.Set<Expense>().RemoveRange(duplicate.Expenses);
+                        childCount += duplicate.Expenses.Count;
+                    }
+                    if (duplicate.CashDenominations?.Count > 0)
+                    {
+                        db.Set<CashDenomination>().RemoveRange(duplicate.CashDenominations);
+                        childCount += duplicate.CashDenominations.Count;
+                    }
+                    if (duplicate.PersonalDebtors?.Count > 0)
+                    {
+                        db.Set<DsmPersonalDebtor>().RemoveRange(duplicate.PersonalDebtors);
+                        childCount += duplicate.PersonalDebtors.Count;
+                    }
+                    if (duplicate.PaymentCollection != null)
+                    {
+                        db.Set<PaymentCollection>().Remove(duplicate.PaymentCollection);
+                        childCount++;
+                    }
+                    db.Set<DsmEntry>().Remove(duplicate);
+                }
+
+                await db.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                var msg = $"Successfully deleted {duplicates.Count} duplicate DsmEntries and {childCount} child rows.";
+                _logger.Information(msg);
+                DsmEntryService.RaiseDsmEntryChanged();
+                return Result<string>.Ok(msg);
+            }
+            catch (Exception)
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to batch delete duplicate DsmEntries");
+            return Result<string>.Fail($"Batch delete failed: {ex.Message}");
+        }
+    }
+
+
     // ── DebitEntry resolution ────────────────────────────────────────────────
 
     /// <summary>

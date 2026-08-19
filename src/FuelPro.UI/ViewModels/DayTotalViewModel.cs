@@ -98,6 +98,8 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
     [ObservableProperty] private double _difference;
     [ObservableProperty] private bool _isBalanced;
     [ObservableProperty] private double _totalDsmShort;
+    [ObservableProperty] private ObservableCollection<DsmPersonalDebtorPrintDto> _personalDebtorRows = new();
+    [ObservableProperty] private double _totalDsmLoss;
     [ObservableProperty] private ObservableCollection<CreditorRepayment> _debtorRepayments = new();
     private readonly ICreditorRepaymentRepository _repaymentRepo;
     private readonly IDsmPersonalDebtorRepository _personalDebtorRepo;
@@ -410,9 +412,11 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
 
             ReconciliationTotalAmount = report.ActualCollection;
             GrossDaySaleTotal = report.ExpectedCollection;
-            Difference = report.Difference;
-            IsBalanced = report.IsBalanced;
             TotalDsmShort = report.TotalDsmShort;
+            PersonalDebtorRows = new ObservableCollection<DsmPersonalDebtorPrintDto>(report.PersonalDebtors ?? new());
+            TotalDsmLoss = PersonalDebtorRows.Sum(p => p.Amount);
+            Difference = report.Difference < -0.01 ? -report.TotalDsmShort : (report.Difference > 0.01 ? report.Difference : 0);
+            IsBalanced = Math.Abs(Difference) < 0.01;
 
             // Load AGS Nozzle readings for the day range
             try
@@ -507,6 +511,7 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
         ExpenseRows.Clear(); ExpensesTotal = 0;
         
         ReconciliationTotalAmount = GrossDaySaleTotal = Difference = TotalDsmShort = 0;
+        PersonalDebtorRows.Clear(); TotalDsmLoss = 0;
         IsBalanced = false;
         DebtorRepayments.Clear();
     }

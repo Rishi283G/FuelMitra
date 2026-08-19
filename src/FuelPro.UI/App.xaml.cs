@@ -264,6 +264,84 @@ public partial class App : Application
             pragmaCmd.ExecuteNonQuery();
         }
 
+        // Self-heal Shifts table: drop UNIQUE constraint index and merge any duplicate shift records
+        if (TableExists(connection, "Shifts"))
+        {
+            try
+            {
+                using var fixCmd = connection.CreateCommand();
+                fixCmd.CommandText = @"
+                    UPDATE DsmEntries
+                    SET ShiftId = (
+                        SELECT MIN(s_min.ShiftId)
+                        FROM Shifts s_curr
+                        JOIN Shifts s_min ON s_curr.ShiftDate = s_min.ShiftDate AND s_curr.ShiftType = s_min.ShiftType
+                        WHERE s_curr.ShiftId = DsmEntries.ShiftId
+                    )
+                    WHERE ShiftId IS NOT NULL AND EXISTS (
+                        SELECT 1 FROM Shifts s1
+                        JOIN Shifts s2 ON s1.ShiftDate = s2.ShiftDate AND s1.ShiftType = s2.ShiftType AND s2.ShiftId < s1.ShiftId
+                        WHERE s1.ShiftId = DsmEntries.ShiftId
+                    );
+
+                    UPDATE ShiftOtherCash
+                    SET ShiftId = (
+                        SELECT MIN(s_min.ShiftId)
+                        FROM Shifts s_curr
+                        JOIN Shifts s_min ON s_curr.ShiftDate = s_min.ShiftDate AND s_curr.ShiftType = s_min.ShiftType
+                        WHERE s_curr.ShiftId = ShiftOtherCash.ShiftId
+                    )
+                    WHERE ShiftId IS NOT NULL AND EXISTS (
+                        SELECT 1 FROM Shifts s1
+                        JOIN Shifts s2 ON s1.ShiftDate = s2.ShiftDate AND s1.ShiftType = s2.ShiftType AND s2.ShiftId < s1.ShiftId
+                        WHERE s1.ShiftId = ShiftOtherCash.ShiftId
+                    );
+
+                    UPDATE ShiftFuelRates
+                    SET ShiftId = (
+                        SELECT MIN(s_min.ShiftId)
+                        FROM Shifts s_curr
+                        JOIN Shifts s_min ON s_curr.ShiftDate = s_min.ShiftDate AND s_curr.ShiftType = s_min.ShiftType
+                        WHERE s_curr.ShiftId = ShiftFuelRates.ShiftId
+                    )
+                    WHERE ShiftId IS NOT NULL AND EXISTS (
+                        SELECT 1 FROM Shifts s1
+                        JOIN Shifts s2 ON s1.ShiftDate = s2.ShiftDate AND s1.ShiftType = s2.ShiftType AND s2.ShiftId < s1.ShiftId
+                        WHERE s1.ShiftId = ShiftFuelRates.ShiftId
+                    );
+
+                    UPDATE Expenses
+                    SET ShiftId = (
+                        SELECT MIN(s_min.ShiftId)
+                        FROM Shifts s_curr
+                        JOIN Shifts s_min ON s_curr.ShiftDate = s_min.ShiftDate AND s_curr.ShiftType = s_min.ShiftType
+                        WHERE s_curr.ShiftId = Expenses.ShiftId
+                    )
+                    WHERE ShiftId IS NOT NULL AND EXISTS (
+                        SELECT 1 FROM Shifts s1
+                        JOIN Shifts s2 ON s1.ShiftDate = s2.ShiftDate AND s1.ShiftType = s2.ShiftType AND s2.ShiftId < s1.ShiftId
+                        WHERE s1.ShiftId = Expenses.ShiftId
+                    );
+
+                    DELETE FROM Shifts
+                    WHERE ShiftId IN (
+                        SELECT s1.ShiftId
+                        FROM Shifts s1
+                        JOIN Shifts s2 ON s1.ShiftDate = s2.ShiftDate AND s1.ShiftType = s2.ShiftType AND s2.ShiftId < s1.ShiftId
+                    );
+
+                    DROP INDEX IF EXISTS IX_Shifts_ShiftDate_ShiftType;
+                    CREATE INDEX IF NOT EXISTS IX_Shifts_ShiftDate_ShiftType ON Shifts (ShiftDate, ShiftType);
+                ";
+                fixCmd.ExecuteNonQuery();
+                Log.Information("Successfully validated/healed Shifts table indices and merged duplicate shift records.");
+            }
+            catch (Exception shiftFixEx)
+            {
+                Log.Warning(shiftFixEx, "Non-fatal: Failed to self-heal duplicate Shifts records or drop unique index.");
+            }
+        }
+
         // Always ensure Creditors table exists since EF migrations assume it's there
         using (var cmdCred = connection.CreateCommand())
         {

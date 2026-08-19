@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -20,6 +20,9 @@ namespace FuelPro.Data.Migrations
                     HsdRate = table.Column<double>(type: "REAL", nullable: false, defaultValue: 89.620000000000005),
                     MsRate = table.Column<double>(type: "REAL", nullable: false, defaultValue: 94.719999999999999),
                     PumpStationName = table.Column<string>(type: "TEXT", maxLength: 300, nullable: false, defaultValue: "VKD Petroleum"),
+                    Shift1Manager = table.Column<string>(type: "TEXT", nullable: true),
+                    Shift2Manager = table.Column<string>(type: "TEXT", nullable: true),
+                    Shift3Manager = table.Column<string>(type: "TEXT", nullable: true),
                     LastUpdated = table.Column<DateTime>(type: "TEXT", nullable: false)
                 },
                 constraints: table =>
@@ -271,8 +274,7 @@ namespace FuelPro.Data.Migrations
             migrationBuilder.CreateIndex(
                 name: "IX_Shifts_ShiftDate_ShiftType",
                 table: "Shifts",
-                columns: new[] { "ShiftDate", "ShiftType" },
-                unique: true);
+                columns: new[] { "ShiftDate", "ShiftType" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_TestingEntries_DsmEntryId",

@@ -351,4 +351,48 @@ public class DuplicatePreventionTests : IDisposable
             Assert.NotNull(orig.PaymentCollection);
         }
     }
+
+    [Fact]
+    public async Task DeleteMultipleDuplicateDsmEntriesAsync_BatchDeletesAllSpecifiedDuplicates()
+    {
+        var entryService = _serviceProvider.GetRequiredService<DsmEntryService>();
+        var dto = CreateSampleDsmEntryDto(shiftId: 10, dsmName: "BATCH_DSM", pumpId: 2);
+        var entry1 = await entryService.SaveDsmEntryAsync(dto);
+
+        int dup1Id, dup2Id;
+        using (var scope = _serviceProvider.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FuelProDbContext>();
+
+            var dup1 = new DsmEntry { ShiftId = entry1.ShiftId, DsmName = entry1.DsmName, PumpId = entry1.PumpId, CreatedAt = DateTime.Now.AddMinutes(1) };
+            var dup2 = new DsmEntry { ShiftId = entry1.ShiftId, DsmName = entry1.DsmName, PumpId = entry1.PumpId, CreatedAt = DateTime.Now.AddMinutes(2) };
+
+            db.Set<DsmEntry>().AddRange(dup1, dup2);
+            await db.SaveChangesAsync();
+
+            dup1Id = dup1.DsmEntryId;
+            dup2Id = dup2.DsmEntryId;
+
+            db.Set<DebitEntry>().Add(new DebitEntry { DsmEntryId = dup1Id, DebtorName = "Debtor 1", Amount = 100 });
+            db.Set<DebitEntry>().Add(new DebitEntry { DsmEntryId = dup2Id, DebtorName = "Debtor 2", Amount = 200 });
+            await db.SaveChangesAsync();
+        }
+
+        using (var scope = _serviceProvider.CreateScope())
+        {
+            var resolver = scope.ServiceProvider.GetRequiredService<DuplicateResolutionService>();
+            var pairs = new List<(int, int)> { (dup1Id, entry1.DsmEntryId), (dup2Id, entry1.DsmEntryId) };
+            var result = await resolver.DeleteMultipleDuplicateDsmEntriesAsync(pairs);
+
+            Assert.True(result.Success);
+        }
+
+        using (var scope = _serviceProvider.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FuelProDbContext>();
+            Assert.False(await db.Set<DsmEntry>().AnyAsync(e => e.DsmEntryId == dup1Id));
+            Assert.False(await db.Set<DsmEntry>().AnyAsync(e => e.DsmEntryId == dup2Id));
+            Assert.True(await db.Set<DsmEntry>().AnyAsync(e => e.DsmEntryId == entry1.DsmEntryId));
+        }
+    }
 }

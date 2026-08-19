@@ -103,6 +103,10 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool _includeOtherCashInGrossSale;
     [ObservableProperty] private double _totalDsmShort;
 
+    // TABLE E: DSM LOSS (PERSONAL DEBTORS)
+    [ObservableProperty] private ObservableCollection<DsmPersonalDebtorPrintDto> _personalDebtorRows = new();
+    [ObservableProperty] private double _totalDsmLoss;
+
     // DEBTOR REPAYMENTS (Part 5)
     [ObservableProperty] private ObservableCollection<CreditorRepayment> _debtorRepayments = new();
     [ObservableProperty] private ObservableCollection<RepaymentBreakdownDto> _repaymentBreakdown = new();
@@ -324,9 +328,11 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
             ReconciliationRows = new ObservableCollection<ReconciliationRowDto>(reconRows);
             ReconciliationTotal = report.ActualCollection;
             GrossSaleTotal = report.ExpectedCollection;
-            Difference = report.Difference;
-            IsBalanced = report.IsBalanced;
             TotalDsmShort = report.TotalDsmShort;
+            PersonalDebtorRows = new ObservableCollection<DsmPersonalDebtorPrintDto>(report.PersonalDebtors ?? new());
+            TotalDsmLoss = PersonalDebtorRows.Sum(p => p.Amount);
+            Difference = report.Difference < -0.01 ? -report.TotalDsmShort : (report.Difference > 0.01 ? report.Difference : 0);
+            IsBalanced = Math.Abs(Difference) < 0.01;
 
             // Bind repayment breakdown for debtor recovery section
             RepaymentBreakdown = new ObservableCollection<RepaymentBreakdownDto>(report.RepaymentBreakdown);
@@ -407,9 +413,11 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
         ReconciliationRows = new ObservableCollection<ReconciliationRowDto>(reconRows);
         ReconciliationTotal = report.ActualCollection;
         GrossSaleTotal = report.ExpectedCollection;
-        Difference = report.Difference;
-        IsBalanced = report.IsBalanced;
         TotalDsmShort = report.TotalDsmShort;
+        PersonalDebtorRows = new ObservableCollection<DsmPersonalDebtorPrintDto>(report.PersonalDebtors ?? new());
+        TotalDsmLoss = PersonalDebtorRows.Sum(p => p.Amount);
+        Difference = report.Difference < -0.01 ? -report.TotalDsmShort : (report.Difference > 0.01 ? report.Difference : 0);
+        IsBalanced = Math.Abs(Difference) < 0.01;
     }
 
     private void ClearAll()
@@ -423,6 +431,7 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
         ExpenseRows.Clear(); ExpensesTotal = 0;
         OtherCashRows.Clear(); OtherCashTotal = 0;
         ReconciliationRows.Clear(); ReconciliationTotal = 0;
+        PersonalDebtorRows.Clear(); TotalDsmLoss = 0;
         HsdLitres = HsdRate = HsdAmount = 0;
         MsILitres = MsIRate = MsIAmount = 0;
         MsIILitres = MsIIRate = MsIIAmount = 0;

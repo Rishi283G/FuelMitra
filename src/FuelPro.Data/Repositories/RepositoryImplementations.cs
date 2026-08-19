@@ -168,7 +168,18 @@ public class ShiftRepository : IShiftRepository
                     CreatedAt = DateTime.Now
                 };
                 _context.Shifts.Add(shift);
-                await _context.SaveChangesAsync();
+                try
+                {
+                    await _context.SaveChangesAsync();
+                }
+                catch (Exception saveEx)
+                {
+                    _logger.Warning(saveEx, "Shift insert SaveChangesAsync failed, attempting fallback query for shift {Date} {ShiftType}", dateOnly, shiftType);
+                    shift = await _context.Shifts
+                        .FirstOrDefaultAsync(s => s.ShiftDate == dateOnly && (s.ShiftType == shiftType || s.ShiftType == altShift));
+                    if (shift == null)
+                        throw;
+                }
             }
 
             return Result<Shift>.Ok(shift);

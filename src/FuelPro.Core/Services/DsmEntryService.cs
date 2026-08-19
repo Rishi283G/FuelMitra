@@ -523,7 +523,17 @@ public class DsmEntryService
                     CreatedAt = DateTime.Now
                 };
                 context.Set<Shift>().Add(shift);
-                await context.SaveChangesAsync();
+                try
+                {
+                    await context.SaveChangesAsync();
+                }
+                catch (Exception)
+                {
+                    shift = await context.Set<Shift>()
+                        .FirstOrDefaultAsync(s => s.ShiftDate == dateOnly && (s.ShiftType == shiftType || s.ShiftType == altShift));
+                    if (shift == null)
+                        throw;
+                }
             }
 
             if (shift.IsLocked)
@@ -557,36 +567,27 @@ public class DsmEntryService
 
 
             // Create or update DSM entry
-            DsmEntry entry;
+            DsmEntry? entry = null;
             if (existingEntryId.HasValue && existingEntryId.Value != 0)
             {
-                var existing = await context.Set<DsmEntry>().FindAsync(existingEntryId.Value);
-                if (existing != null)
-                {
-                    existing.ShiftId = shift.ShiftId;
-                    existing.DsmName = dsmName;
-                    existing.PumpId = pumpId;
-                    existing.ConnectedPumpId = connectedPumpId;
-                    existing.StartTime = startTime;
-                    existing.EndTime = endTime;
-                    existing.UpdatedAt = DateTime.Now;
-                    entry = existing;
-                }
-                else
-                {
-                    entry = new DsmEntry
-                    {
-                        ShiftId = shift.ShiftId,
-                        DsmName = dsmName,
-                        PumpId = pumpId,
-                        ConnectedPumpId = connectedPumpId,
-                        StartTime = startTime,
-                        EndTime = endTime,
-                        CreatedAt = DateTime.Now,
-                        UpdatedAt = DateTime.Now
-                    };
-                    context.Set<DsmEntry>().Add(entry);
-                }
+                entry = await context.Set<DsmEntry>().FindAsync(existingEntryId.Value);
+            }
+
+            if (entry == null && !string.IsNullOrWhiteSpace(dsmName))
+            {
+                entry = await context.Set<DsmEntry>()
+                    .FirstOrDefaultAsync(e => e.ShiftId == shift.ShiftId && e.PumpId == pumpId && e.DsmName == dsmName);
+            }
+
+            if (entry != null)
+            {
+                entry.ShiftId = shift.ShiftId;
+                entry.DsmName = dsmName;
+                entry.PumpId = pumpId;
+                entry.ConnectedPumpId = connectedPumpId;
+                entry.StartTime = startTime;
+                entry.EndTime = endTime;
+                entry.UpdatedAt = DateTime.Now;
             }
             else
             {

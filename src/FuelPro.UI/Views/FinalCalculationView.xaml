@@ -284,6 +284,25 @@
                             </DataGrid>
                         </StackPanel>
                     </materialDesign:Card>
+
+                    <!-- DSM LOSS (PERSONAL DEBTORS) -->
+                    <materialDesign:Card Style="{StaticResource SectionCard}">
+                        <StackPanel>
+                            <Grid Margin="0,0,0,12">
+                                <TextBlock Text="E. DSM Loss Register" Style="{StaticResource SectionTitle}" Margin="0" />
+                                <TextBlock Text="{Binding TotalDsmLoss, Converter={StaticResource CurrencyConverter}, StringFormat='Total: {0}'}" HorizontalAlignment="Right" FontWeight="Bold" FontSize="16" Foreground="{DynamicResource MaterialDesign.Brush.Error}" />
+                            </Grid>
+
+                            <DataGrid ItemsSource="{Binding PersonalDebtorRows}" AutoGenerateColumns="False" IsReadOnly="True" MaxHeight="200">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="DSM Name" Binding="{Binding DsmName}" Width="2*" />
+                                    <DataGridTextColumn Header="Product / Fuel" Binding="{Binding FuelProduct}" Width="2*" />
+                                    <DataGridTextColumn Header="Remarks / Notes" Binding="{Binding Remarks}" Width="3*" />
+                                    <DataGridTextColumn Header="Amount" Binding="{Binding Amount, Converter={StaticResource CurrencyConverter}}" Width="2*" FontWeight="Bold" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </StackPanel>
+                    </materialDesign:Card>
                 </StackPanel>
 
                 <StackPanel Grid.Row="1" Grid.Column="1" Margin="8,0,0,0">
