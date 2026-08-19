@@ -324,25 +324,42 @@ function renderData(){
       tb.appendChild(sh);prevShift=r.shift;
     }
     var tr=document.createElement('tr');
-    var ccM = r.creditCardMorning || 0;
-    var ccN = r.creditCardNight || 0;
-    var ph = r.phonePeMorning || r.phonePe || 0;
-    var phN = r.phonePeNight || 0;
-    var petroM = r.petroCardMorning || 0;
-    var petroN = r.petroCardNight || 0;
-    var petroTotal = r.petroCard || (petroM + petroN);
-    if (petroM === 0 && petroN === 0 && petroTotal > 0) { petroM = petroTotal; }
-    var deb = r.debit || 0;
-    var exp = r.expenses || 0;
-    var test = r.testing || 0;
-    var c1 = r.cashDeposit || r.cash1 || r.bankCash || 0;
-    var c2 = r.cashInHand || r.cash2 || 0;
-    var sale = r.grossSales || r.grossSale || 0;
-    var mismatch = (ccM + ccN + ph + phN + petroM + petroN + deb + exp + test + c1 + c2) - sale;
+    var rawCcM = getVal(r, 'creditCardMorning') || 0;
+    var rawCcN = getVal(r, 'creditCardNight') || 0;
+    var rawCcD = getVal(r, 'creditCardDay') || 0;
+    var rawPpcM = getVal(r, 'phonePeCardMorning') || 0;
+    var rawPpcN = getVal(r, 'phonePeCardNight') || 0;
+    var rawPpcD = getVal(r, 'phonePeCardDay') || getVal(r, 'phonePeCard') || 0;
+    var ccM = (rawCcM > 0 ? rawCcM : rawCcD) + (rawPpcM > 0 ? rawPpcM : rawPpcD);
+    var ccN = rawCcN + rawPpcN;
+
+    var rawPhM = getVal(r, 'phonePeMorning') || 0;
+    var rawPhN = getVal(r, 'phonePeNight') || 0;
+    var rawPhD = getVal(r, 'phonePeDay') || getVal(r, 'phonePe') || 0;
+    var ph = rawPhM > 0 ? rawPhM : rawPhD;
+    var phN = rawPhN;
+
+    var rawPcM = getVal(r, 'petroCardMorning') || 0;
+    var rawPcN = getVal(r, 'petroCardNight') || 0;
+    var rawPcD = getVal(r, 'petroCardDay') || getVal(r, 'petroCard') || 0;
+    var petroM = rawPcM > 0 ? rawPcM : rawPcD;
+    var petroN = rawPcN;
+
+    var deb = getVal(r, 'debit') || 0;
+    var exp = getVal(r, 'expenses') || 0;
+    var test = getVal(r, 'testing') || 0;
+    var c1 = getVal(r, 'cashDeposit') || getVal(r, 'cash1') || getVal(r, 'bankCash') || 0;
+    var c2 = getVal(r, 'cashInHand') || getVal(r, 'cash2') || 0;
+    var sale = getVal(r, 'grossSales') || getVal(r, 'grossSale') || 0;
+
+    var rDiff = getVal(r, 'difference');
+    var mismatch = (rDiff !== undefined && !isNaN(rDiff) && rDiff !== null)
+        ? rDiff
+        : (ccM + ccN + ph + phN + petroM + petroN + deb + exp + test + c1 + c2) - sale;
     var pVal = getVal(r, 'pumpNoDisplay') || getVal(r, 'pumpNo') || getVal(r, 'pumpId') || '';
     var pDisp = pVal ? (pVal.toString().startsWith('P-') ? pVal : 'P-' + pVal) : '\u2013';
 
-    tr.innerHTML='<td>'+r.dsmName+'</td><td>'+shiftBadge(r.shift)+'</td><td>'+pDisp+'</td><td>'+inr(ph)+'</td><td>'+inr(phN)+'</td><td>'+inr(ccM)+'</td><td>'+inr(ccN)+'</td><td>'+inr(petroM)+'</td><td>'+inr(petroN)+'</td><td>'+inr(c1)+'</td><td>'+inr(deb)+'</td><td>'+inr(exp)+'</td><td>'+inr(test)+'</td><td>'+inr(c2)+'</td><td>'+inr(sale)+'</td><td>'+inr(mismatch)+'</td>';
+    tr.innerHTML='<td>'+(getVal(r, 'dsmName')||'')+'</td><td>'+shiftBadge(getVal(r, 'shift'))+'</td><td>'+pDisp+'</td><td>'+inr(ph)+'</td><td>'+inr(phN)+'</td><td>'+inr(ccM)+'</td><td>'+inr(ccN)+'</td><td>'+inr(petroM)+'</td><td>'+inr(petroN)+'</td><td>'+inr(c1)+'</td><td>'+inr(deb)+'</td><td>'+inr(exp)+'</td><td>'+inr(test)+'</td><td>'+inr(c2)+'</td><td>'+inr(sale)+'</td><td>'+inr(mismatch)+'</td>';
     tb.appendChild(tr);
     tot.phM+=ph;tot.phN+=phN;tot.ccM+=ccM;tot.ccN+=ccN;tot.pcM+=petroM;tot.pcN+=petroN;tot.bk+=c1;tot.deb+=deb;tot.exp+=exp;tot.test+=test;tot.c2+=c2;tot.sale+=sale;tot.mis+=mismatch;
   });

@@ -205,14 +205,14 @@ public class DsmSummaryRowDto
     public double CashInHand { get; set; }   // Cash 2
     public double GrossSales { get; set; }
 
-    public double PhonePeTotal => PhonePeMorning + PhonePeDay + PhonePeNight + PhonePe;
-    public double PhonePeCardTotal => PhonePeCardMorning + PhonePeCardDay + PhonePeCardNight + PhonePeCard;
-    public double CreditCardTotal => CreditCardMorning + CreditCardDay + CreditCardNight;
-    public double PetroCardTotal => PetroCardMorning + PetroCardDay + PetroCardNight + PetroCard;
+    public double PhonePeTotal => (PhonePeMorning > 0 ? PhonePeMorning : 0) + (PhonePeNight > 0 ? PhonePeNight : 0) + (PhonePeMorning == 0 && PhonePeNight == 0 ? (PhonePeDay > 0 ? PhonePeDay : PhonePe) : 0);
+    public double PhonePeCardTotal => (PhonePeCardMorning > 0 ? PhonePeCardMorning : 0) + (PhonePeCardNight > 0 ? PhonePeCardNight : 0) + (PhonePeCardMorning == 0 && PhonePeCardNight == 0 ? (PhonePeCardDay > 0 ? PhonePeCardDay : PhonePeCard) : 0);
+    public double CreditCardTotal => (CreditCardMorning > 0 ? CreditCardMorning : 0) + (CreditCardNight > 0 ? CreditCardNight : 0) + (CreditCardMorning == 0 && CreditCardNight == 0 ? CreditCardDay : 0);
+    public double PetroCardTotal => (PetroCardMorning > 0 ? PetroCardMorning : 0) + (PetroCardNight > 0 ? PetroCardNight : 0) + (PetroCardMorning == 0 && PetroCardNight == 0 ? (PetroCardDay > 0 ? PetroCardDay : PetroCard) : 0);
     public double BankCash => CashDeposit;
     public double DebtorSales => Debit;
     public double GrossSale => GrossSales;
-    public double Difference => (CashDeposit + CashInHand + PhonePeMorning + PhonePeDay + PhonePeNight + PhonePe + PhonePeCardMorning + PhonePeCardDay + PhonePeCardNight + PhonePeCard + CreditCardMorning + CreditCardDay + CreditCardNight + PetroCardMorning + PetroCardDay + PetroCardNight + PetroCard + Others + Debit + Expenses + Testing) - GrossSales;
+    public double Difference => (CashDeposit + CashInHand + PhonePeTotal + PhonePeCardTotal + CreditCardTotal + PetroCardTotal + Others + Debit + Expenses + Testing) - GrossSales;
 }
 
 /// <summary>

@@ -319,25 +319,42 @@ function renderData(){
   };
   (d.dsmSummaryRows||d.dsmEntries||[]).forEach(function(r){
     var tr=document.createElement('tr');
-    var ccM = r.creditCardMorning || 0;
-    var ccN = r.creditCardNight || 0;
-    var phM = r.phonePeMorning || r.phonePe || 0;
-    var phN = r.phonePeNight || 0;
-    var pcM = r.petroCardMorning || 0;
-    var pcN = r.petroCardNight || 0;
-    var pcTotal = r.petroCard || (pcM + pcN);
-    if (pcM === 0 && pcN === 0 && pcTotal > 0) { pcM = pcTotal; }
-    var deb = r.debit || 0;
-    var exp = r.expenses || 0;
-    var test = r.testing || 0;
-    var c1 = r.cashDeposit || r.cash1 || r.bankCash || 0;
-    var c2 = r.cashInHand || r.cash2 || 0;
-    var sale = r.grossSales || r.grossSale || 0;
-    var mismatch = (ccM + ccN + phM + phN + pcM + pcN + deb + exp + test + c1 + c2) - sale;
-    var pVal = r.pumpNoDisplay || (r.pumpId || r.pumpNo) || '';
+    var rawCcM = getVal(r, 'creditCardMorning') || 0;
+    var rawCcN = getVal(r, 'creditCardNight') || 0;
+    var rawCcD = getVal(r, 'creditCardDay') || 0;
+    var rawPpcM = getVal(r, 'phonePeCardMorning') || 0;
+    var rawPpcN = getVal(r, 'phonePeCardNight') || 0;
+    var rawPpcD = getVal(r, 'phonePeCardDay') || getVal(r, 'phonePeCard') || 0;
+    var ccM = (rawCcM > 0 ? rawCcM : rawCcD) + (rawPpcM > 0 ? rawPpcM : rawPpcD);
+    var ccN = rawCcN + rawPpcN;
+
+    var rawPhM = getVal(r, 'phonePeMorning') || 0;
+    var rawPhN = getVal(r, 'phonePeNight') || 0;
+    var rawPhD = getVal(r, 'phonePeDay') || getVal(r, 'phonePe') || 0;
+    var phM = rawPhM > 0 ? rawPhM : rawPhD;
+    var phN = rawPhN;
+
+    var rawPcM = getVal(r, 'petroCardMorning') || 0;
+    var rawPcN = getVal(r, 'petroCardNight') || 0;
+    var rawPcD = getVal(r, 'petroCardDay') || getVal(r, 'petroCard') || 0;
+    var pcM = rawPcM > 0 ? rawPcM : rawPcD;
+    var pcN = rawPcN;
+
+    var deb = getVal(r, 'debit') || 0;
+    var exp = getVal(r, 'expenses') || 0;
+    var test = getVal(r, 'testing') || 0;
+    var c1 = getVal(r, 'cashDeposit') || getVal(r, 'cash1') || getVal(r, 'bankCash') || 0;
+    var c2 = getVal(r, 'cashInHand') || getVal(r, 'cash2') || 0;
+    var sale = getVal(r, 'grossSales') || getVal(r, 'grossSale') || 0;
+
+    var rDiff = getVal(r, 'difference');
+    var mismatch = (rDiff !== undefined && !isNaN(rDiff) && rDiff !== null)
+        ? rDiff
+        : (ccM + ccN + phM + phN + pcM + pcN + deb + exp + test + c1 + c2) - sale;
+    var pVal = getVal(r, 'pumpNoDisplay') || getVal(r, 'pumpId') || getVal(r, 'pumpNo') || '';
     var pDisp = pVal ? (pVal.toString().startsWith('P-') ? pVal : 'P-' + pVal) : '\u2013';
 
-    tr.innerHTML='<td>'+r.dsmName+'</td>' +
+    tr.innerHTML='<td>'+(getVal(r, 'dsmName')||'')+'</td>' +
                  '<td>'+pDisp+'</td>' +
                  '<td>'+inr(phM)+'</td>' +
                  '<td>'+inr(phN)+'</td>' +
