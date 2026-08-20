@@ -645,68 +645,33 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
 
       // Fetch previous closing readings for all nozzles assigned to this pump/station.
       //
-      // Architecture: StationId is the single source of truth. All data in Supabase is
-      // scoped to a StationId. The PWA always queries its own station's data, making it
-      // fully isolated and scalable across multiple client deployments.
-      //
-      // Priority chain (per nozzle):
-      //   1. NozzleReadings (local_id DESC)  — admin-approved ground truth, most recent first
-      //   2. DsmSubmissions                   — for nozzles not yet in NozzleReadings
-      //   3. Local IndexedDB drafts           — offline fallback
+      // Architecture: station_id is the single source of truth. All data in Supabase is
+      // scoped to a station_id. The PWA queries ONLY its own station's data, strictly preventing
+      // cross-station test/dummy data pollution.
       const prevClosings: Record<number, number> = {};
       const nozzleIds = configRows.map((r) => r.nozzleId);
+      const station = profile?.StationId || localStorage.getItem('current_station_id') || localStorage.getItem('fuelpro_station_id') || "";
 
       // ── Step 1: Most recent closing reading from NozzleReadings (Admin Side Ground Truth) ─
-      // The admin software / manual entry writes to NozzleReadings and syncs them to Supabase.
-      // The highest closing reading for each nozzle becomes the authoritative opening reading
-      // for the next shift of that pump in the PWA.
+      // The admin software / manual entry writes to NozzleReadings with station_id and syncs to Supabase.
+      // Ordered by created_at DESC, the first row per nozzle is the exact closing reading of the last manual entry.
       try {
-        const station = profile?.StationId || localStorage.getItem('current_station_id') || "";
-        let nrQuery = supabase
-          .from("NozzleReadings")
-          .select("NozzleNumber, ClosingReading, NozzleReadingId, local_id, created_at, updated_at")
-          .in("NozzleNumber", nozzleIds)
-          .gt("ClosingReading", 0)
-          .order("ClosingReading", { ascending: false })
-          .limit(200);
-
         if (station) {
-          nrQuery = nrQuery.eq("station_id", station);
-        }
-
-        const { data: latestReadings, error: latestErr } = await nrQuery;
-
-        if (!latestErr && latestReadings && latestReadings.length > 0) {
-          for (const r of latestReadings) {
-            const nNum = Number(r.NozzleNumber);
-            const val = Number(r.ClosingReading);
-            if (val > 0) {
-              if (!prevClosings[nNum] || val > prevClosings[nNum]) {
-                prevClosings[nNum] = val;
-              }
-            }
-          }
-        }
-
-        // Fallback: If station_id filter returned nothing for some nozzles, query without station filter
-        const stillMissing = nozzleIds.filter((nId) => !prevClosings[nId]);
-        if (stillMissing.length > 0) {
-          const { data: fallbackReadings } = await supabase
+          const { data: latestReadings, error: latestErr } = await supabase
             .from("NozzleReadings")
-            .select("NozzleNumber, ClosingReading, NozzleReadingId, local_id, created_at, updated_at")
-            .in("NozzleNumber", stillMissing)
+            .select("NozzleNumber, ClosingReading, created_at, updated_at")
+            .eq("station_id", station)
+            .in("NozzleNumber", nozzleIds)
             .gt("ClosingReading", 0)
-            .order("ClosingReading", { ascending: false })
+            .order("created_at", { ascending: false })
             .limit(100);
 
-          if (fallbackReadings && fallbackReadings.length > 0) {
-            for (const r of fallbackReadings) {
+          if (!latestErr && latestReadings && latestReadings.length > 0) {
+            for (const r of latestReadings) {
               const nNum = Number(r.NozzleNumber);
               const val = Number(r.ClosingReading);
-              if (val > 0) {
-                if (!prevClosings[nNum] || val > prevClosings[nNum]) {
-                  prevClosings[nNum] = val;
-                }
+              if (val > 0 && prevClosings[nNum] === undefined) {
+                prevClosings[nNum] = val;
               }
             }
           }
@@ -715,42 +680,36 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         console.error("Failed to fetch latest NozzleReadings from admin side:", e);
       }
 
-      // ── Step 2: DsmSubmissions for recent pending/approved submissions ───────────────
-      // If a recent shift was submitted via PWA, consider its closing readings as well.
+      // ── Step 2: DsmSubmissions for nozzles not yet in NozzleReadings ───────────────
+      // If a recent shift was submitted via PWA for this station, check if it has a closing reading
       try {
-        const station = profile?.StationId || localStorage.getItem('current_station_id') || "";
-        let subQuery = supabase
-          .from("DsmSubmissions")
-          .select("Id, ShiftDate, ShiftType, PumpId, SubmittedAt")
-          .in("PumpId", pumpsToFetch)
-          .in("Status", ["Approved", "Pending"])
-          .order("ShiftDate", { ascending: false })
-          .order("SubmittedAt", { ascending: false })
-          .limit(20);
-
         if (station) {
-          subQuery = subQuery.eq("StationId", station);
-        }
+          const { data: lastSubmissions } = await supabase
+            .from("DsmSubmissions")
+            .select("Id, ShiftDate, ShiftType, PumpId, SubmittedAt")
+            .eq("StationId", station)
+            .in("PumpId", pumpsToFetch)
+            .in("Status", ["Approved", "Pending"])
+            .order("ShiftDate", { ascending: false })
+            .order("SubmittedAt", { ascending: false })
+            .limit(10);
 
-        const { data: lastSubmissions } = await subQuery;
+          if (lastSubmissions && lastSubmissions.length > 0) {
+            for (const sub of lastSubmissions) {
+              const { data: lastReadings } = await supabase
+                .from("DsmSubmissionReadings")
+                .select("NozzleId, ClosingReading")
+                .eq("SubmissionId", sub.Id);
 
-        if (lastSubmissions && lastSubmissions.length > 0) {
-          for (const sub of lastSubmissions) {
-            const { data: lastReadings } = await supabase
-              .from("DsmSubmissionReadings")
-              .select("NozzleId, ClosingReading")
-              .eq("SubmissionId", sub.Id);
-
-            if (lastReadings && lastReadings.length > 0) {
-              lastReadings.forEach((r: any) => {
-                const nId = Number(r.NozzleId);
-                const cVal = Number(r.ClosingReading);
-                if (cVal > 0) {
-                  if (!prevClosings[nId] || cVal > prevClosings[nId]) {
+              if (lastReadings && lastReadings.length > 0) {
+                lastReadings.forEach((r: any) => {
+                  const nId = Number(r.NozzleId);
+                  const cVal = Number(r.ClosingReading);
+                  if (cVal > 0 && prevClosings[nId] === undefined) {
                     prevClosings[nId] = cVal;
                   }
-                }
-              });
+                });
+              }
             }
           }
         }
@@ -759,11 +718,9 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       }
 
       // ── Step 3: Local IndexedDB drafts (offline fallback) ─────────────────────────────────
-      // For nozzles still missing after Steps 1 & 2, check if the DSM has a saved draft
-      // on this device with a closing reading.
       try {
         const missingAfterSteps12 = nozzleIds.filter(
-          (nId) => !prevClosings[nId],
+          (nId) => prevClosings[nId] === undefined,
         );
         if (missingAfterSteps12.length > 0) {
           const localDrafts = await db.drafts
@@ -772,7 +729,6 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
             .toArray();
 
           if (localDrafts && localDrafts.length > 0) {
-            // Use most recent draft (by date, then createdAt)
             const sortedDrafts = localDrafts.sort(
               (a, b) =>
                 b.shiftDate.localeCompare(a.shiftDate) ||
@@ -781,7 +737,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
             const mostRecentDraft = sortedDrafts[0];
             if (mostRecentDraft?.nozzleReadings) {
               mostRecentDraft.nozzleReadings.forEach((nr) => {
-                if (nr.closingReading > 0 && (!prevClosings[nr.nozzleId] || nr.closingReading > prevClosings[nr.nozzleId])) {
+                if (nr.closingReading > 0 && prevClosings[nr.nozzleId] === undefined) {
                   prevClosings[nr.nozzleId] = Number(nr.closingReading);
                 }
               });
@@ -832,7 +788,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         const prevClosing = prevClosings[n.nozzleId] || 0;
         const draftEntry = draftMap[n.nozzleId];
 
-        // Authoritative opening reading is always the latest recorded closing reading
+        // Authoritative opening reading is always the latest recorded closing reading from the station
         const opening = prevClosing > 0
           ? prevClosing
           : (draftEntry && draftEntry.openingReading ? draftEntry.openingReading : 0);
@@ -867,7 +823,9 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   }
 
   useEffect(() => {
-    loadNozzleConfig();
+    if (profile) {
+      loadNozzleConfig();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pumpId, profile]);
 
