@@ -539,60 +539,97 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           );
         }
 
-        // Load DSM Users for Cross-DSM QR dropdown
+        // Load DSM Users for Cross-DSM QR dropdown strictly for THIS station
         let formattedUsers: { id: string; fullName: string }[] = [];
-        try {
-          // 1. Fetch from DsmUsers
-          const { data: dsmUsers, error: dsmErr } = await supabase
-            .from("DsmUsers")
-            .select("SyncGuid, FullName, station_id, IsActive");
+        const stationId = (profile.StationId || "").trim();
+        const cacheKey = `cached_dsm_users_${stationId}`;
 
-          if (!dsmErr && dsmUsers && dsmUsers.length > 0) {
-            const userMap = new Map<string, string>();
-            for (const u of dsmUsers) {
-              if (u.FullName && u.FullName.trim() && u.IsActive !== false) {
-                userMap.set(u.FullName.trim(), u.SyncGuid || u.FullName.trim());
-              }
-            }
-            formattedUsers = Array.from(userMap.entries()).map(([fullName, id]) => ({
-              id,
-              fullName,
-            }));
-          }
-        } catch (err) {
-          console.warn("Could not load from DsmUsers table:", err);
-        }
-
-        // 2. Fallback to DsmProfiles if DsmUsers is empty
-        if (formattedUsers.length === 0) {
+        if (stationId) {
           try {
-            const { data: profiles } = await supabase
-              .from("DsmProfiles")
-              .select("DsmName");
+            // 1. Fetch from DsmUsers matching THIS station ID
+            const { data: dsmUsers, error: dsmErr } = await supabase
+              .from("DsmUsers")
+              .select("SyncGuid, FullName, station_id, IsActive")
+              .eq("station_id", stationId)
+              .eq("IsActive", true)
+              .order("FullName");
 
-            if (profiles && profiles.length > 0) {
-              const nameSet = new Set<string>();
-              for (const p of profiles) {
-                if (p.DsmName && p.DsmName.trim()) {
-                  nameSet.add(p.DsmName.trim());
+            if (!dsmErr && dsmUsers && dsmUsers.length > 0) {
+              const userMap = new Map<string, string>();
+              for (const u of dsmUsers) {
+                if (u.FullName && u.FullName.trim()) {
+                  userMap.set(u.FullName.trim(), u.SyncGuid || u.FullName.trim());
                 }
               }
-              formattedUsers = Array.from(nameSet).map((name) => ({
-                id: name,
-                fullName: name,
+              formattedUsers = Array.from(userMap.entries()).map(([fullName, id]) => ({
+                id,
+                fullName,
               }));
             }
-          } catch (profErr) {
-            console.warn("Could not load from DsmProfiles:", profErr);
+          } catch (err) {
+            console.warn("Could not load from DsmUsers table:", err);
+          }
+
+          // 2. Fallback: Check DsmProfiles strictly for THIS station ID
+          if (formattedUsers.length === 0) {
+            try {
+              const { data: profiles } = await supabase
+                .from("DsmProfiles")
+                .select("DsmName, station_id")
+                .eq("station_id", stationId)
+                .order("DsmName");
+
+              if (profiles && profiles.length > 0) {
+                const nameSet = new Set<string>();
+                for (const p of profiles) {
+                  if (p.DsmName && p.DsmName.trim()) {
+                    nameSet.add(p.DsmName.trim());
+                  }
+                }
+                formattedUsers = Array.from(nameSet).map((name) => ({
+                  id: name,
+                  fullName: name,
+                }));
+              }
+            } catch (profErr) {
+              console.warn("Could not load from DsmProfiles:", profErr);
+            }
+          }
+
+          // 3. Fallback: Check DsmPumpAssignments for active DSMs at THIS station
+          if (formattedUsers.length === 0) {
+            try {
+              const { data: assignments } = await supabase
+                .from("DsmPumpAssignments")
+                .select("DsmUsers(FullName, SyncGuid), station_id")
+                .eq("station_id", stationId);
+
+              if (assignments && assignments.length > 0) {
+                const nameSet = new Map<string, string>();
+                for (const a of assignments as any[]) {
+                  const name = a.DsmUsers?.FullName;
+                  const guid = a.DsmUsers?.SyncGuid || name;
+                  if (name && name.trim()) {
+                    nameSet.set(name.trim(), guid);
+                  }
+                }
+                formattedUsers = Array.from(nameSet.entries()).map(([fullName, id]) => ({
+                  id,
+                  fullName,
+                }));
+              }
+            } catch (assignErr) {
+              console.warn("Could not load from DsmPumpAssignments:", assignErr);
+            }
           }
         }
 
         if (formattedUsers.length > 0) {
           formattedUsers.sort((a, b) => a.fullName.localeCompare(b.fullName));
           setDsmUsersList(formattedUsers);
-          localStorage.setItem("cached_dsm_users", JSON.stringify(formattedUsers));
+          localStorage.setItem(cacheKey, JSON.stringify(formattedUsers));
         } else {
-          const cached = localStorage.getItem("cached_dsm_users");
+          const cached = localStorage.getItem(cacheKey);
           if (cached) {
             try {
               setDsmUsersList(JSON.parse(cached));
