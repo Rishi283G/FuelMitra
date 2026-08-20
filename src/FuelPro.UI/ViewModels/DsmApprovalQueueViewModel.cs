@@ -359,8 +359,15 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                     .ToListAsync();
                 
                 var approvedSubIdSet = new HashSet<Guid>(approvedSubIds);
+                var dedupedList = new List<DsmPendingSubmission>();
+                var seenKeys = new HashSet<string>();
+                var duplicatePendingIds = new List<Guid>();
 
-                foreach (var item in result.Data)
+                var sortedItems = ((IEnumerable<dynamic>)result.Data)
+                    .OrderByDescending(x => (DateTime)x.SubmittedAt)
+                    .ToList();
+
+                foreach (var item in sortedItems)
                 {
                     Guid subId = item.Id;
 
@@ -384,21 +391,58 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                         continue;
                     }
 
-                    // Keep all pending submissions regardless of age
+                    DateTime shiftDate = item.ShiftDate;
+                    string shiftType = item.ShiftType ?? "A";
+                    int pumpId = (int)item.PumpId;
+                    string dsmUserId = item.DsmUserId ?? "";
+                    string key = $"{shiftDate:yyyy-MM-dd}_{shiftType}_{pumpId}_{dsmUserId}";
 
-                    PendingSubmissions.Add(new DsmPendingSubmission
+                    if (seenKeys.Contains(key))
+                    {
+                        // Duplicate pending submission
+                        _logger.Information("Duplicate pending submission {SubId} detected for {Key}. Marking for resolution.", subId, key);
+                        duplicatePendingIds.Add(subId);
+                        continue;
+                    }
+                    seenKeys.Add(key);
+
+                    dedupedList.Add(new DsmPendingSubmission
                     {
                         Id = subId,
                         DsmName = item.DsmUsers?.FullName ?? "Unknown DSM",
-                        DsmUserId = item.DsmUserId,
-                        PumpId = (int)item.PumpId,
-                        ShiftDate = item.ShiftDate,
-                        ShiftType = item.ShiftType,
+                        DsmUserId = dsmUserId,
+                        PumpId = pumpId,
+                        ShiftDate = shiftDate,
+                        ShiftType = shiftType,
                         SubmittedAt = item.SubmittedAt,
                         Notes = item.Notes ?? "",
                         AttachmentUrl = item.AttachmentUrl,
                         MetadataJson = item.Metadata != null ? JsonConvert.SerializeObject(item.Metadata) : ""
                     });
+                }
+
+                // If duplicate pending submissions were detected, auto-resolve them
+                if (duplicatePendingIds.Count > 0)
+                {
+                    _ = Task.Run(async () =>
+                    {
+                        foreach (var dupId in duplicatePendingIds)
+                        {
+                            try
+                            {
+                                await _supabaseService.ApproveSubmissionAsync(dupId, "System (Duplicate Auto-Heal)", Guid.NewGuid().ToString("N"));
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.Warning(ex, "Failed to auto-resolve duplicate pending submission {DupId}", dupId);
+                            }
+                        }
+                    });
+                }
+
+                foreach (var sub in dedupedList)
+                {
+                    PendingSubmissions.Add(sub);
                 }
                 
                 StatusMessage = PendingSubmissions.Count > 0 

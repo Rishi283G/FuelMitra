@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useSubmissionService } from "../hooks/useSubmissionService";
 import { db, type DraftNozzleReading } from "../lib/db";
@@ -39,6 +39,8 @@ interface ExpenseRow {
 export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   const { profile } = useAuth();
   const { syncing, saveDraft, submitToSupabase } = useSubmissionService();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const submittingRef = useRef(false);
 
   // Form State — pump & shift come from manager assignment, DSM cannot change them
   const pumpId = profile?.AssignedPump ?? 0;
@@ -656,17 +658,17 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
 
       // ── Step 1: Most recent closing reading from NozzleReadings (Admin Side Ground Truth) ─
       // The admin software / manual entry writes to NozzleReadings and syncs them to Supabase.
-      // Whatever closing reading is saved/approved on the admin side becomes the opening reading
+      // The highest closing reading for each nozzle becomes the authoritative opening reading
       // for the next shift of that pump in the PWA.
       try {
         const station = profile?.StationId || localStorage.getItem('current_station_id') || "";
         let nrQuery = supabase
           .from("NozzleReadings")
-          .select("NozzleNumber, ClosingReading, NozzleReadingId, local_id, created_at")
+          .select("NozzleNumber, ClosingReading, NozzleReadingId, local_id, created_at, updated_at")
           .in("NozzleNumber", nozzleIds)
           .gt("ClosingReading", 0)
-          .order("NozzleReadingId", { ascending: false })
-          .limit(100);
+          .order("ClosingReading", { ascending: false })
+          .limit(200);
 
         if (station) {
           nrQuery = nrQuery.eq("station_id", station);
@@ -675,13 +677,13 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         const { data: latestReadings, error: latestErr } = await nrQuery;
 
         if (!latestErr && latestReadings && latestReadings.length > 0) {
-          const seenNozzles = new Set<number>();
           for (const r of latestReadings) {
             const nNum = Number(r.NozzleNumber);
             const val = Number(r.ClosingReading);
-            if (!seenNozzles.has(nNum) && val > 0) {
-              seenNozzles.add(nNum);
-              prevClosings[nNum] = val;
+            if (val > 0) {
+              if (!prevClosings[nNum] || val > prevClosings[nNum]) {
+                prevClosings[nNum] = val;
+              }
             }
           }
         }
@@ -691,18 +693,20 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         if (stillMissing.length > 0) {
           const { data: fallbackReadings } = await supabase
             .from("NozzleReadings")
-            .select("NozzleNumber, ClosingReading, NozzleReadingId, local_id, created_at")
+            .select("NozzleNumber, ClosingReading, NozzleReadingId, local_id, created_at, updated_at")
             .in("NozzleNumber", stillMissing)
             .gt("ClosingReading", 0)
-            .order("NozzleReadingId", { ascending: false })
-            .limit(50);
+            .order("ClosingReading", { ascending: false })
+            .limit(100);
 
           if (fallbackReadings && fallbackReadings.length > 0) {
             for (const r of fallbackReadings) {
               const nNum = Number(r.NozzleNumber);
               const val = Number(r.ClosingReading);
-              if (!prevClosings[nNum] && val > 0) {
-                prevClosings[nNum] = val;
+              if (val > 0) {
+                if (!prevClosings[nNum] || val > prevClosings[nNum]) {
+                  prevClosings[nNum] = val;
+                }
               }
             }
           }
@@ -711,46 +715,42 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         console.error("Failed to fetch latest NozzleReadings from admin side:", e);
       }
 
-      // ── Step 2: DsmSubmissions for nozzles not yet covered in NozzleReadings ───────────────
-      // For any nozzles not yet approved on the admin side, check recent pending/approved submissions.
+      // ── Step 2: DsmSubmissions for recent pending/approved submissions ───────────────
+      // If a recent shift was submitted via PWA, consider its closing readings as well.
       try {
-        const missingNozzleIds = nozzleIds.filter((nId) => !prevClosings[nId]);
-        if (missingNozzleIds.length > 0) {
-          const station = profile?.StationId || localStorage.getItem('current_station_id') || "";
-          let subQuery = supabase
-            .from("DsmSubmissions")
-            .select("Id, ShiftDate, ShiftType, PumpId")
-            .in("PumpId", pumpsToFetch)
-            .in("Status", ["Approved", "Pending"])
-            .order("ShiftDate", { ascending: false })
-            .order("SubmittedAt", { ascending: false });
+        const station = profile?.StationId || localStorage.getItem('current_station_id') || "";
+        let subQuery = supabase
+          .from("DsmSubmissions")
+          .select("Id, ShiftDate, ShiftType, PumpId, SubmittedAt")
+          .in("PumpId", pumpsToFetch)
+          .in("Status", ["Approved", "Pending"])
+          .order("ShiftDate", { ascending: false })
+          .order("SubmittedAt", { ascending: false })
+          .limit(20);
 
-          if (station) {
-            subQuery = subQuery.eq("StationId", station);
-          }
+        if (station) {
+          subQuery = subQuery.eq("StationId", station);
+        }
 
-          const { data: lastSubmissions } = await subQuery;
+        const { data: lastSubmissions } = await subQuery;
 
-          if (lastSubmissions && lastSubmissions.length > 0) {
-            for (const pId of pumpsToFetch) {
-              const sub = lastSubmissions.find((s) => s.PumpId === pId);
-              if (!sub) continue;
+        if (lastSubmissions && lastSubmissions.length > 0) {
+          for (const sub of lastSubmissions) {
+            const { data: lastReadings } = await supabase
+              .from("DsmSubmissionReadings")
+              .select("NozzleId, ClosingReading")
+              .eq("SubmissionId", sub.Id);
 
-              const { data: lastReadings } = await supabase
-                .from("DsmSubmissionReadings")
-                .select("NozzleId, ClosingReading")
-                .eq("SubmissionId", sub.Id);
-
-              if (lastReadings && lastReadings.length > 0) {
-                lastReadings.forEach((r: any) => {
-                  if (
-                    Number(r.ClosingReading) > 0 &&
-                    !prevClosings[r.NozzleId]
-                  ) {
-                    prevClosings[r.NozzleId] = Number(r.ClosingReading);
+            if (lastReadings && lastReadings.length > 0) {
+              lastReadings.forEach((r: any) => {
+                const nId = Number(r.NozzleId);
+                const cVal = Number(r.ClosingReading);
+                if (cVal > 0) {
+                  if (!prevClosings[nId] || cVal > prevClosings[nId]) {
+                    prevClosings[nId] = cVal;
                   }
-                });
-              }
+                }
+              });
             }
           }
         }
@@ -781,7 +781,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
             const mostRecentDraft = sortedDrafts[0];
             if (mostRecentDraft?.nozzleReadings) {
               mostRecentDraft.nozzleReadings.forEach((nr) => {
-                if (nr.closingReading > 0 && !prevClosings[nr.nozzleId]) {
+                if (nr.closingReading > 0 && (!prevClosings[nr.nozzleId] || nr.closingReading > prevClosings[nr.nozzleId])) {
                   prevClosings[nr.nozzleId] = Number(nr.closingReading);
                 }
               });
@@ -832,16 +832,22 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         const prevClosing = prevClosings[n.nozzleId] || 0;
         const draftEntry = draftMap[n.nozzleId];
 
-        const opening = (prevClosing === 0 && draftEntry && draftEntry.openingReading)
-          ? draftEntry.openingReading
-          : prevClosing;
+        // Authoritative opening reading is always the latest recorded closing reading
+        const opening = prevClosing > 0
+          ? prevClosing
+          : (draftEntry && draftEntry.openingReading ? draftEntry.openingReading : 0);
+
+        // Only restore draft closing reading if it is greater than the opening reading
+        const closing = (draftEntry?.closingReading && draftEntry.closingReading >= opening)
+          ? draftEntry.closingReading
+          : 0;
 
         return {
           rowId: index + 1,
           nozzleId: n.nozzleId,
           fuelType: n.fuelType,
           openingReading: opening,
-          closingReading: draftEntry?.closingReading ?? 0,
+          closingReading: closing,
           rate,
           isOpeningReadOnly: prevClosing > 0,
           pumpId: n.pumpId,
@@ -1038,6 +1044,8 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   // ── Submit ───────────────────────────────────────────────────
   async function handleSubmit() {
     if (!profile) return;
+    if (submittingRef.current || isSubmitting || syncing) return;
+
     setError("");
 
     const readingErrs = validateReadings();
@@ -1054,6 +1062,9 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       return;
     }
     setValidationErrors([]);
+
+    submittingRef.current = true;
+    setIsSubmitting(true);
 
     const cardSwipes = [];
     const settlementsList = [];
@@ -1309,27 +1320,34 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         })),
     };
 
-    if (!online) {
-      const saved = await saveDraft({
-        ...draftData,
-        status: "queued",
-      } as Parameters<typeof saveDraft>[0]);
-      if (saved) setSuccess(true);
-      return;
-    }
+    try {
+      if (!online) {
+        const saved = await saveDraft({
+          ...draftData,
+          status: "queued",
+        } as Parameters<typeof saveDraft>[0]);
+        if (saved) setSuccess(true);
+        return;
+      }
 
-    const savedDraft = await saveDraft(
-      draftData as Parameters<typeof saveDraft>[0],
-    );
-    const err = await submitToSupabase(
-      savedDraft,
-      profile.id,
-      profile.StationId,
-    );
-    if (err) {
-      setError(err);
-    } else {
-      setSuccess(true);
+      const savedDraft = await saveDraft(
+        draftData as Parameters<typeof saveDraft>[0],
+      );
+      const err = await submitToSupabase(
+        savedDraft,
+        profile.id,
+        profile.StationId,
+      );
+      if (err) {
+        setError(err);
+      } else {
+        setSuccess(true);
+      }
+    } catch (e: any) {
+      setError(e?.message || "An unexpected error occurred during submission.");
+    } finally {
+      setIsSubmitting(false);
+      submittingRef.current = false;
     }
   }
 
@@ -3124,17 +3142,17 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           <div className="btn-row" style={{ marginTop: "16px" }}>
             <button
               id="submit-btn"
-              className={`btn-primary ${syncing ? "btn-loading" : ""}`}
+              className={`btn-primary ${isSubmitting || syncing ? "btn-loading" : ""}`}
               style={{ width: "100%", padding: "14px", fontSize: "1.1rem" }}
               onClick={handleSubmit}
-              disabled={syncing || nozzleLoading || nozzleRows.length === 0}
+              disabled={isSubmitting || syncing || nozzleLoading || nozzleRows.length === 0}
             >
-              {syncing ? (
+              {isSubmitting || syncing ? (
                 <Loader2 size={20} className="spin" />
               ) : (
                 <Send size={20} />
               )}
-              {syncing
+              {isSubmitting || syncing
                 ? "Submitting Shift Entry..."
                 : online
                   ? "Submit Shift Entry"

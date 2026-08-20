@@ -1035,6 +1035,60 @@ public class SyncEngine
                                 matchedLocalEntity = await context.Set<Setting>().FirstOrDefaultAsync();
                             }
                         }
+                        else if (tableDef.TableName == "Shifts")
+                        {
+                            if (dict.TryGetValue("ShiftDate", out var sDateObj) && sDateObj != null &&
+                                dict.TryGetValue("ShiftType", out var sTypeObj) && sTypeObj != null)
+                            {
+                                DateTime sDate = Convert.ToDateTime(sDateObj).Date;
+                                string sType = sTypeObj.ToString()!;
+                                var altType = sType == "A" ? "I" : (sType == "B" ? "II" : (sType == "C" ? "III" : (sType == "I" ? "A" : (sType == "II" ? "B" : (sType == "III" ? "C" : sType)))));
+
+                                matchedLocalEntity = context.Set<Shift>().Local
+                                    .FirstOrDefault(s => s.ShiftDate == sDate && (s.ShiftType == sType || s.ShiftType == altType));
+
+                                if (matchedLocalEntity == null)
+                                {
+                                    matchedLocalEntity = await context.Set<Shift>()
+                                        .FirstOrDefaultAsync(s => s.ShiftDate == sDate && (s.ShiftType == sType || s.ShiftType == altType));
+                                }
+                            }
+                        }
+                        else if (tableDef.TableName == "DsmEntries")
+                        {
+                            if (dict.TryGetValue("ShiftId", out var sIdObj) && sIdObj != null &&
+                                dict.TryGetValue("PumpId", out var pIdObj) && pIdObj != null &&
+                                dict.TryGetValue("DsmName", out var dNameObj) && dNameObj != null)
+                            {
+                                int localShiftId = Convert.ToInt32(sIdObj);
+                                int pumpId = Convert.ToInt32(pIdObj);
+                                string dsmName = dNameObj.ToString()!.Trim();
+
+                                matchedLocalEntity = context.Set<DsmEntry>().Local
+                                    .FirstOrDefault(e => e.ShiftId == localShiftId && e.PumpId == pumpId && string.Equals(e.DsmName, dsmName, StringComparison.OrdinalIgnoreCase));
+
+                                if (matchedLocalEntity == null)
+                                {
+                                    matchedLocalEntity = await context.Set<DsmEntry>()
+                                        .FirstOrDefaultAsync(e => e.ShiftId == localShiftId && e.PumpId == pumpId && (e.DsmName != null && e.DsmName.ToLower() == dsmName.ToLower()));
+                                }
+                            }
+                        }
+                        else if (tableDef.TableName == "PaymentCollections")
+                        {
+                            if (dict.TryGetValue("DsmEntryId", out var dsmIdObj) && dsmIdObj != null)
+                            {
+                                int localDsmEntryId = Convert.ToInt32(dsmIdObj);
+                                matchedLocalEntity = context.Set<PaymentCollection>().Local
+                                    .FirstOrDefault(p => p.DsmEntryId == localDsmEntryId);
+
+                                if (matchedLocalEntity == null)
+                                {
+                                    matchedLocalEntity = await context.Set<PaymentCollection>()
+                                        .FirstOrDefaultAsync(p => p.DsmEntryId == localDsmEntryId);
+                                }
+                            }
+                        }
                         else if (tableDef.TableName == "CashDenominations")
                         {
                             // CashDenominations has a UNIQUE index on (DsmEntryId, CashType).
