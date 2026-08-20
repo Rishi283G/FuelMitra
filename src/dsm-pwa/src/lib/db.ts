@@ -70,6 +70,7 @@ export interface DraftSubmission {
   petroCardBatchNight?: string;
   personalDebtors?: { amount: number; fuelProduct?: string; remarks?: string; paymentMethod: string; tid?: string; batch?: string; denom500?: number; denom200?: number; denom100?: number; denom50?: number; denom20?: number; denom10?: number; coins?: number; }[];
   khandhareEntries?: { name: string; vehicleNumber?: string; slipNumber: string; amount: number; }[];
+  qrPayments?: { targetDsmName: string; amount: number; tid?: string; batch?: string; slot?: string; }[];
   oilDefSales?: { productId: number; productName: string; category: string; unit: string; quantity: number; price: number; total: number; }[];
 }
 

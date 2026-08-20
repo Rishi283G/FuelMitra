@@ -180,27 +180,29 @@ public class ReportService : IReportService
         foreach (var entry in entriesList)
         {
             var pc = entry.PaymentCollection;
-            if (pc == null) continue;
+            double qrSum = entry.QrPayments?.Sum(q => q.Amount) ?? 0;
+            double qrM = entry.QrPayments?.Where(q => q.Slot == "Morning" || q.Slot == "Day" || string.IsNullOrEmpty(q.Slot)).Sum(q => q.Amount) ?? 0;
+            double qrN = entry.QrPayments?.Where(q => q.Slot == "Night").Sum(q => q.Amount) ?? 0;
 
             if (shiftType == "B")
             {
-                phonePeMorning += pc.PhonePeDay;
-                phonePeCardMorning += pc.PhonePeCardDay;
-                creditCardMorning += pc.CreditCardDay;
-                petroCardMorning += pc.PetroCardDay > 0 ? pc.PetroCardDay : pc.PetroCardMorning;
-                petroCard += pc.PetroCardDay > 0 ? pc.PetroCardDay : pc.PetroCardMorning;
+                phonePeMorning += (pc?.PhonePeDay ?? 0) + qrSum;
+                phonePeCardMorning += pc?.PhonePeCardDay ?? 0;
+                creditCardMorning += pc?.CreditCardDay ?? 0;
+                petroCardMorning += (pc?.PetroCardDay ?? 0) > 0 ? pc.PetroCardDay : (pc?.PetroCardMorning ?? 0);
+                petroCard += (pc?.PetroCardDay ?? 0) > 0 ? pc.PetroCardDay : (pc?.PetroCardMorning ?? 0);
             }
             else
             {
-                phonePeMorning += pc.PhonePeMorning;
-                phonePeNight += pc.PhonePeNight;
-                phonePeCardMorning += pc.PhonePeCardMorning;
-                phonePeCardNight += pc.PhonePeCardNight;
-                creditCardMorning += pc.CreditCardMorning;
-                creditCardNight += pc.CreditCardNight;
-                petroCardMorning += pc.PetroCardMorning;
-                petroCardNight += pc.PetroCardNight;
-                petroCard += pc.PetroCardMorning + pc.PetroCardNight;
+                phonePeMorning += (pc?.PhonePeMorning ?? 0) + qrM;
+                phonePeNight += (pc?.PhonePeNight ?? 0) + qrN;
+                phonePeCardMorning += pc?.PhonePeCardMorning ?? 0;
+                phonePeCardNight += pc?.PhonePeCardNight ?? 0;
+                creditCardMorning += pc?.CreditCardMorning ?? 0;
+                creditCardNight += pc?.CreditCardNight ?? 0;
+                petroCardMorning += pc?.PetroCardMorning ?? 0;
+                petroCardNight += pc?.PetroCardNight ?? 0;
+                petroCard += (pc?.PetroCardMorning ?? 0) + (pc?.PetroCardNight ?? 0);
             }
         }
 
@@ -334,6 +336,19 @@ public class ReportService : IReportService
             })
             .ToList();
 
+        dto.QrPayments = entriesList
+            .SelectMany(e => e.QrPayments ?? new List<DsmQrPaymentEntry>())
+            .Select(q => new DsmQrPaymentPrintDto
+            {
+                DsmName = q.DsmName,
+                TargetDsmName = q.TargetDsmName,
+                Amount = q.Amount,
+                Tid = q.Tid ?? string.Empty,
+                Batch = q.Batch ?? string.Empty,
+                Slot = q.Slot ?? string.Empty
+            })
+            .ToList();
+
         dto.PersonalDebtorRepayments = ExtractPersonalDebtorRepayments(entriesList, date);
 
         return dto;
@@ -392,39 +407,6 @@ public class ReportService : IReportService
 
         // 2. DSM Summary (Table A)
         var summaryRows = _aggregation.BuildDsmSummaryRows(todayEntries);
-        foreach (var row in summaryRows)
-        {
-            var entry = todayEntries.FirstOrDefault(e => e.DsmName == row.DsmName && e.PumpId == row.PumpId && e.Shift?.ShiftType == row.Shift);
-            if (entry == null) continue;
-            var pc = entry.PaymentCollection;
-
-            var rShift = (row.Shift ?? "").Trim().ToUpperInvariant();
-            var normShift = (rShift == "I" || rShift == "SHIFT I") ? "A" : (rShift == "II" || rShift == "SHIFT II") ? "B" : (rShift == "III" || rShift == "SHIFT III") ? "C" : rShift;
-
-            if (normShift == "A")
-            {
-                // Shift I stores both Morning AND Night in the same entry
-                row.PhonePeMorning = pc?.PhonePeMorning ?? 0;
-                row.PhonePeNight = pc?.PhonePeNight ?? 0;
-                row.PhonePeCardMorning = pc?.PhonePeCardMorning ?? 0;
-                row.PhonePeCardNight = pc?.PhonePeCardNight ?? 0;
-                row.CreditCardMorning = pc?.CreditCardMorning ?? 0;
-                row.CreditCardNight = pc?.CreditCardNight ?? 0;
-                row.PetroCard = (pc?.PetroCardMorning ?? 0) + (pc?.PetroCardNight ?? 0);
-            }
-            else if (normShift == "B")
-            {
-                // Today's Shift II -> Day only (maps to Morning column on-screen)
-                row.PhonePeMorning = pc?.PhonePeDay ?? 0;
-                row.PhonePeNight = 0;
-                row.PhonePeCardMorning = pc?.PhonePeCardDay ?? 0;
-                row.PhonePeCardNight = 0;
-                row.CreditCardMorning = pc?.CreditCardDay ?? 0;
-                row.CreditCardNight = 0;
-                row.PetroCard = pc?.PetroCardDay ?? 0;
-            }
-        }
-
         dto.DsmSummaryRows = summaryRows;
         dto.DsmSummaryTotals = _aggregation.BuildDsmSummaryTotalRow(summaryRows);
         dto.DsmShiftTotals = _aggregation.BuildDsmShiftTotals(summaryRows);
@@ -519,23 +501,32 @@ public class ReportService : IReportService
         foreach (var entry in todayEntries)
         {
             var pc = entry.PaymentCollection;
-            if (pc == null) continue;
+            double qrSum = entry.QrPayments?.Sum(q => q.Amount) ?? 0;
+            double qrM = entry.QrPayments?.Where(q => q.Slot == "Morning" || q.Slot == "Day" || string.IsNullOrEmpty(q.Slot)).Sum(q => q.Amount) ?? 0;
+            double qrN = entry.QrPayments?.Where(q => q.Slot == "Night").Sum(q => q.Amount) ?? 0;
 
             var rawType = entry.Shift?.ShiftType ?? "";
             var sType = (rawType == "I" || rawType == "Shift I") ? "A" : (rawType == "II" || rawType == "Shift II") ? "B" : (rawType == "III" || rawType == "Shift III") ? "C" : rawType;
 
-            phonePeDirectMorning += pc.PhonePeMorning;
-            phonePeCardMorning += pc.PhonePeCardMorning;
-            pineLabsCardMorning += pc.CreditCardMorning;
-            petroCardMorning += pc.PetroCardMorning;
-            phonePeDirectNight += pc.PhonePeNight;
-            phonePeCardNight += pc.PhonePeCardNight;
-            pineLabsCardNight += pc.CreditCardNight;
-            petroCardNight += pc.PetroCardNight;
-            phonePeDirectDay += pc.PhonePeDay;
-            phonePeCardDay += pc.PhonePeCardDay;
-            pineLabsCardDay += pc.CreditCardDay;
-            petroCardDay += pc.PetroCardDay;
+            if (sType == "B")
+            {
+                phonePeDirectDay += (pc?.PhonePeDay ?? 0) + qrSum;
+            }
+            else
+            {
+                phonePeDirectMorning += (pc?.PhonePeMorning ?? 0) + qrM;
+                phonePeDirectNight += (pc?.PhonePeNight ?? 0) + qrN;
+            }
+
+            phonePeCardMorning += pc?.PhonePeCardMorning ?? 0;
+            pineLabsCardMorning += pc?.CreditCardMorning ?? 0;
+            petroCardMorning += pc?.PetroCardMorning ?? 0;
+            phonePeCardNight += pc?.PhonePeCardNight ?? 0;
+            pineLabsCardNight += pc?.CreditCardNight ?? 0;
+            petroCardNight += pc?.PetroCardNight ?? 0;
+            phonePeCardDay += pc?.PhonePeCardDay ?? 0;
+            pineLabsCardDay += pc?.CreditCardDay ?? 0;
+            petroCardDay += pc?.PetroCardDay ?? 0;
         }
 
         // Standardize categories for Day (Aggregates Morning+Day as Morning, and Night as Night)
@@ -652,6 +643,19 @@ public class ReportService : IReportService
             })
             .ToList();
 
+        dto.QrPayments = todayEntries
+            .SelectMany(e => e.QrPayments ?? new List<DsmQrPaymentEntry>())
+            .Select(q => new DsmQrPaymentPrintDto
+            {
+                DsmName = q.DsmName,
+                TargetDsmName = q.TargetDsmName,
+                Amount = q.Amount,
+                Tid = q.Tid ?? string.Empty,
+                Batch = q.Batch ?? string.Empty,
+                Slot = q.Slot ?? string.Empty
+            })
+            .ToList();
+
         dto.PersonalDebtorRepayments = ExtractPersonalDebtorRepayments(todayEntries, startDate);
 
         return dto;
@@ -721,9 +725,15 @@ public class ReportService : IReportService
 
             var group = slave != null ? new List<DsmEntry> { primary, slave } : new List<DsmEntry> { primary };
 
-            decimal grossSales = primary.GrossSales > 0 
-                ? primary.GrossSales 
-                : (decimal)group.SelectMany(e => e.NozzleReadings ?? new List<NozzleReading>()).Sum(n => n.Amount);
+            var distinctNozzles = group
+                .SelectMany(e => e.NozzleReadings ?? new List<NozzleReading>())
+                .GroupBy(n => n.NozzleNumber)
+                .Select(g => g.First())
+                .ToList();
+
+            decimal grossSales = distinctNozzles.Count > 0 
+                ? (decimal)distinctNozzles.Sum(n => n.Amount)
+                : (primary.GrossSales > 0 ? primary.GrossSales : (decimal)group.Sum(e => e.GrossSales));
 
             var merged = new DsmEntry
             {
@@ -746,13 +756,14 @@ public class ReportService : IReportService
             };
 
             // Merge child collections for THIS specific submission group only
-            merged.NozzleReadings = group.SelectMany(e => e.NozzleReadings ?? new List<NozzleReading>()).ToList();
+            merged.NozzleReadings = distinctNozzles;
             merged.CashDenominations = primary.CashDenominations ?? new List<CashDenomination>();
             merged.DebitEntries = group.SelectMany(e => e.DebitEntries ?? new List<DebitEntry>()).ToList();
             merged.Expenses = group.SelectMany(e => e.Expenses ?? new List<Expense>()).ToList();
             merged.TestingEntries = group.SelectMany(e => e.TestingEntries ?? new List<TestingEntry>()).ToList();
             merged.PersonalDebtors = group.SelectMany(e => e.PersonalDebtors ?? new List<DsmPersonalDebtor>()).ToList();
             merged.KhandharePetroleumEntries = group.SelectMany(e => e.KhandharePetroleumEntries ?? new List<KhandharePetroleumEntry>()).ToList();
+            merged.QrPayments = group.SelectMany(e => e.QrPayments ?? new List<DsmQrPaymentEntry>()).ToList();
             merged.PaymentCollection = primary.PaymentCollection;
 
             mergedEntries.Add(merged);

@@ -89,7 +89,8 @@ public class DsmEntryService
         string? startTime = null,
         string? endTime = null,
         List<DsmPersonalDebtor>? personalDebtors = null,
-        List<KhandharePetroleumEntry>? khandharePetroleumEntries = null)
+        List<KhandharePetroleumEntry>? khandharePetroleumEntries = null,
+        List<DsmQrPaymentEntry>? qrPayments = null)
     {
         try
         {
@@ -186,11 +187,28 @@ public class DsmEntryService
                     }
                     dbContext.Set<KhandharePetroleumEntry>().AddRange(khandharePetroleumEntries);
                 }
+
+                // Save Cross-DSM QR Payments
+                var existingQr = await dbContext.Set<DsmQrPaymentEntry>().Where(q => q.DsmEntryId == savedEntry.DsmEntryId).ToListAsync();
+                dbContext.Set<DsmQrPaymentEntry>().RemoveRange(existingQr);
+
+                if (qrPayments != null && qrPayments.Count > 0)
+                {
+                    foreach (var q in qrPayments)
+                    {
+                        q.DsmEntryId = savedEntry.DsmEntryId;
+                        q.DsmEntry = null;
+                        q.DsmName = dsmName;
+                        q.Date = shift.ShiftDate;
+                    }
+                    dbContext.Set<DsmQrPaymentEntry>().AddRange(qrPayments);
+                }
+
                 await dbContext.SaveChangesAsync();
             }
             catch (Exception ex)
             {
-                _logger.Error(ex, "Failed to save Khandhare Petroleum entries for DsmEntryId {DsmEntryId}", savedEntry.DsmEntryId);
+                _logger.Error(ex, "Failed to save child collections for DsmEntryId {DsmEntryId}", savedEntry.DsmEntryId);
             }
 
             // Re-load full entry and persist canonical totals.
@@ -457,7 +475,8 @@ public class DsmEntryService
                                        + (entry.PaymentCollection?.PhonePeNight ?? 0)
                                        + (entry.PaymentCollection?.PhonePeCardMorning ?? 0)
                                        + (entry.PaymentCollection?.PhonePeCardDay ?? 0)
-                                       + (entry.PaymentCollection?.PhonePeCardNight ?? 0)),
+                                       + (entry.PaymentCollection?.PhonePeCardNight ?? 0)
+                                       + (entry.QrPayments?.Sum(q => q.Amount) ?? 0)),
                 CreditCard   = (decimal)((entry.PaymentCollection?.CreditCardMorning ?? 0)
                                        + (entry.PaymentCollection?.CreditCardDay ?? 0)
                                        + (entry.PaymentCollection?.CreditCardNight ?? 0)),
@@ -503,7 +522,8 @@ public class DsmEntryService
         string? startTime = null,
         string? endTime = null,
         List<DsmPersonalDebtor>? personalDebtors = null,
-        List<KhandharePetroleumEntry>? khandharePetroleumEntries = null)
+        List<KhandharePetroleumEntry>? khandharePetroleumEntries = null,
+        List<DsmQrPaymentEntry>? qrPayments = null)
     {
         try
         {
@@ -710,6 +730,21 @@ public class DsmEntryService
                 context.Set<KhandharePetroleumEntry>().AddRange(khandharePetroleumEntries);
             }
 
+            // Save Cross-DSM QR Payments
+            var existingQr = await context.Set<DsmQrPaymentEntry>().Where(q => q.DsmEntryId == savedEntryId).ToListAsync();
+            context.Set<DsmQrPaymentEntry>().RemoveRange(existingQr);
+            if (qrPayments != null)
+            {
+                foreach (var q in qrPayments)
+                {
+                    q.DsmEntryId = savedEntryId;
+                    q.DsmEntry = null;
+                    q.DsmName = dsmName;
+                    q.Date = shift.ShiftDate;
+                }
+                context.Set<DsmQrPaymentEntry>().AddRange(qrPayments);
+            }
+
             await context.SaveChangesAsync();
 
             // Recalculate canonical totals for primary entry
@@ -722,6 +757,7 @@ public class DsmEntryService
                 .Include(e => e.CashDenominations)
                 .Include(e => e.PersonalDebtors)
                 .Include(e => e.KhandharePetroleumEntries)
+                .Include(e => e.QrPayments)
                 .FirstOrDefaultAsync(e => e.DsmEntryId == savedEntryId);
 
             if (fullEntry != null)

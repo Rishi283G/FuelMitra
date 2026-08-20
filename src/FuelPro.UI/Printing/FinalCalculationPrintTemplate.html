@@ -247,6 +247,20 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
           <tbody id="tKhandhare"></tbody>
         </table>
       </div>
+      <div id="secQrPayments" style="display:none; margin-top: 12px;">
+        <div class="mini-hdr">Cross-DSM QR Payments</div>
+        <table>
+          <thead>
+            <tr>
+              <th style="text-align:left;">Submitting DSM</th>
+              <th style="text-align:left;">Scanned QR DSM</th>
+              <th>TID / Batch</th>
+              <th>Amount (&#8377;)</th>
+            </tr>
+          </thead>
+          <tbody id="tQrPayments"></tbody>
+        </table>
+      </div>
       <div>
         <div class="mini-hdr">Final Reconciliation</div>
         <div class="recon-box"><table><thead><tr><th>Description</th><th>Amount (&#8377;)</th></tr></thead>
@@ -309,16 +323,16 @@ function renderData(){
   var grossFuel = d.expectedCollection || 0;
   var recTotal = d.actualCollection || 0;
   var totalL = d.totalFuelLitres || 0;
-  var diff = d.difference || 0;
-  var shortVal = diff < 0 ? ((d.totalDsmShort !== undefined && d.totalDsmShort >= 0) ? d.totalDsmShort : Math.abs(diff)) : Math.abs(diff);
+  var diff = (d.difference !== undefined && d.difference !== null) ? d.difference : (recTotal - grossFuel);
 
   document.getElementById('sGross').textContent=inrZ(grossFuel);
   document.getElementById('sCollect').textContent=inrZ(recTotal);
   document.getElementById('sLitres').textContent=parseFloat(totalL).toFixed(4)+' L';
   document.getElementById('sCreditors').textContent=inrZ(d.creditorsTotal||0);
   var dEl=document.getElementById('sDiff');
-  if(Math.abs(shortVal)<0.01){dEl.textContent='\u2713 Balanced';dEl.className='stat-val ok';}
-  else{dEl.textContent=inrZ(shortVal);dEl.className='stat-val bad';}
+  if(Math.abs(diff)<0.01){dEl.textContent='\u2713 Balanced';dEl.className='stat-val ok';}
+  else if(diff<0){dEl.textContent='-'+inrZ(Math.abs(diff));dEl.className='stat-val bad';}
+  else{dEl.textContent='+'+inrZ(diff);dEl.className='stat-val bad';}
 
   var tb=document.getElementById('tDsm');tb.innerHTML='';
   var tot={
@@ -566,6 +580,32 @@ function renderData(){
     if (secKp) secKp.style.display = 'none';
   }
 
+  // Render Cross-DSM QR Payments
+  var qrPayments = d.qrPayments || d.dsmQrPayments || [];
+  var secQr = document.getElementById('secQrPayments');
+  var tQr   = document.getElementById('tQrPayments');
+  if (tQr && qrPayments.length > 0) {
+    tQr.innerHTML = '';
+    if (secQr) secQr.style.display = 'block';
+    var qrTot = 0;
+    qrPayments.forEach(function(qr) {
+      qrTot += (qr.amount || 0);
+      var tidBatch = (qr.tid ? 'TID: ' + qr.tid : '') + (qr.batch ? ' B:' + qr.batch : '');
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td style="text-align:left;">' + (qr.dsmName || '') + '</td>' +
+                     '<td style="text-align:left;">' + (qr.targetDsmName || '') + '</td>' +
+                     '<td>' + (tidBatch || '\u2013') + '</td>' +
+                     '<td>' + inr(qr.amount) + '</td>';
+      tQr.appendChild(tr);
+    });
+    var trTot = document.createElement('tr');
+    trTot.className = 'tr-total';
+    trTot.innerHTML = '<td colspan="3" style="text-align:left;">Total Cross-DSM QR</td><td>' + inrZ(qrTot) + '</td>';
+    tQr.appendChild(trTot);
+  } else {
+    if (secQr) secQr.style.display = 'none';
+  }
+
   var tRecon = document.getElementById('tRecon');
   if (tRecon) {
     tRecon.innerHTML = '';
@@ -593,17 +633,16 @@ function renderData(){
   }
 
   var expectedSale = d.expectedCollection !== undefined ? d.expectedCollection : grossFuel;
-  var diff = d.difference !== undefined ? d.difference : (recTotal - expectedSale);
+  var diff = (d.difference !== undefined && d.difference !== null) ? d.difference : (recTotal - expectedSale);
   document.getElementById('rTotal').textContent=inrZ(recTotal);
   document.getElementById('rGross').textContent=inrZ(expectedSale);
   var dCell=document.getElementById('rDiff');
   if(Math.abs(diff)<0.01){dCell.textContent='\u2713  BALANCED \u2014 Difference: \u20B90.00';dCell.className='diff-ok';}
   else if(diff<0){
-    var shortAmt = (d.totalDsmShort !== undefined && d.totalDsmShort >= 0) ? d.totalDsmShort : Math.abs(diff);
-    if(Math.abs(shortAmt)<0.01){dCell.textContent='\u2713  BALANCED \u2014 Difference: \u20B90.00';dCell.className='diff-ok';}
-    else{dCell.textContent='\u26A0  SHORT \u2014 Difference: '+inrZ(shortAmt);dCell.className='diff-bad';}
+    dCell.textContent='\u26A0  SHORT \u2014 Difference: -'+inrZ(Math.abs(diff));
+    dCell.className='diff-bad';
   }
-  else{dCell.textContent='\u26A0  EXCESS \u2014 Difference: '+inrZ(diff);dCell.className='diff-bad';}
+  else{dCell.textContent='\u26A0  EXCESS \u2014 Difference: +'+inrZ(diff);dCell.className='diff-bad';}
 
   var et=document.getElementById('tExp');et.innerHTML='';var expTot=d.expensesTotal||0;
   (d.expenseRows||d.expenses||[]).forEach(function(e){

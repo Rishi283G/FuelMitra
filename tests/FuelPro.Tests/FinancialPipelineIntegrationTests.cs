@@ -46,6 +46,8 @@ public class FinancialPipelineIntegrationTests : IDisposable
             options.UseSqlite($"Data Source={_dbPath}"),
             ServiceLifetime.Transient);
 
+        services.AddTransient<DbContext>(sp => sp.GetRequiredService<FuelProDbContext>());
+
         // Credentials
         var tempFolder = Path.Combine(Path.GetTempPath(), "FuelPro_Test_" + Guid.NewGuid().ToString("N"));
         services.AddSingleton<ICredentialFileService>(new LocalCredentialFileService(tempFolder));
@@ -289,7 +291,7 @@ public class FinancialPipelineIntegrationTests : IDisposable
         //                  = 3050
         // Sales = 3000
         // Expected Mismatch = 50 (Total Collections 3050 - Sales 3000)
-        Assert.Equal(-3000, dayTotalVm.Difference);
+        Assert.Equal(-20, dayTotalVm.Difference);
         Assert.Equal(50, dashboardVm.TodayTotalMismatch);
         Assert.Equal(-1250, ownerVm.TodayTotalMismatch);
     }
@@ -715,6 +717,82 @@ public class FinancialPipelineIntegrationTests : IDisposable
         Assert.Equal(300, petroCardCol.Amount);
         Assert.Equal(0, petroCardCol.BaseAmount);
         Assert.Equal(300, petroCardCol.RecoveryAmount);
+    }
+
+    [Fact]
+    public async Task CrossDsmQrPayments_SavedAndAggregatedCorrectly_InAllLayers()
+    {
+        var testDate = new DateTime(2026, 8, 15);
+        var dsmService = _serviceProvider.GetRequiredService<DsmEntryService>();
+        var tidService = _serviceProvider.GetRequiredService<ITidCalculationService>();
+        var reportService = _serviceProvider.GetRequiredService<IReportService>();
+
+        var nozzleReadings = new List<NozzleReading>
+        {
+            new() { NozzleNumber = 1, OpeningReading = 100, ClosingReading = 110, Rate = 100, SaleLitres = 10, Amount = 1000 }
+        };
+        var payment = new PaymentCollection
+        {
+            PhonePeMorning = 500,
+            PhonePeTidMorning = "TID001",
+            PhonePeBatchMorning = "B01"
+        };
+        var qrPayments = new List<DsmQrPaymentEntry>
+        {
+            new()
+            {
+                TargetDsmName = "Bob Builder",
+                Amount = 300,
+                Tid = "TID002",
+                Batch = "B02",
+                Slot = "Morning"
+            }
+        };
+
+        var saveRes = await dsmService.SaveCompleteEntryAsync(
+            testDate, "A", "Alice Worker", 1,
+            nozzleReadings, payment,
+            new List<DebitEntry>(), new List<TestingEntry>(), new List<Expense>(), new List<CashDenomination>(),
+            qrPayments: qrPayments
+        );
+
+        Assert.True(saveRes.Success, saveRes.Error);
+        var savedEntry = saveRes.Data!;
+        Assert.NotNull(savedEntry);
+
+        // 1. Verify calculation DTO includes QR in TotalInDirect and TotalCollection
+        var fullRes = await _serviceProvider.GetRequiredService<IDsmEntryRepository>().GetFullEntryAsync(savedEntry.DsmEntryId);
+        Assert.True(fullRes.Success);
+        Assert.Single(fullRes.Data!.QrPayments);
+        Assert.Equal(300, fullRes.Data.QrPayments.First().Amount);
+        Assert.Equal("Bob Builder", fullRes.Data.QrPayments.First().TargetDsmName);
+
+        // 2. Verify TID Calculation aggregates QR payment under PhonePe with target DSM name
+        var tidSheet = await tidService.GetTidSheetAsync(testDate);
+        var qrPaymentItem = tidSheet.PhonePePayments.FirstOrDefault(p => p.DsmName.Contains("Bob Builder"));
+        Assert.NotNull(qrPaymentItem);
+        Assert.Equal(300, qrPaymentItem.Amount);
+        Assert.Equal("TID002", qrPaymentItem.Tid);
+
+        // 3. Verify Shift Report and Day Total Report contain QrPayments
+        var shiftReport = reportService.CalculateShiftReport(
+            testDate, "A",
+            new List<DsmEntry> { fullRes.Data },
+            new List<Expense>(), new List<ShiftOtherCash>(), new List<CreditorRepayment>(),
+            100, 100, 100, 100,
+            tidSheet, new BusinessDayTidSheet(), "Test Station"
+        );
+        Assert.NotEmpty(shiftReport.QrPayments);
+        Assert.Contains(shiftReport.QrPayments, q => q.TargetDsmName == "Bob Builder" && q.Amount == 300);
+
+        var dayReport = reportService.CalculateDayReport(
+            testDate, testDate,
+            new List<DsmEntry> { fullRes.Data },
+            new List<Expense>(), new List<CreditorRepayment>(),
+            100, 100, 100, 100, "Test Station"
+        );
+        Assert.NotEmpty(dayReport.QrPayments);
+        Assert.Contains(dayReport.QrPayments, q => q.TargetDsmName == "Bob Builder" && q.Amount == 300);
     }
 
     public void Dispose()

@@ -217,6 +217,73 @@
                                              Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
                                 </Grid>
 
+                                <!-- Cross-DSM QR Payments (Customer paid on another DSM's QR) -->
+                                <Border Background="#0D00796B" BorderBrush="#2600796B" BorderThickness="1" CornerRadius="6" Padding="10,8" Margin="0,0,0,12">
+                                    <StackPanel>
+                                        <DockPanel LastChildFill="False" Margin="0,0,0,6">
+                                            <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                                                <materialDesign:PackIcon Kind="QrcodeScan" Width="16" Height="16" Foreground="#00796B" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                                <TextBlock Text="Cross-DSM QR Payments (Customer paid to another DSM's QR)" FontWeight="SemiBold" FontSize="11" Foreground="#00796B" VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                            <Button DockPanel.Dock="Right" Style="{StaticResource MaterialDesignOutlinedButton}" Height="26" Padding="8,0" FontSize="11"
+                                                    Command="{Binding AddQrPaymentCommand}" BorderBrush="#00796B" Foreground="#00796B">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <materialDesign:PackIcon Kind="Plus" Width="14" Height="14" Margin="0,0,4,0" VerticalAlignment="Center"/>
+                                                    <TextBlock Text="Add QR Payment"/>
+                                                </StackPanel>
+                                            </Button>
+                                        </DockPanel>
+
+                                        <ItemsControl ItemsSource="{Binding QrPayments}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid Margin="0,4,0,4">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="1.8*"/>
+                                                            <ColumnDefinition Width="1.2*"/>
+                                                            <ColumnDefinition Width="1.1*"/>
+                                                            <ColumnDefinition Width="1.1*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+
+                                                        <!-- Target DSM Dropdown -->
+                                                        <ComboBox Grid.Column="0" ItemsSource="{Binding DataContext.DsmOptions, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                  SelectedItem="{Binding TargetDsmName, UpdateSourceTrigger=PropertyChanged}"
+                                                                  materialDesign:HintAssist.Hint="Paid on DSM's QR" materialDesign:HintAssist.IsFloating="True"
+                                                                  Style="{StaticResource MaterialDesignOutlinedComboBox}" Margin="0,0,6,0" Height="48" FontSize="12"/>
+
+                                                        <!-- Amount -->
+                                                        <TextBox Grid.Column="1" Text="{Binding Amount, UpdateSourceTrigger=LostFocus, StringFormat=F2}"
+                                                                 materialDesign:HintAssist.Hint="Amount (₹)" materialDesign:HintAssist.IsFloating="True"
+                                                                 Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,6,0" Height="48" FontSize="12"
+                                                                 PreviewTextInput="DecimalTextBox_PreviewTextInput"
+                                                                 GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"
+                                                                 LostKeyboardFocus="DecimalTextBox_LostKeyboardFocus"/>
+
+                                                        <!-- TID -->
+                                                        <TextBox Grid.Column="2" Text="{Binding Tid, UpdateSourceTrigger=PropertyChanged}"
+                                                                 materialDesign:HintAssist.Hint="TID" materialDesign:HintAssist.IsFloating="True"
+                                                                 Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,6,0" Height="48" FontSize="12"/>
+
+                                                        <!-- Batch -->
+                                                        <TextBox Grid.Column="3" Text="{Binding Batch, UpdateSourceTrigger=PropertyChanged}"
+                                                                 materialDesign:HintAssist.Hint="Batch" materialDesign:HintAssist.IsFloating="True"
+                                                                 Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,6,0" Height="48" FontSize="12"/>
+
+                                                        <!-- Delete Button -->
+                                                        <Button Grid.Column="4" Style="{StaticResource MaterialDesignIconButton}" Width="32" Height="32"
+                                                                Foreground="IndianRed" VerticalAlignment="Center"
+                                                                Command="{Binding DataContext.RemoveQrPaymentCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                CommandParameter="{Binding}" ToolTip="Remove QR Payment">
+                                                            <materialDesign:PackIcon Kind="CloseCircleOutline" Width="20" Height="20"/>
+                                                        </Button>
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </Border>
+
                                 <!-- Group 2: PineLab Card -->
                                 <TextBlock Text="PineLab Credit Card" FontWeight="Bold" FontSize="12" Opacity="0.8" Margin="0,4,0,8"/>
                                 <Grid Margin="0,0,0,12">

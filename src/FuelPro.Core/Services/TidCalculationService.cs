@@ -94,6 +94,30 @@ public class TidCalculationService : ITidCalculationService
                         sheet.PhonePeCardMorning += ppCardVal;
                     }
 
+                    // Cross-DSM QR Payments Morning
+                    if (entry.QrPayments != null)
+                    {
+                        foreach (var qr in entry.QrPayments.Where(q => q.Amount > 0))
+                        {
+                            sheet.PhonePePayments.Add(new TidItemDto
+                            {
+                                DsmName = $"{entry.DsmName} (QR: {qr.TargetDsmName})",
+                                PumpId = entry.PumpId,
+                                RomanIndex = ToRoman(entry.PumpId),
+                                Amount = qr.Amount,
+                                Tid = !string.IsNullOrWhiteSpace(qr.Tid) ? qr.Tid : (pc.PhonePeTidMorning ?? pc.PhonePeTid),
+                                Batch = !string.IsNullOrWhiteSpace(qr.Batch) ? qr.Batch : (pc.PhonePeBatchMorning ?? pc.PhonePeBatch),
+                                Slot = "Morning",
+                                PaymentCollection = pc,
+                                ShiftLabel = "Morning (12am - 8am)",
+                                SlotDate = date.Date.ToString("dd-MMM-yyyy"),
+                                TimeWindow = "12:00 AM – 8:00 AM",
+                                SlotDisplaySubtitle = $"({date.Date.ToString("dd MMM")} | 12:00 AM – 8:00 AM)"
+                            });
+                            sheet.PhonePeDirectMorning += qr.Amount;
+                        }
+                    }
+
                     // Credit Card Morning
                     double ccVal = pc.CreditCardMorning;
                     if (ccVal > 0)
@@ -196,6 +220,30 @@ public class TidCalculationService : ITidCalculationService
                             SlotDisplaySubtitle = $"({date.Date.ToString("dd MMM")} | 8:00 AM – 8:00 PM)"
                         });
                         sheet.PhonePeCardDay += ppCardVal;
+                    }
+
+                    // Cross-DSM QR Payments Day
+                    if (entry.QrPayments != null)
+                    {
+                        foreach (var qr in entry.QrPayments.Where(q => q.Amount > 0))
+                        {
+                            sheet.PhonePePayments.Add(new TidItemDto
+                            {
+                                DsmName = $"{entry.DsmName} (QR: {qr.TargetDsmName})",
+                                PumpId = entry.PumpId,
+                                RomanIndex = ToRoman(entry.PumpId),
+                                Amount = qr.Amount,
+                                Tid = !string.IsNullOrWhiteSpace(qr.Tid) ? qr.Tid : (pc.PhonePeTidDay ?? pc.PhonePeTidMorning ?? pc.PhonePeTid),
+                                Batch = !string.IsNullOrWhiteSpace(qr.Batch) ? qr.Batch : (pc.PhonePeBatchDay ?? pc.PhonePeBatchMorning ?? pc.PhonePeBatch),
+                                Slot = "Day",
+                                PaymentCollection = pc,
+                                ShiftLabel = "Day (8am - 8pm)",
+                                SlotDate = date.Date.ToString("dd-MMM-yyyy"),
+                                TimeWindow = "8:00 AM – 8:00 PM",
+                                SlotDisplaySubtitle = $"({date.Date.ToString("dd MMM")} | 8:00 AM – 8:00 PM)"
+                            });
+                            sheet.PhonePeDirectDay += qr.Amount;
+                        }
                     }
 
                     // Credit Card Day (prefer Day field, fall back to Morning for old records)
@@ -301,6 +349,30 @@ public class TidCalculationService : ITidCalculationService
                             SlotDisplaySubtitle = $"({date.Date.ToString("dd MMM")} | 8:00 PM – 12:00 AM)"
                         });
                         sheet.PhonePeCardNight += ppCardVal;
+                    }
+
+                    // Cross-DSM QR Payments Night
+                    if (entry.QrPayments != null)
+                    {
+                        foreach (var qr in entry.QrPayments.Where(q => q.Amount > 0))
+                        {
+                            sheet.PhonePePayments.Add(new TidItemDto
+                            {
+                                DsmName = $"{entry.DsmName} (QR: {qr.TargetDsmName})",
+                                PumpId = entry.PumpId,
+                                RomanIndex = ToRoman(entry.PumpId),
+                                Amount = qr.Amount,
+                                Tid = !string.IsNullOrWhiteSpace(qr.Tid) ? qr.Tid : (pc.PhonePeTidNight ?? pc.PhonePeTid),
+                                Batch = !string.IsNullOrWhiteSpace(qr.Batch) ? qr.Batch : (pc.PhonePeBatchNight ?? pc.PhonePeBatch),
+                                Slot = "Night",
+                                PaymentCollection = pc,
+                                ShiftLabel = "Night (8pm - 12am)",
+                                SlotDate = date.Date.ToString("dd-MMM-yyyy"),
+                                TimeWindow = "8:00 PM – 12:00 AM",
+                                SlotDisplaySubtitle = $"({date.Date.ToString("dd MMM")} | 8:00 PM – 12:00 AM)"
+                            });
+                            sheet.PhonePeDirectNight += qr.Amount;
+                        }
                     }
 
                     // Credit Card Night

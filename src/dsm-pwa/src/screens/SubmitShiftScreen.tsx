@@ -31,6 +31,14 @@ interface KhandharePetroleumRow {
   amount: number;
 }
 
+interface DsmQrPaymentRow {
+  targetDsmName: string;
+  amount: number;
+  tid?: string;
+  batch?: string;
+  slot?: string;
+}
+
 interface ExpenseRow {
   description: string;
   amount: number;
@@ -118,6 +126,14 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   const [newKpVehicleNumber, setNewKpVehicleNumber] = useState("");
   const [newKpSlipNumber, setNewKpSlipNumber] = useState("");
   const [newKpAmount, setNewKpAmount] = useState("");
+
+  // Cross-DSM QR Payments state
+  const [dsmUsersList, setDsmUsersList] = useState<{ id: string; fullName: string }[]>([]);
+  const [qrPayments, setQrPayments] = useState<DsmQrPaymentRow[]>([]);
+  const [newQrTargetDsm, setNewQrTargetDsm] = useState("");
+  const [newQrAmount, setNewQrAmount] = useState("");
+  const [newQrTid, setNewQrTid] = useState("");
+  const [newQrBatch, setNewQrBatch] = useState("");
   // Cash 1 Deposit Amount
   const [cash1Amount, setCash1Amount] = useState<number>(0);
   const [cash1Denom500, setCash1Denom500] = useState<number>(0);
@@ -309,6 +325,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       setCardSwipeDetails(parsed.cardSwipeDetails ?? []);
       setSalesQuantities(parsed.salesQuantities ?? {});
       setKhandhareEntries(parsed.khandhareEntries ?? []);
+      setQrPayments(parsed.qrPayments ?? []);
       setStep(parsed.step ?? "readings");
       if (parsed.nozzleRows && Array.isArray(parsed.nozzleRows)) {
         const uniqueNozzleRows: any[] = [];
@@ -389,6 +406,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       cardSwipeDetails,
       salesQuantities,
       khandhareEntries,
+      qrPayments,
       step,
       nozzleRows,
     };
@@ -516,8 +534,31 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
             JSON.stringify(formattedVehs),
           );
         }
+
+        // Load DSM Users for Cross-DSM QR dropdown
+        const { data: dsmUsers, error: dsmErr } = await supabase
+          .from("DsmUsers")
+          .select("Id, FullName")
+          .eq("station_id", profile.StationId)
+          .eq("IsActive", true);
+
+        if (!dsmErr && dsmUsers) {
+          const formattedUsers = dsmUsers.map((u) => ({
+            id: u.Id,
+            fullName: u.FullName,
+          }));
+          setDsmUsersList(formattedUsers);
+          localStorage.setItem("cached_dsm_users", JSON.stringify(formattedUsers));
+        } else {
+          const cached = localStorage.getItem("cached_dsm_users");
+          if (cached) {
+            try {
+              setDsmUsersList(JSON.parse(cached));
+            } catch {}
+          }
+        }
       } catch (e) {
-        console.error("Failed to load creditors/vehicles from Supabase:", e);
+        console.error("Failed to load creditors/vehicles/DSM users from Supabase:", e);
       }
     }
     loadCreditors();
@@ -877,6 +918,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   const grandProductSales = shiftOilTotal + shiftDefTotal;
 
   const kpTotal = khandhareEntries.reduce((sum, item) => sum + item.amount, 0);
+  const qrTotal = qrPayments.reduce((sum, item) => sum + item.amount, 0);
   const totalCollections =
     cash +
     upiTotal +
@@ -885,7 +927,8 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     cashDeposit +
     creditTotal +
     totalTesting +
-    kpTotal;
+    kpTotal +
+    qrTotal;
   const mismatch =
     totalCollections + expense - (grossSales + grandProductSales);
 
@@ -1211,6 +1254,13 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       debtorEntries,
       personalDebtors: [],
       khandhareEntries,
+      qrPayments: qrPayments.map((q) => ({
+        targetDsmName: q.targetDsmName,
+        amount: q.amount,
+        tid: q.tid,
+        batch: q.batch,
+        slot: q.slot,
+      })),
       cash1Amount,
       cash1Denominations: {
         denom500: cash1Denom500,
@@ -2076,6 +2126,233 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                 </div>
               </>
             )}
+
+            {/* Cross-DSM QR Code Option Attached to PhonePe */}
+            <div
+              style={{
+                marginTop: "16px",
+                padding: "12px",
+                backgroundColor: "rgba(16, 185, 129, 0.08)",
+                borderRadius: "8px",
+                border: "1px solid rgba(16, 185, 129, 0.25)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: "8px",
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: "0.9rem",
+                    fontWeight: "bold",
+                    color: "#10b981",
+                  }}
+                >
+                  📱 Cross-DSM QR Payments
+                </span>
+                <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>
+                  (Paid on another DSM's QR)
+                </span>
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1.2fr 1fr",
+                  gap: "8px",
+                  marginBottom: "8px",
+                }}
+              >
+                <div className="field-group">
+                  <label className="field-label">Paid on DSM's QR</label>
+                  <select
+                    className="field-input"
+                    value={newQrTargetDsm}
+                    onChange={(e) => setNewQrTargetDsm(e.target.value)}
+                  >
+                    <option value="">-- Select DSM --</option>
+                    {dsmUsersList.map((u) => (
+                      <option key={u.id} value={u.fullName}>
+                        {u.fullName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field-group">
+                  <label className="field-label">Amount (₹)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    className="field-input"
+                    placeholder="0.00"
+                    value={newQrAmount}
+                    onChange={(e) => setNewQrAmount(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr 80px",
+                  gap: "8px",
+                  marginBottom: "8px",
+                }}
+              >
+                <div className="field-group">
+                  <label className="field-label">TID (Optional)</label>
+                  <input
+                    type="text"
+                    className="field-input"
+                    placeholder="TID"
+                    value={newQrTid}
+                    onChange={(e) => setNewQrTid(e.target.value)}
+                  />
+                </div>
+                <div className="field-group">
+                  <label className="field-label">Batch (Optional)</label>
+                  <input
+                    type="text"
+                    className="field-input"
+                    placeholder="Batch"
+                    value={newQrBatch}
+                    onChange={(e) => setNewQrBatch(e.target.value)}
+                  />
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-end",
+                  }}
+                >
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    style={{
+                      height: "38px",
+                      width: "100%",
+                      padding: "0",
+                      fontSize: "0.85rem",
+                    }}
+                    onClick={() => {
+                      const amt = parseFloat(newQrAmount);
+                      if (!newQrTargetDsm) {
+                        alert("Please select the DSM whose QR was scanned.");
+                        return;
+                      }
+                      if (isNaN(amt) || amt <= 0) {
+                        alert("Please enter a valid QR payment amount.");
+                        return;
+                      }
+                      setQrPayments((prev) => [
+                        ...prev,
+                        {
+                          targetDsmName: newQrTargetDsm,
+                          amount: amt,
+                          tid: newQrTid.trim() || undefined,
+                          batch: newQrBatch.trim() || undefined,
+                          slot: shiftType === "B" ? "Day" : "Morning",
+                        },
+                      ]);
+                      setNewQrTargetDsm("");
+                      setNewQrAmount("");
+                      setNewQrTid("");
+                      setNewQrBatch("");
+                    }}
+                  >
+                    + Add
+                  </button>
+                </div>
+              </div>
+
+              {/* List of Added QR Payments */}
+              {qrPayments.length > 0 && (
+                <div style={{ marginTop: "10px" }}>
+                  <table
+                    style={{
+                      width: "100%",
+                      fontSize: "0.8rem",
+                      borderCollapse: "collapse",
+                    }}
+                  >
+                    <thead>
+                      <tr
+                        style={{
+                          borderBottom: "1px solid #334155",
+                          textAlign: "left",
+                          color: "#94a3b8",
+                        }}
+                      >
+                        <th style={{ padding: "4px" }}>DSM QR</th>
+                        <th style={{ padding: "4px" }}>Amount</th>
+                        <th style={{ padding: "4px" }}>TID/Batch</th>
+                        <th style={{ padding: "4px", width: "30px" }}></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {qrPayments.map((item, idx) => (
+                        <tr
+                          key={idx}
+                          style={{ borderBottom: "1px solid #1e293b" }}
+                        >
+                          <td style={{ padding: "6px 4px", fontWeight: "500" }}>
+                            {item.targetDsmName}
+                          </td>
+                          <td
+                            style={{
+                              padding: "6px 4px",
+                              color: "#10b981",
+                              fontWeight: "bold",
+                            }}
+                          >
+                            ₹{item.amount.toFixed(2)}
+                          </td>
+                          <td style={{ padding: "6px 4px", color: "#64748b" }}>
+                            {item.tid ? `TID: ${item.tid}` : ""}
+                            {item.batch ? ` B:${item.batch}` : ""}
+                          </td>
+                          <td style={{ padding: "6px 4px" }}>
+                            <button
+                              type="button"
+                              style={{
+                                background: "none",
+                                border: "none",
+                                color: "#ef4444",
+                                cursor: "pointer",
+                                fontSize: "1rem",
+                              }}
+                              onClick={() =>
+                                setQrPayments((prev) =>
+                                  prev.filter((_, i) => i !== idx),
+                                )
+                              }
+                            >
+                              ✕
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <div
+                    style={{
+                      textAlign: "right",
+                      fontSize: "0.85rem",
+                      fontWeight: "bold",
+                      color: "#10b981",
+                      marginTop: "6px",
+                    }}
+                  >
+                    Cross-DSM Total: ₹{qrTotal.toFixed(2)}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* 4. Cash Deposit (Cash 1) */}

@@ -50,10 +50,16 @@ public class ShiftAggregationService : IShiftAggregationService
                 var p1 = entry.PaymentCollection;
                 var p2 = connected?.PaymentCollection;
 
-                double phM = (p1?.PhonePeMorning ?? 0) + (p2?.PhonePeMorning ?? 0);
-                double phD = (p1?.PhonePeDay ?? 0) + (p2?.PhonePeDay ?? 0);
-                double phN = (p1?.PhonePeNight ?? 0) + (p2?.PhonePeNight ?? 0);
-                double ph = (p1?.PhonePe ?? 0) + (p2?.PhonePe ?? 0);
+                double qrSum = (entry.QrPayments?.Sum(q => q.Amount) ?? 0) + (connected?.QrPayments?.Sum(q => q.Amount) ?? 0);
+                double qrM = (entry.QrPayments?.Where(q => q.Slot == "Morning" || q.Slot == "Day" || string.IsNullOrEmpty(q.Slot)).Sum(q => q.Amount) ?? 0)
+                           + (connected?.QrPayments?.Where(q => q.Slot == "Morning" || q.Slot == "Day" || string.IsNullOrEmpty(q.Slot)).Sum(q => q.Amount) ?? 0);
+                double qrN = (entry.QrPayments?.Where(q => q.Slot == "Night").Sum(q => q.Amount) ?? 0)
+                           + (connected?.QrPayments?.Where(q => q.Slot == "Night").Sum(q => q.Amount) ?? 0);
+
+                double phM = (p1?.PhonePeMorning ?? 0) + (p2?.PhonePeMorning ?? 0) + qrM;
+                double phD = (p1?.PhonePeDay ?? 0) + (p2?.PhonePeDay ?? 0) + qrM;
+                double phN = (p1?.PhonePeNight ?? 0) + (p2?.PhonePeNight ?? 0) + qrN;
+                double ph = (p1?.PhonePe ?? 0) + (p2?.PhonePe ?? 0) + qrSum;
 
                 double ppcM = (p1?.PhonePeCardMorning ?? 0) + (p2?.PhonePeCardMorning ?? 0);
                 double ppcD = (p1?.PhonePeCardDay ?? 0) + (p2?.PhonePeCardDay ?? 0);
@@ -69,9 +75,14 @@ public class ShiftAggregationService : IShiftAggregationService
                 double petroN = (p1?.PetroCardNight ?? 0) + (p2?.PetroCardNight ?? 0);
                 double petro = (p1?.PetroCard ?? 0) + (p2?.PetroCard ?? 0);
 
-                double grossSales = allNozzleReadings.Count > 0
-                    ? allNozzleReadings.Sum(n => (double)n.Amount)
-                    : (double)(entry.GrossSales + (connected?.GrossSales ?? 0));
+                var distinctNozzles = allNozzleReadings
+                    .GroupBy(n => n.NozzleNumber)
+                    .Select(g => g.First())
+                    .ToList();
+
+                double grossSales = distinctNozzles.Count > 0
+                    ? distinctNozzles.Sum(n => (double)n.Amount)
+                    : (double)entry.GrossSales;
 
                 rows.Add(new DsmSummaryRowDto
                 {
@@ -348,7 +359,9 @@ public class ShiftAggregationService : IShiftAggregationService
         {
             var shiftDate = entries.FirstOrDefault()?.Shift?.ShiftDate;
             var readings = entries
-                .SelectMany(e => e.NozzleReadings.Select(r => new { e.PumpId, Reading = r }))
+                .SelectMany(e => (e.NozzleReadings ?? new List<NozzleReading>()).Select(r => new { ShiftId = e.ShiftId, e.PumpId, Reading = r }))
+                .GroupBy(x => new { x.ShiftId, x.Reading.NozzleNumber })
+                .Select(g => g.First())
                 .Where(x => PumpConfiguration.GetFuelTypeDisplayName(x.PumpId, x.Reading.NozzleNumber, shiftDate) == fuelType)
                 .Select(x => x.Reading)
                 .ToList();
@@ -379,16 +392,19 @@ public class ShiftAggregationService : IShiftAggregationService
     /// </summary>
     public double GetTotalLitresByFuelType(List<NozzleReading> allReadings, string fuelType)
     {
-        return allReadings.Where(r => 
-        {
-            int pumpId = r.DsmEntry?.PumpId ?? 0;
-            if (pumpId == 0)
+        return allReadings
+            .GroupBy(r => new { ShiftId = r.DsmEntry?.ShiftId ?? 0, r.NozzleNumber })
+            .Select(g => g.First())
+            .Where(r => 
             {
-                var match = PumpConfiguration.PumpNozzleMapping.FirstOrDefault(kv => kv.Value.Contains(r.NozzleNumber));
-                pumpId = match.Key;
-            }
-            return PumpConfiguration.GetFuelTypeDisplayName(pumpId, r.NozzleNumber, r.DsmEntry?.Shift?.ShiftDate) == fuelType;
-        }).Sum(r => r.SaleLitres);
+                int pumpId = r.DsmEntry?.PumpId ?? 0;
+                if (pumpId == 0)
+                {
+                    var match = PumpConfiguration.PumpNozzleMapping.FirstOrDefault(kv => kv.Value.Contains(r.NozzleNumber));
+                    pumpId = match.Key;
+                }
+                return PumpConfiguration.GetFuelTypeDisplayName(pumpId, r.NozzleNumber, r.DsmEntry?.Shift?.ShiftDate) == fuelType;
+            }).Sum(r => r.SaleLitres);
     }
 
     /// <summary>

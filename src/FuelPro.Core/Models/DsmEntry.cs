@@ -54,4 +54,5 @@ public class DsmEntry
     public ICollection<CashDenomination> CashDenominations { get; set; } = new List<CashDenomination>();
     public ICollection<DsmPersonalDebtor> PersonalDebtors { get; set; } = new List<DsmPersonalDebtor>();
     public ICollection<KhandharePetroleumEntry> KhandharePetroleumEntries { get; set; } = new List<KhandharePetroleumEntry>();
+    public ICollection<DsmQrPaymentEntry> QrPayments { get; set; } = new List<DsmQrPaymentEntry>();
 }

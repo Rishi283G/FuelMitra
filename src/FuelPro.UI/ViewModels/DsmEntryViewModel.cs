@@ -140,6 +140,23 @@ public partial class KhandharePetroleumRow : ObservableObject
     partial void OnSlipNumberChanged(string value) => OnRowChanged?.Invoke();
 }
 
+public partial class QrPaymentRow : ObservableObject
+{
+    public Action? OnRowChanged { get; set; }
+
+    [ObservableProperty] private string _targetDsmName = "";
+    [ObservableProperty] private double? _amount;
+    [ObservableProperty] private string? _tid;
+    [ObservableProperty] private string? _batch;
+    [ObservableProperty] private string? _slot;
+
+    partial void OnTargetDsmNameChanged(string value) => OnRowChanged?.Invoke();
+    partial void OnAmountChanged(double? value) => OnRowChanged?.Invoke();
+    partial void OnTidChanged(string? value) => OnRowChanged?.Invoke();
+    partial void OnBatchChanged(string? value) => OnRowChanged?.Invoke();
+    partial void OnSlotChanged(string? value) => OnRowChanged?.Invoke();
+}
+
 public partial class TestingRow : ObservableObject
 {
     public Action? OnRowChanged { get; set; }
@@ -321,6 +338,7 @@ public partial class DsmEntryViewModel : ObservableObject
     public ObservableCollection<DebitRow> Debits { get; } = new();
     public ObservableCollection<ExpenseRow> Expenses { get; } = new();
     public ObservableCollection<KhandharePetroleumRow> KhandharePetroleumEntries { get; } = new();
+    public ObservableCollection<QrPaymentRow> QrPayments { get; } = new();
 
     // Testing
     public ObservableCollection<TestingRow> TestingRows { get; } = new();
@@ -790,6 +808,12 @@ public partial class DsmEntryViewModel : ObservableObject
     [RelayCommand]
     private void RemoveKhandharePetroleumEntry(KhandharePetroleumRow? row) { if (row != null) KhandharePetroleumEntries.Remove(row); RecalculateAll(); }
 
+    [RelayCommand]
+    private void AddQrPayment() => QrPayments.Add(new QrPaymentRow { OnRowChanged = RecalculateAll });
+
+    [RelayCommand]
+    private void RemoveQrPayment(QrPaymentRow? row) { if (row != null) QrPayments.Remove(row); RecalculateAll(); }
+
     private bool CanSaveEntry() => !IsSaving && !IsSaved;
 
     [RelayCommand(CanExecute = nameof(CanSaveEntry))]
@@ -888,6 +912,17 @@ public partial class DsmEntryViewModel : ObservableObject
                     Amount = kp.Amount ?? 0
                 }).ToList();
 
+            var qrModels = QrPayments
+                .Where(q => !string.IsNullOrWhiteSpace(q.TargetDsmName) && (q.Amount ?? 0) > 0)
+                .Select(q => new DsmQrPaymentEntry
+                {
+                    TargetDsmName = q.TargetDsmName,
+                    Amount = q.Amount ?? 0,
+                    Tid = q.Tid,
+                    Batch = q.Batch,
+                    Slot = q.Slot
+                }).ToList();
+
             var cashModels = new List<CashDenomination>
             {
                 new() { CashType = "Cash1", Denom500 = Cash1.Denom500 ?? 0, Denom200 = Cash1.Denom200 ?? 0,
@@ -906,7 +941,8 @@ public partial class DsmEntryViewModel : ObservableObject
                 StartTime,
                 EndTime,
                 null,
-                kpModels);
+                kpModels,
+                qrModels);
 
             if (result.Success)
             {
@@ -1259,6 +1295,31 @@ public partial class DsmEntryViewModel : ObservableObject
                 });
             }
 
+            // Populate Cross-DSM QR Payments
+            QrPayments.Clear();
+            var allQr = new List<DsmQrPaymentEntry>();
+            if (entry.QrPayments != null && entry.QrPayments.Count > 0)
+            {
+                allQr.AddRange(entry.QrPayments);
+            }
+            if (connectedEntry?.QrPayments != null && connectedEntry.QrPayments.Count > 0)
+            {
+                allQr.AddRange(connectedEntry.QrPayments);
+            }
+
+            foreach (var qr in allQr)
+            {
+                QrPayments.Add(new QrPaymentRow
+                {
+                    TargetDsmName = qr.TargetDsmName ?? "",
+                    Amount = qr.Amount,
+                    Tid = qr.Tid,
+                    Batch = qr.Batch,
+                    Slot = qr.Slot,
+                    OnRowChanged = RecalculateAll
+                });
+            }
+
             // Populate testing rows
             TestingRows.Clear();
             var (hsdRate, msIRate, msIIRate, cngRate) = await _dsmService.GetCurrentRatesAsync();
@@ -1564,7 +1625,7 @@ public partial class DsmEntryViewModel : ObservableObject
             PaymentCollection = new PaymentCollectionDto
             {
                 // Others is NOT included in TotalInDirect — it is informational only
-                PhonePe = (decimal)((PhonePeMorning ?? 0) + (PhonePeNight ?? 0) + (PhonePeCardMorning ?? 0) + (PhonePeCardNight ?? 0)),
+                PhonePe = (decimal)((PhonePeMorning ?? 0) + (PhonePeNight ?? 0) + (PhonePeCardMorning ?? 0) + (PhonePeCardNight ?? 0) + QrPayments.Sum(q => q.Amount ?? 0)),
                 CreditCard = (decimal)((CreditCardMorning ?? 0) + (CreditCardNight ?? 0)),
                 PetroCard = (decimal)((PetroCardMorning ?? 0) + (PetroCardNight ?? 0)),
                 CashDeposit = (decimal)Cash1.TotalAmount,
@@ -1635,6 +1696,11 @@ public partial class DsmEntryViewModel : ObservableObject
         {
             if (string.IsNullOrWhiteSpace(kp.SlipNumber)) errors.Add("Khandhare Petroleum slip number is required.");
             if (!kp.Amount.HasValue || kp.Amount.Value <= 0) errors.Add($"Khandhare Petroleum amount must be greater than zero for Slip #{kp.SlipNumber}.");
+        }
+        foreach (var qr in QrPayments)
+        {
+            if (string.IsNullOrWhiteSpace(qr.TargetDsmName)) errors.Add("Paid on DSM QR is required for Cross-DSM QR payment.");
+            if (!qr.Amount.HasValue || qr.Amount.Value <= 0) errors.Add($"Cross-DSM QR amount must be greater than zero for {qr.TargetDsmName}.");
         }
         if (string.IsNullOrWhiteSpace(DsmName)) errors.Add("DSM Name is required.");
         return errors;

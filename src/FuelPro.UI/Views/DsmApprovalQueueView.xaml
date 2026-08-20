@@ -479,6 +479,32 @@
                         </StackPanel>
                     </materialDesign:Card>
 
+                    <!-- Cross-DSM QR Payments Card -->
+                    <materialDesign:Card Padding="20" UniformCornerRadius="12" Margin="0,0,0,16" materialDesign:ElevationAssist.Elevation="Dp3">
+                        <materialDesign:Card.Style>
+                            <Style TargetType="materialDesign:Card" BasedOn="{StaticResource {x:Type materialDesign:Card}}">
+                                <Setter Property="Visibility" Value="Visible"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding QrPayments.Count}" Value="0">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </materialDesign:Card.Style>
+                        <StackPanel>
+                            <TextBlock Text="📱 Cross-DSM QR Payments" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}" Margin="0,0,0,12"/>
+                            <DataGrid ItemsSource="{Binding QrPayments}" AutoGenerateColumns="False" IsReadOnly="True"
+                                      HeadersVisibility="Column" GridLinesVisibility="Horizontal" materialDesign:DataGridAssist.CellPadding="12 8" materialDesign:DataGridAssist.ColumnHeaderPadding="12 8">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Paid on DSM QR" Binding="{Binding TargetDsmName}" Width="2*"/>
+                                    <DataGridTextColumn Header="Amount (₹)" Binding="{Binding Amount, StringFormat=N2}" Width="150"/>
+                                    <DataGridTextColumn Header="TID" Binding="{Binding Tid}" Width="*"/>
+                                    <DataGridTextColumn Header="Batch No." Binding="{Binding Batch}" Width="*"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </StackPanel>
+                    </materialDesign:Card>
+
                     <!-- Card Swipe Details Card -->
                     <materialDesign:Card Padding="20" UniformCornerRadius="12" Margin="0,0,0,16" materialDesign:ElevationAssist.Elevation="Dp3">
                         <StackPanel>

@@ -374,6 +374,26 @@ public partial class App : Application
             cmdOther.ExecuteNonQuery();
         }
 
+        // Always ensure DsmQrPayments table exists
+        using (var cmdQr = connection.CreateCommand())
+        {
+            cmdQr.CommandText = @"
+                CREATE TABLE IF NOT EXISTS ""DsmQrPayments"" (
+                    ""Id"" INTEGER NOT NULL CONSTRAINT ""PK_DsmQrPayments"" PRIMARY KEY AUTOINCREMENT,
+                    ""DsmEntryId"" INTEGER NULL,
+                    ""DsmName"" TEXT NOT NULL,
+                    ""TargetDsmName"" TEXT NOT NULL,
+                    ""Amount"" REAL NOT NULL,
+                    ""Tid"" TEXT NULL,
+                    ""Batch"" TEXT NULL,
+                    ""Slot"" TEXT NULL,
+                    ""Date"" TEXT NOT NULL,
+                    ""CreatedAt"" TEXT NOT NULL,
+                    CONSTRAINT ""FK_DsmQrPayments_DsmEntries_DsmEntryId"" FOREIGN KEY (""DsmEntryId"") REFERENCES ""DsmEntries"" (""DsmEntryId"") ON DELETE CASCADE
+                );";
+            cmdQr.ExecuteNonQuery();
+        }
+
         // DsmPumpAssignments columns — must run before the guard since SyncValidationTest calls this
         // before EF migrations create PaymentCollections/DsmEntries tables.
         if (TableExists(connection, "DsmPumpAssignments"))
@@ -781,6 +801,38 @@ public partial class App : Application
             cmd.CommandText = "CREATE UNIQUE INDEX \"IX_DsmPersonalDebtorRepayments_SyncGuid\" ON \"DsmPersonalDebtorRepayments\" (\"SyncGuid\");";
             cmd.ExecuteNonQuery();
             Log.Information("Created DsmPersonalDebtorRepayments table");
+        }
+
+        // DsmQrPayments
+        cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='DsmQrPayments'";
+        var qrPaymentsExists = cmd.ExecuteScalar() != null;
+        if (!qrPaymentsExists)
+        {
+            cmd.CommandText = @"
+                CREATE TABLE ""DsmQrPayments"" (
+                    ""Id"" INTEGER NOT NULL CONSTRAINT ""PK_DsmQrPayments"" PRIMARY KEY AUTOINCREMENT,
+                    ""DsmEntryId"" INTEGER NULL,
+                    ""DsmName"" TEXT NOT NULL,
+                    ""TargetDsmName"" TEXT NOT NULL,
+                    ""Amount"" REAL NOT NULL,
+                    ""Tid"" TEXT NULL,
+                    ""Batch"" TEXT NULL,
+                    ""Slot"" TEXT NULL,
+                    ""Date"" TEXT NOT NULL,
+                    ""CreatedAt"" TEXT NOT NULL,
+                    ""SyncGuid"" TEXT NOT NULL,
+                    CONSTRAINT ""FK_DsmQrPayments_DsmEntries_DsmEntryId"" FOREIGN KEY (""DsmEntryId"") REFERENCES ""DsmEntries"" (""DsmEntryId"") ON DELETE SET NULL
+                );";
+            cmd.ExecuteNonQuery();
+
+            cmd.CommandText = @"
+                CREATE INDEX ""IX_DsmQrPayments_DsmEntryId"" ON ""DsmQrPayments"" (""DsmEntryId"");
+                CREATE UNIQUE INDEX ""IX_DsmQrPayments_SyncGuid"" ON ""DsmQrPayments"" (""SyncGuid"");
+                CREATE INDEX ""IX_DsmQrPayments_DsmName_Date"" ON ""DsmQrPayments"" (""DsmName"", ""Date"");
+                CREATE INDEX ""IX_DsmQrPayments_TargetDsmName"" ON ""DsmQrPayments"" (""TargetDsmName"");
+            ";
+            cmd.ExecuteNonQuery();
+            Log.Information("Created DsmQrPayments table");
         }
 
         // PettyCashTransactions

@@ -53,6 +53,7 @@ public class ShiftReportDto
     public List<DsmPersonalDebtorPrintDto> PersonalDebtors { get; set; } = new();
     public List<DsmPersonalDebtorRepaymentPrintDto> PersonalDebtorRepayments { get; set; } = new();
     public List<KhandharePetroleumPrintDto> KhandhareEntries { get; set; } = new();
+    public List<DsmQrPaymentPrintDto> QrPayments { get; set; } = new();
 
     // Oil & DEF Sales (Phase 3/4)
     public List<OilDefSaleDisplayRow> OilDefSales { get; set; } = new();
@@ -120,6 +121,7 @@ public class DayReportDto
     public List<DsmPersonalDebtorPrintDto> PersonalDebtors { get; set; } = new();
     public List<DsmPersonalDebtorRepaymentPrintDto> PersonalDebtorRepayments { get; set; } = new();
     public List<KhandharePetroleumPrintDto> KhandhareEntries { get; set; } = new();
+    public List<DsmQrPaymentPrintDto> QrPayments { get; set; } = new();
 
     // Oil & DEF Sales (Phase 3/4)
     public List<OilDefSaleDisplayRow> OilDefSales { get; set; } = new();
@@ -176,4 +178,14 @@ public class OilDefSaleDisplayRow
     public double Quantity { get; set; }
     public double Rate { get; set; }
     public double Total { get; set; }
+}
+
+public class DsmQrPaymentPrintDto
+{
+    public string DsmName { get; set; } = string.Empty;
+    public string TargetDsmName { get; set; } = string.Empty;
+    public double Amount { get; set; }
+    public string Tid { get; set; } = string.Empty;
+    public string Batch { get; set; } = string.Empty;
+    public string Slot { get; set; } = string.Empty;
 }

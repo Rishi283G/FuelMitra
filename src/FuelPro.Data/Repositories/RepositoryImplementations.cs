@@ -359,6 +359,7 @@ public class DsmEntryRepository : IDsmEntryRepository
                 .Include(e => e.CashDenominations)
                 .Include(e => e.PersonalDebtors)
                 .Include(e => e.KhandharePetroleumEntries)
+                .Include(e => e.QrPayments)
                 .Include(e => e.Shift)
                 .FirstOrDefaultAsync(e => e.DsmEntryId == dsmEntryId);
 
@@ -387,6 +388,7 @@ public class DsmEntryRepository : IDsmEntryRepository
                 .Include(e => e.CashDenominations)
                 .Include(e => e.PersonalDebtors)
                 .Include(e => e.KhandharePetroleumEntries)
+                .Include(e => e.QrPayments)
                 .Where(e => e.ShiftId == shiftId)
                 .OrderBy(e => e.CreatedAt)
                 .ToListAsync();
@@ -507,6 +509,7 @@ public class DsmEntryRepository : IDsmEntryRepository
                 .Include(e => e.CashDenominations)
                 .Include(e => e.PersonalDebtors)
                 .Include(e => e.KhandharePetroleumEntries)
+                .Include(e => e.QrPayments)
                 .Where(e => e.DsmName == dsmName && 
                             e.Shift != null && e.Shift.ShiftDate >= startDate && 
                             e.Shift.ShiftDate <= endDate)
@@ -541,6 +544,7 @@ public class DsmEntryRepository : IDsmEntryRepository
                 .Include(e => e.CashDenominations)
                 .Include(e => e.PersonalDebtors)
                 .Include(e => e.KhandharePetroleumEntries)
+                .Include(e => e.QrPayments)
                 .Where(e => e.Shift != null && e.Shift.ShiftDate >= startDate && 
                             e.Shift.ShiftDate <= endDate)
                 .OrderBy(e => e.Shift!.ShiftDate)
@@ -573,6 +577,7 @@ public class DsmEntryRepository : IDsmEntryRepository
                 .Include(e => e.CashDenominations)
                 .Include(e => e.PersonalDebtors)
                 .Include(e => e.KhandharePetroleumEntries)
+                .Include(e => e.QrPayments)
                 .Where(e => e.Shift != null && e.Shift.ShiftDate >= start && e.Shift.ShiftDate < end.AddDays(1))
                 .OrderBy(e => e.Shift!.ShiftDate)
                 .ThenBy(e => e.Shift!.ShiftType)

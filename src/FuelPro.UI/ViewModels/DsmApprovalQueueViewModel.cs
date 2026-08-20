@@ -252,6 +252,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
     public ObservableCollection<DsmCardSwipeRow> CardSwipeDetails { get; } = new();
     public ObservableCollection<DsmPersonalDebtor> PersonalDebtors { get; } = new();
     public ObservableCollection<KhandharePetroleumEntry> KhandhareEntries { get; } = new();
+    public ObservableCollection<DsmQrPaymentEntry> QrPayments { get; } = new();
     public ObservableCollection<DsmOilDefSaleRow> OilDefSales { get; } = new();
     public ObservableCollection<Expense> SubmissionExpenses { get; } = new();
 
@@ -664,6 +665,34 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                             }
                         }
 
+                        QrPayments.Clear();
+                        var qrRawList = metadata.qrPayments ?? metadata.qrPaymentEntries ?? metadata.Collections?.qrPayments;
+                        if (qrRawList != null)
+                        {
+                            foreach (var qr in qrRawList)
+                            {
+                                string targetDsm = (qr.targetDsmName ?? qr.TargetDsmName ?? qr.target_dsm_name ?? qr.targetDsm ?? string.Empty).ToString();
+                                double amount = Convert.ToDouble((object?)(qr.amount ?? qr.Amount ?? 0.0));
+                                string tid = (qr.tid ?? qr.Tid ?? string.Empty).ToString();
+                                string batch = (qr.batch ?? qr.Batch ?? string.Empty).ToString();
+                                string slot = (qr.slot ?? qr.Slot ?? string.Empty).ToString();
+
+                                if (amount > 0 && !string.IsNullOrWhiteSpace(targetDsm))
+                                {
+                                    QrPayments.Add(new DsmQrPaymentEntry
+                                    {
+                                        DsmName = submission.DsmName,
+                                        TargetDsmName = targetDsm,
+                                        Date = submission.ShiftDate,
+                                        Amount = amount,
+                                        Tid = string.IsNullOrWhiteSpace(tid) ? null : tid,
+                                        Batch = string.IsNullOrWhiteSpace(batch) ? null : batch,
+                                        Slot = string.IsNullOrWhiteSpace(slot) ? null : slot
+                                    });
+                                }
+                            }
+                        }
+
                         if (metadata.testingEntries != null)
                         {
                             foreach (var test in metadata.testingEntries)
@@ -768,7 +797,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
             NozzleReadings = NozzleReadings.Select(n => new FuelPro.Core.DTOs.NozzleReadingDto { Amount = (decimal)n.Amount }).ToList(),
             PaymentCollection = new FuelPro.Core.DTOs.PaymentCollectionDto
             {
-                PhonePe = (decimal)UpiAmount,
+                PhonePe = (decimal)(UpiAmount + QrPayments.Sum(q => q.Amount)),
                 CreditCard = (decimal)CardAmount,
                 CashDeposit = (decimal)CashDepositAmount,
                 PhysicalCash = (decimal)CashAmount,
@@ -1569,7 +1598,8 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                     cashModels,
                     connectedPumpId: connectedPumpId,
                     personalDebtors: personalDebtors,
-                    khandharePetroleumEntries: KhandhareEntries.ToList()
+                    khandharePetroleumEntries: KhandhareEntries.ToList(),
+                    qrPayments: QrPayments.ToList()
                 );
 
                 if (!localSaveResult.Success)

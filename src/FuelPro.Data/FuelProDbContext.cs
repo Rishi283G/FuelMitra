@@ -68,6 +68,7 @@ public class FuelProDbContext : DbContext
     public DbSet<DsmPersonalDebtorRepayment> DsmPersonalDebtorRepayments => Set<DsmPersonalDebtorRepayment>();
     public DbSet<PettyCashTransaction> PettyCashTransactions => Set<PettyCashTransaction>();
     public DbSet<KhandharePetroleumEntry> KhandharePetroleumEntries => Set<KhandharePetroleumEntry>();
+    public DbSet<DsmQrPaymentEntry> DsmQrPayments => Set<DsmQrPaymentEntry>();
 
     // Tanker Management
     public DbSet<FuelTanker> FuelTankers => Set<FuelTanker>();
@@ -421,6 +422,19 @@ public class FuelProDbContext : DbContext
 
             entity.HasIndex(e => e.SyncGuid).IsUnique();
             entity.HasIndex(e => new { e.DsmName, e.Date });
+        });
+
+        // DsmQrPaymentEntry
+        modelBuilder.Entity<DsmQrPaymentEntry>(entity =>
+        {
+            entity.HasOne(e => e.DsmEntry)
+                  .WithMany(d => d.QrPayments)
+                  .HasForeignKey(e => e.DsmEntryId)
+                  .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasIndex(e => e.SyncGuid).IsUnique();
+            entity.HasIndex(e => new { e.DsmName, e.Date });
+            entity.HasIndex(e => e.TargetDsmName);
         });
     }
 
