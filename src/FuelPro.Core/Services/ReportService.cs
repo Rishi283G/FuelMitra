@@ -316,7 +316,7 @@ public class ReportService : IReportService
                         DsmName = e.DsmName,
                         FuelProduct = "Fuel",
                         Remarks = $"Shift Shortage (Pump {e.PumpId})",
-                        Amount = Math.Abs(mismatch)
+                        Amount = Math.Abs(mismatch) - 10.0
                     });
                 }
             }
@@ -634,7 +634,7 @@ public class ReportService : IReportService
                         DsmName = e.DsmName,
                         FuelProduct = "Fuel",
                         Remarks = $"Shift Shortage (Pump {e.PumpId})",
-                        Amount = Math.Abs(mismatch)
+                        Amount = Math.Abs(mismatch) - 10.0
                     });
                 }
             }
@@ -673,7 +673,7 @@ public class ReportService : IReportService
                 double dsmLoss = (double)(e.PersonalDebtors?.Sum(pd => pd.Amount) ?? 0);
                 if (dsmLoss == 0 && rawShort > 10.0)
                 {
-                    dsmLoss = rawShort;
+                    dsmLoss = rawShort - 10.0;
                 }
                 double netShort = Math.Max(0, rawShort - dsmLoss);
                 totalDsmShort += netShort;

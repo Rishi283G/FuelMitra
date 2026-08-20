@@ -736,10 +736,12 @@ public class DsmEntryService
                 entry.UpdatedAt = DateTime.Now;
 
                 // Automatic threshold check for DSM Loss vs Short (> 10)
-                if (entry.Mismatch < 0 && Math.Abs(entry.Mismatch) > 10m)
+                double totalShortage = entry.Mismatch < 0 ? (double)Math.Abs(entry.Mismatch) : 0;
+                double dsmLossAmount = totalShortage > 10.0 ? (totalShortage - 10.0) : 0.0;
+                var existingAutoLoss = await context.Set<DsmPersonalDebtor>()
+                    .FirstOrDefaultAsync(p => p.DsmEntryId == savedEntryId && p.Remarks != null && p.Remarks.Contains("Shortage"));
+                if (dsmLossAmount > 0)
                 {
-                    var existingAutoLoss = await context.Set<DsmPersonalDebtor>()
-                        .FirstOrDefaultAsync(p => p.DsmEntryId == savedEntryId);
                     if (existingAutoLoss == null)
                     {
                         var autoLoss = new DsmPersonalDebtor
@@ -748,7 +750,7 @@ public class DsmEntryService
                             DsmName = dsmName,
                             Date = shift.ShiftDate,
                             Time = DateTime.Now.ToString("hh:mm tt"),
-                            Amount = (double)Math.Abs(entry.Mismatch),
+                            Amount = dsmLossAmount,
                             Remarks = $"Auto Shift Shortage (Pump {pumpId}, Shift {shiftType})",
                             PaymentMethod = "Cash"
                         };
@@ -756,9 +758,13 @@ public class DsmEntryService
                     }
                     else
                     {
-                        existingAutoLoss.Amount = (double)Math.Abs(entry.Mismatch);
+                        existingAutoLoss.Amount = dsmLossAmount;
                         context.Entry(existingAutoLoss).State = EntityState.Modified;
                     }
+                }
+                else if (existingAutoLoss != null)
+                {
+                    context.Set<DsmPersonalDebtor>().Remove(existingAutoLoss);
                 }
 
                 context.Entry(entry).State = EntityState.Modified;
