@@ -24,17 +24,54 @@ public class ShiftAggregationService : IShiftAggregationService
             var primaryEntries = entries.Where(e => !e.ReconciledToPumpId.HasValue).ToList();
             foreach (var entry in primaryEntries)
             {
-                var cash1 = entry.CashDenominations
-                    .Where(c => c.CashType == "Cash1")
-                    .Sum(c => c.TotalAmount);
+                var connected = entries.FirstOrDefault(e => e.ReconciledToPumpId == entry.DsmEntryId || 
+                    (entry.ConnectedPumpId.HasValue && e.PumpId == entry.ConnectedPumpId.Value && e.ShiftId == entry.ShiftId && e.DsmEntryId != entry.DsmEntryId));
 
-                var cash2 = entry.CashDenominations
-                    .Where(c => c.CashType == "Cash2")
-                    .Sum(c => c.TotalAmount);
+                var allNozzleReadings = new List<NozzleReading>();
+                if (entry.NozzleReadings != null) allNozzleReadings.AddRange(entry.NozzleReadings);
+                if (connected?.NozzleReadings != null) allNozzleReadings.AddRange(connected.NozzleReadings);
 
-                var totalDebit = entry.DebitEntries.Sum(d => d.Amount);
-                var totalExpenses = entry.Expenses.Sum(e => e.Amount) + (entry.KhandharePetroleumEntries != null ? entry.KhandharePetroleumEntries.Sum(kp => kp.Amount) : 0);
-                var totalTesting = entry.TestingEntries.Sum(t => t.Amount);
+                var allCashDenoms = new List<CashDenomination>();
+                if (entry.CashDenominations != null) allCashDenoms.AddRange(entry.CashDenominations);
+                if (connected?.CashDenominations != null) allCashDenoms.AddRange(connected.CashDenominations);
+
+                var cash1 = allCashDenoms.Where(c => c.CashType == "Cash1").Sum(c => c.TotalAmount);
+                var cash2 = allCashDenoms.Where(c => c.CashType == "Cash2").Sum(c => c.TotalAmount);
+
+                var debSum = entry.DebitEntries.Sum(d => d.Amount) + (connected?.DebitEntries.Sum(d => d.Amount) ?? 0);
+                var totalDebit = debSum > 0 ? debSum : (double)(entry.TotalCreditors + (connected?.TotalCreditors ?? 0));
+
+                var expSum = entry.Expenses.Sum(e => e.Amount) + (connected?.Expenses.Sum(e => e.Amount) ?? 0);
+                var kpSum = (entry.KhandharePetroleumEntries != null ? entry.KhandharePetroleumEntries.Sum(kp => kp.Amount) : 0)
+                    + (connected?.KhandharePetroleumEntries != null ? connected.KhandharePetroleumEntries.Sum(kp => kp.Amount) : 0);
+                var totalExpenses = expSum + kpSum;
+                var totalTesting = entry.TestingEntries.Sum(t => t.Amount) + (connected?.TestingEntries.Sum(t => t.Amount) ?? 0);
+
+                var p1 = entry.PaymentCollection;
+                var p2 = connected?.PaymentCollection;
+
+                double phM = (p1?.PhonePeMorning ?? 0) + (p2?.PhonePeMorning ?? 0);
+                double phD = (p1?.PhonePeDay ?? 0) + (p2?.PhonePeDay ?? 0);
+                double phN = (p1?.PhonePeNight ?? 0) + (p2?.PhonePeNight ?? 0);
+                double ph = (p1?.PhonePe ?? 0) + (p2?.PhonePe ?? 0);
+
+                double ppcM = (p1?.PhonePeCardMorning ?? 0) + (p2?.PhonePeCardMorning ?? 0);
+                double ppcD = (p1?.PhonePeCardDay ?? 0) + (p2?.PhonePeCardDay ?? 0);
+                double ppcN = (p1?.PhonePeCardNight ?? 0) + (p2?.PhonePeCardNight ?? 0);
+                double ppc = (p1?.PhonePeCard ?? 0) + (p2?.PhonePeCard ?? 0);
+
+                double ccM = (p1?.CreditCardMorning ?? 0) + (p2?.CreditCardMorning ?? 0);
+                double ccD = (p1?.CreditCardDay ?? 0) + (p2?.CreditCardDay ?? 0);
+                double ccN = (p1?.CreditCardNight ?? 0) + (p2?.CreditCardNight ?? 0);
+
+                double petroM = (p1?.PetroCardMorning ?? 0) + (p2?.PetroCardMorning ?? 0);
+                double petroD = (p1?.PetroCardDay ?? 0) + (p2?.PetroCardDay ?? 0);
+                double petroN = (p1?.PetroCardNight ?? 0) + (p2?.PetroCardNight ?? 0);
+                double petro = (p1?.PetroCard ?? 0) + (p2?.PetroCard ?? 0);
+
+                double grossSales = allNozzleReadings.Count > 0
+                    ? allNozzleReadings.Sum(n => (double)n.Amount)
+                    : (double)(entry.GrossSales + (connected?.GrossSales ?? 0));
 
                 rows.Add(new DsmSummaryRowDto
                 {
@@ -42,30 +79,28 @@ public class ShiftAggregationService : IShiftAggregationService
                     Shift = entry.Shift?.ShiftType ?? "",
                     PumpId = entry.PumpId,
                     ConnectedPumpId = entry.ConnectedPumpId,
-                    PhonePeCard = entry.PaymentCollection?.PhonePeCard ?? 0,
-                    PhonePeCardMorning = (entry.PaymentCollection?.PhonePeCardMorning ?? 0) > 0 ? (entry.PaymentCollection?.PhonePeCardMorning ?? 0) : (entry.PaymentCollection?.PhonePeCardDay ?? 0),
-                    PhonePeCardDay = entry.PaymentCollection?.PhonePeCardDay ?? 0,
-                    PhonePeCardNight = entry.PaymentCollection?.PhonePeCardNight ?? 0,
-                    PhonePe = entry.PaymentCollection?.PhonePe ?? 0,
-                    PhonePeMorning = (entry.PaymentCollection?.PhonePeMorning ?? 0) > 0 ? (entry.PaymentCollection?.PhonePeMorning ?? 0) : ((entry.PaymentCollection?.PhonePeDay ?? 0) > 0 ? (entry.PaymentCollection?.PhonePeDay ?? 0) : (entry.PaymentCollection?.PhonePe ?? 0)),
-                    PhonePeDay = entry.PaymentCollection?.PhonePeDay ?? 0,
-                    PhonePeNight = entry.PaymentCollection?.PhonePeNight ?? 0,
-                    CreditCardMorning = (entry.PaymentCollection?.CreditCardMorning ?? 0) > 0 ? (entry.PaymentCollection?.CreditCardMorning ?? 0) : ((entry.PaymentCollection?.CreditCardDay ?? 0) > 0 ? (entry.PaymentCollection?.CreditCardDay ?? 0) : ((entry.PaymentCollection?.PhonePeCardMorning ?? 0) > 0 ? (entry.PaymentCollection?.PhonePeCardMorning ?? 0) : (entry.PaymentCollection?.PhonePeCardDay ?? 0))),
-                    CreditCardDay = entry.PaymentCollection?.CreditCardDay ?? 0,
-                    CreditCardNight = entry.PaymentCollection?.CreditCardNight ?? 0,
-                    PetroCard = entry.PaymentCollection?.PetroCard ?? 0,
-                    PetroCardMorning = (entry.PaymentCollection?.PetroCardMorning ?? 0) > 0 ? (entry.PaymentCollection?.PetroCardMorning ?? 0) : ((entry.PaymentCollection?.PetroCardDay ?? 0) > 0 ? (entry.PaymentCollection?.PetroCardDay ?? 0) : (entry.PaymentCollection?.PetroCard ?? 0)),
-                    PetroCardDay = entry.PaymentCollection?.PetroCardDay ?? 0,
-                    PetroCardNight = entry.PaymentCollection?.PetroCardNight ?? 0,
-                    Others = entry.PaymentCollection?.Others ?? 0,
-                    CashDeposit = cash1 > 0 ? cash1 : (entry.PaymentCollection?.CashDeposit ?? 0),
+                    PhonePeCard = ppc > 0 ? ppc : (ppcM + ppcD + ppcN),
+                    PhonePeCardMorning = ppcM > 0 ? ppcM : ppcD,
+                    PhonePeCardDay = ppcD,
+                    PhonePeCardNight = ppcN,
+                    PhonePe = ph > 0 ? ph : (phM + phD + phN),
+                    PhonePeMorning = phM > 0 ? phM : (phD > 0 ? phD : ph),
+                    PhonePeDay = phD,
+                    PhonePeNight = phN,
+                    CreditCardMorning = ccM > 0 ? ccM : ccD,
+                    CreditCardDay = ccD,
+                    CreditCardNight = ccN,
+                    PetroCard = petro > 0 ? petro : (petroM + petroD + petroN),
+                    PetroCardMorning = petroM > 0 ? petroM : (petroD > 0 ? petroD : petro),
+                    PetroCardDay = petroD,
+                    PetroCardNight = petroN,
+                    Others = (p1?.Others ?? 0) + (p2?.Others ?? 0),
+                    CashDeposit = cash1 > 0 ? cash1 : ((p1?.CashDeposit ?? 0) + (p2?.CashDeposit ?? 0)),
                     Debit = totalDebit,
                     Expenses = totalExpenses,
                     Testing = totalTesting,
                     CashInHand = cash2,
-                    GrossSales = entry.NozzleReadings != null && entry.NozzleReadings.Count > 0
-                        ? entry.NozzleReadings.Sum(n => (double)n.Amount)
-                        : (double)entry.GrossSales
+                    GrossSales = grossSales
                 });
             }
             return rows;
@@ -134,7 +169,7 @@ public class ShiftAggregationService : IShiftAggregationService
                 double expenses = g.Sum(r => r.Expenses);
                 double testing = g.Sum(r => r.Testing);
 
-                double totalCollection = cashDeposit + cashInHand + phonePe + phonePeCard + creditCard + petroCard + others + debit + expenses + testing;
+                double totalCollection = cashDeposit + cashInHand + phonePe + phonePeCard + creditCard + petroCard + debit + expenses + testing;
                 double mismatch = totalCollection - grossSales;
 
                 return new DsmShiftTotalDto
@@ -215,15 +250,29 @@ public class ShiftAggregationService : IShiftAggregationService
             var rows = new List<DebitRegisterRowDto>();
             foreach (var entry in entries)
             {
-                foreach (var debit in entry.DebitEntries)
+                if (entry.DebitEntries != null && entry.DebitEntries.Count > 0)
+                {
+                    foreach (var debit in entry.DebitEntries)
+                    {
+                        rows.Add(new DebitRegisterRowDto
+                        {
+                            DsmName = entry.DsmName,
+                            PumpId = entry.PumpId,
+                            DebtorName = debit.DebtorName,
+                            Amount = debit.Amount,
+                            ChequeNo = debit.ChequeNo
+                        });
+                    }
+                }
+                else if (entry.TotalCreditors > 0 && !entry.ReconciledToPumpId.HasValue)
                 {
                     rows.Add(new DebitRegisterRowDto
                     {
                         DsmName = entry.DsmName,
                         PumpId = entry.PumpId,
-                        DebtorName = debit.DebtorName,
-                        Amount = debit.Amount,
-                        ChequeNo = debit.ChequeNo
+                        DebtorName = "Debtors Total",
+                        Amount = (double)entry.TotalCreditors,
+                        ChequeNo = ""
                     });
                 }
             }

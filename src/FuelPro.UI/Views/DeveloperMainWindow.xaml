@@ -671,6 +671,103 @@
                                 </materialDesign:Card>
                             </UniformGrid>
 
+                            <!-- Recent DSM Entries Inspector & Repair Tools -->
+                            <materialDesign:Card Padding="16" UniformCornerRadius="12" Margin="0,0,0,16"
+                                                 materialDesign:ElevationAssist.Elevation="Dp2">
+                                <StackPanel>
+                                    <Grid Margin="0,0,0,12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="220"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <materialDesign:PackIcon Kind="DatabaseEdit" Width="20" Height="20" Margin="0,0,8,0"
+                                                                      Foreground="#1565C0" VerticalAlignment="Center"/>
+                                            <TextBlock Text="Recent DSM Entries (Inspector &amp; Repair)" FontSize="15" FontWeight="Bold"
+                                                       Foreground="#37474F" VerticalAlignment="Center"/>
+                                        </StackPanel>
+
+                                        <TextBox Grid.Column="2" Text="{Binding DsmSearchText, UpdateSourceTrigger=PropertyChanged}"
+                                                 Margin="16,0,8,0" Padding="8,4" Height="32"
+                                                 materialDesign:HintAssist.Hint="Filter Name/Date/Pump..."
+                                                 materialDesign:HintAssist.IsFloating="False"
+                                                 Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+
+                                        <Button Grid.Column="3" Command="{Binding LoadRecentDsmEntriesCommand}"
+                                                Style="{StaticResource MaterialDesignOutlinedButton}"
+                                                Height="32" Padding="12,0" FontSize="11">
+                                            <StackPanel Orientation="Horizontal">
+                                                <materialDesign:PackIcon Kind="Refresh" Width="14" Height="14" Margin="0,0,4,0" VerticalAlignment="Center"/>
+                                                <TextBlock Text="Refresh List" VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                        </Button>
+                                    </Grid>
+
+                                    <DataGrid ItemsSource="{Binding FilteredRecentDsmEntries}" AutoGenerateColumns="False"
+                                              IsReadOnly="True" MaxHeight="300"
+                                              materialDesign:DataGridAssist.CellPadding="10 6">
+                                        <DataGrid.Columns>
+                                            <DataGridTextColumn Header="ID" Binding="{Binding IdDisplay}" Width="70"/>
+                                            <DataGridTextColumn Header="Date / Shift" Binding="{Binding ShiftDate, StringFormat='dd-MMM-yyyy'}" Width="110"/>
+                                            <DataGridTextColumn Header="DSM Name" Binding="{Binding DsmName}" Width="110" FontWeight="Bold"/>
+                                            <DataGridTextColumn Header="Pump" Binding="{Binding PumpLabel}" Width="75"/>
+                                            <DataGridTextColumn Header="Origin" Binding="{Binding Origin}" Width="100"/>
+                                            <DataGridTextColumn Header="Gross Sale" Binding="{Binding GrossSales, StringFormat='₹#,##0.00'}" Width="100" FontWeight="SemiBold"/>
+                                            <DataGridTextColumn Header="Collection" Binding="{Binding TotalCollection, StringFormat='₹#,##0.00'}" Width="100"/>
+                                            <DataGridTextColumn Header="Mismatch" Binding="{Binding Mismatch, StringFormat='₹#,##0.00'}" Width="90"/>
+
+                                            <DataGridTemplateColumn Header="Status / Warning" Width="*">
+                                                <DataGridTemplateColumn.CellTemplate>
+                                                    <DataTemplate>
+                                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                            <materialDesign:PackIcon Kind="AlertCircle" Width="14" Height="14" Margin="0,0,4,0" Foreground="#E53935"
+                                                                                      Visibility="{Binding HasCorruption, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                                                            <TextBlock Text="{Binding StatusMessage}" FontSize="11" VerticalAlignment="Center">
+                                                                <TextBlock.Style>
+                                                                    <Style TargetType="TextBlock">
+                                                                        <Setter Property="Foreground" Value="#2E7D32"/>
+                                                                        <Style.Triggers>
+                                                                            <DataTrigger Binding="{Binding HasCorruption}" Value="True">
+                                                                                <Setter Property="Foreground" Value="#E53935"/>
+                                                                                <Setter Property="FontWeight" Value="SemiBold"/>
+                                                                            </DataTrigger>
+                                                                        </Style.Triggers>
+                                                                    </Style>
+                                                                </TextBlock.Style>
+                                                            </TextBlock>
+                                                        </StackPanel>
+                                                    </DataTemplate>
+                                                </DataGridTemplateColumn.CellTemplate>
+                                            </DataGridTemplateColumn>
+
+                                            <DataGridTemplateColumn Header="Actions" Width="160">
+                                                <DataGridTemplateColumn.CellTemplate>
+                                                    <DataTemplate>
+                                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                                            <Button Content="Fix"
+                                                                    Style="{StaticResource MaterialDesignOutlinedButton}"
+                                                                    Foreground="#1565C0" BorderBrush="#1565C0"
+                                                                    Height="24" Padding="8,0" FontSize="10" Margin="0,0,6,0"
+                                                                    Command="{Binding DataContext.FixCorruptedDsmEntryCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                    CommandParameter="{Binding}"/>
+                                                            <Button Content="Delete"
+                                                                    Style="{StaticResource MaterialDesignOutlinedButton}"
+                                                                    Foreground="#E53935" BorderBrush="#E53935"
+                                                                    Height="24" Padding="8,0" FontSize="10"
+                                                                    Command="{Binding DataContext.DeleteAnyDsmEntryCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                    CommandParameter="{Binding}"/>
+                                                        </StackPanel>
+                                                    </DataTemplate>
+                                                </DataGridTemplateColumn.CellTemplate>
+                                            </DataGridTemplateColumn>
+                                        </DataGrid.Columns>
+                                    </DataGrid>
+                                </StackPanel>
+                            </materialDesign:Card>
+
                             <!-- DSM Entry Duplicates -->
                             <materialDesign:Card Padding="16" UniformCornerRadius="12" Margin="0,0,0,16"
                                                  materialDesign:ElevationAssist.Elevation="Dp2"

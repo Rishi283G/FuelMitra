@@ -654,85 +654,82 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       const prevClosings: Record<number, number> = {};
       const nozzleIds = configRows.map((r) => r.nozzleId);
 
-      // ── Step 1: Most recent approved closing from NozzleReadings ──────────────────────────
-      // NozzleReadings are only created when an admin approves a DSM entry in the desktop app.
-      // Fetch the most recent entries and sort them chronologically by ShiftDate, ShiftType, and local_id
-      // to ensure we always get the correct preceding shift closing, matching the desktop app.
+      // ── Step 1: Most recent closing reading from NozzleReadings (Admin Side Ground Truth) ─
+      // The admin software / manual entry writes to NozzleReadings and syncs them to Supabase.
+      // Whatever closing reading is saved/approved on the admin side becomes the opening reading
+      // for the next shift of that pump in the PWA.
       try {
-        const { data: latestReadings, error: latestErr } = await supabase
+        const station = profile?.StationId || localStorage.getItem('current_station_id') || "";
+        let nrQuery = supabase
           .from("NozzleReadings")
-          .select(`
-            NozzleNumber,
-            ClosingReading,
-            local_id,
-            DsmEntries (
-              Shifts (
-                ShiftDate,
-                ShiftType
-              )
-            )
-          `)
-          .eq("station_id", profile?.StationId || "")
+          .select("NozzleNumber, ClosingReading, NozzleReadingId, local_id, created_at")
           .in("NozzleNumber", nozzleIds)
           .gt("ClosingReading", 0)
-          .order("updated_at", { ascending: false })
-          .limit(200);
+          .order("NozzleReadingId", { ascending: false })
+          .limit(100);
+
+        if (station) {
+          nrQuery = nrQuery.eq("station_id", station);
+        }
+
+        const { data: latestReadings, error: latestErr } = await nrQuery;
 
         if (!latestErr && latestReadings && latestReadings.length > 0) {
-          const getShiftTypePriority = (type?: string) => {
-            if (!type) return 0;
-            const upper = type.toUpperCase();
-            if (upper === 'III' || upper === 'C') return 3;
-            if (upper === 'II' || upper === 'B') return 2;
-            if (upper === 'I' || upper === 'A') return 1;
-            return 0;
-          };
-
-          const sortedReadings = [...latestReadings].sort((a: any, b: any) => {
-            const dateA = a.DsmEntries?.Shifts?.ShiftDate ? new Date(a.DsmEntries.Shifts.ShiftDate).getTime() : 0;
-            const dateB = b.DsmEntries?.Shifts?.ShiftDate ? new Date(b.DsmEntries.Shifts.ShiftDate).getTime() : 0;
-            
-            if (dateA !== dateB) {
-              return dateB - dateA;
-            }
-            
-            const typeA = getShiftTypePriority(a.DsmEntries?.Shifts?.ShiftType);
-            const typeB = getShiftTypePriority(b.DsmEntries?.Shifts?.ShiftType);
-            
-            if (typeA !== typeB) {
-              return typeB - typeA;
-            }
-            
-            return (b.local_id || 0) - (a.local_id || 0);
-          });
-
           const seenNozzles = new Set<number>();
-          for (const r of sortedReadings) {
-            if (!seenNozzles.has(r.NozzleNumber)) {
-              seenNozzles.add(r.NozzleNumber);
-              prevClosings[r.NozzleNumber] = Number(r.ClosingReading);
+          for (const r of latestReadings) {
+            const nNum = Number(r.NozzleNumber);
+            const val = Number(r.ClosingReading);
+            if (!seenNozzles.has(nNum) && val > 0) {
+              seenNozzles.add(nNum);
+              prevClosings[nNum] = val;
+            }
+          }
+        }
+
+        // Fallback: If station_id filter returned nothing for some nozzles, query without station filter
+        const stillMissing = nozzleIds.filter((nId) => !prevClosings[nId]);
+        if (stillMissing.length > 0) {
+          const { data: fallbackReadings } = await supabase
+            .from("NozzleReadings")
+            .select("NozzleNumber, ClosingReading, NozzleReadingId, local_id, created_at")
+            .in("NozzleNumber", stillMissing)
+            .gt("ClosingReading", 0)
+            .order("NozzleReadingId", { ascending: false })
+            .limit(50);
+
+          if (fallbackReadings && fallbackReadings.length > 0) {
+            for (const r of fallbackReadings) {
+              const nNum = Number(r.NozzleNumber);
+              const val = Number(r.ClosingReading);
+              if (!prevClosings[nNum] && val > 0) {
+                prevClosings[nNum] = val;
+              }
             }
           }
         }
       } catch (e) {
-        console.error("Failed to fetch latest NozzleReadings:", e);
+        console.error("Failed to fetch latest NozzleReadings from admin side:", e);
       }
 
-      // ── Step 2: DsmSubmissions for nozzles not yet covered ────────────────────────────────
-      // Catches nozzles where the DSM has submitted a reading but the admin hasn't
-      // approved it yet (no NozzleReading record exists). Only Approved or Pending
-      // submissions are used — Rejected/Expired must NOT propagate as opening readings.
+      // ── Step 2: DsmSubmissions for nozzles not yet covered in NozzleReadings ───────────────
+      // For any nozzles not yet approved on the admin side, check recent pending/approved submissions.
       try {
         const missingNozzleIds = nozzleIds.filter((nId) => !prevClosings[nId]);
         if (missingNozzleIds.length > 0) {
-          const { data: lastSubmissions } = await supabase
+          const station = profile?.StationId || localStorage.getItem('current_station_id') || "";
+          let subQuery = supabase
             .from("DsmSubmissions")
             .select("Id, ShiftDate, ShiftType, PumpId")
-            .eq("StationId", profile?.StationId || "")
             .in("PumpId", pumpsToFetch)
             .in("Status", ["Approved", "Pending"])
             .order("ShiftDate", { ascending: false })
             .order("SubmittedAt", { ascending: false });
+
+          if (station) {
+            subQuery = subQuery.eq("StationId", station);
+          }
+
+          const { data: lastSubmissions } = await subQuery;
 
           if (lastSubmissions && lastSubmissions.length > 0) {
             for (const pId of pumpsToFetch) {
@@ -746,7 +743,6 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
 
               if (lastReadings && lastReadings.length > 0) {
                 lastReadings.forEach((r: any) => {
-                  // Only fill nozzles not already covered by approved NozzleReadings
                   if (
                     Number(r.ClosingReading) > 0 &&
                     !prevClosings[r.NozzleId]

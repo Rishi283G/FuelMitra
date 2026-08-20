@@ -167,7 +167,8 @@ public class DuplicatePreventionTests : IDisposable
         var res = await dsmService.SaveCompleteEntryAsync(
             date, "A", "Tony Stark", 1,
             nozzleReadings, payment, new List<DebitEntry>(), new List<TestingEntry>(),
-            new List<Expense>(), cashDenominations);
+            new List<Expense>(), cashDenominations,
+            connectedPumpId: null, existingEntryId: entry1.DsmEntryId);
 
         Assert.True(res.Success);
         Assert.Equal(entry1.DsmEntryId, res.Data!.DsmEntryId);
@@ -208,7 +209,8 @@ public class DuplicatePreventionTests : IDisposable
             var res = await dsmService.SaveCompleteEntryAsync(
                 date, "A", "Tony Stark", 1,
                 nozzleReadings, payment, new List<DebitEntry>(), new List<TestingEntry>(),
-                new List<Expense>(), cashDenominations);
+                new List<Expense>(), cashDenominations,
+                connectedPumpId: null, existingEntryId: lastEntry?.DsmEntryId);
 
             Assert.True(res.Success);
             if (lastEntry != null)
@@ -355,9 +357,7 @@ public class DuplicatePreventionTests : IDisposable
     [Fact]
     public async Task DeleteMultipleDuplicateDsmEntriesAsync_BatchDeletesAllSpecifiedDuplicates()
     {
-        var entryService = _serviceProvider.GetRequiredService<DsmEntryService>();
-        var dto = CreateSampleDsmEntryDto(shiftId: 10, dsmName: "BATCH_DSM", pumpId: 2);
-        var entry1 = await entryService.SaveDsmEntryAsync(dto);
+        var entry1 = await SaveTestEntryAsync(new DateTime(2026, 7, 10), "A", "BATCH_DSM", 2, 2000);
 
         int dup1Id, dup2Id;
         using (var scope = _serviceProvider.CreateScope())

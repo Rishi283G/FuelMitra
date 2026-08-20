@@ -212,7 +212,9 @@ public class DsmSummaryRowDto
     public double BankCash => CashDeposit;
     public double DebtorSales => Debit;
     public double GrossSale => GrossSales;
-    public double Difference => (CashDeposit + CashInHand + PhonePeTotal + PhonePeCardTotal + CreditCardTotal + PetroCardTotal + Others + Debit + Expenses + Testing) - GrossSales;
+    public double Difference => (CashDeposit + CashInHand + PhonePeTotal + PhonePeCardTotal + CreditCardTotal + PetroCardTotal + Debit + Expenses + Testing) - GrossSales;
+    public double Mismatch => Difference;
+    public double ShortAmount => Difference;
 }
 
 /// <summary>

@@ -16,6 +16,7 @@ public class ShiftCalculationService
     private readonly IExpenseRepository _expenseRepo;
     private readonly IDsmCalculationService _dsmCalculationService;
     private readonly ITidCalculationService _tidService;
+    private readonly IShiftAggregationService _aggregationService;
     private readonly ILogger _logger = Log.ForContext<ShiftCalculationService>();
 
     public ShiftCalculationService(
@@ -23,13 +24,15 @@ public class ShiftCalculationService
         IShiftRepository shiftRepo,
         IExpenseRepository expenseRepo,
         IDsmCalculationService dsmCalculationService,
-        ITidCalculationService tidService)
+        ITidCalculationService tidService,
+        IShiftAggregationService? aggregationService = null)
     {
         _dsmRepo = dsmRepo;
         _shiftRepo = shiftRepo;
         _expenseRepo = expenseRepo;
         _dsmCalculationService = dsmCalculationService;
         _tidService = tidService;
+        _aggregationService = aggregationService ?? new ShiftAggregationService();
     }
 
     /// <summary>
@@ -108,51 +111,8 @@ public class ShiftCalculationService
                 });
             }
 
-            // Group by DSM Name for shift-level totals
-            dto.DsmShiftTotals = dto.DsmSummaryRows
-                .GroupBy(r => (r.DsmName ?? string.Empty).Trim(), StringComparer.OrdinalIgnoreCase)
-                .Select(g =>
-                {
-                    var dsmName = g.Key;
-                    var pumpsList = g.Select(r => r.PumpLabel).Where(p => !string.IsNullOrEmpty(p)).Distinct().ToList();
-                    var pumpsDisplay = string.Join(", ", pumpsList);
-
-                    double grossSales = g.Sum(r => r.GrossSales);
-                    double cashDeposit = g.Sum(r => r.CashDeposit);
-                    double cashInHand = g.Sum(r => r.CashInHand);
-                    double phonePe = g.Sum(r => r.PhonePeTotal);
-                    double phonePeCard = g.Sum(r => r.PhonePeCard + r.PhonePeCardMorning + r.PhonePeCardDay + r.PhonePeCardNight);
-                    double creditCard = g.Sum(r => r.CreditCardTotal);
-                    double petroCard = g.Sum(r => r.PetroCardTotal);
-                    double others = g.Sum(r => r.Others);
-                    double debit = g.Sum(r => r.Debit);
-                    double expenses = g.Sum(r => r.Expenses);
-                    double testing = g.Sum(r => r.Testing);
-
-                    double totalCollection = cashDeposit + cashInHand + phonePe + phonePeCard + creditCard + petroCard + debit + expenses + testing;
-                    double mismatch = totalCollection - grossSales;
-
-                    return new DsmShiftTotalDto
-                    {
-                        DsmName = dsmName,
-                        SessionsCount = g.Count(),
-                        AssignedPumpsDisplay = pumpsDisplay,
-                        GrossSales = grossSales,
-                        TotalCollection = totalCollection,
-                        CashDeposit = cashDeposit,
-                        CashInHand = cashInHand,
-                        PhonePe = phonePe,
-                        PhonePeCard = phonePeCard,
-                        CreditCard = creditCard,
-                        PetroCard = petroCard,
-                        Debit = debit,
-                        Expenses = expenses,
-                        Testing = testing,
-                        Mismatch = mismatch
-                    };
-                })
-                .OrderBy(s => s.DsmName)
-                .ToList();
+            // Group by DSM Name for shift-level totals using centralized ShiftAggregationService
+            dto.DsmShiftTotals = _aggregationService.BuildDsmShiftTotals(dto.DsmSummaryRows);
 
             // TABLE B — Cash Aggregates
             dto.Cash1Aggregate = AggregateCash(entries, "Cash1");

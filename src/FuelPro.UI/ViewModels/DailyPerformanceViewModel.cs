@@ -222,7 +222,7 @@ public partial class DailyPerformanceViewModel : ObservableObject, IDisposable
                 defaultHsd, defaultMsI, defaultMsII, defaultCng,
                 stationName);
 
-            TotalSale = dayReport.TotalFuelAmount + dayReport.OtherCashTotal + dayReport.OilDefSalesTotal - dayReport.DsmSummaryTotals.Testing;
+            TotalSale = dayReport.TotalFuelAmount + dayReport.OtherCashTotal + dayReport.OilDefSalesTotal;
             TotalLitres = dayReport.TotalFuelLitres;
             TotalCollection = dayReport.ActualCollection;
             TotalExpenses = dayReport.ExpensesTotal;
@@ -242,50 +242,26 @@ public partial class DailyPerformanceViewModel : ObservableObject, IDisposable
                 else if (fRow.FuelType == "MS-II") TotalMsII = fRow.Litres;
             }
 
-            // Group by DSM to populate breakdown rows
-            var dsmGroups = entries.GroupBy(e => e.DsmName ?? "Unknown");
-            foreach (var group in dsmGroups)
+            // Group by DSM to populate breakdown rows using centralized shift aggregation
+            var aggregationService = App.Services.GetRequiredService<IShiftAggregationService>();
+            var summaryRows = dayReport.DsmSummaryRows ?? aggregationService.BuildDsmSummaryRows(entries);
+            var dsmTotals = dayReport.DsmShiftTotals ?? aggregationService.BuildDsmShiftTotals(summaryRows);
+
+            foreach (var st in dsmTotals)
             {
-                double groupSale = 0, groupLitres = 0, groupCollection = 0;
-
-                foreach (var entry in group)
-                {
-                    var cash1 = entry.CashDenominations.Where(x => x.CashType == "Cash1").Sum(x => x.TotalAmount);
-                    var cash2 = entry.CashDenominations.Where(x => x.CashType == "Cash2").Sum(x => x.TotalAmount);
-
-                    var calc = _calcService.Calculate(new DsmEntryDto
-                    {
-                        DSMEntryId = entry.DsmEntryId,
-                        NozzleReadings = entry.NozzleReadings.Select(r => new NozzleReadingDto { Amount = (decimal)r.Amount }).ToList(),
-                        PaymentCollection = new PaymentCollectionDto
-                        {
-                            PhonePe = (decimal)((entry.PaymentCollection?.PhonePe ?? 0) + (entry.PaymentCollection?.PhonePeCardMorning ?? 0) + (entry.PaymentCollection?.PhonePeCardNight ?? 0)),
-                            CreditCard = (decimal)((entry.PaymentCollection?.CreditCard ?? 0) + (entry.PaymentCollection?.PetroCard ?? 0)),
-                            CashDeposit = (decimal)(cash1 + cash2 + (entry.PaymentCollection?.CashDeposit ?? 0)),
-                            PhysicalCash = 0
-                        },
-                        DebitEntries = entry.DebitEntries.Select(d => new DebitEntryDto { Amount = (decimal)d.Amount }).ToList(),
-                        TestingEntries = entry.TestingEntries.Select(t => new TestingEntryDto { FuelType = t.FuelType, Amount = (decimal)t.Amount }).ToList(),
-                        Expenses = entry.Expenses.Select(e => new ExpenseDto { Amount = (decimal)e.Amount }).ToList()
-                    });
-
-                    groupSale += (double)calc.GrossSales;
-                    groupCollection += (double)calc.TotalCollection;
-
-                    foreach (var nr in entry.NozzleReadings)
-                    {
-                        groupLitres += nr.SaleLitres;
-                    }
-                }
+                double dsmLitres = entries
+                    .Where(e => string.Equals((e.DsmName ?? "").Trim(), st.DsmName.Trim(), StringComparison.OrdinalIgnoreCase))
+                    .SelectMany(e => e.NozzleReadings ?? new List<NozzleReading>())
+                    .Sum(nr => nr.SaleLitres);
 
                 DsmBreakdown.Add(new DsmDailyRow
                 {
-                    DsmName = group.Key,
-                    ShiftCount = group.Count(),
-                    TotalSale = groupSale,
-                    TotalLitres = groupLitres,
-                    TotalCollection = groupCollection,
-                    Mismatch = groupCollection - groupSale
+                    DsmName = st.DsmName,
+                    ShiftCount = st.SessionsCount,
+                    TotalSale = st.GrossSales,
+                    TotalLitres = dsmLitres,
+                    TotalCollection = st.TotalCollection,
+                    Mismatch = st.Mismatch
                 });
             }
         }

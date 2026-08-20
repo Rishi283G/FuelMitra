@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Net.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using FuelPro.Core.Common;
@@ -25,7 +26,7 @@ public class ForensicAudit
         "fuelPro.db"
     );
 
-    [Fact]
+    [Fact(Skip = "Diagnostic only")]
     public async Task RunForensicAudit()
     {
         if (!File.Exists(_prodDbPath))
@@ -150,12 +151,135 @@ public class ForensicAudit
 
         report.AppendLine();
 
-        // Write the report to the artifacts directory
-        string artifactDir = @"C:\Users\jadha\.gemini\antigravity-ide\brain\2486b7e1-2de2-40c8-8a51-ee499feae148";
-        Directory.CreateDirectory(artifactDir);
+        string artifactDir = Directory.GetCurrentDirectory();
         string reportPath = Path.Combine(artifactDir, "forensic_audit_report.md");
         await File.WriteAllTextAsync(reportPath, report.ToString());
-
         Console.WriteLine($"[AUDIT] Report written to: {reportPath}");
+    }
+
+    [Fact(Skip = "Diagnostic only")]
+    public async Task DiagnosticAugust4()
+    {
+        if (!File.Exists(_prodDbPath)) return;
+
+        var services = new ServiceCollection();
+        services.AddDbContext<FuelProDbContext>(options => options.UseSqlite($"Data Source={_prodDbPath}"));
+        using var provider = services.BuildServiceProvider();
+        using var context = provider.GetRequiredService<FuelProDbContext>();
+
+        var entries = await context.DsmEntries
+            .Include(e => e.Shift)
+            .Include(e => e.NozzleReadings)
+            .Include(e => e.PaymentCollection)
+            .Where(e => e.Shift != null && e.Shift.ShiftDate >= new DateTime(2026, 8, 1) && e.Shift.ShiftDate <= new DateTime(2026, 8, 10))
+            .OrderBy(e => e.Shift!.ShiftDate)
+            .ThenBy(e => e.Shift!.ShiftType)
+            .ThenBy(e => e.PumpId)
+            .ToListAsync();
+
+        var sb = new StringBuilder();
+        sb.AppendLine($"Entries around 04-Aug-2026: Count = {entries.Count}");
+        foreach (var e in entries)
+        {
+            sb.AppendLine($"Entry ID {e.DsmEntryId}: Date={e.Shift?.ShiftDate:yyyy-MM-dd}, Shift={e.Shift?.ShiftType}, DSM='{e.DsmName}', Pump={e.PumpId}, ConnPump={e.ConnectedPumpId}, ReconTo={e.ReconciledToPumpId}, GrossSales={e.GrossSales}, Mismatch={e.Mismatch}");
+            sb.AppendLine($"   NozzleReadings count: {e.NozzleReadings.Count}");
+            foreach (var nr in e.NozzleReadings)
+            {
+                sb.AppendLine($"      Nozzle {nr.NozzleNumber}: Fuel={nr.FuelType}, Open={nr.OpeningReading}, Close={nr.ClosingReading}, Litres={nr.SaleLitres}, Rate={nr.Rate}, Amt={nr.Amount}");
+            }
+        }
+
+        using var http = new HttpClient();
+        string supUrl = "https://rvcibryprvjbzrtwqktk.supabase.co/rest/v1";
+        string supKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ2Y2licnlwcnZqYnpydHdxa3RrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEzMTIxMTcsImV4cCI6MjA5Njg4ODExN30.vMTA97993upfnOCs5ja-kxIhDSHbcx1gEQ6itNm5BBk";
+        http.DefaultRequestHeaders.Add("apikey", supKey);
+        http.DefaultRequestHeaders.Add("Authorization", $"Bearer {supKey}");
+
+        try
+        {
+            var pwaRes = await http.GetStringAsync($"{supUrl}/NozzleReadings?select=station_id,NozzleReadingId,NozzleNumber,ClosingReading,created_at&limit=20&order=NozzleReadingId.desc");
+            sb.AppendLine("Distinct/Top station_ids in Supabase NozzleReadings:");
+            sb.AppendLine(pwaRes);
+        }
+        catch (Exception ex)
+        {
+            sb.AppendLine($"Check station_ids FAILED: {ex.Message}");
+        }
+
+        // Test 1b: Query DsmApprovalAudits
+        try
+        {
+            var audRes = await http.GetStringAsync($"{supUrl}/DsmApprovalAudits?select=DsmApprovalAuditId,SubmissionId,ApprovedAt,ApprovedDataJson,OriginalDataJson&order=ApprovedAt.desc&limit=5");
+            sb.AppendLine("Supabase DsmApprovalAudits SUCCESS:");
+            sb.AppendLine(audRes);
+        }
+        catch (Exception ex)
+        {
+            sb.AppendLine($"Supabase DsmApprovalAudits FAILED: {ex.Message}");
+        }
+
+        // Test 2: AgsShiftImports + AgsNozzleReadings query in Supabase
+        try
+        {
+            var agsRes = await http.GetStringAsync($"{supUrl}/AgsShiftImports?select=SyncGuid,ShiftDate,ShiftType,AgsNozzleReadings(NozzleNumber,OpeningReading,ClosingReading,PumpNumber)&order=ShiftDate.desc&limit=5");
+            sb.AppendLine("Supabase AgsShiftImports SUCCESS:");
+            sb.AppendLine(agsRes);
+        }
+        catch (Exception ex)
+        {
+            sb.AppendLine($"Supabase AgsShiftImports FAILED: {ex.Message}");
+        }
+
+        var allAudits = await context.DsmApprovalAudits.ToListAsync();
+        sb.AppendLine($"Total DsmApprovalAudits: {allAudits.Count}");
+        foreach (var au in allAudits)
+        {
+            sb.AppendLine($"Audit {au.DsmApprovalAuditId}: SubId={au.SubmissionId}, Date={au.ApprovedAt}, Remarks={au.Remarks}");
+            sb.AppendLine($"   ApprovedJson: {au.ApprovedDataJson}");
+            sb.AppendLine($"   OrigJson: {au.OriginalDataJson}");
+        }
+
+        var nrsInRange = await context.NozzleReadings
+            .Where(n => n.NozzleReadingId >= 900 && n.NozzleReadingId <= 1100)
+            .OrderBy(n => n.NozzleReadingId)
+            .ToListAsync();
+        sb.AppendLine($"NozzleReadings with ID 900..1100: Count={nrsInRange.Count}");
+        foreach (var nr in nrsInRange)
+        {
+            sb.AppendLine($"   NR {nr.NozzleReadingId}: DsmEntryId={nr.DsmEntryId}, Nozzle={nr.NozzleNumber}, Open={nr.OpeningReading}, Close={nr.ClosingReading}");
+        }
+
+        // Also check if there is an Audit for DsmEntryId 599 or Date 2026-08-04
+        var audit599 = await context.DsmApprovalAudits
+            .Where(a => a.ApprovedDataJson.Contains("599") || a.OriginalDataJson.Contains("599") || a.OriginalDataJson.Contains("2026-08-04"))
+            .ToListAsync();
+        sb.AppendLine($"Matching audits for 599/2026-08-04: {audit599.Count}");
+        foreach (var au in audit599)
+        {
+            sb.AppendLine($"   Audit: SubId={au.SubmissionId}, Appr={au.ApprovedDataJson}");
+            sb.AppendLine($"   Orig: {au.OriginalDataJson}");
+        }
+
+        // Check if there are other DsmEntries for 2026-08-04
+        var dateEntries = await context.DsmEntries
+            .Include(e => e.Shift)
+            .Where(e => e.Shift != null && e.Shift.ShiftDate == new DateTime(2026, 8, 4))
+            .ToListAsync();
+        sb.AppendLine($"All entries for 2026-08-04: {dateEntries.Count}");
+        foreach (var de in dateEntries)
+        {
+            sb.AppendLine($"   Entry {de.DsmEntryId}: Shift={de.Shift?.ShiftType}, DSM={de.DsmName}, Pump={de.PumpId}, GrossSales={de.GrossSales}");
+        }
+
+        var allNozzleReadings = await context.NozzleReadings.OrderByDescending(n => n.NozzleReadingId).Take(50).ToListAsync();
+        sb.AppendLine($"Latest 50 NozzleReadings in DB:");
+        foreach (var nr in allNozzleReadings)
+        {
+            sb.AppendLine($"   NR Id={nr.NozzleReadingId}, DsmEntryId={nr.DsmEntryId}, Nozzle={nr.NozzleNumber}, Open={nr.OpeningReading}, Close={nr.ClosingReading}");
+        }
+
+        string outPath = Path.Combine(Directory.GetCurrentDirectory(), "august4_diagnostic.txt");
+        await File.WriteAllTextAsync(outPath, sb.ToString());
+        Console.WriteLine($"WROTE DIAGNOSTIC TO {outPath}");
     }
 }

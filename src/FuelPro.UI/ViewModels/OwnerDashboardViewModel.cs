@@ -256,8 +256,8 @@ public partial class OwnerDashboardViewModel : ObservableObject, IDisposable
             TotalDsmEntries = entries.Count;
 
             var aggregationService = App.Services.GetRequiredService<IShiftAggregationService>();
-            var summaryRows = aggregationService.BuildDsmSummaryRows(entries);
-            var shiftTotals = aggregationService.BuildDsmShiftTotals(summaryRows);
+            var summaryRows = dayReport.DsmSummaryRows ?? aggregationService.BuildDsmSummaryRows(entries);
+            var shiftTotals = dayReport.DsmShiftTotals ?? aggregationService.BuildDsmShiftTotals(summaryRows);
             DsmShiftTotals = new ObservableCollection<DsmShiftTotalDto>(shiftTotals);
 
             TodayTotalSale = dayReport.TotalFuelAmount + dayReport.OtherCashTotal + dayReport.OilDefSalesTotal;

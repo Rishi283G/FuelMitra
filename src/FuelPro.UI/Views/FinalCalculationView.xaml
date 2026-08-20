@@ -197,7 +197,7 @@
                                     <DataGridTextColumn Header="Expenses" Binding="{Binding Expenses, Converter={StaticResource CurrencyConverter}}" Foreground="Red"/>
                                     <DataGridTextColumn Header="Testing" Binding="{Binding Testing, Converter={StaticResource CurrencyConverter}}" />
                                     <DataGridTextColumn Header="Total Collection" Binding="{Binding TotalCollection, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" />
-                                    <DataGridTextColumn Header="Mismatch" Binding="{Binding Mismatch, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" />
+                                    <DataGridTextColumn Header="Short" Binding="{Binding Mismatch, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" />
                                 </DataGrid.Columns>
                             </DataGrid>
                         </StackPanel>

@@ -10,6 +10,7 @@
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis"/>
     </UserControl.Resources>
 
     <Grid>
@@ -686,6 +687,16 @@
                         </StackPanel>
                     </materialDesign:Card>
 
+                    <!-- Incomplete Submission Warning Card -->
+                    <materialDesign:Card Padding="14,10" UniformCornerRadius="8" Background="#FFF3E0" Margin="0,0,0,16"
+                                         materialDesign:ElevationAssist.Elevation="Dp1"
+                                         Visibility="{Binding IsSubmissionComplete, Converter={StaticResource InverseBoolToVis}}">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <materialDesign:PackIcon Kind="AlertCircleOutline" Width="20" Height="20" Foreground="#E65100" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding SubmissionIncompleteReason}" Foreground="#E65100" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </materialDesign:Card>
+
                     <!-- Action Buttons -->
                     <Grid Margin="0,0,0,32" Visibility="{Binding IsEditable, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <Grid.ColumnDefinitions>
@@ -693,7 +704,10 @@
                             <ColumnDefinition Width="16"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
-                        <Button Grid.Column="0" Content="Approve Submission" Command="{Binding ApproveCommand}" Height="48" Style="{StaticResource MaterialDesignRaisedButton}"/>
+                        <Button Grid.Column="0" Content="Approve Submission" 
+                                Command="{Binding ApproveCommand}" 
+                                IsEnabled="{Binding CanApprove}"
+                                Height="48" Style="{StaticResource MaterialDesignRaisedButton}"/>
                         <Button Grid.Column="2" Content="Reject Submission" Command="{Binding RejectCommand}" Height="48" Style="{StaticResource MaterialDesignRaisedButton}" Background="#D32F2F" BorderBrush="#D32F2F"/>
                     </Grid>
                 </StackPanel>

@@ -114,6 +114,48 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
     [ObservableProperty] private bool _isAllRepaymentSelected;
     [ObservableProperty] private int _selectedRepaymentCount;
 
+    // DSM Entry Inspector & Repair Tools
+    [ObservableProperty] private string _dsmSearchText = "";
+    [ObservableProperty] private bool _isLoadingRecentDsmEntries;
+    public ObservableCollection<RecentDsmEntryInspectorDto> RecentDsmEntries { get; } = new();
+    public ObservableCollection<RecentDsmEntryInspectorDto> FilteredRecentDsmEntries { get; } = new();
+
+    partial void OnDsmSearchTextChanged(string value)
+    {
+        FilterRecentDsmEntries();
+    }
+
+    partial void OnSelectedNavIndexChanged(int value)
+    {
+        if (value == 4)
+        {
+            _ = LoadRecentDsmEntriesAsync();
+        }
+    }
+
+    private void FilterRecentDsmEntries()
+    {
+        FilteredRecentDsmEntries.Clear();
+        var text = (DsmSearchText ?? "").Trim();
+
+        var query = RecentDsmEntries.AsEnumerable();
+        if (!string.IsNullOrWhiteSpace(text))
+        {
+            query = query.Where(e =>
+                e.IdDisplay.Contains(text, StringComparison.OrdinalIgnoreCase) ||
+                e.DsmName.Contains(text, StringComparison.OrdinalIgnoreCase) ||
+                e.PumpLabel.Contains(text, StringComparison.OrdinalIgnoreCase) ||
+                e.ShiftDate.ToString("dd-MMM-yyyy").Contains(text, StringComparison.OrdinalIgnoreCase) ||
+                e.StatusMessage.Contains(text, StringComparison.OrdinalIgnoreCase) ||
+                e.Origin.Contains(text, StringComparison.OrdinalIgnoreCase));
+        }
+
+        foreach (var item in query)
+        {
+            FilteredRecentDsmEntries.Add(item);
+        }
+    }
+
     private bool _isUpdatingSelection;
 
     partial void OnIsAllDsmSelectedChanged(bool value)
@@ -823,6 +865,7 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
 
         try
         {
+            await LoadRecentDsmEntriesAsync();
             var report = await _inspectionService.RunFullScanAsync();
 
             IntegrityDsmDuplicates = report.DuplicateDsmEntries;
@@ -873,6 +916,79 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
         finally
         {
             IsRunningIntegrityScan = false;
+        }
+    }
+
+    [RelayCommand]
+    public async Task LoadRecentDsmEntriesAsync()
+    {
+        IsLoadingRecentDsmEntries = true;
+        try
+        {
+            var items = await _resolutionService.GetRecentDsmEntriesAsync(100);
+            RecentDsmEntries.Clear();
+            foreach (var item in items)
+            {
+                RecentDsmEntries.Add(item);
+            }
+            FilterRecentDsmEntries();
+        }
+        catch (Exception ex)
+        {
+            Log.ForContext<DeveloperMainWindowViewModel>().Error(ex, "Failed to load recent DSM entries");
+        }
+        finally
+        {
+            IsLoadingRecentDsmEntries = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task FixCorruptedDsmEntryAsync(RecentDsmEntryInspectorDto entry)
+    {
+        if (entry == null) return;
+
+        var result = await _resolutionService.FixCorruptedDsmEntryAsync(entry.EntryIds);
+        if (result.Success)
+        {
+            MessageBox.Show(result.Data, "Entry Repaired", MessageBoxButton.OK, MessageBoxImage.Information);
+            await LoadRecentDsmEntriesAsync();
+        }
+        else
+        {
+            MessageBox.Show(result.Error, "Repair Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    [RelayCommand]
+    private async Task DeleteAnyDsmEntryAsync(RecentDsmEntryInspectorDto entry)
+    {
+        if (entry == null) return;
+
+        var confirm = MessageBox.Show(
+            $"Are you sure you want to PERMANENTLY DELETE DsmEntry record(s) #{entry.IdDisplay}?\n\n" +
+            $"DSM Name: {entry.DsmName}\n" +
+            $"Shift Date: {entry.ShiftDate:dd MMM yyyy} (Shift {entry.ShiftType})\n" +
+            $"Pump(s): {entry.PumpLabel}\n" +
+            $"Origin: {entry.Origin}\n" +
+            $"Gross Sales: ₹{entry.GrossSales:N2}\n\n" +
+            "⚠️ WARNING: This will delete all connected entries and ALL associated nozzle readings, payments, debit entries, and expenses. This action CANNOT be undone.",
+            "Confirm Delete DSM Entry",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (confirm != MessageBoxResult.Yes) return;
+
+        var result = await _resolutionService.DeleteAnyDsmEntryAsync(entry.EntryIds);
+        if (result.Success)
+        {
+            MessageBox.Show(result.Data, "Entry Deleted", MessageBoxButton.OK, MessageBoxImage.Information);
+            await LoadRecentDsmEntriesAsync();
+            await RunIntegrityScanAsync();
+        }
+        else
+        {
+            MessageBox.Show(result.Error, "Delete Failed", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 

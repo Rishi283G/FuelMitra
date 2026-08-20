@@ -77,7 +77,7 @@ public class PaymentCollection
     /// Total of all digital payment methods.
     /// </summary>
     [NotMapped]
-    public double TotalDigitalPayments => PhonePeCard + PhonePe + CreditCard + PetroCard + Others;
+    public double TotalDigitalPayments => PhonePeCard + PhonePe + CreditCard + PetroCard;
 
     // Navigation
     [ForeignKey(nameof(DsmEntryId))]

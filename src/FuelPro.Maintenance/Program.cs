@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using FuelPro.Core.Models;
+using FuelPro.Core.DTOs;
 using FuelPro.Core.Services;
 using FuelPro.Data;
 using FuelPro.Data.Repositories;
@@ -17,12 +18,17 @@ class Program
         // Force production path resolution for LocalCredentialFileService
         Environment.SetEnvironmentVariable("FUELPRO_ENV", "PRODUCTION");
 
-        if (args.Length == 0 || args[0] != "reset-dev")
+        if (args.Length == 0)
         {
             Console.WriteLine("FuelPro Maintenance Utility");
             Console.WriteLine("===========================");
-            Console.WriteLine("Usage: dotnet run --project src/FuelPro.Maintenance -- reset-dev [--pin <override-pin>] [--force]");
+            Console.WriteLine("Usage: dotnet run --project src/FuelPro.Maintenance -- [reset-dev | analyze-nozzles | restore-nozzles]");
             return 1;
+        }
+
+        if (args[0] == "analyze-nozzles" || args[0] == "restore-nozzles")
+        {
+            return await RunNozzleDiagnosticsAsync(args);
         }
 
         // Parse optional arguments
@@ -196,6 +202,200 @@ If you need to roll back this reset, restore the backup from:
         Console.WriteLine($"\n[SUCCESS] Audit verification report written to: {reportPath}");
 
         return loginSuccess ? 0 : 1;
+    }
+
+    private static async Task<int> RunNozzleDiagnosticsAsync(string[] args)
+    {
+        var appDataFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FuelPro");
+        var dbPath = Path.Combine(appDataFolder, "fuelPro.db");
+        var backupPath = Path.Combine(appDataFolder, $"fuelPro_pre_nozzle_restore_{DateTime.Now:yyyyMMddHHmmss}.db.bak");
+
+        Console.WriteLine($"[MAINTENANCE] Target SQLite DB: {dbPath}");
+        if (!File.Exists(dbPath))
+        {
+            Console.Error.WriteLine("[ERROR] Database not found.");
+            return 1;
+        }
+
+        bool isRestore = args.Length > 0 && args[0] == "restore-nozzles";
+
+        if (isRestore)
+        {
+            Console.WriteLine($"[BACKUP] Creating database backup at: {backupPath}");
+            File.Copy(dbPath, backupPath, overwrite: true);
+        }
+
+        var options = new DbContextOptionsBuilder<FuelProDbContext>()
+            .UseSqlite($"Data Source={dbPath}")
+            .Options;
+
+        using var context = new FuelProDbContext(options);
+
+        var allEntries = await context.DsmEntries
+            .Include(e => e.Shift)
+            .Include(e => e.NozzleReadings)
+            .Include(e => e.PaymentCollection)
+            .Include(e => e.CashDenominations)
+            .Include(e => e.DebitEntries)
+            .Include(e => e.Expenses)
+            .Include(e => e.TestingEntries)
+            .Include(e => e.KhandharePetroleumEntries)
+            .OrderBy(e => e.Shift!.ShiftDate)
+            .ThenBy(e => e.Shift!.ShiftType)
+            .ThenBy(e => e.PumpId)
+            .ToListAsync();
+
+        // Load mappings
+        var dsmMappings = await context.SyncIdMappings
+            .Where(m => m.TableName == "DsmEntries")
+            .ToDictionaryAsync(m => m.RemoteGuid, m => m.LocalId);
+
+        var localDsmToRemoteGuid = await context.SyncIdMappings
+            .Where(m => m.TableName == "DsmEntries")
+            .ToDictionaryAsync(m => m.LocalId, m => m.RemoteGuid);
+
+        Console.WriteLine($"Total DsmEntries mapped to RemoteGuids: {dsmMappings.Count}");
+
+        // Fetch ALL NozzleReadings from Supabase
+        using var http = new System.Net.Http.HttpClient();
+        string supUrl = "https://rvcibryprvjbzrtwqktk.supabase.co/rest/v1";
+        string supKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ2Y2licnlwcnZqYnpydHdxa3RrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEzMTIxMTcsImV4cCI6MjA5Njg4ODExN30.vMTA97993upfnOCs5ja-kxIhDSHbcx1gEQ6itNm5BBk";
+        http.DefaultRequestHeaders.Add("apikey", supKey);
+        http.DefaultRequestHeaders.Add("Authorization", $"Bearer {supKey}");
+
+        Console.WriteLine("\n[SUPABASE] Fetching all NozzleReadings from cloud...");
+        var allCloudReadings = new List<System.Text.Json.JsonElement>();
+        int offset = 0;
+        int pageSize = 1000;
+        while (true)
+        {
+            var res = await http.GetStringAsync($"{supUrl}/NozzleReadings?select=*&limit={pageSize}&offset={offset}");
+            using var doc = System.Text.Json.JsonDocument.Parse(res);
+            var arr = doc.RootElement.EnumerateArray().ToList();
+            if (arr.Count == 0) break;
+            allCloudReadings.AddRange(arr.Select(x => x.Clone()));
+            offset += arr.Count;
+            if (arr.Count < pageSize) break;
+        }
+
+        Console.WriteLine($"Fetched {allCloudReadings.Count} total NozzleReadings from Supabase.");
+
+        // Analyze match
+        int matchCount = 0;
+        int missingInLocalCount = 0;
+        var toInsert = new List<NozzleReading>();
+        var mappingsToInsert = new List<SyncIdMapping>();
+
+        var existingLocalNozzleReadings = await context.NozzleReadings.ToListAsync();
+        var localNozzleLookup = new HashSet<string>(existingLocalNozzleReadings.Select(n => $"{n.DsmEntryId}_{n.NozzleNumber}"));
+        var localNozzleMappings = new HashSet<string>((await context.SyncIdMappings.Where(m => m.TableName == "NozzleReadings").Select(m => m.RemoteGuid).ToListAsync()));
+
+        var localEntryIds = new HashSet<int>(allEntries.Select(e => e.DsmEntryId));
+
+        foreach (var nr in allCloudReadings)
+        {
+            string? parentGuid = null;
+            if (nr.TryGetProperty("DsmEntryId", out var dsmProp) && dsmProp.ValueKind != System.Text.Json.JsonValueKind.Null)
+            {
+                parentGuid = dsmProp.GetString();
+            }
+
+            int? targetLocalDsmId = null;
+            if (!string.IsNullOrEmpty(parentGuid))
+            {
+                if (dsmMappings.TryGetValue(parentGuid, out var mappedLocalId))
+                {
+                    targetLocalDsmId = mappedLocalId;
+                }
+                else if (int.TryParse(parentGuid, out var rawIntId) && localEntryIds.Contains(rawIntId))
+                {
+                    targetLocalDsmId = rawIntId;
+                }
+            }
+
+            if (!targetLocalDsmId.HasValue || !localEntryIds.Contains(targetLocalDsmId.Value)) continue;
+            matchCount++;
+
+            int nozzleNum = nr.GetProperty("NozzleNumber").GetInt32();
+            string key = $"{targetLocalDsmId.Value}_{nozzleNum}";
+
+            if (!localNozzleLookup.Contains(key))
+            {
+                missingInLocalCount++;
+
+                string fuelType = nr.TryGetProperty("FuelType", out var ft) ? ft.GetString() ?? "Petrol" : "Petrol";
+                double open = nr.TryGetProperty("OpeningReading", out var op) ? op.GetDouble() : 0;
+                double close = nr.TryGetProperty("ClosingReading", out var cl) ? cl.GetDouble() : 0;
+                double rate = nr.TryGetProperty("Rate", out var rt) ? rt.GetDouble() : 0;
+                double litres = nr.TryGetProperty("SaleLitres", out var sl) ? sl.GetDouble() : (close - open);
+                double amount = nr.TryGetProperty("Amount", out var am) ? am.GetDouble() : (litres * rate);
+                bool isOverride = nr.TryGetProperty("IsManualOpeningOverride", out var mo) && mo.GetBoolean();
+                string syncGuid = nr.TryGetProperty("SyncGuid", out var sg) ? (sg.GetString() ?? Guid.NewGuid().ToString()) : Guid.NewGuid().ToString();
+
+                var newNr = new NozzleReading
+                {
+                    DsmEntryId = targetLocalDsmId.Value,
+                    NozzleNumber = nozzleNum,
+                    FuelType = fuelType,
+                    OpeningReading = open,
+                    ClosingReading = close,
+                    SaleLitres = litres,
+                    Rate = rate,
+                    Amount = amount,
+                    IsManualOpeningOverride = isOverride
+                };
+
+                toInsert.Add(newNr);
+
+                if (!localNozzleMappings.Contains(syncGuid))
+                {
+                    mappingsToInsert.Add(new SyncIdMapping
+                    {
+                        TableName = "NozzleReadings",
+                        RemoteGuid = syncGuid,
+                        LocalId = 0 // will update after insertion
+                    });
+                }
+            }
+        }
+
+        Console.WriteLine($"Cloud readings matched to local DsmEntries: {matchCount}");
+        Console.WriteLine($"Readings missing locally and ready to restore: {missingInLocalCount}");
+
+        if (isRestore && toInsert.Count > 0)
+        {
+            Console.WriteLine($"\n[RESTORE] Inserting {toInsert.Count} NozzleReading rows into SQLite...");
+            FuelProDbContext.BypassTracking = true;
+            try
+            {
+                await context.NozzleReadings.AddRangeAsync(toInsert);
+                await context.SaveChangesAsync();
+
+                // Update mapping LocalIds
+                for (int i = 0; i < toInsert.Count && i < mappingsToInsert.Count; i++)
+                {
+                    mappingsToInsert[i].LocalId = toInsert[i].NozzleReadingId;
+                }
+                if (mappingsToInsert.Count > 0)
+                {
+                    await context.SyncIdMappings.AddRangeAsync(mappingsToInsert);
+                    await context.SaveChangesAsync();
+                }
+
+                Console.WriteLine("[SUCCESS] Successfully inserted nozzle readings into local database!");
+            }
+            finally
+            {
+                FuelProDbContext.BypassTracking = false;
+            }
+
+            // Post-restore verification
+            var refreshedEntriesWithoutNozz = await context.DsmEntries
+                .CountAsync(e => !context.NozzleReadings.Any(n => n.DsmEntryId == e.DsmEntryId));
+            Console.WriteLine($"\n[VERIFICATION] Remaining entries without NozzleReadings: {refreshedEntriesWithoutNozz}");
+        }
+
+        return 0;
     }
 
     private static string FindWorkspaceRoot()

@@ -268,6 +268,7 @@ public partial class DsmEntryViewModel : ObservableObject
     [ObservableProperty] private int? _editingEntryId;
     [ObservableProperty] private string _startTime = "08:00 AM";
     [ObservableProperty] private string _endTime = "08:00 PM";
+    private double? _savedEntryGrossSales;
 
     // Nozzle readings
     public ObservableCollection<NozzleReadingRow> NozzleReadings { get; } = new();
@@ -753,7 +754,18 @@ public partial class DsmEntryViewModel : ObservableObject
         }
         TotalLitres = NozzleReadings.Sum(n => n.SaleLitres);
         var calc = _dsmCalculationService.Calculate(BuildCalculationDto());
-        GrossSales = (double)calc.GrossSales;
+        
+        // If nozzle readings have no closing values (e.g. historical entry with missing nozzle child records)
+        // but the entry has a saved GrossSales from DB, preserve the saved GrossSales rather than zeroing it out.
+        if (calc.GrossSales == 0 && _savedEntryGrossSales.HasValue && _savedEntryGrossSales.Value > 0 && NozzleReadings.All(n => !n.ClosingReading.HasValue || n.ClosingReading == 0))
+        {
+            GrossSales = (double)_savedEntryGrossSales.Value;
+        }
+        else
+        {
+            GrossSales = (double)calc.GrossSales;
+        }
+
         TotalPaymentIn = (double)calc.TotalInDirect;
         TotalDebtors = (double)calc.TotalCreditors;
         FinalAdjusted = (double)calc.TotalCollection;
@@ -946,6 +958,7 @@ public partial class DsmEntryViewModel : ObservableObject
         Expenses.Clear();
         KhandharePetroleumEntries.Clear();
         NozzleReadings.Clear();
+        _savedEntryGrossSales = null;
         Cash1 = new CashDenomRow { CashType = "Cash1", OnTotalChanged = RecalculateAll };
         Cash2 = new CashDenomRow { CashType = "Cash2", OnTotalChanged = RecalculateAll };
         LoadNozzlesForPump();
@@ -1018,6 +1031,13 @@ public partial class DsmEntryViewModel : ObservableObject
             else
             {
                 SelectedConnectedPump = null;
+            }
+
+            // Capture existing saved GrossSales from DB (to prevent 0 GrossSales on historical entries missing child NozzleReadings)
+            _savedEntryGrossSales = (entry.GrossSales > 0 ? (double)entry.GrossSales : null);
+            if (connectedEntry != null && connectedEntry.GrossSales > 0)
+            {
+                _savedEntryGrossSales = (_savedEntryGrossSales ?? 0) + (double)connectedEntry.GrossSales;
             }
 
             // Explicitly load nozzles loading

@@ -92,6 +92,7 @@ public class DayReportDto
     // DSM Summary (All shifts of the day)
     public List<DsmSummaryRowDto> DsmSummaryRows { get; set; } = new();
     public DsmSummaryRowDto DsmSummaryTotals { get; set; } = new();
+    public List<DsmShiftTotalDto> DsmShiftTotals { get; set; } = new();
 
     // Cash Summary
     public CashAggregateDto Cash1 { get; set; } = new();

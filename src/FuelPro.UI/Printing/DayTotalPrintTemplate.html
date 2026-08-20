@@ -49,6 +49,10 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
 .coll-item-val{font-size:14px;font-weight:700;color:#1a3a6b;margin-top:2px}
 .rpt-ftr{background:#0f1923;color:rgba(255,255,255,.65);font-size:10px;padding:9px 24px;display:flex;justify-content:space-between;align-items:center}
 .rpt-ftr strong{color:#fff}
+.dsm-summary-table th, .dsm-summary-table td{padding:4px 3px;font-size:10.5px}
+.dsm-summary-table th.col-others, .dsm-summary-table td.col-others{width:45px;max-width:50px;font-size:9.5px;padding-left:1px;padding-right:1px}
+.dsm-summary-table th.col-short, .dsm-summary-table td.col-short{min-width:82px;white-space:nowrap;font-weight:700}
+.dsm-summary-table th.col-gross, .dsm-summary-table td.col-gross{min-width:80px;white-space:nowrap;font-weight:700}
 @media print{
   @page{size:A4 portrait;margin:0}
   body{background:#fff;font-size:10px;margin:4mm}
@@ -66,8 +70,10 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
   td{padding:2px 2px;font-size:8.5px}
   .tr-total td,.tr-recon-total td{font-size:8.5px}
   #tDsm{width:100%!important;table-layout:auto!important}
-  #tDsm th,#tDsm td{padding:2px 1.5px!important;font-size:7.5px!important;white-space:nowrap!important}
-  #tDsm th{white-space:normal!important;line-height:1.1!important}
+  .dsm-summary-table th, .dsm-summary-table td, #tDsm th, #tDsm td{padding:2px 1px!important;font-size:7px!important;white-space:nowrap!important}
+  .dsm-summary-table th{white-space:normal!important;line-height:1.1!important}
+  .dsm-summary-table th.col-others, .dsm-summary-table td.col-others{width:25px!important;max-width:28px!important;padding:2px 0.5px!important}
+  .dsm-summary-table th.col-short, .dsm-summary-table td.col-short{min-width:48px!important}
   #nozzleGroupsContainer{gap:6px!important;margin-bottom:4px!important}
   #nozzleGroupsContainer > div{padding:3px 5px!important}
   #nozzleGroupsContainer table{font-size:7.5px!important;line-height:1.1!important;margin-top:1px!important;margin-bottom:2px!important}
@@ -124,7 +130,7 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
   <!-- SECTION 2: DSM SUMMARY (ALL SHIFTS) -->
   <div class="sec">
     <div class="sec-title">2. DSM Summary &mdash; All Shifts</div>
-    <table><thead><tr><th>DSM Name</th><th>Shift</th><th>Pump</th><th>PhonePe (M)</th><th>PhonePe (N)</th><th>Card (M)</th><th>Card (N)</th><th>Petro (M)</th><th>Petro (N)</th><th>Bank Cash</th><th>Debtors</th><th>Expenses</th><th>Testing</th><th>Hand Cash</th><th>Gross Sale</th><th>Mismatch</th></tr></thead><tbody id="tDsm"></tbody></table>
+    <table class="dsm-summary-table"><thead><tr><th>DSM Name</th><th>Shift</th><th>Pump</th><th>PhonePe (M)</th><th>PhonePe (N)</th><th>Card (M)</th><th>Card (N)</th><th>Petro (M)</th><th>Petro (N)</th><th>Bank Cash</th><th>Debtors</th><th>Expenses</th><th>Testing</th><th>Hand Cash</th><th class="col-others">Others</th><th>Gross Sale</th><th class="col-short">Short</th></tr></thead><tbody id="tDsm"></tbody></table>
   </div>
   <hr class="div">
 
@@ -248,11 +254,15 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
 var printData = /* INJECT_JSON_HERE */{};
 
 function inr(v){
-  if(v===null||v===undefined||v===''||isNaN(v)||v===0)return'\u2013';
-  return'\u20B9'+parseFloat(v).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
+  if(v===null||v===undefined||v===''||isNaN(v))return'\u2013';
+  var val = parseFloat(v);
+  if(Math.abs(val) < 0.005) return '\u20B90.00';
+  return (val < 0 ? '-\u20B9' : '\u20B9') + Math.abs(val).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
 }
 function inrZ(v){
-  return'\u20B9'+parseFloat(v||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
+  var val = parseFloat(v||0);
+  if(Math.abs(val) < 0.005) return '\u20B90.00';
+  return (val < 0 ? '-\u20B9' : '\u20B9') + Math.abs(val).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
 }
 function shiftBadge(s){
   if(!s) return '';
@@ -309,7 +319,7 @@ function renderData(){
   // DSM Summary
   var tb=document.getElementById('tDsm');tb.innerHTML='';
   var prevShift='';
-  var tot={phM:0,phN:0,ccM:0,ccN:0,pcM:0,pcN:0,bk:0,deb:0,exp:0,test:0,c2:0,sale:0,mis:0};
+  var tot={phM:0,phN:0,ccM:0,ccN:0,pcM:0,pcN:0,bk:0,deb:0,exp:0,test:0,c2:0,oth:0,sale:0,mis:0};
   (d.dsmSummaryRows||d.dsmEntries||[]).forEach(function(r){
     if(r.shift!==prevShift){
       var sh=document.createElement('tr');sh.className='tr-shift';
@@ -320,7 +330,7 @@ function renderData(){
         else if (upper.endsWith(' B') || upper === 'B') suffix = ' &mdash; Shift II';
         else if (upper.endsWith(' C') || upper === 'C') suffix = ' &mdash; Shift III';
       }
-      sh.innerHTML='<td colspan="16">'+shiftBadge(r.shift)+suffix+'</td>';
+      sh.innerHTML='<td colspan="17">'+shiftBadge(r.shift)+suffix+'</td>';
       tb.appendChild(sh);prevShift=r.shift;
     }
     var tr=document.createElement('tr');
@@ -350,6 +360,7 @@ function renderData(){
     var test = getVal(r, 'testing') || 0;
     var c1 = getVal(r, 'cashDeposit') || getVal(r, 'cash1') || getVal(r, 'bankCash') || 0;
     var c2 = getVal(r, 'cashInHand') || getVal(r, 'cash2') || 0;
+    var oth = getVal(r, 'others') || 0;
     var sale = getVal(r, 'grossSales') || getVal(r, 'grossSale') || 0;
 
     var rDiff = getVal(r, 'difference');
@@ -359,12 +370,12 @@ function renderData(){
     var pVal = getVal(r, 'pumpNoDisplay') || getVal(r, 'pumpNo') || getVal(r, 'pumpId') || '';
     var pDisp = pVal ? (pVal.toString().startsWith('P-') ? pVal : 'P-' + pVal) : '\u2013';
 
-    tr.innerHTML='<td>'+(getVal(r, 'dsmName')||'')+'</td><td>'+shiftBadge(getVal(r, 'shift'))+'</td><td>'+pDisp+'</td><td>'+inr(ph)+'</td><td>'+inr(phN)+'</td><td>'+inr(ccM)+'</td><td>'+inr(ccN)+'</td><td>'+inr(petroM)+'</td><td>'+inr(petroN)+'</td><td>'+inr(c1)+'</td><td>'+inr(deb)+'</td><td>'+inr(exp)+'</td><td>'+inr(test)+'</td><td>'+inr(c2)+'</td><td>'+inr(sale)+'</td><td>'+inr(mismatch)+'</td>';
+    tr.innerHTML='<td>'+(getVal(r, 'dsmName')||'')+'</td><td>'+shiftBadge(getVal(r, 'shift'))+'</td><td>'+pDisp+'</td><td>'+inr(ph)+'</td><td>'+inr(phN)+'</td><td>'+inr(ccM)+'</td><td>'+inr(ccN)+'</td><td>'+inr(petroM)+'</td><td>'+inr(petroN)+'</td><td>'+inr(c1)+'</td><td>'+inr(deb)+'</td><td>'+inr(exp)+'</td><td>'+inr(test)+'</td><td>'+inr(c2)+'</td><td class="col-others">'+inr(oth)+'</td><td class="col-gross">'+inr(sale)+'</td><td class="col-short">'+inr(mismatch)+'</td>';
     tb.appendChild(tr);
-    tot.phM+=ph;tot.phN+=phN;tot.ccM+=ccM;tot.ccN+=ccN;tot.pcM+=petroM;tot.pcN+=petroN;tot.bk+=c1;tot.deb+=deb;tot.exp+=exp;tot.test+=test;tot.c2+=c2;tot.sale+=sale;tot.mis+=mismatch;
+    tot.phM+=ph;tot.phN+=phN;tot.ccM+=ccM;tot.ccN+=ccN;tot.pcM+=petroM;tot.pcN+=petroN;tot.bk+=c1;tot.deb+=deb;tot.exp+=exp;tot.test+=test;tot.c2+=c2;tot.oth+=oth;tot.sale+=sale;tot.mis+=mismatch;
   });
   var ttr=document.createElement('tr');ttr.className='tr-total';
-  ttr.innerHTML='<td>DAY TOTAL</td><td>\u2013</td><td>\u2013</td><td>'+inrZ(tot.phM)+'</td><td>'+inrZ(tot.phN)+'</td><td>'+inrZ(tot.ccM)+'</td><td>'+inrZ(tot.ccN)+'</td><td>'+inrZ(tot.pcM)+'</td><td>'+inrZ(tot.pcN)+'</td><td>'+inrZ(tot.bk)+'</td><td>'+inrZ(tot.deb)+'</td><td>'+inrZ(tot.exp)+'</td><td>'+inrZ(tot.test)+'</td><td>'+inrZ(tot.c2)+'</td><td>'+inrZ(tot.sale)+'</td><td>'+inrZ(tot.mis)+'</td>';
+  ttr.innerHTML='<td>DAY TOTAL</td><td>\u2013</td><td>\u2013</td><td>'+inrZ(tot.phM)+'</td><td>'+inrZ(tot.phN)+'</td><td>'+inrZ(tot.ccM)+'</td><td>'+inrZ(tot.ccN)+'</td><td>'+inrZ(tot.pcM)+'</td><td>'+inrZ(tot.pcN)+'</td><td>'+inrZ(tot.bk)+'</td><td>'+inrZ(tot.deb)+'</td><td>'+inrZ(tot.exp)+'</td><td>'+inrZ(tot.test)+'</td><td>'+inrZ(tot.c2)+'</td><td class="col-others">'+inrZ(tot.oth)+'</td><td class="col-gross">'+inrZ(tot.sale)+'</td><td class="col-short">'+inrZ(tot.mis)+'</td>';
   tb.appendChild(ttr);
 
   // getVal helper for case-insensitive JSON key lookup

@@ -79,6 +79,7 @@ public class ReportService : IReportService
         var summaryRows = _aggregation.BuildDsmSummaryRows(entriesList);
         dto.DsmSummaryRows = summaryRows;
         dto.DsmSummaryTotals = _aggregation.BuildDsmSummaryTotalRow(summaryRows);
+        dto.DsmShiftTotals = _aggregation.BuildDsmShiftTotals(summaryRows);
 
         // 3. Cash Summary (Table B)
         dto.Cash1 = _aggregation.AggregateCash(entriesList, "Cash1");
@@ -292,16 +293,35 @@ public class ReportService : IReportService
         dto.IsBalanced = Math.Abs(dto.Difference) < 0.01;
         dto.BalancedStatus = dto.IsBalanced ? "Balanced" : (dto.Difference < 0 ? "Short" : "Excess");
 
-        dto.PersonalDebtors = entriesList
-            .SelectMany(e => e.PersonalDebtors ?? new List<DsmPersonalDebtor>())
-            .Select(pd => new DsmPersonalDebtorPrintDto
+        var personalDebtorsList = new List<DsmPersonalDebtorPrintDto>();
+        foreach (var e in entriesList)
+        {
+            if (e.PersonalDebtors != null && e.PersonalDebtors.Count > 0)
             {
-                DsmName = pd.DsmName,
-                FuelProduct = pd.FuelProduct ?? string.Empty,
-                Remarks = pd.Remarks ?? string.Empty,
-                Amount = pd.Amount
-            })
-            .ToList();
+                personalDebtorsList.AddRange(e.PersonalDebtors.Select(pd => new DsmPersonalDebtorPrintDto
+                {
+                    DsmName = pd.DsmName,
+                    FuelProduct = pd.FuelProduct ?? string.Empty,
+                    Remarks = pd.Remarks ?? string.Empty,
+                    Amount = pd.Amount
+                }));
+            }
+            else
+            {
+                double mismatch = (double)(e.TotalCollection - e.GrossSales);
+                if (mismatch < -10.0 && !e.ReconciledToPumpId.HasValue)
+                {
+                    personalDebtorsList.Add(new DsmPersonalDebtorPrintDto
+                    {
+                        DsmName = e.DsmName,
+                        FuelProduct = "Fuel",
+                        Remarks = $"Shift Shortage (Pump {e.PumpId})",
+                        Amount = Math.Abs(mismatch)
+                    });
+                }
+            }
+        }
+        dto.PersonalDebtors = personalDebtorsList;
 
         dto.KhandhareEntries = entriesList
             .SelectMany(e => e.KhandharePetroleumEntries ?? new List<KhandharePetroleumEntry>())
@@ -407,6 +427,7 @@ public class ReportService : IReportService
 
         dto.DsmSummaryRows = summaryRows;
         dto.DsmSummaryTotals = _aggregation.BuildDsmSummaryTotalRow(summaryRows);
+        dto.DsmShiftTotals = _aggregation.BuildDsmShiftTotals(summaryRows);
 
         // 3. Cash Summary (Table B)
         dto.Cash1 = _aggregation.AggregateCash(todayEntries, "Cash1");
@@ -590,16 +611,35 @@ public class ReportService : IReportService
         dto.IsBalanced = Math.Abs(dto.Difference) < 0.01;
         dto.BalancedStatus = dto.IsBalanced ? "Balanced" : (dto.Difference < 0 ? "Short" : "Excess");
 
-        dto.PersonalDebtors = todayEntries
-            .SelectMany(e => e.PersonalDebtors ?? new List<DsmPersonalDebtor>())
-            .Select(pd => new DsmPersonalDebtorPrintDto
+        var dayPersonalDebtorsList = new List<DsmPersonalDebtorPrintDto>();
+        foreach (var e in todayEntries)
+        {
+            if (e.PersonalDebtors != null && e.PersonalDebtors.Count > 0)
             {
-                DsmName = pd.DsmName,
-                FuelProduct = pd.FuelProduct ?? string.Empty,
-                Remarks = pd.Remarks ?? string.Empty,
-                Amount = pd.Amount
-            })
-            .ToList();
+                dayPersonalDebtorsList.AddRange(e.PersonalDebtors.Select(pd => new DsmPersonalDebtorPrintDto
+                {
+                    DsmName = pd.DsmName,
+                    FuelProduct = pd.FuelProduct ?? string.Empty,
+                    Remarks = pd.Remarks ?? string.Empty,
+                    Amount = pd.Amount
+                }));
+            }
+            else
+            {
+                double mismatch = (double)(e.TotalCollection - e.GrossSales);
+                if (mismatch < -10.0 && !e.ReconciledToPumpId.HasValue)
+                {
+                    dayPersonalDebtorsList.Add(new DsmPersonalDebtorPrintDto
+                    {
+                        DsmName = e.DsmName,
+                        FuelProduct = "Fuel",
+                        Remarks = $"Shift Shortage (Pump {e.PumpId})",
+                        Amount = Math.Abs(mismatch)
+                    });
+                }
+            }
+        }
+        dto.PersonalDebtors = dayPersonalDebtorsList;
 
         dto.KhandhareEntries = todayEntries
             .SelectMany(e => e.KhandharePetroleumEntries ?? new List<KhandharePetroleumEntry>())
@@ -631,6 +671,10 @@ public class ReportService : IReportService
             {
                 double rawShort = Math.Abs(mismatch);
                 double dsmLoss = (double)(e.PersonalDebtors?.Sum(pd => pd.Amount) ?? 0);
+                if (dsmLoss == 0 && rawShort > 10.0)
+                {
+                    dsmLoss = rawShort;
+                }
                 double netShort = Math.Max(0, rawShort - dsmLoss);
                 totalDsmShort += netShort;
             }

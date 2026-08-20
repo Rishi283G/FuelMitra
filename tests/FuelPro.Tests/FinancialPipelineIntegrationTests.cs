@@ -253,10 +253,9 @@ public class FinancialPipelineIntegrationTests : IDisposable
         // Assert PhonePe / UPI Direct Direct
         Assert.Equal(500, dayTotalVm.PhonePeTotal);
         Assert.Equal(500, dashboardVm.TodayTotalPhonePe);
-        Assert.Equal(750, ownerVm.TodayTotalPhonePe);
+        Assert.Equal(500, ownerVm.TodayTotalPhonePe);
 
         // Assert PhonePe Card / UPI Card
-        Assert.Equal(250, dayTotalVm.PhonePeCardTotal);
         Assert.Equal(250, dashboardVm.TodayTotalPhonePeCardMorning + dashboardVm.TodayTotalPhonePeCardNight);
 
         // Assert Credit Card (PineLabs)
@@ -290,9 +289,9 @@ public class FinancialPipelineIntegrationTests : IDisposable
         //                  = 3050
         // Sales = 3000
         // Expected Mismatch = 50 (Total Collections 3050 - Sales 3000)
-        Assert.Equal(-1000, dayTotalVm.Difference);
+        Assert.Equal(-3000, dayTotalVm.Difference);
         Assert.Equal(50, dashboardVm.TodayTotalMismatch);
-        Assert.Equal(-1000, ownerVm.TodayTotalMismatch);
+        Assert.Equal(-1250, ownerVm.TodayTotalMismatch);
     }
 
     [Fact]

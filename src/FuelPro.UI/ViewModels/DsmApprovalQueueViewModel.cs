@@ -168,10 +168,64 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(HeaderTitleDisplay))]
     [NotifyPropertyChangedFor(nameof(HeaderShiftDateDisplay))]
     [NotifyPropertyChangedFor(nameof(HeaderSubmittedTimeDisplay))]
+    [NotifyPropertyChangedFor(nameof(IsSubmissionComplete))]
+    [NotifyPropertyChangedFor(nameof(SubmissionIncompleteReason))]
+    [NotifyPropertyChangedFor(nameof(CanApprove))]
     private DsmPendingSubmission? _selectedSubmission;
     [ObservableProperty] private string _statusMessage = "";
     [ObservableProperty] private bool _isLoadingSubmissions;
-    [ObservableProperty] private bool _isLoadingDetails;
+    
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsSubmissionComplete))]
+    [NotifyPropertyChangedFor(nameof(SubmissionIncompleteReason))]
+    [NotifyPropertyChangedFor(nameof(CanApprove))]
+    private bool _isLoadingDetails;
+
+    public bool IsSubmissionComplete
+    {
+        get
+        {
+            if (SelectedSubmission == null) return false;
+            if (IsLoadingDetails) return false;
+            if (NozzleReadings == null || NozzleReadings.Count == 0) return false;
+
+            foreach (var n in NozzleReadings)
+            {
+                if (n.Rate <= 0) return false;
+                if (n.ClosingReading < n.OpeningReading) return false;
+            }
+
+            return true;
+        }
+    }
+
+    public string SubmissionIncompleteReason
+    {
+        get
+        {
+            if (SelectedSubmission == null) return "No submission selected.";
+            if (IsLoadingDetails) return "⏳ Fetching submission details from PWA App...";
+            if (NozzleReadings == null || NozzleReadings.Count == 0) return "⚠️ Incomplete submission: No nozzle readings fetched from PWA App.";
+
+            foreach (var n in NozzleReadings)
+            {
+                if (n.Rate <= 0) return $"⚠️ Incomplete submission: Fuel rate is missing or 0 for Nozzle #{n.NozzleId}.";
+                if (n.ClosingReading < n.OpeningReading) return $"⚠️ Invalid readings: Closing reading ({n.ClosingReading:F2}) is less than opening reading ({n.OpeningReading:F2}) on Nozzle #{n.NozzleId}.";
+            }
+
+            return string.Empty;
+        }
+    }
+
+    public bool CanApprove => SelectedSubmission != null && IsEditable && IsSubmissionComplete;
+
+    public void NotifySubmissionStateChanged()
+    {
+        OnPropertyChanged(nameof(IsSubmissionComplete));
+        OnPropertyChanged(nameof(SubmissionIncompleteReason));
+        OnPropertyChanged(nameof(CanApprove));
+        ApproveCommand.NotifyCanExecuteChanged();
+    }
 
     // Detailed Editing Fields
     [ObservableProperty] private double _cashAmount;
@@ -389,6 +443,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                 TimelineLogs.Clear();
             }
         }
+        NotifySubmissionStateChanged();
     }
 
     private async Task LoadSubmissionDetailsAsync(DsmPendingSubmission submission)
@@ -637,6 +692,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
         finally
         {
             IsLoadingDetails = false;
+            NotifySubmissionStateChanged();
         }
     }
 
@@ -935,6 +991,14 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
     private async Task ApproveAsync()
     {
         if (SelectedSubmission == null) return;
+
+        // Completeness Guard
+        if (!IsSubmissionComplete)
+        {
+            MessageBox.Show($"Cannot approve submission: {SubmissionIncompleteReason}", 
+                "Incomplete PWA Submission", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
 
         // Validation Rules
         if (HasContinuityWarnings && !OverrideContinuity)

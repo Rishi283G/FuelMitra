@@ -890,9 +890,18 @@ public class SyncEngine
                 ? DateTime.MinValue.ToUniversalTime().ToString("o") 
                 : settings.LastSyncTime.AddMinutes(-5).ToUniversalTime().ToString("o");
 
-            // Fetch records updated since tableQueryTime for this StationId
+            // Fetch records updated since tableQueryTime for this StationId (supporting station_id aliases)
+            var stationFilter = string.Equals(settings.StationId, "KANDHARE-PETROLEUM", StringComparison.OrdinalIgnoreCase)
+                ? $"station_id=eq.{settings.StationId}"
+                : $"or=(station_id.eq.{settings.StationId},station_id.eq.KANDHARE-PETROLEUM,station_id.is.null)";
             var response = await _httpClient.SendRequestAsync(HttpMethod.Get,
-                $"{tableDef.TableName}?station_id=eq.{settings.StationId}&updated_at=gt.{tableQueryTime}");
+                $"{tableDef.TableName}?{stationFilter}&updated_at=gt.{tableQueryTime}");
+            if (!response.IsSuccessStatusCode)
+            {
+                // Fallback to simple query if complex or-filter fails
+                response = await _httpClient.SendRequestAsync(HttpMethod.Get,
+                    $"{tableDef.TableName}?updated_at=gt.{tableQueryTime}");
+            }
             if (!response.IsSuccessStatusCode)
             {
                 var error = await response.Content.ReadAsStringAsync();
