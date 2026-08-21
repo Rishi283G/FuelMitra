@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pyrosync-dsm-v1.3';
+const CACHE_NAME = 'pyrosync-dsm-v1.4';
 const ASSETS = [
   '/',
   '/index.html',
