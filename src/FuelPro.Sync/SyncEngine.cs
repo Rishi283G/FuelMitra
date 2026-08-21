@@ -315,9 +315,11 @@ public class SyncEngine
 
                 if (localIds.Count == 0) continue;
 
-                var idMappings = await context.SyncIdMappings
+                var idMappings = (await context.SyncIdMappings
                     .Where(m => m.TableName == tableName)
-                    .ToDictionaryAsync(m => m.LocalId, m => m.RemoteGuid);
+                    .ToListAsync())
+                    .GroupBy(m => m.LocalId)
+                    .ToDictionary(g => g.Key, g => g.First().RemoteGuid);
 
                 var alreadyLoggedIds = new HashSet<int>(await context.SyncChangeLogs
                     .Where(l => l.TableName == tableName && l.StationId == stationId)
@@ -567,7 +569,7 @@ public class SyncEngine
                         { "Timestamp", del.CreatedAt.ToUniversalTime().ToString("o") }
                     };
                     var logJson = JsonConvert.SerializeObject(new[] { logDict });
-                    var logResponse = await _httpClient.SendRequestAsync(HttpMethod.Post, "SyncChangeLogs", logJson, isUpsert: true, onConflict: "SyncGuid");
+                    var logResponse = await _httpClient.SendRequestAsync(HttpMethod.Post, "SyncChangeLogs", logJson, isUpsert: false);
                     if (!logResponse.IsSuccessStatusCode)
                     {
                         var logError = await logResponse.Content.ReadAsStringAsync();
@@ -1341,6 +1343,7 @@ public class SyncEngine
             if (excludePk && pkProperties != null && pkProperties.Contains(property)) continue;
             if (isTestEnv && tableName == "PaymentCollections" && testExcludeCols.Contains(property.Name)) continue;
             if (tableName == "DsmPumpAssignments" && property.Name == "CompletedDate") continue;
+            if (tableName == "DsmPersonalDebtorRepayments" && property.Name == "CardBatch") continue;
             
             values[property.Name] = entry.Property(property.Name).CurrentValue;
         }

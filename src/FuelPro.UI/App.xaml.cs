@@ -130,9 +130,11 @@ public partial class App : Application
                     .ToListAsync();
 
                 // Load the stable SyncIdMappings GUIDs so upserts hit the conflict key correctly
-                var idMappings = await context.SyncIdMappings
+                var idMappings = (await context.SyncIdMappings
                     .Where(m => m.TableName == "PumpMappings")
-                    .ToDictionaryAsync(m => m.LocalId, m => m.RemoteGuid);
+                    .ToListAsync())
+                    .GroupBy(m => m.LocalId)
+                    .ToDictionary(g => g.Key, g => g.First().RemoteGuid);
 
                 var mappingsToQueue = allMappings.Where(m => !alreadyLoggedRecordIds.Contains(m.PumpMappingId)).ToList();
                 if (mappingsToQueue.Any())
@@ -158,6 +160,38 @@ public partial class App : Application
                     }
                     await context.SaveChangesAsync();
                     Log.Information("Queued {Count} pump mappings for sync to Supabase under station {StationId}", mappingsToQueue.Count, settings.StationId);
+                }
+
+                // Also ensure Settings is queued for sync under the current StationId
+                var settingEntity = await context.Settings.FirstOrDefaultAsync();
+                if (settingEntity != null)
+                {
+                    var settingLogged = await context.SyncChangeLogs
+                        .AnyAsync(l => l.TableName == "Settings" && l.StationId == settings.StationId);
+                    if (!settingLogged)
+                    {
+                        var settingIdMappings = (await context.SyncIdMappings
+                            .Where(m => m.TableName == "Settings")
+                            .ToListAsync())
+                            .GroupBy(m => m.LocalId)
+                            .ToDictionary(g => g.Key, g => g.First().RemoteGuid);
+
+                        var recordGuid = settingIdMappings.TryGetValue(settingEntity.SettingId, out var sg) ? sg : Guid.NewGuid().ToString();
+                        context.SyncChangeLogs.Add(new SyncChangeLog
+                        {
+                            TableName = "Settings",
+                            RecordId = settingEntity.SettingId,
+                            Operation = "INSERT",
+                            CreatedAt = DateTime.Now,
+                            IsSynced = false,
+                            SyncGuid = Guid.NewGuid().ToString(),
+                            RecordGuid = recordGuid,
+                            StationId = settings.StationId,
+                            MachineId = settings.MachineId
+                        });
+                        await context.SaveChangesAsync();
+                        Log.Information("Queued Settings for sync to Supabase under station {StationId}", settings.StationId);
+                    }
                 }
             }
             catch (Exception syncEx)
