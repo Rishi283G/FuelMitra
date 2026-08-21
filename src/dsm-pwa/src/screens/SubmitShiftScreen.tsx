@@ -1036,10 +1036,8 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           const existingRow = currentMap.get(n.nozzleId);
           const draftEntry = draftMap[n.nozzleId];
 
-          // Opening reading: authoritative closing from previous shift, else existing state, else draft
-          const opening = prevClosing > 0
-            ? prevClosing
-            : (existingRow && existingRow.openingReading ? existingRow.openingReading : (draftEntry?.openingReading || 0));
+          // Opening reading: authoritative closing from previous shift, else 0 (manual entry mode)
+          const opening = prevClosing > 0 ? prevClosing : 0;
 
           // Closing reading: ALWAYS preserve whatever the user actively typed in memory, else restore draft
           let closing = 0;
