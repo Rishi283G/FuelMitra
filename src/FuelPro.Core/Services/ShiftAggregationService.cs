@@ -50,15 +50,18 @@ public class ShiftAggregationService : IShiftAggregationService
                 var p1 = entry.PaymentCollection;
                 var p2 = connected?.PaymentCollection;
 
+                bool isDay = string.Equals(entry.Shift?.ShiftType, "B", StringComparison.OrdinalIgnoreCase)
+                          || string.Equals(entry.Shift?.ShiftType, "II", StringComparison.OrdinalIgnoreCase);
+
                 double qrSum = (entry.QrPayments?.Sum(q => q.Amount) ?? 0) + (connected?.QrPayments?.Sum(q => q.Amount) ?? 0);
-                double qrM = (entry.QrPayments?.Where(q => q.Slot == "Morning" || q.Slot == "Day" || string.IsNullOrEmpty(q.Slot)).Sum(q => q.Amount) ?? 0)
-                           + (connected?.QrPayments?.Where(q => q.Slot == "Morning" || q.Slot == "Day" || string.IsNullOrEmpty(q.Slot)).Sum(q => q.Amount) ?? 0);
+                double qrM = (entry.QrPayments?.Where(q => q.Slot == "Morning" || (isDay && q.Slot == "Day") || string.IsNullOrEmpty(q.Slot)).Sum(q => q.Amount) ?? 0)
+                           + (connected?.QrPayments?.Where(q => q.Slot == "Morning" || (isDay && q.Slot == "Day") || string.IsNullOrEmpty(q.Slot)).Sum(q => q.Amount) ?? 0);
                 double qrN = (entry.QrPayments?.Where(q => q.Slot == "Night").Sum(q => q.Amount) ?? 0)
                            + (connected?.QrPayments?.Where(q => q.Slot == "Night").Sum(q => q.Amount) ?? 0);
 
-                double phM = (p1?.PhonePeMorning ?? 0) + (p2?.PhonePeMorning ?? 0) + qrM;
-                double phD = (p1?.PhonePeDay ?? 0) + (p2?.PhonePeDay ?? 0) + qrM;
-                double phN = (p1?.PhonePeNight ?? 0) + (p2?.PhonePeNight ?? 0) + qrN;
+                double phM = (p1?.PhonePeMorning ?? 0) + (p2?.PhonePeMorning ?? 0) + (isDay ? 0 : qrM);
+                double phD = (p1?.PhonePeDay ?? 0) + (p2?.PhonePeDay ?? 0) + (isDay ? qrSum : (entry.QrPayments?.Where(q => q.Slot == "Day").Sum(q => q.Amount) ?? 0));
+                double phN = (p1?.PhonePeNight ?? 0) + (p2?.PhonePeNight ?? 0) + (isDay ? 0 : qrN);
                 double ph = (p1?.PhonePe ?? 0) + (p2?.PhonePe ?? 0) + qrSum;
 
                 double ppcM = (p1?.PhonePeCardMorning ?? 0) + (p2?.PhonePeCardMorning ?? 0);
@@ -84,27 +87,36 @@ public class ShiftAggregationService : IShiftAggregationService
                     ? distinctNozzles.Sum(n => (double)n.Amount)
                     : (double)entry.GrossSales;
 
+                double finalPhM = isDay ? (phD > 0 ? phD : ph) : (phM > 0 ? phM : (phD > 0 ? phD : ph));
+                double finalPhN = isDay ? 0 : phN;
+                double finalPpcM = isDay ? ppcD : (ppcM > 0 ? ppcM : ppcD);
+                double finalPpcN = isDay ? 0 : ppcN;
+                double finalCcM = isDay ? ccD : (ccM > 0 ? ccM : ccD);
+                double finalCcN = isDay ? 0 : ccN;
+                double finalPetroM = isDay ? (petroD > 0 ? petroD : petro) : (petroM > 0 ? petroM : (petroD > 0 ? petroD : petro));
+                double finalPetroN = isDay ? 0 : petroN;
+
                 rows.Add(new DsmSummaryRowDto
                 {
                     DsmName = entry.DsmName,
                     Shift = entry.Shift?.ShiftType ?? "",
                     PumpId = entry.PumpId,
                     ConnectedPumpId = entry.ConnectedPumpId,
-                    PhonePeCard = ppc > 0 ? ppc : (ppcM + ppcD + ppcN),
-                    PhonePeCardMorning = ppcM > 0 ? ppcM : ppcD,
+                    PhonePeCard = ppc > 0 ? ppc : (finalPpcM + finalPpcN),
+                    PhonePeCardMorning = finalPpcM,
                     PhonePeCardDay = ppcD,
-                    PhonePeCardNight = ppcN,
-                    PhonePe = ph > 0 ? ph : (phM + phD + phN),
-                    PhonePeMorning = phM > 0 ? phM : (phD > 0 ? phD : ph),
+                    PhonePeCardNight = finalPpcN,
+                    PhonePe = ph > 0 ? ph : (finalPhM + finalPhN),
+                    PhonePeMorning = finalPhM,
                     PhonePeDay = phD,
-                    PhonePeNight = phN,
-                    CreditCardMorning = ccM > 0 ? ccM : ccD,
+                    PhonePeNight = finalPhN,
+                    CreditCardMorning = finalCcM,
                     CreditCardDay = ccD,
-                    CreditCardNight = ccN,
-                    PetroCard = petro > 0 ? petro : (petroM + petroD + petroN),
-                    PetroCardMorning = petroM > 0 ? petroM : (petroD > 0 ? petroD : petro),
+                    CreditCardNight = finalCcN,
+                    PetroCard = petro > 0 ? petro : (finalPetroM + finalPetroN),
+                    PetroCardMorning = finalPetroM,
                     PetroCardDay = petroD,
-                    PetroCardNight = petroN,
+                    PetroCardNight = finalPetroN,
                     Others = (p1?.Others ?? 0) + (p2?.Others ?? 0),
                     CashDeposit = cash1 > 0 ? cash1 : ((p1?.CashDeposit ?? 0) + (p2?.CashDeposit ?? 0)),
                     Debit = totalDebit,
