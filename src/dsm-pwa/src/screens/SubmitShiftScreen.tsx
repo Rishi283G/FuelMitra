@@ -811,19 +811,25 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       const nozzleFuelTypes: Record<number, string> = {};
       const nozzleIds = configRows.map((r) => r.nozzleId);
 
-      // Fast check cached openings from localStorage
-      const openingsCacheKey = `nozzle_openings_${station || "default"}`;
+      // Purge legacy contaminated cache keys from older versions
+      try {
+        Object.keys(localStorage).forEach((k) => {
+          if (k.startsWith("nozzle_openings_") && !k.startsWith("nozzle_openings_v2_")) {
+            localStorage.removeItem(k);
+          }
+        });
+      } catch {}
+
+      const openingsCacheKey = `nozzle_openings_v2_${station || "default"}`;
+      let cachedOpenings: Record<number, number> = {};
       try {
         const cachedOpeningsStr = localStorage.getItem(openingsCacheKey);
         if (cachedOpeningsStr) {
-          const parsed = JSON.parse(cachedOpeningsStr);
-          nozzleIds.forEach((nId) => {
-            if (parsed[nId] !== undefined && Number(parsed[nId]) > 0) {
-              prevClosings[nId] = Number(parsed[nId]);
-            }
-          });
+          cachedOpenings = JSON.parse(cachedOpeningsStr);
         }
       } catch {}
+
+      let queriedSuccessfully = false;
 
       // ── Step 1: Most recent closing reading from NozzleReadings (Admin Side Ground Truth) ─
       // Query specifically per nozzle ordered by ClosingReading descending for the current station.
@@ -862,6 +868,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
             }
           })
         );
+        queriedSuccessfully = true;
       } catch (e) {
         console.error("Failed to fetch latest NozzleReadings from admin side:", e);
       }
@@ -905,6 +912,15 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         }
       } catch (e) {
         console.error("Failed to fetch from DsmSubmissions:", e);
+      }
+
+      // If offline / network error and no readings fetched, fallback to cachedOpenings
+      if (!queriedSuccessfully) {
+        nozzleIds.forEach((nId) => {
+          if (cachedOpenings[nId] !== undefined && prevClosings[nId] === undefined) {
+            prevClosings[nId] = Number(cachedOpenings[nId]);
+          }
+        });
       }
 
       // ── Step 3: Local IndexedDB drafts (offline fallback) ─────────────────────────────────
