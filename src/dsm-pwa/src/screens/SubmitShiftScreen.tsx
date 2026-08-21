@@ -826,8 +826,9 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       } catch {}
 
       // ── Step 1: Most recent closing reading from NozzleReadings (Admin Side Ground Truth) ─
-      // Query specifically per nozzle ordered by NozzleReadingId descending.
-      // If not found with current station filter, fallback to any matching nozzle entry in the station database.
+      // Query specifically per nozzle ordered by ClosingReading descending across all station records.
+      // Since pump fuel meters strictly increase with each shift, the highest recorded closing reading
+      // represents the latest authoritative ground truth from the admin side.
       try {
         await Promise.all(
           nozzleIds.map(async (nId) => {
@@ -839,8 +840,8 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                   .select("NozzleNumber, ClosingReading, OpeningReading, Rate, FuelType, NozzleReadingId, created_at, station_id")
                   .eq("NozzleNumber", nId)
                   .gt("ClosingReading", 0)
-                  .or(`station_id.eq.${station},station_id.is.null`)
-                  .order("NozzleReadingId", { ascending: false, nullsFirst: false })
+                  .or(`station_id.eq.${station},station_id.eq.KANDHARE-PETROLEUM,station_id.is.null`)
+                  .order("ClosingReading", { ascending: false, nullsFirst: false })
                   .limit(5);
                 readings = data;
               }
@@ -852,18 +853,20 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                   .select("NozzleNumber, ClosingReading, OpeningReading, Rate, FuelType, NozzleReadingId, created_at, station_id")
                   .eq("NozzleNumber", nId)
                   .gt("ClosingReading", 0)
-                  .order("NozzleReadingId", { ascending: false, nullsFirst: false })
+                  .order("ClosingReading", { ascending: false, nullsFirst: false })
                   .limit(5);
                 readings = data;
               }
 
               if (readings && readings.length > 0) {
-                const latest = readings[0];
-                const val = Number(latest.ClosingReading);
+                const bestEntry = readings.reduce((prev, curr) =>
+                  Number(curr.ClosingReading) > Number(prev.ClosingReading) ? curr : prev
+                );
+                const val = Number(bestEntry.ClosingReading);
                 if (val > 0) {
-                  prevClosings[nId] = val;
-                  if (latest.Rate) nozzleRates[nId] = Number(latest.Rate);
-                  if (latest.FuelType) nozzleFuelTypes[nId] = latest.FuelType;
+                  prevClosings[nId] = Math.max(val, prevClosings[nId] || 0);
+                  if (bestEntry.Rate) nozzleRates[nId] = Number(bestEntry.Rate);
+                  if (bestEntry.FuelType) nozzleFuelTypes[nId] = bestEntry.FuelType;
                 }
               }
             } catch (err) {
