@@ -259,8 +259,10 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     };
   }, []);
 
+  const draftRestoredRef = useRef(false);
   useEffect(() => {
-    if (!profile || !draftStorageKey) return;
+    if (!profile || !draftStorageKey || draftRestoredRef.current) return;
+    draftRestoredRef.current = true;
     const saved = localStorage.getItem(draftStorageKey);
     if (!saved) return;
 
@@ -646,6 +648,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
 
 
   // ── Load nozzle config from Supabase (set by manager) ───────
+  const lastLoadedPumpRef = useRef<number | null>(null);
   async function loadNozzleConfig() {
     if (!profile || !pumpId) return;
 
@@ -664,6 +667,19 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       let msIRate = 103.81;
       let msIIRate = 103.81;
       let cngRate = 85.0;
+
+      // Fast check cached rates first
+      try {
+        const ratesCacheKey = `nozzle_rates_${station || "default"}`;
+        const cachedRates = localStorage.getItem(ratesCacheKey);
+        if (cachedRates) {
+          const parsed = JSON.parse(cachedRates);
+          if (parsed.hsd) hsdRate = parsed.hsd;
+          if (parsed.msI) msIRate = parsed.msI;
+          if (parsed.msII) msIIRate = parsed.msII;
+          if (parsed.cng) cngRate = parsed.cng;
+        }
+      } catch {}
 
       try {
         let settingsQuery = supabase
@@ -790,58 +806,64 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         return;
       }
 
-      // Fetch previous closing readings for all nozzles assigned to this pump/station.
-      //
-      // Architecture: station_id is the single source of truth. All data in Supabase is
-      // scoped to a station_id. The PWA queries ONLY its own station's data, strictly preventing
-      // cross-station test/dummy data pollution.
       const prevClosings: Record<number, number> = {};
       const nozzleRates: Record<number, number> = {};
       const nozzleFuelTypes: Record<number, string> = {};
       const nozzleIds = configRows.map((r) => r.nozzleId);
 
+      // Fast check cached openings from localStorage
+      const openingsCacheKey = `nozzle_openings_${station || "default"}`;
+      try {
+        const cachedOpeningsStr = localStorage.getItem(openingsCacheKey);
+        if (cachedOpeningsStr) {
+          const parsed = JSON.parse(cachedOpeningsStr);
+          nozzleIds.forEach((nId) => {
+            if (parsed[nId] !== undefined && Number(parsed[nId]) > 0) {
+              prevClosings[nId] = Number(parsed[nId]);
+            }
+          });
+        }
+      } catch {}
+
       // ── Step 1: Most recent closing reading from NozzleReadings (Admin Side Ground Truth) ─
-      // We query specifically per nozzle or ordered by NozzleReadingId descending (the sequential primary key)
-      // to guarantee we always fetch the absolute latest closing reading and rate for each nozzle.
+      // Query specifically per nozzle ordered by NozzleReadingId descending.
+      // If not found with current station filter, fallback to any matching nozzle entry in the station database.
       try {
         await Promise.all(
           nozzleIds.map(async (nId) => {
             try {
-              let q = supabase
-                .from("NozzleReadings")
-                .select("NozzleNumber, ClosingReading, OpeningReading, Rate, FuelType, NozzleReadingId, created_at")
-                .eq("NozzleNumber", nId)
-                .gt("ClosingReading", 0);
-
+              let readings: any[] | null = null;
               if (station) {
-                q = q.or(`station_id.eq.${station},station_id.is.null`);
+                const { data } = await supabase
+                  .from("NozzleReadings")
+                  .select("NozzleNumber, ClosingReading, OpeningReading, Rate, FuelType, NozzleReadingId, created_at, station_id")
+                  .eq("NozzleNumber", nId)
+                  .gt("ClosingReading", 0)
+                  .or(`station_id.eq.${station},station_id.is.null`)
+                  .order("NozzleReadingId", { ascending: false, nullsFirst: false })
+                  .limit(5);
+                readings = data;
               }
 
-              // Order by NozzleReadingId DESC to get the sequential latest entry
-              const { data: readings, error: readErr } = await q
-                .order("NozzleReadingId", { ascending: false, nullsFirst: false })
-                .limit(5);
+              // Fallback: If no records match exact station_id, query latest across all entries for this nozzle
+              if (!readings || readings.length === 0) {
+                const { data } = await supabase
+                  .from("NozzleReadings")
+                  .select("NozzleNumber, ClosingReading, OpeningReading, Rate, FuelType, NozzleReadingId, created_at, station_id")
+                  .eq("NozzleNumber", nId)
+                  .gt("ClosingReading", 0)
+                  .order("NozzleReadingId", { ascending: false, nullsFirst: false })
+                  .limit(5);
+                readings = data;
+              }
 
-              if (!readErr && readings && readings.length > 0) {
+              if (readings && readings.length > 0) {
                 const latest = readings[0];
                 const val = Number(latest.ClosingReading);
                 if (val > 0) {
                   prevClosings[nId] = val;
                   if (latest.Rate) nozzleRates[nId] = Number(latest.Rate);
                   if (latest.FuelType) nozzleFuelTypes[nId] = latest.FuelType;
-                }
-              } else {
-                // Fallback: order by ClosingReading DESC
-                const { data: maxValReadings } = await q
-                  .order("ClosingReading", { ascending: false })
-                  .limit(1);
-                if (maxValReadings && maxValReadings.length > 0) {
-                  const val = Number(maxValReadings[0].ClosingReading);
-                  if (val > 0) {
-                    prevClosings[nId] = val;
-                    if (maxValReadings[0].Rate) nozzleRates[nId] = Number(maxValReadings[0].Rate);
-                    if (maxValReadings[0].FuelType) nozzleFuelTypes[nId] = maxValReadings[0].FuelType;
-                  }
                 }
               }
             } catch (err) {
@@ -854,7 +876,6 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       }
 
       // ── Step 2: DsmSubmissions for nozzles not yet in NozzleReadings or newer PWA submissions ───────────────
-      // If a recent shift was submitted via PWA for this station, check if it has a closing reading
       try {
         if (station) {
           const { data: lastSubmissions } = await supabase
@@ -901,20 +922,26 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           (nId) => prevClosings[nId] === undefined,
         );
         if (missingAfterSteps12.length > 0) {
-          const localDrafts = await db.drafts
-            .where("pumpId")
-            .anyOf(pumpsToFetch)
-            .toArray();
+          let localDrafts: any[] = [];
+          try {
+            localDrafts = await db.drafts
+              .filter((d: any) => pumpsToFetch.includes(d.pumpId))
+              .toArray();
+          } catch {
+            localDrafts = await db.drafts.toArray();
+          }
 
           if (localDrafts && localDrafts.length > 0) {
-            const sortedDrafts = localDrafts.sort(
-              (a, b) =>
-                b.shiftDate.localeCompare(a.shiftDate) ||
-                b.createdAt.localeCompare(a.createdAt),
-            );
+            const sortedDrafts = localDrafts
+              .filter((d: any) => pumpsToFetch.includes(d.pumpId))
+              .sort(
+                (a, b) =>
+                  (b.shiftDate || "").localeCompare(a.shiftDate || "") ||
+                  (b.createdAt || "").localeCompare(a.createdAt || ""),
+              );
             const mostRecentDraft = sortedDrafts[0];
             if (mostRecentDraft?.nozzleReadings) {
-              mostRecentDraft.nozzleReadings.forEach((nr) => {
+              mostRecentDraft.nozzleReadings.forEach((nr: any) => {
                 if (nr.closingReading > 0 && prevClosings[nr.nozzleId] === undefined) {
                   prevClosings[nr.nozzleId] = Number(nr.closingReading);
                 }
@@ -923,8 +950,18 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           }
         }
       } catch (e) {
-        console.error("Failed to fetch from IndexedDB drafts:", e);
+        console.warn("Failed to fetch from IndexedDB drafts:", e);
       }
+
+      // Save verified openings and rates to localStorage cache for offline persistence
+      try {
+        localStorage.setItem(openingsCacheKey, JSON.stringify(prevClosings));
+        const ratesCacheKey = `nozzle_rates_${station || "default"}`;
+        localStorage.setItem(
+          ratesCacheKey,
+          JSON.stringify({ hsd: hsdRate, msI: msIRate, msII: msIIRate, cng: cngRate, perNozzle: nozzleRates })
+        );
+      } catch {}
 
       // Auto-update general fuel rates if retrieved from recent entries
       for (const nId of nozzleIds) {
@@ -965,51 +1002,67 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         }
       }
 
-      const rows: NozzleRow[] = configRows.map((n, index) => {
-        let rate = msIRate;
-        const effectiveFuelType = (nozzleFuelTypes[n.nozzleId] || n.fuelType || "").trim().toUpperCase();
-        if (effectiveFuelType) {
-          if (effectiveFuelType.startsWith("HSD") || effectiveFuelType.includes("DIESEL")) {
-            rate = hsdRate;
-          } else if (effectiveFuelType.startsWith("MS-II") || effectiveFuelType.startsWith("MS_II") || effectiveFuelType.startsWith("MS2")) {
-            rate = msIIRate;
-          } else if (effectiveFuelType.startsWith("MS") || effectiveFuelType.includes("PETROL")) {
-            rate = msIRate;
-          } else if (effectiveFuelType.startsWith("CNG")) {
-            rate = cngRate;
+      // Build updated nozzle rows while strictly PRESERVING user-typed closingReading & testing values
+      setNozzleRows((currentRows) => {
+        const currentMap = new Map<number, NozzleRow>();
+        currentRows.forEach((r) => currentMap.set(r.nozzleId, r));
+
+        return configRows.map((n, index) => {
+          let rate = msIRate;
+          const effectiveFuelType = (nozzleFuelTypes[n.nozzleId] || n.fuelType || "").trim().toUpperCase();
+          if (effectiveFuelType) {
+            if (effectiveFuelType.startsWith("HSD") || effectiveFuelType.includes("DIESEL")) {
+              rate = hsdRate;
+            } else if (effectiveFuelType.startsWith("MS-II") || effectiveFuelType.startsWith("MS_II") || effectiveFuelType.startsWith("MS2")) {
+              rate = msIIRate;
+            } else if (effectiveFuelType.startsWith("MS") || effectiveFuelType.includes("PETROL")) {
+              rate = msIRate;
+            } else if (effectiveFuelType.startsWith("CNG")) {
+              rate = cngRate;
+            }
           }
-        }
-        if (nozzleRates[n.nozzleId] && nozzleRates[n.nozzleId] > 0) {
-          rate = nozzleRates[n.nozzleId];
-        }
+          if (nozzleRates[n.nozzleId] && nozzleRates[n.nozzleId] > 0) {
+            rate = nozzleRates[n.nozzleId];
+          }
 
-        const prevClosing = prevClosings[n.nozzleId] || 0;
-        const draftEntry = draftMap[n.nozzleId];
+          const prevClosing = prevClosings[n.nozzleId] || 0;
+          const existingRow = currentMap.get(n.nozzleId);
+          const draftEntry = draftMap[n.nozzleId];
 
-        // Authoritative opening reading is always the latest recorded closing reading from the station
-        const opening = prevClosing > 0
-          ? prevClosing
-          : (draftEntry && draftEntry.openingReading ? draftEntry.openingReading : 0);
+          // Opening reading: authoritative closing from previous shift, else existing state, else draft
+          const opening = prevClosing > 0
+            ? prevClosing
+            : (existingRow && existingRow.openingReading ? existingRow.openingReading : (draftEntry?.openingReading || 0));
 
-        // Only restore draft closing reading if it is greater than the opening reading
-        const closing = (draftEntry?.closingReading && draftEntry.closingReading >= opening)
-          ? draftEntry.closingReading
-          : 0;
+          // Closing reading: ALWAYS preserve whatever the user actively typed in memory, else restore draft
+          let closing = 0;
+          if (existingRow && existingRow.closingReading > 0) {
+            closing = existingRow.closingReading;
+          } else if (draftEntry && draftEntry.closingReading && draftEntry.closingReading >= opening) {
+            closing = draftEntry.closingReading;
+          }
 
-        return {
-          rowId: index + 1,
-          nozzleId: n.nozzleId,
-          fuelType: n.fuelType,
-          openingReading: opening,
-          closingReading: closing,
-          rate,
-          isOpeningReadOnly: prevClosing > 0,
-          pumpId: n.pumpId,
-          testing: draftEntry?.testing ?? 0,
-        };
+          // Testing: preserve existing user input or draft
+          let testing = 0;
+          if (existingRow && existingRow.testing !== undefined && existingRow.testing > 0) {
+            testing = existingRow.testing;
+          } else if (draftEntry?.testing) {
+            testing = draftEntry.testing;
+          }
+
+          return {
+            rowId: index + 1,
+            nozzleId: n.nozzleId,
+            fuelType: n.fuelType,
+            openingReading: opening,
+            closingReading: closing,
+            rate,
+            isOpeningReadOnly: prevClosing > 0,
+            pumpId: n.pumpId,
+            testing,
+          };
+        });
       });
-
-      setNozzleRows(rows);
     } catch (err) {
       console.error("Failed to load nozzle config:", err);
       setNozzleError(
@@ -1021,11 +1074,12 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   }
 
   useEffect(() => {
-    if (profile) {
+    if (profile && pumpId > 0 && lastLoadedPumpRef.current !== pumpId) {
+      lastLoadedPumpRef.current = pumpId;
       loadNozzleConfig();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pumpId, profile]);
+  }, [pumpId, profile?.id]);
 
   function updateNozzle(
     rowId: number,

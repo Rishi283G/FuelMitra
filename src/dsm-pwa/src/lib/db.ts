@@ -126,6 +126,14 @@ export class DsmDatabase extends Dexie {
       products: 'id, productName, category',
       stockBalances: 'productId'
     });
+
+    // Version 4 to support pumpId querying in drafts and submissions
+    this.version(4).stores({
+      drafts: '++id, draftId, pumpId, status, shiftDate',
+      submissions: '++id, remoteId, pumpId, status, shiftDate',
+      products: 'id, productName, category',
+      stockBalances: 'productId'
+    });
   }
 }
 

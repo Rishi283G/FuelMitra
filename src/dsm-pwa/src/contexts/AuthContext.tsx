@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { supabase, type DsmUserProfile } from '../lib/supabase';
 import type { User } from '@supabase/supabase-js';
 import { resetStationData } from '../lib/stationReset';
@@ -92,12 +92,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       const u = session?.user ?? null;
       setUser(u);
       if (u) {
-        const p = await fetchProfile(u.id);
-        setProfile(p);
+        if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
+          const p = await fetchProfile(u.id);
+          if (p) setProfile(p);
+        }
       } else {
         setProfile(null);
       }
@@ -110,7 +112,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!profile || !profile.StationId) return;
 
     const cachedStationId = localStorage.getItem('current_station_id');
-    if (cachedStationId !== profile.StationId) {
+    if (cachedStationId && cachedStationId !== profile.StationId) {
       (async () => {
         setIsResetting(true);
         try {
@@ -121,11 +123,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setIsResetting(false);
         }
       })();
+    } else if (!cachedStationId && profile.StationId) {
+      localStorage.setItem('current_station_id', profile.StationId);
     }
-  }, [profile]);
+  }, [profile?.StationId]);
 
+  const deviceRegisteredRef = useRef(false);
   useEffect(() => {
-    if (!profile || !profile.id) return;
+    if (!profile || !profile.id || deviceRegisteredRef.current) return;
+    deviceRegisteredRef.current = true;
     const dsmUserId = profile.id;
     const stationId = profile.StationId;
 
@@ -151,7 +157,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       try {
-        // Query if device exists in Supabase
         const { data } = await supabase
           .from('DsmDevices')
           .select('SyncGuid')
@@ -161,7 +166,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         const now = new Date().toISOString();
         if (data) {
-          // Update
           await supabase
             .from('DsmDevices')
             .update({
@@ -172,7 +176,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             .eq('DeviceId', deviceId)
             .eq('DsmUserId', dsmUserId);
         } else {
-          // Insert
           await supabase
             .from('DsmDevices')
             .insert({
@@ -186,12 +189,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             });
         }
       } catch (err) {
-        console.error('Failed to register device:', err);
+        // Silently catch device registration failures
       }
     }
 
     registerDevice();
-  }, [profile]);
+  }, [profile?.id, profile?.StationId]);
 
   async function login(email: string, password: string, stationId?: string): Promise<string | null> {
     const effectiveStationId = stationId || localStorage.getItem('current_station_id') || localStorage.getItem('last_station_id') || '';
