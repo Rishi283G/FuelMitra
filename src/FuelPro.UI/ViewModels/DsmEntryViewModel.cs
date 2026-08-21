@@ -531,9 +531,29 @@ public partial class DsmEntryViewModel : ObservableObject
                 ? (connectedPreviousClosings.TryGetValue(n, out var previousDsmClosing) || previousClosings.TryGetValue(n, out previousDsmClosing))
                 : (previousClosings.TryGetValue(n, out previousDsmClosing) || connectedPreviousClosings.TryGetValue(n, out previousDsmClosing));
 
-            double? openingReading = (hasCurrentAgs ? currentAgsRow?.OpeningReading : null)
-                                     ?? openingFromAgsPreviousShift
-                                     ?? (hasPreviousDsm ? previousDsmClosing : null);
+            double? openingReading = null;
+            if (hasCurrentAgs && currentAgsRow?.OpeningReading > 0)
+            {
+                openingReading = currentAgsRow.OpeningReading;
+            }
+            else if (hasPreviousDsm && previousDsmClosing > 0)
+            {
+                // Prefer previous DSM closing (which captures latest shift/session readings)
+                // If previous AGS is higher (e.g. from a subsequent AGS import), use the higher meter reading.
+                if (openingFromAgsPreviousShift.HasValue && openingFromAgsPreviousShift.Value > previousDsmClosing)
+                {
+                    openingReading = openingFromAgsPreviousShift.Value;
+                }
+                else
+                {
+                    openingReading = previousDsmClosing;
+                }
+            }
+            else if (openingFromAgsPreviousShift.HasValue)
+            {
+                openingReading = openingFromAgsPreviousShift.Value;
+            }
+
             double? closingReading = hasCurrentAgs ? currentAgsRow?.ClosingReading : null;
 
             if (hasCurrentAgs && openingReading.HasValue && closingReading.HasValue)
@@ -624,19 +644,27 @@ public partial class DsmEntryViewModel : ObservableObject
 
     private void RefreshConnectablePumpOptions()
     {
+        var previousSelection = SelectedConnectedPump?.PumpId;
         ConnectablePumpOptions.Clear();
-        foreach (var pump in PumpOptions.Where(p => SelectedPump == null || p.PumpId != SelectedPump.PumpId))
+
+        if (SelectedPump != null)
         {
-            ConnectablePumpOptions.Add(pump);
+            foreach (var item in PumpConfiguration.GetPumpDisplayItems(SelectedDate))
+            {
+                if (item.PumpId != SelectedPump.PumpId)
+                {
+                    ConnectablePumpOptions.Add(item);
+                }
+            }
         }
 
-        if (SelectedConnectedPump != null && ConnectablePumpOptions.All(p => p.PumpId != SelectedConnectedPump.PumpId))
+        if (previousSelection.HasValue)
         {
-            SelectedConnectedPump = null;
+            SelectedConnectedPump = ConnectablePumpOptions.FirstOrDefault(p => p.PumpId == previousSelection.Value);
         }
     }
 
-    private async Task RefreshConnectedPumpGrossSalesAsync()
+    public async Task RefreshConnectedPumpGrossSalesAsync()
     {
         ConnectedPumpGrossSales = 0;
         ConnectedPumpStatus = "";
@@ -668,7 +696,7 @@ public partial class DsmEntryViewModel : ObservableObject
         {
             connectedEntry = entriesResult.Data.FirstOrDefault(e =>
                 e.PumpId == SelectedConnectedPump.PumpId
-                && e.ReconciledToPumpId == EditingEntryId.Value);
+                && (e.ReconciledToPumpId == EditingEntryId.Value || e.ReconciledToPumpId == SelectedPump?.PumpId));
         }
 
         if (connectedEntry == null)
@@ -682,7 +710,14 @@ public partial class DsmEntryViewModel : ObservableObject
 
         if (connectedEntry == null)
         {
-            ConnectedPumpStatus = $"Connected pump {SelectedConnectedPump.PumpId} entry not found yet for this shift.";
+            if (_isEditing)
+            {
+                ConnectedPumpStatus = $"Connected pump {SelectedConnectedPump.PumpId} nozzles included in form.";
+            }
+            else
+            {
+                ConnectedPumpStatus = $"Connected pump {SelectedConnectedPump.PumpId} entry not found yet for this shift.";
+            }
             RecalculateAll();
             return;
         }
@@ -947,11 +982,13 @@ public partial class DsmEntryViewModel : ObservableObject
             if (result.Success)
             {
                 EditingEntryId = result.Data?.DsmEntryId ?? EditingEntryId;
-                IsSaved = true;
                 StatusMessage = "✅ DSM Entry saved successfully!";
                 _draftService.ClearDraft();
                 await LoadShiftEntriesAsync();
                 await LoadNozzlesForPumpAsync();
+                IsSaved = true;
+                OnPropertyChanged(nameof(CanSaveCurrentEntry));
+                SaveEntryCommand.NotifyCanExecuteChanged();
 
                 // Trigger background sync now that transaction is fully committed
                 var syncEngine = App.Services.GetRequiredService<FuelPro.Sync.SyncEngine>();
@@ -960,15 +997,19 @@ public partial class DsmEntryViewModel : ObservableObject
             else
             {
                 StatusMessage = $"❌ {result.Error}";
+                IsSaved = false;
             }
         }
         catch (Exception ex)
         {
             StatusMessage = $"❌ Save failed: {ex.Message}";
+            IsSaved = false;
         }
         finally
         {
             IsSaving = false;
+            OnPropertyChanged(nameof(CanSaveCurrentEntry));
+            SaveEntryCommand.NotifyCanExecuteChanged();
         }
     }
 
@@ -1461,7 +1502,7 @@ public partial class DsmEntryViewModel : ObservableObject
                 if (entriesResult.Success && entriesResult.Data != null)
                 {
                     var primaryRaw = entriesResult.Data.FirstOrDefault(e =>
-                        e.PumpId == entry.ReconciledToPumpId.Value
+                        (e.DsmEntryId == entry.ReconciledToPumpId.Value || e.PumpId == entry.ReconciledToPumpId.Value)
                         && string.Equals(e.DsmName, entry.DsmName, StringComparison.OrdinalIgnoreCase));
                     if (primaryRaw != null)
                     {
@@ -1482,7 +1523,7 @@ public partial class DsmEntryViewModel : ObservableObject
                 if (entriesResult.Success && entriesResult.Data != null)
                 {
                     var connectedRaw = entriesResult.Data
-                        .Where(e => e.ReconciledToPumpId == entry.PumpId
+                        .Where(e => (e.ReconciledToPumpId == entry.DsmEntryId || e.ReconciledToPumpId == entry.PumpId)
                             && string.Equals(e.DsmName, entry.DsmName, StringComparison.OrdinalIgnoreCase))
                         .OrderBy(e => e.DsmEntryId >= entry.DsmEntryId ? (e.DsmEntryId - entry.DsmEntryId) : (100000 + Math.Abs(e.DsmEntryId - entry.DsmEntryId)))
                         .FirstOrDefault();

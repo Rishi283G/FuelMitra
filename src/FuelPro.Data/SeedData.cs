@@ -181,6 +181,24 @@ public static class SeedData
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE DebitEntries ADD COLUMN Coins INTEGER NOT NULL DEFAULT 0;"); } catch { }
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE DsmPumpAssignments ADD COLUMN CompletedDate TEXT NULL;"); } catch { }
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE KhandharePetroleumEntries ADD COLUMN VehicleNumber TEXT NULL;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE KhandharePetroleumEntries ADD COLUMN SyncGuid TEXT NOT NULL DEFAULT '';"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE DsmPersonalDebtors ADD COLUMN SyncGuid TEXT NOT NULL DEFAULT '';"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE DsmPersonalDebtors ADD COLUMN DeductFromSalary INTEGER NOT NULL DEFAULT 1;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE DsmPersonalDebtorRepayments ADD COLUMN SyncGuid TEXT NOT NULL DEFAULT '';"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE DsmQrPayments ADD COLUMN SyncGuid TEXT NOT NULL DEFAULT '';"); } catch { }
+
+        // Backfill any empty SyncGuids with valid UUIDs
+        try
+        {
+            await context.Database.ExecuteSqlRawAsync("UPDATE DsmPersonalDebtors SET SyncGuid = lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || substr(hex(randomblob(2)),2) || '-a' || substr(hex(randomblob(2)),2) || '-' || hex(randomblob(6))) WHERE SyncGuid IS NULL OR SyncGuid = '';");
+            await context.Database.ExecuteSqlRawAsync("UPDATE DsmPersonalDebtorRepayments SET SyncGuid = lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || substr(hex(randomblob(2)),2) || '-a' || substr(hex(randomblob(2)),2) || '-' || hex(randomblob(6))) WHERE SyncGuid IS NULL OR SyncGuid = '';");
+            await context.Database.ExecuteSqlRawAsync("UPDATE DsmQrPayments SET SyncGuid = lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || substr(hex(randomblob(2)),2) || '-a' || substr(hex(randomblob(2)),2) || '-' || hex(randomblob(6))) WHERE SyncGuid IS NULL OR SyncGuid = '';");
+            await context.Database.ExecuteSqlRawAsync("UPDATE KhandharePetroleumEntries SET SyncGuid = lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || substr(hex(randomblob(2)),2) || '-a' || substr(hex(randomblob(2)),2) || '-' || hex(randomblob(6))) WHERE SyncGuid IS NULL OR SyncGuid = '';");
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Failed to backfill empty SyncGuids in personal debtors / QR tables");
+        }
 
         // Create OuterExpenses table if it does not exist
         try

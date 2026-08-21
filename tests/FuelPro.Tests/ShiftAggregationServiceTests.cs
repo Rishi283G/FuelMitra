@@ -214,4 +214,49 @@ public class ShiftAggregationServiceTests
         Assert.Equal(18000, ramesh.TotalCollection);
         Assert.Equal(0, ramesh.Mismatch);
     }
+
+    [Fact]
+    public void GetFuelTotals_WithMultipleEntriesInSameShift_ShouldAggregateAllReadings()
+    {
+        // Arrange
+        var shift = new Shift { ShiftId = 1, ShiftDate = new DateTime(2026, 8, 21), ShiftType = "A" };
+        var entry1 = new DsmEntry
+        {
+            DsmEntryId = 1,
+            ShiftId = 1,
+            Shift = shift,
+            PumpId = 1,
+            NozzleReadings = new List<NozzleReading>
+            {
+                new NozzleReading { NozzleNumber = 1, SaleLitres = 10, Amount = 1000, Rate = 100 }, // MS-I on Pump 1
+                new NozzleReading { NozzleNumber = 3, SaleLitres = 20, Amount = 1800, Rate = 90 }   // HSD on Pump 2
+            }
+        };
+        var entry2 = new DsmEntry
+        {
+            DsmEntryId = 2,
+            ShiftId = 1,
+            Shift = shift,
+            PumpId = 1,
+            NozzleReadings = new List<NozzleReading>
+            {
+                new NozzleReading { NozzleNumber = 1, SaleLitres = 5, Amount = 500, Rate = 100 },  // MS-I on Pump 1 (2nd session)
+                new NozzleReading { NozzleNumber = 3, SaleLitres = 15, Amount = 1350, Rate = 90 }  // HSD on Pump 2 (2nd session)
+            }
+        };
+
+        var entries = new List<DsmEntry> { entry1, entry2 };
+
+        // Act
+        var (msLitres, msAmount) = _sut.GetFuelTotals(entries, "MS-I", null);
+        var (hsdLitres, hsdAmount) = _sut.GetFuelTotals(entries, "HSD", null);
+
+        // Assert: MS-I must be 10 + 5 = 15 litres, 1000 + 500 = 1500 amount
+        Assert.Equal(15, msLitres);
+        Assert.Equal(1500, msAmount);
+
+        // Assert: HSD must be 20 + 15 = 35 litres, 1800 + 1350 = 3150 amount
+        Assert.Equal(35, hsdLitres);
+        Assert.Equal(3150, hsdAmount);
+    }
 }

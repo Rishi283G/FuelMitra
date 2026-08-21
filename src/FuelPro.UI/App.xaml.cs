@@ -782,26 +782,8 @@ public partial class App : Application
             Log.Information("Created DsmPersonalDebtors table");
         }
 
-        // Check if DeductFromSalary column exists in DsmPersonalDebtors (Phase 3 migration)
-        cmd.CommandText = "PRAGMA table_info(DsmPersonalDebtors);";
-        var hasDeductColumn = false;
-        using (var reader = cmd.ExecuteReader())
-        {
-            while (reader.Read())
-            {
-                if (reader["name"].ToString() == "DeductFromSalary")
-                {
-                    hasDeductColumn = true;
-                    break;
-                }
-            }
-        }
-        if (!hasDeductColumn)
-        {
-            cmd.CommandText = "ALTER TABLE \"DsmPersonalDebtors\" ADD COLUMN \"DeductFromSalary\" INTEGER NOT NULL DEFAULT 1;";
-            cmd.ExecuteNonQuery();
-            Log.Information("Added DeductFromSalary column to DsmPersonalDebtors table");
-        }
+        EnsureColumnExists(connection, "DsmPersonalDebtors", "SyncGuid", "ALTER TABLE DsmPersonalDebtors ADD COLUMN SyncGuid TEXT NOT NULL DEFAULT '';");
+        EnsureColumnExists(connection, "DsmPersonalDebtors", "DeductFromSalary", "ALTER TABLE DsmPersonalDebtors ADD COLUMN DeductFromSalary INTEGER NOT NULL DEFAULT 1;");
 
         // Check if DsmPersonalDebtorRepayments exists
         cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='DsmPersonalDebtorRepayments'";
@@ -836,6 +818,10 @@ public partial class App : Application
             cmd.ExecuteNonQuery();
             Log.Information("Created DsmPersonalDebtorRepayments table");
         }
+        else
+        {
+            EnsureColumnExists(connection, "DsmPersonalDebtorRepayments", "SyncGuid", "ALTER TABLE DsmPersonalDebtorRepayments ADD COLUMN SyncGuid TEXT NOT NULL DEFAULT '';");
+        }
 
         // DsmQrPayments
         cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='DsmQrPayments'";
@@ -867,6 +853,10 @@ public partial class App : Application
             ";
             cmd.ExecuteNonQuery();
             Log.Information("Created DsmQrPayments table");
+        }
+        else
+        {
+            EnsureColumnExists(connection, "DsmQrPayments", "SyncGuid", "ALTER TABLE DsmQrPayments ADD COLUMN SyncGuid TEXT NOT NULL DEFAULT '';");
         }
 
         // PettyCashTransactions
@@ -1022,9 +1012,10 @@ public partial class App : Application
         else
         {
             EnsureColumnExists(connection, "KhandharePetroleumEntries", "VehicleNumber", "ALTER TABLE KhandharePetroleumEntries ADD COLUMN VehicleNumber TEXT NULL;");
+            EnsureColumnExists(connection, "KhandharePetroleumEntries", "SyncGuid", "ALTER TABLE KhandharePetroleumEntries ADD COLUMN SyncGuid TEXT NOT NULL DEFAULT '';");
         }
 
-        // Restore canonical shift types A/B/C so all queries match properly across PWA and Desktop
+        // Restore canonical shift types A/B/C and backfill any empty SyncGuids
         using (var cmdMigrate = connection.CreateCommand())
         {
             cmdMigrate.CommandText = "UPDATE Shifts SET ShiftType = 'A' WHERE ShiftType = 'I';";
@@ -1033,6 +1024,19 @@ public partial class App : Application
             cmdMigrate.ExecuteNonQuery();
             cmdMigrate.CommandText = "UPDATE Shifts SET ShiftType = 'C' WHERE ShiftType = 'III';";
             cmdMigrate.ExecuteNonQuery();
+
+            try
+            {
+                cmdMigrate.CommandText = "UPDATE DsmPersonalDebtors SET SyncGuid = lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || substr(hex(randomblob(2)),2) || '-a' || substr(hex(randomblob(2)),2) || '-' || hex(randomblob(6))) WHERE SyncGuid IS NULL OR SyncGuid = '';";
+                cmdMigrate.ExecuteNonQuery();
+                cmdMigrate.CommandText = "UPDATE DsmPersonalDebtorRepayments SET SyncGuid = lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || substr(hex(randomblob(2)),2) || '-a' || substr(hex(randomblob(2)),2) || '-' || hex(randomblob(6))) WHERE SyncGuid IS NULL OR SyncGuid = '';";
+                cmdMigrate.ExecuteNonQuery();
+                cmdMigrate.CommandText = "UPDATE DsmQrPayments SET SyncGuid = lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || substr(hex(randomblob(2)),2) || '-a' || substr(hex(randomblob(2)),2) || '-' || hex(randomblob(6))) WHERE SyncGuid IS NULL OR SyncGuid = '';";
+                cmdMigrate.ExecuteNonQuery();
+                cmdMigrate.CommandText = "UPDATE KhandharePetroleumEntries SET SyncGuid = lower(hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' || substr(hex(randomblob(2)),2) || '-a' || substr(hex(randomblob(2)),2) || '-' || hex(randomblob(6))) WHERE SyncGuid IS NULL OR SyncGuid = '';";
+                cmdMigrate.ExecuteNonQuery();
+            }
+            catch { }
         }
     }
 

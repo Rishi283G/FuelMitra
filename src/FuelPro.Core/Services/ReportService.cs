@@ -291,7 +291,8 @@ public class ReportService : IReportService
 
         dto.ActualCollection = dto.CollectionBreakdown.Where(c => c.Category != "DSM Short").Sum(c => c.Amount);
         dto.ExpectedCollection = dto.TotalFuelAmount + reconcilableRecoveriesTotal;
-        dto.Difference = dto.ActualCollection - dto.ExpectedCollection;
+        double rawDiff = dto.ActualCollection - dto.ExpectedCollection;
+        dto.Difference = rawDiff < -0.01 ? -dto.TotalDsmShort : (rawDiff > 0.01 ? rawDiff : 0);
         dto.IsBalanced = Math.Abs(dto.Difference) < 0.01;
         dto.BalancedStatus = dto.IsBalanced ? "Balanced" : (dto.Difference < 0 ? "Short" : "Excess");
 
@@ -598,7 +599,8 @@ public class ReportService : IReportService
         // 12. Final Reconciliation
         dto.ActualCollection = dto.CollectionBreakdown.Where(c => c.Category != "DSM Short").Sum(c => c.Amount);
         dto.ExpectedCollection = dto.TotalFuelAmount + reconcilableRecoveriesTotal;
-        dto.Difference = dto.ActualCollection - dto.ExpectedCollection;
+        double rawDiff = dto.ActualCollection - dto.ExpectedCollection;
+        dto.Difference = rawDiff < -0.01 ? -dto.TotalDsmShort : (rawDiff > 0.01 ? rawDiff : 0);
         dto.IsBalanced = Math.Abs(dto.Difference) < 0.01;
         dto.BalancedStatus = dto.IsBalanced ? "Balanced" : (dto.Difference < 0 ? "Short" : "Excess");
 
@@ -674,12 +676,10 @@ public class ReportService : IReportService
             if (mismatch < -0.01)
             {
                 double rawShort = Math.Abs(mismatch);
-                double dsmLoss = (double)(e.PersonalDebtors?.Sum(pd => pd.Amount) ?? 0);
-                if (dsmLoss == 0 && rawShort > 10.0)
-                {
-                    dsmLoss = rawShort - 10.0;
-                }
-                double netShort = Math.Max(0, rawShort - dsmLoss);
+                double dsmLoss = e.PersonalDebtors != null && e.PersonalDebtors.Count > 0
+                    ? e.PersonalDebtors.Sum(pd => pd.Amount)
+                    : (rawShort > 10.0 ? rawShort - 10.0 : 0.0);
+                double netShort = rawShort > dsmLoss ? (rawShort - dsmLoss) : 0.0;
                 totalDsmShort += netShort;
             }
         }

@@ -736,16 +736,24 @@ public class SyncEngine
                     foreach (var batch in batches)
                     {
                         var json = JsonConvert.SerializeObject(batch);
-                        // Upsert with SyncGuid as the conflict resolution column
-                        var response = await _httpClient.SendRequestAsync(HttpMethod.Post, tableName, json, isUpsert: true, onConflict: "SyncGuid");
+                        var onConflictColumn = (tableName == "CashDenominations") ? "DsmEntryId,CashType" : "SyncGuid";
+                        var response = await _httpClient.SendRequestAsync(HttpMethod.Post, tableName, json, isUpsert: true, onConflict: onConflictColumn);
+                        if (!response.IsSuccessStatusCode && tableName == "CashDenominations")
+                        {
+                            response = await _httpClient.SendRequestAsync(HttpMethod.Post, tableName, json, isUpsert: true, onConflict: "SyncGuid");
+                        }
+
                         if (!response.IsSuccessStatusCode)
                         {
                             var error = await response.Content.ReadAsStringAsync();
                             _logger.Warning("Supabase UPSERT returned HTTP {StatusCode} for table {Table}: {Error}", response.StatusCode, tableName, error);
 
-                            if (response.StatusCode == System.Net.HttpStatusCode.BadRequest ||
+                            if (response.StatusCode == System.Net.HttpStatusCode.Conflict || error.Contains("duplicate key") || error.Contains("23505"))
+                            {
+                                _logger.Information("Record already exists in Supabase for table {Table}; proceeding.", tableName);
+                            }
+                            else if (response.StatusCode == System.Net.HttpStatusCode.BadRequest ||
                                 response.StatusCode == System.Net.HttpStatusCode.NotFound ||
-                                response.StatusCode == System.Net.HttpStatusCode.Conflict ||
                                 response.StatusCode == System.Net.HttpStatusCode.UnprocessableEntity ||
                                 error.Contains("PGRST") || error.Contains("column") || error.Contains("constraint"))
                             {
@@ -753,8 +761,10 @@ public class SyncEngine
                                 hasPushError = true;
                                 break;
                             }
-
-                            throw new HttpRequestException($"Supabase UPSERT failed for table {tableName}: {error}");
+                            else
+                            {
+                                throw new HttpRequestException($"Supabase UPSERT failed for table {tableName}: {error}");
+                            }
                         }
                     }
 
@@ -1343,7 +1353,7 @@ public class SyncEngine
             if (excludePk && pkProperties != null && pkProperties.Contains(property)) continue;
             if (isTestEnv && tableName == "PaymentCollections" && testExcludeCols.Contains(property.Name)) continue;
             if (tableName == "DsmPumpAssignments" && property.Name == "CompletedDate") continue;
-            if (tableName == "DsmPersonalDebtorRepayments" && property.Name == "CardBatch") continue;
+            if (tableName == "DsmPersonalDebtorRepayments" && (property.Name == "CardBatch" || property.Name == "CardTid")) continue;
             
             values[property.Name] = entry.Property(property.Name).CurrentValue;
         }

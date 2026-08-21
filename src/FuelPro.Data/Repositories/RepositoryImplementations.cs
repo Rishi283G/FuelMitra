@@ -629,7 +629,7 @@ public class NozzleReadingRepository : INozzleReadingRepository
                 .ThenInclude(e => e!.Shift)
                 .Where(r => r.DsmEntry != null
                     && r.DsmEntry.Shift != null
-                    && (r.DsmEntry.PumpId == pumpId || r.DsmEntry.ReconciledToPumpId == pumpId)
+                    && r.ClosingReading > 0
                     && (pumpNozzles == null || pumpNozzles.Length == 0 || pumpNozzles.Contains(r.NozzleNumber)));
 
             if (currentDsmEntryId.HasValue)
@@ -647,9 +647,9 @@ public class NozzleReadingRepository : INozzleReadingRepository
                 .Select(g => new { 
                     NozzleNumber = g.Key, 
                     Closing = g.OrderByDescending(x => x.DsmEntry!.Shift!.ShiftDate)
-                               .ThenByDescending(x => x.DsmEntry!.Shift!.ShiftType)
-                               .ThenByDescending(x => x.DsmEntry!.ReconciledToPumpId.HasValue ? x.DsmEntry.ReconciledToPumpId.Value : x.DsmEntry.DsmEntryId)
+                               .ThenByDescending(x => (x.DsmEntry!.Shift!.ShiftType == "B" || x.DsmEntry.Shift.ShiftType == "II") ? 2 : 1)
                                .ThenByDescending(x => x.ClosingReading)
+                               .ThenByDescending(x => x.DsmEntry!.ReconciledToPumpId.HasValue ? x.DsmEntry.ReconciledToPumpId.Value : x.DsmEntry.DsmEntryId)
                                .ThenByDescending(x => x.NozzleReadingId)
                                .Select(x => x.ClosingReading)
                                .FirstOrDefault() 

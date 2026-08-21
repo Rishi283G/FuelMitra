@@ -593,12 +593,6 @@ public class DsmEntryService
                 entry = await context.Set<DsmEntry>().FindAsync(existingEntryId.Value);
             }
 
-            if (entry == null && !string.IsNullOrWhiteSpace(dsmName))
-            {
-                entry = await context.Set<DsmEntry>()
-                    .FirstOrDefaultAsync(e => e.ShiftId == shift.ShiftId && e.PumpId == pumpId && e.DsmName == dsmName);
-            }
-
             if (entry != null)
             {
                 entry.ShiftId = shift.ShiftId;

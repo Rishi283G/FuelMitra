@@ -1519,6 +1519,19 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                 }
             }
 
+            if (connectedPumpId == null && nozzleModels != null)
+            {
+                foreach (var n in nozzleModels)
+                {
+                    var nozzlePumpId = PumpConfiguration.GetPumpIdForNozzle(n.NozzleNumber, SelectedSubmission.ShiftDate);
+                    if (nozzlePumpId != 0 && nozzlePumpId != SelectedSubmission.PumpId)
+                    {
+                        connectedPumpId = nozzlePumpId;
+                        break;
+                    }
+                }
+            }
+
             var expenseModels = SubmissionExpenses.Count > 0
                 ? SubmissionExpenses.ToList()
                 : new List<Expense>();

@@ -687,7 +687,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           .select("HsdRate, MsIRate, MsIIRate, CngRate, LastUpdated");
 
         if (station) {
-          settingsQuery = settingsQuery.or(`station_id.eq.${station},station_id.is.null`);
+          settingsQuery = settingsQuery.eq("station_id", station);
         }
 
         const { data: settingsData } = await settingsQuery
@@ -724,7 +724,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           .eq("IsActive", true);
 
         if (station) {
-          pmQuery = pmQuery.or(`station_id.eq.${station},station_id.is.null`);
+          pmQuery = pmQuery.eq("station_id", station);
         }
 
         const pmRes = await pmQuery.order("NozzleNumber", { ascending: true });
@@ -826,7 +826,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       } catch {}
 
       // ── Step 1: Most recent closing reading from NozzleReadings (Admin Side Ground Truth) ─
-      // Query specifically per nozzle ordered by ClosingReading descending across all station records.
+      // Query specifically per nozzle ordered by ClosingReading descending for the current station.
       // Since pump fuel meters strictly increase with each shift, the highest recorded closing reading
       // represents the latest authoritative ground truth from the admin side.
       try {
@@ -840,19 +840,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                   .select("NozzleNumber, ClosingReading, OpeningReading, Rate, FuelType, NozzleReadingId, created_at, station_id")
                   .eq("NozzleNumber", nId)
                   .gt("ClosingReading", 0)
-                  .or(`station_id.eq.${station},station_id.eq.KANDHARE-PETROLEUM,station_id.is.null`)
-                  .order("ClosingReading", { ascending: false, nullsFirst: false })
-                  .limit(5);
-                readings = data;
-              }
-
-              // Fallback: If no records match exact station_id, query latest across all entries for this nozzle
-              if (!readings || readings.length === 0) {
-                const { data } = await supabase
-                  .from("NozzleReadings")
-                  .select("NozzleNumber, ClosingReading, OpeningReading, Rate, FuelType, NozzleReadingId, created_at, station_id")
-                  .eq("NozzleNumber", nId)
-                  .gt("ClosingReading", 0)
+                  .eq("station_id", station)
                   .order("ClosingReading", { ascending: false, nullsFirst: false })
                   .limit(5);
                 readings = data;
@@ -884,7 +872,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           const { data: lastSubmissions } = await supabase
             .from("DsmSubmissions")
             .select("Id, ShiftDate, ShiftType, PumpId, SubmittedAt")
-            .or(`StationId.eq.${station},StationId.is.null`)
+            .eq("StationId", station)
             .in("PumpId", pumpsToFetch)
             .in("Status", ["Approved", "Pending"])
             .order("ShiftDate", { ascending: false })
