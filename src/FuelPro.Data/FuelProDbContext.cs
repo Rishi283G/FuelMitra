@@ -85,7 +85,14 @@ public class FuelProDbContext : DbContext
     public DbSet<AgsTankStock> AgsTankStocks => Set<AgsTankStock>();
     public DbSet<AgsDailySummary> AgsDailySummaries => Set<AgsDailySummary>();
 
+    // Dynamic Configuration Masters
+    public DbSet<AppFeatureSetting> AppFeatureSettings => Set<AppFeatureSetting>();
+    public DbSet<CollectionTypeMaster> CollectionTypes => Set<CollectionTypeMaster>();
+    public DbSet<PaymentCollectionItem> PaymentCollectionItems => Set<PaymentCollectionItem>();
+    public DbSet<TankDefinition> TankDefinitions => Set<TankDefinition>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
+
     {
         base.OnModelCreating(modelBuilder);
 

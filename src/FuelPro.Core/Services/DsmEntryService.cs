@@ -485,6 +485,7 @@ public class DsmEntryService
                                        + (entry.PaymentCollection?.PetroCardNight ?? 0)),
                 CashDeposit  = (decimal)(cash1Total > 0 ? cash1Total : (entry.PaymentCollection?.CashDeposit ?? 0)),
                 PhysicalCash = (decimal)cash2Total,
+                DynamicPayments = (decimal)(entry.PaymentCollection?.Items?.Sum(i => i.Amount) ?? 0),
                 Others       = (decimal)(entry.PaymentCollection?.Others ?? 0)
             },
             DebitEntries   = entry.DebitEntries.Select(d => new DebitEntryDto { Amount = (decimal)d.Amount }).ToList(),

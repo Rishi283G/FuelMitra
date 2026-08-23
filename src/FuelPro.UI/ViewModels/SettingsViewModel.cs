@@ -107,6 +107,8 @@ public partial class SettingsViewModel : ObservableObject
 
     private Setting? _settings;
 
+    private readonly IDsmProfileRepository _profileRepo;
+
     public SettingsViewModel()
     {
         _settingsRepo = App.Services.GetRequiredService<ISettingsRepository>();
@@ -116,6 +118,7 @@ public partial class SettingsViewModel : ObservableObject
         _licenseManager = App.Services.GetRequiredService<LicenseManager>();
         _syncConfigService = App.Services.GetRequiredService<FuelPro.Sync.SyncConfigService>();
         _syncEngine = App.Services.GetRequiredService<FuelPro.Sync.SyncEngine>();
+        _profileRepo = App.Services.GetRequiredService<IDsmProfileRepository>();
         for (var month = 1; month <= 12; month++)
         {
             MonthOptions.Add(new KeyValuePair<int, string>(month, CultureInfo.CurrentCulture.DateTimeFormat.GetMonthName(month)));
@@ -131,6 +134,7 @@ public partial class SettingsViewModel : ObservableObject
 
     private async Task LoadAsync()
     {
+        await LoadDsmsAsync();
         var result = await _settingsRepo.GetSettingsAsync();
         if (result.Success && result.Data != null)
         {
@@ -644,4 +648,124 @@ public partial class SettingsViewModel : ObservableObject
             SyncStatusMessage = $"❌ Sync error: {ex.Message}";
         }
     }
+
+    // ───────────────────────────────────────────────
+    // DSM PROFILE MANAGEMENT (STAFF DIRECTORY)
+    // ───────────────────────────────────────────────
+    public ObservableCollection<DsmProfile> DsmProfiles { get; } = new();
+    [ObservableProperty] private string _newDsmName = "";
+    [ObservableProperty] private string _newDsmPhone = "";
+    [ObservableProperty] private string _newDsmSalaryType = "FixedMonthly";
+    [ObservableProperty] private double _newDsmBaseSalary = 12000;
+    [ObservableProperty] private string _dsmStatusMessage = "";
+    public string[] DsmSalaryTypeOptions { get; } = { "FixedMonthly", "PerShift", "PerDay" };
+
+    [RelayCommand]
+    public async Task LoadDsmsAsync()
+    {
+        try
+        {
+            DsmProfiles.Clear();
+            if (_profileRepo != null)
+            {
+                var res = await _profileRepo.GetAllAsync();
+                if (res.Success && res.Data != null)
+                {
+                    foreach (var d in res.Data.OrderBy(d => d.DsmName))
+                    {
+                        DsmProfiles.Add(d);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to load DSM profiles in Settings");
+        }
+    }
+
+    [RelayCommand]
+    public async Task AddDsmAsync()
+    {
+        if (string.IsNullOrWhiteSpace(NewDsmName))
+        {
+            DsmStatusMessage = "❌ DSM name is required.";
+            return;
+        }
+
+        try
+        {
+            var profile = new DsmProfile
+            {
+                DsmName = NewDsmName.Trim(),
+                MobileNumber = NewDsmPhone.Trim(),
+                SalaryType = NewDsmSalaryType,
+                BaseSalary = NewDsmBaseSalary,
+                JoiningDate = DateTime.Today
+            };
+
+            if (_profileRepo != null)
+            {
+                var res = await _profileRepo.AddAsync(profile);
+                if (res.Success)
+                {
+                    NewDsmName = "";
+                    NewDsmPhone = "";
+                    DsmStatusMessage = "✅ DSM added successfully!";
+                    await LoadDsmsAsync();
+                }
+                else
+                {
+                    DsmStatusMessage = $"❌ {res.Error}";
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            DsmStatusMessage = $"❌ Error: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    public async Task ToggleDsmActiveAsync(DsmProfile? profile)
+    {
+        if (profile == null || _profileRepo == null) return;
+        try
+        {
+            await _profileRepo.UpdateAsync(profile);
+            await LoadDsmsAsync();
+            DsmStatusMessage = $"Updated profile for {profile.DsmName}.";
+        }
+        catch (Exception ex)
+        {
+            DsmStatusMessage = $"❌ Error: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    public async Task DeleteDsmAsync(DsmProfile? profile)
+    {
+        if (profile == null || _profileRepo == null) return;
+        var confirm = System.Windows.MessageBox.Show($"Are you sure you want to delete DSM '{profile.DsmName}'?", "Confirm Delete", System.Windows.MessageBoxButton.YesNo, System.Windows.MessageBoxImage.Question);
+        if (confirm != System.Windows.MessageBoxResult.Yes) return;
+
+        try
+        {
+            var res = await _profileRepo.DeleteAsync(profile.DsmProfileId);
+            if (res.Success)
+            {
+                DsmProfiles.Remove(profile);
+                DsmStatusMessage = $"✅ Deleted {profile.DsmName}.";
+            }
+            else
+            {
+                DsmStatusMessage = $"❌ {res.Error}";
+            }
+        }
+        catch (Exception ex)
+        {
+            DsmStatusMessage = $"❌ Error: {ex.Message}";
+        }
+    }
 }
+

@@ -135,6 +135,36 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
     private List<DsmEntry> _loadedEntries = new();
     public IReadOnlyList<DsmEntry> LoadedEntries => _loadedEntries;
 
+    private readonly IFeatureToggleService _featureService;
+    private readonly ICollectionTypeService? _collectionTypeService;
+    public bool IsDsmPersonalDebtorVisible => _featureService.IsFeatureEnabled("Admin_DsmPersonalDebtor", true);
+    public bool IsDebtorManagementInShiftTotalVisible => !(_featureService?.IsFeatureEnabled("UI_DebtorManagement_AsNewPage", true) ?? true);
+    public bool IsDebtorManagementAsNewPage => _featureService?.IsFeatureEnabled("UI_DebtorManagement_AsNewPage", true) ?? true;
+
+    [RelayCommand]
+    public async Task ToggleDebtorManagementLocationAsync()
+    {
+        bool current = IsDebtorManagementAsNewPage;
+        await _featureService.SaveFeaturesAsync(new[]
+        {
+            new AppFeatureSetting
+            {
+                FeatureKey = "UI_DebtorManagement_AsNewPage",
+                IsEnabled = !current,
+                DisplayName = "Debtor Management on Dedicated Page (vs Shift Total)",
+                Category = "Navigation",
+                TargetRole = "Global"
+            }
+        });
+        OnPropertyChanged(nameof(IsDebtorManagementAsNewPage));
+        OnPropertyChanged(nameof(IsDebtorManagementInShiftTotalVisible));
+    }
+
+    [ObservableProperty] private string _phonePeHeader = "PhonePe";
+    [ObservableProperty] private string _creditCardHeader = "Credit / Debit Card";
+    [ObservableProperty] private string _petroCardHeader = "PetroCard";
+    [ObservableProperty] private ObservableCollection<FuelSaleRowDto> _fuelSaleRows = new();
+
     public FinalCalculationViewModel()
     {
         _shiftRepo = App.Services.GetRequiredService<IShiftRepository>();
@@ -150,10 +180,70 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
         _tidService = App.Services.GetRequiredService<ITidCalculationService>();
         _inventoryService = App.Services.GetRequiredService<IAgsInventoryService>();
         _reportService = App.Services.GetRequiredService<IReportService>();
+        _featureService = App.Services.GetRequiredService<IFeatureToggleService>();
+        _collectionTypeService = App.Services?.GetService<ICollectionTypeService>();
         DebtorManagementVm = App.Services.GetRequiredService<DebtorManagementViewModel>();
+
+        _featureService.FeatureConfigurationChanged += () =>
+        {
+            var dispatcher = System.Windows.Application.Current?.Dispatcher;
+            if (dispatcher != null && !dispatcher.CheckAccess())
+            {
+                dispatcher.BeginInvoke(() =>
+                {
+                    OnPropertyChanged(nameof(IsDsmPersonalDebtorVisible));
+                    OnPropertyChanged(nameof(IsDebtorManagementInShiftTotalVisible));
+                    OnPropertyChanged(nameof(IsDebtorManagementAsNewPage));
+                });
+            }
+            else
+            {
+                OnPropertyChanged(nameof(IsDsmPersonalDebtorVisible));
+                OnPropertyChanged(nameof(IsDebtorManagementInShiftTotalVisible));
+                OnPropertyChanged(nameof(IsDebtorManagementAsNewPage));
+            }
+        };
+
+        if (_collectionTypeService != null)
+        {
+            _collectionTypeService.CollectionTypesChanged += () =>
+            {
+                var dispatcher = System.Windows.Application.Current?.Dispatcher;
+                if (dispatcher != null && !dispatcher.CheckAccess())
+                {
+                    dispatcher.BeginInvoke(async () => await UpdateCollectionHeadersAsync());
+                }
+                else
+                {
+                    _ = UpdateCollectionHeadersAsync();
+                }
+            };
+        }
+        _ = UpdateCollectionHeadersAsync();
 
         DsmEntryService.DsmEntryChanged += OnDataChanged;
         DsmEntryService.DebtorChanged += OnDataChanged;
+    }
+
+    private async Task UpdateCollectionHeadersAsync()
+    {
+        if (_collectionTypeService == null) return;
+        try
+        {
+            var types = await _collectionTypeService.GetActiveCollectionTypesAsync();
+            var ph = types.FirstOrDefault(c => string.Equals(c.Code, "PHONEPE", StringComparison.OrdinalIgnoreCase));
+            var cc = types.FirstOrDefault(c => string.Equals(c.Code, "CREDIT_CARD", StringComparison.OrdinalIgnoreCase)
+                                            || string.Equals(c.Code, "CREDITCARD", StringComparison.OrdinalIgnoreCase)
+                                            || string.Equals(c.Code, "PINELAB", StringComparison.OrdinalIgnoreCase)
+                                            || string.Equals(c.Code, "PINELABS", StringComparison.OrdinalIgnoreCase));
+            var pc = types.FirstOrDefault(c => string.Equals(c.Code, "PETROCARD", StringComparison.OrdinalIgnoreCase)
+                                            || string.Equals(c.Code, "PETRO_CARD", StringComparison.OrdinalIgnoreCase));
+
+            PhonePeHeader = ph?.DisplayName ?? "PhonePe";
+            CreditCardHeader = cc?.DisplayName ?? "Credit / Debit Card";
+            PetroCardHeader = pc?.DisplayName ?? "PetroCard";
+        }
+        catch { }
     }
 
     private void OnDataChanged()
@@ -314,6 +404,7 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
             MsTotalLitres = MsILitres + MsIILitres;
             MsTotalAmount = MsIAmount + MsIIAmount;
 
+            FuelSaleRows = new ObservableCollection<FuelSaleRowDto>(report.FuelSales);
             TotalLitres = report.TotalFuelLitres;
             TotalFuelSaleAmount = report.TotalFuelAmount;
             OtherCashTotal = report.OtherCashTotal;

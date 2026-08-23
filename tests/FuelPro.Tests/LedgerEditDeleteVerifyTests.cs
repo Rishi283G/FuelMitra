@@ -10,18 +10,27 @@ namespace FuelPro.Tests;
 
 public class LedgerEditDeleteVerifyTests
 {
-    private DbContextOptions<FuelProDbContext> GetDbOptions()
+    private (DbContextOptions<FuelProDbContext> options, string tempDir) GetDbOptions()
     {
-        string dbPath = @"C:\Users\jadha\AppData\Local\FuelPro\fuelPro.db";
-        return new DbContextOptionsBuilder<FuelProDbContext>()
+        string tempDir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "FuelPro_LedgerTest_" + Guid.NewGuid().ToString("N"));
+        System.IO.Directory.CreateDirectory(tempDir);
+        string dbPath = System.IO.Path.Combine(tempDir, "fuelPro.db");
+        var options = new DbContextOptionsBuilder<FuelProDbContext>()
             .UseSqlite($"Data Source={dbPath}")
             .Options;
+
+        using var ctx = new FuelProDbContext(options);
+        ctx.Database.EnsureCreated();
+
+        return (options, tempDir);
     }
 
     [Fact]
     public async Task VerifyEditAndDeleteRepaymentFlow()
     {
-        using var context = new FuelProDbContext(GetDbOptions());
+        var (options, tempDir) = GetDbOptions();
+        using var context = new FuelProDbContext(options);
+
 
         // 1. Create a dummy repayment dated today
         var repayment = new CreditorRepayment

@@ -84,7 +84,7 @@ public class ReportServiceTests
         Assert.Equal(7095.85, report.ExpectedCollection, precision: 2);
 
         // Verify the collection breakdown categories exist
-        Assert.True(report.CollectionBreakdown.Count >= 11);
+        Assert.True(report.CollectionBreakdown.Count >= 5);
         
         var deposit = report.CollectionBreakdown.First(c => c.Category == "Cash Deposit").Amount;
         var cashInHand = report.CollectionBreakdown.First(c => c.Category == "Cash In Hand").Amount;

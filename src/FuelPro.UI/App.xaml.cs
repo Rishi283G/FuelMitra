@@ -408,25 +408,62 @@ public partial class App : Application
             cmdOther.ExecuteNonQuery();
         }
 
-        // Always ensure DsmQrPayments table exists
-        using (var cmdQr = connection.CreateCommand())
+        // Dynamic Configuration tables
+        using (var cmdDyn = connection.CreateCommand())
         {
-            cmdQr.CommandText = @"
-                CREATE TABLE IF NOT EXISTS ""DsmQrPayments"" (
-                    ""Id"" INTEGER NOT NULL CONSTRAINT ""PK_DsmQrPayments"" PRIMARY KEY AUTOINCREMENT,
-                    ""DsmEntryId"" INTEGER NULL,
-                    ""DsmName"" TEXT NOT NULL,
-                    ""TargetDsmName"" TEXT NOT NULL,
-                    ""Amount"" REAL NOT NULL,
+            cmdDyn.CommandText = @"
+                CREATE TABLE IF NOT EXISTS ""AppFeatureSettings"" (
+                    ""Id"" INTEGER NOT NULL CONSTRAINT ""PK_AppFeatureSettings"" PRIMARY KEY AUTOINCREMENT,
+                    ""FeatureKey"" TEXT NOT NULL,
+                    ""TargetRole"" TEXT NOT NULL DEFAULT 'Global',
+                    ""DisplayName"" TEXT NOT NULL DEFAULT '',
+                    ""Description"" TEXT NOT NULL DEFAULT '',
+                    ""Category"" TEXT NOT NULL DEFAULT 'General',
+                    ""IsEnabled"" INTEGER NOT NULL DEFAULT 1,
+                    ""DisplayOrder"" INTEGER NOT NULL DEFAULT 0,
+                    ""ConfigurationJson"" TEXT NULL,
+                    ""UpdatedAt"" TEXT NOT NULL
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS ""IX_AppFeatureSettings_FeatureKey"" ON ""AppFeatureSettings"" (""FeatureKey"");
+
+                CREATE TABLE IF NOT EXISTS ""CollectionTypes"" (
+                    ""CollectionTypeId"" INTEGER NOT NULL CONSTRAINT ""PK_CollectionTypes"" PRIMARY KEY AUTOINCREMENT,
+                    ""Code"" TEXT NOT NULL,
+                    ""DisplayName"" TEXT NOT NULL DEFAULT '',
+                    ""Category"" TEXT NOT NULL DEFAULT 'Online',
+                    ""HasTidBatch"" INTEGER NOT NULL DEFAULT 0,
+                    ""DisplayOrder"" INTEGER NOT NULL DEFAULT 0,
+                    ""IsActive"" INTEGER NOT NULL DEFAULT 1,
+                    ""IsSystem"" INTEGER NOT NULL DEFAULT 0,
+                    ""CreatedAt"" TEXT NOT NULL
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS ""IX_CollectionTypes_Code"" ON ""CollectionTypes"" (""Code"");
+
+                CREATE TABLE IF NOT EXISTS ""PaymentCollectionItems"" (
+                    ""Id"" INTEGER NOT NULL CONSTRAINT ""PK_PaymentCollectionItems"" PRIMARY KEY AUTOINCREMENT,
+                    ""PaymentId"" INTEGER NOT NULL,
+                    ""CollectionTypeCode"" TEXT NOT NULL,
+                    ""Amount"" REAL NOT NULL DEFAULT 0.0,
                     ""Tid"" TEXT NULL,
                     ""Batch"" TEXT NULL,
-                    ""Slot"" TEXT NULL,
-                    ""Date"" TEXT NOT NULL,
-                    ""CreatedAt"" TEXT NOT NULL,
-                    CONSTRAINT ""FK_DsmQrPayments_DsmEntries_DsmEntryId"" FOREIGN KEY (""DsmEntryId"") REFERENCES ""DsmEntries"" (""DsmEntryId"") ON DELETE CASCADE
-                );";
-            cmdQr.ExecuteNonQuery();
+                    ""Slot"" TEXT NULL DEFAULT 'General',
+                    CONSTRAINT ""FK_PaymentCollectionItems_PaymentCollections_PaymentId"" FOREIGN KEY (""PaymentId"") REFERENCES ""PaymentCollections"" (""PaymentId"") ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS ""IX_PaymentCollectionItems_PaymentId"" ON ""PaymentCollectionItems"" (""PaymentId"");
+
+                CREATE TABLE IF NOT EXISTS ""TankDefinitions"" (
+                    ""TankId"" INTEGER NOT NULL CONSTRAINT ""PK_TankDefinitions"" PRIMARY KEY AUTOINCREMENT,
+                    ""TankName"" TEXT NOT NULL,
+                    ""CapacityKL"" REAL NOT NULL DEFAULT 20.0,
+                    ""FuelType"" TEXT NOT NULL DEFAULT 'HSD',
+                    ""IsActive"" INTEGER NOT NULL DEFAULT 1,
+                    ""CreatedAt"" TEXT NOT NULL
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS ""IX_TankDefinitions_TankName"" ON ""TankDefinitions"" (""TankName"");
+            ";
+            cmdDyn.ExecuteNonQuery();
         }
+
 
         // DsmPumpAssignments columns — must run before the guard since SyncValidationTest calls this
         // before EF migrations create PaymentCollections/DsmEntries tables.
@@ -1125,14 +1162,21 @@ public partial class App : Application
         services.AddTransient<AgsImportValidator>();
         services.AddTransient<PrintService>();
         services.AddTransient<ExcelExportService>();
-        services.AddTransient<IAuditLogService, AuditLogService>();
-        services.AddTransient<IDayLockService, DayLockService>();
-        
+        // Dynamic Configuration Services
+        services.AddSingleton<IFeatureToggleService, FeatureToggleService>();
+        services.AddSingleton<ICollectionTypeService, CollectionTypeService>();
+        services.AddSingleton<IStationConfigurationService, StationConfigurationService>();
+
         // Sync Services
         services.AddSingleton<FuelPro.Sync.SyncConfigService>();
         services.AddSingleton<FuelPro.Sync.SyncEngine>();
         services.AddSingleton<FuelPro.Sync.DsmSubmissionPollingService>();
-        
+
+        // Views
+        services.AddTransient<Views.LoginView>();
+        services.AddTransient<Views.MainWindow>();
+        services.AddTransient<Views.OwnerMainWindow>();
+
         // ViewModels
         services.AddTransient<LoginViewModel>();
         services.AddTransient<MainWindowViewModel>();

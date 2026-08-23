@@ -159,8 +159,53 @@
                                 </Border>
                             </StackPanel>
                         </Button>
+
+                        <!-- Tab 5: Client Features -->
+                        <Button Command="{Binding SelectTabCommand}" CommandParameter="5" ToolTip="Client Features &amp; Page Matrix" Height="48" Margin="0,2" HorizontalContentAlignment="Left">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignFlatMidBgButton}">
+                                    <Setter Property="Background" Value="Transparent" />
+                                    <Setter Property="BorderBrush" Value="Transparent" />
+                                    <Setter Property="Foreground" Value="White" />
+                                    <Setter Property="Opacity" Value="0.6" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding SelectedNavIndex}" Value="5">
+                                            <Setter Property="Opacity" Value="1" />
+                                            <Setter Property="Background" Value="#37474F" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="TuneVariant" Width="20" Height="20" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Client Features" FontSize="13" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+
+                        <!-- Tab 6: Station & Collections -->
+                        <Button Command="{Binding SelectTabCommand}" CommandParameter="6" ToolTip="Station Layout, Pumps, Tanks &amp; Collections" Height="48" Margin="0,2" HorizontalContentAlignment="Left">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignFlatMidBgButton}">
+                                    <Setter Property="Background" Value="Transparent" />
+                                    <Setter Property="BorderBrush" Value="Transparent" />
+                                    <Setter Property="Foreground" Value="White" />
+                                    <Setter Property="Opacity" Value="0.6" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding SelectedNavIndex}" Value="6">
+                                            <Setter Property="Opacity" Value="1" />
+                                            <Setter Property="Background" Value="#37474F" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="GasStation" Width="20" Height="20" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Station &amp; Collections" FontSize="13" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
                     </StackPanel>
                     </ScrollViewer>
+
 
                     <Button Grid.Row="2" Command="{Binding ExitCommand}" Content="Exit Tools" Margin="16,0,16,24" Height="40" Style="{StaticResource MaterialDesignOutlinedButton}" Foreground="White" BorderBrush="White" Opacity="0.5"/>
                 </Grid>
@@ -1020,7 +1065,366 @@
                     </ScrollViewer>
                 </TabItem>
 
+                <!-- Tab 5: Client Features & Page Access Matrix -->
+                <TabItem>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" CanContentScroll="False" PreviewMouseWheel="ScrollViewer_PreviewMouseWheel">
+                        <StackPanel Margin="0,0,0,24">
+                            <!-- Header & Action Bar -->
+                            <materialDesign:Card Padding="16,12" Margin="0,0,0,16" Background="#263238">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <StackPanel Grid.Column="0">
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                            <materialDesign:PackIcon Kind="TuneVariant" Width="22" Height="22" Foreground="#80CBC4" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                            <TextBlock Text="Client Features &amp; Page Access Matrix" FontSize="18" FontWeight="Bold" Foreground="White" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                        <TextBlock Text="Enable or disable individual pages and modules independently for Manager, Owner, and Integrations." FontSize="12" Foreground="#CFD8DC"/>
+                                        <TextBlock Text="{Binding FeatureStatusMessage}" FontSize="12" FontWeight="SemiBold" Foreground="#80CBC4" Margin="0,6,0,0"/>
+                                    </StackPanel>
+
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="Filter Role:" Foreground="#ECEFF1" VerticalAlignment="Center" Margin="0,0,8,0" FontSize="12"/>
+                                        <ComboBox ItemsSource="{Binding FeatureRoleFilterOptions}" SelectedItem="{Binding SelectedFeatureRoleFilter}"
+                                                  Width="110" Height="32" Foreground="White" Background="#37474F" Margin="0,0,12,0"/>
+
+                                        <Button Content="Current Client Preset" Command="{Binding ApplyClientPresetCommand}" CommandParameter="CurrentClient"
+                                                Style="{StaticResource MaterialDesignOutlinedButton}" Foreground="#80CBC4" BorderBrush="#80CBC4"
+                                                Height="32" Padding="10,0" Margin="0,0,8,0" FontSize="11"/>
+
+                                        <Button Content="All Features On" Command="{Binding ApplyClientPresetCommand}" CommandParameter="Full"
+                                                Style="{StaticResource MaterialDesignOutlinedButton}" Foreground="#ECEFF1" BorderBrush="#ECEFF1"
+                                                Height="32" Padding="10,0" Margin="0,0,12,0" FontSize="11"/>
+
+                                        <Button Content="Save All Features" Command="{Binding SaveFeaturesCommand}"
+                                                Style="{StaticResource MaterialDesignRaisedButton}" Background="#00897B" BorderBrush="#00897B" Foreground="White"
+                                                Height="34" Padding="16,0" FontSize="12" FontWeight="Bold"/>
+                                    </StackPanel>
+                                </Grid>
+                            </materialDesign:Card>
+
+                            <!-- Feature Settings Table -->
+                            <materialDesign:Card Padding="0" Background="#263238">
+                                <DataGrid ItemsSource="{Binding FilteredFeatureSettings}" AutoGenerateColumns="False"
+                                          CanUserAddRows="False" CanUserDeleteRows="False" GridLinesVisibility="Horizontal"
+                                          HorizontalGridLinesBrush="#37474F" Background="Transparent" Foreground="White"
+                                          RowBackground="#263238" AlternatingRowBackground="#1E272C"
+                                          materialDesign:DataGridAssist.CellPadding="12 10" FontSize="13">
+                                    <DataGrid.ColumnHeaderStyle>
+                                        <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource MaterialDesignDataGridColumnHeader}">
+                                            <Setter Property="Background" Value="#1A2327"/>
+                                            <Setter Property="Foreground" Value="#80CBC4"/>
+                                            <Setter Property="FontWeight" Value="Bold"/>
+                                            <Setter Property="Padding" Value="12,8"/>
+                                        </Style>
+                                    </DataGrid.ColumnHeaderStyle>
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Role" Binding="{Binding TargetRole}" Width="100" IsReadOnly="True">
+                                            <DataGridTextColumn.ElementStyle>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Foreground" Value="#ECEFF1"/>
+                                                    <Setter Property="FontWeight" Value="SemiBold"/>
+                                                </Style>
+                                            </DataGridTextColumn.ElementStyle>
+                                        </DataGridTextColumn>
+                                        <DataGridTextColumn Header="Category" Binding="{Binding Category}" Width="140" IsReadOnly="True">
+                                            <DataGridTextColumn.ElementStyle>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Foreground" Value="#CFD8DC"/>
+                                                </Style>
+                                            </DataGridTextColumn.ElementStyle>
+                                        </DataGridTextColumn>
+                                        <DataGridTextColumn Header="Feature / Page Name (Editable)" Binding="{Binding DisplayName, UpdateSourceTrigger=PropertyChanged}" Width="240" IsReadOnly="False">
+                                            <DataGridTextColumn.ElementStyle>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="FontWeight" Value="Bold"/>
+                                                    <Setter Property="Foreground" Value="#81C784"/>
+                                                </Style>
+                                            </DataGridTextColumn.ElementStyle>
+                                            <DataGridTextColumn.EditingElementStyle>
+                                                <Style TargetType="TextBox">
+                                                    <Setter Property="Foreground" Value="White"/>
+                                                    <Setter Property="Background" Value="#1E272C"/>
+                                                    <Setter Property="FontWeight" Value="Bold"/>
+                                                </Style>
+                                            </DataGridTextColumn.EditingElementStyle>
+                                        </DataGridTextColumn>
+                                        <DataGridTextColumn Header="Description / Purpose" Binding="{Binding Description}" Width="*" IsReadOnly="True">
+                                            <DataGridTextColumn.ElementStyle>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Foreground" Value="#ECEFF1"/>
+                                                    <Setter Property="TextWrapping" Value="Wrap"/>
+                                                </Style>
+                                            </DataGridTextColumn.ElementStyle>
+                                        </DataGridTextColumn>
+                                        <DataGridTemplateColumn Header="Enabled" Width="100">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <CheckBox IsChecked="{Binding IsEnabled, UpdateSourceTrigger=PropertyChanged}"
+                                                              HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                              Style="{StaticResource MaterialDesignFilterChipPrimaryCheckBox}"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </materialDesign:Card>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+
+                <!-- Tab 6: Station Layout & Dynamic Collections Master -->
+                <TabItem>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" CanContentScroll="False" PreviewMouseWheel="ScrollViewer_PreviewMouseWheel">
+                        <StackPanel Margin="0,0,0,24">
+                            <!-- Section 1: Station Operational Entities (Pumps & Nozzles) -->
+                            <materialDesign:Card Padding="16,12" Margin="0,0,0,16" Background="#263238">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <StackPanel Grid.Column="0">
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                            <materialDesign:PackIcon Kind="GasStation" Width="22" Height="22" Foreground="#FFB74D" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                            <TextBlock Text="Station Layout (Pumps, Nozzles &amp; Tanks)" FontSize="18" FontWeight="Bold" Foreground="White" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                        <TextBlock Text="Configure physical pumps, nozzles, connected fuel products, and storage tanks." FontSize="12" Foreground="#CFD8DC"/>
+                                        <TextBlock Text="{Binding StationStatusMessage}" FontSize="12" FontWeight="SemiBold" Foreground="#FFB74D" Margin="0,6,0,0"/>
+                                    </StackPanel>
+
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <Button Content="+ Add Pump" Command="{Binding AddPumpCommand}"
+                                                Style="{StaticResource MaterialDesignOutlinedButton}" Foreground="#FFB74D" BorderBrush="#FFB74D"
+                                                Height="32" Padding="12,0" Margin="0,0,8,0" FontSize="11"/>
+
+                                        <Button Content="+ Add Tank" Command="{Binding AddTankCommand}"
+                                                Style="{StaticResource MaterialDesignOutlinedButton}" Foreground="#90CAF9" BorderBrush="#90CAF9"
+                                                Height="32" Padding="12,0" Margin="0,0,8,0" FontSize="11"/>
+
+                                        <Button Content="Save Tanks" Command="{Binding SaveTanksCommand}"
+                                                Style="{StaticResource MaterialDesignOutlinedButton}" Foreground="#90CAF9" BorderBrush="#90CAF9"
+                                                Height="32" Padding="12,0" Margin="0,0,12,0" FontSize="11"/>
+
+                                        <Button Content="Save Station Layout" Command="{Binding SaveStationLayoutCommand}"
+                                                Style="{StaticResource MaterialDesignRaisedButton}" Background="#F57C00" BorderBrush="#F57C00" Foreground="White"
+                                                Height="34" Padding="16,0" FontSize="12" FontWeight="Bold"/>
+                                    </StackPanel>
+                                </Grid>
+                            </materialDesign:Card>
+
+                            <!-- Pumps Visual Mapping Cards -->
+                            <ItemsControl ItemsSource="{Binding ConfiguredPumps}" Margin="0,0,0,16">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel Orientation="Horizontal"/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <materialDesign:Card Width="375" Margin="0,0,16,16" Padding="12" Background="#1E272C">
+                                            <StackPanel>
+                                                <Grid Margin="0,0,0,8">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <materialDesign:PackIcon Kind="GasStationOutline" Width="18" Height="18" Foreground="#FFB74D" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                                        <TextBlock Text="{Binding PumpId, StringFormat='Pump #{0}'}" FontSize="15" FontWeight="Bold" Foreground="White" VerticalAlignment="Center"/>
+                                                    </StackPanel>
+                                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                                        <Button Content="+ Nozzle" Command="{Binding DataContext.AddNozzleCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}"
+                                                                Style="{StaticResource MaterialDesignFlatButton}" Foreground="#80CBC4" Height="26" Padding="6,0" FontSize="10"/>
+                                                        <Button Content="Delete" Command="{Binding DataContext.RemovePumpCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}"
+                                                                Style="{StaticResource MaterialDesignFlatButton}" Foreground="#E57373" Height="26" Padding="6,0" FontSize="10"/>
+                                                    </StackPanel>
+                                                </Grid>
+
+                                                <!-- Nozzles in this pump -->
+                                                <ItemsControl ItemsSource="{Binding Nozzles}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Border Background="#263238" CornerRadius="4" Padding="8,4" Margin="0,0,0,6">
+                                                                <Grid>
+                                                                    <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="Auto"/>
+                                                                        <ColumnDefinition Width="1*"/>
+                                                                        <ColumnDefinition Width="1.4*"/>
+                                                                        <ColumnDefinition Width="Auto"/>
+                                                                    </Grid.ColumnDefinitions>
+
+                                                                    <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="0,0,6,0" VerticalAlignment="Center">
+                                                                        <TextBlock Text="N:" FontSize="11" Foreground="#CFD8DC" Margin="0,0,2,0"/>
+                                                                        <TextBox Text="{Binding NozzleNumber, UpdateSourceTrigger=PropertyChanged}" Width="28" Foreground="White" FontWeight="Bold" FontSize="12" TextAlignment="Center"/>
+                                                                    </StackPanel>
+
+                                                                    <ComboBox Grid.Column="1" ItemsSource="{Binding DataContext.AvailableFuelTypes, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                              SelectedItem="{Binding FuelType, UpdateSourceTrigger=PropertyChanged}"
+                                                                              Height="28" FontSize="11" Foreground="#80CBC4" Margin="0,0,6,0" ToolTip="Fuel Product">
+                                                                        <ComboBox.ItemContainerStyle>
+                                                                            <Style TargetType="ComboBoxItem">
+                                                                                <Setter Property="Foreground" Value="White"/>
+                                                                                <Setter Property="Background" Value="#263238"/>
+                                                                                <Setter Property="FontSize" Value="12"/>
+                                                                            </Style>
+                                                                        </ComboBox.ItemContainerStyle>
+                                                                    </ComboBox>
+
+                                                                    <!-- Connected Tank Dropdown -->
+                                                                    <ComboBox Grid.Column="2" ItemsSource="{Binding DataContext.AvailableTankNames, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                              SelectedItem="{Binding TankName, UpdateSourceTrigger=PropertyChanged}"
+                                                                              IsEditable="True" Height="28" FontSize="11" Foreground="#90CAF9" Margin="0,0,6,0" ToolTip="Connected Storage Tank">
+                                                                        <ComboBox.ItemContainerStyle>
+                                                                            <Style TargetType="ComboBoxItem">
+                                                                                <Setter Property="Foreground" Value="White"/>
+                                                                                <Setter Property="Background" Value="#263238"/>
+                                                                                <Setter Property="FontSize" Value="12"/>
+                                                                            </Style>
+                                                                        </ComboBox.ItemContainerStyle>
+                                                                    </ComboBox>
+
+                                                                    <Button Grid.Column="3" Content="✕" Command="{Binding DataContext.RemoveNozzleCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"
+                                                                            Style="{StaticResource MaterialDesignFlatButton}" Foreground="#E57373" Height="24" Width="24" Padding="0"/>
+                                                                </Grid>
+                                                            </Border>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </StackPanel>
+                                        </materialDesign:Card>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <!-- Tanks Grid -->
+                            <materialDesign:Card Padding="12" Margin="0,0,0,16" Background="#263238">
+                                <StackPanel>
+                                    <TextBlock Text="Configured Storage Tanks" FontSize="14" FontWeight="Bold" Foreground="#90CAF9" Margin="0,0,0,8"/>
+                                    <DataGrid ItemsSource="{Binding ConfiguredTanks}" AutoGenerateColumns="False"
+                                              CanUserAddRows="False" Background="Transparent" Foreground="White"
+                                              RowBackground="#263238" AlternatingRowBackground="#1E272C"
+                                              materialDesign:DataGridAssist.CellPadding="10 6" FontSize="12">
+                                        <DataGrid.ColumnHeaderStyle>
+                                            <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource MaterialDesignDataGridColumnHeader}">
+                                                <Setter Property="Background" Value="#1A2327"/>
+                                                <Setter Property="Foreground" Value="#90CAF9"/>
+                                                <Setter Property="FontWeight" Value="Bold"/>
+                                            </Style>
+                                        </DataGrid.ColumnHeaderStyle>
+                                        <DataGrid.Columns>
+                                            <DataGridTextColumn Header="Tank Name" Binding="{Binding TankName}" Width="200"/>
+                                            <DataGridTextColumn Header="Capacity (KL)" Binding="{Binding CapacityKL}" Width="120"/>
+                                            <DataGridTextColumn Header="Fuel Product" Binding="{Binding FuelType}" Width="150"/>
+                                            <DataGridCheckBoxColumn Header="Active" Binding="{Binding IsActive}" Width="80"/>
+                                            <DataGridTemplateColumn Header="Actions" Width="100">
+                                                <DataGridTemplateColumn.CellTemplate>
+                                                    <DataTemplate>
+                                                        <Button Content="Delete" Command="{Binding DataContext.DeleteTankCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"
+                                                                Style="{StaticResource MaterialDesignFlatButton}" Foreground="#E57373" Height="24" Padding="6,0" FontSize="10"/>
+                                                    </DataTemplate>
+                                                </DataGridTemplateColumn.CellTemplate>
+                                            </DataGridTemplateColumn>
+                                        </DataGrid.Columns>
+                                    </DataGrid>
+                                </StackPanel>
+                            </materialDesign:Card>
+
+                            <!-- Section 2: Dynamic Collection Types Master -->
+                            <materialDesign:Card Padding="16,12" Margin="0,0,0,16" Background="#263238">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <StackPanel Grid.Column="0">
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                            <materialDesign:PackIcon Kind="CreditCardMultiple" Width="22" Height="22" Foreground="#81C784" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                            <TextBlock Text="Dynamic Collection Types Master" FontSize="18" FontWeight="Bold" Foreground="White" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                        <TextBlock Text="Configure payment methods (SBI Redeem, Paytm, QR, Mobikwik, PhonePe, Cards, etc.) with TID reconciliation settings." FontSize="12" Foreground="#CFD8DC"/>
+                                        <TextBlock Text="{Binding CollectionStatusMessage}" FontSize="12" FontWeight="SemiBold" Foreground="#81C784" Margin="0,6,0,0"/>
+                                    </StackPanel>
+
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <Button Content="+ Add Collection Type" Command="{Binding AddCollectionTypeCommand}"
+                                                Style="{StaticResource MaterialDesignOutlinedButton}" Foreground="#81C784" BorderBrush="#81C784"
+                                                Height="32" Padding="12,0" Margin="0,0,8,0" FontSize="11"/>
+
+                                        <Button Content="Save Collection Types" Command="{Binding SaveCollectionsCommand}"
+                                                Style="{StaticResource MaterialDesignRaisedButton}" Background="#388E3C" BorderBrush="#388E3C" Foreground="White"
+                                                Height="34" Padding="16,0" FontSize="12" FontWeight="Bold"/>
+                                    </StackPanel>
+                                </Grid>
+                            </materialDesign:Card>
+
+                            <!-- Collection Types Table -->
+                            <materialDesign:Card Padding="0" Background="#263238">
+                                <DataGrid ItemsSource="{Binding ConfiguredCollectionTypes}" AutoGenerateColumns="False"
+                                          CanUserAddRows="False" GridLinesVisibility="Horizontal"
+                                          HorizontalGridLinesBrush="#37474F" Background="Transparent" Foreground="White"
+                                          RowBackground="#263238" AlternatingRowBackground="#1E272C"
+                                          materialDesign:DataGridAssist.CellPadding="10 6" FontSize="12">
+                                    <DataGrid.ColumnHeaderStyle>
+                                        <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource MaterialDesignDataGridColumnHeader}">
+                                            <Setter Property="Background" Value="#1A2327"/>
+                                            <Setter Property="Foreground" Value="#81C784"/>
+                                            <Setter Property="FontWeight" Value="Bold"/>
+                                        </Style>
+                                    </DataGrid.ColumnHeaderStyle>
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Order" Binding="{Binding DisplayOrder, UpdateSourceTrigger=PropertyChanged}" Width="50" IsReadOnly="True"/>
+                                        <DataGridTemplateColumn Header="Code" Width="140">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <TextBox Text="{Binding Code, UpdateSourceTrigger=PropertyChanged}" Foreground="#80CBC4" FontWeight="SemiBold"
+                                                             Background="Transparent" BorderThickness="0,0,0,1" BorderBrush="#546E7A" FontSize="12" VerticalAlignment="Center"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                        <DataGridTemplateColumn Header="Display Name" Width="200">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <TextBox Text="{Binding DisplayName, UpdateSourceTrigger=PropertyChanged}" Foreground="White" FontWeight="Bold"
+                                                             Background="Transparent" BorderThickness="0,0,0,1" BorderBrush="#546E7A" FontSize="12" VerticalAlignment="Center"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                        <DataGridTemplateColumn Header="Category" Width="120">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <TextBox Text="{Binding Category, UpdateSourceTrigger=PropertyChanged}" Foreground="#CFD8DC"
+                                                             Background="Transparent" BorderThickness="0,0,0,1" BorderBrush="#546E7A" FontSize="12" VerticalAlignment="Center"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                        <DataGridCheckBoxColumn Header="Requires TID / Batch" Binding="{Binding HasTidBatch, UpdateSourceTrigger=PropertyChanged}" Width="150"/>
+                                        <DataGridCheckBoxColumn Header="Active" Binding="{Binding IsActive, UpdateSourceTrigger=PropertyChanged}" Width="80"/>
+                                        <DataGridTemplateColumn Header="Reorder / Actions" Width="200">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <Button Content="▲" Command="{Binding DataContext.MoveCollectionUpCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"
+                                                                Style="{StaticResource MaterialDesignFlatButton}" Foreground="#80CBC4" Height="24" Width="24" Padding="0"/>
+                                                        <Button Content="▼" Command="{Binding DataContext.MoveCollectionDownCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"
+                                                                Style="{StaticResource MaterialDesignFlatButton}" Foreground="#80CBC4" Height="24" Width="24" Padding="0" Margin="4,0,8,0"/>
+                                                        <Button Content="Remove" Command="{Binding DataContext.DeleteCollectionTypeCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"
+                                                                Style="{StaticResource MaterialDesignFlatButton}" Foreground="#E57373" Height="24" Padding="6,0" FontSize="10"/>
+                                                    </StackPanel>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </materialDesign:Card>
+
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+
             </TabControl>
+
 
             <!-- Bottom Status Bar -->
             <Border Grid.Column="1" Grid.Row="1" Background="#37474F" TextElement.Foreground="White" Padding="16,4">

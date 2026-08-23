@@ -133,11 +133,28 @@
                                 <DataGrid.Columns>
                                     <DataGridTextColumn Header="DSM" Binding="{Binding DsmName}" FontWeight="Bold"/>
                                     <DataGridTextColumn Header="Pump" Binding="{Binding PumpLabel}" />
-                                    <DataGridTextColumn Header="Phone Pe (M)" Binding="{Binding PhonePeMorning, Converter={StaticResource CurrencyConverter}}" />
-                                    <DataGridTextColumn Header="Phone Pe (N)" Binding="{Binding PhonePeNight, Converter={StaticResource CurrencyConverter}}" />
-                                    <DataGridTextColumn Header="PineLab (M)" Binding="{Binding CreditCardMorning, Converter={StaticResource CurrencyConverter}}" />
-                                    <DataGridTextColumn Header="PineLab (N)" Binding="{Binding CreditCardNight, Converter={StaticResource CurrencyConverter}}" />
-                                    <DataGridTextColumn Header="Petro Card" Binding="{Binding PetroCard, Converter={StaticResource CurrencyConverter}}" />
+                                    <DataGridTextColumn Binding="{Binding PhonePeTotal, Converter={StaticResource CurrencyConverter}}">
+                                        <DataGridTextColumn.HeaderTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding DataContext.PhonePeHeader, RelativeSource={RelativeSource AncestorType=DataGrid}}"/>
+                                            </DataTemplate>
+                                        </DataGridTextColumn.HeaderTemplate>
+                                    </DataGridTextColumn>
+                                    <DataGridTextColumn Binding="{Binding CreditCardTotal, Converter={StaticResource CurrencyConverter}}">
+                                        <DataGridTextColumn.HeaderTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding DataContext.CreditCardHeader, RelativeSource={RelativeSource AncestorType=DataGrid}}"/>
+                                            </DataTemplate>
+                                        </DataGridTextColumn.HeaderTemplate>
+                                    </DataGridTextColumn>
+                                    <DataGridTextColumn Binding="{Binding PetroCardTotal, Converter={StaticResource CurrencyConverter}}">
+                                        <DataGridTextColumn.HeaderTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding DataContext.PetroCardHeader, RelativeSource={RelativeSource AncestorType=DataGrid}}"/>
+                                            </DataTemplate>
+                                        </DataGridTextColumn.HeaderTemplate>
+                                    </DataGridTextColumn>
+                                    <DataGridTextColumn Header="Other/Dyn" Binding="{Binding DynamicCollectionsTotal, Converter={StaticResource CurrencyConverter}}" />
                                     <DataGridTextColumn Header="Bank Cash" Binding="{Binding CashDeposit, Converter={StaticResource CurrencyConverter}}" />
                                     <DataGridTextColumn Header="Debtors" Binding="{Binding Debit, Converter={StaticResource CurrencyConverter}}" Foreground="Red" />
                                     <DataGridTextColumn Header="Expenses" Binding="{Binding Expenses, Converter={StaticResource CurrencyConverter}}" Foreground="Red"/>
@@ -160,21 +177,17 @@
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" Text="TOTAL" FontWeight="Bold" Foreground="White" />
-                                    <TextBlock Grid.Column="1" Text="{Binding PhonePeMorning, Converter={StaticResource CurrencyConverter}}" Foreground="White" Margin="8,0" />
-                                    <TextBlock Grid.Column="2" Text="{Binding PhonePeNight, Converter={StaticResource CurrencyConverter}}" Foreground="White" Margin="8,0" />
-                                    <TextBlock Grid.Column="3" Text="{Binding CreditCardMorning, Converter={StaticResource CurrencyConverter}}" Foreground="White" Margin="8,0" />
-                                    <TextBlock Grid.Column="4" Text="{Binding CreditCardNight, Converter={StaticResource CurrencyConverter}}" Foreground="White" Margin="8,0" />
-                                    <TextBlock Grid.Column="5" Text="{Binding PetroCard, Converter={StaticResource CurrencyConverter}}" Foreground="White" Margin="8,0" />
-                                    <TextBlock Grid.Column="6" Text="{Binding CashDeposit, Converter={StaticResource CurrencyConverter}}" Foreground="White" Margin="8,0" />
-                                    <TextBlock Grid.Column="7" Text="{Binding Debit, Converter={StaticResource CurrencyConverter}}" Foreground="White" Margin="8,0" />
-                                    <TextBlock Grid.Column="8" Text="{Binding Expenses, Converter={StaticResource CurrencyConverter}}" Foreground="White" Margin="8,0" />
-                                    <TextBlock Grid.Column="9" Text="{Binding Testing, Converter={StaticResource CurrencyConverter}}" Foreground="White" Margin="8,0" />
-                                    <TextBlock Grid.Column="10" Text="{Binding CashInHand, Converter={StaticResource CurrencyConverter}}" Foreground="White" Margin="8,0" />
-                                    <TextBlock Grid.Column="11" Text="{Binding GrossSales, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" Foreground="White" Margin="8,0" />
+                                    <TextBlock Grid.Column="1" Text="{Binding PhonePeTotal, Converter={StaticResource CurrencyConverter}}" Foreground="White" Margin="8,0" />
+                                    <TextBlock Grid.Column="2" Text="{Binding CreditCardTotal, Converter={StaticResource CurrencyConverter}}" Foreground="White" Margin="8,0" />
+                                    <TextBlock Grid.Column="3" Text="{Binding PetroCardTotal, Converter={StaticResource CurrencyConverter}}" Foreground="White" Margin="8,0" />
+                                    <TextBlock Grid.Column="4" Text="{Binding DynamicCollectionsTotal, Converter={StaticResource CurrencyConverter}}" Foreground="White" Margin="8,0" />
+                                    <TextBlock Grid.Column="5" Text="{Binding CashDeposit, Converter={StaticResource CurrencyConverter}}" Foreground="White" Margin="8,0" />
+                                    <TextBlock Grid.Column="6" Text="{Binding Debit, Converter={StaticResource CurrencyConverter}}" Foreground="White" Margin="8,0" />
+                                    <TextBlock Grid.Column="7" Text="{Binding Expenses, Converter={StaticResource CurrencyConverter}}" Foreground="White" Margin="8,0" />
+                                    <TextBlock Grid.Column="8" Text="{Binding Testing, Converter={StaticResource CurrencyConverter}}" Foreground="White" Margin="8,0" />
+                                    <TextBlock Grid.Column="9" Text="{Binding CashInHand, Converter={StaticResource CurrencyConverter}}" Foreground="White" Margin="8,0" />
                                 </Grid>
                             </Border>
                         </StackPanel>
@@ -286,7 +299,8 @@
                     </materialDesign:Card>
 
                     <!-- DSM LOSS (PERSONAL DEBTORS) -->
-                    <materialDesign:Card Style="{StaticResource SectionCard}">
+                    <materialDesign:Card Style="{StaticResource SectionCard}"
+                                         Visibility="{Binding IsDsmPersonalDebtorVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <StackPanel>
                             <Grid Margin="0,0,0,12">
                                 <TextBlock Text="E. DSM Loss Register" Style="{StaticResource SectionTitle}" Margin="0" />
@@ -307,105 +321,32 @@
 
                 <StackPanel Grid.Row="1" Grid.Column="1" Margin="8,0,0,0">
                     
-                    <!-- TABLE E: FUEL DISPENSED & SALE -->
+                    <!-- TABLE E: FUEL DISPENSED & SALE (DSR) -->
                     <materialDesign:Card Style="{StaticResource SectionCard}">
                         <StackPanel>
-                            <TextBlock Text="E. Fuel Dispensed &amp; Sale" Style="{StaticResource SectionTitle}" />
-                            <DataGrid AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column">
+                            <TextBlock Text="E. Fuel Dispensed &amp; Sale (DSR)" Style="{StaticResource SectionTitle}" />
+                            <DataGrid ItemsSource="{Binding FuelSaleRows}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column"
+                                      materialDesign:DataGridAssist.CellPadding="8 6" Margin="0,4,0,0">
                                 <DataGrid.Columns>
-                                    <DataGridTextColumn Header="Type" Binding="{Binding FuelType}" Width="2*" />
-                                    <DataGridTextColumn Header="Litres" Binding="{Binding Litres, Converter={StaticResource LitreConverter}}" Width="2*" />
+                                    <DataGridTextColumn Header="Description / Product" Binding="{Binding Description}" Width="2*" FontWeight="SemiBold"/>
+                                    <DataGridTextColumn Header="Qty (L/Kg)" Binding="{Binding Litres, Converter={StaticResource LitreConverter}}" Width="2*" />
                                     <DataGridTextColumn Header="Rate" Binding="{Binding Rate, Converter={StaticResource CurrencyConverter}}" Width="1.5*" />
                                     <DataGridTextColumn Header="Amount" Binding="{Binding Amount, Converter={StaticResource CurrencyConverter}}" Width="2*" FontWeight="Bold" />
                                 </DataGrid.Columns>
-                                <DataGrid.Items>
-                                    <!-- Using dynamic binding to viewmodel properties via an anonymous type wrapper in code-behind or just static layout. For simplicity in XAML, we use static layout with binding -->
-                                </DataGrid.Items>
                             </DataGrid>
                             
-                            <!-- Static Layout for Table E to easily bind to individual properties -->
-                            <Border BorderBrush="{DynamicResource MaterialDesign.Brush.Divider}" BorderThickness="1" CornerRadius="4">
-                                <Grid>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                    </Grid.RowDefinitions>
+                            <!-- Total Fuel -->
+                            <Border Background="{DynamicResource MaterialDesign.Brush.Surface}" BorderBrush="{DynamicResource MaterialDesign.Brush.Divider}" BorderThickness="0,1,0,1" Margin="0,8,0,0">
+                                <Grid Margin="8">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="2*" />
                                         <ColumnDefinition Width="2*" />
-                                        <ColumnDefinition Width="2*" />
+                                        <ColumnDefinition Width="1.5*" />
                                         <ColumnDefinition Width="2*" />
                                     </Grid.ColumnDefinitions>
-
-                                    <!-- Headers -->
-                                    <Border Grid.Row="0" Grid.ColumnSpan="4" Background="{DynamicResource MaterialDesign.Brush.Primary.Light}" Padding="8">
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="2*" />
-                                                <ColumnDefinition Width="2*" />
-                                                <ColumnDefinition Width="2*" />
-                                                <ColumnDefinition Width="2*" />
-                                            </Grid.ColumnDefinitions>
-                                            <TextBlock Grid.Column="0" Text="Type" Foreground="White" FontWeight="Bold"/>
-                                            <TextBlock Grid.Column="1" Text="Litres" Foreground="White" FontWeight="Bold" HorizontalAlignment="Right"/>
-                                            <TextBlock Grid.Column="2" Text="Rate" Foreground="White" FontWeight="Bold" HorizontalAlignment="Right"/>
-                                            <TextBlock Grid.Column="3" Text="Amount" Foreground="White" FontWeight="Bold" HorizontalAlignment="Right"/>
-                                        </Grid>
-                                    </Border>
-
-                                     <!-- HSD 1 -->
-                                     <TextBlock Grid.Row="1" Grid.Column="0" Text="HSD 1" Padding="8" VerticalAlignment="Center"/>
-                                     <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding HsdLitres, Converter={StaticResource LitreConverter}}" Padding="8" TextAlignment="Right" VerticalAlignment="Center"/>
-                                     <TextBlock Grid.Row="1" Grid.Column="2" Text="{Binding HsdRate, Converter={StaticResource CurrencyConverter}}" Padding="8" TextAlignment="Right" VerticalAlignment="Center"/>
-                                     <TextBlock Grid.Row="1" Grid.Column="3" Text="{Binding HsdAmount, Converter={StaticResource CurrencyConverter}}" Padding="8" TextAlignment="Right" FontWeight="Bold" VerticalAlignment="Center"/>
-
-                                     <!-- HSD 2 -->
-                                     <TextBlock Grid.Row="2" Grid.Column="0" Text="HSD 2" Padding="8" VerticalAlignment="Center"/>
-                                     <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding MsIILitres, Converter={StaticResource LitreConverter}}" Padding="8" TextAlignment="Right" VerticalAlignment="Center"/>
-                                     <TextBlock Grid.Row="2" Grid.Column="2" Text="{Binding MsIIRate, Converter={StaticResource CurrencyConverter}}" Padding="8" TextAlignment="Right" VerticalAlignment="Center"/>
-                                     <TextBlock Grid.Row="2" Grid.Column="3" Text="{Binding MsIIAmount, Converter={StaticResource CurrencyConverter}}" Padding="8" TextAlignment="Right" FontWeight="Bold" VerticalAlignment="Center"/>
-
-                                     <!-- MS -->
-                                     <TextBlock Grid.Row="3" Grid.Column="0" Text="MS" Padding="8" VerticalAlignment="Center"/>
-                                     <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding MsILitres, Converter={StaticResource LitreConverter}}" Padding="8" TextAlignment="Right" VerticalAlignment="Center"/>
-                                     <TextBlock Grid.Row="3" Grid.Column="2" Text="{Binding MsIRate, Converter={StaticResource CurrencyConverter}}" Padding="8" TextAlignment="Right" VerticalAlignment="Center"/>
-                                     <TextBlock Grid.Row="3" Grid.Column="3" Text="{Binding MsIAmount, Converter={StaticResource CurrencyConverter}}" Padding="8" TextAlignment="Right" FontWeight="Bold" VerticalAlignment="Center"/>
-
-                                    <!-- MS Total -->
-                                    <Border Grid.Row="4" Grid.ColumnSpan="4" Background="#F5F5F5" BorderBrush="{DynamicResource MaterialDesign.Brush.Divider}" BorderThickness="0,1,0,0">
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="2*" />
-                                                <ColumnDefinition Width="2*" />
-                                                <ColumnDefinition Width="2*" />
-                                                <ColumnDefinition Width="2*" />
-                                            </Grid.ColumnDefinitions>
-                                            <TextBlock Grid.Column="0" Text="Petrol Total" Padding="8" VerticalAlignment="Center" FontWeight="SemiBold"/>
-                                            <TextBlock Grid.Column="1" Text="{Binding MsTotalLitres, Converter={StaticResource LitreConverter}}" Padding="8" TextAlignment="Right" VerticalAlignment="Center" FontWeight="SemiBold"/>
-                                            <TextBlock Grid.Column="3" Text="{Binding MsTotalAmount, Converter={StaticResource CurrencyConverter}}" Padding="8" TextAlignment="Right" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                        </Grid>
-                                    </Border>
-
-                                    <!-- Total Fuel -->
-                                    <Border Grid.Row="5" Grid.ColumnSpan="4" Background="{DynamicResource MaterialDesign.Brush.Surface}" BorderBrush="{DynamicResource MaterialDesign.Brush.Divider}" BorderThickness="0,1,0,1">
-                                        <Grid Margin="8">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="2*" />
-                                                <ColumnDefinition Width="2*" />
-                                                <ColumnDefinition Width="2*" />
-                                                <ColumnDefinition Width="2*" />
-                                            </Grid.ColumnDefinitions>
-                                            <TextBlock Grid.Column="0" Text="Total Fuel" FontWeight="Bold"/>
-                                            <TextBlock Grid.Column="1" Text="{Binding TotalLitres, Converter={StaticResource LitreConverter}}" TextAlignment="Right" FontWeight="Bold"/>
-                                            <TextBlock Grid.Column="3" Text="{Binding TotalFuelSaleAmount, Converter={StaticResource CurrencyConverter}}" TextAlignment="Right" FontWeight="Bold" Foreground="Green"/>
-                                        </Grid>
-                                    </Border>
+                                    <TextBlock Grid.Column="0" Text="Total Fuel" FontWeight="Bold"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding TotalLitres, Converter={StaticResource LitreConverter}}" TextAlignment="Right" FontWeight="Bold"/>
+                                    <TextBlock Grid.Column="3" Text="{Binding TotalFuelSaleAmount, Converter={StaticResource CurrencyConverter}}" TextAlignment="Right" FontWeight="Bold" Foreground="Green"/>
                                 </Grid>
                             </Border>
                         </StackPanel>
@@ -637,8 +578,9 @@
                     </StackPanel>
                 </materialDesign:Card>
 
-                <!-- DEBTOR MANAGEMENT SECTION -->
-                <materialDesign:Card Grid.Row="3" Grid.ColumnSpan="2" Margin="0,16,0,0" Padding="0" UniformCornerRadius="12" materialDesign:ElevationAssist.Elevation="Dp3">
+                <!-- DEBTOR MANAGEMENT SECTION (VISIBLE WHEN IN SHIFT TOTAL MODE) -->
+                <materialDesign:Card Grid.Row="3" Grid.ColumnSpan="2" Margin="0,16,0,0" Padding="0" UniformCornerRadius="12" materialDesign:ElevationAssist.Elevation="Dp3"
+                                     Visibility="{Binding IsDebtorManagementInShiftTotalVisible, Converter={StaticResource BoolToVis}}">
                     <views:DebtorManagementView DataContext="{Binding DebtorManagementVm}" MinHeight="650"/>
                 </materialDesign:Card>
 

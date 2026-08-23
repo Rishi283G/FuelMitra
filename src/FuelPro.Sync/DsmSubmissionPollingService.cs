@@ -15,6 +15,7 @@ namespace FuelPro.Sync;
 public class DsmSubmissionPollingService
 {
     private readonly SyncConfigService _configService;
+    private readonly FuelPro.Core.Services.IFeatureToggleService? _featureToggleService;
     private readonly HttpClient _client;
     private readonly ILogger _logger = Log.ForContext<DsmSubmissionPollingService>();
     private Timer? _pollingTimer;
@@ -27,9 +28,10 @@ public class DsmSubmissionPollingService
 
     public int CurrentPendingCount => _lastPendingCount < 0 ? 0 : _lastPendingCount;
 
-    public DsmSubmissionPollingService(SyncConfigService configService)
+    public DsmSubmissionPollingService(SyncConfigService configService, FuelPro.Core.Services.IFeatureToggleService? featureToggleService = null)
     {
         _configService = configService;
+        _featureToggleService = featureToggleService;
         _client = SupabaseHttpClient.CreateHttpClient(TimeSpan.FromSeconds(15));
     }
 
@@ -66,7 +68,14 @@ public class DsmSubmissionPollingService
 
         try
         {
+            if (_featureToggleService != null && !_featureToggleService.IsDsmPwaEnabled)
+            {
+                UpdatePendingCount(0);
+                return;
+            }
+
             var settings = await _configService.GetSettingsAsync();
+
             if (!settings.SyncEnabled || string.IsNullOrEmpty(settings.SupabaseUrl) || string.IsNullOrEmpty(settings.SupabaseApiKey) || string.IsNullOrEmpty(settings.StationId))
             {
                 UpdatePendingCount(0);

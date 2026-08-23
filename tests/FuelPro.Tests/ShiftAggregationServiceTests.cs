@@ -219,7 +219,7 @@ public class ShiftAggregationServiceTests
     public void GetFuelTotals_WithMultipleEntriesInSameShift_ShouldAggregateAllReadings()
     {
         // Arrange
-        var shift = new Shift { ShiftId = 1, ShiftDate = new DateTime(2026, 8, 21), ShiftType = "A" };
+        var shift = new Shift { ShiftId = 1, ShiftDate = new DateTime(2026, 6, 20), ShiftType = "A" };
         var entry1 = new DsmEntry
         {
             DsmEntryId = 1,
@@ -228,8 +228,7 @@ public class ShiftAggregationServiceTests
             PumpId = 1,
             NozzleReadings = new List<NozzleReading>
             {
-                new NozzleReading { NozzleNumber = 1, SaleLitres = 10, Amount = 1000, Rate = 100 }, // MS-I on Pump 1
-                new NozzleReading { NozzleNumber = 3, SaleLitres = 20, Amount = 1800, Rate = 90 }   // HSD on Pump 2
+                new NozzleReading { NozzleNumber = 1, SaleLitres = 10, Amount = 1000, Rate = 100 } // MS-I on Pump 1
             }
         };
         var entry2 = new DsmEntry
@@ -237,15 +236,36 @@ public class ShiftAggregationServiceTests
             DsmEntryId = 2,
             ShiftId = 1,
             Shift = shift,
+            PumpId = 2,
+            NozzleReadings = new List<NozzleReading>
+            {
+                new NozzleReading { NozzleNumber = 6, SaleLitres = 20, Amount = 1800, Rate = 90 }   // HSD on Pump 2
+            }
+        };
+        var entry3 = new DsmEntry
+        {
+            DsmEntryId = 3,
+            ShiftId = 1,
+            Shift = shift,
             PumpId = 1,
             NozzleReadings = new List<NozzleReading>
             {
-                new NozzleReading { NozzleNumber = 1, SaleLitres = 5, Amount = 500, Rate = 100 },  // MS-I on Pump 1 (2nd session)
-                new NozzleReading { NozzleNumber = 3, SaleLitres = 15, Amount = 1350, Rate = 90 }  // HSD on Pump 2 (2nd session)
+                new NozzleReading { NozzleNumber = 1, SaleLitres = 5, Amount = 500, Rate = 100 }  // MS-I on Pump 1 (2nd session)
+            }
+        };
+        var entry4 = new DsmEntry
+        {
+            DsmEntryId = 4,
+            ShiftId = 1,
+            Shift = shift,
+            PumpId = 2,
+            NozzleReadings = new List<NozzleReading>
+            {
+                new NozzleReading { NozzleNumber = 6, SaleLitres = 15, Amount = 1350, Rate = 90 }  // HSD on Pump 2 (2nd session)
             }
         };
 
-        var entries = new List<DsmEntry> { entry1, entry2 };
+        var entries = new List<DsmEntry> { entry1, entry2, entry3, entry4 };
 
         // Act
         var (msLitres, msAmount) = _sut.GetFuelTotals(entries, "MS-I", null);

@@ -486,6 +486,80 @@ public static class SeedData
         }
         catch (Exception ex) { Log.Error(ex, "Failed to create PumpExpenseCategoryItems table"); }
 
+        // Dynamic Configuration Tables: AppFeatureSettings, CollectionTypes, PaymentCollectionItems, TankDefinitions
+        try
+        {
+            await context.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE IF NOT EXISTS AppFeatureSettings (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    FeatureKey TEXT NOT NULL,
+                    TargetRole TEXT NOT NULL DEFAULT 'Global',
+                    DisplayName TEXT NOT NULL DEFAULT '',
+                    Description TEXT NOT NULL DEFAULT '',
+                    Category TEXT NOT NULL DEFAULT 'General',
+                    IsEnabled INTEGER NOT NULL DEFAULT 1,
+                    DisplayOrder INTEGER NOT NULL DEFAULT 0,
+                    ConfigurationJson TEXT NULL,
+                    UpdatedAt TEXT NOT NULL
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS IX_AppFeatureSettings_FeatureKey ON AppFeatureSettings (FeatureKey);
+            ");
+        }
+        catch (Exception ex) { Log.Error(ex, "Failed to create AppFeatureSettings table"); }
+
+        try
+        {
+            await context.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE IF NOT EXISTS CollectionTypes (
+                    CollectionTypeId INTEGER PRIMARY KEY AUTOINCREMENT,
+                    Code TEXT NOT NULL,
+                    DisplayName TEXT NOT NULL DEFAULT '',
+                    Category TEXT NOT NULL DEFAULT 'Online',
+                    HasTidBatch INTEGER NOT NULL DEFAULT 0,
+                    DisplayOrder INTEGER NOT NULL DEFAULT 0,
+                    IsActive INTEGER NOT NULL DEFAULT 1,
+                    IsSystem INTEGER NOT NULL DEFAULT 0,
+                    CreatedAt TEXT NOT NULL
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS IX_CollectionTypes_Code ON CollectionTypes (Code);
+            ");
+        }
+        catch (Exception ex) { Log.Error(ex, "Failed to create CollectionTypes table"); }
+
+        try
+        {
+            await context.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE IF NOT EXISTS PaymentCollectionItems (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    PaymentId INTEGER NOT NULL,
+                    CollectionTypeCode TEXT NOT NULL,
+                    Amount REAL NOT NULL DEFAULT 0.0,
+                    Tid TEXT NULL,
+                    Batch TEXT NULL,
+                    Slot TEXT NULL DEFAULT 'General',
+                    FOREIGN KEY (PaymentId) REFERENCES PaymentCollections (PaymentId) ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS IX_PaymentCollectionItems_PaymentId ON PaymentCollectionItems (PaymentId);
+            ");
+        }
+        catch (Exception ex) { Log.Error(ex, "Failed to create PaymentCollectionItems table"); }
+
+        try
+        {
+            await context.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE IF NOT EXISTS TankDefinitions (
+                    TankId INTEGER PRIMARY KEY AUTOINCREMENT,
+                    TankName TEXT NOT NULL,
+                    CapacityKL REAL NOT NULL DEFAULT 20.0,
+                    FuelType TEXT NOT NULL DEFAULT 'HSD',
+                    IsActive INTEGER NOT NULL DEFAULT 1,
+                    CreatedAt TEXT NOT NULL
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS IX_TankDefinitions_TankName ON TankDefinitions (TankName);
+            ");
+        }
+        catch (Exception ex) { Log.Error(ex, "Failed to create TankDefinitions table"); }
+
         // Seed default products
         if (!await context.ProductMasters.AnyAsync())
         {
@@ -498,6 +572,110 @@ public static class SeedData
             await context.SaveChangesAsync();
             Log.Information("Seeded default products in ProductMaster");
         }
+
+        // Seed default TankDefinitions
+        if (!await context.TankDefinitions.AnyAsync())
+        {
+            var now = DateTime.Now;
+            context.TankDefinitions.AddRange(
+                new TankDefinition { TankName = "MS - 20KL", CapacityKL = 20.0, FuelType = "MS-I", IsActive = true, CreatedAt = now },
+                new TankDefinition { TankName = "HSD - 20KL", CapacityKL = 20.0, FuelType = "HSD", IsActive = true, CreatedAt = now },
+                new TankDefinition { TankName = "HSD - 20KL II", CapacityKL = 20.0, FuelType = "MS-II", IsActive = true, CreatedAt = now },
+                new TankDefinition { TankName = "CNG Line", CapacityKL = 5.0, FuelType = "CNG", IsActive = true, CreatedAt = now }
+            );
+            await context.SaveChangesAsync();
+            Log.Information("Seeded default TankDefinitions");
+        }
+
+        // Seed default CollectionTypes
+        if (!await context.CollectionTypes.AnyAsync())
+        {
+            var now = DateTime.Now;
+            context.CollectionTypes.AddRange(
+                new CollectionTypeMaster { Code = "PHONEPE", DisplayName = "PhonePe", Category = "Online", HasTidBatch = true, DisplayOrder = 1, IsActive = true, IsSystem = true, CreatedAt = now },
+                new CollectionTypeMaster { Code = "CREDIT_CARD", DisplayName = "Credit / Debit Card", Category = "Card", HasTidBatch = true, DisplayOrder = 2, IsActive = true, IsSystem = true, CreatedAt = now },
+                new CollectionTypeMaster { Code = "PETROCARD", DisplayName = "PetroCard", Category = "Card", HasTidBatch = true, DisplayOrder = 3, IsActive = true, IsSystem = true, CreatedAt = now },
+                new CollectionTypeMaster { Code = "SBI_REDEEM", DisplayName = "SBI Redeem", Category = "Card", HasTidBatch = true, DisplayOrder = 4, IsActive = true, IsSystem = false, CreatedAt = now },
+                new CollectionTypeMaster { Code = "PAYTM", DisplayName = "Paytm", Category = "Online", HasTidBatch = true, DisplayOrder = 5, IsActive = true, IsSystem = false, CreatedAt = now },
+                new CollectionTypeMaster { Code = "QR", DisplayName = "QR / Online", Category = "Online", HasTidBatch = true, DisplayOrder = 6, IsActive = true, IsSystem = false, CreatedAt = now },
+                new CollectionTypeMaster { Code = "MOBIKWIK", DisplayName = "Mobikwik", Category = "Online", HasTidBatch = true, DisplayOrder = 7, IsActive = true, IsSystem = false, CreatedAt = now },
+                new CollectionTypeMaster { Code = "CASH_DEPOSIT", DisplayName = "Cash Deposit (Bank)", Category = "Cash", HasTidBatch = false, DisplayOrder = 8, IsActive = true, IsSystem = true, CreatedAt = now },
+                new CollectionTypeMaster { Code = "OTHERS", DisplayName = "Other Online / UPI", Category = "Other", HasTidBatch = false, DisplayOrder = 9, IsActive = true, IsSystem = true, CreatedAt = now }
+            );
+            await context.SaveChangesAsync();
+            Log.Information("Seeded default CollectionTypes including SBI Redeem, Paytm, QR, Mobikwik");
+        }
+
+        // Seed default AppFeatureSettings
+        if (!await context.AppFeatureSettings.AnyAsync())
+        {
+            var now = DateTime.Now;
+            var defaultFeatures = new List<AppFeatureSetting>
+            {
+                // Manager (Admin) Features
+                new() { FeatureKey = "Admin_DsmEntry", TargetRole = "Manager", DisplayName = "DSM Entry", Category = "Operations", DisplayOrder = 1, IsEnabled = true, UpdatedAt = now },
+                new() { FeatureKey = "Admin_OilDefDailyLog", TargetRole = "Manager", DisplayName = "Oil & DEF Daily Log", Category = "Operations", DisplayOrder = 2, IsEnabled = true, UpdatedAt = now },
+                new() { FeatureKey = "Admin_FinalCalculation", TargetRole = "Manager", DisplayName = "Final Calculation", Category = "Operations", DisplayOrder = 3, IsEnabled = true, UpdatedAt = now },
+                new() { FeatureKey = "Admin_DayTotal", TargetRole = "Manager", DisplayName = "Day Total", Category = "Operations", DisplayOrder = 4, IsEnabled = true, UpdatedAt = now },
+                new() { FeatureKey = "Admin_DebtorManagement", TargetRole = "Manager", DisplayName = "Debtor Management", Category = "Debtors", DisplayOrder = 5, IsEnabled = true, UpdatedAt = now },
+                new() { FeatureKey = "Admin_DsmPersonalDebtor", TargetRole = "Manager", DisplayName = "DSM Loss / Personal Debtors", Category = "Debtors", DisplayOrder = 6, IsEnabled = true, UpdatedAt = now },
+                new() { FeatureKey = "Admin_DsmApprovalQueue", TargetRole = "Manager", DisplayName = "DSM Approval Queue", Category = "DSM Management", DisplayOrder = 7, IsEnabled = true, UpdatedAt = now },
+                new() { FeatureKey = "Admin_DsmManagement", TargetRole = "Manager", DisplayName = "DSM & Device Management", Category = "DSM Management", DisplayOrder = 8, IsEnabled = true, UpdatedAt = now },
+                new() { FeatureKey = "Admin_CardSettlement", TargetRole = "Manager", DisplayName = "TID Sheet / Card Settlement", Category = "Financials", DisplayOrder = 9, IsEnabled = true, UpdatedAt = now },
+                new() { FeatureKey = "Admin_AgsImport", TargetRole = "Manager", DisplayName = "AGS Import", Category = "Integrations", DisplayOrder = 10, IsEnabled = true, UpdatedAt = now },
+                new() { FeatureKey = "Admin_PettyCash", TargetRole = "Manager", DisplayName = "Petty Cash", Category = "Financials", DisplayOrder = 11, IsEnabled = true, UpdatedAt = now },
+                new() { FeatureKey = "Admin_FuelTankerEntry", TargetRole = "Manager", DisplayName = "Fuel Tanker Entry", Category = "Stock", DisplayOrder = 12, IsEnabled = true, UpdatedAt = now },
+                new() { FeatureKey = "Admin_TankStockHistory", TargetRole = "Manager", DisplayName = "Tank Stock History", Category = "Stock", DisplayOrder = 13, IsEnabled = true, UpdatedAt = now },
+                new() { FeatureKey = "Admin_Settings", TargetRole = "Manager", DisplayName = "Settings", Category = "General", DisplayOrder = 14, IsEnabled = true, UpdatedAt = now },
+
+                // Owner Features
+                new() { FeatureKey = "Owner_Dashboard", TargetRole = "Owner", DisplayName = "Dashboard", Category = "Overview", DisplayOrder = 1, IsEnabled = true, UpdatedAt = now },
+                new() { FeatureKey = "Owner_DailyPerformance", TargetRole = "Owner", DisplayName = "Daily Performance", Category = "Performance", DisplayOrder = 2, IsEnabled = true, UpdatedAt = now },
+                new() { FeatureKey = "Owner_MonthlyPerformance", TargetRole = "Owner", DisplayName = "Monthly Performance", Category = "Performance", DisplayOrder = 3, IsEnabled = true, UpdatedAt = now },
+                new() { FeatureKey = "Owner_ProfitLoss", TargetRole = "Owner", DisplayName = "Profit & Loss", Category = "Financials", DisplayOrder = 4, IsEnabled = true, UpdatedAt = now },
+                new() { FeatureKey = "Owner_ExpenseAnalysis", TargetRole = "Owner", DisplayName = "Expense Analysis", Category = "Financials", DisplayOrder = 5, IsEnabled = true, UpdatedAt = now },
+                new() { FeatureKey = "Owner_MismatchLedger", TargetRole = "Owner", DisplayName = "Mismatch Ledger", Category = "Audit", DisplayOrder = 6, IsEnabled = true, UpdatedAt = now },
+                new() { FeatureKey = "Owner_CollectionSummary", TargetRole = "Owner", DisplayName = "Collection Summary", Category = "Financials", DisplayOrder = 7, IsEnabled = true, UpdatedAt = now },
+                new() { FeatureKey = "Owner_SalaryCalculation", TargetRole = "Owner", DisplayName = "DSM Salary & Payroll", Category = "Payroll", DisplayOrder = 8, IsEnabled = true, UpdatedAt = now },
+                new() { FeatureKey = "Owner_OilDefInventory", TargetRole = "Owner", DisplayName = "Oil & DEF Summary", Category = "Stock", DisplayOrder = 9, IsEnabled = true, UpdatedAt = now },
+                new() { FeatureKey = "Owner_CardSettlement", TargetRole = "Owner", DisplayName = "Card Settlement / TID", Category = "Financials", DisplayOrder = 10, IsEnabled = true, UpdatedAt = now },
+                new() { FeatureKey = "Owner_DebtorManagement", TargetRole = "Owner", DisplayName = "Debtor Management", Category = "Debtors", DisplayOrder = 11, IsEnabled = true, UpdatedAt = now },
+                new() { FeatureKey = "Owner_PumpExpenses", TargetRole = "Owner", DisplayName = "Pump Expenses", Category = "Financials", DisplayOrder = 12, IsEnabled = true, UpdatedAt = now },
+                new() { FeatureKey = "Owner_PettyCash", TargetRole = "Owner", DisplayName = "Petty Cash", Category = "Financials", DisplayOrder = 13, IsEnabled = true, UpdatedAt = now },
+                new() { FeatureKey = "Owner_DsmPersonalDebtor", TargetRole = "Owner", DisplayName = "DSM Loss", Category = "Debtors", DisplayOrder = 14, IsEnabled = true, UpdatedAt = now },
+                new() { FeatureKey = "Owner_Reports", TargetRole = "Owner", DisplayName = "Reports & Analytics", Category = "Reports", DisplayOrder = 15, IsEnabled = true, UpdatedAt = now },
+
+                // Global & Workflow Features
+                new() { FeatureKey = "Integration_DsmPwa", TargetRole = "Global", DisplayName = "DSM PWA Mobile App Integration", Category = "Integrations", DisplayOrder = 1, IsEnabled = true, UpdatedAt = now },
+                new() { FeatureKey = "Collection_UseMorningNight", TargetRole = "Global", DisplayName = "Split Collections into Morning / Night", Category = "Collections", DisplayOrder = 2, IsEnabled = false, UpdatedAt = now },
+                new() { FeatureKey = "UI_DebtorManagement_AsNewPage", TargetRole = "Global", DisplayName = "Debtor Management on Dedicated Page (vs Shift Total)", Category = "Navigation", DisplayOrder = 5, IsEnabled = true, Description = "When enabled, Debtor Management appears as a dedicated page below Oil & DEF Log. When disabled, it embeds inside Shift Total (Final Calculation).", UpdatedAt = now },
+                new() { FeatureKey = "Operations_CrossDsmQr", TargetRole = "Manager", DisplayName = "Cross-DSM QR Payments", Category = "Collections", DisplayOrder = 15, IsEnabled = true, UpdatedAt = now },
+                new() { FeatureKey = "Operations_PersonalLedger", TargetRole = "Manager", DisplayName = "Personal Ledger", Category = "Operations", DisplayOrder = 16, IsEnabled = true, UpdatedAt = now }
+            };
+
+            context.AppFeatureSettings.AddRange(defaultFeatures);
+            await context.SaveChangesAsync();
+            Log.Information("Seeded default AppFeatureSettings configuration matrix");
+        }
+        else
+        {
+            var now = DateTime.Now;
+            // Ensure any new features are added if missing in existing DB
+            if (!await context.AppFeatureSettings.AnyAsync(f => f.FeatureKey == "Operations_CrossDsmQr"))
+            {
+                context.AppFeatureSettings.Add(new AppFeatureSetting { FeatureKey = "Operations_CrossDsmQr", TargetRole = "Manager", DisplayName = "Cross-DSM QR Payments", Category = "Collections", DisplayOrder = 15, IsEnabled = true, UpdatedAt = now });
+            }
+            if (!await context.AppFeatureSettings.AnyAsync(f => f.FeatureKey == "Operations_PersonalLedger"))
+            {
+                context.AppFeatureSettings.Add(new AppFeatureSetting { FeatureKey = "Operations_PersonalLedger", TargetRole = "Manager", DisplayName = "Personal Ledger", Category = "Operations", DisplayOrder = 16, IsEnabled = true, UpdatedAt = now });
+            }
+            if (!await context.AppFeatureSettings.AnyAsync(f => f.FeatureKey == "UI_DebtorManagement_AsNewPage"))
+            {
+                context.AppFeatureSettings.Add(new AppFeatureSetting { FeatureKey = "UI_DebtorManagement_AsNewPage", TargetRole = "Global", DisplayName = "Debtor Management on Dedicated Page (vs Shift Total)", Category = "Navigation", DisplayOrder = 5, IsEnabled = true, Description = "When enabled, Debtor Management appears as a dedicated page below Oil & DEF Log. When disabled, it embeds inside Shift Total (Final Calculation).", UpdatedAt = now });
+            }
+            await context.SaveChangesAsync();
+        }
+
 
         // Migrate existing logs, purchases, and inventories
         var defaultOil = await context.ProductMasters.FirstOrDefaultAsync(p => p.ProductName == "Castrol CRB 20W40");

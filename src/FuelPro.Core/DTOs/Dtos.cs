@@ -198,6 +198,13 @@ public class DsmSummaryRowDto
     public double PetroCardDay { get; set; }
     public double PetroCardNight { get; set; }
     public double Others { get; set; }
+
+    public double DynamicCollectionsTotal { get; set; }
+    public Dictionary<string, double> DynamicCollections { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public double SbiRedeem { get; set; }
+    public double Paytm { get; set; }
+    public double QrPayment { get; set; }
+    public double Mobikwik { get; set; }
     public double CashDeposit { get; set; }  // Cash 1 — Bank Deposit
     public double Debit { get; set; }        // Sum of creditors/debit entries
     public double Expenses { get; set; }
@@ -205,17 +212,18 @@ public class DsmSummaryRowDto
     public double CashInHand { get; set; }   // Cash 2
     public double GrossSales { get; set; }
 
-    public double PhonePeTotal => (PhonePeMorning > 0 ? PhonePeMorning : 0) + (PhonePeNight > 0 ? PhonePeNight : 0) + (PhonePeMorning == 0 && PhonePeNight == 0 ? (PhonePeDay > 0 ? PhonePeDay : PhonePe) : 0);
-    public double PhonePeCardTotal => (PhonePeCardMorning > 0 ? PhonePeCardMorning : 0) + (PhonePeCardNight > 0 ? PhonePeCardNight : 0) + (PhonePeCardMorning == 0 && PhonePeCardNight == 0 ? (PhonePeCardDay > 0 ? PhonePeCardDay : PhonePeCard) : 0);
-    public double CreditCardTotal => (CreditCardMorning > 0 ? CreditCardMorning : 0) + (CreditCardNight > 0 ? CreditCardNight : 0) + (CreditCardMorning == 0 && CreditCardNight == 0 ? CreditCardDay : 0);
-    public double PetroCardTotal => (PetroCardMorning > 0 ? PetroCardMorning : 0) + (PetroCardNight > 0 ? PetroCardNight : 0) + (PetroCardMorning == 0 && PetroCardNight == 0 ? (PetroCardDay > 0 ? PetroCardDay : PetroCard) : 0);
+    public double PhonePeTotal => (PhonePeMorning + PhonePeNight + PhonePeDay) > 0 ? (PhonePeMorning + PhonePeNight + PhonePeDay) : PhonePe;
+    public double PhonePeCardTotal => (PhonePeCardMorning + PhonePeCardNight + PhonePeCardDay) > 0 ? (PhonePeCardMorning + PhonePeCardNight + PhonePeCardDay) : PhonePeCard;
+    public double CreditCardTotal => ((CreditCardMorning + CreditCardNight + CreditCardDay) > 0 ? (CreditCardMorning + CreditCardNight + CreditCardDay) : 0) + PhonePeCardTotal;
+    public double PetroCardTotal => (PetroCardMorning + PetroCardNight + PetroCardDay) > 0 ? (PetroCardMorning + PetroCardNight + PetroCardDay) : PetroCard;
     public double BankCash => CashDeposit;
     public double DebtorSales => Debit;
     public double GrossSale => GrossSales;
-    public double Difference => (CashDeposit + CashInHand + PhonePeTotal + PhonePeCardTotal + CreditCardTotal + PetroCardTotal + Debit + Expenses + Testing) - GrossSales;
+    public double Difference => (CashDeposit + CashInHand + PhonePeTotal + CreditCardTotal + PetroCardTotal + DynamicCollectionsTotal + Debit + Expenses + Testing) - GrossSales;
     public double Mismatch => Difference;
     public double ShortAmount => Difference;
 }
+
 
 /// <summary>
 /// Aggregated cash denomination data (Table B1/B2).

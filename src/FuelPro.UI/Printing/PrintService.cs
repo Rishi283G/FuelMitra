@@ -10,7 +10,9 @@ using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using System.Windows;
 using FuelPro.Core.DTOs;
+using FuelPro.Core.Services;
 using FuelPro.Data;
+using Microsoft.Extensions.DependencyInjection;
 using Serilog;
 
 namespace FuelPro.UI.Printing;
@@ -92,6 +94,32 @@ public class PrintService
             // Inject or override
             dictionary["stationName"] = stationName;
             dictionary["logo"] = logoBase64;
+
+            var featureService = App.Services?.GetService<IFeatureToggleService>();
+            if (featureService != null)
+            {
+                dictionary["isDsmPersonalDebtorVisible"] = featureService.IsFeatureEnabled("Admin_DsmPersonalDebtor", true);
+                dictionary["isPersonalLedgerEnabled"] = featureService.IsFeatureEnabled("Operations_PersonalLedger", true);
+                dictionary["personalLedgerTitle"] = featureService.GetFeatureDisplayName("Operations_PersonalLedger", "Personal Ledger");
+            }
+
+            var colTypeService = App.Services?.GetService<ICollectionTypeService>();
+            if (colTypeService != null)
+            {
+                try
+                {
+                    var activeTypes = colTypeService.GetActiveCollectionTypesAsync().GetAwaiter().GetResult();
+                    dictionary["collectionTypes"] = activeTypes.Select(c => new {
+                        code = c.Code,
+                        displayName = c.DisplayName,
+                        category = c.Category,
+                        hasTidBatch = c.HasTidBatch,
+                        displayOrder = c.DisplayOrder,
+                        isActive = c.IsActive
+                    }).ToList();
+                }
+                catch { }
+            }
 
             return JsonSerializer.Serialize(dictionary, _jsonOptions);
         }

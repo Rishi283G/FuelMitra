@@ -120,75 +120,28 @@
 
                 <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,0,8,0">
 
-                    <!-- TABLE 2: COLLECTIONS -->
+                    <!-- TABLE 2: TOTAL DIGITAL & CASH COLLECTIONS -->
                     <materialDesign:Card Style="{StaticResource SectionCard}">
                         <StackPanel>
                             <Grid Margin="0,0,0,12">
                                 <TextBlock Text="2. Total Digital &amp; Cash Collections" Style="{StaticResource SectionTitle}" Margin="0" />
-                                <TextBlock Text="{Binding TotalDigitalAndCash, Converter={StaticResource CurrencyConverter}, StringFormat='Total: {0}'}" HorizontalAlignment="Right" FontWeight="Bold" FontSize="16" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" />
+                                <TextBlock Text="{Binding TotalDigitalAndCash, Converter={StaticResource CurrencyConverter}, StringFormat='Total: {0}'}" HorizontalAlignment="Right" FontWeight="Bold" FontSize="16" Foreground="#2E7D32" />
                             </Grid>
                             
-                            <Grid Margin="0,12,0,0">
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                </Grid.RowDefinitions>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="2*" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-
-                                <!-- Headers -->
-                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Collection Mode" FontWeight="SemiBold" Opacity="0.6" FontSize="12" Margin="4,4,4,8"/>
-                                <TextBlock Grid.Row="0" Grid.Column="1" Text="Day (Morning)" FontWeight="SemiBold" Opacity="0.6" FontSize="12" HorizontalAlignment="Right" Margin="4,4,4,8"/>
-                                <TextBlock Grid.Row="0" Grid.Column="2" Text="Night" FontWeight="SemiBold" Opacity="0.6" FontSize="12" HorizontalAlignment="Right" Margin="4,4,4,8"/>
-                                <TextBlock Grid.Row="0" Grid.Column="3" Text="Total" FontWeight="SemiBold" Opacity="0.6" FontSize="12" HorizontalAlignment="Right" Margin="4,4,4,8"/>
-
-                                <!-- Cash Row -->
-                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Cash Collection" FontSize="14" VerticalAlignment="Center" Margin="4,6"/>
-                                <TextBlock Grid.Row="1" Grid.Column="1" Text="-" FontSize="14" HorizontalAlignment="Right" Opacity="0.4" VerticalAlignment="Center" Margin="4,6"/>
-                                <TextBlock Grid.Row="1" Grid.Column="2" Text="-" FontSize="14" HorizontalAlignment="Right" Opacity="0.4" VerticalAlignment="Center" Margin="4,6"/>
-                                <TextBlock Grid.Row="1" Grid.Column="3" Text="{Binding SplitCash, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" FontSize="14" Foreground="#2E7D32" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="4,6"/>
-
-                                <!-- PhonePe Direct Row -->
-                                <TextBlock Grid.Row="2" Grid.Column="0" Text="PhonePe Direct" FontSize="14" VerticalAlignment="Center" Margin="4,6"/>
-                                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding PhonePeMorningTotal, Converter={StaticResource CurrencyConverter}}" FontSize="14" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="4,6"/>
-                                <TextBlock Grid.Row="2" Grid.Column="2" Text="{Binding PhonePeNightTotal, Converter={StaticResource CurrencyConverter}}" FontSize="14" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="4,6"/>
-                                <TextBlock Grid.Row="2" Grid.Column="3" Text="{Binding PhonePeTotal, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" FontSize="14" Foreground="#1565C0" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="4,6"/>
-
-                                <!-- PhonePe Card Row REMOVED - not used by this client -->
-
-                                <!-- PineLabs Card Row -->
-                                <TextBlock Grid.Row="3" Grid.Column="0" Text="PineLabs Card" FontSize="14" VerticalAlignment="Center" Margin="4,6"/>
-                                <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding CreditCardMorningTotal, Converter={StaticResource CurrencyConverter}}" FontSize="14" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="4,6"/>
-                                <TextBlock Grid.Row="3" Grid.Column="2" Text="{Binding CreditCardNightTotal, Converter={StaticResource CurrencyConverter}}" FontSize="14" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="4,6"/>
-                                <TextBlock Grid.Row="3" Grid.Column="3" Text="{Binding CreditCardTotal, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" FontSize="14" Foreground="#E65100" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="4,6"/>
-
-                                <!-- Petro Card Row -->
-                                <TextBlock Grid.Row="4" Grid.Column="0" Text="Petro Card" FontSize="14" VerticalAlignment="Center" Margin="4,6"/>
-                                <TextBlock Grid.Row="4" Grid.Column="1" Text="-" FontSize="14" HorizontalAlignment="Right" Opacity="0.4" VerticalAlignment="Center" Margin="4,6"/>
-                                <TextBlock Grid.Row="4" Grid.Column="2" Text="-" FontSize="14" HorizontalAlignment="Right" Opacity="0.4" VerticalAlignment="Center" Margin="4,6"/>
-                                <TextBlock Grid.Row="4" Grid.Column="3" Text="{Binding PetroCardTotal, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" FontSize="14" Foreground="#6A1B9A" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="4,6"/>
-
-                                <!-- Credit Row -->
-                                <TextBlock Grid.Row="5" Grid.Column="0" Text="Credit (Debtors)" FontSize="14" VerticalAlignment="Center" Margin="4,6"/>
-                                <TextBlock Grid.Row="5" Grid.Column="1" Text="-" FontSize="14" HorizontalAlignment="Right" Opacity="0.4" VerticalAlignment="Center" Margin="4,6"/>
-                                <TextBlock Grid.Row="5" Grid.Column="2" Text="-" FontSize="14" HorizontalAlignment="Right" Opacity="0.4" VerticalAlignment="Center" Margin="4,6"/>
-                                <TextBlock Grid.Row="5" Grid.Column="3" Text="{Binding SplitCredit, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" FontSize="14" Foreground="#BF360C" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="4,6"/>
-
-                                <!-- Others Row -->
-                                <TextBlock Grid.Row="6" Grid.Column="0" Text="Other Collections" FontSize="14" VerticalAlignment="Center" Margin="4,6"/>
-                                <TextBlock Grid.Row="6" Grid.Column="1" Text="-" FontSize="14" HorizontalAlignment="Right" Opacity="0.4" VerticalAlignment="Center" Margin="4,6"/>
-                                <TextBlock Grid.Row="6" Grid.Column="2" Text="-" FontSize="14" HorizontalAlignment="Right" Opacity="0.4" VerticalAlignment="Center" Margin="4,6"/>
-                                <TextBlock Grid.Row="6" Grid.Column="3" Text="{Binding OthersTotal, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" FontSize="14" Foreground="#F57F17" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="4,6"/>
-                            </Grid>
+                            <DataGrid ItemsSource="{Binding CollectionRows}" AutoGenerateColumns="False" IsReadOnly="True" MaxHeight="280" HeadersVisibility="Column">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Collection Mode" Binding="{Binding CollectionMode}" Width="*" FontWeight="SemiBold" />
+                                    <DataGridTemplateColumn Header="Total Amount" Width="Auto">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Amount, Converter={StaticResource CurrencyConverter}}"
+                                                           Foreground="{Binding DisplayColor}"
+                                                           FontWeight="Bold" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="8,4"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                </DataGrid.Columns>
+                            </DataGrid>
                         </StackPanel>
                     </materialDesign:Card>
                     
@@ -210,7 +163,8 @@
                     </materialDesign:Card>
 
                     <!-- TABLE 4b: DSM LOSS (PERSONAL DEBTORS) -->
-                    <materialDesign:Card Style="{StaticResource SectionCard}">
+                    <materialDesign:Card Style="{StaticResource SectionCard}"
+                                         Visibility="{Binding IsDsmPersonalDebtorVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <StackPanel>
                             <Grid Margin="0,0,0,12">
                                 <TextBlock Text="4b. DSM Loss Register" Style="{StaticResource SectionTitle}" Margin="0" />
@@ -349,7 +303,12 @@
                 <!-- 1. Nozzle-wise Fuel Sale & Tank Status (top of page) -->
                 <materialDesign:Card Grid.Row="0" Grid.ColumnSpan="2" Style="{StaticResource SectionCard}" Margin="0,0,0,0">
                     <StackPanel>
-                        <TextBlock Text="1. Nozzle-wise Fuel Sale &amp; Tank Status (Shift A Opening to Shift B Closing)" Style="{StaticResource SectionTitle}" />
+                        <Grid Margin="0,0,0,12">
+                            <TextBlock Text="1. Nozzle-wise Fuel Sale &amp; Tank Status (Shift A Opening to Shift B Closing)" Style="{StaticResource SectionTitle}" Margin="0" VerticalAlignment="Center"/>
+                            <Button Content="Save Dip/Stock" Command="{Binding SaveTankStocksCommand}" 
+                                    Style="{StaticResource MaterialDesignRaisedButton}" Background="#2E7D32" BorderBrush="#2E7D32"
+                                    HorizontalAlignment="Right" Height="30" Padding="12,0" FontSize="12"/>
+                        </Grid>
                         
                         <ItemsControl ItemsSource="{Binding NozzleGroups}">
                             <ItemsControl.ItemsPanel>
@@ -385,15 +344,15 @@
                                                      <ColumnDefinition Width="*" />
                                                  </Grid.ColumnDefinitions>
 
-                                                 <!-- Row 0: Dip (Top Left) and Stock (Top Right) -->
+                                                 <!-- Row 0: Dip (Top Left) and Stock (Top Right) editable inputs -->
                                                  <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" Margin="4,2" VerticalAlignment="Center">
                                                      <TextBlock Text="Dip: " FontWeight="Bold" FontSize="13" Opacity="0.85" VerticalAlignment="Center"/>
-                                                     <TextBlock Text="{Binding Dip, StringFormat={}{0:N2}}" FontWeight="Bold" FontSize="13" VerticalAlignment="Center"/>
+                                                     <TextBox Text="{Binding Dip, UpdateSourceTrigger=LostFocus, StringFormat={}{0:N2}}" FontWeight="Bold" FontSize="13" Width="60"/>
                                                      <TextBlock Text=" mm" Opacity="0.75" FontSize="13" VerticalAlignment="Center"/>
                                                  </StackPanel>
                                                  <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="4,2" VerticalAlignment="Center">
                                                      <TextBlock Text="Stock: " FontWeight="Bold" FontSize="13" Foreground="Green" VerticalAlignment="Center"/>
-                                                     <TextBlock Text="{Binding Stock, StringFormat={}{0:N2}}" FontWeight="Bold" FontSize="13" Foreground="Green" VerticalAlignment="Center"/>
+                                                     <TextBox Text="{Binding Stock, UpdateSourceTrigger=LostFocus, StringFormat={}{0:N2}}" FontWeight="Bold" FontSize="13" Foreground="Green" Width="70"/>
                                                      <TextBlock Text=" Ltr" FontWeight="Bold" FontSize="13" Foreground="Green" VerticalAlignment="Center"/>
                                                  </StackPanel>
 

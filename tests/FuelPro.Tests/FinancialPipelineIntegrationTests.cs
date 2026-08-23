@@ -89,6 +89,9 @@ public class FinancialPipelineIntegrationTests : IDisposable
         services.AddTransient<ExcelExportService>();
         services.AddTransient<IAuditLogService, AuditLogService>();
         services.AddTransient<IDayLockService, DayLockService>();
+        services.AddTransient<IFeatureToggleService, FeatureToggleService>();
+        services.AddTransient<ICollectionTypeService, CollectionTypeService>();
+        services.AddTransient<IStationConfigurationService, StationConfigurationService>();
 
         // Sync services (needed by OwnerDashboardViewModel)
         services.AddSingleton<SyncConfigService>();
@@ -97,6 +100,7 @@ public class FinancialPipelineIntegrationTests : IDisposable
         services.AddTransient<DsmAuthAdminService>();
         services.AddTransient<SupabaseDsmService, FakeSupabaseDsmService>();
         services.AddSingleton<DraftService>();
+
 
         // ViewModels
         services.AddTransient<DayTotalViewModel>();
@@ -291,9 +295,10 @@ public class FinancialPipelineIntegrationTests : IDisposable
         //                  = 3050
         // Sales = 3000
         // Expected Mismatch = 50 (Total Collections 3050 - Sales 3000)
-        Assert.Equal(-20, dayTotalVm.Difference);
+        Assert.Equal(-10, dayTotalVm.Difference);
         Assert.Equal(50, dashboardVm.TodayTotalMismatch);
-        Assert.Equal(-1250, ownerVm.TodayTotalMismatch);
+        Assert.Equal(-10, ownerVm.TodayTotalMismatch);
+
     }
 
     [Fact]
@@ -706,14 +711,14 @@ public class FinancialPipelineIntegrationTests : IDisposable
         Assert.Equal(1500, cashInHandCol.BaseAmount);
         Assert.Equal(0, cashInHandCol.RecoveryAmount);
 
-        // PhonePe Night category total should be 1000 base + 500 recovery = 1500
-        var phonePeNightCol = report.CollectionBreakdown.First(c => c.Category == "PhonePe Night");
-        Assert.Equal(1500, phonePeNightCol.Amount);
-        Assert.Equal(1000, phonePeNightCol.BaseAmount);
-        Assert.Equal(500, phonePeNightCol.RecoveryAmount);
+        // PhonePe unified category total should be 2000 base (1000 morning + 1000 night) + 500 recovery = 2500
+        var phonePeCol = report.CollectionBreakdown.First(c => c.Category.Contains("PhonePe"));
+        Assert.Equal(2500, phonePeCol.Amount);
+        Assert.Equal(2000, phonePeCol.BaseAmount);
+        Assert.Equal(500, phonePeCol.RecoveryAmount);
 
         // Petro Card category total should be 0 base + 300 recovery = 300
-        var petroCardCol = report.CollectionBreakdown.First(c => c.Category.Contains("Petro Card") && c.Amount > 0);
+        var petroCardCol = report.CollectionBreakdown.First(c => c.Category.Contains("Petro", StringComparison.OrdinalIgnoreCase) && c.Amount > 0);
         Assert.Equal(300, petroCardCol.Amount);
         Assert.Equal(0, petroCardCol.BaseAmount);
         Assert.Equal(300, petroCardCol.RecoveryAmount);

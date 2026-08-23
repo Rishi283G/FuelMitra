@@ -170,6 +170,95 @@ public class AgsInventoryService : IAgsInventoryService
             };
         }
 
+        var stationConfig = _serviceProvider.GetService<IStationConfigurationService>();
+        List<TankDefinition> dynamicTanks = new();
+        List<PumpMapping> dynamicMappings = new();
+        if (stationConfig != null)
+        {
+            try
+            {
+                dynamicTanks = (await stationConfig.GetAllTanksAsync()).Where(t => t.IsActive).ToList();
+                dynamicMappings = (await stationConfig.GetAllPumpMappingsAsync()).Where(m => m.IsActive).ToList();
+            }
+            catch { }
+        }
+
+        if (dynamicTanks.Count > 0 && dynamicMappings.Count > 0)
+        {
+            foreach (var tank in dynamicTanks)
+            {
+                var tankNozzles = dynamicMappings
+                    .Where(m => string.Equals(m.TankName, tank.TankName, StringComparison.OrdinalIgnoreCase))
+                    .OrderBy(m => m.NozzleNumber)
+                    .Select(m => CreateItem(m.NozzleNumber, m.FuelType))
+                    .ToList();
+
+                if (tankNozzles.Count == 0)
+                {
+                    tankNozzles = dynamicMappings
+                        .Where(m => string.Equals(m.FuelType, tank.FuelType, StringComparison.OrdinalIgnoreCase))
+                        .OrderBy(m => m.NozzleNumber)
+                        .Select(m => CreateItem(m.NozzleNumber, m.FuelType))
+                        .ToList();
+                }
+
+                var dispensed = tankNozzles.Sum(x => x.SaleLitres);
+                double testingLitres = 0;
+                if (loadedEntries != null)
+                {
+                    foreach (var entry in loadedEntries)
+                    {
+                        foreach (var t in entry.TestingEntries)
+                        {
+                            if (string.Equals(t.FuelType, tank.FuelType, StringComparison.OrdinalIgnoreCase))
+                            {
+                                testingLitres += t.Litres;
+                            }
+                        }
+                    }
+                }
+
+                double receipts = 0;
+                var tankerRepo = _serviceProvider.GetService<IFuelTankerRepository>();
+                if (tankerRepo != null && (shiftType == "B" || shiftType == "II"))
+                {
+                    var tankersRes = await tankerRepo.GetByDateRangeAsync(date.Date, date.Date);
+                    var tankers = (tankersRes.Success && tankersRes.Data != null) ? tankersRes.Data : new List<FuelTanker>();
+                    receipts = tankers.Where(t => string.Equals(t.FuelType, tank.FuelType, StringComparison.OrdinalIgnoreCase)).Sum(t => t.Quantity);
+                }
+
+                var tankStock = import?.TankStocks?.FirstOrDefault(ts => string.Equals(ts.FuelType, tank.FuelType, StringComparison.OrdinalIgnoreCase));
+                var prevTankStock = prevImport?.TankStocks?.FirstOrDefault(ts => string.Equals(ts.FuelType, tank.FuelType, StringComparison.OrdinalIgnoreCase));
+
+                double prevClosing = prevTankStock?.ClosingStockLitres ?? 0.0;
+                double openingStock = prevClosing > 0 ? prevClosing : (tankStock?.OpeningStockLitres ?? 0.0);
+                double dip = tankStock?.ClosingDipMM ?? 0.0;
+                double stock = (tankStock != null && tankStock.ClosingDipMM > 0) ? tankStock.ClosingStockLitres : (openingStock - dispensed + testingLitres + receipts);
+
+                var groupDto = new NozzleGroupDto
+                {
+                    GroupName = $"{tank.FuelType} ({tank.TankName})",
+                    FuelType = tank.FuelType,
+                    OpeningStock = openingStock,
+                    FuelDispensed = dispensed,
+                    TestingLitres = testingLitres,
+                    Receipts = receipts,
+                    Dip = dip,
+                    Stock = stock
+                };
+
+                for (int i = 0; i < tankNozzles.Count; i += 3)
+                {
+                    groupDto.Rows.Add(tankNozzles.Skip(i).Take(3).ToList());
+                }
+
+                groups.Add(groupDto);
+            }
+
+            return groups;
+        }
+
+        // Fallback for default 3-tank configuration
         var group1Nozzles = new List<NozzleDisplayItem> { CreateItem(1, "Petrol"), CreateItem(2, "Petrol"), CreateItem(5, "Petrol"), CreateItem(6, "Petrol"), CreateItem(9, "Petrol"), CreateItem(10, "Petrol") };
         var group2Nozzles = new List<NozzleDisplayItem> { CreateItem(3, "Diesel"), CreateItem(4, "Diesel"), CreateItem(11, "Diesel"), CreateItem(12, "Diesel") };
         var group3Nozzles = new List<NozzleDisplayItem> { CreateItem(7, "Diesel"), CreateItem(8, "Diesel") };
@@ -182,13 +271,12 @@ public class AgsInventoryService : IAgsInventoryService
         double hsdReceipts = 0.0;
         double msIIReceipts = 0.0;
 
-        var tankerRepo = _serviceProvider.GetService<IFuelTankerRepository>();
-        if (tankerRepo != null)
+        var tankerRepoFallback = _serviceProvider.GetService<IFuelTankerRepository>();
+        if (tankerRepoFallback != null)
         {
-            var tankersRes = await tankerRepo.GetByDateRangeAsync(date.Date, date.Date);
+            var tankersRes = await tankerRepoFallback.GetByDateRangeAsync(date.Date, date.Date);
             var tankers = (tankersRes.Success && tankersRes.Data != null) ? tankersRes.Data : new List<FuelTanker>();
 
-            // Put all approved tanker receipts into Shift B (Day shift/first shift of the day)
             if (shiftType == "B" || shiftType == "II")
             {
                 msIReceipts = tankers.Where(t => t.FuelType == "MS-I").Sum(t => t.Quantity);
@@ -198,7 +286,6 @@ public class AgsInventoryService : IAgsInventoryService
         }
         else
         {
-            // Fallback for tests where repository is not registered
             msIReceipts = msITank?.ReceiptLitres ?? 0.0;
             hsdReceipts = hsdTank?.ReceiptLitres ?? 0.0;
             msIIReceipts = msIITank?.ReceiptLitres ?? 0.0;
@@ -580,6 +667,94 @@ public class AgsInventoryService : IAgsInventoryService
             };
         }
 
+        var stationConfig = _serviceProvider.GetService<IStationConfigurationService>();
+        List<TankDefinition> dynamicTanks = new();
+        List<PumpMapping> dynamicMappings = new();
+        if (stationConfig != null)
+        {
+            try
+            {
+                dynamicTanks = (await stationConfig.GetAllTanksAsync()).Where(t => t.IsActive).ToList();
+                dynamicMappings = (await stationConfig.GetAllPumpMappingsAsync()).Where(m => m.IsActive).ToList();
+            }
+            catch { }
+        }
+
+        if (dynamicTanks.Count > 0 && dynamicMappings.Count > 0)
+        {
+            foreach (var tank in dynamicTanks)
+            {
+                var tankNozzles = dynamicMappings
+                    .Where(m => string.Equals(m.TankName, tank.TankName, StringComparison.OrdinalIgnoreCase))
+                    .OrderBy(m => m.NozzleNumber)
+                    .Select(m => CreateItem(m.NozzleNumber, m.FuelType))
+                    .ToList();
+
+                if (tankNozzles.Count == 0)
+                {
+                    tankNozzles = dynamicMappings
+                        .Where(m => string.Equals(m.FuelType, tank.FuelType, StringComparison.OrdinalIgnoreCase))
+                        .OrderBy(m => m.NozzleNumber)
+                        .Select(m => CreateItem(m.NozzleNumber, m.FuelType))
+                        .ToList();
+                }
+
+                var dispensed = tankNozzles.Sum(x => x.SaleLitres);
+                double testingLitres = 0;
+                if (loadedEntries != null)
+                {
+                    foreach (var entry in loadedEntries)
+                    {
+                        foreach (var t in entry.TestingEntries)
+                        {
+                            if (string.Equals(t.FuelType, tank.FuelType, StringComparison.OrdinalIgnoreCase))
+                            {
+                                testingLitres += t.Litres;
+                            }
+                        }
+                    }
+                }
+
+                double receipts = 0;
+                var tankerRepo = _serviceProvider.GetService<IFuelTankerRepository>();
+                if (tankerRepo != null)
+                {
+                    var tankersRes = await tankerRepo.GetByDateRangeAsync(startDate.Date, endDate.Date);
+                    var tankers = tankersRes.Success && tankersRes.Data != null ? tankersRes.Data : new List<FuelTanker>();
+                    receipts = tankers.Where(t => string.Equals(t.FuelType, tank.FuelType, StringComparison.OrdinalIgnoreCase)).Sum(t => t.Quantity);
+                }
+
+                var tankStock = lastShift?.TankStocks?.FirstOrDefault(ts => string.Equals(ts.FuelType, tank.FuelType, StringComparison.OrdinalIgnoreCase));
+                var prevTankStock = prevImport?.TankStocks?.FirstOrDefault(ts => string.Equals(ts.FuelType, tank.FuelType, StringComparison.OrdinalIgnoreCase));
+
+                double prevClosing = prevTankStock?.ClosingStockLitres ?? 0.0;
+                double openingStock = prevClosing > 0 ? prevClosing : (tankStock?.OpeningStockLitres ?? 0.0);
+                double dip = tankStock?.ClosingDipMM ?? 0.0;
+                double stock = (tankStock != null && tankStock.ClosingDipMM > 0) ? tankStock.ClosingStockLitres : (openingStock - dispensed + testingLitres + receipts);
+
+                var groupDto = new NozzleGroupDto
+                {
+                    GroupName = $"{tank.FuelType} ({tank.TankName})",
+                    FuelType = tank.FuelType,
+                    OpeningStock = openingStock,
+                    FuelDispensed = dispensed,
+                    TestingLitres = testingLitres,
+                    Receipts = receipts,
+                    Dip = dip,
+                    Stock = stock
+                };
+
+                for (int i = 0; i < tankNozzles.Count; i += 3)
+                {
+                    groupDto.Rows.Add(tankNozzles.Skip(i).Take(3).ToList());
+                }
+
+                groups.Add(groupDto);
+            }
+
+            return groups;
+        }
+
         var group1Nozzles = new List<NozzleDisplayItem> { CreateItem(1, "Petrol"), CreateItem(2, "Petrol"), CreateItem(5, "Petrol"), CreateItem(6, "Petrol"), CreateItem(9, "Petrol"), CreateItem(10, "Petrol") };
         var group2Nozzles = new List<NozzleDisplayItem> { CreateItem(3, "Diesel"), CreateItem(4, "Diesel"), CreateItem(11, "Diesel"), CreateItem(12, "Diesel") };
         var group3Nozzles = new List<NozzleDisplayItem> { CreateItem(7, "Diesel"), CreateItem(8, "Diesel") };
@@ -593,10 +768,10 @@ public class AgsInventoryService : IAgsInventoryService
         double hsdReceipts = 0.0;
         double msIIReceipts = 0.0;
 
-        var tankerRepo = _serviceProvider.GetService<IFuelTankerRepository>();
-        if (tankerRepo != null)
+        var tankerRepoRangeFallback = _serviceProvider.GetService<IFuelTankerRepository>();
+        if (tankerRepoRangeFallback != null)
         {
-            var tankersRes = await tankerRepo.GetByDateRangeAsync(startDate.Date, endDate.Date);
+            var tankersRes = await tankerRepoRangeFallback.GetByDateRangeAsync(startDate.Date, endDate.Date);
             var tankers = tankersRes.Success && tankersRes.Data != null ? tankersRes.Data : new List<FuelTanker>();
 
             msIReceipts = tankers.Where(t => t.FuelType == "MS-I").Sum(t => t.Quantity);

@@ -93,9 +93,9 @@
                     <TextBlock Text="OWNER" FontSize="8" FontWeight="Bold"
                                Foreground="White" HorizontalAlignment="Center" Opacity="0.7"
                                Margin="0,0,0,20"/>
-
                     <!-- Dashboard -->
-                    <Button Command="{Binding NavigateToDashboardCommand}" ToolTip="Dashboard" Margin="0,3">
+                    <Button Command="{Binding NavigateToDashboardCommand}" ToolTip="Dashboard" Margin="0,3"
+                            Visibility="{Binding IsDashboardVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <Button.Style>
                             <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
                                 <Setter Property="Foreground" Value="White" />
@@ -112,7 +112,8 @@
                     </Button>
 
                     <!-- Daily Performance -->
-                    <Button Command="{Binding NavigateToDailyPerformanceCommand}" ToolTip="Daily Performance" Margin="0,3">
+                    <Button Command="{Binding NavigateToDailyPerformanceCommand}" ToolTip="Daily Performance" Margin="0,3"
+                            Visibility="{Binding IsDailyPerformanceVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <Button.Style>
                             <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
                                 <Setter Property="Foreground" Value="White" />
@@ -129,7 +130,8 @@
                     </Button>
 
                     <!-- Monthly Performance -->
-                    <Button Command="{Binding NavigateToMonthlyPerformanceCommand}" ToolTip="Monthly Performance" Margin="0,3">
+                    <Button Command="{Binding NavigateToMonthlyPerformanceCommand}" ToolTip="Monthly Performance" Margin="0,3"
+                            Visibility="{Binding IsMonthlyPerformanceVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <Button.Style>
                             <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
                                 <Setter Property="Foreground" Value="White" />
@@ -146,7 +148,8 @@
                     </Button>
 
                     <!-- Profit & Loss -->
-                    <Button Command="{Binding NavigateToProfitLossCommand}" ToolTip="Profit &amp; Loss" Margin="0,3">
+                    <Button Command="{Binding NavigateToProfitLossCommand}" ToolTip="Profit &amp; Loss" Margin="0,3"
+                            Visibility="{Binding IsProfitLossVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <Button.Style>
                             <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
                                 <Setter Property="Foreground" Value="White" />
@@ -163,7 +166,8 @@
                     </Button>
 
                     <!-- Expense Analysis -->
-                    <Button Command="{Binding NavigateToExpenseAnalysisCommand}" ToolTip="Expense Analysis" Margin="0,3">
+                    <Button Command="{Binding NavigateToExpenseAnalysisCommand}" ToolTip="Expense Analysis" Margin="0,3"
+                            Visibility="{Binding IsExpenseAnalysisVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <Button.Style>
                             <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
                                 <Setter Property="Foreground" Value="White" />
@@ -180,7 +184,8 @@
                     </Button>
 
                     <!-- Mismatch Ledger -->
-                    <Button Command="{Binding NavigateToMismatchLedgerCommand}" ToolTip="Mismatch Ledger" Margin="0,3">
+                    <Button Command="{Binding NavigateToMismatchLedgerCommand}" ToolTip="Mismatch Ledger" Margin="0,3"
+                            Visibility="{Binding IsMismatchLedgerVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <Button.Style>
                             <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
                                 <Setter Property="Foreground" Value="White" />
@@ -197,7 +202,8 @@
                     </Button>
 
                     <!-- Collection Summary -->
-                    <Button Command="{Binding NavigateToCollectionSummaryCommand}" ToolTip="Collection Summary" Margin="0,3">
+                    <Button Command="{Binding NavigateToCollectionSummaryCommand}" ToolTip="Collection Summary" Margin="0,3"
+                            Visibility="{Binding IsCollectionSummaryVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <Button.Style>
                             <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
                                 <Setter Property="Foreground" Value="White" />
@@ -214,7 +220,8 @@
                     </Button>
 
                     <!-- DSM Salary -->
-                    <Button Command="{Binding NavigateToSalaryCalculationCommand}" ToolTip="DSM Salary &amp; Payroll" Margin="0,3">
+                    <Button Command="{Binding NavigateToSalaryCalculationCommand}" ToolTip="DSM Salary &amp; Payroll" Margin="0,3"
+                            Visibility="{Binding IsSalaryCalculationVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <Button.Style>
                             <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
                                 <Setter Property="Foreground" Value="White" />
@@ -231,7 +238,8 @@
                     </Button>
 
                     <!-- Oil & DEF Summary -->
-                    <Button Command="{Binding NavigateToOilDefInventoryCommand}" ToolTip="Oil &amp; DEF Summary" Margin="0,3">
+                    <Button Command="{Binding NavigateToOilDefInventoryCommand}" ToolTip="Oil &amp; DEF Summary" Margin="0,3"
+                            Visibility="{Binding IsOilDefInventoryVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <Button.Style>
                             <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
                                 <Setter Property="Foreground" Value="White" />
@@ -248,7 +256,8 @@
                     </Button>
 
                     <!-- Card Settlement -->
-                    <Button Command="{Binding NavigateToCardSettlementCommand}" ToolTip="TID Sheet" Margin="0,3">
+                    <Button Command="{Binding NavigateToCardSettlementCommand}" ToolTip="TID Sheet" Margin="0,3"
+                            Visibility="{Binding IsCardSettlementVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <Button.Style>
                             <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
                                 <Setter Property="Foreground" Value="White" />
@@ -265,7 +274,8 @@
                     </Button>
 
                     <!-- Debtors Directory -->
-                    <Button Command="{Binding NavigateToDebtorManagementCommand}" ToolTip="Debtors Directory" Margin="0,3">
+                    <Button Command="{Binding NavigateToDebtorManagementCommand}" ToolTip="Debtors Directory" Margin="0,3"
+                            Visibility="{Binding IsDebtorManagementVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <Button.Style>
                             <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
                                 <Setter Property="Foreground" Value="White" />
@@ -282,7 +292,8 @@
                     </Button>
 
                     <!-- Pump Expenses -->
-                    <Button Command="{Binding NavigateToPumpExpensesCommand}" ToolTip="Pump Expenses" Margin="0,3">
+                    <Button Command="{Binding NavigateToPumpExpensesCommand}" ToolTip="Pump Expenses" Margin="0,3"
+                            Visibility="{Binding IsPumpExpensesVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <Button.Style>
                             <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
                                 <Setter Property="Foreground" Value="White" />
@@ -299,7 +310,8 @@
                     </Button>
 
                     <!-- Petty Cash -->
-                    <Button Command="{Binding NavigateToPettyCashCommand}" ToolTip="Petty Cash" Margin="0,3">
+                    <Button Command="{Binding NavigateToPettyCashCommand}" ToolTip="Petty Cash" Margin="0,3"
+                            Visibility="{Binding IsPettyCashVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <Button.Style>
                             <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
                                 <Setter Property="Foreground" Value="White" />
@@ -316,7 +328,8 @@
                     </Button>
 
                     <!-- DSM Loss & Personal Debtors -->
-                    <Button Command="{Binding NavigateToDsmPersonalDebtorCommand}" ToolTip="DSM Loss &amp; Personal Debtors" Margin="0,3">
+                    <Button Command="{Binding NavigateToDsmPersonalDebtorCommand}" ToolTip="DSM Loss &amp; Personal Debtors" Margin="0,3"
+                            Visibility="{Binding IsDsmPersonalDebtorVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <Button.Style>
                             <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
                                 <Setter Property="Foreground" Value="White" />
@@ -333,7 +346,8 @@
                     </Button>
 
                     <!-- Reporting & Printing Center (Always at End) -->
-                    <Button Command="{Binding NavigateToReportsCommand}" ToolTip="Reporting &amp; Printing Center" Margin="0,3">
+                    <Button Command="{Binding NavigateToReportsCommand}" ToolTip="Reporting &amp; Printing Center" Margin="0,3"
+                            Visibility="{Binding IsReportsVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <Button.Style>
                             <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
                                 <Setter Property="Foreground" Value="White" />
@@ -346,7 +360,7 @@
                                 </Style.Triggers>
                             </Style>
                         </Button.Style>
-                        <materialDesign:PackIcon Kind="FileChart" Width="24" Height="24"/>
+                        <materialDesign:PackIcon Kind="Printer" Width="24" Height="24"/>
                     </Button>
                 </StackPanel>
                 </ScrollViewer>
@@ -393,7 +407,14 @@
                                     </Style>
                                 </Ellipse.Style>
                             </Ellipse>
-                            <TextBlock Text="{Binding SyncStatusText}" FontSize="12" FontWeight="Medium" VerticalAlignment="Center" Opacity="0.8"/>
+                            <TextBlock Text="{Binding SyncStatusText}" FontSize="12" FontWeight="Medium" VerticalAlignment="Center" Margin="0,0,16,0" Opacity="0.8"/>
+
+                            <Button Command="{Binding LogoutCommand}" Style="{StaticResource MaterialDesignOutlinedButton}" Height="32" Padding="10,0" BorderBrush="#E57373" Foreground="#D32F2F" ToolTip="Logout / Switch User">
+                                <StackPanel Orientation="Horizontal">
+                                    <materialDesign:PackIcon Kind="Logout" Width="16" Height="16" Margin="0,0,4,0"/>
+                                    <TextBlock Text="Logout" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
                         </StackPanel>
                     </Grid>
                 </Border>

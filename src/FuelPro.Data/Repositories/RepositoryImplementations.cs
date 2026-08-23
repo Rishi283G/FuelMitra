@@ -353,6 +353,7 @@ public class DsmEntryRepository : IDsmEntryRepository
                 .AsNoTracking()
                 .Include(e => e.NozzleReadings)
                 .Include(e => e.PaymentCollection)
+                    .ThenInclude(p => p.Items)
                 .Include(e => e.DebitEntries)
                 .Include(e => e.TestingEntries)
                 .Include(e => e.Expenses)
@@ -382,6 +383,7 @@ public class DsmEntryRepository : IDsmEntryRepository
                 .AsNoTracking()
                 .Include(e => e.NozzleReadings)
                 .Include(e => e.PaymentCollection)
+                    .ThenInclude(p => p.Items)
                 .Include(e => e.DebitEntries)
                 .Include(e => e.TestingEntries)
                 .Include(e => e.Expenses)
@@ -503,6 +505,7 @@ public class DsmEntryRepository : IDsmEntryRepository
                 .Include(e => e.Shift)
                 .Include(e => e.NozzleReadings)
                 .Include(e => e.PaymentCollection)
+                    .ThenInclude(p => p.Items)
                 .Include(e => e.DebitEntries)
                 .Include(e => e.TestingEntries)
                 .Include(e => e.Expenses)
@@ -538,6 +541,7 @@ public class DsmEntryRepository : IDsmEntryRepository
                 .Include(e => e.Shift)
                 .Include(e => e.NozzleReadings)
                 .Include(e => e.PaymentCollection)
+                    .ThenInclude(p => p.Items)
                 .Include(e => e.DebitEntries)
                 .Include(e => e.TestingEntries)
                 .Include(e => e.Expenses)
@@ -571,6 +575,7 @@ public class DsmEntryRepository : IDsmEntryRepository
                 .Include(e => e.Shift)
                 .Include(e => e.NozzleReadings)
                 .Include(e => e.PaymentCollection)
+                    .ThenInclude(p => p.Items)
                 .Include(e => e.DebitEntries)
                 .Include(e => e.TestingEntries)
                 .Include(e => e.Expenses)
@@ -709,6 +714,7 @@ public class PaymentRepository : IPaymentRepository
         try
         {
             var payment = await _context.PaymentCollections
+                .Include(p => p.Items)
                 .FirstOrDefaultAsync(p => p.DsmEntryId == dsmEntryId);
             return payment != null
                 ? Result<PaymentCollection>.Ok(payment)
@@ -727,6 +733,7 @@ public class PaymentRepository : IPaymentRepository
         {
             payment.DsmEntry = null;
             var existing = await _context.PaymentCollections
+                .Include(p => p.Items)
                 .FirstOrDefaultAsync(p => p.DsmEntryId == payment.DsmEntryId);
 
             if (existing != null)
@@ -769,6 +776,22 @@ public class PaymentRepository : IPaymentRepository
                 existing.PhonePeBatchDay = payment.PhonePeBatchDay;
                 existing.PhonePeTidNight = payment.PhonePeTidNight;
                 existing.PhonePeBatchNight = payment.PhonePeBatchNight;
+
+                // Synchronize dynamic collection items
+                if (existing.Items != null && existing.Items.Count > 0)
+                {
+                    _context.PaymentCollectionItems.RemoveRange(existing.Items);
+                    existing.Items.Clear();
+                }
+                if (payment.Items != null && payment.Items.Count > 0)
+                {
+                    foreach (var item in payment.Items)
+                    {
+                        item.PaymentId = existing.PaymentId;
+                        item.PaymentCollection = existing;
+                        existing.Items.Add(item);
+                    }
+                }
             }
             else
             {

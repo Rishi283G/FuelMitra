@@ -22,7 +22,8 @@ public interface IShiftAggregationService
     List<ReconciliationRowDto> BuildReconciliationRows(
         double msTesting, double hsdTesting, double hsdTesting2, double cngTesting, double phonePeCardMorning, double phonePeCardNight, double phonePeMorning, double phonePeNight, double petroCard,
         double debit, double creditCardMorning, double creditCardNight, double bankCash, double cashInHand,
-        double expenses);
+        double expenses, Dictionary<string, double>? dynamicCollections = null);
 
     double CalculateDifference(double grossSaleFuel, double reconciliationTotal);
+
 }

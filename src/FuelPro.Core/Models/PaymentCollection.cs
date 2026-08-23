@@ -82,4 +82,16 @@ public class PaymentCollection
     // Navigation
     [ForeignKey(nameof(DsmEntryId))]
     public DsmEntry? DsmEntry { get; set; }
+
+    /// <summary>
+    /// Dynamic collection items (e.g. SBI Redeem, Paytm, QR, Mobikwik, etc.)
+    /// </summary>
+    public ICollection<PaymentCollectionItem> Items { get; set; } = new List<PaymentCollectionItem>();
+
+    /// <summary>
+    /// Computes total of all dynamic collection items.
+    /// </summary>
+    [NotMapped]
+    public double DynamicItemsTotal => Items?.Sum(i => i.Amount) ?? 0;
 }
+

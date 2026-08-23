@@ -121,6 +121,11 @@ public static class PumpConfiguration
         }
 
         // 2. Set up default 6-pump mappings as active fallback
+        ResetToDefaults();
+    }
+
+    public static void ResetToDefaults()
+    {
         var defaultMappings = new List<PumpMapping>();
         var now = DateTime.Now;
 
@@ -150,6 +155,7 @@ public static class PumpConfiguration
 
         InitializeFromDb(defaultMappings);
     }
+
 
     public static void InitializeFromDb(List<PumpMapping> mappings)
     {
@@ -247,6 +253,10 @@ public static class PumpConfiguration
         if (activeMatch != default)
             return activeMatch.PumpId;
 
+        var default6Match = Default6PumpNozzleFuelMap.Keys.FirstOrDefault(k => k.NozzleNumber == nozzleNumber);
+        if (default6Match != default)
+            return default6Match.PumpId;
+
         // Try falling back to legacy 22-pump then 4-pump
         var legacy22Match = Legacy22NozzleFuelMap.Keys.FirstOrDefault(k => k.NozzleNumber == nozzleNumber);
         if (legacy22Match != default)
@@ -256,16 +266,25 @@ public static class PumpConfiguration
         return histMatch != default ? histMatch.PumpId : 0;
     }
 
+    private static readonly Dictionary<(int PumpId, int NozzleNumber), FuelType> Default6PumpNozzleFuelMap = new()
+
+    {
+        { (1, 1), FuelType.MS_I },
+        { (1, 3), FuelType.HSD },
+        { (2, 2), FuelType.MS_I },
+        { (2, 4), FuelType.HSD },
+        { (3, 5), FuelType.MS_I },
+        { (3, 7), FuelType.MS_II },
+        { (4, 6), FuelType.MS_I },
+        { (4, 8), FuelType.MS_II },
+        { (5, 9), FuelType.MS_I },
+        { (5, 11), FuelType.HSD },
+        { (6, 10), FuelType.MS_I },
+        { (6, 12), FuelType.HSD }
+    };
+
     public static FuelType GetFuelType(int pumpId, int nozzleNumber, DateTime? date = null)
     {
-        // For active operation (after Legacy22CutoffDate), explicitly map nozzle numbers to tank fuel types:
-        if (!date.HasValue || date.Value.Date >= Legacy22PumpCutoffDate)
-        {
-            if (nozzleNumber == 7 || nozzleNumber == 8) return FuelType.MS_II;
-            if (nozzleNumber == 3 || nozzleNumber == 4 || nozzleNumber == 11 || nozzleNumber == 12) return FuelType.HSD;
-            if (nozzleNumber == 1 || nozzleNumber == 2 || nozzleNumber == 5 || nozzleNumber == 6 || nozzleNumber == 9 || nozzleNumber == 10) return FuelType.MS_I;
-        }
-
         var actualPumpId = GetPumpIdForNozzle(nozzleNumber, date);
         if (actualPumpId == 0)
         {
@@ -289,6 +308,15 @@ public static class PumpConfiguration
         if (NozzleFuelMap.TryGetValue((actualPumpId, nozzleNumber), out var fuelType))
             return fuelType;
 
+        if (NozzleFuelMap.TryGetValue((pumpId, nozzleNumber), out var directType))
+            return directType;
+
+        if (Default6PumpNozzleFuelMap.TryGetValue((actualPumpId, nozzleNumber), out var defType))
+            return defType;
+
+        if (Default6PumpNozzleFuelMap.TryGetValue((pumpId, nozzleNumber), out var defTypeDirect))
+            return defTypeDirect;
+
         if (Legacy22NozzleFuelMap.TryGetValue((actualPumpId, nozzleNumber), out var fallback22Type))
             return fallback22Type;
 
@@ -297,6 +325,7 @@ public static class PumpConfiguration
 
         return FuelType.MS_I;
     }
+
 
     /// <summary>
     /// Returns the canonical display name ("HSD", "MS-I", "MS-II", "CNG") for a pump ID and nozzle number.

@@ -245,6 +245,22 @@ public partial class PersonalDebtorRow : ObservableObject
     partial void OnPaymentMethodChanged(string value) => OnRowChanged?.Invoke();
 }
 
+public partial class DynamicCollectionEntryRow : ObservableObject
+{
+    public string Code { get; set; } = string.Empty;
+    public string DisplayName { get; set; } = string.Empty;
+    public string Category { get; set; } = "Online";
+    public bool HasTidBatch { get; set; }
+    [ObservableProperty] private double? _amount;
+    [ObservableProperty] private string? _tid;
+    [ObservableProperty] private string? _batch;
+    public Action? OnValueChangedAction { get; set; }
+
+    partial void OnAmountChanged(double? value) => OnValueChangedAction?.Invoke();
+    partial void OnTidChanged(string? value) => OnValueChangedAction?.Invoke();
+    partial void OnBatchChanged(string? value) => OnValueChangedAction?.Invoke();
+}
+
 public partial class DsmEntryViewModel : ObservableObject
 {
     private readonly DsmEntryService _dsmService;
@@ -252,8 +268,11 @@ public partial class DsmEntryViewModel : ObservableObject
     private readonly IDsmCalculationService _dsmCalculationService;
     private readonly Core.Repositories.INozzleReadingRepository _nozzleRepository;
     private readonly IAgsImportRepository _agsImportRepository;
+    private readonly ICollectionTypeService _collectionTypeService;
+    private readonly IFeatureToggleService _featureToggleService;
     private readonly DispatcherTimer _autoSaveTimer;
     private readonly PrintService _printService;
+
 
     // Header fields
     [ObservableProperty] private DateTime _selectedDate = DateTime.Today;
@@ -289,6 +308,22 @@ public partial class DsmEntryViewModel : ObservableObject
 
     // Nozzle readings
     public ObservableCollection<NozzleReadingRow> NozzleReadings { get; } = new();
+
+    [ObservableProperty] private string _phonePeDisplayName = "PhonePe";
+    [ObservableProperty] private bool _phonePeHasTidBatch = true;
+    [ObservableProperty] private bool _phonePeIsActive = true;
+
+    [ObservableProperty] private string _creditCardDisplayName = "Credit / Debit Card";
+    [ObservableProperty] private bool _creditCardHasTidBatch = true;
+    [ObservableProperty] private bool _creditCardIsActive = true;
+
+    [ObservableProperty] private string _petroCardDisplayName = "PetroCard";
+    [ObservableProperty] private bool _petroCardHasTidBatch = true;
+    [ObservableProperty] private bool _petroCardIsActive = true;
+
+    public bool IsPhonePeNightTidVisible => IsMorningNightSplitEnabled && PhonePeHasTidBatch;
+    public bool IsCreditCardNightTidVisible => IsMorningNightSplitEnabled && CreditCardHasTidBatch;
+    public bool IsPetroCardNightTidVisible => IsMorningNightSplitEnabled && PetroCardHasTidBatch;
 
     [ObservableProperty] private double? _phonePeCardMorning;
     [ObservableProperty] private double? _phonePeCardNight;
@@ -335,6 +370,7 @@ public partial class DsmEntryViewModel : ObservableObject
     partial void OnCashDepositChanged(double? value) => RecalculateAll();
 
     // Dynamic sections
+    public ObservableCollection<DynamicCollectionEntryRow> DynamicCollections { get; } = new();
     public ObservableCollection<DebitRow> Debits { get; } = new();
     public ObservableCollection<ExpenseRow> Expenses { get; } = new();
     public ObservableCollection<KhandharePetroleumRow> KhandharePetroleumEntries { get; } = new();
@@ -375,6 +411,11 @@ public partial class DsmEntryViewModel : ObservableObject
 
     private readonly IDsmProfileRepository _dsmProfileRepo;
     private readonly ICreditorRepository _creditorRepo;
+    private readonly IStationConfigurationService _stationConfigService;
+
+    public bool IsCrossDsmQrEnabled => _featureToggleService?.IsFeatureEnabled("Operations_CrossDsmQr", true) ?? true;
+    public bool IsPersonalLedgerEnabled => _featureToggleService?.IsFeatureEnabled("Operations_PersonalLedger", true) ?? true;
+    public string PersonalLedgerTitle => _featureToggleService?.GetFeatureDisplayName("Operations_PersonalLedger", "Personal Ledger") ?? "Personal Ledger";
 
     public DsmEntryViewModel()
     {
@@ -385,22 +426,200 @@ public partial class DsmEntryViewModel : ObservableObject
         _agsImportRepository = App.Services.GetRequiredService<IAgsImportRepository>();
         _dsmProfileRepo = App.Services.GetRequiredService<IDsmProfileRepository>();
         _creditorRepo = App.Services.GetRequiredService<ICreditorRepository>();
+        _collectionTypeService = App.Services.GetService<ICollectionTypeService>()!;
+        _featureToggleService = App.Services.GetService<IFeatureToggleService>()!;
+        _stationConfigService = App.Services.GetService<IStationConfigurationService>()!;
         _printService = App.Services.GetRequiredService<PrintService>();
 
         Cash1 = new CashDenomRow { CashType = "Cash1", OnTotalChanged = RecalculateAll };
         Cash2 = new CashDenomRow { CashType = "Cash2", OnTotalChanged = RecalculateAll };
 
+        if (_featureToggleService != null)
+        {
+            _featureToggleService.FeatureConfigurationChanged += () =>
+            {
+                System.Windows.Application.Current?.Dispatcher?.Invoke(() =>
+                {
+                    OnPropertyChanged(nameof(IsMorningNightSplitEnabled));
+                    OnPropertyChanged(nameof(MorningLabel));
+                    OnPropertyChanged(nameof(MorningTidLabel));
+                    OnPropertyChanged(nameof(MorningBatchLabel));
+                    OnPropertyChanged(nameof(IsCrossDsmQrEnabled));
+                    OnPropertyChanged(nameof(IsPersonalLedgerEnabled));
+                    OnPropertyChanged(nameof(PersonalLedgerTitle));
+                    _ = LoadDynamicCollectionTypesAsync();
+                });
+            };
+        }
+
+        if (_stationConfigService != null)
+        {
+            _stationConfigService.StationConfigurationChanged += () =>
+            {
+                var dispatcher = System.Windows.Application.Current?.Dispatcher;
+                if (dispatcher != null && !dispatcher.CheckAccess())
+                {
+                    dispatcher.BeginInvoke(() =>
+                    {
+                        ReloadPumpOptions();
+                        if (!_isEditing) LoadNozzlesForPump();
+                    });
+                }
+                else
+                {
+                    ReloadPumpOptions();
+                    if (!_isEditing) LoadNozzlesForPump();
+                }
+            };
+        }
+
+        if (_collectionTypeService != null)
+        {
+            _collectionTypeService.CollectionTypesChanged += () =>
+            {
+                var dispatcher = System.Windows.Application.Current?.Dispatcher;
+                if (dispatcher != null && !dispatcher.CheckAccess())
+                {
+                    dispatcher.BeginInvoke(async () =>
+                    {
+                        await LoadDynamicCollectionTypesAsync();
+                        RecalculateAll();
+                    });
+                }
+                else
+                {
+                    _ = LoadDynamicCollectionTypesAsync();
+                    RecalculateAll();
+                }
+            };
+        }
+
         // Populate pump options for default selected date
         ReloadPumpOptions();
 
         // Auto-save timer
-        _autoSaveTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
-        _autoSaveTimer.Tick += (_, _) => SaveDraft();
-        _autoSaveTimer.Start();
+        if (System.Windows.Application.Current != null)
+        {
+            _autoSaveTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
+            _autoSaveTimer.Tick += (_, _) => SaveDraft();
+            _autoSaveTimer.Start();
+        }
 
         LoadNozzlesForPump();
         _ = LoadSuggestionsAsync();
+        _ = LoadDynamicCollectionTypesAsync();
     }
+
+    public async Task LoadDynamicCollectionTypesAsync(PaymentCollection? existingPayment = null)
+    {
+        try
+        {
+            if (_collectionTypeService == null) return;
+            var allTypes = await _collectionTypeService.GetAllCollectionTypesAsync();
+
+            // 1. Resolve built-in PhonePe
+            var ph = allTypes.FirstOrDefault(c => string.Equals(c.Code, "PHONEPE", StringComparison.OrdinalIgnoreCase));
+            if (ph != null)
+            {
+                PhonePeDisplayName = ph.DisplayName;
+                PhonePeHasTidBatch = ph.HasTidBatch;
+                PhonePeIsActive = ph.IsActive;
+            }
+            else
+            {
+                PhonePeDisplayName = "PhonePe";
+                PhonePeHasTidBatch = false;
+                PhonePeIsActive = false;
+            }
+
+            // 2. Resolve built-in Credit Card / PineLabs
+            var cc = allTypes.FirstOrDefault(c => string.Equals(c.Code, "CREDIT_CARD", StringComparison.OrdinalIgnoreCase)
+                                            || string.Equals(c.Code, "CREDITCARD", StringComparison.OrdinalIgnoreCase)
+                                            || string.Equals(c.Code, "CREDIT CARD", StringComparison.OrdinalIgnoreCase)
+                                            || string.Equals(c.Code, "PINELAB", StringComparison.OrdinalIgnoreCase)
+                                            || string.Equals(c.Code, "PINELABS", StringComparison.OrdinalIgnoreCase)
+                                            || c.Code.IndexOf("PINELAB", StringComparison.OrdinalIgnoreCase) >= 0
+                                            || c.Code.IndexOf("CARD", StringComparison.OrdinalIgnoreCase) >= 0);
+            if (cc != null)
+            {
+                CreditCardDisplayName = cc.DisplayName;
+                CreditCardHasTidBatch = cc.HasTidBatch;
+                CreditCardIsActive = cc.IsActive;
+            }
+            else
+            {
+                CreditCardDisplayName = "Credit / Debit Card";
+                CreditCardHasTidBatch = false;
+                CreditCardIsActive = false;
+            }
+
+            // 3. Resolve built-in PetroCard
+            var pc = allTypes.FirstOrDefault(c => string.Equals(c.Code, "PETROCARD", StringComparison.OrdinalIgnoreCase)
+                                            || string.Equals(c.Code, "PETRO_CARD", StringComparison.OrdinalIgnoreCase)
+                                            || string.Equals(c.Code, "PETRO CARD", StringComparison.OrdinalIgnoreCase));
+            if (pc != null)
+            {
+                PetroCardDisplayName = pc.DisplayName;
+                PetroCardHasTidBatch = pc.HasTidBatch;
+                PetroCardIsActive = pc.IsActive;
+            }
+            else
+            {
+                PetroCardDisplayName = "PetroCard";
+                PetroCardHasTidBatch = false;
+                PetroCardIsActive = false;
+            }
+
+            OnPropertyChanged(nameof(PhonePeDisplayName));
+            OnPropertyChanged(nameof(PhonePeHasTidBatch));
+            OnPropertyChanged(nameof(PhonePeIsActive));
+            OnPropertyChanged(nameof(CreditCardDisplayName));
+            OnPropertyChanged(nameof(CreditCardHasTidBatch));
+            OnPropertyChanged(nameof(CreditCardIsActive));
+            OnPropertyChanged(nameof(PetroCardDisplayName));
+            OnPropertyChanged(nameof(PetroCardHasTidBatch));
+            OnPropertyChanged(nameof(PetroCardIsActive));
+            OnPropertyChanged(nameof(IsPhonePeNightTidVisible));
+            OnPropertyChanged(nameof(IsCreditCardNightTidVisible));
+            OnPropertyChanged(nameof(IsPetroCardNightTidVisible));
+
+            // Snapshot in-memory entered dynamic amounts/TIDs
+            var existingInMem = DynamicCollections.ToList();
+            DynamicCollections.Clear();
+
+            var existingItems = existingPayment?.Items?.ToList() ?? new List<PaymentCollectionItem>();
+            var matchedCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (ph != null) matchedCodes.Add(ph.Code);
+            if (cc != null) matchedCodes.Add(cc.Code);
+            if (pc != null) matchedCodes.Add(pc.Code);
+            matchedCodes.Add("CASH_DEPOSIT");
+            matchedCodes.Add("OTHERS");
+
+            foreach (var t in allTypes.Where(x => x.IsActive && !matchedCodes.Contains(x.Code)))
+            {
+                var mem = existingInMem.FirstOrDefault(d => string.Equals(d.Code, t.Code, StringComparison.OrdinalIgnoreCase));
+                var existingItem = existingItems.FirstOrDefault(i => string.Equals(i.CollectionTypeCode, t.Code, StringComparison.OrdinalIgnoreCase));
+
+                var row = new DynamicCollectionEntryRow
+                {
+                    Code = t.Code,
+                    DisplayName = t.DisplayName,
+                    Category = t.Category,
+                    HasTidBatch = t.HasTidBatch,
+                    Amount = mem?.Amount ?? (existingItem != null && existingItem.Amount > 0 ? existingItem.Amount : (double?)null),
+                    Tid = mem?.Tid ?? existingItem?.Tid,
+                    Batch = mem?.Batch ?? existingItem?.Batch,
+                    OnValueChangedAction = RecalculateAll
+                };
+                DynamicCollections.Add(row);
+            }
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to load dynamic collection types in DsmEntryViewModel");
+        }
+    }
+
 
 
     partial void OnSelectedPumpChanged(PumpDisplayItem value)
@@ -421,14 +640,17 @@ public partial class DsmEntryViewModel : ObservableObject
     public bool IsNightShift => SelectedShift == "A";
     public bool IsDayShift => SelectedShift == "B";
 
-    public string MorningLabel => IsDayShift ? "Day (8am - 8pm) (₹)" : "Morning (12am - 8am) (₹)";
-    public string MorningTidLabel => IsDayShift ? "Day TID" : "Morning TID";
-    public string MorningBatchLabel => IsDayShift ? "Day Batch" : "Morning Batch";
+    public bool IsMorningNightSplitEnabled => _featureToggleService?.IsFeatureEnabled("Collection_UseMorningNight", false) ?? false;
+
+    public string MorningLabel => !IsMorningNightSplitEnabled ? "Amount (₹)" : (IsDayShift ? "Day (8am - 8pm) (₹)" : "Morning (12am - 8am) (₹)");
+    public string MorningTidLabel => !IsMorningNightSplitEnabled ? "TID" : (IsDayShift ? "Day TID" : "Morning TID");
+    public string MorningBatchLabel => !IsMorningNightSplitEnabled ? "Batch" : (IsDayShift ? "Day Batch" : "Morning Batch");
 
     partial void OnSelectedShiftChanged(string value)
     {
         OnPropertyChanged(nameof(IsNightShift));
         OnPropertyChanged(nameof(IsDayShift));
+        OnPropertyChanged(nameof(IsMorningNightSplitEnabled));
         OnPropertyChanged(nameof(MorningLabel));
         OnPropertyChanged(nameof(MorningTidLabel));
         OnPropertyChanged(nameof(MorningBatchLabel));
@@ -922,6 +1144,22 @@ public partial class DsmEntryViewModel : ObservableObject
                 PetroCardBatchNight = PetroCardBatchNight
             };
 
+            foreach (var dyn in DynamicCollections)
+            {
+                if (dyn.Amount.HasValue && dyn.Amount.Value > 0)
+                {
+                    payment.Items.Add(new PaymentCollectionItem
+                    {
+                        CollectionTypeCode = dyn.Code,
+                        Amount = dyn.Amount.Value,
+                        Tid = dyn.Tid,
+                        Batch = dyn.Batch,
+                        Slot = "General"
+                    });
+                }
+            }
+
+
             var debitModels = Debits.Where(d => !string.IsNullOrWhiteSpace(d.DebtorName))
                 .Select(d => new DebitEntry 
                 { 
@@ -1154,6 +1392,9 @@ public partial class DsmEntryViewModel : ObservableObject
             CardBatch = paymentSource?.CreditCardBatchNight ?? paymentSource?.CreditCardBatchMorning ?? paymentSource?.CardBatch;
             PetroCardTid = paymentSource?.PetroCardTidNight ?? paymentSource?.PetroCardTidMorning ?? paymentSource?.PetroCardTid;
             PetroCardBatch = paymentSource?.PetroCardBatchNight ?? paymentSource?.PetroCardBatchMorning ?? paymentSource?.PetroCardBatch;
+
+            await LoadDynamicCollectionTypesAsync(paymentSource);
+
 
             // Populate nozzle readings (override auto-loaded ones)
             foreach (var nozzleRow in NozzleReadings)
@@ -1449,33 +1690,65 @@ public partial class DsmEntryViewModel : ObservableObject
 
     private bool UpdateHostViewModel(DsmEntryViewModel newVm)
     {
-        if (Application.Current == null) return false;
+        if (Application.Current == null || Application.Current.Dispatcher == null) return false;
 
         bool updated = false;
-        Application.Current.Dispatcher.Invoke(() =>
+        try
         {
-            foreach (Window window in Application.Current.Windows)
+            if (Application.Current.Dispatcher.CheckAccess())
             {
-                if (window.DataContext is MainWindowViewModel mwvm)
+                foreach (Window window in Application.Current.Windows)
                 {
-                    mwvm.CurrentView = newVm;
-                    updated = true;
-                    break;
-                }
-                else if (window.DataContext is OwnerMainWindowViewModel omwvm)
-                {
-                    omwvm.CurrentView = newVm;
-                    updated = true;
-                    break;
-                }
-                else if (window.DataContext is DeveloperMainWindowViewModel dmwvm)
-                {
-                    dmwvm.CurrentView = newVm;
-                    updated = true;
-                    break;
+                    if (window.DataContext is MainWindowViewModel mwvm)
+                    {
+                        mwvm.CurrentView = newVm;
+                        updated = true;
+                        break;
+                    }
+                    else if (window.DataContext is OwnerMainWindowViewModel omwvm)
+                    {
+                        omwvm.CurrentView = newVm;
+                        updated = true;
+                        break;
+                    }
+                    else if (window.DataContext is DeveloperMainWindowViewModel dmwvm)
+                    {
+                        dmwvm.CurrentView = newVm;
+                        updated = true;
+                        break;
+                    }
                 }
             }
-        });
+            else
+            {
+                // In background/test threads, post asynchronously to dispatcher without blocking
+                Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    foreach (Window window in Application.Current.Windows)
+                    {
+                        if (window.DataContext is MainWindowViewModel mwvm)
+                        {
+                            mwvm.CurrentView = newVm;
+                            break;
+                        }
+                        else if (window.DataContext is OwnerMainWindowViewModel omwvm)
+                        {
+                            omwvm.CurrentView = newVm;
+                            break;
+                        }
+                        else if (window.DataContext is DeveloperMainWindowViewModel dmwvm)
+                        {
+                            dmwvm.CurrentView = newVm;
+                            break;
+                        }
+                    }
+                }));
+            }
+        }
+        catch
+        {
+            // Ignore UI dispatch failures in headless/test environments
+        }
         return updated;
     }
 
@@ -1669,8 +1942,10 @@ public partial class DsmEntryViewModel : ObservableObject
                 PhonePe = (decimal)((PhonePeMorning ?? 0) + (PhonePeNight ?? 0) + (PhonePeCardMorning ?? 0) + (PhonePeCardNight ?? 0) + QrPayments.Sum(q => q.Amount ?? 0)),
                 CreditCard = (decimal)((CreditCardMorning ?? 0) + (CreditCardNight ?? 0)),
                 PetroCard = (decimal)((PetroCardMorning ?? 0) + (PetroCardNight ?? 0)),
+                DynamicPayments = (decimal)DynamicCollections.Sum(d => d.Amount ?? 0),
                 CashDeposit = (decimal)Cash1.TotalAmount,
                 PhysicalCash = (decimal)Cash2.TotalAmount
+
             },
             DebitEntries = Debits.Select(x => new DebitEntryDto { Amount = (decimal)(x.Amount ?? 0), ChequeNo = x.ChequeNo }).ToList(),
             Expenses = Expenses.Select(x => new ExpenseDto { Amount = (decimal)(x.Amount ?? 0) })

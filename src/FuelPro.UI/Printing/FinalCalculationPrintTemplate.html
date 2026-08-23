@@ -54,10 +54,19 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
 .diff-bad{background:#fdf0ee!important;color:#8a1500!important;font-weight:700!important;text-align:center!important;font-size:12px}
 .rpt-ftr{background:#0f1923;color:rgba(255,255,255,.65);font-size:10px;padding:9px 24px;display:flex;justify-content:space-between;align-items:center}
 .rpt-ftr strong{color:#fff}
-.dsm-summary-table th, .dsm-summary-table td{padding:4px 3px;font-size:10.5px}
-.dsm-summary-table th.col-others, .dsm-summary-table td.col-others{width:45px;max-width:50px;font-size:9.5px;padding-left:1px;padding-right:1px}
-.dsm-summary-table th.col-short, .dsm-summary-table td.col-short{min-width:82px;white-space:nowrap;font-weight:700}
-.dsm-summary-table th.col-gross, .dsm-summary-table td.col-gross{min-width:80px;white-space:nowrap;font-weight:700}
+.dsm-summary-table{width:100%;border-collapse:collapse;margin-top:4px}
+.dsm-summary-table th{background:#103b63;color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;padding:5px 3px;text-align:right;border:1px solid #0d3052;letter-spacing:.2px}
+.dsm-summary-table th:first-child{text-align:left;padding-left:5px}
+.dsm-summary-table th:nth-child(2){text-align:center}
+.dsm-summary-table td{padding:4px 3px;font-size:9.5px;border:1px solid #cbd5e1;text-align:right;font-variant-numeric:tabular-nums}
+.dsm-summary-table td:first-child{text-align:left;font-weight:600;color:#0f1923;padding-left:5px;white-space:nowrap}
+.dsm-summary-table td:nth-child(2){text-align:center;font-weight:500;color:#475569}
+.dsm-summary-table tr:nth-child(even) td{background:#f8fafc}
+.dsm-summary-table tr.tr-total td{background:#103b63!important;color:#fff!important;font-weight:700;font-size:9.5px;border-top:2px solid #0a2540}
+.dsm-summary-table th.col-others, .dsm-summary-table td.col-others{font-size:8.5px;padding-left:2px;padding-right:2px}
+.dsm-summary-table th.col-short, .dsm-summary-table td.col-short{white-space:nowrap;font-weight:700}
+.dsm-summary-table th.col-gross, .dsm-summary-table td.col-gross{white-space:nowrap;font-weight:700;color:#2e7d32}
+.dsm-summary-table tr.tr-total td.col-gross{color:#fff!important}
 @media print{
   @page{size:A4 portrait;margin:0}
   body{background:#fff;font-size:10px;margin:4mm}
@@ -153,7 +162,7 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
   <hr class="div">
   <div class="sec">
     <div class="sec-title">DSM Summary &mdash; All Pumps</div>
-    <table class="dsm-summary-table"><thead><tr><th>DSM Name</th><th>Pump</th><th>PhonePe (M)</th><th>PhonePe (N)</th><th>Card (M)</th><th>Card (N)</th><th>Petro (M)</th><th>Petro (N)</th><th>Bank Cash</th><th>Debtors</th><th>Expenses</th><th>Testing</th><th>Hand Cash</th><th class="col-others">Others</th><th>Gross Sale</th><th class="col-short">Short</th></tr></thead><tbody id="tDsm"></tbody></table>
+    <table class="dsm-summary-table"><thead id="thDsm"><tr><th>DSM Name</th><th>Pump</th><th>PhonePe (M)</th><th>PhonePe (N)</th><th>Card (M)</th><th>Card (N)</th><th>Petro (M)</th><th>Petro (N)</th><th>Bank Cash</th><th>Debtors</th><th>Expenses</th><th>Testing</th><th>Hand Cash</th><th class="col-others">Others</th><th>Gross Sale</th><th class="col-short">Short</th></tr></thead><tbody id="tDsm"></tbody></table>
   </div>
   <hr class="div">
 
@@ -334,35 +343,66 @@ function renderData(){
   else if(diff<0){dEl.textContent='-'+inrZ(Math.abs(diff));dEl.className='stat-val bad';}
   else{dEl.textContent='+'+inrZ(diff);dEl.className='stat-val bad';}
 
+  function normColCode(code) {
+    return (code || '').toUpperCase().replace(/[\s_\-]/g, '');
+  }
+
+  var colTypes = d.collectionTypes || [];
+  var hasColConfig = colTypes && colTypes.length > 0;
+  
+  var phObj = hasColConfig ? colTypes.find(function(c){ return normColCode(c.code) === 'PHONEPE'; }) : { isActive: true, displayName: 'PhonePe' };
+  var ccObj = hasColConfig ? colTypes.find(function(c){ 
+    var nc = normColCode(c.code);
+    return nc.indexOf('PINELAB') >= 0 || nc.indexOf('CREDITCARD') >= 0 || nc === 'CARD' || nc.indexOf('DEBIT') >= 0; 
+  }) : { isActive: true, displayName: 'PineLab Card' };
+  var pcObj = hasColConfig ? colTypes.find(function(c){ 
+    var nc = normColCode(c.code);
+    return nc.indexOf('PETRO') >= 0; 
+  }) : { isActive: true, displayName: 'PetroCard' };
+  
+  var isPhActive = phObj ? phObj.isActive !== false : true;
+  var isCcActive = ccObj ? ccObj.isActive !== false : true;
+  var isPcActive = pcObj ? pcObj.isActive !== false : true;
+
+  var phTitle = phObj ? phObj.displayName : 'PhonePe';
+  var ccTitle = ccObj ? ccObj.displayName : 'PineLab Card';
+  var pcTitle = pcObj ? pcObj.displayName : 'PetroCard';
+
+  var excludeNorms = ['PHONEPE', 'PINELAB', 'PINELABS', 'PINELABCARD', 'CREDITCARD', 'CREDITDEBITCARD', 'CARD', 'PETROCARD', 'PETRO', 'CASHDEPOSIT', 'CASHINHAND', 'OTHERS'];
+  if (phObj) excludeNorms.push(normColCode(phObj.code));
+  if (ccObj) excludeNorms.push(normColCode(ccObj.code));
+  if (pcObj) excludeNorms.push(normColCode(pcObj.code));
+
+  var dynActiveTypes = colTypes.filter(function(c){ 
+    return c.isActive && excludeNorms.indexOf(normColCode(c.code)) < 0; 
+  });
+
+  var thHtml = '<tr><th>DSM Name</th><th>Pump</th>';
+  if (isPhActive) thHtml += '<th>' + phTitle + '</th>';
+  if (isCcActive) thHtml += '<th>' + ccTitle + '</th>';
+  if (isPcActive) thHtml += '<th>' + pcTitle + '</th>';
+  dynActiveTypes.forEach(function(dt){
+    thHtml += '<th>' + dt.displayName + '</th>';
+  });
+  thHtml += '<th>Bank Cash</th><th>Debtors</th><th>Expenses</th><th>Testing</th><th>Hand Cash</th><th class="col-others">Others</th><th>Gross Sale</th><th class="col-short">Short</th></tr>';
+  var thEl = document.getElementById('thDsm');
+  if(thEl) thEl.innerHTML = thHtml;
+
   var tb=document.getElementById('tDsm');tb.innerHTML='';
   var tot={
-    ccM: 0, ccN: 0,
-    phM: 0, phN: 0,
-    pcM: 0, pcN: 0, deb: 0, exp: 0, test: 0,
-    c1: 0, c2: 0, oth: 0, sale: 0, mis: 0
+    cc: 0,
+    ph: 0,
+    pc: 0, deb: 0, exp: 0, test: 0,
+    c1: 0, c2: 0, oth: 0, sale: 0, mis: 0,
+    dyn: {}
   };
+  dynActiveTypes.forEach(function(dt){ tot.dyn[dt.code] = 0; });
+
   (d.dsmSummaryRows||d.dsmEntries||[]).forEach(function(r){
     var tr=document.createElement('tr');
-    var rawCcM = getVal(r, 'creditCardMorning') || 0;
-    var rawCcN = getVal(r, 'creditCardNight') || 0;
-    var rawCcD = getVal(r, 'creditCardDay') || 0;
-    var rawPpcM = getVal(r, 'phonePeCardMorning') || 0;
-    var rawPpcN = getVal(r, 'phonePeCardNight') || 0;
-    var rawPpcD = getVal(r, 'phonePeCardDay') || getVal(r, 'phonePeCard') || 0;
-    var ccM = (rawCcM > 0 ? rawCcM : rawCcD) + (rawPpcM > 0 ? rawPpcM : rawPpcD);
-    var ccN = rawCcN + rawPpcN;
-
-    var rawPhM = getVal(r, 'phonePeMorning') || 0;
-    var rawPhN = getVal(r, 'phonePeNight') || 0;
-    var rawPhD = getVal(r, 'phonePeDay') || getVal(r, 'phonePe') || 0;
-    var phM = rawPhM > 0 ? rawPhM : rawPhD;
-    var phN = rawPhN;
-
-    var rawPcM = getVal(r, 'petroCardMorning') || 0;
-    var rawPcN = getVal(r, 'petroCardNight') || 0;
-    var rawPcD = getVal(r, 'petroCardDay') || getVal(r, 'petroCard') || 0;
-    var pcM = rawPcM > 0 ? rawPcM : rawPcD;
-    var pcN = rawPcN;
+    var ph = getVal(r, 'phonePeTotal') || (getVal(r, 'phonePeMorning')||0) + (getVal(r, 'phonePeNight')||0) + (getVal(r, 'phonePeDay')||0) + (getVal(r, 'phonePe')||0);
+    var cc = getVal(r, 'creditCardTotal') || (getVal(r, 'creditCardMorning')||0) + (getVal(r, 'creditCardNight')||0) + (getVal(r, 'creditCardDay')||0) + (getVal(r, 'phonePeCardMorning')||0) + (getVal(r, 'phonePeCardNight')||0) + (getVal(r, 'phonePeCardDay')||0) + (getVal(r, 'phonePeCard')||0);
+    var pc = getVal(r, 'petroCardTotal') || (getVal(r, 'petroCardMorning')||0) + (getVal(r, 'petroCardNight')||0) + (getVal(r, 'petroCardDay')||0) + (getVal(r, 'petroCard')||0);
 
     var deb = getVal(r, 'debit') || 0;
     var exp = getVal(r, 'expenses') || 0;
@@ -372,51 +412,75 @@ function renderData(){
     var oth = getVal(r, 'others') || 0;
     var sale = getVal(r, 'grossSales') || getVal(r, 'grossSale') || 0;
 
+    var dynMap = getVal(r, 'dynamicCollections') || {};
+    var dynTotalRow = 0;
+    dynActiveTypes.forEach(function(dt){
+      var amt = dynMap[dt.code] || dynMap[(dt.code||'').toLowerCase()] || dynMap[(dt.code||'').toUpperCase()] || 0;
+      if (!amt) {
+        if ((dt.code||'').toUpperCase() === 'SBI_REDEEM') amt = getVal(r, 'sbiRedeem') || 0;
+        else if ((dt.code||'').toUpperCase() === 'PAYTM') amt = getVal(r, 'paytm') || 0;
+        else if ((dt.code||'').toUpperCase() === 'QR') amt = getVal(r, 'qrPayment') || 0;
+        else if ((dt.code||'').toUpperCase() === 'MOBIKWIK') amt = getVal(r, 'mobikwik') || 0;
+      }
+      dynTotalRow += amt;
+    });
+
     var rDiff = getVal(r, 'difference');
     var mismatch = (rDiff !== undefined && !isNaN(rDiff) && rDiff !== null)
         ? rDiff
-        : (ccM + ccN + phM + phN + pcM + pcN + deb + exp + test + c1 + c2) - sale;
+        : ((isPhActive ? ph : 0) + (isCcActive ? cc : 0) + (isPcActive ? pc : 0) + dynTotalRow + deb + exp + test + c1 + c2) - sale;
     var pVal = getVal(r, 'pumpNoDisplay') || getVal(r, 'pumpId') || getVal(r, 'pumpNo') || '';
     var pDisp = pVal ? (pVal.toString().startsWith('P-') ? pVal : 'P-' + pVal) : '\u2013';
 
-    tr.innerHTML='<td>'+(getVal(r, 'dsmName')||'')+'</td>' +
-                 '<td>'+pDisp+'</td>' +
-                 '<td>'+inr(phM)+'</td>' +
-                 '<td>'+inr(phN)+'</td>' +
-                 '<td>'+inr(ccM)+'</td>' +
-                 '<td>'+inr(ccN)+'</td>' +
-                 '<td>'+inr(pcM)+'</td>' +
-                 '<td>'+inr(pcN)+'</td>' +
-                 '<td>'+inr(c1)+'</td>' +
-                 '<td>'+inr(deb)+'</td>' +
-                 '<td>'+inr(exp)+'</td>' +
-                 '<td>'+inr(test)+'</td>' +
-                 '<td>'+inr(c2)+'</td>' +
-                 '<td class="col-others">'+inr(oth)+'</td>' +
-                 '<td class="col-gross">'+inr(sale)+'</td>' +
-                 '<td class="col-short">'+inr(mismatch)+'</td>';
+    var rowHtml = '<td>'+(getVal(r, 'dsmName')||'')+'</td>' +
+                 '<td>'+pDisp+'</td>';
+    if (isPhActive) rowHtml += '<td>'+inr(ph)+'</td>';
+    if (isCcActive) rowHtml += '<td>'+inr(cc)+'</td>';
+    if (isPcActive) rowHtml += '<td>'+inr(pc)+'</td>';
+
+    dynActiveTypes.forEach(function(dt){
+      var amt = dynMap[dt.code] || dynMap[(dt.code||'').toLowerCase()] || dynMap[(dt.code||'').toUpperCase()] || 0;
+      if (!amt) {
+        if ((dt.code||'').toUpperCase() === 'SBI_REDEEM') amt = getVal(r, 'sbiRedeem') || 0;
+        else if ((dt.code||'').toUpperCase() === 'PAYTM') amt = getVal(r, 'paytm') || 0;
+        else if ((dt.code||'').toUpperCase() === 'QR') amt = getVal(r, 'qrPayment') || 0;
+        else if ((dt.code||'').toUpperCase() === 'MOBIKWIK') amt = getVal(r, 'mobikwik') || 0;
+      }
+      rowHtml += '<td>' + inr(amt) + '</td>';
+      tot.dyn[dt.code] = (tot.dyn[dt.code] || 0) + amt;
+    });
+
+    rowHtml += '<td>'+inr(c1)+'</td>' +
+               '<td>'+inr(deb)+'</td>' +
+               '<td>'+inr(exp)+'</td>' +
+               '<td>'+inr(test)+'</td>' +
+               '<td>'+inr(c2)+'</td>' +
+               '<td class="col-others">'+inr(oth)+'</td>' +
+               '<td class="col-gross">'+inr(sale)+'</td>' +
+               '<td class="col-short">'+inr(mismatch)+'</td>';
+    tr.innerHTML = rowHtml;
     tb.appendChild(tr);
 
-    tot.ccM += ccM; tot.ccN += ccN; tot.phM += phM; tot.phN += phN; tot.pcM += pcM; tot.pcN += pcN; tot.deb += deb; tot.exp += exp; tot.test += test; tot.c1 += c1; tot.c2 += c2; tot.oth += oth; tot.sale += sale; tot.mis += mismatch;
+    tot.cc += cc; tot.ph += ph; tot.pc += pc; tot.deb += deb; tot.exp += exp; tot.test += test; tot.c1 += c1; tot.c2 += c2; tot.oth += oth; tot.sale += sale; tot.mis += mismatch;
   });
 
   var tr2=document.createElement('tr');tr2.className='tr-total';
-  tr2.innerHTML='<td>TOTAL</td>' +
-                '<td>\u2013</td>' +
-                '<td>'+inrZ(tot.phM)+'</td>' +
-                '<td>'+inrZ(tot.phN)+'</td>' +
-                '<td>'+inrZ(tot.ccM)+'</td>' +
-                '<td>'+inrZ(tot.ccN)+'</td>' +
-                '<td>'+inrZ(tot.pcM)+'</td>' +
-                '<td>'+inrZ(tot.pcN)+'</td>' +
-                '<td>'+inrZ(tot.c1)+'</td>' +
-                '<td>'+inrZ(tot.deb)+'</td>' +
-                '<td>'+inrZ(tot.exp)+'</td>' +
-                '<td>'+inrZ(tot.test)+'</td>' +
-                '<td>'+inrZ(tot.c2)+'</td>' +
-                '<td class="col-others">'+inrZ(tot.oth)+'</td>' +
-                '<td class="col-gross">'+inrZ(tot.sale)+'</td>' +
-                '<td class="col-short">'+inrZ(tot.mis)+'</td>';
+  var totHtml = '<td>TOTAL</td><td>\u2013</td>';
+  if (isPhActive) totHtml += '<td>'+inrZ(tot.ph)+'</td>';
+  if (isCcActive) totHtml += '<td>'+inrZ(tot.cc)+'</td>';
+  if (isPcActive) totHtml += '<td>'+inrZ(tot.pc)+'</td>';
+
+  dynActiveTypes.forEach(function(dt){
+    totHtml += '<td>' + inrZ(tot.dyn[dt.code] || 0) + '</td>';
+  });
+
+  totHtml += '<td>'+inrZ(tot.c1)+'</td><td>'+inrZ(tot.deb)+'</td>' +
+             '<td>'+inrZ(tot.exp)+'</td><td>'+inrZ(tot.test)+'</td>' +
+             '<td>'+inrZ(tot.c2)+'</td>' +
+             '<td class="col-others">'+inrZ(tot.oth)+'</td>' +
+             '<td class="col-gross">'+inrZ(tot.sale)+'</td>' +
+             '<td class="col-short">'+inrZ(tot.mis)+'</td>';
+  tr2.innerHTML = totHtml;
   tb.appendChild(tr2);
 
   var tCash = document.getElementById('tCash'); tCash.innerHTML = '';
@@ -506,10 +570,11 @@ function renderData(){
   }
 
   // Render DSM Personal Debtors
-  var personalDebtors = d.personalDebtors || [];
+  var isDsmLossEnabled = d.isDsmPersonalDebtorVisible !== false;
+  var personalDebtors = isDsmLossEnabled ? (d.personalDebtors || []) : [];
   var secPers = document.getElementById('secPersonalDebtors');
   var tPers   = document.getElementById('tPersonalDebtors');
-  if (tPers && personalDebtors.length > 0) {
+  if (isDsmLossEnabled && tPers && personalDebtors.length > 0) {
     tPers.innerHTML = '';
     if (secPers) secPers.style.display = 'block';
     var persTot = 0;
@@ -531,10 +596,10 @@ function renderData(){
   }
 
   // Render DSM Personal Debtor Repayments (DSM Loss Repayments)
-  var lossRepayments = d.personalDebtorRepayments || [];
+  var lossRepayments = isDsmLossEnabled ? (d.personalDebtorRepayments || []) : [];
   var secLossRep = document.getElementById('secPersonalDebtorRepayments');
   var tLossRep   = document.getElementById('tPersonalDebtorRepayments');
-  if (tLossRep && lossRepayments.length > 0) {
+  if (isDsmLossEnabled && tLossRep && lossRepayments.length > 0) {
     tLossRep.innerHTML = '';
     if (secLossRep) secLossRep.style.display = 'block';
     var lossRepTot = 0;
@@ -555,11 +620,15 @@ function renderData(){
     if (secLossRep) secLossRep.style.display = 'none';
   }
 
-  // Render Khandhare Petroleum Drawings
-  var khandhareEntries = d.khandhareEntries || d.khandharePetroleumEntries || [];
+  // Render Personal Ledger / Khandhare Drawings
+  var isPersonalLedgerEnabled = d.isPersonalLedgerEnabled !== false;
+  var personalLedgerTitle = d.personalLedgerTitle || "Personal Ledger";
+  var khandhareEntries = isPersonalLedgerEnabled ? (d.khandhareEntries || d.khandharePetroleumEntries || []) : [];
   var secKp = document.getElementById('secKhandhare');
   var tKp   = document.getElementById('tKhandhare');
-  if (tKp && khandhareEntries.length > 0) {
+  var hdrKp = document.querySelector('#secKhandhare .mini-hdr');
+  if (hdrKp) hdrKp.textContent = personalLedgerTitle;
+  if (isPersonalLedgerEnabled && tKp && khandhareEntries.length > 0) {
     tKp.innerHTML = '';
     if (secKp) secKp.style.display = 'block';
     var kpTot = 0;
@@ -574,7 +643,7 @@ function renderData(){
     });
     var trTot = document.createElement('tr');
     trTot.className = 'tr-total';
-    trTot.innerHTML = '<td colspan="3" style="text-align:left;">Total Kandhare Petroleum</td><td>' + inrZ(kpTot) + '</td>';
+    trTot.innerHTML = '<td colspan="3" style="text-align:left;">Total ' + personalLedgerTitle + '</td><td>' + inrZ(kpTot) + '</td>';
     tKp.appendChild(trTot);
   } else {
     if (secKp) secKp.style.display = 'none';

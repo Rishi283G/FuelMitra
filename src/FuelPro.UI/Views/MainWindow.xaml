@@ -84,7 +84,8 @@
                                              HorizontalAlignment="Center" Margin="0,8,0,24"/>
 
                     <!-- DSM Entry -->
-                    <Button Command="{Binding NavigateToDsmEntryCommand}" ToolTip="DSM Entry" Margin="0,4">
+                    <Button Command="{Binding NavigateToDsmEntryCommand}" ToolTip="DSM Entry" Margin="0,4"
+                            Visibility="{Binding IsDsmEntryVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <Button.Style>
                             <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
                                 <Setter Property="Foreground" Value="White" />
@@ -101,7 +102,8 @@
                     </Button>
 
                     <!-- Oil & DEF Log -->
-                    <Button Command="{Binding NavigateToOilDefDailyLogCommand}" ToolTip="Oil &amp; DEF Daily Log" Margin="0,4">
+                    <Button Command="{Binding NavigateToOilDefDailyLogCommand}" ToolTip="Oil &amp; DEF Daily Log" Margin="0,4"
+                            Visibility="{Binding IsOilDefVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <Button.Style>
                             <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
                                 <Setter Property="Foreground" Value="White" />
@@ -117,8 +119,27 @@
                         <materialDesign:PackIcon Kind="Oil" Width="28" Height="28"/>
                     </Button>
 
+                    <!-- Debtor Management -->
+                    <Button Command="{Binding NavigateToDebtorManagementCommand}" ToolTip="Debtor Management" Margin="0,4"
+                            Visibility="{Binding IsDebtorManagementStandaloneVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
+                                <Setter Property="Foreground" Value="White" />
+                                <Setter Property="Opacity" Value="0.5" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding SelectedNavIndex}" Value="4">
+                                        <Setter Property="Opacity" Value="1" />
+                                        <Setter Property="Background" Value="#33FFFFFF" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                        <materialDesign:PackIcon Kind="AccountGroup" Width="28" Height="28"/>
+                    </Button>
+
                     <!-- Final Calculation -->
-                    <Button Command="{Binding NavigateToFinalCalculationCommand}" ToolTip="Final Calculation" Margin="0,4">
+                    <Button Command="{Binding NavigateToFinalCalculationCommand}" ToolTip="Final Calculation" Margin="0,4"
+                            Visibility="{Binding IsFinalCalculationVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <Button.Style>
                             <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
                                 <Setter Property="Foreground" Value="White" />
@@ -135,7 +156,8 @@
                     </Button>
 
                     <!-- Day Total -->
-                    <Button Command="{Binding NavigateToDayTotalCommand}" ToolTip="Day Total" Margin="0,4">
+                    <Button Command="{Binding NavigateToDayTotalCommand}" ToolTip="Day Total" Margin="0,4"
+                            Visibility="{Binding IsDayTotalVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <Button.Style>
                             <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
                                 <Setter Property="Foreground" Value="White" />
@@ -151,9 +173,9 @@
                         <materialDesign:PackIcon Kind="CalendarMonth" Width="28" Height="28"/>
                     </Button>
 
-
                     <!-- DSM Loss -->
-                    <Button Command="{Binding NavigateToDsmPersonalDebtorCommand}" ToolTip="DSM Loss" Margin="0,4">
+                    <Button Command="{Binding NavigateToDsmPersonalDebtorCommand}" ToolTip="DSM Loss" Margin="0,4"
+                            Visibility="{Binding IsDsmPersonalDebtorVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <Button.Style>
                             <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
                                 <Setter Property="Foreground" Value="White" />
@@ -170,7 +192,8 @@
                     </Button>
 
                     <!-- DSM Approval Queue with Badge -->
-                    <Button Command="{Binding NavigateToDsmApprovalQueueCommand}" ToolTip="DSM Approval Queue" Margin="0,4">
+                    <Button Command="{Binding NavigateToDsmApprovalQueueCommand}" ToolTip="DSM Approval Queue" Margin="0,4"
+                            Visibility="{Binding IsDsmApprovalQueueVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <Button.Style>
                             <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
                                 <Setter Property="Foreground" Value="White" />
@@ -198,7 +221,8 @@
                     </Button>
 
                     <!-- DSM Management -->
-                    <Button Command="{Binding NavigateToDsmManagementCommand}" ToolTip="DSM &amp; Device Management" Margin="0,4">
+                    <Button Command="{Binding NavigateToDsmManagementCommand}" ToolTip="DSM &amp; Device Management" Margin="0,4"
+                            Visibility="{Binding IsDsmManagementVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <Button.Style>
                             <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
                                 <Setter Property="Foreground" Value="White" />
@@ -215,7 +239,8 @@
                     </Button>
 
                     <!-- Card Settlement -->
-                    <Button Command="{Binding NavigateToCardSettlementCommand}" ToolTip="TID Sheet" Margin="0,4">
+                    <Button Command="{Binding NavigateToCardSettlementCommand}" ToolTip="TID Sheet" Margin="0,4"
+                            Visibility="{Binding IsCardSettlementVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <Button.Style>
                             <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
                                 <Setter Property="Foreground" Value="White" />
@@ -231,10 +256,9 @@
                         <materialDesign:PackIcon Kind="CreditCardCheck" Width="28" Height="28"/>
                     </Button>
 
-
-
                     <!-- AGS Import -->
-                    <Button Command="{Binding NavigateToAgsImportCommand}" ToolTip="AGS Import" Margin="0,4">
+                    <Button Command="{Binding NavigateToAgsImportCommand}" ToolTip="AGS Import" Margin="0,4"
+                            Visibility="{Binding IsAgsImportVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <Button.Style>
                             <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
                                 <Setter Property="Foreground" Value="White" />
@@ -251,7 +275,8 @@
                     </Button>
 
                     <!-- Petty Cash -->
-                    <Button Command="{Binding NavigateToPettyCashCommand}" ToolTip="Petty Cash" Margin="0,4">
+                    <Button Command="{Binding NavigateToPettyCashCommand}" ToolTip="Petty Cash" Margin="0,4"
+                            Visibility="{Binding IsPettyCashVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <Button.Style>
                             <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
                                 <Setter Property="Foreground" Value="White" />
@@ -268,7 +293,8 @@
                     </Button>
 
                     <!-- Fuel Tanker Entry -->
-                    <Button Command="{Binding NavigateToFuelTankerEntryCommand}" ToolTip="Fuel Tanker Purchases" Margin="0,4">
+                    <Button Command="{Binding NavigateToFuelTankerEntryCommand}" ToolTip="Fuel Tanker Purchases" Margin="0,4"
+                            Visibility="{Binding IsFuelTankerVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <Button.Style>
                             <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
                                 <Setter Property="Foreground" Value="White" />
@@ -285,7 +311,8 @@
                     </Button>
 
                     <!-- Tank Stock History -->
-                    <Button Command="{Binding NavigateToTankStockHistoryCommand}" ToolTip="Tank Stock History" Margin="0,4">
+                    <Button Command="{Binding NavigateToTankStockHistoryCommand}" ToolTip="Tank Stock History" Margin="0,4"
+                            Visibility="{Binding IsTankStockVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <Button.Style>
                             <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
                                 <Setter Property="Foreground" Value="White" />
@@ -302,7 +329,8 @@
                     </Button>
 
                     <!-- Settings -->
-                    <Button Command="{Binding NavigateToSettingsCommand}" ToolTip="Settings" Margin="0,4">
+                    <Button Command="{Binding NavigateToSettingsCommand}" ToolTip="Settings" Margin="0,4"
+                            Visibility="{Binding IsSettingsVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <Button.Style>
                             <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
                                 <Setter Property="Foreground" Value="White" />
@@ -317,6 +345,7 @@
                         </Button.Style>
                         <materialDesign:PackIcon Kind="Cog" Width="28" Height="28"/>
                     </Button>
+
                 </StackPanel>
                 </ScrollViewer>
             </Border>
@@ -365,10 +394,17 @@
                             </Ellipse>
                             <TextBlock Text="{Binding SyncStatusText}" FontSize="12" FontWeight="Medium" VerticalAlignment="Center" Margin="0,0,16,0" Opacity="0.8"/>
 
-                            <Button Command="{Binding ForceSyncCommand}" Style="{StaticResource MaterialDesignOutlinedButton}" Height="32" Padding="12,0">
+                            <Button Command="{Binding ForceSyncCommand}" Style="{StaticResource MaterialDesignOutlinedButton}" Height="32" Padding="12,0" Margin="0,0,8,0">
                                 <StackPanel Orientation="Horizontal">
                                     <materialDesign:PackIcon Kind="CloudSync" Width="16" Height="16" Margin="0,0,4,0"/>
                                     <TextBlock Text="Sync Now" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+
+                            <Button Command="{Binding LogoutCommand}" Style="{StaticResource MaterialDesignOutlinedButton}" Height="32" Padding="10,0" BorderBrush="#E57373" Foreground="#D32F2F" ToolTip="Logout / Switch User">
+                                <StackPanel Orientation="Horizontal">
+                                    <materialDesign:PackIcon Kind="Logout" Width="16" Height="16" Margin="0,0,4,0"/>
+                                    <TextBlock Text="Logout" VerticalAlignment="Center"/>
                                 </StackPanel>
                             </Button>
                         </StackPanel>
@@ -376,9 +412,13 @@
                 </Border>
 
                 <!-- Main Content -->
-                <ContentControl Grid.Row="1"
-                                Content="{Binding CurrentView}"
-                                Margin="0">
+                <Grid Grid.Row="1">
+                    <ProgressBar IsIndeterminate="True" Height="3" VerticalAlignment="Top" Panel.ZIndex="10"
+                                 Foreground="{DynamicResource MaterialDesign.Brush.Primary}"
+                                 Background="Transparent" BorderThickness="0"
+                                 Visibility="{Binding IsPageLoading, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+
+                    <ContentControl Content="{Binding CurrentView}" Margin="0">
                     <ContentControl.Resources>
                         <Style TargetType="ContentPresenter">
                             <Setter Property="RenderTransform">
@@ -407,6 +447,7 @@
                         </Style>
                     </ContentControl.Resources>
                 </ContentControl>
+            </Grid>
             </Grid>
 
             <!-- Status Bar -->

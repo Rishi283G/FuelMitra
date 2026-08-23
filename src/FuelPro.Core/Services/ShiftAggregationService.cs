@@ -96,6 +96,20 @@ public class ShiftAggregationService : IShiftAggregationService
                 double finalPetroM = isDay ? (petroD > 0 ? petroD : petro) : (petroM > 0 ? petroM : (petroD > 0 ? petroD : petro));
                 double finalPetroN = isDay ? 0 : petroN;
 
+                var items1 = p1?.Items ?? Enumerable.Empty<PaymentCollectionItem>();
+                var items2 = p2?.Items ?? Enumerable.Empty<PaymentCollectionItem>();
+                var allItems = items1.Concat(items2).ToList();
+
+                double sbiRedeem = allItems.Where(i => string.Equals(i.CollectionTypeCode?.Replace("_", "")?.Replace(" ", ""), "SBIREDEEM", StringComparison.OrdinalIgnoreCase)).Sum(i => i.Amount);
+                double paytm = allItems.Where(i => string.Equals(i.CollectionTypeCode, "PAYTM", StringComparison.OrdinalIgnoreCase)).Sum(i => i.Amount);
+                double qrPayment = allItems.Where(i => string.Equals(i.CollectionTypeCode, "QR", StringComparison.OrdinalIgnoreCase) || string.Equals(i.CollectionTypeCode?.Replace("_", "")?.Replace(" ", ""), "QRONLINE", StringComparison.OrdinalIgnoreCase)).Sum(i => i.Amount);
+                double mobikwik = allItems.Where(i => string.Equals(i.CollectionTypeCode, "MOBIKWIK", StringComparison.OrdinalIgnoreCase) || string.Equals(i.CollectionTypeCode, "MOBIKWICK", StringComparison.OrdinalIgnoreCase)).Sum(i => i.Amount);
+                double dynTotal = allItems.Sum(i => i.Amount);
+
+                var dynDict = allItems
+                    .GroupBy(i => i.CollectionTypeCode, StringComparer.OrdinalIgnoreCase)
+                    .ToDictionary(g => g.Key, g => g.Sum(x => x.Amount), StringComparer.OrdinalIgnoreCase);
+
                 rows.Add(new DsmSummaryRowDto
                 {
                     DsmName = entry.DsmName,
@@ -118,6 +132,12 @@ public class ShiftAggregationService : IShiftAggregationService
                     PetroCardDay = petroD,
                     PetroCardNight = finalPetroN,
                     Others = (p1?.Others ?? 0) + (p2?.Others ?? 0),
+                    DynamicCollectionsTotal = dynTotal,
+                    DynamicCollections = dynDict,
+                    SbiRedeem = sbiRedeem,
+                    Paytm = paytm,
+                    QrPayment = qrPayment,
+                    Mobikwik = mobikwik,
                     CashDeposit = cash1 > 0 ? cash1 : ((p1?.CashDeposit ?? 0) + (p2?.CashDeposit ?? 0)),
                     Debit = totalDebit,
                     Expenses = totalExpenses,
@@ -146,16 +166,25 @@ public class ShiftAggregationService : IShiftAggregationService
             PumpId = 0,
             PhonePeCard = rows.Sum(r => r.PhonePeCard),
             PhonePeCardMorning = rows.Sum(r => r.PhonePeCardMorning),
+            PhonePeCardDay = rows.Sum(r => r.PhonePeCardDay),
             PhonePeCardNight = rows.Sum(r => r.PhonePeCardNight),
             PhonePe = rows.Sum(r => r.PhonePeTotal),
             PhonePeMorning = rows.Sum(r => r.PhonePeMorning),
+            PhonePeDay = rows.Sum(r => r.PhonePeDay),
             PhonePeNight = rows.Sum(r => r.PhonePeNight),
             CreditCardMorning = rows.Sum(r => r.CreditCardMorning),
+            CreditCardDay = rows.Sum(r => r.CreditCardDay),
             CreditCardNight = rows.Sum(r => r.CreditCardNight),
             PetroCard = rows.Sum(r => r.PetroCardTotal),
             PetroCardMorning = rows.Sum(r => r.PetroCardMorning),
+            PetroCardDay = rows.Sum(r => r.PetroCardDay),
             PetroCardNight = rows.Sum(r => r.PetroCardNight),
             Others = rows.Sum(r => r.Others),
+            DynamicCollectionsTotal = rows.Sum(r => r.DynamicCollectionsTotal),
+            SbiRedeem = rows.Sum(r => r.SbiRedeem),
+            Paytm = rows.Sum(r => r.Paytm),
+            QrPayment = rows.Sum(r => r.QrPayment),
+            Mobikwik = rows.Sum(r => r.Mobikwik),
             CashDeposit = rows.Sum(r => r.CashDeposit),
             Debit = rows.Sum(r => r.Debit),
             Expenses = rows.Sum(r => r.Expenses),
@@ -164,6 +193,7 @@ public class ShiftAggregationService : IShiftAggregationService
             GrossSales = rows.Sum(r => r.GrossSales)
         };
     }
+
 
     /// <summary>
     /// Aggregates individual DSM summary rows by DSM Name for shift-level DSM totals.
@@ -192,7 +222,8 @@ public class ShiftAggregationService : IShiftAggregationService
                 double expenses = g.Sum(r => r.Expenses);
                 double testing = g.Sum(r => r.Testing);
 
-                double totalCollection = cashDeposit + cashInHand + phonePe + phonePeCard + creditCard + petroCard + debit + expenses + testing;
+                double dynamicTotal = g.Sum(r => r.DynamicCollectionsTotal);
+                double totalCollection = cashDeposit + cashInHand + phonePe + phonePeCard + creditCard + petroCard + dynamicTotal + debit + expenses + testing;
                 double mismatch = totalCollection - grossSales;
 
                 return new DsmShiftTotalDto
@@ -421,24 +452,39 @@ public class ShiftAggregationService : IShiftAggregationService
     public List<ReconciliationRowDto> BuildReconciliationRows(
         double msTesting, double hsdTesting, double hsdTesting2, double cngTesting, double phonePeCardMorning, double phonePeCardNight, double phonePeMorning, double phonePeNight, double petroCard,
         double debit, double creditCardMorning, double creditCardNight, double bankCash, double cashInHand,
-        double expenses)
+        double expenses, Dictionary<string, double>? dynamicCollections = null)
     {
-        return new List<ReconciliationRowDto>
+        var rows = new List<ReconciliationRowDto>
         {
-            new() { Description = "MS Testing", Amount = msTesting },
-            new() { Description = "HSD Testing I", Amount = hsdTesting },
-            new() { Description = "HSD Testing II", Amount = hsdTesting2 },
-            new() { Description = "Phone Pe (Morning)", Amount = phonePeMorning },
-            new() { Description = "Phone Pe (Night)", Amount = phonePeNight },
-            new() { Description = "P. Card", Amount = petroCard },
-            new() { Description = "Debit", Amount = debit },
-            new() { Description = "Card (Morning)", Amount = creditCardMorning },
-            new() { Description = "Card (Night)", Amount = creditCardNight },
             new() { Description = "Bank Cash", Amount = bankCash },
             new() { Description = "Cash In Hand", Amount = cashInHand },
+            new() { Description = "PhonePe", Amount = phonePeMorning + phonePeNight },
+            new() { Description = "PineLab Card", Amount = creditCardMorning + creditCardNight + phonePeCardMorning + phonePeCardNight },
+            new() { Description = "PetroCard", Amount = petroCard },
+            new() { Description = "Debtors", Amount = debit },
             new() { Description = "Expenses", Amount = expenses }
         };
+
+        if (msTesting > 0) rows.Add(new() { Description = "MS Testing", Amount = msTesting });
+        if (hsdTesting > 0) rows.Add(new() { Description = "HSD Testing I", Amount = hsdTesting });
+        if (hsdTesting2 > 0) rows.Add(new() { Description = "HSD Testing II", Amount = hsdTesting2 });
+        if (cngTesting > 0) rows.Add(new() { Description = "CNG Testing", Amount = cngTesting });
+
+        if (dynamicCollections != null)
+        {
+            foreach (var kvp in dynamicCollections.Where(k => k.Value > 0))
+            {
+                rows.Add(new ReconciliationRowDto
+                {
+                    Description = kvp.Key,
+                    Amount = kvp.Value
+                });
+            }
+        }
+
+        return rows;
     }
+
 
     /// <summary>
     /// Calculates the difference between gross fuel sale and reconciliation total.

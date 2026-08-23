@@ -86,6 +86,9 @@ public class DsmEntryPipelineTests : IDisposable
         services.AddTransient<ExcelExportService>();
         services.AddTransient<IAuditLogService, AuditLogService>();
         services.AddTransient<IDayLockService, DayLockService>();
+        services.AddTransient<IFeatureToggleService, FeatureToggleService>();
+        services.AddTransient<ICollectionTypeService, CollectionTypeService>();
+        services.AddTransient<IStationConfigurationService, StationConfigurationService>();
 
         // Sync services
         services.AddSingleton<SyncConfigService>();
@@ -94,6 +97,7 @@ public class DsmEntryPipelineTests : IDisposable
         services.AddTransient<DsmAuthAdminService>();
         services.AddTransient<SupabaseDsmService, FakeSupabaseDsmService>();
         services.AddSingleton<DraftService>();
+
 
         // ViewModels
         services.AddTransient<DayTotalViewModel>();
@@ -433,5 +437,66 @@ public class DsmEntryPipelineTests : IDisposable
         Assert.Equal("Abhishek", vm.KhandharePetroleumEntries.First().Name);
         Assert.Equal("01", vm.KhandharePetroleumEntries.First().SlipNumber);
         Assert.Equal(2500.0, vm.KhandharePetroleumEntries.First().Amount);
+    }
+
+    [Fact]
+    public async Task Verify_DynamicCollectionTypes_Saved_Loaded_And_Calculated_InShiftAggregation()
+    {
+        var date = new DateTime(2026, 8, 23);
+        var payment = new PaymentCollection
+        {
+            CashDeposit = 1000,
+            PhonePeMorning = 200,
+            Items = new List<PaymentCollectionItem>
+            {
+                new() { CollectionTypeCode = "PAYTM", Amount = 1500 },
+                new() { CollectionTypeCode = "QR", Amount = 2000 },
+                new() { CollectionTypeCode = "SBI_REDEEM", Amount = 500 },
+                new() { CollectionTypeCode = "MOBIKWIK", Amount = 750 }
+            }
+        };
+
+        var dsmService = _serviceProvider.GetRequiredService<DsmEntryService>();
+        var dbContext = _serviceProvider.GetRequiredService<FuelProDbContext>();
+
+        var result = await dsmService.SaveCompleteEntryWithContextAsync(
+            dbContext,
+            date, "A", "Goku Son", 1,
+            new List<NozzleReading>(),
+            payment,
+            new List<DebitEntry>(),
+            new List<TestingEntry>(),
+            new List<Expense>(),
+            new List<CashDenomination>());
+
+        Assert.True(result.Success, result.Error);
+        var entryId = result.Data!.DsmEntryId;
+
+        // 1. Verify Repository includes Items
+        var repo = _serviceProvider.GetRequiredService<IDsmEntryRepository>();
+        var fullEntry = await repo.GetFullEntryAsync(entryId);
+
+        Assert.True(fullEntry.Success);
+        Assert.NotNull(fullEntry.Data!.PaymentCollection);
+        Assert.NotNull(fullEntry.Data.PaymentCollection.Items);
+        Assert.Equal(4, fullEntry.Data.PaymentCollection.Items.Count);
+        Assert.Equal(4750.0, fullEntry.Data.PaymentCollection.Items.Sum(i => i.Amount));
+
+        // 2. Verify ShiftAggregationService BuildDsmSummaryRows & BuildDsmShiftTotals
+        var aggService = _serviceProvider.GetRequiredService<IShiftAggregationService>();
+        var rows = aggService.BuildDsmSummaryRows(new List<DsmEntry> { fullEntry.Data });
+
+        Assert.Single(rows);
+        var row = rows.First();
+        Assert.Equal(1500.0, row.Paytm);
+        Assert.Equal(2000.0, row.QrPayment);
+        Assert.Equal(500.0, row.SbiRedeem);
+        Assert.Equal(750.0, row.Mobikwik);
+        Assert.Equal(4750.0, row.DynamicCollectionsTotal);
+
+        var shiftTotals = aggService.BuildDsmShiftTotals(rows);
+        Assert.Single(shiftTotals);
+        // TotalCollection = CashDeposit (1000) + PhonePe (200) + DynamicTotal (4750) = 5950
+        Assert.Equal(5950.0, shiftTotals.First().TotalCollection);
     }
 }

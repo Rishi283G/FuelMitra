@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using FuelPro.Core.Models;
 using FuelPro.Core.Services;
 using FuelPro.Core.Repositories;
 using Microsoft.Extensions.DependencyInjection;
@@ -11,6 +12,7 @@ public partial class MainWindowViewModel : ObservableObject
 {
     private readonly AuthService _authService;
     private readonly ISettingsRepository _settingsRepo;
+    private readonly IFeatureToggleService _featureService;
 
     [ObservableProperty] private object? _currentView;
     [ObservableProperty] private string _windowTitle = "PyroSync";
@@ -24,6 +26,44 @@ public partial class MainWindowViewModel : ObservableObject
     public string HeaderLogoSource => App.GetLogoPath(false);
     [ObservableProperty] private string _currentUser = "";
     [ObservableProperty] private int _selectedNavIndex;
+
+    // Feature Visibility
+    public bool IsDsmEntryVisible => _featureService.IsFeatureEnabled("Admin_DsmEntry", true);
+    public bool IsOilDefVisible => _featureService.IsFeatureEnabled("Admin_OilDefDailyLog", true);
+    public bool IsFinalCalculationVisible => _featureService.IsFeatureEnabled("Admin_FinalCalculation", true);
+    public bool IsDayTotalVisible => _featureService.IsFeatureEnabled("Admin_DayTotal", true);
+    public bool IsDebtorManagementVisible => _featureService.IsFeatureEnabled("Admin_DebtorManagement", true);
+    public bool IsDebtorManagementAsNewPage => _featureService.IsFeatureEnabled("UI_DebtorManagement_AsNewPage", true);
+    public bool IsDebtorManagementStandaloneVisible => IsDebtorManagementVisible && IsDebtorManagementAsNewPage;
+    public bool IsDsmPersonalDebtorVisible => _featureService.IsFeatureEnabled("Admin_DsmPersonalDebtor", true);
+    public bool IsDsmApprovalQueueVisible => _featureService.IsFeatureEnabled("Admin_DsmApprovalQueue", true);
+    public bool IsDsmManagementVisible => _featureService.IsFeatureEnabled("Admin_DsmManagement", true);
+    public bool IsCardSettlementVisible => _featureService.IsFeatureEnabled("Admin_CardSettlement", true);
+    public bool IsAgsImportVisible => _featureService.IsFeatureEnabled("Admin_AgsImport", true);
+    public bool IsPettyCashVisible => _featureService.IsFeatureEnabled("Admin_PettyCash", true);
+    public bool IsFuelTankerVisible => _featureService.IsFeatureEnabled("Admin_FuelTankerEntry", true);
+    public bool IsTankStockVisible => _featureService.IsFeatureEnabled("Admin_TankStockHistory", true);
+    public bool IsSettingsVisible => _featureService.IsFeatureEnabled("Admin_Settings", true);
+
+    public void NotifyFeaturePropertiesChanged()
+    {
+        OnPropertyChanged(nameof(IsDsmEntryVisible));
+        OnPropertyChanged(nameof(IsOilDefVisible));
+        OnPropertyChanged(nameof(IsFinalCalculationVisible));
+        OnPropertyChanged(nameof(IsDayTotalVisible));
+        OnPropertyChanged(nameof(IsDebtorManagementVisible));
+        OnPropertyChanged(nameof(IsDebtorManagementAsNewPage));
+        OnPropertyChanged(nameof(IsDebtorManagementStandaloneVisible));
+        OnPropertyChanged(nameof(IsDsmPersonalDebtorVisible));
+        OnPropertyChanged(nameof(IsDsmApprovalQueueVisible));
+        OnPropertyChanged(nameof(IsDsmManagementVisible));
+        OnPropertyChanged(nameof(IsCardSettlementVisible));
+        OnPropertyChanged(nameof(IsAgsImportVisible));
+        OnPropertyChanged(nameof(IsPettyCashVisible));
+        OnPropertyChanged(nameof(IsFuelTankerVisible));
+        OnPropertyChanged(nameof(IsTankStockVisible));
+        OnPropertyChanged(nameof(IsSettingsVisible));
+    }
 
     // Sync status
     [ObservableProperty] private string _lastSyncTime = "—";
@@ -40,6 +80,12 @@ public partial class MainWindowViewModel : ObservableObject
     {
         _authService = App.Services.GetRequiredService<AuthService>();
         _settingsRepo = App.Services.GetRequiredService<ISettingsRepository>();
+        _featureService = App.Services.GetRequiredService<IFeatureToggleService>();
+
+        _featureService.FeatureConfigurationChanged += () =>
+        {
+            System.Windows.Application.Current.Dispatcher.Invoke(NotifyFeaturePropertiesChanged);
+        };
 
         _clockTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
         _clockTimer.Tick += (_, _) => CurrentDateTime = DateTime.Now.ToString("dd MMM yyyy  hh:mm tt");
@@ -73,6 +119,7 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
 
+
     private async Task LoadStationNameAsync()
     {
         var result = await _settingsRepo.GetSettingsAsync();
@@ -98,108 +145,173 @@ public partial class MainWindowViewModel : ObservableObject
         await syncEngine.ForceSyncAsync();
     }
 
+    private readonly Dictionary<Type, object> _cachedViews = new();
+
+    private T GetOrCreateView<T>() where T : class
+    {
+        var type = typeof(T);
+        if (_cachedViews.TryGetValue(type, out var cached))
+        {
+            return (T)cached;
+        }
+        var created = App.Services.GetRequiredService<T>();
+        _cachedViews[type] = created;
+        return created;
+    }
+
     [RelayCommand]
     private void NavigateToDsmEntry()
     {
+        if (!IsDsmEntryVisible) return;
         SelectedNavIndex = 0;
-        CurrentView = App.Services.GetRequiredService<DsmEntryViewModel>();
+        CurrentView = GetOrCreateView<DsmEntryViewModel>();
     }
 
     [RelayCommand]
     private void NavigateToOilDefDailyLog()
     {
+        if (!IsOilDefVisible) return;
         SelectedNavIndex = 1;
-        CurrentView = App.Services.GetRequiredService<OilDefDailyLogViewModel>();
+        CurrentView = GetOrCreateView<OilDefDailyLogViewModel>();
     }
 
     [RelayCommand]
     private void NavigateToFinalCalculation()
     {
+        if (!IsFinalCalculationVisible) return;
         SelectedNavIndex = 2;
-        CurrentView = App.Services.GetRequiredService<FinalCalculationViewModel>();
+        CurrentView = GetOrCreateView<FinalCalculationViewModel>();
     }
 
     [RelayCommand]
     private void NavigateToDayTotal()
     {
+        if (!IsDayTotalVisible) return;
         SelectedNavIndex = 3;
-        CurrentView = App.Services.GetRequiredService<DayTotalViewModel>();
+        CurrentView = GetOrCreateView<DayTotalViewModel>();
     }
 
     [RelayCommand]
     private void NavigateToDebtorManagement()
     {
+        if (!IsDebtorManagementVisible) return;
         SelectedNavIndex = 4;
-        var debtorVm = App.Services.GetRequiredService<DebtorManagementViewModel>();
+        var debtorVm = GetOrCreateView<DebtorManagementViewModel>();
         debtorVm.SelectedTabIndex = 0; // Debtors Directory tab
         CurrentView = debtorVm;
     }
 
     [RelayCommand]
+    private async Task ToggleDebtorManagementLocationAsync()
+    {
+        bool current = IsDebtorManagementAsNewPage;
+        await _featureService.SaveFeaturesAsync(new[]
+        {
+            new AppFeatureSetting
+            {
+                FeatureKey = "UI_DebtorManagement_AsNewPage",
+                IsEnabled = !current,
+                DisplayName = "Debtor Management on Dedicated Page (vs Shift Total)",
+                Category = "Navigation",
+                TargetRole = "Global"
+            }
+        });
+        NotifyFeaturePropertiesChanged();
+    }
+
+    [RelayCommand]
     private void NavigateToDsmPersonalDebtor()
     {
+        if (!IsDsmPersonalDebtorVisible) return;
         SelectedNavIndex = 14;
-        CurrentView = App.Services.GetRequiredService<DsmPersonalDebtorViewModel>();
+        CurrentView = GetOrCreateView<DsmPersonalDebtorViewModel>();
     }
 
     [RelayCommand]
     private void NavigateToDsmApprovalQueue()
     {
+        if (!IsDsmApprovalQueueVisible) return;
         SelectedNavIndex = 5;
-        CurrentView = App.Services.GetRequiredService<DsmApprovalQueueViewModel>();
+        CurrentView = GetOrCreateView<DsmApprovalQueueViewModel>();
     }
 
     [RelayCommand]
     private void NavigateToDsmManagement()
     {
+        if (!IsDsmManagementVisible) return;
         SelectedNavIndex = 6;
-        CurrentView = App.Services.GetRequiredService<DsmManagementViewModel>();
+        CurrentView = GetOrCreateView<DsmManagementViewModel>();
     }
 
     [RelayCommand]
     private void NavigateToCardSettlement()
     {
+        if (!IsCardSettlementVisible) return;
         SelectedNavIndex = 7;
-        CurrentView = App.Services.GetRequiredService<CardSettlementViewModel>();
+        CurrentView = GetOrCreateView<CardSettlementViewModel>();
     }
-
-
 
     [RelayCommand]
     private void NavigateToAgsImport()
     {
+        if (!IsAgsImportVisible) return;
         SelectedNavIndex = 9;
-        CurrentView = App.Services.GetRequiredService<AgsImportViewModel>();
+        CurrentView = GetOrCreateView<AgsImportViewModel>();
     }
 
     [RelayCommand]
     private void NavigateToPettyCash()
     {
+        if (!IsPettyCashVisible) return;
         SelectedNavIndex = 11;
-        CurrentView = App.Services.GetRequiredService<PettyCashViewModel>();
+        CurrentView = GetOrCreateView<PettyCashViewModel>();
     }
 
     [RelayCommand]
     private void NavigateToFuelTankerEntry()
     {
+        if (!IsFuelTankerVisible) return;
         SelectedNavIndex = 12;
-        CurrentView = App.Services.GetRequiredService<FuelTankerEntryViewModel>();
+        CurrentView = GetOrCreateView<FuelTankerEntryViewModel>();
     }
 
     [RelayCommand]
     private void NavigateToTankStockHistory()
     {
+        if (!IsTankStockVisible) return;
         SelectedNavIndex = 13;
-        CurrentView = App.Services.GetRequiredService<TankStockHistoryViewModel>();
+        CurrentView = GetOrCreateView<TankStockHistoryViewModel>();
     }
 
     [RelayCommand]
     private void NavigateToSettings()
     {
+        if (!IsSettingsVisible) return;
         SelectedNavIndex = 10;
-        CurrentView = App.Services.GetRequiredService<SettingsViewModel>();
+        CurrentView = GetOrCreateView<SettingsViewModel>();
     }
 
+    [ObservableProperty] private bool _isPageLoading;
+
+    [RelayCommand]
+    public void Logout()
+    {
+        var confirm = System.Windows.MessageBox.Show("Are you sure you want to log out and switch user?", "Logout", System.Windows.MessageBoxButton.YesNo, System.Windows.MessageBoxImage.Question);
+        if (confirm != System.Windows.MessageBoxResult.Yes) return;
+
+        _authService.Logout();
+        var loginWindow = App.Services.GetRequiredService<Views.LoginView>();
+        loginWindow.Show();
+
+        foreach (System.Windows.Window window in System.Windows.Application.Current.Windows)
+        {
+            if (window != loginWindow)
+            {
+                window.Close();
+            }
+        }
+        System.Windows.Application.Current.MainWindow = loginWindow;
+    }
 
     public void UpdateLastSaveTime() =>
         LastSaveTime = DateTime.Now.ToString("hh:mm:ss tt");

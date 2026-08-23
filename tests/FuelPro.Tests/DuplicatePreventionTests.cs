@@ -11,7 +11,9 @@ using FuelPro.Core.Repositories;
 using FuelPro.Core.Services;
 using FuelPro.Data;
 using FuelPro.Data.Repositories;
+using FuelPro.Data.Services;
 using FuelPro.UI;
+
 using Xunit;
 
 namespace FuelPro.Tests;
@@ -66,8 +68,12 @@ public class DuplicatePreventionTests : IDisposable
         services.AddSingleton<ITidCalculationService, TidCalculationService>();
         services.AddScoped<IShiftAggregationService, ShiftAggregationService>();
         services.AddScoped<IReportService, ReportService>();
+        services.AddTransient<IFeatureToggleService, FeatureToggleService>();
+        services.AddTransient<ICollectionTypeService, CollectionTypeService>();
+        services.AddTransient<IStationConfigurationService, StationConfigurationService>();
         services.AddTransient<IDuplicateDataInspectionService, DuplicateDataInspectionService>();
         services.AddTransient<DuplicateResolutionService>();
+
 
         _serviceProvider = services.BuildServiceProvider();
 
@@ -78,7 +84,10 @@ public class DuplicatePreventionTests : IDisposable
         // Set up default pump config mappings
         var testMappings = new List<PumpMapping>
         {
-            new() { PumpMappingId = 1, PumpId = 1, NozzleNumber = 1, FuelType = "MS-I", IsActive = true }
+            new() { PumpMappingId = 1, PumpId = 1, NozzleNumber = 1, FuelType = "MS-I", IsActive = true },
+            new() { PumpMappingId = 2, PumpId = 1, NozzleNumber = 3, FuelType = "HSD", IsActive = true },
+            new() { PumpMappingId = 3, PumpId = 2, NozzleNumber = 2, FuelType = "MS-I", IsActive = true },
+            new() { PumpMappingId = 4, PumpId = 2, NozzleNumber = 4, FuelType = "HSD", IsActive = true }
         };
         PumpConfiguration.InitializeFromDb(testMappings);
 
@@ -90,6 +99,7 @@ public class DuplicatePreventionTests : IDisposable
 
     public void Dispose()
     {
+        PumpConfiguration.ResetToDefaults();
         try
         {
             if (Directory.Exists(_tempDir))
@@ -97,6 +107,7 @@ public class DuplicatePreventionTests : IDisposable
                 Directory.Delete(_tempDir, true);
             }
         }
+
         catch { }
     }
 

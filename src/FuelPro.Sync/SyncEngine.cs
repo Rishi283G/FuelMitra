@@ -193,6 +193,12 @@ public class SyncEngine
 
     public async Task ForceSyncAsync()
     {
+        var settings = await _configService.GetSettingsAsync();
+        if (!settings.SyncEnabled || string.IsNullOrEmpty(settings.SupabaseUrl) || string.IsNullOrEmpty(settings.SupabaseApiKey))
+        {
+            return;
+        }
+
         _logger.Information("Force sync requested.");
         try
         {

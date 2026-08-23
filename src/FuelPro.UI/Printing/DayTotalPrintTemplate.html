@@ -49,10 +49,19 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
 .coll-item-val{font-size:14px;font-weight:700;color:#1a3a6b;margin-top:2px}
 .rpt-ftr{background:#0f1923;color:rgba(255,255,255,.65);font-size:10px;padding:9px 24px;display:flex;justify-content:space-between;align-items:center}
 .rpt-ftr strong{color:#fff}
-.dsm-summary-table th, .dsm-summary-table td{padding:4px 3px;font-size:10.5px}
-.dsm-summary-table th.col-others, .dsm-summary-table td.col-others{width:45px;max-width:50px;font-size:9.5px;padding-left:1px;padding-right:1px}
-.dsm-summary-table th.col-short, .dsm-summary-table td.col-short{min-width:82px;white-space:nowrap;font-weight:700}
-.dsm-summary-table th.col-gross, .dsm-summary-table td.col-gross{min-width:80px;white-space:nowrap;font-weight:700}
+.dsm-summary-table{width:100%;border-collapse:collapse;margin-top:4px}
+.dsm-summary-table th{background:#103b63;color:#fff;font-size:9px;font-weight:700;text-transform:uppercase;padding:5px 3px;text-align:right;border:1px solid #0d3052;letter-spacing:.2px}
+.dsm-summary-table th:first-child{text-align:left;padding-left:5px}
+.dsm-summary-table th:nth-child(2), .dsm-summary-table th:nth-child(3){text-align:center}
+.dsm-summary-table td{padding:4px 3px;font-size:9.5px;border:1px solid #cbd5e1;text-align:right;font-variant-numeric:tabular-nums}
+.dsm-summary-table td:first-child{text-align:left;font-weight:600;color:#0f1923;padding-left:5px;white-space:nowrap}
+.dsm-summary-table td:nth-child(2), .dsm-summary-table td:nth-child(3){text-align:center;font-weight:500;color:#475569}
+.dsm-summary-table tr:nth-child(even) td{background:#f8fafc}
+.dsm-summary-table tr.tr-total td{background:#103b63!important;color:#fff!important;font-weight:700;font-size:9.5px;border-top:2px solid #0a2540}
+.dsm-summary-table th.col-others, .dsm-summary-table td.col-others{font-size:8.5px;padding-left:2px;padding-right:2px}
+.dsm-summary-table th.col-short, .dsm-summary-table td.col-short{white-space:nowrap;font-weight:700}
+.dsm-summary-table th.col-gross, .dsm-summary-table td.col-gross{white-space:nowrap;font-weight:700;color:#2e7d32}
+.dsm-summary-table tr.tr-total td.col-gross{color:#fff!important}
 @media print{
   @page{size:A4 portrait;margin:0}
   body{background:#fff;font-size:10px;margin:4mm}
@@ -130,7 +139,7 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
   <!-- SECTION 2: DSM SUMMARY (ALL SHIFTS) -->
   <div class="sec">
     <div class="sec-title">2. DSM Summary &mdash; All Shifts</div>
-    <table class="dsm-summary-table"><thead><tr><th>DSM Name</th><th>Shift</th><th>Pump</th><th>PhonePe (M)</th><th>PhonePe (N)</th><th>Card (M)</th><th>Card (N)</th><th>Petro (M)</th><th>Petro (N)</th><th>Bank Cash</th><th>Debtors</th><th>Expenses</th><th>Testing</th><th>Hand Cash</th><th class="col-others">Others</th><th>Gross Sale</th><th class="col-short">Short</th></tr></thead><tbody id="tDsm"></tbody></table>
+    <table class="dsm-summary-table"><thead id="thDsm"><tr><th>DSM Name</th><th>Shift</th><th>Pump</th><th>PhonePe (M)</th><th>PhonePe (N)</th><th>Card (M)</th><th>Card (N)</th><th>Petro (M)</th><th>Petro (N)</th><th>Bank Cash</th><th>Debtors</th><th>Expenses</th><th>Testing</th><th>Hand Cash</th><th class="col-others">Others</th><th>Gross Sale</th><th class="col-short">Short</th></tr></thead><tbody id="tDsm"></tbody></table>
   </div>
   <hr class="div">
 
@@ -330,10 +339,60 @@ function renderData(){
     mgrEl.textContent = 'Shift 1: ' + m1 + ' / Shift 2: ' + m2;
   }
 
+  function normColCode(code) {
+    return (code || '').toUpperCase().replace(/[\s_\-]/g, '');
+  }
+
   // DSM Summary
+  var colTypes = d.collectionTypes || [];
+  var hasColConfig = colTypes && colTypes.length > 0;
+
+  var phObj = hasColConfig ? colTypes.find(function(c){ return normColCode(c.code) === 'PHONEPE'; }) : { isActive: true, displayName: 'PhonePe' };
+  var ccObj = hasColConfig ? colTypes.find(function(c){ 
+    var nc = normColCode(c.code);
+    return nc.indexOf('PINELAB') >= 0 || nc.indexOf('CREDITCARD') >= 0 || nc === 'CARD' || nc.indexOf('DEBIT') >= 0; 
+  }) : { isActive: true, displayName: 'PineLab Card' };
+  var pcObj = hasColConfig ? colTypes.find(function(c){ 
+    var nc = normColCode(c.code);
+    return nc.indexOf('PETRO') >= 0; 
+  }) : { isActive: true, displayName: 'PetroCard' };
+
+  var isPhActive = phObj ? phObj.isActive !== false : true;
+  var isCcActive = ccObj ? ccObj.isActive !== false : true;
+  var isPcActive = pcObj ? pcObj.isActive !== false : true;
+
+  var phTitle = phObj ? phObj.displayName : 'PhonePe';
+  var ccTitle = ccObj ? ccObj.displayName : 'PineLab Card';
+  var pcTitle = pcObj ? pcObj.displayName : 'PetroCard';
+
+  var excludeNorms = ['PHONEPE', 'PINELAB', 'PINELABS', 'PINELABCARD', 'CREDITCARD', 'CREDITDEBITCARD', 'CARD', 'PETROCARD', 'PETRO', 'CASHDEPOSIT', 'CASHINHAND', 'OTHERS'];
+  if (phObj) excludeNorms.push(normColCode(phObj.code));
+  if (ccObj) excludeNorms.push(normColCode(ccObj.code));
+  if (pcObj) excludeNorms.push(normColCode(pcObj.code));
+
+  var dynActiveTypes = colTypes.filter(function(c){ 
+    return c.isActive && excludeNorms.indexOf(normColCode(c.code)) < 0; 
+  });
+
+  var activeBuiltInCount = (isPhActive ? 1 : 0) + (isCcActive ? 1 : 0) + (isPcActive ? 1 : 0);
+  var totalColSpan = 11 + activeBuiltInCount + dynActiveTypes.length;
+
+  var thHtml = '<tr><th>DSM Name</th><th>Shift</th><th>Pump</th>';
+  if (isPhActive) thHtml += '<th>' + phTitle + '</th>';
+  if (isCcActive) thHtml += '<th>' + ccTitle + '</th>';
+  if (isPcActive) thHtml += '<th>' + pcTitle + '</th>';
+  dynActiveTypes.forEach(function(dt){
+    thHtml += '<th>' + dt.displayName + '</th>';
+  });
+  thHtml += '<th>Bank Cash</th><th>Debtors</th><th>Expenses</th><th>Testing</th><th>Hand Cash</th><th class="col-others">Others</th><th>Gross Sale</th><th class="col-short">Short</th></tr>';
+  var thEl = document.getElementById('thDsm');
+  if(thEl) thEl.innerHTML = thHtml;
+
   var tb=document.getElementById('tDsm');tb.innerHTML='';
   var prevShift='';
-  var tot={phM:0,phN:0,ccM:0,ccN:0,pcM:0,pcN:0,bk:0,deb:0,exp:0,test:0,c2:0,oth:0,sale:0,mis:0};
+  var tot={ph:0,cc:0,pc:0,bk:0,deb:0,exp:0,test:0,c2:0,oth:0,sale:0,mis:0,dyn:{}};
+  dynActiveTypes.forEach(function(dt){ tot.dyn[dt.code] = 0; });
+
   (d.dsmSummaryRows||d.dsmEntries||[]).forEach(function(r){
     if(r.shift!==prevShift){
       var sh=document.createElement('tr');sh.className='tr-shift';
@@ -344,30 +403,13 @@ function renderData(){
         else if (upper.endsWith(' B') || upper === 'B') suffix = ' &mdash; Shift II';
         else if (upper.endsWith(' C') || upper === 'C') suffix = ' &mdash; Shift III';
       }
-      sh.innerHTML='<td colspan="17">'+shiftBadge(r.shift)+suffix+'</td>';
+      sh.innerHTML='<td colspan="'+totalColSpan+'">'+shiftBadge(r.shift)+suffix+'</td>';
       tb.appendChild(sh);prevShift=r.shift;
     }
     var tr=document.createElement('tr');
-    var rawCcM = getVal(r, 'creditCardMorning') || 0;
-    var rawCcN = getVal(r, 'creditCardNight') || 0;
-    var rawCcD = getVal(r, 'creditCardDay') || 0;
-    var rawPpcM = getVal(r, 'phonePeCardMorning') || 0;
-    var rawPpcN = getVal(r, 'phonePeCardNight') || 0;
-    var rawPpcD = getVal(r, 'phonePeCardDay') || getVal(r, 'phonePeCard') || 0;
-    var ccM = (rawCcM > 0 ? rawCcM : rawCcD) + (rawPpcM > 0 ? rawPpcM : rawPpcD);
-    var ccN = rawCcN + rawPpcN;
-
-    var rawPhM = getVal(r, 'phonePeMorning') || 0;
-    var rawPhN = getVal(r, 'phonePeNight') || 0;
-    var rawPhD = getVal(r, 'phonePeDay') || getVal(r, 'phonePe') || 0;
-    var ph = rawPhM > 0 ? rawPhM : rawPhD;
-    var phN = rawPhN;
-
-    var rawPcM = getVal(r, 'petroCardMorning') || 0;
-    var rawPcN = getVal(r, 'petroCardNight') || 0;
-    var rawPcD = getVal(r, 'petroCardDay') || getVal(r, 'petroCard') || 0;
-    var petroM = rawPcM > 0 ? rawPcM : rawPcD;
-    var petroN = rawPcN;
+    var ph = getVal(r, 'phonePeTotal') || (getVal(r, 'phonePeMorning')||0) + (getVal(r, 'phonePeNight')||0) + (getVal(r, 'phonePeDay')||0) + (getVal(r, 'phonePe')||0);
+    var cc = getVal(r, 'creditCardTotal') || (getVal(r, 'creditCardMorning')||0) + (getVal(r, 'creditCardNight')||0) + (getVal(r, 'creditCardDay')||0) + (getVal(r, 'phonePeCardMorning')||0) + (getVal(r, 'phonePeCardNight')||0) + (getVal(r, 'phonePeCardDay')||0) + (getVal(r, 'phonePeCard')||0);
+    var petro = getVal(r, 'petroCardTotal') || (getVal(r, 'petroCardMorning')||0) + (getVal(r, 'petroCardNight')||0) + (getVal(r, 'petroCardDay')||0) + (getVal(r, 'petroCard')||0);
 
     var deb = getVal(r, 'debit') || 0;
     var exp = getVal(r, 'expenses') || 0;
@@ -377,19 +419,63 @@ function renderData(){
     var oth = getVal(r, 'others') || 0;
     var sale = getVal(r, 'grossSales') || getVal(r, 'grossSale') || 0;
 
+    var dynMap = getVal(r, 'dynamicCollections') || {};
+    var dynTotalRow = 0;
+    dynActiveTypes.forEach(function(dt){
+      var amt = dynMap[dt.code] || dynMap[(dt.code||'').toLowerCase()] || dynMap[(dt.code||'').toUpperCase()] || 0;
+      if (!amt) {
+        if ((dt.code||'').toUpperCase() === 'SBI_REDEEM') amt = getVal(r, 'sbiRedeem') || 0;
+        else if ((dt.code||'').toUpperCase() === 'PAYTM') amt = getVal(r, 'paytm') || 0;
+        else if ((dt.code||'').toUpperCase() === 'QR') amt = getVal(r, 'qrPayment') || 0;
+        else if ((dt.code||'').toUpperCase() === 'MOBIKWIK') amt = getVal(r, 'mobikwik') || 0;
+      }
+      dynTotalRow += amt;
+    });
+
     var rDiff = getVal(r, 'difference');
     var mismatch = (rDiff !== undefined && !isNaN(rDiff) && rDiff !== null)
         ? rDiff
-        : (ccM + ccN + ph + phN + petroM + petroN + deb + exp + test + c1 + c2) - sale;
+        : ((isPhActive ? ph : 0) + (isCcActive ? cc : 0) + (isPcActive ? petro : 0) + dynTotalRow + deb + exp + test + c1 + c2) - sale;
     var pVal = getVal(r, 'pumpNoDisplay') || getVal(r, 'pumpNo') || getVal(r, 'pumpId') || '';
     var pDisp = pVal ? (pVal.toString().startsWith('P-') ? pVal : 'P-' + pVal) : '\u2013';
 
-    tr.innerHTML='<td>'+(getVal(r, 'dsmName')||'')+'</td><td>'+shiftBadge(getVal(r, 'shift'))+'</td><td>'+pDisp+'</td><td>'+inr(ph)+'</td><td>'+inr(phN)+'</td><td>'+inr(ccM)+'</td><td>'+inr(ccN)+'</td><td>'+inr(petroM)+'</td><td>'+inr(petroN)+'</td><td>'+inr(c1)+'</td><td>'+inr(deb)+'</td><td>'+inr(exp)+'</td><td>'+inr(test)+'</td><td>'+inr(c2)+'</td><td class="col-others">'+inr(oth)+'</td><td class="col-gross">'+inr(sale)+'</td><td class="col-short">'+inr(mismatch)+'</td>';
+    var rowHtml = '<td>'+(getVal(r, 'dsmName')||'')+'</td><td>'+shiftBadge(getVal(r, 'shift'))+'</td><td>'+pDisp+'</td>';
+    if (isPhActive) rowHtml += '<td>'+inr(ph)+'</td>';
+    if (isCcActive) rowHtml += '<td>'+inr(cc)+'</td>';
+    if (isPcActive) rowHtml += '<td>'+inr(petro)+'</td>';
+
+    dynActiveTypes.forEach(function(dt){
+      var amt = dynMap[dt.code] || dynMap[(dt.code||'').toLowerCase()] || dynMap[(dt.code||'').toUpperCase()] || 0;
+      if (!amt) {
+        if ((dt.code||'').toUpperCase() === 'SBI_REDEEM') amt = getVal(r, 'sbiRedeem') || 0;
+        else if ((dt.code||'').toUpperCase() === 'PAYTM') amt = getVal(r, 'paytm') || 0;
+        else if ((dt.code||'').toUpperCase() === 'QR') amt = getVal(r, 'qrPayment') || 0;
+        else if ((dt.code||'').toUpperCase() === 'MOBIKWIK') amt = getVal(r, 'mobikwik') || 0;
+      }
+      rowHtml += '<td>' + inr(amt) + '</td>';
+      tot.dyn[dt.code] = (tot.dyn[dt.code] || 0) + amt;
+    });
+
+    rowHtml += '<td>'+inr(c1)+'</td><td>'+inr(deb)+'</td><td>'+inr(exp)+'</td><td>'+inr(test)+'</td><td>'+inr(c2)+'</td>' +
+               '<td class="col-others">'+inr(oth)+'</td><td class="col-gross">'+inr(sale)+'</td><td class="col-short">'+inr(mismatch)+'</td>';
+    tr.innerHTML = rowHtml;
     tb.appendChild(tr);
-    tot.phM+=ph;tot.phN+=phN;tot.ccM+=ccM;tot.ccN+=ccN;tot.pcM+=petroM;tot.pcN+=petroN;tot.bk+=c1;tot.deb+=deb;tot.exp+=exp;tot.test+=test;tot.c2+=c2;tot.oth+=oth;tot.sale+=sale;tot.mis+=mismatch;
+
+    tot.ph+=ph;tot.cc+=cc;tot.pc+=petro;tot.bk+=c1;tot.deb+=deb;tot.exp+=exp;tot.test+=test;tot.c2+=c2;tot.oth+=oth;tot.sale+=sale;tot.mis+=mismatch;
   });
   var ttr=document.createElement('tr');ttr.className='tr-total';
-  ttr.innerHTML='<td>DAY TOTAL</td><td>\u2013</td><td>\u2013</td><td>'+inrZ(tot.phM)+'</td><td>'+inrZ(tot.phN)+'</td><td>'+inrZ(tot.ccM)+'</td><td>'+inrZ(tot.ccN)+'</td><td>'+inrZ(tot.pcM)+'</td><td>'+inrZ(tot.pcN)+'</td><td>'+inrZ(tot.bk)+'</td><td>'+inrZ(tot.deb)+'</td><td>'+inrZ(tot.exp)+'</td><td>'+inrZ(tot.test)+'</td><td>'+inrZ(tot.c2)+'</td><td class="col-others">'+inrZ(tot.oth)+'</td><td class="col-gross">'+inrZ(tot.sale)+'</td><td class="col-short">'+inrZ(tot.mis)+'</td>';
+  var totHtml = '<td>DAY TOTAL</td><td>\u2013</td><td>\u2013</td>';
+  if (isPhActive) totHtml += '<td>'+inrZ(tot.ph)+'</td>';
+  if (isCcActive) totHtml += '<td>'+inrZ(tot.cc)+'</td>';
+  if (isPcActive) totHtml += '<td>'+inrZ(tot.pc)+'</td>';
+
+  dynActiveTypes.forEach(function(dt){
+    totHtml += '<td>' + inrZ(tot.dyn[dt.code] || 0) + '</td>';
+  });
+
+  totHtml += '<td>'+inrZ(tot.bk)+'</td><td>'+inrZ(tot.deb)+'</td><td>'+inrZ(tot.exp)+'</td><td>'+inrZ(tot.test)+'</td><td>'+inrZ(tot.c2)+'</td>' +
+             '<td class="col-others">'+inrZ(tot.oth)+'</td><td class="col-gross">'+inrZ(tot.sale)+'</td><td class="col-short">'+inrZ(tot.mis)+'</td>';
+  ttr.innerHTML = totHtml;
   tb.appendChild(ttr);
 
   // getVal helper for case-insensitive JSON key lookup
@@ -488,35 +574,30 @@ function renderData(){
 
   // Collections grid
   var breakdown = d.collectionBreakdown || [];
-  function getAmt(cat) {
-    var found = breakdown.find(function(x) { return x.category === cat; });
-    return found ? (found.amount || 0) : 0;
-  }
-  
-  var cashAmt = getAmt("Cash Deposit") + getAmt("Cash In Hand");
-  var phonePeAmt = getAmt("PhonePe Morning") + getAmt("PhonePe Night");
-  var phonePeCardAmt = getAmt("PhonePe Card Morning") + getAmt("PhonePe Card Night");
-  var pineLabsAmt = getAmt("Card Morning") + getAmt("Card Night") + getAmt("PineLabs Morning") + getAmt("PineLabs Night");
-  var petroCardAmt = getAmt("Petro Card Morning") + getAmt("Petro Card Night") + getAmt("Petro Card");
-  var debtorsAmt = getAmt("Debtors");
-  var otherAmt = d.otherCashTotal || d.otherCashTotalAmount || 0;
-
-  var cg=document.getElementById('collGrid');
+  var cg = document.getElementById('collGrid');
   if (cg) {
-    cg.innerHTML='';
-    var cols=[
-      {lbl:'Cash',val:cashAmt},
-      {lbl:'PhonePe',val:phonePeAmt},
-      {lbl:'PineLabs Card',val:pineLabsAmt},
-      {lbl:'Petro Card',val:petroCardAmt},
-      {lbl:'Credit (Debtors)',val:debtorsAmt},
-      {lbl:'Other Collections',val:otherAmt}
-    ];
-    cols.forEach(function(c){
-      var div=document.createElement('div');div.className='coll-item';
-      div.innerHTML='<div class="coll-item-lbl">'+c.lbl+'</div><div class="coll-item-val">'+inrZ(c.val)+'</div>';
+    cg.innerHTML = '';
+    breakdown.forEach(function(c) {
+      var cat = c.category || '';
+      var catLower = cat.toLowerCase();
+      if (catLower.indexOf('testing') !== -1 || catLower === 'debtors' || catLower === 'expenses' ||
+          catLower.indexOf('short') !== -1 || catLower.indexOf('kandhare') !== -1 ||
+          catLower.indexOf('oil sales') !== -1 || catLower.indexOf('def sales') !== -1) {
+        return;
+      }
+      var div = document.createElement('div');
+      div.className = 'coll-item';
+      div.innerHTML = '<div class="coll-item-lbl">' + cat + '</div><div class="coll-item-val">' + inrZ(c.amount) + '</div>';
       cg.appendChild(div);
     });
+
+    var debtorsAmt = d.creditorsTotal || 0;
+    if (debtorsAmt > 0) {
+      var divD = document.createElement('div');
+      divD.className = 'coll-item';
+      divD.innerHTML = '<div class="coll-item-lbl">Credit (Debtors)</div><div class="coll-item-val">' + inrZ(debtorsAmt) + '</div>';
+      cg.appendChild(divD);
+    }
   }
 
   // Creditors
@@ -556,10 +637,11 @@ function renderData(){
   }
 
   // Render DSM Personal Debtors
-  var personalDebtors = d.personalDebtors || [];
+  var isDsmLossEnabled = d.isDsmPersonalDebtorVisible !== false;
+  var personalDebtors = isDsmLossEnabled ? (d.personalDebtors || []) : [];
   var secPers = document.getElementById('secPersonalDebtors');
   var tPers   = document.getElementById('tPersonalDebtors');
-  if (tPers && personalDebtors.length > 0) {
+  if (isDsmLossEnabled && tPers && personalDebtors.length > 0) {
     tPers.innerHTML = '';
     if (secPers) secPers.style.display = 'block';
     var persTot = 0;
@@ -581,10 +663,10 @@ function renderData(){
   }
 
   // Render DSM Personal Debtor Repayments (DSM Loss Repayments)
-  var lossRepayments = d.personalDebtorRepayments || [];
+  var lossRepayments = isDsmLossEnabled ? (d.personalDebtorRepayments || []) : [];
   var secLossRep = document.getElementById('secPersonalDebtorRepayments');
   var tLossRep   = document.getElementById('tPersonalDebtorRepayments');
-  if (tLossRep && lossRepayments.length > 0) {
+  if (isDsmLossEnabled && tLossRep && lossRepayments.length > 0) {
     tLossRep.innerHTML = '';
     if (secLossRep) secLossRep.style.display = 'block';
     var lossRepTot = 0;
@@ -605,11 +687,15 @@ function renderData(){
     if (secLossRep) secLossRep.style.display = 'none';
   }
 
-  // Render Khandhare Petroleum Drawings
-  var khandhareEntries = d.khandhareEntries || d.khandharePetroleumEntries || [];
+  // Render Personal Ledger / Khandhare Drawings
+  var isPersonalLedgerEnabled = d.isPersonalLedgerEnabled !== false;
+  var personalLedgerTitle = d.personalLedgerTitle || "Personal Ledger";
+  var khandhareEntries = isPersonalLedgerEnabled ? (d.khandhareEntries || d.khandharePetroleumEntries || []) : [];
   var secKp = document.getElementById('secKhandhare');
   var tKp   = document.getElementById('tKhandhare');
-  if (tKp && khandhareEntries.length > 0) {
+  var hdrKp = document.querySelector('#secKhandhare .mini-hdr');
+  if (hdrKp) hdrKp.textContent = personalLedgerTitle;
+  if (isPersonalLedgerEnabled && tKp && khandhareEntries.length > 0) {
     tKp.innerHTML = '';
     if (secKp) secKp.style.display = 'block';
     var kpTot = 0;
@@ -624,7 +710,7 @@ function renderData(){
     });
     var trTot = document.createElement('tr');
     trTot.className = 'tr-total';
-    trTot.innerHTML = '<td colspan="3" style="text-align:left;">Total Kandhare Petroleum</td><td>' + inrZ(kpTot) + '</td>';
+    trTot.innerHTML = '<td colspan="3" style="text-align:left;">Total ' + personalLedgerTitle + '</td><td>' + inrZ(kpTot) + '</td>';
     tKp.appendChild(trTot);
   } else {
     if (secKp) secKp.style.display = 'none';

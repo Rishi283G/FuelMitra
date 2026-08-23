@@ -117,6 +117,15 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string _cngTestingLabel = "CNG Testing";
     [ObservableProperty] private double _totalTesting;
 
+    private readonly IFeatureToggleService _featureService;
+    private readonly ICollectionTypeService? _collectionTypeService;
+    public bool IsDsmPersonalDebtorVisible => _featureService.IsFeatureEnabled("Admin_DsmPersonalDebtor", true);
+
+    [ObservableProperty] private string _phonePeDisplayName = "PhonePe Direct";
+    [ObservableProperty] private string _creditCardDisplayName = "PineLabs Card";
+    [ObservableProperty] private string _petroCardDisplayName = "Petro Card";
+    [ObservableProperty] private ObservableCollection<DayCollectionSummaryRow> _collectionRows = new();
+
     public DayTotalViewModel()
     {
         _shiftRepo = App.Services.GetRequiredService<IShiftRepository>();
@@ -130,9 +139,62 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
         _tidService = App.Services.GetRequiredService<ITidCalculationService>();
         _inventoryService = App.Services.GetRequiredService<IAgsInventoryService>();
         _reportService = App.Services.GetRequiredService<IReportService>();
+        _featureService = App.Services.GetRequiredService<IFeatureToggleService>();
+        _collectionTypeService = App.Services?.GetService<ICollectionTypeService>();
+
+        _featureService.FeatureConfigurationChanged += () =>
+        {
+            var dispatcher = System.Windows.Application.Current?.Dispatcher;
+            if (dispatcher != null && !dispatcher.CheckAccess())
+            {
+                dispatcher.BeginInvoke(() => OnPropertyChanged(nameof(IsDsmPersonalDebtorVisible)));
+            }
+            else
+            {
+                OnPropertyChanged(nameof(IsDsmPersonalDebtorVisible));
+            }
+        };
+
+        if (_collectionTypeService != null)
+        {
+            _collectionTypeService.CollectionTypesChanged += () =>
+            {
+                var dispatcher = System.Windows.Application.Current?.Dispatcher;
+                if (dispatcher != null && !dispatcher.CheckAccess())
+                {
+                    dispatcher.BeginInvoke(async () => await UpdateCollectionDisplayNamesAsync());
+                }
+                else
+                {
+                    _ = UpdateCollectionDisplayNamesAsync();
+                }
+            };
+        }
+        _ = UpdateCollectionDisplayNamesAsync();
 
         DsmEntryService.DsmEntryChanged += OnDataChanged;
         DsmEntryService.DebtorChanged += OnDataChanged;
+    }
+
+    private async Task UpdateCollectionDisplayNamesAsync()
+    {
+        if (_collectionTypeService == null) return;
+        try
+        {
+            var types = await _collectionTypeService.GetActiveCollectionTypesAsync();
+            var ph = types.FirstOrDefault(c => string.Equals(c.Code, "PHONEPE", StringComparison.OrdinalIgnoreCase));
+            var cc = types.FirstOrDefault(c => string.Equals(c.Code, "CREDIT_CARD", StringComparison.OrdinalIgnoreCase)
+                                            || string.Equals(c.Code, "CREDITCARD", StringComparison.OrdinalIgnoreCase)
+                                            || string.Equals(c.Code, "PINELAB", StringComparison.OrdinalIgnoreCase)
+                                            || string.Equals(c.Code, "PINELABS", StringComparison.OrdinalIgnoreCase));
+            var pc = types.FirstOrDefault(c => string.Equals(c.Code, "PETROCARD", StringComparison.OrdinalIgnoreCase)
+                                            || string.Equals(c.Code, "PETRO_CARD", StringComparison.OrdinalIgnoreCase));
+
+            PhonePeDisplayName = ph?.DisplayName ?? "PhonePe Direct";
+            CreditCardDisplayName = cc?.DisplayName ?? "PineLabs Card";
+            PetroCardDisplayName = pc?.DisplayName ?? "Petro Card";
+        }
+        catch { }
     }
 
     private void OnDataChanged()
@@ -346,30 +408,60 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
             ExpenseRows = new ObservableCollection<ExpenseRegisterRowDto>(report.ExpenseRows);
             ExpensesTotal = report.ExpensesTotal;
 
-            // Mapping individual collections for UI bindings
-            var breakdown = report.CollectionBreakdown;
-            double getAmt(string cat) => breakdown.FirstOrDefault(x => x.Category == cat)?.Amount ?? 0;
+            // Mapping dynamic collections for UI bindings
+            var breakdown = report.CollectionBreakdown ?? new List<CollectionCategoryDto>();
+            CollectionRows.Clear();
+            double digitalTotal = 0;
+            double cashTotal = 0;
 
-            PhonePeMorningTotal = getAmt("PhonePe Morning");
-            PhonePeNightTotal = getAmt("PhonePe Night");
-            PhonePeCardMorningTotal = getAmt("PhonePe Card Morning");
-            PhonePeCardNightTotal = getAmt("PhonePe Card Night");
-            CreditCardMorningTotal = getAmt("Card Morning") > 0 ? getAmt("Card Morning") : getAmt("PineLabs Morning");
-            CreditCardNightTotal = getAmt("Card Night") > 0 ? getAmt("Card Night") : getAmt("PineLabs Night");
-            PetroCardTotal = getAmt("Petro Card Morning") + getAmt("Petro Card Night") + getAmt("Petro Card");
+            foreach (var c in breakdown)
+            {
+                string cat = c.Category;
+                if (cat.Contains("Testing", StringComparison.OrdinalIgnoreCase) ||
+                    cat.Equals("Debtors", StringComparison.OrdinalIgnoreCase) ||
+                    cat.Equals("Expenses", StringComparison.OrdinalIgnoreCase) ||
+                    cat.Contains("DSM Short", StringComparison.OrdinalIgnoreCase) ||
+                    cat.Contains("Kandhare", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
 
-            PhonePeTotal = PhonePeMorningTotal + PhonePeNightTotal;
-            PhonePeCardTotal = PhonePeCardMorningTotal + PhonePeCardNightTotal;
-            CreditCardTotal = CreditCardMorningTotal + CreditCardNightTotal;
-            BankCashTotal = getAmt("Cash Deposit");
+                bool isCash = cat.Contains("Cash", StringComparison.OrdinalIgnoreCase);
+                if (isCash)
+                {
+                    cashTotal += c.Amount;
+                }
+                else
+                {
+                    digitalTotal += c.Amount;
+                }
+
+                string color = isCash ? "#2E7D32" :
+                               cat.Contains("Card", StringComparison.OrdinalIgnoreCase) ? "#E65100" :
+                               cat.Contains("Petro", StringComparison.OrdinalIgnoreCase) ? "#6A1B9A" : "#1565C0";
+
+                CollectionRows.Add(new DayCollectionSummaryRow
+                {
+                    CollectionMode = cat,
+                    Amount = c.Amount,
+                    DisplayColor = color
+                });
+            }
+
+            TotalCash = cashTotal;
+            TotalDigital = digitalTotal;
+            TotalDigitalAndCash = cashTotal + digitalTotal;
+
+            // Legacy individual properties preserved for any specific bindings
+            double getAmt(string cat) => breakdown.FirstOrDefault(x => string.Equals(x.Category, cat, StringComparison.OrdinalIgnoreCase))?.Amount ?? 0;
+            BankCashTotal = getAmt("Cash Deposit") > 0 ? getAmt("Cash Deposit") : getAmt("Bank Cash");
             CashInHandTotal = getAmt("Cash In Hand");
-
-            TotalDigital = PhonePeTotal + PhonePeCardTotal + CreditCardTotal + PetroCardTotal;
-            TotalCash = BankCashTotal + CashInHandTotal;
-            TotalDigitalAndCash = TotalDigital + TotalCash;
+            PhonePeTotal = breakdown.Where(x => x.Category.Contains("PhonePe", StringComparison.OrdinalIgnoreCase)).Sum(x => x.Amount);
+            CreditCardTotal = breakdown.Where(x => (x.Category.Contains("Card", StringComparison.OrdinalIgnoreCase) || x.Category.Contains("PineLab", StringComparison.OrdinalIgnoreCase)) && !x.Category.Contains("Petro", StringComparison.OrdinalIgnoreCase) && !x.Category.Contains("PhonePe", StringComparison.OrdinalIgnoreCase)).Sum(x => x.Amount);
+            PetroCardTotal = breakdown.Where(x => x.Category.Contains("Petro", StringComparison.OrdinalIgnoreCase)).Sum(x => x.Amount);
 
             // Splits
-            SplitCash = BankCashTotal + CashInHandTotal;
+            SplitCash = TotalCash;
             SplitPhonePe = PhonePeTotal;
             SplitUpi = PhonePeCardTotal;
             SplitPineLabsCard = CreditCardTotal;
@@ -551,4 +643,42 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
             MessageBox.Show($"Export failed: {ex.Message}", "Export Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
+
+    [RelayCommand]
+    private async Task SaveTankStocksAsync()
+    {
+        try
+        {
+            var saveResult = await _inventoryService.SaveAndPersistInventoryAsync(EndDate, "B", NozzleGroups.ToList());
+            if (saveResult.Success)
+            {
+                var propResult = await _inventoryService.PropagateInventoryCalculationsAsync(EndDate, "B");
+                if (propResult.Success)
+                {
+                    StatusMessage = "✅ Tank stocks saved and propagated successfully!";
+                }
+                else
+                {
+                    StatusMessage = $"⚠️ Saved, but propagation failed: {propResult.Error}";
+                }
+                await LoadDayDataAsync();
+            }
+            else
+            {
+                StatusMessage = $"❌ Save failed: {saveResult.Error}";
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to save tank stocks from day total");
+            StatusMessage = $"❌ Error: {ex.Message}";
+        }
+    }
+}
+
+public class DayCollectionSummaryRow
+{
+    public string CollectionMode { get; set; } = string.Empty;
+    public double Amount { get; set; }
+    public string DisplayColor { get; set; } = "#1565C0";
 }

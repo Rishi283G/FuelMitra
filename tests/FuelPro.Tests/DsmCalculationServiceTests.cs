@@ -69,8 +69,10 @@ public class DsmCalculationServiceTests
     [Fact]
     public void InspectDatabase07Aug2026()
     {
-        var dbPath = @"C:\Users\jadha\AppData\Local\FuelPro\fuelPro.db";
+        string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var dbPath = System.IO.Path.Combine(localAppData, "FuelPro", "fuelPro.db");
         if (!System.IO.File.Exists(dbPath)) return;
+
 
         var options = new Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<FuelPro.Data.FuelProDbContext>()
             .UseSqlite($"Data Source={dbPath}")

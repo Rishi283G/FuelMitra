@@ -365,19 +365,38 @@ document.getElementById('grossSales').textContent = INR(data.grossSales);
 
 // Section 3 — Payment Collection
 const p = data.payments || {};
-const payRows = [
-  { label: 'PhonePe (Morning)', val: p.phonePeMorning, tid: p.phonePeTid, batch: p.phonePeBatch },
-  { label: 'PhonePe (Night)', val: p.phonePeNight, tid: p.phonePeTid, batch: p.phonePeBatch },
-  { label: 'PhonePe Card (Morning)', val: p.phonePeCardMorning, tid: p.phonePeTid, batch: p.phonePeBatch },
-  { label: 'PhonePe Card (Night)', val: p.phonePeCardNight, tid: p.phonePeTid, batch: p.phonePeBatch },
-  { label: 'PineLab Card (Morning)', val: p.creditCardMorning, tid: p.cardTid, batch: p.cardBatch },
-  { label: 'PineLab Card (Night)', val: p.creditCardNight, tid: p.cardTid, batch: p.cardBatch },
-  { label: 'Petro Card', val: p.petroCard, tid: p.petroCardTid, batch: p.petroCardBatch },
-  { label: 'Cash Deposit', val: p.cashDeposit },
-  { label: 'Others (Info only)', val: p.others },
-  { label: 'Bank Deposit', val: p.bankDeposit },
-];
 let payHtml = '<div class="payment-grid">';
+const payRows = [];
+
+// Unified PhonePe
+var phVal = (p.phonePeTotal || 0) || ((p.phonePeMorning || 0) + (p.phonePeNight || 0) + (p.phonePe || 0));
+if (phVal > 0) {
+  payRows.push({ label: p.phonePeDisplayName || 'PhonePe', val: phVal, tid: p.phonePeTid || p.phonePeTidMorning || p.phonePeTidNight, batch: p.phonePeBatch || p.phonePeBatchMorning || p.phonePeBatchNight });
+}
+
+// Unified Card / PineLab
+var ccVal = (p.creditCardTotal || 0) || ((p.creditCardMorning || 0) + (p.creditCardNight || 0) + (p.creditCard || 0) + (p.phonePeCardMorning || 0) + (p.phonePeCardNight || 0));
+if (ccVal > 0) {
+  payRows.push({ label: p.creditCardDisplayName || 'PineLab Card', val: ccVal, tid: p.cardTid || p.creditCardTidMorning || p.creditCardTidNight, batch: p.cardBatch || p.creditCardBatchMorning || p.creditCardBatchNight });
+}
+
+// Unified Petro Card
+var petroVal = (p.petroCardTotal || 0) || (p.petroCard || 0) || ((p.petroCardMorning || 0) + (p.petroCardNight || 0));
+if (petroVal > 0) {
+  payRows.push({ label: p.petroCardDisplayName || 'Petro Card', val: petroVal, tid: p.petroCardTid || p.petroCardTidMorning || p.petroCardTidNight, batch: p.petroCardBatch || p.petroCardBatchMorning || p.petroCardBatchNight });
+}
+
+// Dynamic Custom Collections
+(p.items || []).forEach(function(item) {
+  if (item.amount > 0) {
+    payRows.push({ label: item.displayName || item.collectionTypeCode, val: item.amount, tid: item.tid, batch: item.batch });
+  }
+});
+
+if (p.cashDeposit > 0) payRows.push({ label: 'Cash Deposit', val: p.cashDeposit });
+if (p.bankDeposit > 0) payRows.push({ label: 'Bank Deposit', val: p.bankDeposit });
+if (p.others > 0) payRows.push({ label: 'Others', val: p.others });
+
 payRows.filter(r => r.val > 0).forEach(r => {
   let details = '';
   if (r.tid) {

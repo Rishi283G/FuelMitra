@@ -67,49 +67,7 @@ public class ShiftCalculationService
             };
 
             // TABLE A — DSM Summary
-            foreach (var entry in primaryEntries)
-            {
-                var cash1 = entry.CashDenominations.Where(c => c.CashType == "Cash1").Sum(c => c.TotalAmount);
-                var cash2 = entry.CashDenominations.Where(c => c.CashType == "Cash2").Sum(c => c.TotalAmount);
-                var calc = _dsmCalculationService.Calculate(new DsmEntryDto
-                {
-                    DSMEntryId = entry.DsmEntryId,
-                    NozzleReadings = entry.NozzleReadings.Select(n => new NozzleReadingDto { Amount = (decimal)n.Amount }).ToList(),
-                    PaymentCollection = new PaymentCollectionDto
-                    {
-                        PhonePe = (decimal)((entry.PaymentCollection?.PhonePe ?? 0) + (entry.PaymentCollection?.PhonePeCard ?? 0)),
-                        CreditCard = (decimal)((entry.PaymentCollection?.CreditCard ?? 0) + (entry.PaymentCollection?.PetroCard ?? 0)),
-                        CashDeposit = (decimal)(cash1 + cash2 + (entry.PaymentCollection?.CashDeposit ?? 0)),
-                        PhysicalCash = 0  // Others is informational only, not included in TotalInDirect
-                    },
-                    DebitEntries = entry.DebitEntries.Select(d => new DebitEntryDto { Amount = (decimal)d.Amount }).ToList(),
-                    TestingEntries = entry.TestingEntries.Select(t => new TestingEntryDto
-                    {
-                        FuelType = t.FuelType,
-                        Amount = (decimal)t.Amount
-                    }).ToList()
-                });
-
-                dto.DsmSummaryRows.Add(new DsmSummaryRowDto
-                {
-                    DsmName = entry.DsmName,
-                    PumpId = entry.PumpId,
-                    PhonePeCard = entry.PaymentCollection?.PhonePeCard ?? 0,
-                    PhonePeCardMorning = entry.PaymentCollection?.PhonePeCardMorning ?? 0,
-                    PhonePeCardNight = entry.PaymentCollection?.PhonePeCardNight ?? 0,
-                    PhonePe = (double)((entry.PaymentCollection?.PhonePe ?? 0) + (entry.PaymentCollection?.PhonePeCard ?? 0)),
-                    PhonePeMorning = entry.PaymentCollection?.PhonePeMorning ?? 0,
-                    PhonePeNight = entry.PaymentCollection?.PhonePeNight ?? 0,
-                    CreditCardMorning = entry.PaymentCollection?.CreditCardMorning ?? 0,
-                    CreditCardNight = entry.PaymentCollection?.CreditCardNight ?? 0,
-                    PetroCard = entry.PaymentCollection?.PetroCard ?? 0,
-                    Debit = (double)calc.TotalCreditors,
-                    Expenses = entry.Expenses.Sum(e => e.Amount) + (entry.KhandharePetroleumEntries?.Sum(kp => kp.Amount) ?? 0),
-                    Testing = entry.TestingEntries.Sum(t => t.Amount),
-                    CashDeposit = cash1,
-                    CashInHand = cash2
-                });
-            }
+            dto.DsmSummaryRows = _aggregationService.BuildDsmSummaryRows(primaryEntries);
 
             // Group by DSM Name for shift-level totals using centralized ShiftAggregationService
             dto.DsmShiftTotals = _aggregationService.BuildDsmShiftTotals(dto.DsmSummaryRows);
@@ -255,7 +213,8 @@ public class ShiftCalculationService
             dto.BankCash = dto.Cash1Aggregate.GrandTotal;
             dto.CashInHand = dto.Cash2Aggregate.GrandTotal;
 
-            dto.TotalAmounts = dto.MsTesting + dto.HsdTesting + dto.CngTesting + dto.PhonePeTotal + dto.PetroCardTotal + dto.CreditCardTotal + dto.TotalDebit
+            double dynamicPaymentsTotal = dto.DsmSummaryRows.Sum(r => r.DynamicCollectionsTotal);
+            dto.TotalAmounts = dto.MsTesting + dto.HsdTesting + dto.CngTesting + dto.PhonePeTotal + dto.PetroCardTotal + dto.CreditCardTotal + dynamicPaymentsTotal + dto.TotalDebit
                 + dto.BankCash + dto.CashInHand + dto.TotalExpenses;
 
             dto.ReconciliationDifference = dto.TotalFuelSaleAmount - dto.TotalAmounts;
@@ -292,7 +251,7 @@ public class ShiftCalculationService
                 TotalCngLitres = calc.CngLitres,
                 TotalFuelSale = calc.TotalFuelSaleAmount,
                 TotalCash = calc.BankCash + calc.CashInHand,
-                TotalDigitalPayments = calc.PhonePeTotal + calc.PetroCardTotal + calc.CreditCardTotal,
+                TotalDigitalPayments = calc.PhonePeTotal + calc.PetroCardTotal + calc.CreditCardTotal + calc.DsmSummaryRows.Sum(r => r.DynamicCollectionsTotal),
                 TotalDebit = calc.TotalDebit,
                 TotalExpenses = calc.TotalExpenses,
                 IsLocked = calc.IsLocked

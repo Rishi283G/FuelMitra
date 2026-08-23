@@ -30,6 +30,9 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
     private readonly Rashtra.Licensing.LicenseManager _licenseManager;
     private readonly IDuplicateDataInspectionService _inspectionService;
     private readonly DuplicateResolutionService _resolutionService;
+    private readonly IFeatureToggleService _featureToggleService;
+    private readonly ICollectionTypeService _collectionTypeService;
+    private readonly IStationConfigurationService _stationConfigService;
 
     [ObservableProperty] private object? _currentView;
 
@@ -44,6 +47,26 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
     [ObservableProperty] private int _selectedNavIndex;
     [ObservableProperty] private string _currentUser = "";
     [ObservableProperty] private string _currentDateTime = DateTime.Now.ToString("dd MMM yyyy  hh:mm tt");
+
+    // Tab 5: Client Features
+    public ObservableCollection<AppFeatureSetting> FeatureSettings { get; } = new();
+    public ObservableCollection<AppFeatureSetting> FilteredFeatureSettings { get; } = new();
+    [ObservableProperty] private string _selectedFeatureRoleFilter = "All";
+    public string[] FeatureRoleFilterOptions { get; } = { "All", "Manager", "Owner", "Global" };
+    [ObservableProperty] private string _featureStatusMessage = "";
+
+    // Tab 6: Station & Collections
+    public ObservableCollection<PumpCardVm> ConfiguredPumps { get; } = new();
+    public ObservableCollection<TankDefinition> ConfiguredTanks { get; } = new();
+    public ObservableCollection<ProductMaster> ConfiguredProducts { get; } = new();
+    public ObservableCollection<CollectionTypeMaster> ConfiguredCollectionTypes { get; } = new();
+    public ObservableCollection<string> AvailableTankNames { get; } = new();
+    [ObservableProperty] private string _stationStatusMessage = "";
+    [ObservableProperty] private string _collectionStatusMessage = "";
+    public string[] AvailableFuelTypes { get; } = { "HSD", "MS-I", "MS-II", "CNG", "XP95", "Power" };
+    public string[] AvailableCollectionCategories { get; } = { "Online", "Card", "Cash", "Other" };
+
+
 
     // Tab 1: User Management
     public ObservableCollection<User> Users { get; } = new();
@@ -226,6 +249,10 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
         _inspectionService = _serviceProvider.GetRequiredService<IDuplicateDataInspectionService>();
         _resolutionService = _serviceProvider.GetRequiredService<DuplicateResolutionService>();
 
+        _featureToggleService = _serviceProvider.GetRequiredService<IFeatureToggleService>();
+        _collectionTypeService = _serviceProvider.GetRequiredService<ICollectionTypeService>();
+        _stationConfigService = _serviceProvider.GetRequiredService<IStationConfigurationService>();
+
         CurrentUser = _authService.CurrentUser?.Username ?? "Developer";
 
         // Listen to sync engine
@@ -249,6 +276,8 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
         _ = RefreshUsersAsync();
         _ = LoadCloudConfigAsync();
         _ = LoadDiagnosticsAsync();
+        _ = LoadFeaturesAsync();
+        _ = LoadStationAndCollectionsAsync();
         LoadLicenseInfo();
     }
 
@@ -263,8 +292,17 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
             {
                 _ = LoadDiagnosticsAsync();
             }
+            else if (idx == 5) // Features
+            {
+                _ = LoadFeaturesAsync();
+            }
+            else if (idx == 6) // Station & Collections
+            {
+                _ = LoadStationAndCollectionsAsync();
+            }
         }
     }
+
 
     // User Management actions
     [RelayCommand]
@@ -1430,3 +1468,486 @@ public class TableCountDto
     public string TableName { get; set; } = "";
     public int Count { get; set; }
 }
+
+public partial class NozzleItemVm : ObservableObject
+{
+    public int PumpMappingId { get; set; }
+    [ObservableProperty] private int _nozzleNumber;
+    [ObservableProperty] private string _fuelType = "HSD";
+    [ObservableProperty] private string _tankName = "";
+}
+
+public partial class PumpCardVm : ObservableObject
+{
+    [ObservableProperty] private int _pumpId;
+    public ObservableCollection<NozzleItemVm> Nozzles { get; } = new();
+}
+
+public partial class DeveloperMainWindowViewModel
+{
+    // ───────────────────────────────────────────────
+    // TAB 5: CLIENT FEATURES & PAGE ACCESS
+    // ───────────────────────────────────────────────
+
+    partial void OnSelectedFeatureRoleFilterChanged(string value)
+    {
+        FilterFeatures();
+    }
+
+    [RelayCommand]
+    public async Task LoadFeaturesAsync()
+    {
+        FeatureStatusMessage = "⏳ Loading feature settings...";
+        try
+        {
+            var features = await _featureToggleService.GetAllFeaturesAsync();
+            FeatureSettings.Clear();
+            foreach (var f in features)
+            {
+                FeatureSettings.Add(f);
+            }
+            FilterFeatures();
+            FeatureStatusMessage = $"✅ Loaded {features.Count} feature settings.";
+        }
+        catch (Exception ex)
+        {
+            FeatureStatusMessage = $"❌ Failed to load features: {ex.Message}";
+        }
+    }
+
+    private void FilterFeatures()
+    {
+        FilteredFeatureSettings.Clear();
+        var filter = SelectedFeatureRoleFilter;
+        var query = FeatureSettings.AsEnumerable();
+
+        if (!string.Equals(filter, "All", StringComparison.OrdinalIgnoreCase))
+        {
+            query = query.Where(f => string.Equals(f.TargetRole, filter, StringComparison.OrdinalIgnoreCase));
+        }
+
+        foreach (var item in query)
+        {
+            FilteredFeatureSettings.Add(item);
+        }
+    }
+
+    [RelayCommand]
+    public async Task SaveFeaturesAsync()
+    {
+        FeatureStatusMessage = "⏳ Saving feature settings...";
+        try
+        {
+            // Core Dependency Guardrail: Ensure essential operations features remain enabled to prevent logical breakage
+            var dsmEntryFeature = FeatureSettings.FirstOrDefault(f => f.FeatureKey == "Admin_DsmEntry");
+            if (dsmEntryFeature != null && !dsmEntryFeature.IsEnabled)
+            {
+                dsmEntryFeature.IsEnabled = true;
+                MessageBox.Show("DSM Entry is a core operational module and must remain enabled to capture pump sales.", "Core Protection", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+
+            var finalCalcFeature = FeatureSettings.FirstOrDefault(f => f.FeatureKey == "Admin_FinalCalculation");
+            if (finalCalcFeature != null && !finalCalcFeature.IsEnabled)
+            {
+                finalCalcFeature.IsEnabled = true;
+                MessageBox.Show("Final Calculation is a core module required to reconcile shifts and calculate day sales.", "Core Protection", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+
+            var success = await _featureToggleService.SaveFeaturesAsync(FeatureSettings);
+            if (success)
+            {
+                FeatureStatusMessage = "✅ Feature matrix saved successfully!";
+                System.Windows.MessageBox.Show("Client feature configuration saved successfully!\nAdmin and Owner interfaces will now reflect these settings.", 
+                    "Features Saved", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            else
+            {
+                FeatureStatusMessage = "❌ Failed to save feature settings.";
+            }
+        }
+        catch (Exception ex)
+        {
+            FeatureStatusMessage = $"❌ Save error: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    public void ApplyClientPreset(string presetName)
+    {
+        if (presetName == "CurrentClient")
+        {
+            // Current client requirements:
+            // Daily sales, fuel/oil sales, debtor management, DSM salary, collections.
+            // Disable AGS Import, Profit & Loss, Mismatch Ledger if not needed.
+            foreach (var f in FeatureSettings)
+            {
+                if (f.FeatureKey == "Admin_AgsImport" || f.FeatureKey == "Owner_ProfitLoss" || f.FeatureKey == "Owner_MismatchLedger")
+                {
+                    f.IsEnabled = false;
+                }
+                else if (f.FeatureKey == "Collection_UseMorningNight")
+                {
+                    f.IsEnabled = false; // No morning/night split
+                }
+                else
+                {
+                    f.IsEnabled = true;
+                }
+            }
+            FeatureStatusMessage = "Applied 'Current Client' configuration preset. Click 'Save All Features' to persist.";
+        }
+        else if (presetName == "Full")
+        {
+            foreach (var f in FeatureSettings)
+            {
+                f.IsEnabled = true;
+            }
+            FeatureStatusMessage = "Applied 'All Features Enabled' preset. Click 'Save All Features' to persist.";
+        }
+        FilterFeatures();
+    }
+
+    // ───────────────────────────────────────────────
+    // TAB 6: STATION LAYOUT & COLLECTIONS MASTER
+    // ───────────────────────────────────────────────
+
+    [RelayCommand]
+    public async Task LoadStationAndCollectionsAsync()
+    {
+        StationStatusMessage = "⏳ Loading station layout...";
+        CollectionStatusMessage = "⏳ Loading collection types...";
+        try
+        {
+            // Load Tanks
+            var tanks = await _stationConfigService.GetAllTanksAsync();
+            ConfiguredTanks.Clear();
+            foreach (var t in tanks)
+            {
+                ConfiguredTanks.Add(t);
+            }
+            RefreshAvailableTankNames();
+
+            // Load Pump Mappings
+            var mappings = await _stationConfigService.GetAllPumpMappingsAsync();
+            ConfiguredPumps.Clear();
+
+            var grouped = mappings
+                .GroupBy(m => m.PumpId)
+                .OrderBy(g => g.Key);
+
+            foreach (var g in grouped)
+            {
+                var pumpVm = new PumpCardVm { PumpId = g.Key };
+                foreach (var nozzle in g.OrderBy(n => n.NozzleNumber))
+                {
+                    pumpVm.Nozzles.Add(new NozzleItemVm
+                    {
+                        PumpMappingId = nozzle.PumpMappingId,
+                        NozzleNumber = nozzle.NozzleNumber,
+                        FuelType = nozzle.FuelType,
+                        TankName = string.IsNullOrWhiteSpace(nozzle.TankName) ? (AvailableTankNames.FirstOrDefault() ?? "Tank 1") : nozzle.TankName
+                    });
+                }
+                ConfiguredPumps.Add(pumpVm);
+            }
+
+            // Load Products
+            var products = await _stationConfigService.GetAllProductsAsync();
+            ConfiguredProducts.Clear();
+            foreach (var p in products)
+            {
+                ConfiguredProducts.Add(p);
+            }
+
+            // Load Collection Types
+            var collectionTypes = await _collectionTypeService.GetAllCollectionTypesAsync();
+            ConfiguredCollectionTypes.Clear();
+            foreach (var c in collectionTypes)
+            {
+                ConfiguredCollectionTypes.Add(c);
+            }
+
+            StationStatusMessage = $"✅ Loaded {ConfiguredPumps.Count} pumps, {ConfiguredTanks.Count} tanks.";
+            CollectionStatusMessage = $"✅ Loaded {ConfiguredCollectionTypes.Count} collection types.";
+        }
+        catch (Exception ex)
+        {
+            StationStatusMessage = $"❌ Load error: {ex.Message}";
+            CollectionStatusMessage = $"❌ Load error: {ex.Message}";
+        }
+    }
+
+    private void RefreshAvailableTankNames()
+    {
+        AvailableTankNames.Clear();
+        foreach (var t in ConfiguredTanks.Select(t => t.TankName).Where(n => !string.IsNullOrWhiteSpace(n)).Distinct())
+        {
+            AvailableTankNames.Add(t);
+        }
+        if (AvailableTankNames.Count == 0)
+        {
+            AvailableTankNames.Add("MS - 20KL");
+            AvailableTankNames.Add("HSD - 20KL");
+            AvailableTankNames.Add("HSD - 20KL II");
+            AvailableTankNames.Add("CNG Line");
+        }
+    }
+
+    [RelayCommand]
+    public void AddPump()
+    {
+        var nextPumpId = ConfiguredPumps.Select(p => p.PumpId).DefaultIfEmpty(0).Max() + 1;
+        var newPump = new PumpCardVm { PumpId = nextPumpId };
+        
+        var nextNozzle = ConfiguredPumps.SelectMany(p => p.Nozzles).Select(n => n.NozzleNumber).DefaultIfEmpty(0).Max() + 1;
+        var defaultTank = AvailableTankNames.FirstOrDefault() ?? "Tank 1";
+        newPump.Nozzles.Add(new NozzleItemVm
+        {
+            NozzleNumber = nextNozzle,
+            FuelType = "HSD",
+            TankName = defaultTank
+        });
+
+        ConfiguredPumps.Add(newPump);
+        StationStatusMessage = $"Added Pump {nextPumpId}. Remember to click 'Save Station Layout'.";
+    }
+
+    [RelayCommand]
+    public void RemovePump(PumpCardVm? pump)
+    {
+        if (pump == null) return;
+        ConfiguredPumps.Remove(pump);
+        StationStatusMessage = $"Removed Pump {pump.PumpId}. Remember to click 'Save Station Layout'.";
+    }
+
+    [RelayCommand]
+    public void AddNozzle(PumpCardVm? pump)
+    {
+        if (pump == null) return;
+        var nextNozzle = ConfiguredPumps.SelectMany(p => p.Nozzles).Select(n => n.NozzleNumber).DefaultIfEmpty(0).Max() + 1;
+        var defaultTank = AvailableTankNames.FirstOrDefault() ?? "Tank 1";
+        pump.Nozzles.Add(new NozzleItemVm
+        {
+            NozzleNumber = nextNozzle,
+            FuelType = "MS-I",
+            TankName = defaultTank
+        });
+        StationStatusMessage = $"Added Nozzle {nextNozzle} to Pump {pump.PumpId}.";
+    }
+
+    [RelayCommand]
+    public void RemoveNozzle(NozzleItemVm? nozzle)
+    {
+        if (nozzle == null) return;
+        foreach (var p in ConfiguredPumps)
+        {
+            if (p.Nozzles.Contains(nozzle))
+            {
+                p.Nozzles.Remove(nozzle);
+                StationStatusMessage = $"Removed Nozzle {nozzle.NozzleNumber} from Pump {p.PumpId}.";
+                break;
+            }
+        }
+    }
+
+    [RelayCommand]
+    public void SetNozzleTank((NozzleItemVm Nozzle, string TankName) param)
+    {
+        if (param.Nozzle != null && !string.IsNullOrWhiteSpace(param.TankName))
+        {
+            param.Nozzle.TankName = param.TankName;
+            StationStatusMessage = $"Attached Nozzle {param.Nozzle.NozzleNumber} to {param.TankName}.";
+        }
+    }
+
+    [RelayCommand]
+    public async Task SaveStationLayoutAsync()
+    {
+        StationStatusMessage = "⏳ Saving station layout...";
+        try
+        {
+            var flatMappings = new List<PumpMapping>();
+            var allNozzleNumbers = new HashSet<int>();
+
+            foreach (var pump in ConfiguredPumps)
+            {
+                foreach (var nozzle in pump.Nozzles)
+                {
+                    if (allNozzleNumbers.Contains(nozzle.NozzleNumber))
+                    {
+                        StationStatusMessage = $"❌ Duplicate Nozzle Number {nozzle.NozzleNumber} detected! Each nozzle must be unique.";
+                        MessageBox.Show($"Duplicate Nozzle Number {nozzle.NozzleNumber} detected across pumps.\nEach nozzle number must be unique.", "Validation Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        return;
+                    }
+                    allNozzleNumbers.Add(nozzle.NozzleNumber);
+
+                    flatMappings.Add(new PumpMapping
+                    {
+                        PumpMappingId = nozzle.PumpMappingId,
+                        PumpId = pump.PumpId,
+                        NozzleNumber = nozzle.NozzleNumber,
+                        FuelType = nozzle.FuelType,
+                        TankName = nozzle.TankName,
+                        IsActive = true,
+                        CreatedAt = DateTime.Now
+                    });
+                }
+            }
+
+            var success = await _stationConfigService.SavePumpMappingsAsync(flatMappings);
+            if (success)
+            {
+                StationStatusMessage = $"✅ Station layout successfully saved! ({flatMappings.Count} nozzles configured)";
+                MessageBox.Show("Station layout successfully updated in database and runtime cache.", "Station Saved", MessageBoxButton.OK, MessageBoxImage.Information);
+                await LoadStationAndCollectionsAsync();
+            }
+            else
+            {
+                StationStatusMessage = "❌ Failed to save station layout.";
+            }
+        }
+        catch (Exception ex)
+        {
+            StationStatusMessage = $"❌ Save error: {ex.Message}";
+        }
+    }
+
+    // ── Tanks ──
+    [RelayCommand]
+    public void AddTank()
+    {
+        var nextNum = ConfiguredTanks.Count + 1;
+        ConfiguredTanks.Add(new TankDefinition
+        {
+            TankName = $"Tank {nextNum} - 20KL",
+            CapacityKL = 20.0,
+            FuelType = "HSD",
+            IsActive = true,
+            CreatedAt = DateTime.Now
+        });
+        StationStatusMessage = "Added new Tank. Click 'Save Tanks' to commit.";
+    }
+
+    [RelayCommand]
+    public async Task DeleteTankAsync(TankDefinition? tank)
+    {
+        if (tank == null) return;
+        if (tank.TankId > 0)
+        {
+            await _stationConfigService.DeleteTankAsync(tank.TankId);
+        }
+        ConfiguredTanks.Remove(tank);
+        StationStatusMessage = $"Deleted tank: {tank.TankName}";
+    }
+
+    [RelayCommand]
+    public async Task SaveTanksAsync()
+    {
+        StationStatusMessage = "⏳ Saving tanks...";
+        try
+        {
+            foreach (var t in ConfiguredTanks)
+            {
+                await _stationConfigService.SaveTankAsync(t);
+            }
+            RefreshAvailableTankNames();
+            StationStatusMessage = "✅ Tanks saved successfully! Nozzles can now be attached to these tanks.";
+            MessageBox.Show("Storage tanks successfully saved to database.", "Tanks Saved", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            StationStatusMessage = $"❌ Save error: {ex.Message}";
+        }
+    }
+
+    // ── Collections ──
+    [RelayCommand]
+    public void AddCollectionType()
+    {
+        var nextOrder = ConfiguredCollectionTypes.Select(c => c.DisplayOrder).DefaultIfEmpty(0).Max() + 1;
+        ConfiguredCollectionTypes.Add(new CollectionTypeMaster
+        {
+            Code = $"NEW_COLLECTION_{nextOrder}",
+            DisplayName = "New Collection Method",
+            Category = "Online",
+            HasTidBatch = true,
+            DisplayOrder = nextOrder,
+            IsActive = true,
+            IsSystem = false,
+            CreatedAt = DateTime.Now
+        });
+        CollectionStatusMessage = "Added new Collection Type. Fill details and click 'Save Collection Types'.";
+    }
+
+    [RelayCommand]
+    public async Task DeleteCollectionTypeAsync(CollectionTypeMaster? col)
+    {
+        if (col == null) return;
+        try
+        {
+            if (col.CollectionTypeId > 0)
+            {
+                await _collectionTypeService.DeleteCollectionTypeAsync(col.CollectionTypeId);
+            }
+            ConfiguredCollectionTypes.Remove(col);
+            CollectionStatusMessage = $"Removed collection type '{col.DisplayName}'.";
+            await LoadStationAndCollectionsAsync();
+        }
+        catch (Exception ex)
+        {
+            CollectionStatusMessage = $"❌ Error removing collection type: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    public void MoveCollectionUp(CollectionTypeMaster? col)
+    {
+        if (col == null) return;
+        var idx = ConfiguredCollectionTypes.IndexOf(col);
+        if (idx > 0)
+        {
+            ConfiguredCollectionTypes.Move(idx, idx - 1);
+            for (int i = 0; i < ConfiguredCollectionTypes.Count; i++)
+            {
+                ConfiguredCollectionTypes[i].DisplayOrder = i + 1;
+            }
+        }
+    }
+
+    [RelayCommand]
+    public void MoveCollectionDown(CollectionTypeMaster? col)
+    {
+        if (col == null) return;
+        var idx = ConfiguredCollectionTypes.IndexOf(col);
+        if (idx < ConfiguredCollectionTypes.Count - 1)
+        {
+            ConfiguredCollectionTypes.Move(idx, idx + 1);
+            for (int i = 0; i < ConfiguredCollectionTypes.Count; i++)
+            {
+                ConfiguredCollectionTypes[i].DisplayOrder = i + 1;
+            }
+        }
+    }
+
+    [RelayCommand]
+    public async Task SaveCollectionsAsync()
+    {
+        CollectionStatusMessage = "⏳ Saving collection types...";
+        try
+        {
+            for (int i = 0; i < ConfiguredCollectionTypes.Count; i++)
+            {
+                ConfiguredCollectionTypes[i].DisplayOrder = i + 1;
+                await _collectionTypeService.SaveCollectionTypeAsync(ConfiguredCollectionTypes[i]);
+            }
+            CollectionStatusMessage = "✅ Collection types saved successfully!";
+            MessageBox.Show("Collection types successfully saved! DSM Entry and TID sheets will now use these types.", "Collections Saved", MessageBoxButton.OK, MessageBoxImage.Information);
+            await LoadStationAndCollectionsAsync();
+        }
+        catch (Exception ex)
+        {
+            CollectionStatusMessage = $"❌ Save error: {ex.Message}";
+        }
+    }
+}
+
