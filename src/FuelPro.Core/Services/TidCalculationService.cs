@@ -15,23 +15,36 @@ public class TidCalculationService : ITidCalculationService
     private readonly ICreditorRepaymentRepository _repaymentRepo;
     private readonly IDsmPersonalDebtorRepository _personalDebtorRepo;
     private readonly ICollectionTypeService? _collectionTypeService;
+    private readonly IFeatureToggleService? _featureToggleService;
 
     public TidCalculationService(
         IShiftRepository shiftRepo,
         IDsmEntryRepository dsmRepo,
         ICreditorRepaymentRepository repaymentRepo,
         IDsmPersonalDebtorRepository personalDebtorRepo,
-        ICollectionTypeService? collectionTypeService = null)
+        ICollectionTypeService? collectionTypeService = null,
+        IFeatureToggleService? featureToggleService = null)
     {
         _shiftRepo = shiftRepo;
         _dsmRepo = dsmRepo;
         _repaymentRepo = repaymentRepo;
         _personalDebtorRepo = personalDebtorRepo;
         _collectionTypeService = collectionTypeService;
+        _featureToggleService = featureToggleService;
     }
 
     public async Task<BusinessDayTidSheet> GetTidSheetAsync(DateTime date)
     {
+        bool useMorningNight = _featureToggleService?.IsFeatureEnabled("Collection_UseMorningNight", false) ?? false;
+
+        string labelSlot1 = useMorningNight ? "Morning (12am - 8am)" : "Shift A";
+        string timeWindowSlot1 = useMorningNight ? "12:00 AM – 8:00 AM" : "Shift A";
+        string subtitleSlot1 = useMorningNight ? $"({date.Date:dd MMM} | 12:00 AM – 8:00 AM)" : $"({date.Date:dd MMM} | Shift A)";
+
+        string labelSlot2 = useMorningNight ? "Day (8am - 8pm)" : "Shift B";
+        string timeWindowSlot2 = useMorningNight ? "8:00 AM – 8:00 PM" : "Shift B";
+        string subtitleSlot2 = useMorningNight ? $"({date.Date:dd MMM} | 8:00 AM – 8:00 PM)" : $"({date.Date:dd MMM} | Shift B)";
+
         var sheet = new BusinessDayTidSheet
         {
             Date = date.Date,
@@ -43,7 +56,7 @@ public class TidCalculationService : ITidCalculationService
         var dynamicDsmItems = new List<TidItemDto>();
         var dynamicDebtorItems = new List<TidItemDto>();
 
-        // 1. Morning slot: Shift A of D (today)
+        // 1. Slot 1: Shift A of D (today)
         var morningShiftRes = await _shiftRepo.GetShiftAsync(date.Date, "A");
         if (morningShiftRes.Success && morningShiftRes.Data != null)
         {
@@ -56,8 +69,8 @@ public class TidCalculationService : ITidCalculationService
                     if (pc == null) continue;
                     pc.DsmEntry = entry;
 
-                    // PhonePe Direct Morning
-                    double ppVal = pc.PhonePeMorning;
+                    // PhonePe Direct Slot 1
+                    double ppVal = useMorningNight ? pc.PhonePeMorning : (pc.PhonePeMorning > 0 ? pc.PhonePeMorning : pc.PhonePe);
                     if (ppVal > 0)
                     {
                         sheet.PhonePePayments.Add(new TidItemDto
@@ -70,15 +83,15 @@ public class TidCalculationService : ITidCalculationService
                             Batch = pc.PhonePeBatchMorning ?? pc.PhonePeBatch,
                             Slot = "Morning",
                             PaymentCollection = pc,
-                            ShiftLabel = "Morning (12am - 8am)",
+                            ShiftLabel = labelSlot1,
                             SlotDate = date.Date.ToString("dd-MMM-yyyy"),
-                            TimeWindow = "12:00 AM – 8:00 AM",
-                            SlotDisplaySubtitle = $"({date.Date.ToString("dd MMM")} | 12:00 AM – 8:00 AM)"
+                            TimeWindow = timeWindowSlot1,
+                            SlotDisplaySubtitle = subtitleSlot1
                         });
                         sheet.PhonePeDirectMorning += ppVal;
                     }
 
-                    // PhonePe Card Morning
+                    // PhonePe Card Slot 1
                     double ppCardVal = pc.PhonePeCardMorning;
                     if (ppCardVal > 0)
                     {
@@ -92,15 +105,15 @@ public class TidCalculationService : ITidCalculationService
                             Batch = pc.PhonePeBatchMorning ?? pc.PhonePeBatch,
                             Slot = "Morning",
                             PaymentCollection = pc,
-                            ShiftLabel = "Morning (12am - 8am)",
+                            ShiftLabel = labelSlot1,
                             SlotDate = date.Date.ToString("dd-MMM-yyyy"),
-                            TimeWindow = "12:00 AM – 8:00 AM",
-                            SlotDisplaySubtitle = $"({date.Date.ToString("dd MMM")} | 12:00 AM – 8:00 AM)"
+                            TimeWindow = timeWindowSlot1,
+                            SlotDisplaySubtitle = subtitleSlot1
                         });
                         sheet.PhonePeCardMorning += ppCardVal;
                     }
 
-                    // Cross-DSM QR Payments Morning
+                    // Cross-DSM QR Payments Slot 1
                     if (entry.QrPayments != null)
                     {
                         foreach (var qr in entry.QrPayments.Where(q => q.Amount > 0))
@@ -115,17 +128,17 @@ public class TidCalculationService : ITidCalculationService
                                 Batch = !string.IsNullOrWhiteSpace(qr.Batch) ? qr.Batch : (pc.PhonePeBatchMorning ?? pc.PhonePeBatch),
                                 Slot = "Morning",
                                 PaymentCollection = pc,
-                                ShiftLabel = "Morning (12am - 8am)",
+                                ShiftLabel = labelSlot1,
                                 SlotDate = date.Date.ToString("dd-MMM-yyyy"),
-                                TimeWindow = "12:00 AM – 8:00 AM",
-                                SlotDisplaySubtitle = $"({date.Date.ToString("dd MMM")} | 12:00 AM – 8:00 AM)"
+                                TimeWindow = timeWindowSlot1,
+                                SlotDisplaySubtitle = subtitleSlot1
                             });
                             sheet.PhonePeDirectMorning += qr.Amount;
                         }
                     }
 
-                    // Credit Card Morning
-                    double ccVal = pc.CreditCardMorning;
+                    // Credit Card Slot 1
+                    double ccVal = useMorningNight ? pc.CreditCardMorning : (pc.CreditCardMorning > 0 ? pc.CreditCardMorning : pc.CreditCard);
                     if (ccVal > 0)
                     {
                         sheet.CardPayments.Add(new TidItemDto
@@ -138,16 +151,16 @@ public class TidCalculationService : ITidCalculationService
                             Batch = pc.CreditCardBatchMorning ?? pc.CardBatch,
                             Slot = "Morning",
                             PaymentCollection = pc,
-                            ShiftLabel = "Morning (12am - 8am)",
+                            ShiftLabel = labelSlot1,
                             SlotDate = date.Date.ToString("dd-MMM-yyyy"),
-                            TimeWindow = "12:00 AM – 8:00 AM",
-                            SlotDisplaySubtitle = $"({date.Date.ToString("dd MMM")} | 12:00 AM – 8:00 AM)"
+                            TimeWindow = timeWindowSlot1,
+                            SlotDisplaySubtitle = subtitleSlot1
                         });
                         sheet.PineLabsCardMorning += ccVal;
                     }
 
-                    // Petro Card Morning
-                    double petroVal = pc.PetroCardMorning;
+                    // Petro Card Slot 1
+                    double petroVal = useMorningNight ? pc.PetroCardMorning : (pc.PetroCardMorning > 0 ? pc.PetroCardMorning : pc.PetroCard);
                     if (petroVal > 0)
                     {
                         sheet.PetroCardPayments.Add(new TidItemDto
@@ -160,17 +173,17 @@ public class TidCalculationService : ITidCalculationService
                             Batch = pc.PetroCardBatchMorning ?? pc.PetroCardBatch,
                             Slot = "Morning",
                             PaymentCollection = pc,
-                            ShiftLabel = "Morning (12am - 8am)",
+                            ShiftLabel = labelSlot1,
                             SlotDate = date.Date.ToString("dd-MMM-yyyy"),
-                            TimeWindow = "12:00 AM – 8:00 AM",
-                            SlotDisplaySubtitle = $"({date.Date.ToString("dd MMM")} | 12:00 AM – 8:00 AM)",
+                            TimeWindow = timeWindowSlot1,
+                            SlotDisplaySubtitle = subtitleSlot1,
                             CollectionTypeCode = "PETROCARD",
                             CollectionTypeName = "Petro Card"
                         });
                         sheet.PetroCardMorning += petroVal;
                     }
 
-                    // Dynamic collection items Morning (e.g. SBI Redeem, Paytm, QR, Mobikwik)
+                    // Dynamic collection items Slot 1 (e.g. SBI Redeem, Paytm, QR, Mobikwik)
                     if (pc.Items != null)
                     {
                         foreach (var item in pc.Items.Where(i => i.Amount > 0 || !string.IsNullOrWhiteSpace(i.Tid)))
@@ -185,10 +198,10 @@ public class TidCalculationService : ITidCalculationService
                                 Batch = !string.IsNullOrWhiteSpace(item.Batch) ? item.Batch : "—",
                                 Slot = "Morning",
                                 PaymentCollection = pc,
-                                ShiftLabel = "Morning (12am - 8am)",
+                                ShiftLabel = labelSlot1,
                                 SlotDate = date.Date.ToString("dd-MMM-yyyy"),
-                                TimeWindow = "12:00 AM – 8:00 AM",
-                                SlotDisplaySubtitle = $"({date.Date.ToString("dd MMM")} | 12:00 AM – 8:00 AM)",
+                                TimeWindow = timeWindowSlot1,
+                                SlotDisplaySubtitle = subtitleSlot1,
                                 CollectionTypeCode = item.CollectionTypeCode
                             });
                         }
@@ -210,8 +223,8 @@ public class TidCalculationService : ITidCalculationService
                     if (pc == null) continue;
                     pc.DsmEntry = entry;
 
-                    // PhonePe Direct Day (prefer Day field, fall back to Morning for old records)
-                    double ppVal = pc.PhonePeDay > 0 ? pc.PhonePeDay : pc.PhonePeMorning;
+                    // PhonePe Direct Day
+                    double ppVal = pc.PhonePeDay > 0 ? pc.PhonePeDay : (useMorningNight ? pc.PhonePeMorning : pc.PhonePe);
                     if (ppVal > 0)
                     {
                         sheet.PhonePePayments.Add(new TidItemDto
@@ -224,17 +237,17 @@ public class TidCalculationService : ITidCalculationService
                             Batch = pc.PhonePeBatchDay ?? pc.PhonePeBatchMorning ?? pc.PhonePeBatch,
                             Slot = "Day",
                             PaymentCollection = pc,
-                            ShiftLabel = "Day (8am - 8pm)",
+                            ShiftLabel = labelSlot2,
                             SlotDate = date.Date.ToString("dd-MMM-yyyy"),
-                            TimeWindow = "8:00 AM – 8:00 PM",
-                            SlotDisplaySubtitle = $"({date.Date.ToString("dd MMM")} | 8:00 AM – 8:00 PM)",
+                            TimeWindow = timeWindowSlot2,
+                            SlotDisplaySubtitle = subtitleSlot2,
                             CollectionTypeCode = "PHONEPE",
                             CollectionTypeName = "PhonePe"
                         });
                         sheet.PhonePeDirectDay += ppVal;
                     }
 
-                    // PhonePe Card Day (prefer Day field, fall back to Morning for old records)
+                    // PhonePe Card Day
                     double ppCardVal = pc.PhonePeCardDay > 0 ? pc.PhonePeCardDay : pc.PhonePeCardMorning;
                     if (ppCardVal > 0)
                     {
@@ -248,10 +261,10 @@ public class TidCalculationService : ITidCalculationService
                             Batch = pc.PhonePeBatchDay ?? pc.PhonePeBatchMorning ?? pc.PhonePeBatch,
                             Slot = "Day",
                             PaymentCollection = pc,
-                            ShiftLabel = "Day (8am - 8pm)",
+                            ShiftLabel = labelSlot2,
                             SlotDate = date.Date.ToString("dd-MMM-yyyy"),
-                            TimeWindow = "8:00 AM – 8:00 PM",
-                            SlotDisplaySubtitle = $"({date.Date.ToString("dd MMM")} | 8:00 AM – 8:00 PM)",
+                            TimeWindow = timeWindowSlot2,
+                            SlotDisplaySubtitle = subtitleSlot2,
                             CollectionTypeCode = "PHONEPE",
                             CollectionTypeName = "PhonePe"
                         });
@@ -273,10 +286,10 @@ public class TidCalculationService : ITidCalculationService
                                 Batch = !string.IsNullOrWhiteSpace(qr.Batch) ? qr.Batch : (pc.PhonePeBatchDay ?? pc.PhonePeBatchMorning ?? pc.PhonePeBatch),
                                 Slot = "Day",
                                 PaymentCollection = pc,
-                                ShiftLabel = "Day (8am - 8pm)",
+                                ShiftLabel = labelSlot2,
                                 SlotDate = date.Date.ToString("dd-MMM-yyyy"),
-                                TimeWindow = "8:00 AM – 8:00 PM",
-                                SlotDisplaySubtitle = $"({date.Date.ToString("dd MMM")} | 8:00 AM – 8:00 PM)",
+                                TimeWindow = timeWindowSlot2,
+                                SlotDisplaySubtitle = subtitleSlot2,
                                 CollectionTypeCode = "PHONEPE",
                                 CollectionTypeName = "PhonePe"
                             });
@@ -284,8 +297,8 @@ public class TidCalculationService : ITidCalculationService
                         }
                     }
 
-                    // Credit Card Day (prefer Day field, fall back to Morning for old records)
-                    double ccVal = pc.CreditCardDay > 0 ? pc.CreditCardDay : pc.CreditCardMorning;
+                    // Credit Card Day
+                    double ccVal = pc.CreditCardDay > 0 ? pc.CreditCardDay : (useMorningNight ? pc.CreditCardMorning : pc.CreditCard);
                     if (ccVal > 0)
                     {
                         sheet.CardPayments.Add(new TidItemDto
@@ -298,18 +311,18 @@ public class TidCalculationService : ITidCalculationService
                             Batch = pc.CreditCardBatchDay ?? pc.CreditCardBatchMorning ?? pc.CardBatch,
                             Slot = "Day",
                             PaymentCollection = pc,
-                            ShiftLabel = "Day (8am - 8pm)",
+                            ShiftLabel = labelSlot2,
                             SlotDate = date.Date.ToString("dd-MMM-yyyy"),
-                            TimeWindow = "8:00 AM – 8:00 PM",
-                            SlotDisplaySubtitle = $"({date.Date.ToString("dd MMM")} | 8:00 AM – 8:00 PM)",
+                            TimeWindow = timeWindowSlot2,
+                            SlotDisplaySubtitle = subtitleSlot2,
                             CollectionTypeCode = "PINELAB_CARD",
                             CollectionTypeName = "PINELAB CARD"
                         });
                         sheet.PineLabsCardDay += ccVal;
                     }
 
-                    // Petro Card Day (prefer Day field, fall back to Morning for old records)
-                    double petroVal = pc.PetroCardDay > 0 ? pc.PetroCardDay : pc.PetroCardMorning;
+                    // Petro Card Day
+                    double petroVal = pc.PetroCardDay > 0 ? pc.PetroCardDay : (useMorningNight ? pc.PetroCardMorning : pc.PetroCard);
                     if (petroVal > 0)
                     {
                         sheet.PetroCardPayments.Add(new TidItemDto
@@ -322,10 +335,10 @@ public class TidCalculationService : ITidCalculationService
                             Batch = pc.PetroCardBatchDay ?? pc.PetroCardBatchMorning ?? pc.PetroCardBatch,
                             Slot = "Day",
                             PaymentCollection = pc,
-                            ShiftLabel = "Day (8am - 8pm)",
+                            ShiftLabel = labelSlot2,
                             SlotDate = date.Date.ToString("dd-MMM-yyyy"),
-                            TimeWindow = "8:00 AM – 8:00 PM",
-                            SlotDisplaySubtitle = $"({date.Date.ToString("dd MMM")} | 8:00 AM – 8:00 PM)",
+                            TimeWindow = timeWindowSlot2,
+                            SlotDisplaySubtitle = subtitleSlot2,
                             CollectionTypeCode = "PETROCARD",
                             CollectionTypeName = "Petro Card"
                         });
@@ -347,10 +360,10 @@ public class TidCalculationService : ITidCalculationService
                                 Batch = !string.IsNullOrWhiteSpace(item.Batch) ? item.Batch : "—",
                                 Slot = "Day",
                                 PaymentCollection = pc,
-                                ShiftLabel = "Day (8am - 8pm)",
+                                ShiftLabel = labelSlot2,
                                 SlotDate = date.Date.ToString("dd-MMM-yyyy"),
-                                TimeWindow = "8:00 AM – 8:00 PM",
-                                SlotDisplaySubtitle = $"({date.Date.ToString("dd MMM")} | 8:00 AM – 8:00 PM)",
+                                TimeWindow = timeWindowSlot2,
+                                SlotDisplaySubtitle = subtitleSlot2,
                                 CollectionTypeCode = item.CollectionTypeCode
                             });
                         }
@@ -359,81 +372,34 @@ public class TidCalculationService : ITidCalculationService
             }
         }
 
-        // 3. Night slot: Shift A of D+1 (tomorrow)
+        // 3. Night slot: Shift A of D+1 (tomorrow) - Only if 3-slot midnight split is enabled
         var tomorrowDate = date.Date.AddDays(1);
-        var nightShiftRes = await _shiftRepo.GetShiftAsync(tomorrowDate, "A");
-        if (nightShiftRes.Success && nightShiftRes.Data != null)
+        if (useMorningNight)
         {
-            var entriesRes = await _dsmRepo.GetEntriesForShiftAsync(nightShiftRes.Data.ShiftId);
-            if (entriesRes.Success && entriesRes.Data != null)
+            var nightShiftRes = await _shiftRepo.GetShiftAsync(tomorrowDate, "A");
+            if (nightShiftRes.Success && nightShiftRes.Data != null)
             {
-                foreach (var entry in entriesRes.Data.OrderBy(e => e.PumpId))
+                var entriesRes = await _dsmRepo.GetEntriesForShiftAsync(nightShiftRes.Data.ShiftId);
+                if (entriesRes.Success && entriesRes.Data != null)
                 {
-                    var pc = entry.PaymentCollection;
-                    if (pc == null) continue;
-                    pc.DsmEntry = entry;
-
-                    // PhonePe Direct Night
-                    double ppVal = pc.PhonePeNight;
-                    if (ppVal > 0)
+                    foreach (var entry in entriesRes.Data.OrderBy(e => e.PumpId))
                     {
-                        sheet.PhonePePayments.Add(new TidItemDto
-                        {
-                            DsmName = entry.DsmName,
-                            PumpId = entry.PumpId,
-                            RomanIndex = ToRoman(entry.PumpId),
-                            Amount = ppVal,
-                            Tid = pc.PhonePeTidNight ?? pc.PhonePeTid,
-                            Batch = pc.PhonePeBatchNight ?? pc.PhonePeBatch,
-                            Slot = "Night",
-                            PaymentCollection = pc,
-                            ShiftLabel = "Night (8pm - 12am)",
-                            SlotDate = date.Date.ToString("dd-MMM-yyyy"),
-                            TimeWindow = "8:00 PM – 12:00 AM",
-                            SlotDisplaySubtitle = $"({date.Date.ToString("dd MMM")} | 8:00 PM – 12:00 AM)",
-                            CollectionTypeCode = "PHONEPE",
-                            CollectionTypeName = "PhonePe"
-                        });
-                        sheet.PhonePeDirectNight += ppVal;
-                    }
+                        var pc = entry.PaymentCollection;
+                        if (pc == null) continue;
+                        pc.DsmEntry = entry;
 
-                    // PhonePe Card Night
-                    double ppCardVal = pc.PhonePeCardNight;
-                    if (ppCardVal > 0)
-                    {
-                        sheet.PhonePePayments.Add(new TidItemDto
-                        {
-                            DsmName = entry.DsmName,
-                            PumpId = entry.PumpId,
-                            RomanIndex = ToRoman(entry.PumpId),
-                            Amount = ppCardVal,
-                            Tid = pc.PhonePeTidNight ?? pc.PhonePeTid,
-                            Batch = pc.PhonePeBatchNight ?? pc.PhonePeBatch,
-                            Slot = "Night",
-                            PaymentCollection = pc,
-                            ShiftLabel = "Night (8pm - 12am)",
-                            SlotDate = date.Date.ToString("dd-MMM-yyyy"),
-                            TimeWindow = "8:00 PM – 12:00 AM",
-                            SlotDisplaySubtitle = $"({date.Date.ToString("dd MMM")} | 8:00 PM – 12:00 AM)",
-                            CollectionTypeCode = "PHONEPE",
-                            CollectionTypeName = "PhonePe"
-                        });
-                        sheet.PhonePeCardNight += ppCardVal;
-                    }
-
-                    // Cross-DSM QR Payments Night
-                    if (entry.QrPayments != null)
-                    {
-                        foreach (var qr in entry.QrPayments.Where(q => q.Amount > 0))
+                        // PhonePe Direct Night
+                        double ppVal = pc.PhonePeNight;
+                        if (ppVal > 0)
                         {
                             sheet.PhonePePayments.Add(new TidItemDto
                             {
-                                DsmName = $"{entry.DsmName} (QR: {qr.TargetDsmName})",
+                                DsmName = entry.DsmName,
                                 PumpId = entry.PumpId,
                                 RomanIndex = ToRoman(entry.PumpId),
-                                Amount = qr.Amount,
-                                Tid = !string.IsNullOrWhiteSpace(qr.Tid) ? qr.Tid : (pc.PhonePeTidNight ?? pc.PhonePeTid),
-                                Batch = !string.IsNullOrWhiteSpace(qr.Batch) ? qr.Batch : (pc.PhonePeBatchNight ?? pc.PhonePeBatch),
+                                Amount = ppVal,
+                                Tid = pc.PhonePeTidNight ?? pc.PhonePeTid,
+                                Batch = pc.PhonePeBatchNight ?? pc.PhonePeBatch,
                                 Slot = "Night",
                                 PaymentCollection = pc,
                                 ShiftLabel = "Night (8pm - 12am)",
@@ -443,79 +409,129 @@ public class TidCalculationService : ITidCalculationService
                                 CollectionTypeCode = "PHONEPE",
                                 CollectionTypeName = "PhonePe"
                             });
-                            sheet.PhonePeDirectNight += qr.Amount;
+                            sheet.PhonePeDirectNight += ppVal;
                         }
-                    }
 
-                    // Credit Card Night
-                    double ccVal = pc.CreditCardNight;
-                    if (ccVal > 0)
-                    {
-                        sheet.CardPayments.Add(new TidItemDto
+                        // PhonePe Card Night
+                        double ppCardVal = pc.PhonePeCardNight;
+                        if (ppCardVal > 0)
                         {
-                            DsmName = entry.DsmName,
-                            PumpId = entry.PumpId,
-                            RomanIndex = ToRoman(entry.PumpId),
-                            Amount = ccVal,
-                            Tid = pc.CreditCardTidNight ?? pc.CardTid,
-                            Batch = pc.CreditCardBatchNight ?? pc.CardBatch,
-                            Slot = "Night",
-                            PaymentCollection = pc,
-                            ShiftLabel = "Night (8pm - 12am)",
-                            SlotDate = date.Date.ToString("dd-MMM-yyyy"),
-                            TimeWindow = "8:00 PM – 12:00 AM",
-                            SlotDisplaySubtitle = $"({date.Date.ToString("dd MMM")} | 8:00 PM – 12:00 AM)",
-                            CollectionTypeCode = "PINELAB_CARD",
-                            CollectionTypeName = "PINELAB CARD"
-                        });
-                        sheet.PineLabsCardNight += ccVal;
-                    }
-
-                    // Petro Card Night
-                    double petroVal = pc.PetroCardNight;
-                    if (petroVal > 0)
-                    {
-                        sheet.PetroCardPayments.Add(new TidItemDto
-                        {
-                            DsmName = entry.DsmName,
-                            PumpId = entry.PumpId,
-                            RomanIndex = ToRoman(entry.PumpId),
-                            Amount = petroVal,
-                            Tid = pc.PetroCardTidNight ?? pc.PetroCardTid,
-                            Batch = pc.PetroCardBatchNight ?? pc.PetroCardBatch,
-                            Slot = "Night",
-                            PaymentCollection = pc,
-                            ShiftLabel = "Night (8pm - 12am)",
-                            SlotDate = date.Date.ToString("dd-MMM-yyyy"),
-                            TimeWindow = "8:00 PM – 12:00 AM",
-                            SlotDisplaySubtitle = $"({date.Date.ToString("dd MMM")} | 8:00 PM – 12:00 AM)",
-                            CollectionTypeCode = "PETROCARD",
-                            CollectionTypeName = "Petro Card"
-                        });
-                        sheet.PetroCardNight += petroVal;
-                    }
-
-                    // Dynamic collection items Night
-                    if (pc.Items != null)
-                    {
-                        foreach (var item in pc.Items.Where(i => i.Amount > 0 || !string.IsNullOrWhiteSpace(i.Tid)))
-                        {
-                            dynamicDsmItems.Add(new TidItemDto
+                            sheet.PhonePePayments.Add(new TidItemDto
                             {
                                 DsmName = entry.DsmName,
                                 PumpId = entry.PumpId,
                                 RomanIndex = ToRoman(entry.PumpId),
-                                Amount = item.Amount,
-                                Tid = !string.IsNullOrWhiteSpace(item.Tid) ? item.Tid : "—",
-                                Batch = !string.IsNullOrWhiteSpace(item.Batch) ? item.Batch : "—",
+                                Amount = ppCardVal,
+                                Tid = pc.PhonePeTidNight ?? pc.PhonePeTid,
+                                Batch = pc.PhonePeBatchNight ?? pc.PhonePeBatch,
                                 Slot = "Night",
                                 PaymentCollection = pc,
                                 ShiftLabel = "Night (8pm - 12am)",
                                 SlotDate = date.Date.ToString("dd-MMM-yyyy"),
                                 TimeWindow = "8:00 PM – 12:00 AM",
                                 SlotDisplaySubtitle = $"({date.Date.ToString("dd MMM")} | 8:00 PM – 12:00 AM)",
-                                CollectionTypeCode = item.CollectionTypeCode
+                                CollectionTypeCode = "PHONEPE",
+                                CollectionTypeName = "PhonePe"
                             });
+                            sheet.PhonePeCardNight += ppCardVal;
+                        }
+
+                        // Cross-DSM QR Payments Night
+                        if (entry.QrPayments != null)
+                        {
+                            foreach (var qr in entry.QrPayments.Where(q => q.Amount > 0))
+                            {
+                                sheet.PhonePePayments.Add(new TidItemDto
+                                {
+                                    DsmName = $"{entry.DsmName} (QR: {qr.TargetDsmName})",
+                                    PumpId = entry.PumpId,
+                                    RomanIndex = ToRoman(entry.PumpId),
+                                    Amount = qr.Amount,
+                                    Tid = !string.IsNullOrWhiteSpace(qr.Tid) ? qr.Tid : (pc.PhonePeTidNight ?? pc.PhonePeTid),
+                                    Batch = !string.IsNullOrWhiteSpace(qr.Batch) ? qr.Batch : (pc.PhonePeBatchNight ?? pc.PhonePeBatch),
+                                    Slot = "Night",
+                                    PaymentCollection = pc,
+                                    ShiftLabel = "Night (8pm - 12am)",
+                                    SlotDate = date.Date.ToString("dd-MMM-yyyy"),
+                                    TimeWindow = "8:00 PM – 12:00 AM",
+                                    SlotDisplaySubtitle = $"({date.Date.ToString("dd MMM")} | 8:00 PM – 12:00 AM)",
+                                    CollectionTypeCode = "PHONEPE",
+                                    CollectionTypeName = "PhonePe"
+                                });
+                                sheet.PhonePeDirectNight += qr.Amount;
+                            }
+                        }
+
+                        // Credit Card Night
+                        double ccVal = pc.CreditCardNight;
+                        if (ccVal > 0)
+                        {
+                            sheet.CardPayments.Add(new TidItemDto
+                            {
+                                DsmName = entry.DsmName,
+                                PumpId = entry.PumpId,
+                                RomanIndex = ToRoman(entry.PumpId),
+                                Amount = ccVal,
+                                Tid = pc.CreditCardTidNight ?? pc.CardTid,
+                                Batch = pc.CreditCardBatchNight ?? pc.CardBatch,
+                                Slot = "Night",
+                                PaymentCollection = pc,
+                                ShiftLabel = "Night (8pm - 12am)",
+                                SlotDate = date.Date.ToString("dd-MMM-yyyy"),
+                                TimeWindow = "8:00 PM – 12:00 AM",
+                                SlotDisplaySubtitle = $"({date.Date.ToString("dd MMM")} | 8:00 PM – 12:00 AM)",
+                                CollectionTypeCode = "PINELAB_CARD",
+                                CollectionTypeName = "PINELAB CARD"
+                            });
+                            sheet.PineLabsCardNight += ccVal;
+                        }
+
+                        // Petro Card Night
+                        double petroVal = pc.PetroCardNight;
+                        if (petroVal > 0)
+                        {
+                            sheet.PetroCardPayments.Add(new TidItemDto
+                            {
+                                DsmName = entry.DsmName,
+                                PumpId = entry.PumpId,
+                                RomanIndex = ToRoman(entry.PumpId),
+                                Amount = petroVal,
+                                Tid = pc.PetroCardTidNight ?? pc.PetroCardTid,
+                                Batch = pc.PetroCardBatchNight ?? pc.PetroCardBatch,
+                                Slot = "Night",
+                                PaymentCollection = pc,
+                                ShiftLabel = "Night (8pm - 12am)",
+                                SlotDate = date.Date.ToString("dd-MMM-yyyy"),
+                                TimeWindow = "8:00 PM – 12:00 AM",
+                                SlotDisplaySubtitle = $"({date.Date.ToString("dd MMM")} | 8:00 PM – 12:00 AM)",
+                                CollectionTypeCode = "PETROCARD",
+                                CollectionTypeName = "Petro Card"
+                            });
+                            sheet.PetroCardNight += petroVal;
+                        }
+
+                        // Dynamic collection items Night
+                        if (pc.Items != null)
+                        {
+                            foreach (var item in pc.Items.Where(i => i.Amount > 0 || !string.IsNullOrWhiteSpace(i.Tid)))
+                            {
+                                dynamicDsmItems.Add(new TidItemDto
+                                {
+                                    DsmName = entry.DsmName,
+                                    PumpId = entry.PumpId,
+                                    RomanIndex = ToRoman(entry.PumpId),
+                                    Amount = item.Amount,
+                                    Tid = !string.IsNullOrWhiteSpace(item.Tid) ? item.Tid : "—",
+                                    Batch = !string.IsNullOrWhiteSpace(item.Batch) ? item.Batch : "—",
+                                    Slot = "Night",
+                                    PaymentCollection = pc,
+                                    ShiftLabel = "Night (8pm - 12am)",
+                                    SlotDate = date.Date.ToString("dd-MMM-yyyy"),
+                                    TimeWindow = "8:00 PM – 12:00 AM",
+                                    SlotDisplaySubtitle = $"({date.Date.ToString("dd MMM")} | 8:00 PM – 12:00 AM)",
+                                    CollectionTypeCode = item.CollectionTypeCode
+                                });
+                            }
                         }
                     }
                 }
@@ -528,46 +544,70 @@ public class TidCalculationService : ITidCalculationService
         sheet.PetroCardPayments = GroupAndMerge(sheet.PetroCardPayments);
 
         // Populate debtor repayments
-        var repDateRes  = await _repaymentRepo.GetByDateAsync(date.Date);
-        var repNextRes  = await _repaymentRepo.GetByDateAsync(tomorrowDate);
-
+        var repDateRes = await _repaymentRepo.GetByDateAsync(date.Date);
         var allRepayments = new List<CreditorRepayment>();
-        if (repDateRes.Success && repDateRes.Data != null)  allRepayments.AddRange(repDateRes.Data);
-        if (repNextRes.Success && repNextRes.Data != null)  allRepayments.AddRange(repNextRes.Data);
+        if (repDateRes.Success && repDateRes.Data != null) allRepayments.AddRange(repDateRes.Data);
+
+        if (useMorningNight)
+        {
+            var repNextRes = await _repaymentRepo.GetByDateAsync(tomorrowDate);
+            if (repNextRes.Success && repNextRes.Data != null) allRepayments.AddRange(repNextRes.Data);
+        }
 
         foreach (var r in allRepayments)
         {
-            var classified = SettlementWindowResolver.Classify(r);
-            if (!classified.IsValid || classified.BusinessDate != date.Date)
-            {
-                continue;
-            }
-
-            string slot = classified.SettlementWindow!;
-            string shiftLabel = "";
+            string slot;
+            string shiftLabel;
             string slotDate = date.Date.ToString("dd-MMM-yyyy");
-            string timeWindow = "";
-            string slotSubtitle = "";
+            string timeWindow;
+            string slotSubtitle;
 
-            if (slot == "Morning")
+            if (!useMorningNight)
             {
-                shiftLabel = "Morning (12am - 8am)";
-                timeWindow = "12:00 AM – 8:00 AM";
-                slotSubtitle = $"({date.Date:dd MMM} | 12:00 AM – 8:00 AM)";
+                if (string.Equals(r.ShiftNumber, "B", StringComparison.OrdinalIgnoreCase))
+                {
+                    slot = "Day";
+                    shiftLabel = labelSlot2;
+                    timeWindow = timeWindowSlot2;
+                    slotSubtitle = subtitleSlot2;
+                }
+                else
+                {
+                    slot = "Morning";
+                    shiftLabel = labelSlot1;
+                    timeWindow = timeWindowSlot1;
+                    slotSubtitle = subtitleSlot1;
+                }
             }
-            else if (slot == "Day")
+            else
             {
-                shiftLabel = "Day (8am - 8pm)";
-                timeWindow = "8:00 AM – 8:00 PM";
-                slotSubtitle = $"({date.Date:dd MMM} | 8:00 AM – 8:00 PM)";
+                var classified = SettlementWindowResolver.Classify(r);
+                if (!classified.IsValid || classified.BusinessDate != date.Date)
+                {
+                    continue;
+                }
+
+                slot = classified.SettlementWindow!;
+                if (slot == "Morning")
+                {
+                    shiftLabel = "Morning (12am - 8am)";
+                    timeWindow = "12:00 AM – 8:00 AM";
+                    slotSubtitle = $"({date.Date:dd MMM} | 12:00 AM – 8:00 AM)";
+                }
+                else if (slot == "Day")
+                {
+                    shiftLabel = "Day (8am - 8pm)";
+                    timeWindow = "8:00 AM – 8:00 PM";
+                    slotSubtitle = $"({date.Date:dd MMM} | 8:00 AM – 8:00 PM)";
+                }
+                else if (slot == "Night")
+                {
+                    shiftLabel = "Night (8pm - 12am)";
+                    timeWindow = "8:00 PM – 12:00 AM";
+                    slotSubtitle = $"({date.Date:dd MMM} | 8:00 PM – 12:00 AM)";
+                }
+                else continue;
             }
-            else if (slot == "Night")
-            {
-                shiftLabel = "Night (8pm - 12am)";
-                timeWindow = "8:00 PM – 12:00 AM";
-                slotSubtitle = $"({date.Date:dd MMM} | 8:00 PM – 12:00 AM)";
-            }
-            else continue;
 
             var item = new TidItemDto
             {
@@ -636,58 +676,82 @@ public class TidCalculationService : ITidCalculationService
         if (_personalDebtorRepo != null)
         {
             var pdDateRes = await _personalDebtorRepo.GetRepaymentsByDateAsync(date.Date);
-            var pdNextRes = await _personalDebtorRepo.GetRepaymentsByDateAsync(tomorrowDate);
-
             var allPdRepayments = new List<DsmPersonalDebtorRepayment>();
             if (pdDateRes.Success && pdDateRes.Data != null) allPdRepayments.AddRange(pdDateRes.Data);
-            if (pdNextRes.Success && pdNextRes.Data != null) allPdRepayments.AddRange(pdNextRes.Data);
+
+            if (useMorningNight)
+            {
+                var pdNextRes = await _personalDebtorRepo.GetRepaymentsByDateAsync(tomorrowDate);
+                if (pdNextRes.Success && pdNextRes.Data != null) allPdRepayments.AddRange(pdNextRes.Data);
+            }
 
             foreach (var r in allPdRepayments)
             {
-                var fakeCreditorRep = new CreditorRepayment
-                {
-                    CreditorRepaymentId = r.Id,
-                    CreditorName = r.DsmPersonalDebtor?.DsmName ?? "DSM Loss",
-                    RepaymentDate = r.Date,
-                    ShiftNumber = r.Shift?.ShiftType ?? "A",
-                    PaymentMode = r.PaymentMethod,
-                    CardTid = r.CardTid ?? "",
-                    CardBatch = r.CardBatch ?? "",
-                    Amount = r.Amount,
-                    CreatedAt = r.CreatedAt
-                };
-
-                var classified = SettlementWindowResolver.Classify(fakeCreditorRep);
-                if (!classified.IsValid || classified.BusinessDate != date.Date)
-                {
-                    continue;
-                }
-
-                string slot = classified.SettlementWindow!;
-                string shiftLabel = "";
+                string slot;
+                string shiftLabel;
                 string slotDate = date.Date.ToString("dd-MMM-yyyy");
-                string timeWindow = "";
-                string slotSubtitle = "";
+                string timeWindow;
+                string slotSubtitle;
 
-                if (slot == "Morning")
+                if (!useMorningNight)
                 {
-                    shiftLabel = "Morning (12am - 8am)";
-                    timeWindow = "12:00 AM – 8:00 AM";
-                    slotSubtitle = $"({date.Date:dd MMM} | 12:00 AM – 8:00 AM)";
+                    if (string.Equals(r.Shift?.ShiftType, "B", StringComparison.OrdinalIgnoreCase))
+                    {
+                        slot = "Day";
+                        shiftLabel = labelSlot2;
+                        timeWindow = timeWindowSlot2;
+                        slotSubtitle = subtitleSlot2;
+                    }
+                    else
+                    {
+                        slot = "Morning";
+                        shiftLabel = labelSlot1;
+                        timeWindow = timeWindowSlot1;
+                        slotSubtitle = subtitleSlot1;
+                    }
                 }
-                else if (slot == "Day")
+                else
                 {
-                    shiftLabel = "Day (8am - 8pm)";
-                    timeWindow = "8:00 AM – 8:00 PM";
-                    slotSubtitle = $"({date.Date:dd MMM} | 8:00 AM – 8:00 PM)";
+                    var fakeCreditorRep = new CreditorRepayment
+                    {
+                        CreditorRepaymentId = r.Id,
+                        CreditorName = r.DsmPersonalDebtor?.DsmName ?? "DSM Loss",
+                        RepaymentDate = r.Date,
+                        ShiftNumber = r.Shift?.ShiftType ?? "A",
+                        PaymentMode = r.PaymentMethod,
+                        CardTid = r.CardTid ?? "",
+                        CardBatch = r.CardBatch ?? "",
+                        Amount = r.Amount,
+                        CreatedAt = r.CreatedAt
+                    };
+
+                    var classified = SettlementWindowResolver.Classify(fakeCreditorRep);
+                    if (!classified.IsValid || classified.BusinessDate != date.Date)
+                    {
+                        continue;
+                    }
+
+                    slot = classified.SettlementWindow!;
+                    if (slot == "Morning")
+                    {
+                        shiftLabel = "Morning (12am - 8am)";
+                        timeWindow = "12:00 AM – 8:00 AM";
+                        slotSubtitle = $"({date.Date:dd MMM} | 12:00 AM – 8:00 AM)";
+                    }
+                    else if (slot == "Day")
+                    {
+                        shiftLabel = "Day (8am - 8pm)";
+                        timeWindow = "8:00 AM – 8:00 PM";
+                        slotSubtitle = $"({date.Date:dd MMM} | 8:00 AM – 8:00 PM)";
+                    }
+                    else if (slot == "Night")
+                    {
+                        shiftLabel = "Night (8pm - 12am)";
+                        timeWindow = "8:00 PM – 12:00 AM";
+                        slotSubtitle = $"({date.Date:dd MMM} | 8:00 PM – 12:00 AM)";
+                    }
+                    else continue;
                 }
-                else if (slot == "Night")
-                {
-                    shiftLabel = "Night (8pm - 12am)";
-                    timeWindow = "8:00 PM – 12:00 AM";
-                    slotSubtitle = $"({date.Date:dd MMM} | 8:00 PM – 12:00 AM)";
-                }
-                else continue;
 
                 var item = new TidItemDto
                 {

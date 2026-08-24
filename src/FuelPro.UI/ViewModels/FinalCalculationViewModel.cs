@@ -833,16 +833,21 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
             foreach (var r in repaymentsRes.Data)
             {
                 var classified = SettlementWindowResolver.Classify(r);
-                if (classified.IsValid && classified.BusinessDate == SelectedDate.Date)
+                DateTime repDate = classified.IsValid ? classified.BusinessDate : r.RepaymentDate.Date;
+                if (repDate == SelectedDate.Date)
                 {
                     bool match = false;
-                    if (SelectedShift == "B")
+                    if (!string.IsNullOrWhiteSpace(r.ShiftNumber) && string.Equals(r.ShiftNumber.Trim(), SelectedShift.Trim(), StringComparison.OrdinalIgnoreCase))
                     {
-                        match = classified.SettlementWindow == "Day";
+                        match = true;
                     }
-                    else if (SelectedShift == "A")
+                    else if (SelectedShift == "B" && classified.SettlementWindow == "Day")
                     {
-                        match = classified.SettlementWindow == "Morning" || classified.SettlementWindow == "Night";
+                        match = true;
+                    }
+                    else if (SelectedShift == "A" && (classified.SettlementWindow == "Morning" || classified.SettlementWindow == "Night"))
+                    {
+                        match = true;
                     }
 
                     if (match)
@@ -934,6 +939,7 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
             NewDenom20 = null;
             NewDenom10 = null;
             NewCoins = null;
+            DsmEntryService.RaiseDebtorChanged();
             DsmEntryService.RaiseDsmEntryChanged();
             await LoadShiftDataAsync();
         }
@@ -957,6 +963,7 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
         if (result.Success)
         {
             RepaymentStatusMessage = "✅ Repayment deleted.";
+            DsmEntryService.RaiseDebtorChanged();
             DsmEntryService.RaiseDsmEntryChanged();
             await LoadShiftDataAsync();
         }

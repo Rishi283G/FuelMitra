@@ -55,6 +55,8 @@ public partial class DebtorManagementViewModel : ObservableObject
     private readonly ExcelExportService _excelExportService;
     private readonly FuelProDbContext _dbContext;
     private readonly ICollectionTypeService? _collectionTypeService;
+    private readonly IFeatureToggleService? _featureService;
+    private readonly Dictionary<string, bool> _paymentModeTidMap = new(StringComparer.OrdinalIgnoreCase);
     private readonly ILogger _logger = Log.ForContext<DebtorManagementViewModel>();
 
     [ObservableProperty] private bool _isLoading;
@@ -115,6 +117,7 @@ public partial class DebtorManagementViewModel : ObservableObject
     [ObservableProperty] private string _repaymentStatus = "";
     [ObservableProperty] private string? _cardTid = "";
     [ObservableProperty] private string? _cardBatch = "";
+    [ObservableProperty] private bool _isTidBatchRequired;
     [ObservableProperty] private int? _denom500;
     [ObservableProperty] private int? _denom200;
     [ObservableProperty] private int? _denom100;
@@ -123,8 +126,8 @@ public partial class DebtorManagementViewModel : ObservableObject
     [ObservableProperty] private int? _denom10;
     [ObservableProperty] private int? _coins;
     public ObservableCollection<string> PaymentModes { get; } = new();
-    [ObservableProperty] private string _selectedRepaymentShift = "Shift B (Day)";
-    public string[] RepaymentShifts { get; } = { "Shift B (Day)", "Shift A (Morning)", "Shift A (Night)" };
+    [ObservableProperty] private string _selectedRepaymentShift = "Shift A";
+    public ObservableCollection<string> RepaymentShifts { get; } = new();
 
     // True when Cash is selected — used for XAML visibility of denomination grid vs manual amount
     public bool IsCashPaymentMode => SelectedPaymentMode == "Cash";
@@ -132,6 +135,12 @@ public partial class DebtorManagementViewModel : ObservableObject
     partial void OnSelectedPaymentModeChanged(string value)
     {
         OnPropertyChanged(nameof(IsCashPaymentMode));
+        IsTidBatchRequired = _paymentModeTidMap.TryGetValue(value ?? "", out bool req) && req;
+        if (!IsTidBatchRequired)
+        {
+            CardTid = "";
+            CardBatch = "";
+        }
         if (value == "Cash")
         {
             // Recalculate from existing denominations
@@ -342,7 +351,8 @@ public partial class DebtorManagementViewModel : ObservableObject
         _excelExportService = App.Services.GetRequiredService<ExcelExportService>();
         _dbContext = App.Services.GetRequiredService<FuelProDbContext>();
         _collectionTypeService = App.Services.GetService<ICollectionTypeService>();
-        _selectedRepaymentShift = DateTime.Now.Hour < 20 ? "Shift B (Day)" : "Shift A (Night)";
+        _featureService = App.Services.GetService<IFeatureToggleService>();
+        _selectedRepaymentShift = "Shift A";
 
         if (_collectionTypeService != null)
         {
@@ -375,21 +385,29 @@ public partial class DebtorManagementViewModel : ObservableObject
     {
         try
         {
+            _paymentModeTidMap.Clear();
             var modes = new List<string> { "Cash" };
+            _paymentModeTidMap["Cash"] = false;
+            _paymentModeTidMap["Bank Transfer"] = false;
+            _paymentModeTidMap["Cheque"] = false;
+
             if (_collectionTypeService != null)
             {
                 var activeTypes = await _collectionTypeService.GetActiveCollectionTypesAsync();
                 foreach (var t in activeTypes.Where(t => !t.Code.Equals("CASH_DEPOSIT", StringComparison.OrdinalIgnoreCase) && !t.DisplayName.Equals("Cash", StringComparison.OrdinalIgnoreCase)))
                 {
                     if (!modes.Contains(t.DisplayName))
+                    {
                         modes.Add(t.DisplayName);
+                    }
+                    _paymentModeTidMap[t.DisplayName] = t.HasTidBatch;
                 }
             }
             else
             {
-                modes.Add("PhonePe");
-                modes.Add("PineLabs Card");
-                modes.Add("PetroCard");
+                modes.Add("PhonePe"); _paymentModeTidMap["PhonePe"] = true;
+                modes.Add("PineLabs Card"); _paymentModeTidMap["PineLabs Card"] = true;
+                modes.Add("PetroCard"); _paymentModeTidMap["PetroCard"] = false;
             }
             if (!modes.Contains("Bank Transfer")) modes.Add("Bank Transfer");
             if (!modes.Contains("Cheque")) modes.Add("Cheque");
@@ -399,6 +417,30 @@ public partial class DebtorManagementViewModel : ObservableObject
             if (!PaymentModes.Contains(SelectedPaymentMode))
             {
                 SelectedPaymentMode = PaymentModes.FirstOrDefault() ?? "Cash";
+            }
+            IsTidBatchRequired = _paymentModeTidMap.TryGetValue(SelectedPaymentMode, out bool req) && req;
+
+            // Load shifts dynamically based on feature toggle / shift cycle mode
+            bool useMorningNight = _featureService?.IsFeatureEnabled("Collection_UseMorningNight", false) ?? false;
+            RepaymentShifts.Clear();
+            if (useMorningNight)
+            {
+                RepaymentShifts.Add("Shift B (Day)");
+                RepaymentShifts.Add("Shift A (Morning)");
+                RepaymentShifts.Add("Shift A (Night)");
+                if (!RepaymentShifts.Contains(SelectedRepaymentShift))
+                {
+                    SelectedRepaymentShift = DateTime.Now.Hour < 20 ? "Shift B (Day)" : "Shift A (Night)";
+                }
+            }
+            else
+            {
+                RepaymentShifts.Add("Shift A");
+                RepaymentShifts.Add("Shift B");
+                if (!RepaymentShifts.Contains(SelectedRepaymentShift))
+                {
+                    SelectedRepaymentShift = "Shift A";
+                }
             }
         }
         catch (Exception ex)
@@ -640,15 +682,10 @@ public partial class DebtorManagementViewModel : ObservableObject
         string shiftNumber;
         DateTime finalRepaymentDate;
 
-        if (SelectedRepaymentShift == "Shift B (Day)")
+        if (SelectedRepaymentShift == "Shift B (Day)" || SelectedRepaymentShift == "Shift B" || SelectedRepaymentShift == "B")
         {
             shiftNumber = "B";
             finalRepaymentDate = RepaymentDate.Date.AddHours(12);
-        }
-        else if (SelectedRepaymentShift == "Shift A (Morning)")
-        {
-            shiftNumber = "A";
-            finalRepaymentDate = RepaymentDate.Date.AddHours(4);
         }
         else if (SelectedRepaymentShift == "Shift A (Night)")
         {
@@ -657,8 +694,8 @@ public partial class DebtorManagementViewModel : ObservableObject
         }
         else
         {
-            shiftNumber = "B";
-            finalRepaymentDate = RepaymentDate.Date.AddHours(12);
+            shiftNumber = "A";
+            finalRepaymentDate = RepaymentDate.Date.AddHours(4);
         }
 
         var repayment = new CreditorRepayment
@@ -670,8 +707,8 @@ public partial class DebtorManagementViewModel : ObservableObject
             Amount = RepaymentAmount,
             CreatedAt = DateTime.Now,
             ShiftNumber = shiftNumber,
-            CardTid = (SelectedPaymentMode != "Cash" && SelectedPaymentMode != "Cheque" && SelectedPaymentMode != "Bank Transfer") ? CardTid?.Trim() : null,
-            CardBatch = (SelectedPaymentMode != "Cash" && SelectedPaymentMode != "Cheque" && SelectedPaymentMode != "Bank Transfer") ? CardBatch?.Trim() : null,
+            CardTid = IsTidBatchRequired ? CardTid?.Trim() : null,
+            CardBatch = IsTidBatchRequired ? CardBatch?.Trim() : null,
             Denom500 = SelectedPaymentMode == "Cash" ? (Denom500 ?? 0) : 0,
             Denom200 = SelectedPaymentMode == "Cash" ? (Denom200 ?? 0) : 0,
             Denom100 = SelectedPaymentMode == "Cash" ? (Denom100 ?? 0) : 0,
@@ -696,8 +733,12 @@ public partial class DebtorManagementViewModel : ObservableObject
             Denom20 = null;
             Denom10 = null;
             Coins = null;
-            SelectedRepaymentShift = DateTime.Now.Hour < 20 ? "Shift B (Day)" : "Shift A (Night)";
+            if (RepaymentShifts.Count > 0 && !RepaymentShifts.Contains(SelectedRepaymentShift))
+            {
+                SelectedRepaymentShift = RepaymentShifts.First();
+            }
             DsmEntryService.RaiseDebtorChanged();
+            DsmEntryService.RaiseDsmEntryChanged();
             await LoadDataAsync();
             if (!string.IsNullOrEmpty(LedgerDebtorName) && LedgerDebtorName.Equals(SelectedDebtorName, StringComparison.OrdinalIgnoreCase))
             {
@@ -1108,6 +1149,7 @@ public partial class DebtorManagementViewModel : ObservableObject
             }
 
             DsmEntryService.RaiseDebtorChanged();
+            DsmEntryService.RaiseDsmEntryChanged();
             await LoadDataAsync();
             await LoadLedgerAsync();
         }
@@ -1242,6 +1284,8 @@ public partial class DebtorManagementViewModel : ObservableObject
             EditReason = "";
             EditTxStatusMessage = "";
 
+            DsmEntryService.RaiseDebtorChanged();
+            DsmEntryService.RaiseDsmEntryChanged();
             await LoadDataAsync();
             await LoadLedgerAsync();
         }

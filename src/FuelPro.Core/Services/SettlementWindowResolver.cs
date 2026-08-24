@@ -44,8 +44,7 @@ public static class SettlementWindowResolver
 
         if (shift == "A")
         {
-            // Shift A spans Morning (12 AM - 8 AM) and Night (8 PM - 12 AM)
-            // Check if RepaymentDate has a specific time component (i.e. not midnight)
+            // Shift A: resolve slot if morning/night split is active, otherwise standard Shift A
             if (r.RepaymentDate.TimeOfDay != TimeSpan.Zero)
             {
                 int hour = r.RepaymentDate.Hour;
@@ -53,17 +52,11 @@ public static class SettlementWindowResolver
                 {
                     result.SettlementWindow = "Night";
                 }
-                else if (hour < 8)
+                else
                 {
                     result.SettlementWindow = "Morning";
                 }
-                else
-                {
-                    Logger.Warning("Repayment ID {Id} is assigned to Shift A but has an unexpected day time component {Time}. Cannot classify.", r.CreditorRepaymentId, r.RepaymentDate.TimeOfDay);
-                    result.SettlementWindow = null;
-                }
             }
-            // Fall back to CreatedAt if it has a non-midnight time component
             else if (r.CreatedAt != default && r.CreatedAt.TimeOfDay != TimeSpan.Zero)
             {
                 int hour = r.CreatedAt.Hour;
@@ -71,28 +64,27 @@ public static class SettlementWindowResolver
                 {
                     result.SettlementWindow = "Night";
                 }
-                else if (hour < 8)
-                {
-                    result.SettlementWindow = "Morning";
-                }
                 else
                 {
-                    Logger.Warning("Repayment ID {Id} is Shift A but CreatedAt has day time component {Time}. Cannot classify.", r.CreditorRepaymentId, r.CreatedAt.TimeOfDay);
-                    result.SettlementWindow = null;
+                    result.SettlementWindow = "Morning";
                 }
             }
             else
             {
-                // No time component on RepaymentDate or CreatedAt.
-                // According to Amendment 3, we must never silently guess.
-                Logger.Warning("Repayment ID {Id} is assigned to Shift A but lacks a time component. Cannot classify.", r.CreditorRepaymentId);
-                result.SettlementWindow = null;
+                // Default to primary Morning slot for Shift A rather than silently dropping the record
+                result.SettlementWindow = "Morning";
             }
             return result;
         }
 
-        Logger.Warning("Repayment ID {Id} has an unknown Shift Number '{Shift}'. Cannot classify.", r.CreditorRepaymentId, shift);
-        result.SettlementWindow = null;
+        if (shift == "C")
+        {
+            result.SettlementWindow = "Night";
+            return result;
+        }
+
+        // For any custom shift or non-standard shift label, assign the shift name as settlement window
+        result.SettlementWindow = shift;
         return result;
     }
 

@@ -65,6 +65,9 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
     public ObservableCollection<StationLayoutPreset> SavedPresets { get; } = new();
     [ObservableProperty] private string _stationStatusMessage = "";
     [ObservableProperty] private string _collectionStatusMessage = "";
+    [ObservableProperty] private string _shiftCycleStatusMessage = "";
+    [ObservableProperty] private string _selectedShiftCycleOption = "2_SHIFT (Standard Date-to-Date: Shift A & Shift B)";
+    public string[] ShiftCycleOptions { get; } = { "2_SHIFT (Standard Date-to-Date: Shift A & Shift B)", "3_SLOT_SPLIT (Overnight Midnight Split: Morning, Day, Night)" };
     [ObservableProperty] private string _presetCode = "";
     [ObservableProperty] private string _presetName = "";
     [ObservableProperty] private string _presetDescription = "";
@@ -1709,10 +1712,17 @@ public partial class DeveloperMainWindowViewModel
             // Load Saved Presets
             await LoadAllPresetsAsync();
 
+            // Load Shift Cycle Setting
+            bool useMorningNight = _featureToggleService.IsFeatureEnabled("Collection_UseMorningNight", false);
+            SelectedShiftCycleOption = useMorningNight 
+                ? "3_SLOT_SPLIT (Overnight Midnight Split: Morning, Day, Night)" 
+                : "2_SHIFT (Standard Date-to-Date: Shift A & Shift B)";
+
             RefreshAvailableFuelTypes();
 
             StationStatusMessage = $"✅ Loaded {ConfiguredPumps.Count} pumps, {ConfiguredTanks.Count} tanks.";
             CollectionStatusMessage = $"✅ Loaded {ConfiguredCollectionTypes.Count} collection types.";
+            ShiftCycleStatusMessage = $"Current cycle: {(useMorningNight ? "3-Slot Split" : "Standard 2-Shift")}";
         }
         catch (Exception ex)
         {
@@ -2289,6 +2299,67 @@ public partial class DeveloperMainWindowViewModel
         catch (Exception ex)
         {
             CollectionStatusMessage = $"❌ Save error: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    public async Task SaveShiftCycleConfigurationAsync()
+    {
+        ShiftCycleStatusMessage = "⏳ Saving shift cycle configuration...";
+        try
+        {
+            bool useMorningNight = SelectedShiftCycleOption.StartsWith("3_SLOT");
+            var allFeatures = await _featureToggleService.GetAllFeaturesAsync();
+            
+            var morningNightFeature = allFeatures.FirstOrDefault(f => f.FeatureKey == "Collection_UseMorningNight");
+            if (morningNightFeature != null)
+            {
+                morningNightFeature.IsEnabled = useMorningNight;
+            }
+            else
+            {
+                allFeatures.Add(new AppFeatureSetting
+                {
+                    FeatureKey = "Collection_UseMorningNight",
+                    DisplayName = "Use Morning / Night Settlement Slots",
+                    Description = "Enable 3-slot midnight split for collections (Morning, Day, Night)",
+                    Category = "Collections",
+                    TargetRole = "Global",
+                    IsEnabled = useMorningNight,
+                    DisplayOrder = 1
+                });
+            }
+
+            var shiftCycleFeature = allFeatures.FirstOrDefault(f => f.FeatureKey == "Station_ShiftCycleMode");
+            if (shiftCycleFeature != null)
+            {
+                shiftCycleFeature.IsEnabled = useMorningNight;
+                shiftCycleFeature.DisplayName = useMorningNight ? "3_SLOT_SPLIT" : "2_SHIFT";
+            }
+            else
+            {
+                allFeatures.Add(new AppFeatureSetting
+                {
+                    FeatureKey = "Station_ShiftCycleMode",
+                    DisplayName = useMorningNight ? "3_SLOT_SPLIT" : "2_SHIFT",
+                    Description = "Station Shift Cycle Mode (2_SHIFT vs 3_SLOT_SPLIT)",
+                    Category = "Station",
+                    TargetRole = "Global",
+                    IsEnabled = useMorningNight,
+                    DisplayOrder = 2
+                });
+            }
+
+            await _featureToggleService.SaveFeaturesAsync(allFeatures);
+            await _featureToggleService.RefreshCacheAsync();
+
+            ShiftCycleStatusMessage = $"✅ Shift cycle set to {(useMorningNight ? "3-Slot Split (Morning/Day/Night)" : "Standard 2-Shift (Shift A & Shift B)")}!";
+            MessageBox.Show($"Shift cycle schedule successfully configured as: {(useMorningNight ? "3-Slot Split (Morning/Day/Night)" : "Standard 2-Shift (Shift A & Shift B)")}.\n\nTID sheets, reports, and Debtor Repayments will now align accordingly.", "Shift Cycle Updated", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            ShiftCycleStatusMessage = $"❌ Save error: {ex.Message}";
+            MessageBox.Show($"Failed to save shift cycle configuration: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 }

@@ -84,7 +84,11 @@ public class TidCalculationServiceTests
         var mockDsmRepo = new MockDsmEntryRepository(entries);
         var mockRepaymentRepo = new MockCreditorRepaymentRepository();
         var mockPersonalDebtorRepo = new MockDsmPersonalDebtorRepository();
-        var sut = new TidCalculationService(mockShiftRepo, mockDsmRepo, mockRepaymentRepo, mockPersonalDebtorRepo);
+        var mockFeatureToggle = new MockFeatureToggleService(new Dictionary<string, bool>
+        {
+            { "Collection_UseMorningNight", true }
+        });
+        var sut = new TidCalculationService(mockShiftRepo, mockDsmRepo, mockRepaymentRepo, mockPersonalDebtorRepo, null, mockFeatureToggle);
 
         // Act
         var sheet = await sut.GetTidSheetAsync(testDate);
@@ -114,6 +118,99 @@ public class TidCalculationServiceTests
         Assert.Equal(10900, sheet.PhonePeTotal);
         Assert.Equal(2500, sheet.PineLabsCardTotal);
         Assert.Equal(2100, sheet.PetroCardTotal);
+    }
+
+    [Fact]
+    public async Task GetTidSheetAsync_TwoShiftCycle_AggregatesShiftAAndBDirectly()
+    {
+        // Arrange
+        var testDate = new DateTime(2026, 7, 3);
+
+        // Standard 2-Shift cycle: Shift A and Shift B on the same calendar day
+        var todayShiftA = new Shift { ShiftId = 1, ShiftDate = testDate, ShiftType = "A" };
+        var entry1 = new DsmEntry
+        {
+            Shift = todayShiftA,
+            ShiftId = 1,
+            PaymentCollection = new PaymentCollection
+            {
+                PhonePeMorning = 1500,
+                CreditCardMorning = 800,
+                PetroCardMorning = 400
+            }
+        };
+
+        var todayShiftB = new Shift { ShiftId = 2, ShiftDate = testDate, ShiftType = "B" };
+        var entry2 = new DsmEntry
+        {
+            Shift = todayShiftB,
+            ShiftId = 2,
+            PaymentCollection = new PaymentCollection
+            {
+                PhonePeDay = 2500,
+                CreditCardDay = 1200,
+                PetroCardDay = 600
+            }
+        };
+
+        var shifts = new List<Shift> { todayShiftA, todayShiftB };
+        var entries = new List<DsmEntry> { entry1, entry2 };
+
+        var mockShiftRepo = new MockShiftRepository(shifts);
+        var mockDsmRepo = new MockDsmEntryRepository(entries);
+        var mockRepaymentRepo = new MockCreditorRepaymentRepository();
+        var mockPersonalDebtorRepo = new MockDsmPersonalDebtorRepository();
+        var mockFeatureToggle = new MockFeatureToggleService(new Dictionary<string, bool>
+        {
+            { "Collection_UseMorningNight", false }
+        });
+        var sut = new TidCalculationService(mockShiftRepo, mockDsmRepo, mockRepaymentRepo, mockPersonalDebtorRepo, null, mockFeatureToggle);
+
+        // Act
+        var sheet = await sut.GetTidSheetAsync(testDate);
+
+        // Assert
+        // Slot 1 (Shift A)
+        Assert.Equal(1500, sheet.PhonePeDirectMorning);
+        Assert.Equal(800, sheet.PineLabsCardMorning);
+        Assert.Equal(400, sheet.PetroCardMorning);
+
+        // Slot 2 (Shift B)
+        Assert.Equal(2500, sheet.PhonePeDirectDay);
+        Assert.Equal(1200, sheet.PineLabsCardDay);
+        Assert.Equal(600, sheet.PetroCardDay);
+
+        // Slot 3 (Night) should remain 0 in 2-shift cycle
+        Assert.Equal(0, sheet.PhonePeDirectNight);
+        Assert.Equal(0, sheet.PineLabsCardNight);
+        Assert.Equal(0, sheet.PetroCardNight);
+
+        // Totals
+        Assert.Equal(4000, sheet.PhonePeDirectTotal);
+        Assert.Equal(2000, sheet.PineLabsCardTotal);
+        Assert.Equal(1000, sheet.PetroCardTotal);
+    }
+
+    private class MockFeatureToggleService : IFeatureToggleService
+    {
+        private readonly Dictionary<string, bool> _flags;
+
+        public event Action? FeatureConfigurationChanged;
+
+        public MockFeatureToggleService(Dictionary<string, bool>? flags = null)
+        {
+            _flags = flags ?? new Dictionary<string, bool>();
+        }
+
+        public bool IsFeatureEnabled(string featureKey, bool defaultIfMissing = true)
+        {
+            return _flags.TryGetValue(featureKey, out var val) ? val : defaultIfMissing;
+        }
+
+        public string GetFeatureDisplayName(string featureKey, string defaultName = "") => defaultName;
+        public Task<List<AppFeatureSetting>> GetAllFeaturesAsync() => Task.FromResult(new List<AppFeatureSetting>());
+        public Task<bool> SaveFeaturesAsync(IEnumerable<AppFeatureSetting> features) => Task.FromResult(true);
+        public Task RefreshCacheAsync() => Task.CompletedTask;
     }
 
     private class MockShiftRepository : IShiftRepository

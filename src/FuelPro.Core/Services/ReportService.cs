@@ -76,10 +76,15 @@ public class ReportService : IReportService
             foreach (var r in repayments)
             {
                 var classified = SettlementWindowResolver.Classify(r);
-                if (classified.IsValid && classified.BusinessDate == date.Date)
+                DateTime repDate = classified.IsValid ? classified.BusinessDate : r.RepaymentDate.Date;
+                if (repDate == date.Date)
                 {
                     bool match = false;
-                    if (shiftType == "B" && classified.SettlementWindow == "Day")
+                    if (!string.IsNullOrWhiteSpace(r.ShiftNumber) && string.Equals(r.ShiftNumber.Trim(), shiftType.Trim(), StringComparison.OrdinalIgnoreCase))
+                    {
+                        match = true;
+                    }
+                    else if (shiftType == "B" && classified.SettlementWindow == "Day")
                     {
                         match = true;
                     }
@@ -503,7 +508,8 @@ public class ReportService : IReportService
             foreach (var r in repayments)
             {
                 var classified = SettlementWindowResolver.Classify(r);
-                if (classified.IsValid && classified.BusinessDate >= startDate.Date && classified.BusinessDate <= endDate.Date)
+                DateTime repDate = classified.IsValid ? classified.BusinessDate : r.RepaymentDate.Date;
+                if (repDate >= startDate.Date && repDate <= endDate.Date)
                 {
                     repaymentsList.Add(r);
                 }

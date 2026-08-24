@@ -97,9 +97,13 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
     [ObservableProperty] private int? _denom10;
     [ObservableProperty] private int? _coins;
     
-    public string[] PaymentModes { get; } = { "Cash", "PhonePe", "PineLabs Card", "PetroCard", "Bank Transfer", "Cheque" };
+    private readonly ICollectionTypeService? _collectionTypeService;
+    private readonly Dictionary<string, bool> _paymentModeTidMap = new(StringComparer.OrdinalIgnoreCase);
+    [ObservableProperty] private bool _isTidBatchRequired;
+
+    public ObservableCollection<string> PaymentModes { get; } = new();
     public bool IsCashPaymentMode => SelectedPaymentMode == "Cash";
-    public bool IsCardPaymentMode => SelectedPaymentMode.Contains("Card") || SelectedPaymentMode.Equals("PhonePe", StringComparison.OrdinalIgnoreCase);
+    public bool IsCardPaymentMode => IsTidBatchRequired;
     public bool IsChequePaymentMode => SelectedPaymentMode.Equals("Cheque", StringComparison.OrdinalIgnoreCase);
 
     // Edit Form fields
@@ -118,12 +122,68 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
         _dbContext = App.Services.GetRequiredService<FuelProDbContext>();
         _printService = App.Services.GetRequiredService<PrintService>();
         _excelExportService = App.Services.GetRequiredService<ExcelExportService>();
+        _collectionTypeService = App.Services.GetService<ICollectionTypeService>();
+
+        if (_collectionTypeService != null)
+        {
+            _collectionTypeService.CollectionTypesChanged += () =>
+            {
+                System.Windows.Application.Current.Dispatcher.InvokeAsync(async () => await LoadPaymentModesAsync());
+            };
+        }
 
         var auth = App.Services.GetRequiredService<AuthService>();
         IsOwner = auth.CurrentUser?.IsOwner ?? false;
 
+        _ = LoadPaymentModesAsync();
         _ = LoadDataAsync();
         _ = LoadKpEntriesAsync();
+    }
+
+    public async Task LoadPaymentModesAsync()
+    {
+        try
+        {
+            _paymentModeTidMap.Clear();
+            var modes = new List<string> { "Cash" };
+            _paymentModeTidMap["Cash"] = false;
+            _paymentModeTidMap["Bank Transfer"] = false;
+            _paymentModeTidMap["Cheque"] = false;
+
+            if (_collectionTypeService != null)
+            {
+                var activeTypes = await _collectionTypeService.GetActiveCollectionTypesAsync();
+                foreach (var t in activeTypes.Where(t => !t.Code.Equals("CASH_DEPOSIT", StringComparison.OrdinalIgnoreCase) && !t.DisplayName.Equals("Cash", StringComparison.OrdinalIgnoreCase)))
+                {
+                    if (!modes.Contains(t.DisplayName))
+                    {
+                        modes.Add(t.DisplayName);
+                    }
+                    _paymentModeTidMap[t.DisplayName] = t.HasTidBatch;
+                }
+            }
+            else
+            {
+                modes.Add("PhonePe"); _paymentModeTidMap["PhonePe"] = true;
+                modes.Add("PineLabs Card"); _paymentModeTidMap["PineLabs Card"] = true;
+                modes.Add("PetroCard"); _paymentModeTidMap["PetroCard"] = false;
+            }
+            if (!modes.Contains("Bank Transfer")) modes.Add("Bank Transfer");
+            if (!modes.Contains("Cheque")) modes.Add("Cheque");
+
+            PaymentModes.Clear();
+            foreach (var m in modes) PaymentModes.Add(m);
+            if (!PaymentModes.Contains(SelectedPaymentMode))
+            {
+                SelectedPaymentMode = PaymentModes.FirstOrDefault() ?? "Cash";
+            }
+            IsTidBatchRequired = _paymentModeTidMap.TryGetValue(SelectedPaymentMode, out bool req) && req;
+            OnPropertyChanged(nameof(IsCardPaymentMode));
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to load payment modes in DsmPersonalDebtorViewModel");
+        }
     }
 
     partial void OnSelectedSummaryChanged(DsmPersonalDebtorSummaryRow? value)
@@ -133,9 +193,15 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
 
     partial void OnSelectedPaymentModeChanged(string value)
     {
+        IsTidBatchRequired = _paymentModeTidMap.TryGetValue(value ?? "", out bool req) && req;
         OnPropertyChanged(nameof(IsCashPaymentMode));
         OnPropertyChanged(nameof(IsCardPaymentMode));
         OnPropertyChanged(nameof(IsChequePaymentMode));
+        if (!IsTidBatchRequired)
+        {
+            CardTid = "";
+            CardBatch = "";
+        }
         if (value == "Cash")
         {
             CardTid = "";
@@ -552,6 +618,8 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
             {
                 await RecalculateRepaidAmountsAsync(SelectedSummary.DsmName);
             }
+            DsmEntryService.RaiseDebtorChanged();
+            DsmEntryService.RaiseDsmEntryChanged();
             await LoadLedgerAsync();
             await LoadDataAsync();
 
@@ -689,6 +757,8 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
 
             await LoadLedgerAsync();
             await LoadDataAsync();
+            DsmEntryService.RaiseDebtorChanged();
+            DsmEntryService.RaiseDsmEntryChanged();
 
             var syncEngine = App.Services.GetRequiredService<FuelPro.Sync.SyncEngine>();
             _ = syncEngine.ForceSyncAsync();

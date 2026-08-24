@@ -181,24 +181,6 @@
                         </StackPanel>
                     </materialDesign:Card>
 
-                    <!-- ALL ENABLED COLLECTION TYPES BREAKDOWN -->
-                    <materialDesign:Card Style="{StaticResource SectionCard}" Margin="0,0,0,16">
-                        <StackPanel>
-                            <Grid Margin="0,0,0,8">
-                                <TextBlock Text="A2. All Enabled Collection Methods Breakdown (Dev Configured)" Style="{StaticResource SectionTitle}" Margin="0" />
-                                <TextBlock Text="{Binding ReconciliationTotal, Converter={StaticResource CurrencyConverter}, StringFormat='Total: {0}'}" HorizontalAlignment="Right" FontWeight="Bold" FontSize="14" Foreground="Green" />
-                            </Grid>
-                            <DataGrid ItemsSource="{Binding CollectionBreakdown}" AutoGenerateColumns="False" IsReadOnly="True" MaxHeight="220">
-                                <DataGrid.Columns>
-                                    <DataGridTextColumn Header="Collection Method / Category" Binding="{Binding Category}" Width="2*" FontWeight="SemiBold"/>
-                                    <DataGridTextColumn Header="Fuel Direct Base" Binding="{Binding BaseAmount, Converter={StaticResource CurrencyConverter}}" Width="1.5*" />
-                                    <DataGridTextColumn Header="Debtor Recovery" Binding="{Binding RecoveryAmount, Converter={StaticResource CurrencyConverter}}" Width="1.5*" />
-                                    <DataGridTextColumn Header="Total Amount" Binding="{Binding Amount, Converter={StaticResource CurrencyConverter}}" Width="1.5*" FontWeight="Bold" Foreground="#1565C0"/>
-                                </DataGrid.Columns>
-                            </DataGrid>
-                        </StackPanel>
-                    </materialDesign:Card>
-
                     <!-- TABLE C: CREDITORS -->
                     <materialDesign:Card Style="{StaticResource SectionCard}">
                         <StackPanel>

@@ -50,6 +50,7 @@ public partial class CardSettlementViewModel : ObservableObject, IDisposable
     private readonly IPaymentRepository _paymentRepo;
     private readonly PrintService _printService;
     private readonly ITidCalculationService _tidService;
+    private readonly IFeatureToggleService? _featureToggleService;
     private readonly ILogger _logger = Log.ForContext<CardSettlementViewModel>();
 
     [ObservableProperty] private DateTime _selectedDate = DateTime.Today;
@@ -83,6 +84,7 @@ public partial class CardSettlementViewModel : ObservableObject, IDisposable
         _paymentRepo = App.Services.GetRequiredService<IPaymentRepository>();
         _printService = App.Services.GetRequiredService<PrintService>();
         _tidService = App.Services.GetRequiredService<ITidCalculationService>();
+        _featureToggleService = App.Services.GetService<IFeatureToggleService>();
 
         DsmEntryService.DsmEntryChanged += OnDsmEntryChanged;
 
@@ -111,7 +113,7 @@ public partial class CardSettlementViewModel : ObservableObject, IDisposable
         HasData = false;
         _currentShift = null;
 
-            CardPayments.Clear();
+        CardPayments.Clear();
         PhonePePayments.Clear();
         PetroCardPayments.Clear();
         Tabs.Clear();
@@ -121,31 +123,50 @@ public partial class CardSettlementViewModel : ObservableObject, IDisposable
 
         try
         {
-            // 1. Morning: yesterday Shift A
-            var prevDate = SelectedDate.Date.AddDays(-1);
-            var morningShiftRes = await _shiftRepo.GetShiftAsync(prevDate, "A");
-            
-            // 2. Day: today Shift B
-            var dayShiftRes = await _shiftRepo.GetShiftAsync(SelectedDate.Date, "B");
-            
-            // 3. Night: today Shift A
-            var nightShiftRes = await _shiftRepo.GetShiftAsync(SelectedDate.Date, "A");
-
+            bool useMorningNight = _featureToggleService?.IsFeatureEnabled("Collection_UseMorningNight", false) ?? false;
             var slotsToLoad = new List<(Shift shift, CardSettlementSlot slot, string label)>();
-            if (morningShiftRes.Success && morningShiftRes.Data != null)
-                slotsToLoad.Add((morningShiftRes.Data, CardSettlementSlot.Morning, "Morning (12am - 8am)"));
-            if (dayShiftRes.Success && dayShiftRes.Data != null)
-                slotsToLoad.Add((dayShiftRes.Data, CardSettlementSlot.Day, "Day (8am - 8pm)"));
-            if (nightShiftRes.Success && nightShiftRes.Data != null)
-                slotsToLoad.Add((nightShiftRes.Data, CardSettlementSlot.Night, "Night (8pm - 12am)"));
+
+            if (useMorningNight)
+            {
+                // 1. Morning: yesterday Shift A
+                var prevDate = SelectedDate.Date.AddDays(-1);
+                var morningShiftRes = await _shiftRepo.GetShiftAsync(prevDate, "A");
+                
+                // 2. Day: today Shift B
+                var dayShiftRes = await _shiftRepo.GetShiftAsync(SelectedDate.Date, "B");
+                
+                // 3. Night: today Shift A
+                var nightShiftRes = await _shiftRepo.GetShiftAsync(SelectedDate.Date, "A");
+
+                if (morningShiftRes.Success && morningShiftRes.Data != null)
+                    slotsToLoad.Add((morningShiftRes.Data, CardSettlementSlot.Morning, "Morning (12am - 8am)"));
+                if (dayShiftRes.Success && dayShiftRes.Data != null)
+                    slotsToLoad.Add((dayShiftRes.Data, CardSettlementSlot.Day, "Day (8am - 8pm)"));
+                if (nightShiftRes.Success && nightShiftRes.Data != null)
+                    slotsToLoad.Add((nightShiftRes.Data, CardSettlementSlot.Night, "Night (8pm - 12am)"));
+
+                _currentShift = dayShiftRes.Data ?? nightShiftRes.Data ?? morningShiftRes.Data;
+            }
+            else
+            {
+                // Standard 2-shift: Shift A & Shift B of SelectedDate
+                var shiftARes = await _shiftRepo.GetShiftAsync(SelectedDate.Date, "A");
+                var shiftBRes = await _shiftRepo.GetShiftAsync(SelectedDate.Date, "B");
+
+                if (shiftARes.Success && shiftARes.Data != null)
+                    slotsToLoad.Add((shiftARes.Data, CardSettlementSlot.Morning, "Shift A"));
+                if (shiftBRes.Success && shiftBRes.Data != null)
+                    slotsToLoad.Add((shiftBRes.Data, CardSettlementSlot.Day, "Shift B"));
+
+                _currentShift = shiftARes.Data ?? shiftBRes.Data;
+            }
 
             if (slotsToLoad.Count == 0)
             {
-                StatusMessage = "No shifts found for today or yesterday.";
+                StatusMessage = "No shifts found for selected date.";
                 return;
             }
 
-            _currentShift = dayShiftRes.Data ?? nightShiftRes.Data ?? morningShiftRes.Data;
             IsShiftLocked = slotsToLoad.Any(s => s.shift.IsLocked);
 
             var tidSheet = await _tidService.GetTidSheetAsync(SelectedDate);

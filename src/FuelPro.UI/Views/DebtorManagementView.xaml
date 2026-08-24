@@ -250,24 +250,8 @@
                                             </StackPanel>
                                         </Border>
 
-                                         <!-- Card TID/Batch (visible for digital/card payments) -->
-                                         <Grid Margin="0,0,0,12">
-                                             <Grid.Style>
-                                                 <Style TargetType="Grid">
-                                                     <Setter Property="Visibility" Value="Visible" />
-                                                     <Style.Triggers>
-                                                         <DataTrigger Binding="{Binding SelectedPaymentMode}" Value="Cash">
-                                                             <Setter Property="Visibility" Value="Collapsed" />
-                                                         </DataTrigger>
-                                                         <DataTrigger Binding="{Binding SelectedPaymentMode}" Value="Cheque">
-                                                             <Setter Property="Visibility" Value="Collapsed" />
-                                                         </DataTrigger>
-                                                         <DataTrigger Binding="{Binding SelectedPaymentMode}" Value="Bank Transfer">
-                                                             <Setter Property="Visibility" Value="Collapsed" />
-                                                         </DataTrigger>
-                                                     </Style.Triggers>
-                                                 </Style>
-                                             </Grid.Style>
+                                         <!-- Card TID/Batch (visible dynamically when collection method has HasTidBatch enabled) -->
+                                         <Grid Margin="0,0,0,12" Visibility="{Binding IsTidBatchRequired, Converter={StaticResource BoolToVis}}">
                                              <Grid.ColumnDefinitions>
                                                  <ColumnDefinition Width="*"/>
                                                  <ColumnDefinition Width="12"/>
