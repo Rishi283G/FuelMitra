@@ -51,6 +51,7 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
     [ObservableProperty] private ObservableCollection<DsmSummaryRowDto> _dsmSummaryRows = new();
     [ObservableProperty] private DsmSummaryRowDto? _dsmSummaryTotals;
     [ObservableProperty] private ObservableCollection<DsmShiftTotalDto> _dsmShiftTotals = new();
+    [ObservableProperty] private ObservableCollection<CollectionCategoryDto> _collectionBreakdown = new();
 
     // TABLE B
     [ObservableProperty] private ObservableCollection<CashDenomDisplayRow> _cash1Rows = new();
@@ -225,12 +226,22 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
         DsmEntryService.DebtorChanged += OnDataChanged;
     }
 
+    public ObservableCollection<CollectionTypeMaster> ActiveCollectionTypes { get; } = new();
+    public ObservableCollection<TestingSummaryItem> TestingSummaryRows { get; } = new();
+    public event Action? DynamicColumnsRefreshed;
+
     private async Task UpdateCollectionHeadersAsync()
     {
         if (_collectionTypeService == null) return;
         try
         {
             var types = await _collectionTypeService.GetActiveCollectionTypesAsync();
+            ActiveCollectionTypes.Clear();
+            foreach (var t in types.OrderBy(t => t.DisplayOrder))
+            {
+                ActiveCollectionTypes.Add(t);
+            }
+
             var ph = types.FirstOrDefault(c => string.Equals(c.Code, "PHONEPE", StringComparison.OrdinalIgnoreCase));
             var cc = types.FirstOrDefault(c => string.Equals(c.Code, "CREDIT_CARD", StringComparison.OrdinalIgnoreCase)
                                             || string.Equals(c.Code, "CREDITCARD", StringComparison.OrdinalIgnoreCase)
@@ -242,6 +253,8 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
             PhonePeHeader = ph?.DisplayName ?? "PhonePe";
             CreditCardHeader = cc?.DisplayName ?? "Credit / Debit Card";
             PetroCardHeader = pc?.DisplayName ?? "PetroCard";
+
+            DynamicColumnsRefreshed?.Invoke();
         }
         catch { }
     }
@@ -427,6 +440,18 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
 
             // Bind repayment breakdown for debtor recovery section
             RepaymentBreakdown = new ObservableCollection<RepaymentBreakdownDto>(report.RepaymentBreakdown);
+            CollectionBreakdown = new ObservableCollection<CollectionCategoryDto>(report.CollectionBreakdown);
+
+            TestingSummaryRows.Clear();
+            if (report.TestingSummaryItems != null)
+            {
+                foreach (var t in report.TestingSummaryItems)
+                {
+                    TestingSummaryRows.Add(t);
+                }
+            }
+
+            await UpdateCollectionHeadersAsync();
 
             // Load AGS Nozzle Readings
             try
@@ -516,6 +541,8 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
         _loadedEntries.Clear();
         DsmSummaryRows.Clear();
         DsmSummaryTotals = null;
+        DsmShiftTotals.Clear();
+        CollectionBreakdown.Clear();
         Cash1Rows.Clear(); Cash1Total = 0;
         Cash2Rows.Clear(); Cash2Total = 0;
         CreditorRows.Clear(); CreditorsTotal = 0;

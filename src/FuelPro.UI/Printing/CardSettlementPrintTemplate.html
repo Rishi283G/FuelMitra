@@ -351,7 +351,7 @@
 
   <!-- OVERALL TOTALS -->
   <div class="summary-title">Digital Collection Summary</div>
-  <table class="summary-table mono">
+  <table class="summary-table mono" id="summaryTable">
     <tr>
       <td style="font-family:'Space Grotesk',sans-serif;">PhonePe UPI Total</td>
       <td id="overallPhonePeDirect">0.00</td>
@@ -519,45 +519,70 @@ let html = '';
 
 const combined = (dsmVal, debtorVal) => (dsmVal || 0) + (debtorVal || 0);
 
-// Section 1 — PineLabs Card Settlement
-html += renderDetailedSection(
-  'PINELABS CARD SETTLEMENT',
-  data.cardPayments,
-  data.debtorCardRepayments,
-  combined(data.pineLabsCardMorning, data.debtorCardRepaymentMorning),
-  combined(data.pineLabsCardDay,     data.debtorCardRepaymentDay),
-  combined(data.pineLabsCardNight,   data.debtorCardRepaymentNight),
-  combined(data.pineLabsCardTotal,   data.debtorCardRepaymentTotal)
-);
+if (data.collectionGroups && Array.isArray(data.collectionGroups) && data.collectionGroups.length > 0) {
+  data.collectionGroups.forEach(group => {
+    html += renderDetailedSection(
+      `${(group.displayName || group.collectionTypeCode || '').toUpperCase()} SETTLEMENT`,
+      group.items || [],
+      [],
+      0, 0, 0,
+      group.totalAmount || 0
+    );
+  });
+} else {
+  // Section 1 — PineLabs Card Settlement
+  html += renderDetailedSection(
+    'PINELABS CARD SETTLEMENT',
+    data.cardPayments,
+    data.debtorCardRepayments,
+    combined(data.pineLabsCardMorning, data.debtorCardRepaymentMorning),
+    combined(data.pineLabsCardDay,     data.debtorCardRepaymentDay),
+    combined(data.pineLabsCardNight,   data.debtorCardRepaymentNight),
+    combined(data.pineLabsCardTotal,   data.debtorCardRepaymentTotal)
+  );
 
-// Section 2 — PhonePe Digital Collection
-html += renderDetailedSection(
-  'PHONEPE DIGITAL COLLECTION',
-  data.phonePePayments,
-  data.debtorPhonePeRepayments,
-  combined(data.phonePeDirectMorning, data.debtorPhonePeRepaymentMorning),
-  combined(data.phonePeDirectDay,     data.debtorPhonePeRepaymentDay),
-  combined(data.phonePeDirectNight,   data.debtorPhonePeRepaymentNight),
-  combined(data.phonePeDirectTotal,   data.debtorPhonePeRepaymentTotal)
-);
+  // Section 2 — PhonePe Digital Collection
+  html += renderDetailedSection(
+    'PHONEPE DIGITAL COLLECTION',
+    data.phonePePayments,
+    data.debtorPhonePeRepayments,
+    combined(data.phonePeDirectMorning, data.debtorPhonePeRepaymentMorning),
+    combined(data.phonePeDirectDay,     data.debtorPhonePeRepaymentDay),
+    combined(data.phonePeDirectNight,   data.debtorPhonePeRepaymentNight),
+    combined(data.phonePeDirectTotal,   data.debtorPhonePeRepaymentTotal)
+  );
 
-// Section 3 — Petro Card Settlement
-html += renderDetailedSection(
-  'PETRO CARD SETTLEMENT',
-  data.petroCardPayments,
-  data.debtorPetroCardRepayments,
-  combined(data.petroCardMorning, data.debtorPetroCardRepaymentMorning),
-  combined(data.petroCardDay,     data.debtorPetroCardRepaymentDay),
-  combined(data.petroCardNight,   data.debtorPetroCardRepaymentNight),
-  combined(data.petroCardTotal,   data.debtorPetroCardRepaymentTotal)
-);
+  // Section 3 — Petro Card Settlement
+  html += renderDetailedSection(
+    'PETRO CARD SETTLEMENT',
+    data.petroCardPayments,
+    data.debtorPetroCardRepayments,
+    combined(data.petroCardMorning, data.debtorPetroCardRepaymentMorning),
+    combined(data.petroCardDay,     data.debtorPetroCardRepaymentDay),
+    combined(data.petroCardNight,   data.debtorPetroCardRepaymentNight),
+    combined(data.petroCardTotal,   data.debtorPetroCardRepaymentTotal)
+  );
+}
 
 container.innerHTML = html;
 
 // ── Overall totals bar ────────────────────────────────────────────────────────
-document.getElementById('overallPhonePeDirect').textContent = fmt(data.phonePeDirectTotal || 0);
-document.getElementById('overallPineLabs').textContent      = fmt(data.pineLabsCardTotal  || 0);
-document.getElementById('overallPetro').textContent         = fmt(data.petroCardTotal      || 0);
+const summaryTable = document.getElementById('summaryTable');
+if (summaryTable && data.collectionGroups && Array.isArray(data.collectionGroups) && data.collectionGroups.length > 0) {
+  let sumHtml = '';
+  data.collectionGroups.forEach(g => {
+    sumHtml += `<tr>
+      <td style="font-family:'Space Grotesk',sans-serif;">${g.displayName || g.collectionTypeCode} Total</td>
+      <td class="mono">${fmt(g.totalAmount || 0)}</td>
+    </tr>`;
+  });
+  summaryTable.innerHTML = sumHtml;
+} else {
+  if (document.getElementById('overallPhonePeDirect')) document.getElementById('overallPhonePeDirect').textContent = fmt(data.phonePeDirectTotal || 0);
+  if (document.getElementById('overallPineLabs')) document.getElementById('overallPineLabs').textContent      = fmt(data.pineLabsCardTotal  || 0);
+  if (document.getElementById('overallPetro')) document.getElementById('overallPetro').textContent         = fmt(data.petroCardTotal      || 0);
+}
+
 document.getElementById('grandTotalVal').textContent        = fmt(data.grandTotal          || 0);
 
 document.getElementById('printFooter').textContent =

@@ -499,4 +499,52 @@ public class DsmEntryPipelineTests : IDisposable
         // TotalCollection = CashDeposit (1000) + PhonePe (200) + DynamicTotal (4750) = 5950
         Assert.Equal(5950.0, shiftTotals.First().TotalCollection);
     }
+
+    [Fact]
+    public async Task Verify_ClearForm_Preserves_DynamicCollectionTypes_And_Resets_Values()
+    {
+        var colTypeService = _serviceProvider.GetRequiredService<ICollectionTypeService>();
+        await colTypeService.SaveCollectionTypeAsync(new CollectionTypeMaster
+        {
+            Code = "PAYTM",
+            DisplayName = "Paytm QR",
+            Category = "Online",
+            HasTidBatch = true,
+            IsActive = true,
+            DisplayOrder = 1
+        });
+        await colTypeService.SaveCollectionTypeAsync(new CollectionTypeMaster
+        {
+            Code = "SBI_REDEEM",
+            DisplayName = "SBI Points",
+            Category = "Card",
+            HasTidBatch = true,
+            IsActive = true,
+            DisplayOrder = 2
+        });
+
+        var vm = _serviceProvider.GetRequiredService<DsmEntryViewModel>();
+        await vm.LoadDynamicCollectionTypesAsync();
+
+        Assert.NotEmpty(vm.DynamicCollections);
+        var paytmRow = vm.DynamicCollections.FirstOrDefault(d => d.Code == "PAYTM");
+        Assert.NotNull(paytmRow);
+        paytmRow.Amount = 1250;
+        paytmRow.Tid = "TID999";
+        paytmRow.Batch = "B123";
+
+        var countBeforeClear = vm.DynamicCollections.Count;
+
+        // Execute ClearForm
+        vm.ClearForm();
+
+        // Verify collection types are NOT removed
+        Assert.Equal(countBeforeClear, vm.DynamicCollections.Count);
+        var paytmAfterClear = vm.DynamicCollections.FirstOrDefault(d => d.Code == "PAYTM");
+        Assert.NotNull(paytmAfterClear);
+        Assert.Equal("Paytm QR", paytmAfterClear.DisplayName);
+        Assert.Null(paytmAfterClear.Amount);
+        Assert.Null(paytmAfterClear.Tid);
+        Assert.Null(paytmAfterClear.Batch);
+    }
 }

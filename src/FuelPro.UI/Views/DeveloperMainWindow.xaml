@@ -1180,7 +1180,116 @@
                 <TabItem>
                     <ScrollViewer VerticalScrollBarVisibility="Auto" CanContentScroll="False" PreviewMouseWheel="ScrollViewer_PreviewMouseWheel">
                         <StackPanel Margin="0,0,0,24">
-                            <!-- Section 1: Station Operational Entities (Pumps & Nozzles) -->
+                            <!-- Section 1: Station Layout Presets & Code Manager -->
+                            <materialDesign:Card Padding="16,14" Margin="0,0,0,16" Background="#212C32">
+                                <StackPanel>
+                                    <Grid Margin="0,0,0,12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <materialDesign:PackIcon Kind="BookmarkBoxMultipleOutline" Width="22" Height="22" Foreground="#80CBC4" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                            <TextBlock Text="Station Layout Presets &amp; Unique Code Repository" FontSize="16" FontWeight="Bold" Foreground="White" VerticalAlignment="Center"/>
+                                            <TextBlock Text="Save &amp; load pump/nozzle/tank presets via unique code" FontSize="11" Foreground="#90A4AE" Margin="12,2,0,0" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="1" Text="{Binding PresetStatusMessage}" FontSize="12" FontWeight="SemiBold" Foreground="#80CBC4" VerticalAlignment="Center"/>
+                                    </Grid>
+
+                                    <!-- Preset Input & Save / Load Row -->
+                                    <Grid Margin="0,0,0,12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="1.2*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="2*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="16"/>
+                                            <ColumnDefinition Width="1.5*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <!-- Preset Code Box -->
+                                        <TextBox Grid.Column="0" Text="{Binding PresetCode, UpdateSourceTrigger=PropertyChanged}"
+                                                 materialDesign:HintAssist.Hint="Preset Code (e.g. MSS-6P-12N)" materialDesign:HintAssist.IsFloating="True"
+                                                 Foreground="#FFD54F" FontWeight="Bold" FontSize="12" Margin="0,0,6,0" VerticalAlignment="Center"/>
+
+                                        <Button Grid.Column="1" Content="🎲 Code" Command="{Binding GeneratePresetCodeCommand}"
+                                                Style="{StaticResource MaterialDesignOutlinedButton}" Foreground="#FFD54F" BorderBrush="#FFD54F"
+                                                Height="30" Padding="8,0" Margin="0,0,12,0" FontSize="11" ToolTip="Auto-generate a unique preset code"/>
+
+                                        <!-- Preset Name Box -->
+                                        <TextBox Grid.Column="2" Text="{Binding PresetName, UpdateSourceTrigger=PropertyChanged}"
+                                                 materialDesign:HintAssist.Hint="Preset Name / Station Identifier" materialDesign:HintAssist.IsFloating="True"
+                                                 Foreground="White" FontSize="12" Margin="0,0,12,0" VerticalAlignment="Center"/>
+
+                                        <!-- Save Preset Button -->
+                                        <Button Grid.Column="3" Content="💾 Save Preset" Command="{Binding SaveAsPresetCommand}"
+                                                Style="{StaticResource MaterialDesignRaisedButton}" Background="#00897B" BorderBrush="#00897B" Foreground="White"
+                                                Height="32" Padding="14,0" FontSize="11" FontWeight="Bold"/>
+
+                                        <!-- Quick Load Code Box -->
+                                        <TextBox Grid.Column="5" Text="{Binding SearchPresetCode, UpdateSourceTrigger=PropertyChanged}"
+                                                 materialDesign:HintAssist.Hint="Enter Preset Code to Load" materialDesign:HintAssist.IsFloating="True"
+                                                 Foreground="#80CBC4" FontWeight="Bold" FontSize="12" Margin="0,0,6,0" VerticalAlignment="Center"/>
+
+                                        <Button Grid.Column="6" Content="⚡ Load Code" Command="{Binding LoadPresetByCodeCommand}" CommandParameter="{Binding SearchPresetCode}"
+                                                Style="{StaticResource MaterialDesignRaisedButton}" Background="#0288D1" BorderBrush="#0288D1" Foreground="White"
+                                                Height="32" Padding="12,0" Margin="0,0,8,0" FontSize="11" FontWeight="Bold"/>
+
+                                        <!-- Dropdown of saved presets -->
+                                        <ComboBox Grid.Column="7" ItemsSource="{Binding SavedPresets}" SelectedItem="{Binding SelectedPreset}"
+                                                  DisplayMemberPath="PresetName" Width="180" Height="30" FontSize="11" Foreground="#90CAF9"
+                                                  materialDesign:HintAssist.Hint="Pick Saved Preset" materialDesign:HintAssist.IsFloating="False"
+                                                  Margin="0,0,0,0">
+                                            <ComboBox.ItemContainerStyle>
+                                                <Style TargetType="ComboBoxItem">
+                                                    <Setter Property="Foreground" Value="White"/>
+                                                    <Setter Property="Background" Value="#263238"/>
+                                                </Style>
+                                            </ComboBox.ItemContainerStyle>
+                                        </ComboBox>
+                                    </Grid>
+
+                                    <!-- Saved Presets Expander Table -->
+                                    <Expander Header="📁 View All Saved Presets in Database" Foreground="#90CAF9" FontSize="12" Background="#1B2428" Padding="8,4">
+                                        <DataGrid ItemsSource="{Binding SavedPresets}" AutoGenerateColumns="False"
+                                                  CanUserAddRows="False" Background="Transparent" Foreground="White"
+                                                  RowBackground="#1E272C" AlternatingRowBackground="#263238"
+                                                  materialDesign:DataGridAssist.CellPadding="8 4" FontSize="11" MaxHeight="180" Margin="0,4,0,0">
+                                            <DataGrid.ColumnHeaderStyle>
+                                                <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource MaterialDesignDataGridColumnHeader}">
+                                                    <Setter Property="Background" Value="#10171A"/>
+                                                    <Setter Property="Foreground" Value="#80CBC4"/>
+                                                    <Setter Property="FontWeight" Value="Bold"/>
+                                                </Style>
+                                            </DataGrid.ColumnHeaderStyle>
+                                            <DataGrid.Columns>
+                                                <DataGridTextColumn Header="Preset Code" Binding="{Binding PresetCode}" Width="140" FontWeight="Bold" Foreground="#FFD54F"/>
+                                                <DataGridTextColumn Header="Preset Name" Binding="{Binding PresetName}" Width="220"/>
+                                                <DataGridTextColumn Header="Pumps" Binding="{Binding PumpCount}" Width="60"/>
+                                                <DataGridTextColumn Header="Nozzles" Binding="{Binding NozzleCount}" Width="65"/>
+                                                <DataGridTextColumn Header="Tanks" Binding="{Binding TankCount}" Width="60"/>
+                                                <DataGridTextColumn Header="Created" Binding="{Binding CreatedAt, StringFormat='dd-MMM-yyyy'}" Width="95"/>
+                                                <DataGridTemplateColumn Header="Actions" Width="140">
+                                                    <DataGridTemplateColumn.CellTemplate>
+                                                        <DataTemplate>
+                                                            <StackPanel Orientation="Horizontal">
+                                                                <Button Content="Load" Command="{Binding DataContext.LoadPresetByCodeCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding PresetCode}"
+                                                                        Style="{StaticResource MaterialDesignRaisedButton}" Background="#0288D1" Height="22" Padding="8,0" FontSize="10" Margin="0,0,6,0"/>
+                                                                <Button Content="Delete" Command="{Binding DataContext.DeletePresetCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"
+                                                                        Style="{StaticResource MaterialDesignFlatButton}" Foreground="#E57373" Height="22" Padding="6,0" FontSize="10"/>
+                                                            </StackPanel>
+                                                        </DataTemplate>
+                                                    </DataGridTemplateColumn.CellTemplate>
+                                                </DataGridTemplateColumn>
+                                            </DataGrid.Columns>
+                                        </DataGrid>
+                                    </Expander>
+                                </StackPanel>
+                            </materialDesign:Card>
+
+                            <!-- Section 2: Station Operational Entities (Pumps & Nozzles) -->
                             <materialDesign:Card Padding="16,12" Margin="0,0,0,16" Background="#263238">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
@@ -1249,7 +1358,7 @@
                                                                 <Grid>
                                                                     <Grid.ColumnDefinitions>
                                                                         <ColumnDefinition Width="Auto"/>
-                                                                        <ColumnDefinition Width="1*"/>
+                                                                        <ColumnDefinition Width="1.1*"/>
                                                                         <ColumnDefinition Width="1.4*"/>
                                                                         <ColumnDefinition Width="Auto"/>
                                                                     </Grid.ColumnDefinitions>
@@ -1261,7 +1370,7 @@
 
                                                                     <ComboBox Grid.Column="1" ItemsSource="{Binding DataContext.AvailableFuelTypes, RelativeSource={RelativeSource AncestorType=Window}}"
                                                                               SelectedItem="{Binding FuelType, UpdateSourceTrigger=PropertyChanged}"
-                                                                              Height="28" FontSize="11" Foreground="#80CBC4" Margin="0,0,6,0" ToolTip="Fuel Product">
+                                                                              IsEditable="False" Height="28" FontSize="11" Foreground="#80CBC4" Margin="0,0,6,0" ToolTip="Fuel Product">
                                                                         <ComboBox.ItemContainerStyle>
                                                                             <Style TargetType="ComboBoxItem">
                                                                                 <Setter Property="Foreground" Value="White"/>
@@ -1274,7 +1383,7 @@
                                                                     <!-- Connected Tank Dropdown -->
                                                                     <ComboBox Grid.Column="2" ItemsSource="{Binding DataContext.AvailableTankNames, RelativeSource={RelativeSource AncestorType=Window}}"
                                                                               SelectedItem="{Binding TankName, UpdateSourceTrigger=PropertyChanged}"
-                                                                              IsEditable="True" Height="28" FontSize="11" Foreground="#90CAF9" Margin="0,0,6,0" ToolTip="Connected Storage Tank">
+                                                                              IsEditable="False" Height="28" FontSize="11" Foreground="#90CAF9" Margin="0,0,6,0" ToolTip="Connected Storage Tank">
                                                                         <ComboBox.ItemContainerStyle>
                                                                             <Style TargetType="ComboBoxItem">
                                                                                 <Setter Property="Foreground" Value="White"/>
@@ -1313,10 +1422,11 @@
                                             </Style>
                                         </DataGrid.ColumnHeaderStyle>
                                         <DataGrid.Columns>
-                                            <DataGridTextColumn Header="Tank Name" Binding="{Binding TankName}" Width="200"/>
-                                            <DataGridTextColumn Header="Capacity (KL)" Binding="{Binding CapacityKL}" Width="120"/>
-                                            <DataGridTextColumn Header="Fuel Product" Binding="{Binding FuelType}" Width="150"/>
-                                            <DataGridCheckBoxColumn Header="Active" Binding="{Binding IsActive}" Width="80"/>
+                                            <DataGridTextColumn Header="Tank Name" Binding="{Binding TankName, UpdateSourceTrigger=PropertyChanged}" Width="200"/>
+                                            <DataGridTextColumn Header="Capacity (KL)" Binding="{Binding CapacityKL, UpdateSourceTrigger=PropertyChanged}" Width="120"/>
+                                            <DataGridTextColumn Header="Fuel Product" Binding="{Binding FuelType, UpdateSourceTrigger=PropertyChanged}" Width="150"/>
+                                            <DataGridCheckBoxColumn Header="Has Testing" Binding="{Binding HasTesting, UpdateSourceTrigger=PropertyChanged}" Width="90"/>
+                                            <DataGridCheckBoxColumn Header="Active" Binding="{Binding IsActive, UpdateSourceTrigger=PropertyChanged}" Width="80"/>
                                             <DataGridTemplateColumn Header="Actions" Width="100">
                                                 <DataGridTemplateColumn.CellTemplate>
                                                     <DataTemplate>

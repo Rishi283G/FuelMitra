@@ -92,27 +92,6 @@ public partial class App : Application
 
             // Re-run compatibility check to ensure columns are added after EF Core creates the tables on fresh install
             EnsureLegacyDatabaseCompatibility(DbPath);
-            
-            // Repair Nozzle 7 & 8 FuelType if they are incorrectly MS-II
-            try
-            {
-                var badMappings = await context.PumpMappings
-                    .Where(m => (m.NozzleNumber == 7 || m.NozzleNumber == 8) && m.FuelType == "MS-II")
-                    .ToListAsync();
-                if (badMappings.Any())
-                {
-                    foreach (var mapping in badMappings)
-                    {
-                        mapping.FuelType = "HSD";
-                    }
-                    await context.SaveChangesAsync();
-                    Log.Information("Repaired {Count} incorrect MS-II nozzle mappings for nozzles 7 and 8 to HSD", badMappings.Count);
-                }
-            }
-            catch (Exception repairEx)
-            {
-                Log.Error(repairEx, "Failed to run nozzle 7 & 8 automatic mapping repair");
-            }
 
             // Ensure all 12 PumpMappings are queued for sync to Supabase under the current station ID.
             // IMPORTANT: Check ALL logs (both synced and unsynced) to avoid re-queuing already-synced
@@ -216,8 +195,10 @@ public partial class App : Application
 
             // Initialize PumpConfiguration from Database
             var pumpMappings = await context.PumpMappings.ToListAsync();
+            var allTanks = await context.TankDefinitions.ToListAsync();
             FuelPro.Core.Common.PumpConfiguration.InitializeFromDb(pumpMappings);
-            Log.Information("Initialized PumpConfiguration with {Count} pump mappings from database", pumpMappings.Count);
+            FuelPro.Core.Common.PumpConfiguration.InitializeTanksFromDb(allTanks);
+            Log.Information("Initialized PumpConfiguration with {Count} pump mappings and {TankCount} tanks from database", pumpMappings.Count, allTanks.Count);
             
             var recalcMigration = scope.ServiceProvider.GetRequiredService<RecalculationMigrationService>();
             await recalcMigration.RunIfNeededAsync();
@@ -457,6 +438,7 @@ public partial class App : Application
                     ""CapacityKL"" REAL NOT NULL DEFAULT 20.0,
                     ""FuelType"" TEXT NOT NULL DEFAULT 'HSD',
                     ""IsActive"" INTEGER NOT NULL DEFAULT 1,
+                    ""HasTesting"" INTEGER NOT NULL DEFAULT 1,
                     ""CreatedAt"" TEXT NOT NULL
                 );
                 CREATE UNIQUE INDEX IF NOT EXISTS ""IX_TankDefinitions_TankName"" ON ""TankDefinitions"" (""TankName"");
@@ -464,6 +446,17 @@ public partial class App : Application
             cmdDyn.ExecuteNonQuery();
         }
 
+        if (TableExists(connection, "TankDefinitions"))
+        {
+            EnsureColumnExists(connection, "TankDefinitions", "HasTesting", "ALTER TABLE TankDefinitions ADD COLUMN HasTesting INTEGER NOT NULL DEFAULT 1;");
+            try
+            {
+                using var cmdCng = connection.CreateCommand();
+                cmdCng.CommandText = "UPDATE TankDefinitions SET HasTesting = 0 WHERE (FuelType = 'CNG' OR TankName LIKE '%CNG%') AND HasTesting = 1;";
+                cmdCng.ExecuteNonQuery();
+            }
+            catch { }
+        }
 
         // DsmPumpAssignments columns — must run before the guard since SyncValidationTest calls this
         // before EF migrations create PaymentCollections/DsmEntries tables.
@@ -1162,6 +1155,8 @@ public partial class App : Application
         services.AddTransient<AgsImportValidator>();
         services.AddTransient<PrintService>();
         services.AddTransient<ExcelExportService>();
+        services.AddTransient<IAuditLogService, AuditLogService>();
+        services.AddTransient<IDayLockService, DayLockService>();
         // Dynamic Configuration Services
         services.AddSingleton<IFeatureToggleService, FeatureToggleService>();
         services.AddSingleton<ICollectionTypeService, CollectionTypeService>();

@@ -70,36 +70,30 @@
             <materialDesign:Card Margin="4,0,4,20" Padding="16" UniformCornerRadius="8" materialDesign:ElevationAssist.Elevation="Dp1">
                 <StackPanel>
                     <TextBlock Text="Mode-wise Aggregated Totals" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,12" Opacity="0.7"/>
-                    <UniformGrid Columns="4">
-                        <StackPanel Margin="4">
-                            <TextBlock Text="PhonePe App" FontSize="11" Opacity="0.5"/>
-                            <TextBlock Text="{Binding TotalPhonePe, Converter={StaticResource CurrencyConverter}}" FontSize="15" FontWeight="SemiBold"/>
-                        </StackPanel>
-                        <StackPanel Margin="4">
-                            <TextBlock Text="PhonePe Card QR" FontSize="11" Opacity="0.5"/>
-                            <TextBlock Text="{Binding TotalPhonePeCard, Converter={StaticResource CurrencyConverter}}" FontSize="15" FontWeight="SemiBold"/>
-                        </StackPanel>
-                        <StackPanel Margin="4">
-                            <TextBlock Text="Credit Card POS" FontSize="11" Opacity="0.5"/>
-                            <TextBlock Text="{Binding TotalCreditCard, Converter={StaticResource CurrencyConverter}}" FontSize="15" FontWeight="SemiBold"/>
-                        </StackPanel>
-                        <StackPanel Margin="4">
-                            <TextBlock Text="Petro Cards" FontSize="11" Opacity="0.5"/>
-                            <TextBlock Text="{Binding TotalPetroCard, Converter={StaticResource CurrencyConverter}}" FontSize="15" FontWeight="SemiBold"/>
-                        </StackPanel>
-                    </UniformGrid>
-                    <Separator Margin="0,12"/>
-                    <UniformGrid Columns="4">
-                        <StackPanel Margin="4">
-                            <TextBlock Text="Total Debitors (Sales on Credit)" FontSize="11" Opacity="0.5"/>
-                            <TextBlock Text="{Binding TotalDebit, Converter={StaticResource CurrencyConverter}}" FontSize="15" FontWeight="SemiBold" Foreground="#E65100"/>
-                        </StackPanel>
-                    </UniformGrid>
+                    <ItemsControl ItemsSource="{Binding ModeTotals}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <materialDesign:Card Margin="4,4,16,8" Padding="12,8" UniformCornerRadius="8"
+                                                     MinWidth="150" Background="#FAFAFA" materialDesign:ElevationAssist.Elevation="Dp0">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding CollectionMode}" FontSize="11" Opacity="0.6" TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Text="{Binding Amount, Converter={StaticResource CurrencyConverter}}"
+                                                   FontSize="16" FontWeight="Bold" Margin="0,3,0,0" Foreground="{Binding DisplayColor}"/>
+                                    </StackPanel>
+                                </materialDesign:Card>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
                 </StackPanel>
             </materialDesign:Card>
 
             <TextBlock Text="Day-wise Collection Split" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,8"/>
-            <DataGrid ItemsSource="{Binding DayRows}" AutoGenerateColumns="False" IsReadOnly="True"
+            <DataGrid x:Name="DaySplitDataGrid" ItemsSource="{Binding DayRows}" AutoGenerateColumns="False" IsReadOnly="True"
                       materialDesign:DataGridAssist.CellPadding="12 8" CanUserSortColumns="True">
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="Date" Binding="{Binding DateDisplay}" Width="90"/>

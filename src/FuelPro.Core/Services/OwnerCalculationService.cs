@@ -36,6 +36,7 @@ public class OwnerCalculationService : IOwnerCalculationService
             result.PetroCard += (entry.PaymentCollection?.PetroCardMorning ?? 0)
                                 + (entry.PaymentCollection?.PetroCardDay ?? 0)
                                 + (entry.PaymentCollection?.PetroCardNight ?? 0);
+            result.DynamicCollection += entry.PaymentCollection?.DynamicItemsTotal ?? 0;
             result.Debit += entry.DebitEntries.Sum(d => d.Amount);
             result.Testing += entry.TestingEntries.Sum(t => t.Amount);
             entryExpenses += entry.Expenses.Sum(e => e.Amount);

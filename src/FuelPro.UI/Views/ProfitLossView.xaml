@@ -342,11 +342,71 @@
                             </Grid>
                         </StackPanel>
                     </materialDesign:Card>
+
+                    <!-- Configure Fuel Profit Margins (Moved to Left) -->
+                    <materialDesign:Card Padding="16" UniformCornerRadius="8" Margin="0,16,0,16" materialDesign:ElevationAssist.Elevation="Dp1">
+                        <StackPanel>
+                            <TextBlock Text="Configure Fuel Margins" FontSize="16" FontWeight="Bold" Margin="0,0,0,12" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                            
+                            <UniformGrid Columns="2" Margin="0,0,0,8">
+                                <Grid Margin="0,4,12,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="80"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Diesel (HSD) (₹/L):" VerticalAlignment="Center" FontSize="13"/>
+                                    <TextBox Grid.Column="1" Text="{Binding EditHsdMargin, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource MaterialDesignTextBox}" TextAlignment="Right" FontWeight="SemiBold"/>
+                                </Grid>
+                                
+                                <Grid Margin="12,4,0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="80"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Petrol (MS-I) (₹/L):" VerticalAlignment="Center" FontSize="13"/>
+                                    <TextBox Grid.Column="1" Text="{Binding EditMsIMargin, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource MaterialDesignTextBox}" TextAlignment="Right" FontWeight="SemiBold"/>
+                                </Grid>
+
+                                <Grid Margin="0,4,12,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="80"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Speed (MS-II) (₹/L):" VerticalAlignment="Center" FontSize="13"/>
+                                    <TextBox Grid.Column="1" Text="{Binding EditMsIIMargin, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource MaterialDesignTextBox}" TextAlignment="Right" FontWeight="SemiBold"/>
+                                </Grid>
+
+                                <Grid Margin="12,4,0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="80"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="CNG (₹/Kg):" VerticalAlignment="Center" FontSize="13"/>
+                                    <TextBox Grid.Column="1" Text="{Binding EditCngMargin, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource MaterialDesignTextBox}" TextAlignment="Right" FontWeight="SemiBold"/>
+                                </Grid>
+                            </UniformGrid>
+
+                            <Button Content="Save Margins" Command="{Binding SaveMarginsCommand}" Style="{StaticResource MaterialDesignRaisedButton}" Height="36" Margin="0,8,0,0" HorizontalAlignment="Right" Width="140" Background="#1565C0" BorderBrush="#1565C0"/>
+                        </StackPanel>
+                    </materialDesign:Card>
+
+                    <!-- Operating Expense breakdown list (Moved to Left) -->
+                    <materialDesign:Card Padding="16" UniformCornerRadius="8" materialDesign:ElevationAssist.Elevation="Dp1">
+                        <StackPanel>
+                            <TextBlock Text="Operating Expense Log" FontSize="16" FontWeight="Bold" Margin="0,0,0,8"/>
+                            <DataGrid ItemsSource="{Binding ExpenseBreakdown}" AutoGenerateColumns="False" IsReadOnly="True" MaxHeight="250"
+                                      materialDesign:DataGridAssist.CellPadding="6 4" CanUserSortColumns="True" Background="Transparent" BorderThickness="0">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Expense Item" Binding="{Binding Category}" Width="*"/>
+                                    <DataGridTextColumn Header="Amount" Binding="{Binding Amount, Converter={StaticResource CurrencyConverter}}" Width="120"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </StackPanel>
+                    </materialDesign:Card>
                 </StackPanel>
 
                 <!-- Sidebar Context & Secondary Info -->
                 <StackPanel Grid.Column="1">
-                    <!-- Secondary metrics card -->
                     <!-- Profit & Loss Statement Summary Card -->
                     <materialDesign:Card Padding="16" UniformCornerRadius="8" Margin="0,0,0,16" materialDesign:ElevationAssist.Elevation="Dp1" Background="#F5F5F5">
                         <StackPanel>
@@ -406,67 +466,8 @@
                         </StackPanel>
                     </materialDesign:Card>
 
-                    <!-- Configure Fuel Profit Margins -->
-                    <materialDesign:Card Padding="16" UniformCornerRadius="8" Margin="0,0,0,16" materialDesign:ElevationAssist.Elevation="Dp1">
-                        <StackPanel>
-                            <TextBlock Text="Configure Fuel Margins" FontSize="16" FontWeight="Bold" Margin="0,0,0,12" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
-                            
-                            <Grid Margin="0,4">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="80"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="Diesel (HSD) (₹/L):" VerticalAlignment="Center" FontSize="13"/>
-                                <TextBox Grid.Column="1" Text="{Binding EditHsdMargin, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource MaterialDesignTextBox}" TextAlignment="Right" FontWeight="SemiBold"/>
-                            </Grid>
-                            
-                            <Grid Margin="0,4">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="80"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="Petrol (MS-I) (₹/L):" VerticalAlignment="Center" FontSize="13"/>
-                                <TextBox Grid.Column="1" Text="{Binding EditMsIMargin, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource MaterialDesignTextBox}" TextAlignment="Right" FontWeight="SemiBold"/>
-                            </Grid>
-
-                            <Grid Margin="0,4">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="80"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="Speed (MS-II) (₹/L):" VerticalAlignment="Center" FontSize="13"/>
-                                <TextBox Grid.Column="1" Text="{Binding EditMsIIMargin, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource MaterialDesignTextBox}" TextAlignment="Right" FontWeight="SemiBold"/>
-                            </Grid>
-
-                            <Grid Margin="0,4">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="80"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="CNG (₹/Kg):" VerticalAlignment="Center" FontSize="13"/>
-                                <TextBox Grid.Column="1" Text="{Binding EditCngMargin, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource MaterialDesignTextBox}" TextAlignment="Right" FontWeight="SemiBold"/>
-                            </Grid>
-
-                            <Button Content="Save Margins" Command="{Binding SaveMarginsCommand}" Style="{StaticResource MaterialDesignRaisedButton}" Height="36" Margin="0,12,0,0" Background="#1565C0" BorderBrush="#1565C0"/>
-                        </StackPanel>
-                    </materialDesign:Card>
-
-                    <!-- Operating Expense breakdown list -->
-                    <materialDesign:Card Padding="16" UniformCornerRadius="8" materialDesign:ElevationAssist.Elevation="Dp1">
-                        <StackPanel>
-                            <TextBlock Text="Operating Expense Log" FontSize="16" FontWeight="Bold" Margin="0,0,0,8"/>
-                            <DataGrid ItemsSource="{Binding ExpenseBreakdown}" AutoGenerateColumns="False" IsReadOnly="True" MaxHeight="220"
-                                      materialDesign:DataGridAssist.CellPadding="4" CanUserSortColumns="True" Background="Transparent" BorderThickness="0">
-                                <DataGrid.Columns>
-                                    <DataGridTextColumn Header="Expense Item" Binding="{Binding Category}" Width="*"/>
-                                    <DataGridTextColumn Header="Amount" Binding="{Binding Amount, Converter={StaticResource CurrencyConverter}}" Width="100"/>
-                                </DataGrid.Columns>
-                            </DataGrid>
-                        </StackPanel>
-                    </materialDesign:Card>
-
                     <!-- Owner Pump Expenses Card -->
-                    <materialDesign:Card Padding="16" UniformCornerRadius="8" Margin="0,16,0,0" materialDesign:ElevationAssist.Elevation="Dp1">
+                    <materialDesign:Card Padding="16" UniformCornerRadius="8" materialDesign:ElevationAssist.Elevation="Dp1">
                         <StackPanel>
                             <TextBlock Text="Owner Pump Expenses" FontSize="16" FontWeight="Bold" Margin="0,0,0,8" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
                             <Grid>

@@ -164,7 +164,13 @@ public partial class MainWindowViewModel : ObservableObject
     {
         if (!IsDsmEntryVisible) return;
         SelectedNavIndex = 0;
-        CurrentView = GetOrCreateView<DsmEntryViewModel>();
+        var dsmVm = GetOrCreateView<DsmEntryViewModel>();
+        if (dsmVm.IsSaved || dsmVm.EditingEntryId.HasValue)
+        {
+            dsmVm.ClearForm();
+        }
+        _ = dsmVm.LoadSuggestionsAsync();
+        CurrentView = dsmVm;
     }
 
     [RelayCommand]
@@ -198,6 +204,7 @@ public partial class MainWindowViewModel : ObservableObject
         SelectedNavIndex = 4;
         var debtorVm = GetOrCreateView<DebtorManagementViewModel>();
         debtorVm.SelectedTabIndex = 0; // Debtors Directory tab
+        _ = debtorVm.LoadDataAsync();
         CurrentView = debtorVm;
     }
 

@@ -25,6 +25,9 @@ public class DsmEntryService
     public static event Action? DebtorChanged;
     public static void RaiseDebtorChanged() => DebtorChanged?.Invoke();
 
+    public static event Action? DsmProfileChanged;
+    public static void RaiseDsmProfileChanged() => DsmProfileChanged?.Invoke();
+
     public static event Action? PayrollChanged;
     public static void RaisePayrollChanged() => PayrollChanged?.Invoke();
 

@@ -773,8 +773,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
     {
         try
         {
-            var fuelType = PumpConfiguration.GetFuelType(pumpId, nozzleNumber, date);
-            return fuelType.ToDisplayName();
+            return PumpConfiguration.GetFuelTypeDisplayName(pumpId, nozzleNumber, date);
         }
         catch
         {

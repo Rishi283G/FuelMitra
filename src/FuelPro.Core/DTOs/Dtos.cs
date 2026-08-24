@@ -35,7 +35,6 @@ public class DsmEntrySummaryDto
     }
 }
 
-
 /// <summary>
 /// Dashboard summary for today's/last shift.
 /// </summary>
@@ -208,7 +207,7 @@ public class DsmSummaryRowDto
     public double CashDeposit { get; set; }  // Cash 1 — Bank Deposit
     public double Debit { get; set; }        // Sum of creditors/debit entries
     public double Expenses { get; set; }
-    public double Testing { get; set; }      // HSD Testing + MS Testing
+    public double Testing { get; set; }      // Testing
     public double CashInHand { get; set; }   // Cash 2
     public double GrossSales { get; set; }
 
@@ -222,8 +221,73 @@ public class DsmSummaryRowDto
     public double Difference => (CashDeposit + CashInHand + PhonePeTotal + CreditCardTotal + PetroCardTotal + DynamicCollectionsTotal + Debit + Expenses + Testing) - GrossSales;
     public double Mismatch => Difference;
     public double ShortAmount => Difference;
+
+    public string DynamicBreakdownDisplay
+    {
+        get
+        {
+            if (DynamicCollections != null && DynamicCollections.Count > 0)
+            {
+                var nonZero = DynamicCollections.Where(kv => kv.Value > 0).Select(kv => $"{kv.Key}: ₹{kv.Value:N2}");
+                var text = string.Join(", ", nonZero);
+                if (!string.IsNullOrWhiteSpace(text)) return text;
+            }
+            return DynamicCollectionsTotal > 0 ? $"₹{DynamicCollectionsTotal:N2}" : "—";
+        }
+    }
+
+    public double GetAmount(string codeOrName)
+    {
+        if (string.IsNullOrWhiteSpace(codeOrName)) return 0;
+        var clean = codeOrName.Trim().Replace("_", "").Replace(" ", "");
+
+        if (clean.Equals("PHONEPE", StringComparison.OrdinalIgnoreCase))
+            return PhonePeTotal;
+        if (clean.Equals("CREDITCARD", StringComparison.OrdinalIgnoreCase) || clean.Equals("PINELABCARD", StringComparison.OrdinalIgnoreCase) || clean.Equals("CARD", StringComparison.OrdinalIgnoreCase))
+            return CreditCardTotal;
+        if (clean.Equals("PETROCARD", StringComparison.OrdinalIgnoreCase) || clean.Equals("PETRO", StringComparison.OrdinalIgnoreCase))
+            return PetroCardTotal;
+        if (clean.Equals("CASHDEPOSIT", StringComparison.OrdinalIgnoreCase) || clean.Equals("BANKCASH", StringComparison.OrdinalIgnoreCase))
+            return CashDeposit;
+        if (clean.Equals("CASHINHAND", StringComparison.OrdinalIgnoreCase) || clean.Equals("HANDCASH", StringComparison.OrdinalIgnoreCase))
+            return CashInHand;
+        if (clean.Equals("DEBIT", StringComparison.OrdinalIgnoreCase) || clean.Equals("DEBTORS", StringComparison.OrdinalIgnoreCase))
+            return Debit;
+        if (clean.Equals("EXPENSES", StringComparison.OrdinalIgnoreCase))
+            return Expenses;
+        if (clean.Equals("TESTING", StringComparison.OrdinalIgnoreCase))
+            return Testing;
+
+        if (DynamicCollections != null)
+        {
+            if (DynamicCollections.TryGetValue(codeOrName, out var amt)) return amt;
+            var match = DynamicCollections.FirstOrDefault(kv => string.Equals(kv.Key?.Replace("_", "").Replace(" ", ""), clean, StringComparison.OrdinalIgnoreCase));
+            if (!string.IsNullOrEmpty(match.Key)) return match.Value;
+        }
+
+        if (clean.Equals("SBIREDEEM", StringComparison.OrdinalIgnoreCase)) return SbiRedeem;
+        if (clean.Equals("PAYTM", StringComparison.OrdinalIgnoreCase)) return Paytm;
+        if (clean.Equals("QR", StringComparison.OrdinalIgnoreCase) || clean.Equals("QRONLINE", StringComparison.OrdinalIgnoreCase)) return QrPayment;
+        if (clean.Equals("MOBIKWIK", StringComparison.OrdinalIgnoreCase)) return Mobikwik;
+
+        return 0;
+    }
+
+    public double this[string codeOrName] => GetAmount(codeOrName);
 }
 
+/// <summary>
+/// Tank-wise testing summary item for reconciliation and display.
+/// </summary>
+public class TestingSummaryItem
+{
+    public string TankName { get; set; } = string.Empty;
+    public string FuelType { get; set; } = string.Empty;
+    public double VolumeLitres { get; set; }
+    public double Rate { get; set; }
+    public double Amount { get; set; }
+    public string DisplayLabel => VolumeLitres > 0 ? $"{TankName} Testing ({VolumeLitres:N2} Ltr)" : $"{TankName} Testing";
+}
 
 /// <summary>
 /// Aggregated cash denomination data (Table B1/B2).
@@ -280,15 +344,17 @@ public class CashDenomDisplayRow
 }
 
 /// <summary>
-/// One row in the Creditor/Debit register (Table C).
+/// Flat list row for Debit register (Table C).
 /// </summary>
 public class DebitRegisterRowDto
 {
     public string DsmName { get; set; } = string.Empty;
     public int PumpId { get; set; }
     public string DebtorName { get; set; } = string.Empty;
-    public double Amount { get; set; }
     public string? ChequeNo { get; set; }
+    public string? VehicleNumber { get; set; }
+    public string? SlipNumber { get; set; }
+    public double Amount { get; set; }
 }
 
 /// <summary>
@@ -387,9 +453,58 @@ public class DsmShiftTotalDto
     public double PhonePeCard { get; set; }
     public double CreditCard { get; set; }
     public double PetroCard { get; set; }
-    public double DigitalTotal => PhonePe + PhonePeCard + CreditCard + PetroCard;
+    public double DynamicCollectionsTotal { get; set; }
+    public Dictionary<string, double> DynamicCollections { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public string DynamicBreakdownDisplay
+    {
+        get
+        {
+            if (DynamicCollections != null && DynamicCollections.Count > 0)
+            {
+                var nonZero = DynamicCollections.Where(kv => kv.Value > 0).Select(kv => $"{kv.Key}: ₹{kv.Value:N2}");
+                var text = string.Join(", ", nonZero);
+                if (!string.IsNullOrWhiteSpace(text)) return text;
+            }
+            return DynamicCollectionsTotal > 0 ? $"₹{DynamicCollectionsTotal:N2}" : "—";
+        }
+    }
+    public double DigitalTotal => PhonePe + PhonePeCard + CreditCard + PetroCard + DynamicCollectionsTotal;
     public double Debit { get; set; }
     public double Expenses { get; set; }
     public double Testing { get; set; }
     public double Mismatch { get; set; }
+
+    public double GetAmount(string codeOrName)
+    {
+        if (string.IsNullOrWhiteSpace(codeOrName)) return 0;
+        var clean = codeOrName.Trim().Replace("_", "").Replace(" ", "");
+
+        if (clean.Equals("PHONEPE", StringComparison.OrdinalIgnoreCase))
+            return PhonePe;
+        if (clean.Equals("CREDITCARD", StringComparison.OrdinalIgnoreCase) || clean.Equals("PINELABCARD", StringComparison.OrdinalIgnoreCase) || clean.Equals("CARD", StringComparison.OrdinalIgnoreCase))
+            return CreditCard + PhonePeCard;
+        if (clean.Equals("PETROCARD", StringComparison.OrdinalIgnoreCase) || clean.Equals("PETRO", StringComparison.OrdinalIgnoreCase))
+            return PetroCard;
+        if (clean.Equals("CASHDEPOSIT", StringComparison.OrdinalIgnoreCase) || clean.Equals("BANKCASH", StringComparison.OrdinalIgnoreCase))
+            return CashDeposit;
+        if (clean.Equals("CASHINHAND", StringComparison.OrdinalIgnoreCase) || clean.Equals("HANDCASH", StringComparison.OrdinalIgnoreCase))
+            return CashInHand;
+        if (clean.Equals("DEBIT", StringComparison.OrdinalIgnoreCase) || clean.Equals("DEBTORS", StringComparison.OrdinalIgnoreCase))
+            return Debit;
+        if (clean.Equals("EXPENSES", StringComparison.OrdinalIgnoreCase))
+            return Expenses;
+        if (clean.Equals("TESTING", StringComparison.OrdinalIgnoreCase))
+            return Testing;
+
+        if (DynamicCollections != null)
+        {
+            if (DynamicCollections.TryGetValue(codeOrName, out var amt)) return amt;
+            var match = DynamicCollections.FirstOrDefault(kv => string.Equals(kv.Key?.Replace("_", "").Replace(" ", ""), clean, StringComparison.OrdinalIgnoreCase));
+            if (!string.IsNullOrEmpty(match.Key)) return match.Value;
+        }
+
+        return 0;
+    }
+
+    public double this[string codeOrName] => GetAmount(codeOrName);
 }

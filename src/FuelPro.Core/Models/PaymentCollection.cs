@@ -74,10 +74,10 @@ public class PaymentCollection
     public double PhonePe => PhonePeMorning + PhonePeDay + PhonePeNight;
 
     /// <summary>
-    /// Total of all digital payment methods.
+    /// Total of all digital payment methods (including dynamic collection types).
     /// </summary>
     [NotMapped]
-    public double TotalDigitalPayments => PhonePeCard + PhonePe + CreditCard + PetroCard;
+    public double TotalDigitalPayments => PhonePeCard + PhonePe + CreditCard + PetroCard + DynamicItemsTotal;
 
     // Navigation
     [ForeignKey(nameof(DsmEntryId))]

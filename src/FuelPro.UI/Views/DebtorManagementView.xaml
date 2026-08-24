@@ -15,6 +15,7 @@
         <converters:BoolToVisibilityConverter x:Key="BoolToVis" />
         <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis" />
         <converters:InverseBoolConverter x:Key="InverseBool" />
+        <converters:StringToVisibilityConverter x:Key="StringToVis" />
 
         <Style TargetType="materialDesign:Card" x:Key="SectionCard">
             <Setter Property="Margin" Value="0,0,0,16" />
@@ -159,6 +160,30 @@
                                         
                                         <ComboBox ItemsSource="{Binding DebtorsList}" SelectedValue="{Binding SelectedDebtorName, UpdateSourceTrigger=PropertyChanged}" SelectedValuePath="Name" DisplayMemberPath="Name" IsEditable="True" materialDesign:HintAssist.Hint="Select Debtor" Style="{StaticResource MaterialDesignOutlinedComboBox}" Margin="0,0,0,12"/>
                                         
+                                        <!-- Selected Debtor Live Outstanding Badge -->
+                                        <Border Margin="0,0,0,12" Background="#FFF5F5" BorderBrush="#FFCDD2" BorderThickness="1" CornerRadius="6" Padding="12,8"
+                                                Visibility="{Binding SelectedDebtorName, Converter={StaticResource StringToVis}}">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel Grid.Column="0">
+                                                    <TextBlock Text="Total Debt" FontSize="11" Foreground="#666"/>
+                                                    <TextBlock Text="{Binding SelectedDebtorTotalDebt, Converter={StaticResource CurrencyConverter}}" FontWeight="SemiBold" FontSize="13"/>
+                                                </StackPanel>
+                                                <StackPanel Grid.Column="1">
+                                                    <TextBlock Text="Total Repaid" FontSize="11" Foreground="#666"/>
+                                                    <TextBlock Text="{Binding SelectedDebtorTotalRepaid, Converter={StaticResource CurrencyConverter}}" FontWeight="SemiBold" FontSize="13" Foreground="Green"/>
+                                                </StackPanel>
+                                                <StackPanel Grid.Column="2">
+                                                    <TextBlock Text="Net Outstanding" FontSize="11" Foreground="#666"/>
+                                                    <TextBlock Text="{Binding SelectedDebtorOutstandingBalance, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" FontSize="14" Foreground="Red"/>
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+                                        
                                         <ComboBox ItemsSource="{Binding RepaymentShifts}" SelectedItem="{Binding SelectedRepaymentShift}" materialDesign:HintAssist.Hint="Shift / Settlement Slot" Style="{StaticResource MaterialDesignOutlinedComboBox}" Margin="0,0,0,12"/>
 
                                         <Grid Margin="0,0,0,12">
@@ -229,25 +254,16 @@
                                          <Grid Margin="0,0,0,12">
                                              <Grid.Style>
                                                  <Style TargetType="Grid">
-                                                     <Setter Property="Visibility" Value="Collapsed" />
+                                                     <Setter Property="Visibility" Value="Visible" />
                                                      <Style.Triggers>
-                                                         <DataTrigger Binding="{Binding SelectedPaymentMode}" Value="PhonePe">
-                                                             <Setter Property="Visibility" Value="Visible" />
+                                                         <DataTrigger Binding="{Binding SelectedPaymentMode}" Value="Cash">
+                                                             <Setter Property="Visibility" Value="Collapsed" />
                                                          </DataTrigger>
-                                                         <DataTrigger Binding="{Binding SelectedPaymentMode}" Value="PineLabs Card">
-                                                             <Setter Property="Visibility" Value="Visible" />
+                                                         <DataTrigger Binding="{Binding SelectedPaymentMode}" Value="Cheque">
+                                                             <Setter Property="Visibility" Value="Collapsed" />
                                                          </DataTrigger>
-                                                         <DataTrigger Binding="{Binding SelectedPaymentMode}" Value="PetroCard">
-                                                             <Setter Property="Visibility" Value="Visible" />
-                                                         </DataTrigger>
-                                                         <DataTrigger Binding="{Binding SelectedPaymentMode}" Value="Petro Card">
-                                                             <Setter Property="Visibility" Value="Visible" />
-                                                         </DataTrigger>
-                                                         <DataTrigger Binding="{Binding SelectedPaymentMode}" Value="Credit Card">
-                                                             <Setter Property="Visibility" Value="Visible" />
-                                                         </DataTrigger>
-                                                         <DataTrigger Binding="{Binding SelectedPaymentMode}" Value="Others">
-                                                             <Setter Property="Visibility" Value="Visible" />
+                                                         <DataTrigger Binding="{Binding SelectedPaymentMode}" Value="Bank Transfer">
+                                                             <Setter Property="Visibility" Value="Collapsed" />
                                                          </DataTrigger>
                                                      </Style.Triggers>
                                                  </Style>
@@ -403,7 +419,13 @@
                                 <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,10">
                                     <TextBlock Text="Statement of Account — " Style="{StaticResource SectionTitle}" Margin="0"/>
                                     <TextBlock Text="{Binding LedgerDebtorName}" Style="{StaticResource SectionTitle}" FontWeight="Bold" Margin="0"/>
-                                    <TextBlock Text="  " Style="{StaticResource SectionTitle}" Margin="0"/>
+                                    <Border Visibility="{Binding LedgerDebtorName, Converter={StaticResource StringToVis}}"
+                                            Background="{DynamicResource MaterialDesign.Brush.Primary.Light}" CornerRadius="4" Padding="10,4" Margin="16,0,0,0">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="All-Time Outstanding: " FontSize="13" Foreground="White" Opacity="0.9"/>
+                                            <TextBlock Text="{Binding SelectedLedgerDebtorAllTimeOutstanding, Converter={StaticResource CurrencyConverter}}" FontSize="14" FontWeight="Bold" Foreground="White"/>
+                                        </StackPanel>
+                                    </Border>
                                     <TextBlock Text="{Binding LedgerStatus}" Foreground="Red" FontSize="13" VerticalAlignment="Center" Margin="10,0,0,0"/>
                                 </StackPanel>
 

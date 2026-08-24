@@ -49,38 +49,21 @@ public class StationConfigurationService : IStationConfigurationService
             var db = scope.ServiceProvider.GetRequiredService<FuelProDbContext>();
 
             var incomingList = mappings.ToList();
-            var incomingIds = incomingList.Where(m => m.PumpMappingId > 0).Select(m => m.PumpMappingId).ToHashSet();
             var existingAll = await db.PumpMappings.ToListAsync();
-
-            // Remove any mappings that were deleted from the layout
-            foreach (var ext in existingAll)
-            {
-                if (!incomingIds.Contains(ext.PumpMappingId))
-                {
-                    db.PumpMappings.Remove(ext);
-                }
-            }
+            db.PumpMappings.RemoveRange(existingAll);
+            await db.SaveChangesAsync();
 
             foreach (var item in incomingList)
             {
-                if (item.PumpMappingId > 0)
+                db.PumpMappings.Add(new PumpMapping
                 {
-                    var existing = await db.PumpMappings.FindAsync(item.PumpMappingId);
-                    if (existing != null)
-                    {
-                        existing.PumpId = item.PumpId;
-                        existing.NozzleNumber = item.NozzleNumber;
-                        existing.FuelType = item.FuelType;
-                        existing.TankName = item.TankName;
-                        existing.IsActive = item.IsActive;
-                        db.Entry(existing).State = EntityState.Modified;
-                    }
-                }
-                else
-                {
-                    item.CreatedAt = DateTime.Now;
-                    db.PumpMappings.Add(item);
-                }
+                    PumpId = item.PumpId,
+                    NozzleNumber = item.NozzleNumber,
+                    FuelType = item.FuelType,
+                    TankName = item.TankName,
+                    IsActive = true,
+                    CreatedAt = DateTime.Now
+                });
             }
 
             await db.SaveChangesAsync();
@@ -158,6 +141,7 @@ public class StationConfigurationService : IStationConfigurationService
                     existing.CapacityKL = tank.CapacityKL;
                     existing.FuelType = tank.FuelType;
                     existing.IsActive = tank.IsActive;
+                    existing.HasTesting = tank.HasTesting;
                     db.Entry(existing).State = EntityState.Modified;
                 }
             }
@@ -168,6 +152,10 @@ public class StationConfigurationService : IStationConfigurationService
             }
 
             await db.SaveChangesAsync();
+
+            var allActiveTanks = await db.TankDefinitions.ToListAsync();
+            PumpConfiguration.InitializeTanksFromDb(allActiveTanks);
+
             StationConfigurationChanged?.Invoke();
             return true;
         }
@@ -189,6 +177,10 @@ public class StationConfigurationService : IStationConfigurationService
             {
                 db.TankDefinitions.Remove(item);
                 await db.SaveChangesAsync();
+
+                var allActiveTanks = await db.TankDefinitions.ToListAsync();
+                PumpConfiguration.InitializeTanksFromDb(allActiveTanks);
+
                 StationConfigurationChanged?.Invoke();
             }
             return true;
@@ -250,6 +242,102 @@ public class StationConfigurationService : IStationConfigurationService
         catch (Exception ex)
         {
             _logger.Error(ex, "Failed to save product: {Name}", product.ProductName);
+            return false;
+        }
+    }
+
+    public async Task<List<StationLayoutPreset>> GetAllPresetsAsync()
+    {
+        try
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<FuelProDbContext>();
+            return await db.StationLayoutPresets
+                .OrderByDescending(p => p.CreatedAt)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to load station presets");
+            return new List<StationLayoutPreset>();
+        }
+    }
+
+    public async Task<StationLayoutPreset?> GetPresetByCodeAsync(string presetCode)
+    {
+        if (string.IsNullOrWhiteSpace(presetCode)) return null;
+        try
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<FuelProDbContext>();
+            var code = presetCode.Trim();
+            return await db.StationLayoutPresets
+                .FirstOrDefaultAsync(p => p.PresetCode.ToLower() == code.ToLower());
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to load station preset by code: {Code}", presetCode);
+            return null;
+        }
+    }
+
+    public async Task<bool> SavePresetAsync(StationLayoutPreset preset)
+    {
+        try
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<FuelProDbContext>();
+
+            var existing = await db.StationLayoutPresets
+                .FirstOrDefaultAsync(p => p.PresetId == preset.PresetId || p.PresetCode.ToLower() == preset.PresetCode.Trim().ToLower());
+
+            if (existing != null)
+            {
+                existing.PresetName = preset.PresetName;
+                existing.PresetCode = preset.PresetCode.Trim();
+                existing.Description = preset.Description;
+                existing.LayoutJson = preset.LayoutJson;
+                existing.PumpCount = preset.PumpCount;
+                existing.NozzleCount = preset.NozzleCount;
+                existing.TankCount = preset.TankCount;
+                existing.IsActive = preset.IsActive;
+                existing.UpdatedAt = DateTime.Now;
+                db.Entry(existing).State = EntityState.Modified;
+            }
+            else
+            {
+                preset.PresetCode = preset.PresetCode.Trim();
+                preset.CreatedAt = DateTime.Now;
+                db.StationLayoutPresets.Add(preset);
+            }
+
+            await db.SaveChangesAsync();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to save preset: {Code}", preset.PresetCode);
+            return false;
+        }
+    }
+
+    public async Task<bool> DeletePresetAsync(int presetId)
+    {
+        try
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<FuelProDbContext>();
+            var item = await db.StationLayoutPresets.FindAsync(presetId);
+            if (item != null)
+            {
+                db.StationLayoutPresets.Remove(item);
+                await db.SaveChangesAsync();
+            }
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to delete preset {Id}", presetId);
             return false;
         }
     }

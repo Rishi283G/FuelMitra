@@ -10,12 +10,14 @@ using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 
 namespace FuelPro.UI.ViewModels;
 
 /// <summary>
-/// Monthly performance overview: day-by-day totals for the selected month.
+/// Monthly performance overview: day-by-day totals for the selected month and DSM-wise summary.
 /// </summary>
 public partial class MonthlyPerformanceViewModel : ObservableObject, IDisposable
 {
@@ -143,12 +145,22 @@ public partial class MonthlyPerformanceViewModel : ObservableObject, IDisposable
                 double dayNetSale = dayReport.TotalFuelAmount + dayReport.OtherCashTotal + dayReport.OilDefSalesTotal;
                 double dayCollection = dayReport.ActualCollection;
 
+                double dayDiesel = dayReport.FuelSales.FirstOrDefault(f => f.FuelType == "HSD")?.Litres ?? 0;
+                double dayPetrol = dayReport.FuelSales.FirstOrDefault(f => f.FuelType == "MS-I" || f.FuelType == "MS" || f.FuelType == "Petrol")?.Litres ?? 0;
+                double daySpeed = dayReport.FuelSales.FirstOrDefault(f => f.FuelType == "MS-II" || f.FuelType == "Speed")?.Litres ?? 0;
+                double dayCng = dayReport.FuelSales.FirstOrDefault(f => f.FuelType == "CNG")?.Litres ?? 0;
+
                 DayRows.Add(new MonthDayRow
                 {
                     Date = date,
                     DsmEntryCount = dayGroupEntries.Count,
                     TotalSale = dayNetSale,
                     TotalLitres = dayReport.TotalFuelLitres,
+                    Expenses = dayReport.ExpensesTotal,
+                    DieselLitres = dayDiesel,
+                    PetrolLitres = dayPetrol,
+                    SpeedLitres = daySpeed,
+                    CngKg = dayCng,
                     TotalCollection = dayCollection,
                     Mismatch = dayReport.Difference
                 });
@@ -183,7 +195,7 @@ public partial class MonthlyPerformanceViewModel : ObservableObject, IDisposable
                 new() { Label = "Total Entries", Value = MonthTotalEntries.ToString(), Highlight = false }
             };
 
-            var headers = new List<string> { "Date", "Day", "DSM Entries", "Total Sales", "Volume Sold (L)", "Collection", "Mismatch" };
+            var headers = new List<string> { "Date", "Day", "DSM Entries", "Sale", "Total Litres", "Expenses", "Diesel (L)", "Petrol (L)", "Speed (L)", "CNG (Kg)", "Collection", "Mismatch" };
             var rows = new List<List<string>>();
 
             foreach (var row in DayRows)
@@ -195,6 +207,11 @@ public partial class MonthlyPerformanceViewModel : ObservableObject, IDisposable
                     row.DsmEntryCount.ToString(),
                     "₹" + row.TotalSale.ToString("N2"),
                     row.TotalLitres.ToString("N2") + " L",
+                    "₹" + row.Expenses.ToString("N2"),
+                    row.DieselLitres.ToString("N2"),
+                    row.PetrolLitres.ToString("N2"),
+                    row.SpeedLitres.ToString("N2"),
+                    row.CngKg.ToString("N2"),
                     "₹" + row.TotalCollection.ToString("N2"),
                     "₹" + row.Mismatch.ToString("N2")
                 });
@@ -233,7 +250,7 @@ public partial class MonthlyPerformanceViewModel : ObservableObject, IDisposable
                 new() { Label = "Total Entries", Value = MonthTotalEntries.ToString(), Highlight = false }
             };
 
-            var headers = new List<string> { "Date", "Day", "DSM Entries", "Total Sales", "Volume Sold (L)", "Collection", "Mismatch" };
+            var headers = new List<string> { "Date", "Day", "DSM Entries", "Sale", "Total Litres", "Expenses", "Diesel (L)", "Petrol (L)", "Speed (L)", "CNG (Kg)", "Collection", "Mismatch" };
             var rows = new List<List<string>>();
 
             foreach (var row in DayRows)
@@ -245,6 +262,11 @@ public partial class MonthlyPerformanceViewModel : ObservableObject, IDisposable
                     row.DsmEntryCount.ToString(),
                     "₹" + row.TotalSale.ToString("N2"),
                     row.TotalLitres.ToString("N2"),
+                    "₹" + row.Expenses.ToString("N2"),
+                    row.DieselLitres.ToString("N2"),
+                    row.PetrolLitres.ToString("N2"),
+                    row.SpeedLitres.ToString("N2"),
+                    row.CngKg.ToString("N2"),
                     "₹" + row.TotalCollection.ToString("N2"),
                     "₹" + row.Mismatch.ToString("N2")
                 });
@@ -279,6 +301,11 @@ public class MonthDayRow
     public int DsmEntryCount { get; set; }
     public double TotalSale { get; set; }
     public double TotalLitres { get; set; }
+    public double Expenses { get; set; }
+    public double DieselLitres { get; set; }
+    public double PetrolLitres { get; set; }
+    public double SpeedLitres { get; set; }
+    public double CngKg { get; set; }
     public double TotalCollection { get; set; }
     public double Mismatch { get; set; }
 }

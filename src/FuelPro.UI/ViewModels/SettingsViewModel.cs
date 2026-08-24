@@ -293,6 +293,7 @@ public partial class SettingsViewModel : ObservableObject
             NewCreditorPhone = "";
             NewCreditorVehicleNumber = "";
             CreditorStatusMessage = "✅ Debtor added!";
+            FuelPro.Core.Services.DsmEntryService.RaiseDebtorChanged();
             await LoadAsync();
         }
         else CreditorStatusMessage = $"❌ {result.Error}";
@@ -303,7 +304,11 @@ public partial class SettingsViewModel : ObservableObject
     {
         if (creditor == null) return;
         var result = await _creditorRepo.UpdateAsync(creditor);
-        if (result.Success) await LoadAsync();
+        if (result.Success)
+        {
+            FuelPro.Core.Services.DsmEntryService.RaiseDebtorChanged();
+            await LoadAsync();
+        }
     }
 
     [RelayCommand]
@@ -311,7 +316,11 @@ public partial class SettingsViewModel : ObservableObject
     {
         if (creditor == null) return;
         var result = await _creditorRepo.SoftDeleteAsync(creditor.CreditorId);
-        if (result.Success) await LoadAsync();
+        if (result.Success)
+        {
+            FuelPro.Core.Services.DsmEntryService.RaiseDebtorChanged();
+            await LoadAsync();
+        }
     }
 
     [RelayCommand]
@@ -712,6 +721,7 @@ public partial class SettingsViewModel : ObservableObject
                     NewDsmName = "";
                     NewDsmPhone = "";
                     DsmStatusMessage = "✅ DSM added successfully!";
+                    FuelPro.Core.Services.DsmEntryService.RaiseDsmProfileChanged();
                     await LoadDsmsAsync();
                 }
                 else
@@ -733,6 +743,7 @@ public partial class SettingsViewModel : ObservableObject
         try
         {
             await _profileRepo.UpdateAsync(profile);
+            FuelPro.Core.Services.DsmEntryService.RaiseDsmProfileChanged();
             await LoadDsmsAsync();
             DsmStatusMessage = $"Updated profile for {profile.DsmName}.";
         }
@@ -756,6 +767,7 @@ public partial class SettingsViewModel : ObservableObject
             {
                 DsmProfiles.Remove(profile);
                 DsmStatusMessage = $"✅ Deleted {profile.DsmName}.";
+                FuelPro.Core.Services.DsmEntryService.RaiseDsmProfileChanged();
             }
             else
             {

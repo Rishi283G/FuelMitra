@@ -160,6 +160,18 @@ public class ShiftAggregationService : IShiftAggregationService
     /// </summary>
     public DsmSummaryRowDto BuildDsmSummaryTotalRow(List<DsmSummaryRowDto> rows)
     {
+        var totalDynDict = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        foreach (var r in rows)
+        {
+            if (r.DynamicCollections != null)
+            {
+                foreach (var kvp in r.DynamicCollections)
+                {
+                    totalDynDict[kvp.Key] = (totalDynDict.TryGetValue(kvp.Key, out var val) ? val : 0) + kvp.Value;
+                }
+            }
+        }
+
         return new DsmSummaryRowDto
         {
             DsmName = "TOTAL",
@@ -181,6 +193,7 @@ public class ShiftAggregationService : IShiftAggregationService
             PetroCardNight = rows.Sum(r => r.PetroCardNight),
             Others = rows.Sum(r => r.Others),
             DynamicCollectionsTotal = rows.Sum(r => r.DynamicCollectionsTotal),
+            DynamicCollections = totalDynDict,
             SbiRedeem = rows.Sum(r => r.SbiRedeem),
             Paytm = rows.Sum(r => r.Paytm),
             QrPayment = rows.Sum(r => r.QrPayment),
@@ -223,6 +236,18 @@ public class ShiftAggregationService : IShiftAggregationService
                 double testing = g.Sum(r => r.Testing);
 
                 double dynamicTotal = g.Sum(r => r.DynamicCollectionsTotal);
+                var dynDict = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+                foreach (var r in g)
+                {
+                    if (r.DynamicCollections != null)
+                    {
+                        foreach (var kvp in r.DynamicCollections)
+                        {
+                            dynDict[kvp.Key] = (dynDict.TryGetValue(kvp.Key, out var existing) ? existing : 0) + kvp.Value;
+                        }
+                    }
+                }
+
                 double totalCollection = cashDeposit + cashInHand + phonePe + phonePeCard + creditCard + petroCard + dynamicTotal + debit + expenses + testing;
                 double mismatch = totalCollection - grossSales;
 
@@ -239,6 +264,8 @@ public class ShiftAggregationService : IShiftAggregationService
                     PhonePeCard = phonePeCard,
                     CreditCard = creditCard,
                     PetroCard = petroCard,
+                    DynamicCollectionsTotal = dynamicTotal,
+                    DynamicCollections = dynDict,
                     Debit = debit,
                     Expenses = expenses,
                     Testing = testing,

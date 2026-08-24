@@ -67,99 +67,51 @@
 
                 <StackPanel Grid.Row="0">
                     <!-- TAB CONTROL FOR SETTLEMENTS -->
-                    <TabControl materialDesign:ColorZoneAssist.Mode="Standard" Margin="0,0,0,16">
-                        <TabItem Header="Credit Cards">
-                            <materialDesign:Card Padding="16" UniformCornerRadius="8" materialDesign:ElevationAssist.Elevation="Dp2">
-                                <StackPanel>
-                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                                        <TextBlock Text="I. CREDIT CARD SETTLEMENT — Morning / Day / Night" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
-                                        <TextBlock Text="{Binding CardTotal, StringFormat=' (Total: ₹{0:N2})'}" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
-                                    </StackPanel>
-                                    <DataGrid ItemsSource="{Binding CardPayments}" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" SelectionMode="Single"
-                                              materialDesign:DataGridAssist.CellPadding="8 6" HeadersVisibility="Column" MaxHeight="220">
-                                        <DataGrid.Columns>
-                                            <DataGridTextColumn Header="No" Binding="{Binding RomanIndex}" IsReadOnly="True" Width="60"/>
-                                            <DataGridTextColumn Header="Salesperson (DSM)" Binding="{Binding DsmName}" IsReadOnly="True" Width="200"/>
-                                            <DataGridTemplateColumn Header="Slot" Width="180">
-                                                <DataGridTemplateColumn.CellTemplate>
-                                                    <DataTemplate>
-                                                        <StackPanel Margin="2,4">
-                                                            <TextBlock Text="{Binding Slot}" FontWeight="Bold" FontSize="12"/>
-                                                            <TextBlock Text="{Binding SlotDisplaySubtitle}" FontSize="9.5" Foreground="#64766D" FontWeight="Normal" Margin="0,1,0,0"/>
-                                                        </StackPanel>
-                                                    </DataTemplate>
-                                                </DataGridTemplateColumn.CellTemplate>
-                                            </DataGridTemplateColumn>
-                                            <DataGridTextColumn Header="TID" Binding="{Binding Tid}" IsReadOnly="True" Width="150"/>
-                                            <DataGridTextColumn Header="Batch No" Binding="{Binding Batch}" IsReadOnly="True" Width="200"/>
-                                            <DataGridTextColumn Header="Amount" Binding="{Binding Amount, Converter={StaticResource CurrencyConverter}}" IsReadOnly="True" Width="*" ElementStyle="{StaticResource RightAlignedTextBlockStyle}"/>
-                                        </DataGrid.Columns>
-                                    </DataGrid>
+                    <TabControl ItemsSource="{Binding Tabs}" SelectedItem="{Binding SelectedTab}"
+                                materialDesign:ColorZoneAssist.Mode="Standard" Margin="0,0,0,16">
+                        <TabControl.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal" Margin="4,2">
+                                    <TextBlock Text="{Binding TabHeader}" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center"/>
+                                    <Border Background="#E8F5E9" CornerRadius="10" Padding="6,2" Margin="8,0,0,0" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding TotalAmount, Converter={StaticResource CurrencyConverter}}"
+                                                   FontSize="11" FontWeight="Bold" Foreground="#2E7D32"/>
+                                    </Border>
                                 </StackPanel>
-                            </materialDesign:Card>
-                        </TabItem>
-
-                        <TabItem Header="PhonePe / Digital">
-                            <materialDesign:Card Padding="16" UniformCornerRadius="8" materialDesign:ElevationAssist.Elevation="Dp2">
-                                <StackPanel>
-                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                                        <TextBlock Text="II. PHONEPE / DIGITAL SETTLEMENT — Morning / Day / Night" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
-                                        <TextBlock Text="{Binding PhonePeTotal, StringFormat=' (Total: ₹{0:N2})'}" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                            </DataTemplate>
+                        </TabControl.ItemTemplate>
+                        <TabControl.ContentTemplate>
+                            <DataTemplate>
+                                <materialDesign:Card Padding="16" UniformCornerRadius="8" materialDesign:ElevationAssist.Elevation="Dp2">
+                                    <StackPanel>
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                            <TextBlock Text="{Binding SectionTitle}" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                            <TextBlock Text="{Binding TotalAmount, StringFormat=' (Total: ₹{0:N2})'}" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                        </StackPanel>
+                                        <DataGrid ItemsSource="{Binding Items}" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" SelectionMode="Single"
+                                                  materialDesign:DataGridAssist.CellPadding="8 6" HeadersVisibility="Column" MaxHeight="280">
+                                            <DataGrid.Columns>
+                                                <DataGridTextColumn Header="No" Binding="{Binding RomanIndex}" IsReadOnly="True" Width="60"/>
+                                                <DataGridTextColumn Header="Salesperson (DSM)" Binding="{Binding DsmName}" IsReadOnly="True" Width="220"/>
+                                                <DataGridTemplateColumn Header="Slot" Width="180">
+                                                    <DataGridTemplateColumn.CellTemplate>
+                                                        <DataTemplate>
+                                                            <StackPanel Margin="2,4">
+                                                                <TextBlock Text="{Binding Slot}" FontWeight="Bold" FontSize="12"/>
+                                                                <TextBlock Text="{Binding SlotDisplaySubtitle}" FontSize="9.5" Foreground="#64766D" FontWeight="Normal" Margin="0,1,0,0"/>
+                                                            </StackPanel>
+                                                        </DataTemplate>
+                                                    </DataGridTemplateColumn.CellTemplate>
+                                                </DataGridTemplateColumn>
+                                                <DataGridTextColumn Header="TID" Binding="{Binding Tid}" IsReadOnly="True" Width="160"/>
+                                                <DataGridTextColumn Header="Batch No" Binding="{Binding Batch}" IsReadOnly="True" Width="200"/>
+                                                <DataGridTextColumn Header="Amount" Binding="{Binding Amount, Converter={StaticResource CurrencyConverter}}" IsReadOnly="True" Width="*" ElementStyle="{StaticResource RightAlignedTextBlockStyle}"/>
+                                            </DataGrid.Columns>
+                                        </DataGrid>
                                     </StackPanel>
-                                    <DataGrid ItemsSource="{Binding PhonePePayments}" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" SelectionMode="Single"
-                                              materialDesign:DataGridAssist.CellPadding="8 6" HeadersVisibility="Column" MaxHeight="220">
-                                        <DataGrid.Columns>
-                                            <DataGridTextColumn Header="No" Binding="{Binding RomanIndex}" IsReadOnly="True" Width="60"/>
-                                            <DataGridTextColumn Header="Salesperson (DSM)" Binding="{Binding DsmName}" IsReadOnly="True" Width="200"/>
-                                            <DataGridTemplateColumn Header="Slot" Width="180">
-                                                <DataGridTemplateColumn.CellTemplate>
-                                                    <DataTemplate>
-                                                        <StackPanel Margin="2,4">
-                                                            <TextBlock Text="{Binding Slot}" FontWeight="Bold" FontSize="12"/>
-                                                            <TextBlock Text="{Binding SlotDisplaySubtitle}" FontSize="9.5" Foreground="#64766D" FontWeight="Normal" Margin="0,1,0,0"/>
-                                                        </StackPanel>
-                                                    </DataTemplate>
-                                                </DataGridTemplateColumn.CellTemplate>
-                                            </DataGridTemplateColumn>
-                                            <DataGridTextColumn Header="TID" Binding="{Binding Tid}" IsReadOnly="True" Width="150"/>
-                                            <DataGridTextColumn Header="Batch No" Binding="{Binding Batch}" IsReadOnly="True" Width="200"/>
-                                            <DataGridTextColumn Header="Amount" Binding="{Binding Amount, Converter={StaticResource CurrencyConverter}}" IsReadOnly="True" Width="*" ElementStyle="{StaticResource RightAlignedTextBlockStyle}"/>
-                                        </DataGrid.Columns>
-                                    </DataGrid>
-                                </StackPanel>
-                            </materialDesign:Card>
-                        </TabItem>
-
-                        <TabItem Header="Petro Card">
-                            <materialDesign:Card Padding="16" UniformCornerRadius="8" materialDesign:ElevationAssist.Elevation="Dp2">
-                                <StackPanel>
-                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                                        <TextBlock Text="III. PETRO CARD SETTLEMENT — Morning / Day / Night" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
-                                        <TextBlock Text="{Binding PetroCardTotal, StringFormat=' (Total: ₹{0:N2})'}" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
-                                    </StackPanel>
-                                    <DataGrid ItemsSource="{Binding PetroCardPayments}" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" SelectionMode="Single"
-                                              materialDesign:DataGridAssist.CellPadding="8 6" HeadersVisibility="Column" MaxHeight="220">
-                                        <DataGrid.Columns>
-                                            <DataGridTextColumn Header="No" Binding="{Binding RomanIndex}" IsReadOnly="True" Width="60"/>
-                                            <DataGridTextColumn Header="Salesperson (DSM)" Binding="{Binding DsmName}" IsReadOnly="True" Width="200"/>
-                                            <DataGridTemplateColumn Header="Slot" Width="180">
-                                                <DataGridTemplateColumn.CellTemplate>
-                                                    <DataTemplate>
-                                                        <StackPanel Margin="2,4">
-                                                            <TextBlock Text="{Binding Slot}" FontWeight="Bold" FontSize="12"/>
-                                                            <TextBlock Text="{Binding SlotDisplaySubtitle}" FontSize="9.5" Foreground="#64766D" FontWeight="Normal" Margin="0,1,0,0"/>
-                                                        </StackPanel>
-                                                    </DataTemplate>
-                                                </DataGridTemplateColumn.CellTemplate>
-                                            </DataGridTemplateColumn>
-                                            <DataGridTextColumn Header="TID" Binding="{Binding Tid}" IsReadOnly="True" Width="150"/>
-                                            <DataGridTextColumn Header="Batch No" Binding="{Binding Batch}" IsReadOnly="True" Width="200"/>
-                                            <DataGridTextColumn Header="Amount" Binding="{Binding Amount, Converter={StaticResource CurrencyConverter}}" IsReadOnly="True" Width="*" ElementStyle="{StaticResource RightAlignedTextBlockStyle}"/>
-                                        </DataGrid.Columns>
-                                    </DataGrid>
-                                </StackPanel>
-                            </materialDesign:Card>
-                        </TabItem>
+                                </materialDesign:Card>
+                            </DataTemplate>
+                        </TabControl.ContentTemplate>
                     </TabControl>
 
                     <!-- SECTION 4: TID SHEET HISTORY LOGS -->
@@ -169,15 +121,35 @@
                                 <materialDesign:PackIcon Kind="History" Width="20" Height="20" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" VerticalAlignment="Center" Margin="0,0,6,0"/>
                                 <TextBlock Text="TID Sheet History Logs (Last 15 Days)" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
                             </StackPanel>
-                            <DataGrid ItemsSource="{Binding PreviousTidSheets}" AutoGenerateColumns="False" IsReadOnly="True" MaxHeight="200" SelectionMode="Single"
+                            <DataGrid ItemsSource="{Binding PreviousTidSheets}" AutoGenerateColumns="False" IsReadOnly="True" MaxHeight="220" SelectionMode="Single"
                                       materialDesign:DataGridAssist.CellPadding="8 6" HeadersVisibility="Column">
                                 <DataGrid.Columns>
-                                    <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat='dd MMM yyyy'}" Width="150"/>
-                                    <DataGridTextColumn Header="PineLabs Card Total" Binding="{Binding PineLabsCardTotal, Converter={StaticResource CurrencyConverter}}" Width="*"/>
-                                    <DataGridTextColumn Header="PhonePe Total" Binding="{Binding PhonePeTotal, Converter={StaticResource CurrencyConverter}}" Width="*"/>
-                                    <DataGridTextColumn Header="Petro Card Total" Binding="{Binding PetroCardTotal, Converter={StaticResource CurrencyConverter}}" Width="*"/>
-                                    <DataGridTextColumn Header="Grand Total" Binding="{Binding GrandTotal, Converter={StaticResource CurrencyConverter}}" Width="*" ElementStyle="{StaticResource RightAlignedTextBlockStyle}"/>
-                                    <DataGridTemplateColumn Header="Action" Width="100">
+                                    <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat='dd MMM yyyy'}" Width="130"/>
+                                    <DataGridTemplateColumn Header="Payment Modes Breakdown" Width="*">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <ItemsControl ItemsSource="{Binding CollectionGroups}">
+                                                    <ItemsControl.ItemsPanel>
+                                                        <ItemsPanelTemplate>
+                                                            <WrapPanel Orientation="Horizontal"/>
+                                                        </ItemsPanelTemplate>
+                                                    </ItemsControl.ItemsPanel>
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Border Background="#F5F5F5" CornerRadius="6" Padding="6,2" Margin="3,2" BorderBrush="#E0E0E0" BorderThickness="1">
+                                                                <StackPanel Orientation="Horizontal">
+                                                                    <TextBlock Text="{Binding DisplayName}" FontSize="11" Opacity="0.7" Margin="0,0,4,0"/>
+                                                                    <TextBlock Text="{Binding TotalAmount, Converter={StaticResource CurrencyConverter}}" FontSize="11" FontWeight="Bold" Foreground="#1565C0"/>
+                                                                </StackPanel>
+                                                            </Border>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTextColumn Header="Grand Total" Binding="{Binding GrandTotal, Converter={StaticResource CurrencyConverter}}" Width="140" FontWeight="Bold" ElementStyle="{StaticResource RightAlignedTextBlockStyle}"/>
+                                    <DataGridTemplateColumn Header="Action" Width="90">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <Button Content="Load" 

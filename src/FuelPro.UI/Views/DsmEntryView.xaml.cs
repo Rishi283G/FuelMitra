@@ -161,4 +161,12 @@ public partial class DsmEntryView : UserControl
 
         e.Handled = true;
     }
+
+    private void DsmComboBox_DropDownOpened(object sender, EventArgs e)
+    {
+        if (DataContext is ViewModels.DsmEntryViewModel vm)
+        {
+            _ = vm.LoadSuggestionsAsync();
+        }
+    }
 }

@@ -116,6 +116,7 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string _hsdTesting2Label = "HSD Testing II";
     [ObservableProperty] private string _cngTestingLabel = "CNG Testing";
     [ObservableProperty] private double _totalTesting;
+    public ObservableCollection<TestingSummaryItem> TestingSummaryRows { get; } = new();
 
     private readonly IFeatureToggleService _featureService;
     private readonly ICollectionTypeService? _collectionTypeService;
@@ -469,38 +470,16 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
             SplitOther = PetroCardTotal + report.OtherCashTotal;
             OthersTotal = report.OtherCashTotal;
 
-            // Testing
-            double msTesting = 0, msTestingLitres = 0;
-            double hsdTesting = 0, hsdTestingLitres = 0;
-            double hsdTesting2 = 0, hsdTesting2Litres = 0;
-            double cngTesting = 0, cngTestingLitres = 0;
-
-            foreach (var entry in allEntries)
+            TestingSummaryRows.Clear();
+            if (report?.TestingSummaryItems != null)
             {
-                foreach (var t in entry.TestingEntries)
+                foreach (var t in report.TestingSummaryItems)
                 {
-                    var cat = FuelPro.Core.Common.PumpConfiguration.GetTestingTankCategory(t.FuelType, entry.PumpId, SelectedDate.Date);
-                    double tAmt = t.Amount > 0 ? (double)t.Amount : (double)(t.Litres * t.Rate);
-                    double tVol = (double)t.Litres;
-                    if (cat == "MS") { msTesting += tAmt; msTestingLitres += tVol; }
-                    else if (cat == "HSD") { hsdTesting += tAmt; hsdTestingLitres += tVol; }
-                    else if (cat == "HSD-II") { hsdTesting2 += tAmt; hsdTesting2Litres += tVol; }
-                    else if (cat == "CNG") { cngTesting += tAmt; cngTestingLitres += tVol; }
+                    TestingSummaryRows.Add(t);
                 }
             }
-            MsTesting = msTesting;
-            HsdTesting = hsdTesting;
-            HsdTesting2 = hsdTesting2;
-            CngTesting = cngTesting;
-            MsTestingLitres = msTestingLitres;
-            HsdTestingLitres = hsdTestingLitres;
-            HsdTesting2Litres = hsdTesting2Litres;
-            CngTestingLitres = cngTestingLitres;
-            MsTestingLabel = msTestingLitres > 0 ? $"MS Testing ({msTestingLitres:N2} Ltr)" : "MS Testing";
-            HsdTestingLabel = hsdTestingLitres > 0 ? $"HSD Testing I ({hsdTestingLitres:N2} Ltr)" : "HSD Testing I";
-            HsdTesting2Label = hsdTesting2Litres > 0 ? $"HSD Testing II ({hsdTesting2Litres:N2} Ltr)" : "HSD Testing II";
-            CngTestingLabel = cngTestingLitres > 0 ? $"CNG Testing ({cngTestingLitres:N2} Ltr)" : "CNG Testing";
-            TotalTesting = msTesting + hsdTesting + hsdTesting2 + cngTesting;
+
+            TotalTesting = TestingSummaryRows.Sum(t => t.Amount);
 
             ReconciliationTotalAmount = report.ActualCollection;
             GrossDaySaleTotal = report.ExpectedCollection;

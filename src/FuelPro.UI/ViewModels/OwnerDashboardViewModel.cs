@@ -35,6 +35,7 @@ public partial class OwnerDashboardViewModel : ObservableObject, IDisposable
     private readonly IFinancialCalculationService _financialCalcService;
     private readonly FuelProDbContext _dbContext;
     private readonly IReportService _reportService;
+    private readonly ICollectionTypeService? _collectionTypeService;
 
     // Range-wise KPI Properties
     [ObservableProperty] private double _todayTotalSale;
@@ -56,6 +57,9 @@ public partial class OwnerDashboardViewModel : ObservableObject, IDisposable
     [ObservableProperty] private double _todayTotalCreditCard;
     [ObservableProperty] private double _todayTotalPetroCard;
     [ObservableProperty] private double _todayTotalDebit;
+
+    // Dynamic Payment Mode Breakdown
+    public ObservableCollection<DayCollectionSummaryRow> PaymentBreakdown { get; } = new();
 
     // Additional Range Metrics
     [ObservableProperty] private double _rangeNetProfit;
@@ -119,6 +123,7 @@ public partial class OwnerDashboardViewModel : ObservableObject, IDisposable
         _financialCalcService = App.Services.GetRequiredService<IFinancialCalculationService>();
         _dbContext = App.Services.GetRequiredService<FuelProDbContext>();
         _reportService = App.Services.GetRequiredService<IReportService>();
+        _collectionTypeService = App.Services.GetService<ICollectionTypeService>();
 
         // Wire Sync Status
         _syncEngine.SyncStatusChanged += OnSyncStatusChanged;
@@ -130,6 +135,7 @@ public partial class OwnerDashboardViewModel : ObservableObject, IDisposable
         DsmEntryService.DebtorChanged += OnDataChanged;
         DsmEntryService.PayrollChanged += OnDataChanged;
         DsmEntryService.InventoryChanged += OnDataChanged;
+        if (_collectionTypeService != null) _collectionTypeService.CollectionTypesChanged += OnDataChanged;
 
         _ = SetPresetAsync(SelectedPreset);
     }
@@ -159,6 +165,7 @@ public partial class OwnerDashboardViewModel : ObservableObject, IDisposable
         DsmEntryService.DebtorChanged -= OnDataChanged;
         DsmEntryService.PayrollChanged -= OnDataChanged;
         DsmEntryService.InventoryChanged -= OnDataChanged;
+        if (_collectionTypeService != null) _collectionTypeService.CollectionTypesChanged -= OnDataChanged;
         GC.SuppressFinalize(this);
     }
 
@@ -272,6 +279,104 @@ public partial class OwnerDashboardViewModel : ObservableObject, IDisposable
             TodayTotalCreditCard = dayReport.CollectionBreakdown.Where(c => (c.Category.Contains("Card", StringComparison.OrdinalIgnoreCase) || c.Category.Contains("PineLab", StringComparison.OrdinalIgnoreCase)) && !c.Category.Contains("Petro", StringComparison.OrdinalIgnoreCase) && !c.Category.Contains("PhonePe", StringComparison.OrdinalIgnoreCase)).Sum(c => c.Amount);
             TodayTotalPetroCard = dayReport.CollectionBreakdown.Where(c => c.Category.Contains("Petro", StringComparison.OrdinalIgnoreCase)).Sum(c => c.Amount);
             TodayTotalDebit = dayReport.CreditorsTotal;
+
+            // Populate Dynamic Payment Mode Breakdown (Always show all active configured payment modes)
+            PaymentBreakdown.Clear();
+            var breakdown = dayReport.CollectionBreakdown ?? new List<CollectionCategoryDto>();
+            var activeTypes = _collectionTypeService != null ? await _collectionTypeService.GetActiveCollectionTypesAsync() : new List<CollectionTypeMaster>();
+
+            // 1. Bank Cash (Deposit)
+            double cashDepositAmt = breakdown.FirstOrDefault(c => string.Equals(c.Category, "Cash Deposit", StringComparison.OrdinalIgnoreCase))?.Amount ?? 0;
+            PaymentBreakdown.Add(new DayCollectionSummaryRow
+            {
+                CollectionMode = "Bank Cash (Deposit)",
+                Amount = cashDepositAmt,
+                DisplayColor = "#2E7D32"
+            });
+
+            // 2. Cash In Hand
+            double cashInHandAmt = breakdown.FirstOrDefault(c => string.Equals(c.Category, "Cash In Hand", StringComparison.OrdinalIgnoreCase))?.Amount ?? 0;
+            PaymentBreakdown.Add(new DayCollectionSummaryRow
+            {
+                CollectionMode = "Cash In Hand",
+                Amount = cashInHandAmt,
+                DisplayColor = "#388E3C"
+            });
+
+            // 3. Active configured collection types
+            var handledCategories = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Cash Deposit", "Cash In Hand", "Bank Cash", "Cash", "Cash (Deposit)", "Bank Cash (Deposit)" };
+            if (activeTypes != null && activeTypes.Any())
+            {
+                foreach (var t in activeTypes.Where(t => !t.Code.Equals("CASH_DEPOSIT", StringComparison.OrdinalIgnoreCase) && !t.DisplayName.Equals("Cash", StringComparison.OrdinalIgnoreCase)))
+                {
+                    var match = breakdown.FirstOrDefault(c => string.Equals(c.Category, t.DisplayName, StringComparison.OrdinalIgnoreCase) ||
+                                                              string.Equals(c.Category, t.Code, StringComparison.OrdinalIgnoreCase) ||
+                                                              (t.DisplayName.Contains("PhonePe", StringComparison.OrdinalIgnoreCase) && c.Category.Contains("PhonePe", StringComparison.OrdinalIgnoreCase)) ||
+                                                              (t.DisplayName.Contains("Petro", StringComparison.OrdinalIgnoreCase) && c.Category.Contains("Petro", StringComparison.OrdinalIgnoreCase)));
+
+                    double amt = match?.Amount ?? 0;
+                    if (match != null) handledCategories.Add(match.Category);
+                    handledCategories.Add(t.DisplayName);
+                    handledCategories.Add(t.Code);
+
+                    string cat = t.DisplayName;
+                    bool isPetro = cat.Contains("Petro", StringComparison.OrdinalIgnoreCase);
+                    bool isCard = cat.Contains("Card", StringComparison.OrdinalIgnoreCase) || cat.Contains("PineLab", StringComparison.OrdinalIgnoreCase);
+                    bool isPhonePe = cat.Contains("PhonePe", StringComparison.OrdinalIgnoreCase);
+
+                    string color = isPhonePe ? "#5E35B1" :
+                                   isPetro ? "#6A1B9A" :
+                                   isCard ? "#0288D1" : "#1565C0";
+
+                    PaymentBreakdown.Add(new DayCollectionSummaryRow
+                    {
+                        CollectionMode = cat,
+                        Amount = amt,
+                        DisplayColor = color
+                    });
+                }
+            }
+            else
+            {
+                PaymentBreakdown.Add(new DayCollectionSummaryRow { CollectionMode = "PhonePe", Amount = TodayTotalPhonePe, DisplayColor = "#5E35B1" });
+                PaymentBreakdown.Add(new DayCollectionSummaryRow { CollectionMode = "PineLabs Card", Amount = TodayTotalCreditCard, DisplayColor = "#0288D1" });
+                PaymentBreakdown.Add(new DayCollectionSummaryRow { CollectionMode = "PetroCard", Amount = TodayTotalPetroCard, DisplayColor = "#6A1B9A" });
+                handledCategories.Add("PhonePe");
+                handledCategories.Add("PineLabs Card");
+                handledCategories.Add("PetroCard");
+            }
+
+            // 4. Debtors (Credit)
+            PaymentBreakdown.Add(new DayCollectionSummaryRow
+            {
+                CollectionMode = "Debtors (Credit)",
+                Amount = dayReport.CreditorsTotal,
+                DisplayColor = "#E65100"
+            });
+            handledCategories.Add("Debtors");
+            handledCategories.Add("Debtors (Credit)");
+            handledCategories.Add("Credit / Debtors");
+            handledCategories.Add("Credit");
+
+            // 5. Any extra unhandled dynamic items from dayReport.CollectionBreakdown
+            foreach (var c in breakdown)
+            {
+                if (handledCategories.Contains(c.Category) ||
+                    c.Category.Contains("Testing", StringComparison.OrdinalIgnoreCase) ||
+                    c.Category.Equals("Expenses", StringComparison.OrdinalIgnoreCase) ||
+                    c.Category.Contains("DSM Short", StringComparison.OrdinalIgnoreCase) ||
+                    c.Category.Contains("Kandhare", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                PaymentBreakdown.Add(new DayCollectionSummaryRow
+                {
+                    CollectionMode = c.Category,
+                    Amount = c.Amount,
+                    DisplayColor = "#00838F"
+                });
+            }
 
             TodayHsdLitres = dayReport.FuelSales.FirstOrDefault(f => f.FuelType == "HSD")?.Litres ?? 0;
             TodayMsILitres = dayReport.FuelSales.FirstOrDefault(f => f.FuelType == "MS-I")?.Litres ?? 0;

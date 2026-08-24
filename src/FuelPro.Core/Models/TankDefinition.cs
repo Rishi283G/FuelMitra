@@ -34,5 +34,10 @@ public class TankDefinition
 
     public bool IsActive { get; set; } = true;
 
+    /// <summary>
+    /// Whether this tank supports testing functionality (e.g. true for Liquid fuels, false for CNG).
+    /// </summary>
+    public bool HasTesting { get; set; } = true;
+
     public DateTime CreatedAt { get; set; } = DateTime.Now;
 }

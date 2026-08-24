@@ -62,7 +62,7 @@ public partial class DsmManagementViewModel : ObservableObject
     private readonly SupabaseDsmService _supabaseDsmService;
     public ObservableCollection<PumpNozzleConfigDto> PumpNozzleConfigs { get; } = new();
     public ObservableCollection<EditableNozzleRow> EditableNozzles { get; } = new();
-    public string[] FuelTypeOptions { get; } = { "MS-I", "MS-II", "HSD" };
+    public ObservableCollection<string> FuelTypeOptions { get; } = new();
     [ObservableProperty] private int? _nozzleConfigPumpId;
     [ObservableProperty] private string _nozzleConfigStatusMessage = "";
 
@@ -72,11 +72,39 @@ public partial class DsmManagementViewModel : ObservableObject
         _authAdminService = _serviceProvider.GetRequiredService<DsmAuthAdminService>();
         _supabaseDsmService = _serviceProvider.GetRequiredService<SupabaseDsmService>();
 
-        // Pump options (e.g. Pump 1 to 6)
-        for (int i = 1; i <= 6; i++) PumpOptions.Add(i);
+        RefreshPumpAndFuelOptions();
 
         _ = LoadDataAsync();
         _ = LoadAllNozzleConfigsAsync();
+    }
+
+    public void RefreshPumpAndFuelOptions()
+    {
+        PumpOptions.Clear();
+        var pumpKeys = PumpConfiguration.PumpNozzleMapping.Keys.OrderBy(k => k).ToList();
+        if (pumpKeys.Count == 0)
+        {
+            for (int i = 1; i <= Math.Max(6, PumpConfiguration.TotalPumps); i++) PumpOptions.Add(i);
+        }
+        else
+        {
+            foreach (var p in pumpKeys) PumpOptions.Add(p);
+        }
+
+        FuelTypeOptions.Clear();
+        var fuelSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var val in PumpConfiguration.NozzleFuelStringMap.Values)
+        {
+            if (!string.IsNullOrWhiteSpace(val)) fuelSet.Add(val);
+        }
+        foreach (var std in new[] { "MS-I", "MS-II", "HSD", "CNG", "XP95", "Power" })
+        {
+            fuelSet.Add(std);
+        }
+        foreach (var f in fuelSet.OrderBy(x => x))
+        {
+            FuelTypeOptions.Add(f);
+        }
     }
 
     [ObservableProperty] private bool _showCompletedAssignments;
@@ -234,6 +262,7 @@ public partial class DsmManagementViewModel : ObservableObject
             NewPassword = "";
 
             AccountStatusMessage = $"✅ Account created! Share password with {dsmUser.FullName}.";
+            FuelPro.Core.Services.DsmEntryService.RaiseDsmProfileChanged();
             await LoadDataAsync();
         }
         catch (Exception ex)
@@ -276,6 +305,7 @@ public partial class DsmManagementViewModel : ObservableObject
             }
 
             AccountStatusMessage = $"✅ Account active state updated to: {nextActiveState}";
+            FuelPro.Core.Services.DsmEntryService.RaiseDsmProfileChanged();
             await LoadDataAsync();
         }
         catch (Exception ex)

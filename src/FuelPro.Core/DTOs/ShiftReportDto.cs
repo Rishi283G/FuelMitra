@@ -63,6 +63,7 @@ public class ShiftReportDto
     public List<CollectionCategoryDto> CollectionBreakdown { get; set; } = new();
 
     // Final Reconciliation
+    public List<TestingSummaryItem> TestingSummaryItems { get; set; } = new();
     public double ExpectedCollection { get; set; }
     public double ActualCollection { get; set; }
     public double Difference { get; set; }
@@ -131,6 +132,7 @@ public class DayReportDto
     public List<CollectionCategoryDto> CollectionBreakdown { get; set; } = new();
 
     // Final Reconciliation
+    public List<TestingSummaryItem> TestingSummaryItems { get; set; } = new();
     public double ExpectedCollection { get; set; }
     public double ActualCollection { get; set; }
     public double Difference { get; set; }

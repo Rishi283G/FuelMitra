@@ -30,6 +30,7 @@ public partial class CollectionSummaryViewModel : ObservableObject, IDisposable
     private readonly ICreditorRepaymentRepository _repaymentRepo;
     private readonly IReportService _reportService;
     private readonly ISettingsRepository _settingsRepo;
+    private readonly ICollectionTypeService? _collectionTypeService;
 
     [ObservableProperty] private DateTime _startDate = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
     [ObservableProperty] private DateTime _endDate = DateTime.Today;
@@ -46,7 +47,10 @@ public partial class CollectionSummaryViewModel : ObservableObject, IDisposable
     [ObservableProperty] private double _grandTotal;
     [ObservableProperty] private double _totalDigital;
 
+    public ObservableCollection<DayCollectionSummaryRow> ModeTotals { get; } = new();
     public ObservableCollection<CollectionDayRow> DayRows { get; } = new();
+    public ObservableCollection<CollectionTypeMaster> ActiveCollectionTypes { get; } = new();
+    public event Action? DynamicColumnsRefreshed;
 
     public CollectionSummaryViewModel()
     {
@@ -60,10 +64,12 @@ public partial class CollectionSummaryViewModel : ObservableObject, IDisposable
         _repaymentRepo = App.Services.GetRequiredService<ICreditorRepaymentRepository>();
         _reportService = App.Services.GetRequiredService<IReportService>();
         _settingsRepo = App.Services.GetRequiredService<ISettingsRepository>();
+        _collectionTypeService = App.Services.GetService<ICollectionTypeService>();
 
         DsmEntryService.DsmEntryChanged += OnDataChanged;
         DsmEntryService.PettyCashChanged += OnDataChanged;
         DsmEntryService.DebtorChanged += OnDataChanged;
+        if (_collectionTypeService != null) _collectionTypeService.CollectionTypesChanged += OnDataChanged;
 
         _ = LoadAsync();
     }
@@ -78,6 +84,7 @@ public partial class CollectionSummaryViewModel : ObservableObject, IDisposable
         DsmEntryService.DsmEntryChanged -= OnDataChanged;
         DsmEntryService.PettyCashChanged -= OnDataChanged;
         DsmEntryService.DebtorChanged -= OnDataChanged;
+        if (_collectionTypeService != null) _collectionTypeService.CollectionTypesChanged -= OnDataChanged;
         GC.SuppressFinalize(this);
     }
 
@@ -114,11 +121,40 @@ public partial class CollectionSummaryViewModel : ObservableObject, IDisposable
             double defaultCng = settings.CngRate;
             string stationName = settings.StationDisplayName;
 
+            // Fetch dynamic collection types enabled on Dev side
+            var activeColTypes = _collectionTypeService != null
+                ? await _collectionTypeService.GetActiveCollectionTypesAsync()
+                : new List<CollectionTypeMaster>();
+
+            if (activeColTypes == null || activeColTypes.Count == 0)
+            {
+                activeColTypes = new List<CollectionTypeMaster>
+                {
+                    new() { Code = "PINELAB_CARD", DisplayName = "PineLabs Card", Category = "Card", HasTidBatch = true, IsActive = true, DisplayOrder = 1 },
+                    new() { Code = "PHONEPE", DisplayName = "PhonePe", Category = "Online", HasTidBatch = true, IsActive = true, DisplayOrder = 2 },
+                    new() { Code = "PETROCARD", DisplayName = "Petro Card", Category = "Card", HasTidBatch = true, IsActive = true, DisplayOrder = 3 }
+                };
+            }
+
+            var activeNonCash = activeColTypes
+                .Where(t => t.IsActive && !string.Equals(t.Category, "Cash", StringComparison.OrdinalIgnoreCase) && !t.DisplayName.Contains("Cash", StringComparison.OrdinalIgnoreCase))
+                .OrderBy(t => t.DisplayOrder)
+                .ToList();
+
+            ActiveCollectionTypes.Clear();
+            foreach (var t in activeNonCash)
+            {
+                ActiveCollectionTypes.Add(t);
+            }
+
             TotalCashDeposit = 0; TotalCashInHand = 0;
             TotalPhonePe = 0; TotalPhonePeCard = 0;
             TotalCreditCard = 0; TotalPetroCard = 0;
             TotalDebit = 0; GrandTotal = 0; TotalDigital = 0;
             DayRows.Clear();
+            ModeTotals.Clear();
+
+            var aggregatedModes = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
 
             // Loop day by day from startDate to endDate
             for (var date = startDate; date <= endDate; date = date.AddDays(1))
@@ -145,7 +181,7 @@ public partial class CollectionSummaryViewModel : ObservableObject, IDisposable
                 var petroCard = dayReport.DsmSummaryTotals.PetroCardTotal + dayReport.PetroCardRepayments;
                 var debit = dayReport.CreditorsTotal;
 
-                DayRows.Add(new CollectionDayRow
+                var dayRow = new CollectionDayRow
                 {
                     Date = date,
                     CashDeposit = cashDeposit,
@@ -155,7 +191,36 @@ public partial class CollectionSummaryViewModel : ObservableObject, IDisposable
                     CreditCard = creditCard,
                     PetroCard = petroCard,
                     Debit = debit
-                });
+                };
+
+                // Populate dynamic mode amounts for this day
+                double nonCashSum = 0;
+                foreach (var colType in ActiveCollectionTypes)
+                {
+                    double amt = 0;
+                    if (dayReport.CollectionBreakdown != null)
+                    {
+                        var matched = dayReport.CollectionBreakdown.FirstOrDefault(c =>
+                            string.Equals(c.Category, colType.DisplayName, StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(c.Category, colType.Code, StringComparison.OrdinalIgnoreCase));
+                        if (matched != null) amt = matched.Amount;
+                    }
+                    if (amt == 0)
+                    {
+                        if (string.Equals(colType.Code, "PHONEPE", StringComparison.OrdinalIgnoreCase) || colType.DisplayName.Contains("PhonePe", StringComparison.OrdinalIgnoreCase))
+                            amt = phonePe + phonePeCard;
+                        else if (string.Equals(colType.Code, "CREDIT_CARD", StringComparison.OrdinalIgnoreCase) || string.Equals(colType.Code, "PINELAB_CARD", StringComparison.OrdinalIgnoreCase) || (colType.DisplayName.Contains("Card", StringComparison.OrdinalIgnoreCase) && !colType.DisplayName.Contains("Petro", StringComparison.OrdinalIgnoreCase)))
+                            amt = creditCard;
+                        else if (string.Equals(colType.Code, "PETROCARD", StringComparison.OrdinalIgnoreCase) || colType.DisplayName.Contains("Petro", StringComparison.OrdinalIgnoreCase))
+                            amt = petroCard;
+                    }
+
+                    dayRow.ModeAmounts[colType.DisplayName] = amt;
+                    nonCashSum += amt;
+                }
+
+                dayRow.DayTotal = cashDeposit + cashInHand + nonCashSum + debit;
+                DayRows.Add(dayRow);
 
                 TotalCashDeposit += cashDeposit;
                 TotalCashInHand += cashInHand;
@@ -164,11 +229,76 @@ public partial class CollectionSummaryViewModel : ObservableObject, IDisposable
                 TotalCreditCard += creditCard;
                 TotalPetroCard += petroCard;
                 TotalDebit += debit;
+
+                // Accumulate dynamic breakdown items
+                if (dayReport.CollectionBreakdown != null)
+                {
+                    foreach (var cat in dayReport.CollectionBreakdown)
+                    {
+                        if (cat.Category.Contains("Testing", StringComparison.OrdinalIgnoreCase) ||
+                            cat.Category.Equals("Expenses", StringComparison.OrdinalIgnoreCase) ||
+                            cat.Category.Contains("DSM Short", StringComparison.OrdinalIgnoreCase) ||
+                            cat.Category.Contains("Kandhare", StringComparison.OrdinalIgnoreCase))
+                        {
+                            continue;
+                        }
+
+                        if (aggregatedModes.ContainsKey(cat.Category))
+                            aggregatedModes[cat.Category] += cat.Amount;
+                        else
+                            aggregatedModes[cat.Category] = cat.Amount;
+                    }
+                }
             }
 
-            GrandTotal = TotalCashDeposit + TotalCashInHand + TotalPhonePe + TotalPhonePeCard
-                         + TotalCreditCard + TotalPetroCard + TotalDebit;
-            TotalDigital = TotalPhonePe + TotalPhonePeCard + TotalCreditCard + TotalPetroCard;
+            // Populate ModeTotals
+            foreach (var kvp in aggregatedModes)
+            {
+                string cat = kvp.Key;
+                bool isCash = cat.Contains("Cash", StringComparison.OrdinalIgnoreCase);
+                bool isDebtor = cat.Contains("Debtor", StringComparison.OrdinalIgnoreCase) || cat.Contains("Debit", StringComparison.OrdinalIgnoreCase);
+                bool isPetro = cat.Contains("Petro", StringComparison.OrdinalIgnoreCase);
+                bool isCard = cat.Contains("Card", StringComparison.OrdinalIgnoreCase) || cat.Contains("PineLab", StringComparison.OrdinalIgnoreCase);
+
+                string color = isCash ? "#2E7D32" :
+                               isDebtor ? "#E65100" :
+                               isPetro ? "#6A1B9A" :
+                               isCard ? "#0288D1" : "#1565C0";
+
+                ModeTotals.Add(new DayCollectionSummaryRow
+                {
+                    CollectionMode = cat,
+                    Amount = kvp.Value,
+                    DisplayColor = color
+                });
+            }
+
+            // If Debtors not already in ModeTotals, add it
+            if (!ModeTotals.Any(m => m.CollectionMode.Contains("Debit", StringComparison.OrdinalIgnoreCase) || m.CollectionMode.Contains("Debtor", StringComparison.OrdinalIgnoreCase)) && TotalDebit > 0)
+            {
+                ModeTotals.Add(new DayCollectionSummaryRow
+                {
+                    CollectionMode = "Debtors (Sales on Credit)",
+                    Amount = TotalDebit,
+                    DisplayColor = "#E65100"
+                });
+            }
+
+            GrandTotal = TotalCashDeposit + TotalCashInHand + ModeTotals.Where(m => !m.CollectionMode.Contains("Cash", StringComparison.OrdinalIgnoreCase)).Sum(m => m.Amount);
+            if (GrandTotal <= 0)
+            {
+                GrandTotal = TotalCashDeposit + TotalCashInHand + TotalPhonePe + TotalPhonePeCard + TotalCreditCard + TotalPetroCard + TotalDebit;
+            }
+
+            TotalDigital = ModeTotals
+                .Where(m => !m.CollectionMode.Contains("Cash", StringComparison.OrdinalIgnoreCase) && !m.CollectionMode.Contains("Debit", StringComparison.OrdinalIgnoreCase) && !m.CollectionMode.Contains("Debtor", StringComparison.OrdinalIgnoreCase))
+                .Sum(m => m.Amount);
+            if (TotalDigital <= 0)
+            {
+                TotalDigital = TotalPhonePe + TotalPhonePeCard + TotalCreditCard + TotalPetroCard;
+            }
+
+            DynamicColumnsRefreshed?.Invoke();
         }
         catch (Exception ex)
         {
@@ -190,23 +320,33 @@ public partial class CollectionSummaryViewModel : ObservableObject, IDisposable
                 new() { Label = "Total Cash in Hand", Value = "₹" + TotalCashInHand.ToString("N2"), Highlight = false }
             };
 
-            var headers = new List<string> { "Date", "Bank Cash", "Cash In Hand", "PhonePe", "PhonePe Card", "PineLabs Card", "Petro Card", "Debitors", "Day Total" };
+            var headers = new List<string> { "Date", "Bank Cash", "Cash In Hand" };
+            foreach (var colType in ActiveCollectionTypes)
+            {
+                headers.Add(colType.DisplayName);
+            }
+            headers.Add("Debtors");
+            headers.Add("Day Total");
+
             var rows = new List<List<string>>();
 
             foreach (var row in DayRows)
             {
-                rows.Add(new List<string>
+                var rowCells = new List<string>
                 {
                     row.DateDisplay,
                     "₹" + row.CashDeposit.ToString("N2"),
-                    "₹" + row.CashInHand.ToString("N2"),
-                    "₹" + row.PhonePe.ToString("N2"),
-                    "₹" + row.PhonePeCard.ToString("N2"),
-                    "₹" + row.CreditCard.ToString("N2"),
-                    "₹" + row.PetroCard.ToString("N2"),
-                    "₹" + row.Debit.ToString("N2"),
-                    "₹" + row.DayTotal.ToString("N2")
-                });
+                    "₹" + row.CashInHand.ToString("N2")
+                };
+
+                foreach (var colType in ActiveCollectionTypes)
+                {
+                    rowCells.Add("₹" + row.GetAmount(colType.DisplayName).ToString("N2"));
+                }
+
+                rowCells.Add("₹" + row.Debit.ToString("N2"));
+                rowCells.Add("₹" + row.DayTotal.ToString("N2"));
+                rows.Add(rowCells);
             }
 
             var printData = new GenericGridPrintData
@@ -240,23 +380,33 @@ public partial class CollectionSummaryViewModel : ObservableObject, IDisposable
                 new() { Label = "Total Cash in Hand", Value = "₹" + TotalCashInHand.ToString("N2"), Highlight = false }
             };
 
-            var headers = new List<string> { "Date", "Bank Cash", "Cash In Hand", "PhonePe", "PhonePe Card", "PineLabs Card", "Petro Card", "Debitors", "Day Total" };
+            var headers = new List<string> { "Date", "Bank Cash", "Cash In Hand" };
+            foreach (var colType in ActiveCollectionTypes)
+            {
+                headers.Add(colType.DisplayName);
+            }
+            headers.Add("Debtors");
+            headers.Add("Day Total");
+
             var rows = new List<List<string>>();
 
             foreach (var row in DayRows)
             {
-                rows.Add(new List<string>
+                var rowCells = new List<string>
                 {
                     row.DateDisplay,
                     "₹" + row.CashDeposit.ToString("N2"),
-                    "₹" + row.CashInHand.ToString("N2"),
-                    "₹" + row.PhonePe.ToString("N2"),
-                    "₹" + row.PhonePeCard.ToString("N2"),
-                    "₹" + row.CreditCard.ToString("N2"),
-                    "₹" + row.PetroCard.ToString("N2"),
-                    "₹" + row.Debit.ToString("N2"),
-                    "₹" + row.DayTotal.ToString("N2")
-                });
+                    "₹" + row.CashInHand.ToString("N2")
+                };
+
+                foreach (var colType in ActiveCollectionTypes)
+                {
+                    rowCells.Add("₹" + row.GetAmount(colType.DisplayName).ToString("N2"));
+                }
+
+                rowCells.Add("₹" + row.Debit.ToString("N2"));
+                rowCells.Add("₹" + row.DayTotal.ToString("N2"));
+                rows.Add(rowCells);
             }
 
             var printData = new GenericGridPrintData
@@ -291,5 +441,15 @@ public class CollectionDayRow
     public double CreditCard { get; set; }
     public double PetroCard { get; set; }
     public double Debit { get; set; }
-    public double DayTotal => CashDeposit + CashInHand + PhonePe + PhonePeCard + CreditCard + PetroCard + Debit;
+    public Dictionary<string, double> ModeAmounts { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public double DayTotal { get; set; }
+
+    public double GetAmount(string modeName)
+    {
+        if (ModeAmounts.TryGetValue(modeName, out var amt)) return amt;
+        if (string.Equals(modeName, "PhonePe", StringComparison.OrdinalIgnoreCase)) return PhonePe + PhonePeCard;
+        if (string.Equals(modeName, "PineLabs Card", StringComparison.OrdinalIgnoreCase) || string.Equals(modeName, "Credit Card", StringComparison.OrdinalIgnoreCase)) return CreditCard;
+        if (string.Equals(modeName, "Petro Card", StringComparison.OrdinalIgnoreCase) || string.Equals(modeName, "PetroCard", StringComparison.OrdinalIgnoreCase)) return PetroCard;
+        return 0;
+    }
 }

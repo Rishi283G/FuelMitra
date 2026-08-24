@@ -90,6 +90,7 @@ public class FuelProDbContext : DbContext
     public DbSet<CollectionTypeMaster> CollectionTypes => Set<CollectionTypeMaster>();
     public DbSet<PaymentCollectionItem> PaymentCollectionItems => Set<PaymentCollectionItem>();
     public DbSet<TankDefinition> TankDefinitions => Set<TankDefinition>();
+    public DbSet<StationLayoutPreset> StationLayoutPresets => Set<StationLayoutPreset>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
 

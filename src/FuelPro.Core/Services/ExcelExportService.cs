@@ -760,13 +760,15 @@ public class ExcelExportService
 
             currentRow += 2; // Blank space
 
-            // Define collection types
-            var collections = new[]
-            {
-                new { Name = "PhonePe", Items = data.PhonePePayments },
-                new { Name = "PineLabs Card", Items = data.CardPayments },
-                new { Name = "Petro Card", Items = data.PetroCardPayments }
-            };
+            // Define collection types dynamically
+            var collections = (data.CollectionGroups != null && data.CollectionGroups.Count > 0)
+                ? data.CollectionGroups.Select(g => new { Name = g.DisplayName, Items = g.Items }).ToList()
+                : new[]
+                {
+                    new { Name = "PhonePe", Items = data.PhonePePayments },
+                    new { Name = "PineLabs Card", Items = data.CardPayments },
+                    new { Name = "Petro Card", Items = data.PetroCardPayments }
+                }.ToList();
 
             foreach (var col in collections)
             {

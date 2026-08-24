@@ -24,6 +24,10 @@ public partial class PumpExpensesViewModel : ObservableObject
     private readonly FuelProDbContext _dbContext;
     private readonly PrintService _printService;
     private readonly ExcelExportService _excelExportService;
+    private readonly IFeatureToggleService? _featureService;
+
+    public bool IsPersonalLedgerEnabled => _featureService?.IsFeatureEnabled("Operations_PersonalLedger", true) ?? true;
+    public string PersonalLedgerTitle => _featureService?.GetFeatureDisplayName("Operations_PersonalLedger", "Personal Ledger") ?? "Personal Ledger";
 
     [ObservableProperty] private DateTime _expenseDate = DateTime.Today;
     
@@ -65,8 +69,21 @@ public partial class PumpExpensesViewModel : ObservableObject
         _dbContext = App.Services.GetRequiredService<FuelProDbContext>();
         _printService = App.Services.GetRequiredService<PrintService>();
         _excelExportService = App.Services.GetRequiredService<ExcelExportService>();
+        _featureService = App.Services.GetService<IFeatureToggleService>();
+
+        if (_featureService != null)
+        {
+            _featureService.FeatureConfigurationChanged += OnFeatureTogglesChanged;
+        }
         
         _ = LoadAsync();
+    }
+
+    private void OnFeatureTogglesChanged()
+    {
+        OnPropertyChanged(nameof(IsPersonalLedgerEnabled));
+        OnPropertyChanged(nameof(PersonalLedgerTitle));
+        System.Windows.Application.Current.Dispatcher.InvokeAsync(async () => await LoadHistoryAsync());
     }
 
     partial void OnExpenseDateChanged(DateTime value) => _ = LoadExpenseForDateAsync();
@@ -182,30 +199,38 @@ public partial class PumpExpensesViewModel : ObservableObject
         }
         TotalPumpExpensesAmount = pumpExpSum;
 
-        // Load Kandhare Petroleum Ledger Entries for selected date range
-        try
+        // Load Kandhare Petroleum / Personal Ledger Entries if enabled
+        if (IsPersonalLedgerEnabled)
         {
-            var startDate = HistoryStartDate.Date;
-            var endDate = HistoryEndDate.Date.AddDays(1).AddTicks(-1);
-            var kpEntries = await _dbContext.KhandharePetroleumEntries
-                .AsNoTracking()
-                .Where(kp => kp.Date >= startDate && kp.Date <= endDate)
-                .OrderByDescending(kp => kp.Date)
-                .ThenByDescending(kp => kp.Id)
-                .ToListAsync();
-
-            HistoryKpEntries.Clear();
-            double sum = 0;
-            foreach (var kp in kpEntries)
+            try
             {
-                HistoryKpEntries.Add(kp);
-                sum += kp.Amount;
+                var startDate = HistoryStartDate.Date;
+                var endDate = HistoryEndDate.Date.AddDays(1).AddTicks(-1);
+                var kpEntries = await _dbContext.KhandharePetroleumEntries
+                    .AsNoTracking()
+                    .Where(kp => kp.Date >= startDate && kp.Date <= endDate)
+                    .OrderByDescending(kp => kp.Date)
+                    .ThenByDescending(kp => kp.Id)
+                    .ToListAsync();
+
+                HistoryKpEntries.Clear();
+                double sum = 0;
+                foreach (var kp in kpEntries)
+                {
+                    HistoryKpEntries.Add(kp);
+                    sum += kp.Amount;
+                }
+                TotalKpAmount = sum;
             }
-            TotalKpAmount = sum;
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to load personal ledger history: {ex.Message}");
+            }
         }
-        catch (Exception ex)
+        else
         {
-            System.Diagnostics.Debug.WriteLine($"Failed to load KP history: {ex.Message}");
+            HistoryKpEntries.Clear();
+            TotalKpAmount = 0;
         }
 
         GrandTotalExpensesAmount = TotalPumpExpensesAmount + TotalKpAmount;

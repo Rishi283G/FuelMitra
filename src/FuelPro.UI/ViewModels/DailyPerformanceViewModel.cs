@@ -96,7 +96,7 @@ public partial class DailyPerformanceViewModel : ObservableObject, IDisposable
                 new() { Label = "Total Mismatch", Value = "₹" + TotalMismatch.ToString("N2"), Highlight = false }
             };
 
-            var headers = new List<string> { "DSM Name", "Shifts", "Sale", "Litres", "Collection", "Mismatch" };
+            var headers = new List<string> { "DSM Name", "Shifts", "Sale", "Total Litres", "Expenses", "Diesel (L)", "Petrol (L)", "Speed (L)", "CNG (Kg)", "Collection", "Mismatch" };
             var rows = new List<List<string>>();
 
             foreach (var row in DsmBreakdown)
@@ -107,6 +107,11 @@ public partial class DailyPerformanceViewModel : ObservableObject, IDisposable
                     row.ShiftCount.ToString(),
                     "₹" + row.TotalSale.ToString("N2"),
                     row.TotalLitres.ToString("N2") + " L",
+                    "₹" + row.Expenses.ToString("N2"),
+                    row.DieselLitres.ToString("N2"),
+                    row.PetrolLitres.ToString("N2"),
+                    row.SpeedLitres.ToString("N2"),
+                    row.CngKg.ToString("N2"),
                     "₹" + row.TotalCollection.ToString("N2"),
                     "₹" + row.Mismatch.ToString("N2")
                 });
@@ -144,7 +149,7 @@ public partial class DailyPerformanceViewModel : ObservableObject, IDisposable
                 new() { Label = "Total Mismatch", Value = "₹" + TotalMismatch.ToString("N2"), Highlight = false }
             };
 
-            var headers = new List<string> { "DSM Name", "Shifts", "Sale", "Litres", "Collection", "Mismatch" };
+            var headers = new List<string> { "DSM Name", "Shifts", "Sale", "Total Litres", "Expenses", "Diesel (L)", "Petrol (L)", "Speed (L)", "CNG (Kg)", "Collection", "Mismatch" };
             var rows = new List<List<string>>();
 
             foreach (var row in DsmBreakdown)
@@ -155,6 +160,11 @@ public partial class DailyPerformanceViewModel : ObservableObject, IDisposable
                     row.ShiftCount.ToString(),
                     "₹" + row.TotalSale.ToString("N2"),
                     row.TotalLitres.ToString("N2") + " L",
+                    "₹" + row.Expenses.ToString("N2"),
+                    row.DieselLitres.ToString("N2"),
+                    row.PetrolLitres.ToString("N2"),
+                    row.SpeedLitres.ToString("N2"),
+                    row.CngKg.ToString("N2"),
                     "₹" + row.TotalCollection.ToString("N2"),
                     "₹" + row.Mismatch.ToString("N2")
                 });
@@ -249,10 +259,22 @@ public partial class DailyPerformanceViewModel : ObservableObject, IDisposable
 
             foreach (var st in dsmTotals)
             {
-                double dsmLitres = entries
+                var dsmEntries = entries
                     .Where(e => string.Equals((e.DsmName ?? "").Trim(), st.DsmName.Trim(), StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+
+                var dsmNozzles = dsmEntries
                     .SelectMany(e => e.NozzleReadings ?? new List<NozzleReading>())
-                    .Sum(nr => nr.SaleLitres);
+                    .ToList();
+
+                double dieselLitres = dsmNozzles.Where(n => string.Equals(n.FuelType, "HSD", StringComparison.OrdinalIgnoreCase) || string.Equals(n.FuelType, "Diesel", StringComparison.OrdinalIgnoreCase)).Sum(n => n.SaleLitres);
+                double petrolLitres = dsmNozzles.Where(n => string.Equals(n.FuelType, "MS-I", StringComparison.OrdinalIgnoreCase) || string.Equals(n.FuelType, "MS", StringComparison.OrdinalIgnoreCase) || string.Equals(n.FuelType, "Petrol", StringComparison.OrdinalIgnoreCase)).Sum(n => n.SaleLitres);
+                double speedLitres = dsmNozzles.Where(n => string.Equals(n.FuelType, "MS-II", StringComparison.OrdinalIgnoreCase) || string.Equals(n.FuelType, "Speed", StringComparison.OrdinalIgnoreCase)).Sum(n => n.SaleLitres);
+                double cngKg = dsmNozzles.Where(n => string.Equals(n.FuelType, "CNG", StringComparison.OrdinalIgnoreCase)).Sum(n => n.SaleLitres);
+                double dsmLitres = dieselLitres + petrolLitres + speedLitres + cngKg;
+                if (dsmLitres <= 0) dsmLitres = dsmNozzles.Sum(n => n.SaleLitres);
+
+                double dsmExpenses = st.Expenses > 0 ? st.Expenses : dsmEntries.Sum(e => e.Expenses?.Sum(x => x.Amount) ?? 0);
 
                 DsmBreakdown.Add(new DsmDailyRow
                 {
@@ -260,6 +282,11 @@ public partial class DailyPerformanceViewModel : ObservableObject, IDisposable
                     ShiftCount = st.SessionsCount,
                     TotalSale = st.GrossSales,
                     TotalLitres = dsmLitres,
+                    Expenses = dsmExpenses,
+                    DieselLitres = dieselLitres,
+                    PetrolLitres = petrolLitres,
+                    SpeedLitres = speedLitres,
+                    CngKg = cngKg,
                     TotalCollection = st.TotalCollection,
                     Mismatch = st.Mismatch
                 });
@@ -275,6 +302,11 @@ public class DsmDailyRow
     public int ShiftCount { get; set; }
     public double TotalSale { get; set; }
     public double TotalLitres { get; set; }
+    public double Expenses { get; set; }
+    public double DieselLitres { get; set; }
+    public double PetrolLitres { get; set; }
+    public double SpeedLitres { get; set; }
+    public double CngKg { get; set; }
     public double TotalCollection { get; set; }
     public double Mismatch { get; set; }
 }

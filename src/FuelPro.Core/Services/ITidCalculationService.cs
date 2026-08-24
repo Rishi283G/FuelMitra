@@ -20,6 +20,17 @@ public class TidItemDto
     public string SlotDate { get; set; } = string.Empty;
     public string TimeWindow { get; set; } = string.Empty;
     public string SlotDisplaySubtitle { get; set; } = string.Empty;
+    public string CollectionTypeCode { get; set; } = string.Empty;
+    public string CollectionTypeName { get; set; } = string.Empty;
+}
+
+public class TidCollectionGroup
+{
+    public string CollectionTypeCode { get; set; } = string.Empty;
+    public string DisplayName { get; set; } = string.Empty;
+    public string Category { get; set; } = "Card";
+    public List<TidItemDto> Items { get; set; } = new();
+    public double TotalAmount => Items.Sum(i => i.Amount);
 }
 
 public class BusinessDayTidSheet
@@ -29,6 +40,10 @@ public class BusinessDayTidSheet
     public string DayBusinessDate { get; set; } = string.Empty;
     public string NightBusinessDate { get; set; } = string.Empty;
     
+    // Dynamic Collection Groups (for all active collection types with TID/Batch)
+    public List<TidCollectionGroup> CollectionGroups { get; set; } = new();
+    public Dictionary<string, double> DynamicTotals { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
     // PhonePe Direct
     public double PhonePeDirectMorning { get; set; }
     public double PhonePeDirectDay { get; set; }
@@ -58,8 +73,10 @@ public class BusinessDayTidSheet
 
     // Grand Total Digital (DSM payments + debtor repayments)
     public double GrandTotal =>
-        PhonePeTotal + PineLabsCardTotal + PetroCardTotal
-        + DebtorPhonePeRepaymentTotal + DebtorCardRepaymentTotal + DebtorPetroCardRepaymentTotal;
+        (CollectionGroups != null && CollectionGroups.Count > 0)
+            ? CollectionGroups.Sum(g => g.TotalAmount)
+            : (PhonePeTotal + PineLabsCardTotal + PetroCardTotal
+               + DebtorPhonePeRepaymentTotal + DebtorCardRepaymentTotal + DebtorPetroCardRepaymentTotal);
 
     public List<TidItemDto> PhonePePayments { get; set; } = new();
     public List<TidItemDto> CardPayments { get; set; } = new();

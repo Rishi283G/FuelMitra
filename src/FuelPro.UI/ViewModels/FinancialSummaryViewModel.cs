@@ -88,7 +88,8 @@ public partial class FinancialSummaryViewModel : ObservableObject
                                         + (entry.PaymentCollection?.PhonePeCardMorning ?? 0)
                                         + (entry.PaymentCollection?.PhonePeCardNight ?? 0)
                                         + (entry.PaymentCollection?.CreditCard ?? 0)
-                                        + (entry.PaymentCollection?.PetroCard ?? 0);
+                                        + (entry.PaymentCollection?.PetroCard ?? 0)
+                                        + (entry.PaymentCollection?.DynamicItemsTotal ?? 0);
 
                 TotalExpenses += entry.Expenses.Sum(e => e.Amount);
                 TotalDebitorsOutstanding += entry.DebitEntries.Sum(d => d.Amount);

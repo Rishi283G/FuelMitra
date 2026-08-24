@@ -61,15 +61,20 @@
             </UniformGrid>
             <TextBlock Text="Day-wise Performance Breakdown" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,8"/>
             <DataGrid ItemsSource="{Binding DayRows}" AutoGenerateColumns="False" IsReadOnly="True"
-                      materialDesign:DataGridAssist.CellPadding="12 8" CanUserSortColumns="True">
+                      materialDesign:DataGridAssist.CellPadding="10 6" CanUserSortColumns="True">
                 <DataGrid.Columns>
-                    <DataGridTextColumn Header="Date" Binding="{Binding DateDisplay}" Width="100"/>
-                    <DataGridTextColumn Header="Day" Binding="{Binding DayName}" Width="80"/>
-                    <DataGridTextColumn Header="DSM Entries" Binding="{Binding DsmEntryCount}" Width="100"/>
+                    <DataGridTextColumn Header="Date" Binding="{Binding DateDisplay}" Width="85" FontWeight="SemiBold"/>
+                    <DataGridTextColumn Header="Day" Binding="{Binding DayName}" Width="55"/>
+                    <DataGridTextColumn Header="DSM Entries" Binding="{Binding DsmEntryCount}" Width="85"/>
                     <DataGridTextColumn Header="Sale" Binding="{Binding TotalSale, Converter={StaticResource CurrencyConverter}}" Width="*"/>
-                    <DataGridTextColumn Header="Litres" Binding="{Binding TotalLitres, Converter={StaticResource LitresConverter}}" Width="*"/>
+                    <DataGridTextColumn Header="Total Litres" Binding="{Binding TotalLitres, Converter={StaticResource LitresConverter}}" Width="*"/>
+                    <DataGridTextColumn Header="Expenses" Binding="{Binding Expenses, Converter={StaticResource CurrencyConverter}}" Width="*" Foreground="#BF360C"/>
+                    <DataGridTextColumn Header="Diesel (L)" Binding="{Binding DieselLitres, StringFormat='{}{0:N2}'}" Width="*"/>
+                    <DataGridTextColumn Header="Petrol (L)" Binding="{Binding PetrolLitres, StringFormat='{}{0:N2}'}" Width="*"/>
+                    <DataGridTextColumn Header="Speed (L)" Binding="{Binding SpeedLitres, StringFormat='{}{0:N2}'}" Width="*"/>
+                    <DataGridTextColumn Header="CNG (Kg)" Binding="{Binding CngKg, StringFormat='{}{0:N2}'}" Width="*"/>
                     <DataGridTextColumn Header="Collection" Binding="{Binding TotalCollection, Converter={StaticResource CurrencyConverter}}" Width="*"/>
-                    <DataGridTextColumn Header="Mismatch" Binding="{Binding Mismatch, Converter={StaticResource CurrencyConverter}}" Width="*"/>
+                    <DataGridTextColumn Header="Mismatch" Binding="{Binding Mismatch, Converter={StaticResource CurrencyConverter}}" Width="*" FontWeight="Bold"/>
                 </DataGrid.Columns>
             </DataGrid>
         </StackPanel>

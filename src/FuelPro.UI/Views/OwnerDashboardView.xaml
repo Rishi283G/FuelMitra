@@ -147,11 +147,12 @@
                 </materialDesign:Card>
             </Grid>
 
-            <!-- Loading Indicator -->
+            <!-- Loading Indicator (Always visible on top of cards during sync/load) -->
             <ProgressBar Grid.Row="0" IsIndeterminate="{Binding IsLoading}"
                          Visibility="{Binding IsLoading, Converter={StaticResource BooleanToVisibilityConverter}}"
                          Style="{StaticResource MaterialDesignLinearProgressBar}"
-                         VerticalAlignment="Bottom" Margin="0,0,0,-8"/>
+                         Height="4" Panel.ZIndex="1000"
+                         VerticalAlignment="Bottom" Margin="0,0,0,0"/>
 
             <!-- KPI Cards Row -->
             <UniformGrid Grid.Row="1" Columns="4" Margin="0,0,0,16">
@@ -307,33 +308,25 @@
                 <StackPanel>
                     <TextBlock Text="Payment Mode Breakdown" FontSize="14" FontWeight="SemiBold"
                                Margin="0,0,0,12" Opacity="0.7"/>
-                    <UniformGrid Columns="5">
-                        <StackPanel Margin="4">
-                            <TextBlock Text="Cash" FontSize="11" Opacity="0.5"/>
-                            <TextBlock Text="{Binding TodayTotalCash, Converter={StaticResource CurrencyConverter}}"
-                                       FontSize="16" FontWeight="Bold"/>
-                        </StackPanel>
-                        <StackPanel Margin="4">
-                            <TextBlock Text="PhonePe" FontSize="11" Opacity="0.5"/>
-                            <TextBlock Text="{Binding TodayTotalPhonePe, Converter={StaticResource CurrencyConverter}}"
-                                       FontSize="16" FontWeight="Bold"/>
-                        </StackPanel>
-                        <StackPanel Margin="4">
-                            <TextBlock Text="PineLabs Card" FontSize="11" Opacity="0.5"/>
-                            <TextBlock Text="{Binding TodayTotalCreditCard, Converter={StaticResource CurrencyConverter}}"
-                                       FontSize="16" FontWeight="Bold"/>
-                        </StackPanel>
-                        <StackPanel Margin="4">
-                            <TextBlock Text="Petro Card" FontSize="11" Opacity="0.5"/>
-                            <TextBlock Text="{Binding TodayTotalPetroCard, Converter={StaticResource CurrencyConverter}}"
-                                       FontSize="16" FontWeight="Bold"/>
-                        </StackPanel>
-                        <StackPanel Margin="4">
-                            <TextBlock Text="Debit (Debtors)" FontSize="11" Opacity="0.5"/>
-                            <TextBlock Text="{Binding TodayTotalDebit, Converter={StaticResource CurrencyConverter}}"
-                                       FontSize="16" FontWeight="Bold" Foreground="#E65100"/>
-                        </StackPanel>
-                    </UniformGrid>
+                    <ItemsControl ItemsSource="{Binding PaymentBreakdown}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <materialDesign:Card Margin="4,4,16,8" Padding="12,8" UniformCornerRadius="8"
+                                                     MinWidth="150" Background="#FAFAFA" materialDesign:ElevationAssist.Elevation="Dp0">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding CollectionMode}" FontSize="11" Opacity="0.6" TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Text="{Binding Amount, Converter={StaticResource CurrencyConverter}}"
+                                                   FontSize="16" FontWeight="Bold" Margin="0,3,0,0" Foreground="{Binding DisplayColor}"/>
+                                    </StackPanel>
+                                </materialDesign:Card>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
                 </StackPanel>
             </materialDesign:Card>
 

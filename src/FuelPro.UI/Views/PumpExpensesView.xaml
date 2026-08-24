@@ -62,10 +62,11 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- KP Ledger Total -->
-                    <Border Background="#E8F5E9" CornerRadius="12" Padding="12,6" Margin="0,0,12,0">
+                    <!-- KP / Personal Ledger Total -->
+                    <Border Background="#E8F5E9" CornerRadius="12" Padding="12,6" Margin="0,0,12,0"
+                            Visibility="{Binding IsPersonalLedgerEnabled, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="KP Ledger: " FontWeight="SemiBold" Foreground="#2E7D32" FontSize="13"/>
+                            <TextBlock Text="{Binding PersonalLedgerTitle, StringFormat='{}{0}: '}" FontWeight="SemiBold" Foreground="#2E7D32" FontSize="13"/>
                             <TextBlock Text="{Binding TotalKpAmount, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" Foreground="#2E7D32" FontSize="13"/>
                         </StackPanel>
                     </Border>
@@ -112,6 +113,7 @@
                         <TextBox Text="{Binding ElectricityExpenses, UpdateSourceTrigger=PropertyChanged, StringFormat=F2}" materialDesign:HintAssist.Hint="Electricity Expenses (₹)" />
                         <TextBox Text="{Binding OfficeExpenses, UpdateSourceTrigger=PropertyChanged, StringFormat=F2}" materialDesign:HintAssist.Hint="Office Expenses (₹)" />
                         <TextBox Text="{Binding PrintingExpense, UpdateSourceTrigger=PropertyChanged, StringFormat=F2}" materialDesign:HintAssist.Hint="Printing Expense (₹)" />
+                        
                         <!-- Custom Categories Section -->
                         <TextBlock Text="Custom Categories" FontWeight="SemiBold" FontSize="14" Margin="0,8,0,8" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
                         <ItemsControl ItemsSource="{Binding CategoryExpenses}">
@@ -132,31 +134,28 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
 
-                        <!-- Add Custom Category Form -->
-                        <Grid Margin="0,8,0,16">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBox Grid.Column="0" Text="{Binding NewCategoryName, UpdateSourceTrigger=PropertyChanged}" 
-                                     materialDesign:HintAssist.Hint="New Category Name (e.g. Transport)" Margin="0,0,8,0" Height="40" Padding="0,8"/>
-                            <Button Grid.Column="1" Content="Add Category" Command="{Binding AddCategoryCommand}" Style="{StaticResource MaterialDesignOutlinedButton}" Height="40"/>
-                        </Grid>
+                        <!-- Add Custom Category -->
+                        <Expander Header="Add Custom Expense Category" Margin="0,0,0,12">
+                            <StackPanel Margin="8">
+                                <TextBox Text="{Binding NewCategoryName, UpdateSourceTrigger=PropertyChanged}" materialDesign:HintAssist.Hint="New Category Name" Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,0,8"/>
+                                <Button Content="Add Category" Command="{Binding AddCategoryCommand}" Style="{StaticResource MaterialDesignOutlinedButton}" HorizontalAlignment="Right"/>
+                            </StackPanel>
+                        </Expander>
 
-                        <TextBox Text="{Binding Remarks, UpdateSourceTrigger=PropertyChanged}" materialDesign:HintAssist.Hint="Remarks / Details" AcceptsReturn="True" Height="70" VerticalScrollBarVisibility="Auto" Margin="0,0,0,16"/>
+                        <Label Content="Remarks / Details:" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                        <TextBox Text="{Binding Remarks, UpdateSourceTrigger=PropertyChanged}" materialDesign:HintAssist.Hint="Optional Remarks" Height="60" TextWrapping="Wrap" Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
 
-                        <Button Content="Save Expenses" Command="{Binding SaveCommand}" Style="{StaticResource MaterialDesignRaisedButton}" Height="45"/>
-
+                        <Button Content="Save Daily Pump Expenses" Command="{Binding SaveCommand}" Style="{StaticResource MaterialDesignRaisedButton}" Height="48" Margin="0,8,0,0" FontSize="15" FontWeight="Bold"/>
                         <TextBlock Text="{Binding StatusMessage}" Margin="0,10,0,0" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" FontWeight="SemiBold" HorizontalAlignment="Center"/>
                     </StackPanel>
                 </materialDesign:Card>
             </ScrollViewer>
 
-            <!-- Column 2: History & Kandhare Petroleum Ledger -->
+            <!-- Column 2: History & Personal Ledger -->
             <Grid Grid.Column="2">
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="1.2*"/>
-                    <RowDefinition Height="1*"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
                 <!-- Top Card: Expense Log History -->
@@ -222,8 +221,9 @@
                     </Grid>
                 </materialDesign:Card>
 
-                <!-- Bottom Card: Kandhare Petroleum Ledger -->
-                <materialDesign:Card Grid.Row="1" Style="{StaticResource SectionCard}" Margin="0">
+                <!-- Bottom Card: Personal Ledger (if enabled) -->
+                <materialDesign:Card Grid.Row="1" Style="{StaticResource SectionCard}" Margin="0" Height="260"
+                                     Visibility="{Binding IsPersonalLedgerEnabled, Converter={StaticResource BooleanToVisibilityConverter}}">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
@@ -237,7 +237,7 @@
                             </Grid.ColumnDefinitions>
                             <StackPanel Orientation="Horizontal">
                                 <materialDesign:PackIcon Kind="Bank" Width="22" Height="22" VerticalAlignment="Center" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" Margin="0,0,8,0"/>
-                                <TextBlock Text="🏛️ Kandhare Petroleum Ledger (PWA &amp; Admin Entries)" Style="{StaticResource SectionTitle}" VerticalAlignment="Center" Margin="0"/>
+                                <TextBlock Text="{Binding PersonalLedgerTitle, StringFormat='🏛️ {0} (PWA &amp; Admin Entries)'}" Style="{StaticResource SectionTitle}" VerticalAlignment="Center" Margin="0"/>
                             </StackPanel>
                             <Border Grid.Column="1" Background="#E8F5E9" CornerRadius="12" Padding="12,4">
                                 <StackPanel Orientation="Horizontal">

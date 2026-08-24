@@ -227,46 +227,37 @@
                             <TextBlock Text="5. Final Day Reconciliation" Style="{StaticResource SectionTitle}" />
                             
                             <Border BorderBrush="{DynamicResource MaterialDesign.Brush.Divider}" BorderThickness="0,0,0,1" Margin="0,0,0,8" Padding="0,0,0,8">
-                                <Grid>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                    </Grid.RowDefinitions>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <Grid Margin="0,4">
+                                        <TextBlock Text="Digital &amp; Cash Collection" />
+                                        <TextBlock HorizontalAlignment="Right" Text="{Binding TotalDigitalAndCash, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" />
+                                    </Grid>
+                                    <Grid Margin="0,4">
+                                        <TextBlock Text="Debtors" />
+                                        <TextBlock HorizontalAlignment="Right" Text="{Binding CreditorsTotal, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" />
+                                    </Grid>
+                                    <Grid Margin="0,4">
+                                        <TextBlock Text="Total Expenses" />
+                                        <TextBlock HorizontalAlignment="Right" Text="{Binding ExpensesTotal, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" />
+                                    </Grid>
 
-                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Digital &amp; Cash Collection" Margin="0,4" />
-                                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding TotalDigitalAndCash, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" Margin="0,4" />
+                                    <!-- Dynamic Tank-Wise Testing Rows -->
+                                    <ItemsControl ItemsSource="{Binding TestingSummaryRows}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="0,4">
+                                                    <TextBlock Text="{Binding DisplayLabel}" />
+                                                    <TextBlock HorizontalAlignment="Right" Text="{Binding Amount, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" />
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
 
-                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Debtors" Margin="0,4" />
-                                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding CreditorsTotal, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" Margin="0,4" />
-
-                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Total Expenses" Margin="0,4" />
-                                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding ExpensesTotal, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" Margin="0,4" />
-
-                                    <TextBlock Grid.Row="3" Grid.Column="0" Text="{Binding MsTestingLabel}" Margin="0,4" />
-                                    <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding MsTesting, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" Margin="0,4" />
-
-                                    <TextBlock Grid.Row="4" Grid.Column="0" Text="{Binding HsdTestingLabel}" Margin="0,4" />
-                                    <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding HsdTesting, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" Margin="0,4" />
-
-                                    <TextBlock Grid.Row="5" Grid.Column="0" Text="{Binding HsdTesting2Label}" Margin="0,4" />
-                                    <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding HsdTesting2, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" Margin="0,4" />
-
-                                    <TextBlock Grid.Row="6" Grid.Column="0" Text="{Binding CngTestingLabel}" Margin="0,4" />
-                                    <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding CngTesting, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" Margin="0,4" />
-                                    
-                                    <TextBlock Grid.Row="7" Grid.Column="0" Text="Total DSM Short" Margin="0,4" FontWeight="Bold" Foreground="Red" />
-                                    <TextBlock Grid.Row="7" Grid.Column="1" Text="{Binding TotalDsmShort, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" Foreground="Red" Margin="0,4" />
-                                </Grid>
+                                    <Grid Margin="0,4">
+                                        <TextBlock Text="Total DSM Short" FontWeight="Bold" Foreground="Red" />
+                                        <TextBlock HorizontalAlignment="Right" Text="{Binding TotalDsmShort, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" Foreground="Red" />
+                                    </Grid>
+                                </StackPanel>
                             </Border>
                             
                             <Border BorderBrush="{DynamicResource MaterialDesign.Brush.Divider}" BorderThickness="0,1,0,0" Margin="0,8,0,0" Padding="0,8,0,0">

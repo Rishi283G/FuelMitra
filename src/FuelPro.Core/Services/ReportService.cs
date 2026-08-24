@@ -196,26 +196,49 @@ public class ReportService : IReportService
         double finalPhonePeCardMorning = phonePeCardMorning;
         double finalPhonePeCardNight = phonePeCardNight;
 
-        // 9. Testing summary totals
-        double msTesting = 0, msTestingVol = 0;
-        double hsdTesting = 0, hsdTestingVol = 0;
-        double hsdTesting2 = 0, hsdTesting2Vol = 0;
-        double cngTesting = 0, cngTestingVol = 0;
+        // 9. Testing summary totals (Tank-Wise, excluding disabled testing / CNG)
+        var testingByTank = new Dictionary<string, (double Amount, double Volume, double Rate, string FuelType)>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var entry in entriesList)
         {
             foreach (var t in entry.TestingEntries)
             {
-                var cat = PumpConfiguration.GetTestingTankCategory(t.FuelType, entry.PumpId, date.Date);
+                var tankName = PumpConfiguration.GetTestingTankCategory(t.FuelType, entry.PumpId, date.Date);
+                if (!PumpConfiguration.IsTestingEnabledForTank(tankName))
+                {
+                    continue; // Skip tanks with HasTesting == false (e.g. CNG)
+                }
+
                 double tAmt = t.Amount > 0 ? (double)t.Amount : (double)(t.Litres * t.Rate);
                 double tVol = (double)t.Litres;
-                if (cat == "MS") { msTesting += tAmt; msTestingVol += tVol; }
-                else if (cat == "HSD") { hsdTesting += tAmt; hsdTestingVol += tVol; }
-                else if (cat == "HSD-II") { hsdTesting2 += tAmt; hsdTesting2Vol += tVol; }
-                else if (cat == "CNG") { cngTesting += tAmt; cngTestingVol += tVol; }
+                double tRate = t.Rate > 0 ? (double)t.Rate : (tVol > 0 ? tAmt / tVol : 0);
+
+                if (testingByTank.TryGetValue(tankName, out var existing))
+                {
+                    testingByTank[tankName] = (existing.Amount + tAmt, existing.Volume + tVol, tRate > 0 ? tRate : existing.Rate, existing.FuelType);
+                }
+                else
+                {
+                    var fuelType = PumpConfiguration.GetFuelTypeDisplayName(entry.PumpId, int.TryParse(t.FuelType, out var n) ? n : 1, date.Date);
+                    testingByTank[tankName] = (tAmt, tVol, tRate, fuelType);
+                }
             }
         }
-        double testingTotal = msTesting + hsdTesting + hsdTesting2 + cngTesting;
+
+        var testingSummaryList = new List<TestingSummaryItem>();
+        foreach (var kvp in testingByTank)
+        {
+            testingSummaryList.Add(new TestingSummaryItem
+            {
+                TankName = kvp.Key,
+                FuelType = kvp.Value.FuelType,
+                VolumeLitres = kvp.Value.Volume,
+                Rate = kvp.Value.Rate,
+                Amount = kvp.Value.Amount
+            });
+        }
+        dto.TestingSummaryItems = testingSummaryList;
+        double testingTotal = testingSummaryList.Sum(t => t.Amount);
 
         // 10. DSM Short calculation
         double totalDsmShort = CalculateDsmShort(entriesList);
@@ -260,40 +283,57 @@ public class ReportService : IReportService
 
         if (cdActive)
         {
-            breakdownList.Add(new() { Category = cdName, Amount = finalCashDeposit, BaseAmount = dto.Cash1.GrandTotal, RecoveryAmount = 0 });
+            breakdownList.Add(new CollectionCategoryDto
+            {
+                Category = cdType?.DisplayName ?? "Cash Deposit",
+                Amount = finalCashDeposit,
+                BaseAmount = dto.Cash1.GrandTotal,
+                RecoveryAmount = dto.BankCashRepayments
+            });
         }
-        breakdownList.Add(new() { Category = "Cash In Hand", Amount = finalCashInHand, BaseAmount = dto.Cash2.GrandTotal, RecoveryAmount = dto.CashRepayments });
+        breakdownList.Add(new CollectionCategoryDto
+        {
+            Category = "Cash In Hand",
+            Amount = finalCashInHand,
+            BaseAmount = dto.Cash2.GrandTotal,
+            RecoveryAmount = dto.CashRepayments
+        });
 
         if (phActive)
         {
-            double phTotal = finalPhonePeMorning + finalPhonePeNight;
-            breakdownList.Add(new() { Category = phName, Amount = phTotal, BaseAmount = phonePeMorning + phonePeNight, RecoveryAmount = dto.PhonePeRepayments });
+            breakdownList.Add(new CollectionCategoryDto
+            {
+                Category = phType?.DisplayName ?? "PhonePe Direct",
+                Amount = finalPhonePeMorning + finalPhonePeNight,
+                BaseAmount = phonePeMorning + phonePeNight,
+                RecoveryAmount = dto.PhonePeRepayments
+            });
         }
 
         if (ccActive)
         {
-            double ccTotal = finalCreditCardMorning + finalCreditCardNight;
-            breakdownList.Add(new() { Category = ccName, Amount = ccTotal, BaseAmount = creditCardMorning + creditCardNight, RecoveryAmount = dto.CreditCardRepayments });
+            breakdownList.Add(new CollectionCategoryDto
+            {
+                Category = ccType?.DisplayName ?? "PineLabs Card",
+                Amount = finalCreditCardMorning + finalCreditCardNight + finalPhonePeCardMorning + finalPhonePeCardNight,
+                BaseAmount = creditCardMorning + creditCardNight + phonePeCardMorning + phonePeCardNight,
+                RecoveryAmount = dto.CreditCardRepayments
+            });
         }
 
         if (pcActive)
         {
-            double pcTotal = finalPetroCard > 0 ? finalPetroCard : (dto.PetroCardMorning + dto.PetroCardNight);
-            breakdownList.Add(new() { Category = pcName, Amount = pcTotal, BaseAmount = petroCardMorning + petroCardNight, RecoveryAmount = dto.PetroCardRepayments });
+            breakdownList.Add(new CollectionCategoryDto
+            {
+                Category = pcType?.DisplayName ?? "PetroCard",
+                Amount = finalPetroCard,
+                BaseAmount = petroCard,
+                RecoveryAmount = dto.PetroCardRepayments
+            });
         }
 
         // All other enabled dynamic collection types from Dev side (always show with 0 if no entries)
-        var builtInCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "PHONEPE", "PINELAB", "PINELABS", "PINELAB CARD", "PINELAB_CARD", "CREDITCARD", "CREDIT_CARD",
-            "CREDIT / DEBIT CARD", "CREDIT DEBIT CARD", "CARD", "PETROCARD", "PETRO_CARD", "PETRO CARD",
-            "CASH_DEPOSIT", "CASH DEPOSIT", "CASH_IN_HAND", "CASH IN HAND", "OTHERS"
-        };
-        if (phType != null) builtInCodes.Add(phType.Code);
-        if (ccType != null) builtInCodes.Add(ccType.Code);
-        if (pcType != null) builtInCodes.Add(pcType.Code);
-        if (cdType != null) builtInCodes.Add(cdType.Code);
-
+        var builtInCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "PHONEPE", "CREDIT_CARD", "PINELAB_CARD", "PETROCARD", "CASH_DEPOSIT" };
         var dynamicActiveTypes = allColTypes
             .Where(t => t.IsActive && !builtInCodes.Contains(t.Code))
             .OrderBy(t => t.DisplayOrder)
@@ -328,10 +368,18 @@ public class ReportService : IReportService
             breakdownList.Add(new() { Category = "Kandhare Petroleum", Amount = khandhareTotal, BaseAmount = khandhareTotal, RecoveryAmount = 0 });
         }
 
-        if (msTesting > 0) breakdownList.Add(new() { Category = "MS Testing", Amount = msTesting, BaseAmount = msTesting, RecoveryAmount = 0, Volume = msTestingVol });
-        if (hsdTesting > 0) breakdownList.Add(new() { Category = "HSD Testing I", Amount = hsdTesting, BaseAmount = hsdTesting, RecoveryAmount = 0, Volume = hsdTestingVol });
-        if (hsdTesting2 > 0) breakdownList.Add(new() { Category = "HSD Testing II", Amount = hsdTesting2, BaseAmount = hsdTesting2, RecoveryAmount = 0, Volume = hsdTesting2Vol });
-        if (cngTesting > 0) breakdownList.Add(new() { Category = "CNG Testing", Amount = cngTesting, BaseAmount = cngTesting, RecoveryAmount = 0, Volume = cngTestingVol });
+        foreach (var testItem in testingSummaryList.Where(t => t.Amount > 0 || t.VolumeLitres > 0))
+        {
+            breakdownList.Add(new CollectionCategoryDto
+            {
+                Category = $"{testItem.TankName} Testing",
+                Amount = testItem.Amount,
+                BaseAmount = testItem.Amount,
+                RecoveryAmount = 0,
+                Volume = testItem.VolumeLitres
+            });
+        }
+
         if (totalDsmShort != 0) breakdownList.Add(new() { Category = "DSM Short", Amount = totalDsmShort, BaseAmount = totalDsmShort, RecoveryAmount = 0 });
 
         dto.CollectionBreakdown = breakdownList;
@@ -564,26 +612,49 @@ public class ReportService : IReportService
         dto.PetroCardMorning = petroCardMorning + petroCardDay + dto.PetroCardRepayments;
         dto.PetroCardNight = petroCardNight;
 
-        // 9. Testing summary totals
-        double msTesting = 0, msTestingVol = 0;
-        double hsdTesting = 0, hsdTestingVol = 0;
-        double hsdTesting2 = 0, hsdTesting2Vol = 0;
-        double cngTesting = 0, cngTestingVol = 0;
+        // 9. Testing summary totals (Tank-Wise, excluding disabled testing / CNG)
+        var dayTestingByTank = new Dictionary<string, (double Amount, double Volume, double Rate, string FuelType)>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var entry in todayEntries)
         {
             foreach (var t in entry.TestingEntries)
             {
-                var cat = PumpConfiguration.GetTestingTankCategory(t.FuelType, entry.PumpId, startDate.Date);
+                var tankName = PumpConfiguration.GetTestingTankCategory(t.FuelType, entry.PumpId, startDate.Date);
+                if (!PumpConfiguration.IsTestingEnabledForTank(tankName))
+                {
+                    continue; // Skip tanks with HasTesting == false (e.g. CNG)
+                }
+
                 double tAmt = t.Amount > 0 ? (double)t.Amount : (double)(t.Litres * t.Rate);
                 double tVol = (double)t.Litres;
-                if (cat == "MS") { msTesting += tAmt; msTestingVol += tVol; }
-                else if (cat == "HSD") { hsdTesting += tAmt; hsdTestingVol += tVol; }
-                else if (cat == "HSD-II") { hsdTesting2 += tAmt; hsdTesting2Vol += tVol; }
-                else if (cat == "CNG") { cngTesting += tAmt; cngTestingVol += tVol; }
+                double tRate = t.Rate > 0 ? (double)t.Rate : (tVol > 0 ? tAmt / tVol : 0);
+
+                if (dayTestingByTank.TryGetValue(tankName, out var existing))
+                {
+                    dayTestingByTank[tankName] = (existing.Amount + tAmt, existing.Volume + tVol, tRate > 0 ? tRate : existing.Rate, existing.FuelType);
+                }
+                else
+                {
+                    var fuelType = PumpConfiguration.GetFuelTypeDisplayName(entry.PumpId, int.TryParse(t.FuelType, out var n) ? n : 1, startDate.Date);
+                    dayTestingByTank[tankName] = (tAmt, tVol, tRate, fuelType);
+                }
             }
         }
-        double testingTotal = msTesting + hsdTesting + hsdTesting2 + cngTesting;
+
+        var dayTestingSummaryList = new List<TestingSummaryItem>();
+        foreach (var kvp in dayTestingByTank)
+        {
+            dayTestingSummaryList.Add(new TestingSummaryItem
+            {
+                TankName = kvp.Key,
+                FuelType = kvp.Value.FuelType,
+                VolumeLitres = kvp.Value.Volume,
+                Rate = kvp.Value.Rate,
+                Amount = kvp.Value.Amount
+            });
+        }
+        dto.TestingSummaryItems = dayTestingSummaryList;
+        double testingTotal = dayTestingSummaryList.Sum(t => t.Amount);
 
         // 10. DSM Short calculation
         double totalDsmShort = CalculateDsmShort(todayEntries);
@@ -624,8 +695,8 @@ public class ReportService : IReportService
         bool pcActive = pcType?.IsActive ?? (allColTypes.Count == 0);
         bool cdActive = cdType?.IsActive ?? true;
 
-        string phName = phType?.DisplayName ?? "PhonePe";
-        string ccName = ccType?.DisplayName ?? "PineLab Card";
+        string phName = phType?.DisplayName ?? "PhonePe Direct";
+        string ccName = ccType?.DisplayName ?? "PineLabs Card";
         string pcName = pcType?.DisplayName ?? "PetroCard";
         string cdName = cdType?.DisplayName ?? "Cash Deposit";
 
@@ -655,16 +726,7 @@ public class ReportService : IReportService
         }
 
         // All other enabled dynamic collection types from Dev side (always show with 0 if no entries)
-        var builtInCodesDay = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "PHONEPE", "PINELAB", "PINELABS", "PINELAB CARD", "PINELAB_CARD", "CREDITCARD", "CREDIT_CARD",
-            "CREDIT / DEBIT CARD", "CREDIT DEBIT CARD", "CARD", "PETROCARD", "PETRO_CARD", "PETRO CARD",
-            "CASH_DEPOSIT", "CASH DEPOSIT", "CASH_IN_HAND", "CASH IN HAND", "OTHERS"
-        };
-        if (phType != null) builtInCodesDay.Add(phType.Code);
-        if (ccType != null) builtInCodesDay.Add(ccType.Code);
-        if (pcType != null) builtInCodesDay.Add(pcType.Code);
-        if (cdType != null) builtInCodesDay.Add(cdType.Code);
+        var builtInCodesDay = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "PHONEPE", "CREDIT_CARD", "PINELAB_CARD", "PETROCARD", "CASH_DEPOSIT" };
 
         var dynamicActiveTypesDay = allColTypes
             .Where(t => t.IsActive && !builtInCodesDay.Contains(t.Code))
@@ -694,10 +756,19 @@ public class ReportService : IReportService
 
         dayBreakdown.Add(new() { Category = "Debtors", Amount = dto.CreditorsTotal, BaseAmount = dto.CreditorsTotal, RecoveryAmount = 0 });
         dayBreakdown.Add(new() { Category = "Expenses", Amount = dto.ExpensesTotal, BaseAmount = dto.ExpensesTotal, RecoveryAmount = 0 });
-        if (msTesting > 0) dayBreakdown.Add(new() { Category = "MS Testing", Amount = msTesting, BaseAmount = msTesting, RecoveryAmount = 0, Volume = msTestingVol });
-        if (hsdTesting > 0) dayBreakdown.Add(new() { Category = "HSD Testing I", Amount = hsdTesting, BaseAmount = hsdTesting, RecoveryAmount = 0, Volume = hsdTestingVol });
-        if (hsdTesting2 > 0) dayBreakdown.Add(new() { Category = "HSD Testing II", Amount = hsdTesting2, BaseAmount = hsdTesting2, RecoveryAmount = 0, Volume = hsdTesting2Vol });
-        if (cngTesting > 0) dayBreakdown.Add(new() { Category = "CNG Testing", Amount = cngTesting, BaseAmount = cngTesting, RecoveryAmount = 0, Volume = cngTestingVol });
+
+        foreach (var testItem in dayTestingSummaryList.Where(t => t.Amount > 0 || t.VolumeLitres > 0))
+        {
+            dayBreakdown.Add(new CollectionCategoryDto
+            {
+                Category = $"{testItem.TankName} Testing",
+                Amount = testItem.Amount,
+                BaseAmount = testItem.Amount,
+                RecoveryAmount = 0,
+                Volume = testItem.VolumeLitres
+            });
+        }
+
         if (totalDsmShort != 0) dayBreakdown.Add(new() { Category = "DSM Short", Amount = totalDsmShort, BaseAmount = totalDsmShort, RecoveryAmount = 0 });
 
         double khandhareTotal = todayEntries.SelectMany(e => e.KhandharePetroleumEntries ?? new List<KhandharePetroleumEntry>()).Sum(k => k.Amount);

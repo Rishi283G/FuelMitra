@@ -54,6 +54,7 @@ public partial class DebtorManagementViewModel : ObservableObject
     private readonly PrintService _printService;
     private readonly ExcelExportService _excelExportService;
     private readonly FuelProDbContext _dbContext;
+    private readonly ICollectionTypeService? _collectionTypeService;
     private readonly ILogger _logger = Log.ForContext<DebtorManagementViewModel>();
 
     [ObservableProperty] private bool _isLoading;
@@ -73,6 +74,40 @@ public partial class DebtorManagementViewModel : ObservableObject
 
     // Repayment logging form
     [ObservableProperty] private string _selectedDebtorName = "";
+    [ObservableProperty] private double _selectedDebtorOutstandingBalance;
+    [ObservableProperty] private double _selectedDebtorTotalDebt;
+    [ObservableProperty] private double _selectedDebtorTotalRepaid;
+
+    partial void OnSelectedDebtorNameChanged(string value)
+    {
+        UpdateSelectedDebtorInfo();
+    }
+
+    public void UpdateSelectedDebtorInfo()
+    {
+        if (string.IsNullOrWhiteSpace(SelectedDebtorName))
+        {
+            SelectedDebtorOutstandingBalance = 0;
+            SelectedDebtorTotalDebt = 0;
+            SelectedDebtorTotalRepaid = 0;
+            return;
+        }
+
+        var row = Debtors.FirstOrDefault(d => d.Name.Trim().Equals(SelectedDebtorName.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (row != null)
+        {
+            SelectedDebtorTotalDebt = row.TotalDebt;
+            SelectedDebtorTotalRepaid = row.TotalRepayment;
+            SelectedDebtorOutstandingBalance = row.OutstandingBalance;
+        }
+        else
+        {
+            SelectedDebtorTotalDebt = 0;
+            SelectedDebtorTotalRepaid = 0;
+            SelectedDebtorOutstandingBalance = 0;
+        }
+    }
+
     [ObservableProperty] private double _repaymentAmount;
     [ObservableProperty] private string? _chequeNumber = "";
     [ObservableProperty] private DateTime _repaymentDate = DateTime.Today;
@@ -87,7 +122,7 @@ public partial class DebtorManagementViewModel : ObservableObject
     [ObservableProperty] private int? _denom20;
     [ObservableProperty] private int? _denom10;
     [ObservableProperty] private int? _coins;
-    public string[] PaymentModes { get; } = { "Cash", "PhonePe", "PineLabs Card", "PetroCard", "Bank Transfer", "Cheque" };
+    public ObservableCollection<string> PaymentModes { get; } = new();
     [ObservableProperty] private string _selectedRepaymentShift = "Shift B (Day)";
     public string[] RepaymentShifts { get; } = { "Shift B (Day)", "Shift A (Morning)", "Shift A (Night)" };
 
@@ -132,6 +167,36 @@ public partial class DebtorManagementViewModel : ObservableObject
 
     // Ledger statements
     [ObservableProperty] private string _ledgerDebtorName = "";
+    [ObservableProperty] private double _selectedLedgerDebtorAllTimeDebt;
+    [ObservableProperty] private double _selectedLedgerDebtorAllTimeRepaid;
+    [ObservableProperty] private double _selectedLedgerDebtorAllTimeOutstanding;
+
+    partial void OnLedgerDebtorNameChanged(string value)
+    {
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            var row = Debtors.FirstOrDefault(d => d.Name.Trim().Equals(value.Trim(), StringComparison.OrdinalIgnoreCase));
+            if (row != null)
+            {
+                SelectedLedgerDebtorAllTimeDebt = row.TotalDebt;
+                SelectedLedgerDebtorAllTimeRepaid = row.TotalRepayment;
+                SelectedLedgerDebtorAllTimeOutstanding = row.OutstandingBalance;
+            }
+            _ = LoadLedgerAsync();
+        }
+        else
+        {
+            SelectedLedgerDebtorAllTimeDebt = 0;
+            SelectedLedgerDebtorAllTimeRepaid = 0;
+            SelectedLedgerDebtorAllTimeOutstanding = 0;
+            LedgerTransactions.Clear();
+            LedgerOpeningBalance = 0;
+            LedgerTotalDebt = 0;
+            LedgerTotalRepayments = 0;
+            LedgerOutstandingBalance = 0;
+        }
+    }
+
     [ObservableProperty] private DateTime _ledgerStartDate = DateTime.Today.AddDays(-30);
     [ObservableProperty] private DateTime _ledgerEndDate = DateTime.Today;
     [ObservableProperty] private ObservableCollection<LedgerTransactionRow> _ledgerTransactions = new();
@@ -276,9 +341,70 @@ public partial class DebtorManagementViewModel : ObservableObject
         _printService = App.Services.GetRequiredService<PrintService>();
         _excelExportService = App.Services.GetRequiredService<ExcelExportService>();
         _dbContext = App.Services.GetRequiredService<FuelProDbContext>();
+        _collectionTypeService = App.Services.GetService<ICollectionTypeService>();
         _selectedRepaymentShift = DateTime.Now.Hour < 20 ? "Shift B (Day)" : "Shift A (Night)";
 
+        if (_collectionTypeService != null)
+        {
+            _collectionTypeService.CollectionTypesChanged += OnCollectionTypesChanged;
+        }
+
+        DsmEntryService.DebtorChanged += () =>
+        {
+            var dispatcher = Application.Current?.Dispatcher;
+            if (dispatcher != null && !dispatcher.CheckAccess())
+            {
+                dispatcher.BeginInvoke(async () => await LoadDataAsync());
+            }
+            else
+            {
+                _ = LoadDataAsync();
+            }
+        };
+
+        _ = LoadPaymentModesAsync();
         _ = LoadDataAsync();
+    }
+
+    private void OnCollectionTypesChanged()
+    {
+        System.Windows.Application.Current.Dispatcher.InvokeAsync(async () => await LoadPaymentModesAsync());
+    }
+
+    public async Task LoadPaymentModesAsync()
+    {
+        try
+        {
+            var modes = new List<string> { "Cash" };
+            if (_collectionTypeService != null)
+            {
+                var activeTypes = await _collectionTypeService.GetActiveCollectionTypesAsync();
+                foreach (var t in activeTypes.Where(t => !t.Code.Equals("CASH_DEPOSIT", StringComparison.OrdinalIgnoreCase) && !t.DisplayName.Equals("Cash", StringComparison.OrdinalIgnoreCase)))
+                {
+                    if (!modes.Contains(t.DisplayName))
+                        modes.Add(t.DisplayName);
+                }
+            }
+            else
+            {
+                modes.Add("PhonePe");
+                modes.Add("PineLabs Card");
+                modes.Add("PetroCard");
+            }
+            if (!modes.Contains("Bank Transfer")) modes.Add("Bank Transfer");
+            if (!modes.Contains("Cheque")) modes.Add("Cheque");
+
+            PaymentModes.Clear();
+            foreach (var m in modes) PaymentModes.Add(m);
+            if (!PaymentModes.Contains(SelectedPaymentMode))
+            {
+                SelectedPaymentMode = PaymentModes.FirstOrDefault() ?? "Cash";
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to load payment modes for debtor repayment");
+        }
     }
 
     [RelayCommand]
@@ -291,21 +417,22 @@ public partial class DebtorManagementViewModel : ObservableObject
             var creditorsRes = await _creditorRepo.GetAllActiveAsync();
             var creditors = creditorsRes.Success ? creditorsRes.Data ?? new List<Creditor>() : new List<Creditor>();
 
-            // Query all DSM Shift entries to fetch debit records
-            var allEntriesResult = await _dsmRepo.GetEntriesForDateRangeAsync(new DateTime(2000, 1, 1), DateTime.Today.AddYears(5));
-            var allDebits = allEntriesResult.Success && allEntriesResult.Data != null
-                ? allEntriesResult.Data.SelectMany(e => e.DebitEntries).ToList()
-                : new List<DebitEntry>();
+            using var context = App.Services.GetRequiredService<FuelProDbContext>();
+            var allDebits = await context.DebitEntries
+                .AsNoTracking()
+                .ToListAsync();
 
             var debitsGrouped = allDebits
+                .Where(d => !string.IsNullOrWhiteSpace(d.DebtorName))
                 .GroupBy(d => d.DebtorName.Trim().ToLower())
                 .ToDictionary(g => g.Key, g => g.Sum(d => d.Amount));
 
-            // Query all repayment logs
-            var repaymentsResult = await _repaymentRepo.GetByDateRangeAsync(new DateTime(2000, 1, 1), DateTime.Today.AddYears(5));
-            var allRepayments = repaymentsResult.Success ? repaymentsResult.Data ?? new List<CreditorRepayment>() : new List<CreditorRepayment>();
+            var allRepayments = await context.CreditorRepayments
+                .AsNoTracking()
+                .ToListAsync();
 
             var repaymentsGrouped = allRepayments
+                .Where(r => !string.IsNullOrWhiteSpace(r.CreditorName))
                 .GroupBy(r => r.CreditorName.Trim().ToLower())
                 .ToDictionary(g => g.Key, g => g.Sum(r => r.Amount));
 
@@ -329,10 +456,12 @@ public partial class DebtorManagementViewModel : ObservableObject
             Debtors = new ObservableCollection<DebtorDisplayRow>(rows.OrderBy(r => r.Name));
             
             DebtorsList.Clear();
-            foreach (var c in creditors)
+            foreach (var c in creditors.OrderBy(c => c.Name))
             {
                 DebtorsList.Add(c);
             }
+
+            UpdateSelectedDebtorInfo();
         }
         catch (Exception ex)
         {
@@ -357,57 +486,35 @@ public partial class DebtorManagementViewModel : ObservableObject
         {
             if (IsEditingDebtor && EditingDebtorId.HasValue)
             {
+                using var context = App.Services.GetRequiredService<FuelProDbContext>();
+                var existingCreditor = await context.Creditors.FindAsync(EditingDebtorId.Value);
+                string oldName = existingCreditor?.Name?.Trim() ?? "";
+                string newName = NewDebtorName.Trim();
+
                 var creditor = new Creditor
                 {
                     CreditorId = EditingDebtorId.Value,
-                    Name = NewDebtorName.Trim(),
+                    Name = newName,
                     Phone = string.IsNullOrWhiteSpace(NewDebtorPhone) ? null : NewDebtorPhone.Trim(),
                     IsActive = true
                 };
                 var result = await _creditorRepo.UpdateAsync(creditor);
                 if (result.Success)
                 {
-                    // Totals Adjustment Logic
-                    var existingRow = Debtors.FirstOrDefault(d => d.CreditorId == EditingDebtorId.Value);
-                    if (existingRow != null)
+                    // If debtor name was changed, cascade to historical DebitEntries and CreditorRepayments
+                    if (!string.IsNullOrEmpty(oldName) && !oldName.Equals(newName, StringComparison.OrdinalIgnoreCase))
                     {
-                        double diffDebt = EditTotalDebt - existingRow.TotalDebt;
-                        double diffRepaid = EditRepaidAmount - existingRow.TotalRepayment;
+                        var matchingDebits = await context.DebitEntries
+                            .Where(d => d.DebtorName == oldName)
+                            .ToListAsync();
+                        foreach (var d in matchingDebits) d.DebtorName = newName;
 
-                        if (Math.Abs(diffDebt) > 0.01)
-                        {
-                            using var context = App.Services.GetRequiredService<FuelProDbContext>();
-                            var latestDsm = await context.DsmEntries.OrderByDescending(e => e.DsmEntryId).FirstOrDefaultAsync();
-                            if (latestDsm != null)
-                            {
-                                var adjDebit = new DebitEntry
-                                {
-                                    DsmEntryId = latestDsm.DsmEntryId,
-                                    DebtorName = creditor.Name,
-                                    Amount = diffDebt,
-                                    Remarks = string.IsNullOrWhiteSpace(EditEntryDetails) ? "Profile Edit Adjustment" : EditEntryDetails.Trim(),
-                                    SlipNumber = "ADJ",
-                                    VehicleNumber = "",
-                                    CreatedAt = DateTime.Now
-                                };
-                                context.DebitEntries.Add(adjDebit);
-                                await context.SaveChangesAsync();
-                            }
-                        }
+                        var matchingRepayments = await context.CreditorRepayments
+                            .Where(r => r.CreditorName == oldName)
+                            .ToListAsync();
+                        foreach (var r in matchingRepayments) r.CreditorName = newName;
 
-                        if (Math.Abs(diffRepaid) > 0.01)
-                        {
-                            var adjRepay = new CreditorRepayment
-                            {
-                                CreditorName = creditor.Name,
-                                RepaymentDate = DateTime.Today,
-                                PaymentMode = "Adjustment",
-                                ChequeNo = "ADJ",
-                                Amount = diffRepaid,
-                                CreatedAt = DateTime.Now
-                            };
-                            await _repaymentRepo.AddAsync(adjRepay);
-                        }
+                        await context.SaveChangesAsync();
                     }
 
                     DebtorStatusMessage = "✅ Debtor updated successfully!";
@@ -435,6 +542,7 @@ public partial class DebtorManagementViewModel : ObservableObject
                     DebtorStatusMessage = "✅ Debtor added successfully!";
                     NewDebtorName = "";
                     NewDebtorPhone = "";
+                    DsmEntryService.RaiseDebtorChanged();
                     await LoadDataAsync();
                 }
                 else
@@ -500,6 +608,7 @@ public partial class DebtorManagementViewModel : ObservableObject
             {
                 CancelEditDebtor();
             }
+            DsmEntryService.RaiseDebtorChanged();
             await LoadDataAsync();
         }
         else
@@ -555,14 +664,14 @@ public partial class DebtorManagementViewModel : ObservableObject
         var repayment = new CreditorRepayment
         {
             CreditorName = SelectedDebtorName.Trim(),
-            RepaymentDate = finalRepaymentDate,
             PaymentMode = SelectedPaymentMode,
-            ChequeNo = SelectedPaymentMode == "Cheque" ? ChequeNumber?.Trim() : null,
+            ChequeNo = string.IsNullOrWhiteSpace(ChequeNumber) ? null : ChequeNumber.Trim(),
+            RepaymentDate = finalRepaymentDate,
             Amount = RepaymentAmount,
             CreatedAt = DateTime.Now,
             ShiftNumber = shiftNumber,
-            CardTid = (SelectedPaymentMode == "PhonePe" || SelectedPaymentMode == "PineLabs Card" || SelectedPaymentMode == "Credit Card" || SelectedPaymentMode == "PetroCard" || SelectedPaymentMode == "Petro Card" || SelectedPaymentMode == "Others") ? CardTid?.Trim() : null,
-            CardBatch = (SelectedPaymentMode == "PhonePe" || SelectedPaymentMode == "PineLabs Card" || SelectedPaymentMode == "Credit Card" || SelectedPaymentMode == "PetroCard" || SelectedPaymentMode == "Petro Card" || SelectedPaymentMode == "Others") ? CardBatch?.Trim() : null,
+            CardTid = (SelectedPaymentMode != "Cash" && SelectedPaymentMode != "Cheque" && SelectedPaymentMode != "Bank Transfer") ? CardTid?.Trim() : null,
+            CardBatch = (SelectedPaymentMode != "Cash" && SelectedPaymentMode != "Cheque" && SelectedPaymentMode != "Bank Transfer") ? CardBatch?.Trim() : null,
             Denom500 = SelectedPaymentMode == "Cash" ? (Denom500 ?? 0) : 0,
             Denom200 = SelectedPaymentMode == "Cash" ? (Denom200 ?? 0) : 0,
             Denom100 = SelectedPaymentMode == "Cash" ? (Denom100 ?? 0) : 0,
@@ -617,37 +726,40 @@ public partial class DebtorManagementViewModel : ObservableObject
             var end = LedgerEndDate.Date;
             var name = LedgerDebtorName.Trim();
 
-            // Load all DSM entries for calculation of debts
-            var entriesResult = await _dsmRepo.GetEntriesForDateRangeAsync(new DateTime(2000, 1, 1), DateTime.Today.AddYears(5));
-            List<(DateTime Date, DebitEntry Debit, int PumpId)> allDebits;
-            if (entriesResult.Success && entriesResult.Data != null)
-            {
-                allDebits = entriesResult.Data
-                    .SelectMany(e => e.DebitEntries.Select(d => (Date: e.Shift?.ShiftDate ?? e.CreatedAt.Date, Debit: d, PumpId: e.PumpId)))
-                    .Where(x => x.Debit.DebtorName.Trim().Equals(name, StringComparison.OrdinalIgnoreCase))
-                    .ToList();
-            }
-            else
-            {
-                allDebits = new List<(DateTime Date, DebitEntry Debit, int PumpId)>();
-            }
+            using var context = App.Services.GetRequiredService<FuelProDbContext>();
 
-            // Load all repayments
-            var repaymentsResult = await _repaymentRepo.GetByDateRangeAsync(new DateTime(2000, 1, 1), DateTime.Today.AddYears(5));
-            var allRepayments = repaymentsResult.Success && repaymentsResult.Data != null
-                ? repaymentsResult.Data
-                    .Where(r => r.CreditorName.Trim().Equals(name, StringComparison.OrdinalIgnoreCase))
-                    .ToList()
-                : new List<CreditorRepayment>();
+            // Query all debits for this debtor directly from DebitEntries table
+            var rawDebits = await context.DebitEntries
+                .Include(d => d.DsmEntry)
+                    .ThenInclude(e => e.Shift)
+                .AsNoTracking()
+                .ToListAsync();
+
+            var allDebits = rawDebits
+                .Where(d => !string.IsNullOrWhiteSpace(d.DebtorName) && d.DebtorName.Trim().Equals(name, StringComparison.OrdinalIgnoreCase))
+                .Select(d => {
+                    DateTime date = d.CreatedAt != default
+                        ? d.CreatedAt
+                        : (d.DsmEntry?.Shift?.ShiftDate ?? d.DsmEntry?.CreatedAt ?? DateTime.Today);
+                    return (Date: date, Debit: d, PumpId: d.DsmEntry?.PumpId ?? 0);
+                })
+                .ToList();
+
+            // Query all repayments for this debtor directly from CreditorRepayments table
+            var rawRepayments = await context.CreditorRepayments
+                .AsNoTracking()
+                .ToListAsync();
+
+            var allRepayments = rawRepayments
+                .Where(r => !string.IsNullOrWhiteSpace(r.CreditorName) && r.CreditorName.Trim().Equals(name, StringComparison.OrdinalIgnoreCase))
+                .ToList();
 
             // Calculate opening balance before start date
-            double openingDebits = allDebits.Where(x => x.Date < start).Sum(x => (double)x.Debit.Amount);
-            double openingCredits = allRepayments.Where(r => r.RepaymentDate < start).Sum(r => r.Amount);
+            double openingDebits = allDebits.Where(x => x.Date.Date < start).Sum(x => (double)x.Debit.Amount);
+            double openingCredits = allRepayments.Where(r => r.RepaymentDate.Date < start).Sum(r => r.Amount);
             double openingBalance = openingDebits - openingCredits;
 
-            var txList = new List<LedgerTransactionRow>();
-
-            // Check day lock status for unique dates
+            // Check day lock status
             var dayLockService = App.Services.GetRequiredService<IDayLockService>();
             var auth = App.Services.GetRequiredService<AuthService>();
             var isOwner = auth.CurrentUser?.IsOwner ?? false;
@@ -663,21 +775,22 @@ public partial class DebtorManagementViewModel : ObservableObject
             }
 
             var currentDebits = allDebits
-                .Where(x => x.Date >= start && x.Date <= end)
+                .Where(x => x.Date.Date >= start && x.Date.Date <= end)
                 .Select(x => {
                     bool isLocked = dayLocks.TryGetValue(x.Date.Date, out bool locked) && locked;
-                    bool within48Hours = (DateTime.Now - x.Debit.CreatedAt).TotalHours <= 48;
+                    bool within48Hours = (DateTime.Now - (x.Debit.CreatedAt == default ? x.Date : x.Debit.CreatedAt)).TotalHours <= 48;
                     bool canEdit = isOwner || (!isLocked && within48Hours);
 
                     var slipStr = !string.IsNullOrWhiteSpace(x.Debit.SlipNumber) ? x.Debit.SlipNumber : x.Debit.ChequeNo;
                     var details = new List<string>();
                     if (!string.IsNullOrWhiteSpace(slipStr)) details.Add($"Slip: {slipStr}");
                     if (!string.IsNullOrWhiteSpace(x.Debit.VehicleNumber)) details.Add($"Vehicle: {x.Debit.VehicleNumber}");
+                    if (!string.IsNullOrWhiteSpace(x.Debit.Remarks) && x.Debit.Remarks != "Credit") details.Add(x.Debit.Remarks);
                     string detailsStr = details.Count > 0 ? $" ({string.Join(", ", details)})" : "";
 
                     return new LedgerTransactionRow
                     {
-                        Date = x.Date,
+                        Date = x.Date.Date,
                         Description = $"Debt{detailsStr}",
                         Debit = x.Debit.Amount,
                         Credit = 0,
@@ -687,21 +800,19 @@ public partial class DebtorManagementViewModel : ObservableObject
                         Remarks = x.Debit.Remarks,
                         VehicleNumber = x.Debit.VehicleNumber,
                         Amount = x.Debit.Amount,
-                        CreatedAt = x.Debit.CreatedAt,
+                        CreatedAt = x.Debit.CreatedAt == default ? x.Date : x.Debit.CreatedAt,
                         CanEdit = canEdit
                     };
                 })
                 .ToList();
 
             var currentCredits = allRepayments
-                .Where(r => r.RepaymentDate >= start && r.RepaymentDate <= end)
+                .Where(r => r.RepaymentDate.Date >= start && r.RepaymentDate.Date <= end)
                 .Select(r => {
-                    // Repayments are manual entries for ledger balance adjustments and can always be edited/deleted by managers
                     bool canEdit = true;
-
                     return new LedgerTransactionRow
                     {
-                        Date = r.RepaymentDate,
+                        Date = r.RepaymentDate.Date,
                         Description = $"Repayment ({r.PaymentMode}){(string.IsNullOrEmpty(r.ChequeNo) ? "" : $" [Ref: {r.ChequeNo}]")}",
                         Debit = 0,
                         Credit = r.Amount,
@@ -719,6 +830,7 @@ public partial class DebtorManagementViewModel : ObservableObject
             var merged = currentDebits
                 .Concat(currentCredits)
                 .OrderBy(t => t.Date)
+                .ThenBy(t => t.CreatedAt)
                 .ToList();
 
             double running = openingBalance;
@@ -746,6 +858,22 @@ public partial class DebtorManagementViewModel : ObservableObject
             LedgerOpeningBalance = openingBalance;
             LedgerTotalDebt = openingDebits + merged.Sum(t => t.Debit);
             LedgerTotalRepayments = openingCredits + merged.Sum(t => t.Credit);
+
+            // Update all-time debtor totals
+            var debtorRow = Debtors.FirstOrDefault(d => d.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+            if (debtorRow != null)
+            {
+                SelectedLedgerDebtorAllTimeDebt = debtorRow.TotalDebt;
+                SelectedLedgerDebtorAllTimeRepaid = debtorRow.TotalRepayment;
+                SelectedLedgerDebtorAllTimeOutstanding = debtorRow.OutstandingBalance;
+            }
+            else
+            {
+                SelectedLedgerDebtorAllTimeDebt = allDebits.Sum(x => x.Debit.Amount);
+                SelectedLedgerDebtorAllTimeRepaid = allRepayments.Sum(r => r.Amount);
+                SelectedLedgerDebtorAllTimeOutstanding = SelectedLedgerDebtorAllTimeDebt - SelectedLedgerDebtorAllTimeRepaid;
+            }
+
             LedgerStatus = "";
         }
         catch (Exception ex)

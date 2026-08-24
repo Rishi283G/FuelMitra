@@ -22,4 +22,9 @@ public interface IStationConfigurationService
 
     Task<List<ProductMaster>> GetAllProductsAsync();
     Task<bool> SaveProductAsync(ProductMaster product);
+
+    Task<List<StationLayoutPreset>> GetAllPresetsAsync();
+    Task<StationLayoutPreset?> GetPresetByCodeAsync(string presetCode);
+    Task<bool> SavePresetAsync(StationLayoutPreset preset);
+    Task<bool> DeletePresetAsync(int presetId);
 }

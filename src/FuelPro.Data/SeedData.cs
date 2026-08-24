@@ -417,6 +417,30 @@ public static class SeedData
         }
         catch (Exception ex) { Log.Error(ex, "Failed to create PumpMappings table"); }
 
+        // StationLayoutPresets
+        try
+        {
+            await context.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE IF NOT EXISTS StationLayoutPresets (
+                    PresetId INTEGER PRIMARY KEY AUTOINCREMENT,
+                    PresetCode TEXT NOT NULL,
+                    PresetName TEXT NOT NULL,
+                    Description TEXT NOT NULL DEFAULT '',
+                    LayoutJson TEXT NOT NULL,
+                    PumpCount INTEGER NOT NULL DEFAULT 0,
+                    NozzleCount INTEGER NOT NULL DEFAULT 0,
+                    TankCount INTEGER NOT NULL DEFAULT 0,
+                    IsActive INTEGER NOT NULL DEFAULT 1,
+                    CreatedAt TEXT NOT NULL,
+                    UpdatedAt TEXT
+                );
+            ");
+            await context.Database.ExecuteSqlRawAsync(@"
+                CREATE UNIQUE INDEX IF NOT EXISTS IX_StationLayoutPresets_PresetCode ON StationLayoutPresets (PresetCode);
+            ");
+        }
+        catch (Exception ex) { Log.Error(ex, "Failed to create StationLayoutPresets table"); }
+
         // ExpenseCategories
         try
         {
@@ -553,6 +577,7 @@ public static class SeedData
                     CapacityKL REAL NOT NULL DEFAULT 20.0,
                     FuelType TEXT NOT NULL DEFAULT 'HSD',
                     IsActive INTEGER NOT NULL DEFAULT 1,
+                    HasTesting INTEGER NOT NULL DEFAULT 1,
                     CreatedAt TEXT NOT NULL
                 );
                 CREATE UNIQUE INDEX IF NOT EXISTS IX_TankDefinitions_TankName ON TankDefinitions (TankName);
@@ -578,10 +603,10 @@ public static class SeedData
         {
             var now = DateTime.Now;
             context.TankDefinitions.AddRange(
-                new TankDefinition { TankName = "MS - 20KL", CapacityKL = 20.0, FuelType = "MS-I", IsActive = true, CreatedAt = now },
-                new TankDefinition { TankName = "HSD - 20KL", CapacityKL = 20.0, FuelType = "HSD", IsActive = true, CreatedAt = now },
-                new TankDefinition { TankName = "HSD - 20KL II", CapacityKL = 20.0, FuelType = "MS-II", IsActive = true, CreatedAt = now },
-                new TankDefinition { TankName = "CNG Line", CapacityKL = 5.0, FuelType = "CNG", IsActive = true, CreatedAt = now }
+                new TankDefinition { TankName = "MS - 20KL", CapacityKL = 20.0, FuelType = "MS-I", IsActive = true, HasTesting = true, CreatedAt = now },
+                new TankDefinition { TankName = "HSD - 20KL", CapacityKL = 20.0, FuelType = "HSD", IsActive = true, HasTesting = true, CreatedAt = now },
+                new TankDefinition { TankName = "HSD - 20KL II", CapacityKL = 20.0, FuelType = "MS-II", IsActive = true, HasTesting = true, CreatedAt = now },
+                new TankDefinition { TankName = "CNG Line", CapacityKL = 5.0, FuelType = "CNG", IsActive = true, HasTesting = false, CreatedAt = now }
             );
             await context.SaveChangesAsync();
             Log.Information("Seeded default TankDefinitions");
@@ -826,22 +851,9 @@ public static class SeedData
         await SetMetaDefaultAsync("Sync.SupabaseApiKey", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ2Y2licnlwcnZqYnpydHdxa3RrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEzMTIxMTcsImV4cCI6MjA5Njg4ODExN30.vMTA97993upfnOCs5ja-kxIhDSHbcx1gEQ6itNm5BBk");
         await SetMetaDefaultAsync("Sync.IsEnabled", "true");
 
-        // Seed PumpMappings if empty, or if count/structure doesn't match the new global 6-pump/12-nozzle layout
-        // Also re-seed if the old sequential mapping is detected (nozzle 2 on Pump 1 = wrong)
-        bool needsReseed = !await context.PumpMappings.AnyAsync() || 
-                           await context.PumpMappings.CountAsync() != 12 ||
-                           await context.PumpMappings.AnyAsync(m => m.PumpId > 6) ||
-                           await context.PumpMappings.AnyAsync(m => m.PumpId == 1 && m.NozzleNumber == 2) ||
-                           !await context.PumpMappings.AnyAsync(m => m.TankName == "MS - 20KL"); // Force re-seed for new tank splitting layout
-        if (needsReseed)
+        // Seed PumpMappings if empty
+        if (!await context.PumpMappings.AnyAsync())
         {
-            if (await context.PumpMappings.AnyAsync())
-            {
-                context.PumpMappings.RemoveRange(context.PumpMappings);
-                await context.SaveChangesAsync();
-                Log.Information("Cleared legacy PumpMappings table to re-seed with correct interleaved nozzle layout.");
-            }
-
             var mappings = new List<PumpMapping>();
             var now = DateTime.Now;
 
@@ -871,7 +883,7 @@ public static class SeedData
 
             context.PumpMappings.AddRange(mappings);
             await context.SaveChangesAsync();
-            Log.Information("Seeded 6-pump mapping with interleaved nozzle numbers for Mitali Service Station");
+            Log.Information("Seeded default 6-pump mapping layout.");
         }
 
         // Seed SoftwareVersionHistory entry

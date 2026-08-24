@@ -31,8 +31,9 @@ public static class PumpConfiguration
         { 4, new[] { 17, 18, 19, 20 } }
     };
 
-    private static readonly Dictionary<(int PumpId, int NozzleNumber), FuelType> NozzleFuelMap = new();
-    private static readonly Dictionary<(int PumpId, int NozzleNumber), string> NozzleTankMap = new();
+    public static readonly Dictionary<(int PumpId, int NozzleNumber), FuelType> NozzleFuelMap = new();
+    public static readonly Dictionary<(int PumpId, int NozzleNumber), string> NozzleFuelStringMap = new();
+    public static readonly Dictionary<(int PumpId, int NozzleNumber), string> NozzleTankMap = new();
 
     /// <summary>
     /// Historical (PumpId, NozzleNumber) to FuelType mapping for legacy 4-pump layout.
@@ -77,7 +78,8 @@ public static class PumpConfiguration
     /// <summary>
     /// Expose all defined nozzles.
     /// </summary>
-    public static List<(int PumpId, int NozzleNumber)> AllNozzles => NozzleFuelMap.Keys.ToList();
+    public static List<(int PumpId, int NozzleNumber)> AllNozzles => 
+        NozzleFuelStringMap.Count > 0 ? NozzleFuelStringMap.Keys.ToList() : NozzleFuelMap.Keys.ToList();
 
     static PumpConfiguration()
     {
@@ -163,16 +165,41 @@ public static class PumpConfiguration
         
         PumpNozzleMapping.Clear();
         NozzleFuelMap.Clear();
+        NozzleFuelStringMap.Clear();
         NozzleTankMap.Clear();
 
         foreach (var m in active)
         {
-            var cleanFuelType = m.FuelType.Replace("-", "_");
-            if (Enum.TryParse<FuelType>(cleanFuelType, out var fuelType))
+            var rawFuel = (m.FuelType ?? "").Trim();
+            var cleanFuelType = rawFuel.Replace("-", "_").Replace(" ", "_").ToUpperInvariant();
+
+            if (cleanFuelType == "MS_II" || cleanFuelType == "MS2" || cleanFuelType == "MS_2" || cleanFuelType == "MSII" || cleanFuelType.Contains("MS_2") || cleanFuelType.Contains("MS2") || cleanFuelType.Contains("MS_II") || cleanFuelType.Contains("MSII"))
+            {
+                NozzleFuelMap[(m.PumpId, m.NozzleNumber)] = FuelType.MS_II;
+            }
+            else if (cleanFuelType.StartsWith("MS") || cleanFuelType.Contains("PETROL") || cleanFuelType == "MS_I" || cleanFuelType == "MS1" || cleanFuelType == "MS_1")
+            {
+                NozzleFuelMap[(m.PumpId, m.NozzleNumber)] = FuelType.MS_I;
+            }
+            else if (cleanFuelType.Contains("HSD") || cleanFuelType.Contains("DIESEL"))
+            {
+                NozzleFuelMap[(m.PumpId, m.NozzleNumber)] = FuelType.HSD;
+            }
+            else if (cleanFuelType.Contains("CNG"))
+            {
+                NozzleFuelMap[(m.PumpId, m.NozzleNumber)] = FuelType.CNG;
+            }
+            else if (Enum.TryParse<FuelType>(cleanFuelType, out var fuelType))
             {
                 NozzleFuelMap[(m.PumpId, m.NozzleNumber)] = fuelType;
             }
-            NozzleTankMap[(m.PumpId, m.NozzleNumber)] = m.TankName;
+            else
+            {
+                NozzleFuelMap[(m.PumpId, m.NozzleNumber)] = FuelType.MS_I;
+            }
+
+            NozzleFuelStringMap[(m.PumpId, m.NozzleNumber)] = string.IsNullOrWhiteSpace(rawFuel) ? "MS-I" : rawFuel;
+            NozzleTankMap[(m.PumpId, m.NozzleNumber)] = m.TankName ?? "";
 
             if (!PumpNozzleMapping.ContainsKey(m.PumpId))
             {
@@ -181,7 +208,10 @@ public static class PumpConfiguration
             else
             {
                 var list = PumpNozzleMapping[m.PumpId].ToList();
-                list.Add(m.NozzleNumber);
+                if (!list.Contains(m.NozzleNumber))
+                {
+                    list.Add(m.NozzleNumber);
+                }
                 PumpNozzleMapping[m.PumpId] = list.OrderBy(n => n).ToArray();
             }
         }
@@ -190,45 +220,76 @@ public static class PumpConfiguration
         TotalNozzles = active.Count;
     }
 
+    public static readonly Dictionary<string, bool> TankTestingMap = new(StringComparer.OrdinalIgnoreCase);
+
+    public static void InitializeTanksFromDb(List<TankDefinition> tanks)
+    {
+        TankTestingMap.Clear();
+        foreach (var t in tanks.Where(t => t.IsActive))
+        {
+            TankTestingMap[t.TankName] = t.HasTesting;
+        }
+    }
+
+    public static bool IsTestingEnabledForTank(string tankName)
+    {
+        if (string.IsNullOrWhiteSpace(tankName)) return true;
+        if (tankName.Contains("CNG", StringComparison.OrdinalIgnoreCase)) return false;
+        if (TankTestingMap.TryGetValue(tankName, out var enabled)) return enabled;
+        return true;
+    }
+
     public static string GetTankName(int pumpId, int nozzleNumber, DateTime? date = null)
     {
-        var actualPumpId = GetPumpIdForNozzle(nozzleNumber, date);
-        if (actualPumpId == 0)
+        if (date.HasValue)
         {
-            actualPumpId = pumpId;
+            if (date.Value.Date < Legacy4PumpCutoffDate || date.Value.Date < Legacy22PumpCutoffDate)
+            {
+                var histFuelType = GetFuelType(pumpId, nozzleNumber, date);
+                return histFuelType.ToTankName();
+            }
         }
 
-        if (NozzleTankMap.TryGetValue((actualPumpId, nozzleNumber), out var tankName))
+        if (NozzleTankMap.TryGetValue((pumpId, nozzleNumber), out var directTank) && !string.IsNullOrWhiteSpace(directTank))
+            return directTank;
+
+        var actualPumpId = GetPumpIdForNozzle(nozzleNumber, date);
+        if (actualPumpId > 0 && NozzleTankMap.TryGetValue((actualPumpId, nozzleNumber), out var tankName) && !string.IsNullOrWhiteSpace(tankName))
             return tankName;
 
-        var fuelType = GetFuelType(actualPumpId, nozzleNumber, date);
+        var anyMatch = NozzleTankMap.FirstOrDefault(kv => kv.Key.NozzleNumber == nozzleNumber);
+        if (!string.IsNullOrWhiteSpace(anyMatch.Value))
+            return anyMatch.Value;
+
+        var fuelType = GetFuelType(actualPumpId > 0 ? actualPumpId : pumpId, nozzleNumber, date);
         return fuelType.ToTankName();
     }
 
     public static string GetTestingTankCategory(string fuelTypeField, int pumpId, DateTime date)
     {
-        if (string.IsNullOrWhiteSpace(fuelTypeField)) return "MS";
+        if (string.IsNullOrWhiteSpace(fuelTypeField)) return "MS - 20KL";
 
         if (int.TryParse(fuelTypeField, out var nozzleNumber))
         {
-            var ft = GetFuelType(pumpId, nozzleNumber, date);
-            if (ft == FuelType.MS_I) return "MS";
-            if (ft == FuelType.MS_II) return "HSD-II";
-            if (ft == FuelType.HSD) return "HSD";
-            if (ft == FuelType.CNG) return "CNG";
+            var tankName = GetTankName(pumpId, nozzleNumber, date);
+            if (!string.IsNullOrWhiteSpace(tankName)) return tankName;
 
-            var tankName = (GetTankName(pumpId, nozzleNumber, date) ?? "").ToUpperInvariant();
-            if (tankName.Contains("MS-II") || tankName.Contains("20KL II") || tankName.Contains("HSD-II") || tankName.Contains("TANK 3")) return "HSD-II";
-            if (tankName.Contains("MS") || tankName.Contains("PETROL") || tankName.Contains("TANK 1")) return "MS";
-            if (tankName.Contains("HSD") || tankName.Contains("DIESEL") || tankName.Contains("TANK 2")) return "HSD";
-            if (tankName.Contains("CNG")) return "CNG";
+            var ft = GetFuelType(pumpId, nozzleNumber, date);
+            if (ft == FuelType.MS_I) return "MS - 20KL";
+            if (ft == FuelType.MS_II) return "HSD - 20KL II";
+            if (ft == FuelType.HSD) return "HSD - 20KL";
+            if (ft == FuelType.CNG) return "CNG Line";
         }
 
-        var str = fuelTypeField.Trim().ToUpperInvariant();
-        if (str == "MS-II" || str.Contains("HSD-II") || str.Contains("HSD II") || str.Contains("20KL II") || str.Contains("MS-II")) return "HSD-II";
-        if (str == "MS-I" || str == "MS" || str.StartsWith("MS") || str.Contains("PETROL")) return "MS";
-        if (str == "HSD" || str.StartsWith("HSD") || str.Contains("DIESEL")) return "HSD";
-        if (str == "CNG" || str.StartsWith("CNG")) return "CNG";
+        var str = fuelTypeField.Trim();
+        if (str.Contains("MS-II", StringComparison.OrdinalIgnoreCase) || str.Contains("HSD-II", StringComparison.OrdinalIgnoreCase) || str.Contains("20KL II", StringComparison.OrdinalIgnoreCase))
+            return "HSD - 20KL II";
+        if (str.Contains("MS-I", StringComparison.OrdinalIgnoreCase) || str.Equals("MS", StringComparison.OrdinalIgnoreCase) || str.Contains("PETROL", StringComparison.OrdinalIgnoreCase))
+            return "MS - 20KL";
+        if (str.Contains("HSD", StringComparison.OrdinalIgnoreCase) || str.Contains("DIESEL", StringComparison.OrdinalIgnoreCase))
+            return "HSD - 20KL";
+        if (str.Contains("CNG", StringComparison.OrdinalIgnoreCase))
+            return "CNG Line";
 
         return fuelTypeField;
     }
@@ -249,6 +310,17 @@ public static class PumpConfiguration
             }
         }
 
+        // 1. Check dynamic PumpNozzleMapping
+        var activePumpMatch = PumpNozzleMapping.FirstOrDefault(kv => kv.Value.Contains(nozzleNumber));
+        if (activePumpMatch.Key > 0)
+            return activePumpMatch.Key;
+
+        // 2. Check dynamic NozzleFuelStringMap
+        var stringMatch = NozzleFuelStringMap.Keys.FirstOrDefault(k => k.NozzleNumber == nozzleNumber);
+        if (stringMatch != default)
+            return stringMatch.PumpId;
+
+        // 3. Check active NozzleFuelMap
         var activeMatch = NozzleFuelMap.Keys.FirstOrDefault(k => k.NozzleNumber == nozzleNumber);
         if (activeMatch != default)
             return activeMatch.PumpId;
@@ -328,10 +400,31 @@ public static class PumpConfiguration
 
 
     /// <summary>
-    /// Returns the canonical display name ("HSD", "MS-I", "MS-II", "CNG") for a pump ID and nozzle number.
+    /// Returns the canonical display name ("HSD", "MS-I", "MS-II", "CNG", "XP95", "Power", etc.) for a pump ID and nozzle number.
     /// </summary>
     public static string GetFuelTypeDisplayName(int pumpId, int nozzleNumber, DateTime? date = null)
-        => GetFuelType(pumpId, nozzleNumber, date).ToDisplayName();
+    {
+        if (date.HasValue)
+        {
+            if (date.Value.Date < Legacy4PumpCutoffDate || date.Value.Date < Legacy22PumpCutoffDate)
+            {
+                return GetFuelType(pumpId, nozzleNumber, date).ToDisplayName();
+            }
+        }
+
+        if (NozzleFuelStringMap.TryGetValue((pumpId, nozzleNumber), out var exactName) && !string.IsNullOrWhiteSpace(exactName))
+            return exactName;
+
+        var actualPumpId = GetPumpIdForNozzle(nozzleNumber, date);
+        if (actualPumpId > 0 && NozzleFuelStringMap.TryGetValue((actualPumpId, nozzleNumber), out var actualName) && !string.IsNullOrWhiteSpace(actualName))
+            return actualName;
+
+        var anyMatch = NozzleFuelStringMap.FirstOrDefault(kv => kv.Key.NozzleNumber == nozzleNumber);
+        if (!string.IsNullOrWhiteSpace(anyMatch.Value))
+            return anyMatch.Value;
+
+        return GetFuelType(pumpId, nozzleNumber, date).ToDisplayName();
+    }
 
     /// <summary>
     /// Get all nozzle numbers for a given pump ID.

@@ -69,10 +69,7 @@ public partial class MismatchLedgerViewModel : ObservableObject
                 var cashInHand = cash2;
 
                 var pc = entry.PaymentCollection;
-                var digital = (pc?.PhonePe ?? 0) + (pc?.PhonePeMorning ?? 0) + (pc?.PhonePeDay ?? 0) + (pc?.PhonePeNight ?? 0)
-                            + (pc?.PhonePeCard ?? 0) + (pc?.PhonePeCardMorning ?? 0) + (pc?.PhonePeCardDay ?? 0) + (pc?.PhonePeCardNight ?? 0)
-                            + (pc?.CreditCardMorning ?? 0) + (pc?.CreditCardDay ?? 0) + (pc?.CreditCardNight ?? 0)
-                            + (pc?.PetroCard ?? 0) + (pc?.PetroCardMorning ?? 0) + (pc?.PetroCardDay ?? 0) + (pc?.PetroCardNight ?? 0);
+                var digital = pc?.TotalDigitalPayments ?? 0;
 
                 var totalDebit = entry.DebitEntries.Sum(d => d.Amount);
                 var totalExpenses = entry.Expenses.Sum(e => e.Amount) + (entry.KhandharePetroleumEntries != null ? entry.KhandharePetroleumEntries.Sum(kp => kp.Amount) : 0);

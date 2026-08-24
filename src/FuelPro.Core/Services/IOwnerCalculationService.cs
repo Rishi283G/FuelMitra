@@ -32,13 +32,14 @@ public class OwnerCalculationResult
     public double CreditCard { get; set; }
     public double PetroCard { get; set; }
     public double Debit { get; set; }
+    public double DynamicCollection { get; set; }
     public double Testing { get; set; }
     public double Expenses { get; set; }
 
     // Derived properties
     public double TotalPhonePe => PhonePeDirect + PhonePeCard;
     public double TotalCash => CashDeposit + CashInHand;
-    public double DirectCollection => CashDeposit + CashInHand + PhonePeDirect + PhonePeCard + CreditCard + PetroCard + Debit;
+    public double DirectCollection => CashDeposit + CashInHand + PhonePeDirect + PhonePeCard + CreditCard + PetroCard + Debit + DynamicCollection;
     public double AdjustedCollection => DirectCollection + Testing + Expenses;
     public double Mismatch => AdjustedCollection - GrossSales;
 

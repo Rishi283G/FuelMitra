@@ -34,6 +34,15 @@ public partial class CardSettlementItem : ObservableObject
     public CardSettlementSlot Slot { get; set; }
 }
 
+public partial class TidTabViewModel : ObservableObject
+{
+    public string CollectionTypeCode { get; set; } = string.Empty;
+    public string TabHeader { get; set; } = string.Empty;
+    public string SectionTitle { get; set; } = string.Empty;
+    [ObservableProperty] private double _totalAmount;
+    public ObservableCollection<CardSettlementItem> Items { get; } = new();
+}
+
 public partial class CardSettlementViewModel : ObservableObject, IDisposable
 {
     private readonly IShiftRepository _shiftRepo;
@@ -54,6 +63,9 @@ public partial class CardSettlementViewModel : ObservableObject, IDisposable
     [ObservableProperty] private double _cardTotal;
     [ObservableProperty] private double _phonePeTotal;
     [ObservableProperty] private double _petroCardTotal;
+
+    [ObservableProperty] private TidTabViewModel? _selectedTab;
+    public ObservableCollection<TidTabViewModel> Tabs { get; } = new();
 
     public string[] ShiftOptions { get; } = { "A", "B" };
 
@@ -99,9 +111,10 @@ public partial class CardSettlementViewModel : ObservableObject, IDisposable
         HasData = false;
         _currentShift = null;
 
-        CardPayments.Clear();
+            CardPayments.Clear();
         PhonePePayments.Clear();
         PetroCardPayments.Clear();
+        Tabs.Clear();
         CardTotal = 0;
         PhonePeTotal = 0;
         PetroCardTotal = 0;
@@ -138,7 +151,7 @@ public partial class CardSettlementViewModel : ObservableObject, IDisposable
             var tidSheet = await _tidService.GetTidSheetAsync(SelectedDate);
             CurrentTidSheet = tidSheet;
 
-            // 1. Credit Cards
+            // 1. Credit Cards (legacy list)
             foreach (var item in tidSheet.CardPayments)
             {
                 CardPayments.Add(new CardSettlementItem
@@ -155,7 +168,7 @@ public partial class CardSettlementViewModel : ObservableObject, IDisposable
                 });
             }
 
-            // 2. PhonePe
+            // 2. PhonePe (legacy list)
             foreach (var item in tidSheet.PhonePePayments)
             {
                 PhonePePayments.Add(new CardSettlementItem
@@ -172,7 +185,7 @@ public partial class CardSettlementViewModel : ObservableObject, IDisposable
                 });
             }
 
-            // 3. PetroCard
+            // 3. PetroCard (legacy list)
             foreach (var item in tidSheet.PetroCardPayments)
             {
                 PetroCardPayments.Add(new CardSettlementItem
@@ -188,10 +201,6 @@ public partial class CardSettlementViewModel : ObservableObject, IDisposable
                     SlotDisplaySubtitle = item.SlotDisplaySubtitle
                 });
             }
-
-            HasData = CardPayments.Count > 0 || PhonePePayments.Count > 0 || PetroCardPayments.Count > 0
-                   || tidSheet.DebtorPhonePeRepayments.Count > 0 || tidSheet.DebtorCardRepayments.Count > 0
-                   || tidSheet.DebtorPetroCardRepayments.Count > 0;
 
             // 4. Debtor repayments — PhonePe
             foreach (var item in tidSheet.DebtorPhonePeRepayments)
@@ -241,10 +250,46 @@ public partial class CardSettlementViewModel : ObservableObject, IDisposable
                 });
             }
 
-            HasData = HasData || CardPayments.Count > 0 || PhonePePayments.Count > 0 || PetroCardPayments.Count > 0;
+            // 7. Dynamic Tabs for ALL active collection types
+            int tabIndex = 1;
+            foreach (var group in tidSheet.CollectionGroups)
+            {
+                var tabVm = new TidTabViewModel
+                {
+                    CollectionTypeCode = group.CollectionTypeCode,
+                    TabHeader = group.DisplayName,
+                    SectionTitle = $"{ToRoman(tabIndex)}. {group.DisplayName.ToUpper()} SETTLEMENT — Morning / Day / Night",
+                    TotalAmount = group.TotalAmount
+                };
+
+                foreach (var item in group.Items)
+                {
+                    tabVm.Items.Add(new CardSettlementItem
+                    {
+                        RomanIndex = item.RomanIndex,
+                        DsmName = (item.RomanIndex == "Debtor" || item.RomanIndex == "DSM Loss")
+                            ? $"[{item.RomanIndex}] {item.DsmName} ({item.ShiftLabel})"
+                            : $"{item.DsmName} ({item.ShiftLabel})",
+                        Amount = item.Amount,
+                        Tid = item.Tid,
+                        Batch = item.Batch,
+                        ShiftLabel = item.ShiftLabel,
+                        PaymentCollection = item.PaymentCollection,
+                        Slot = ParseSlot(item.Slot),
+                        SlotDisplaySubtitle = item.SlotDisplaySubtitle
+                    });
+                }
+
+                Tabs.Add(tabVm);
+                tabIndex++;
+            }
+
+            SelectedTab = Tabs.FirstOrDefault();
+
+            HasData = Tabs.Any(t => t.Items.Count > 0) || CardPayments.Count > 0 || PhonePePayments.Count > 0 || PetroCardPayments.Count > 0;
             if (!HasData)
             {
-                StatusMessage = "No card, PhonePe, or Petro Card payments found for these shifts.";
+                StatusMessage = "No card or digital payment collections found for these shifts.";
             }
 
             RecalculateTotals();
@@ -348,7 +393,7 @@ public partial class CardSettlementViewModel : ObservableObject, IDisposable
             foreach (var date in sheets.Keys.OrderByDescending(d => d))
             {
                 var sheet = sheets[date];
-                if (sheet.PhonePePayments.Count > 0 || sheet.CardPayments.Count > 0 || sheet.PetroCardPayments.Count > 0)
+                if (sheet.GrandTotal > 0 || sheet.CollectionGroups.Any(g => g.Items.Count > 0) || sheet.PhonePePayments.Count > 0 || sheet.CardPayments.Count > 0 || sheet.PetroCardPayments.Count > 0)
                 {
                     PreviousTidSheets.Add(sheet);
                 }

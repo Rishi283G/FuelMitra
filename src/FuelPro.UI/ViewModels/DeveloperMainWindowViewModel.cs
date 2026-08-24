@@ -61,9 +61,16 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
     public ObservableCollection<ProductMaster> ConfiguredProducts { get; } = new();
     public ObservableCollection<CollectionTypeMaster> ConfiguredCollectionTypes { get; } = new();
     public ObservableCollection<string> AvailableTankNames { get; } = new();
+    public ObservableCollection<string> AvailableFuelTypes { get; } = new();
+    public ObservableCollection<StationLayoutPreset> SavedPresets { get; } = new();
     [ObservableProperty] private string _stationStatusMessage = "";
     [ObservableProperty] private string _collectionStatusMessage = "";
-    public string[] AvailableFuelTypes { get; } = { "HSD", "MS-I", "MS-II", "CNG", "XP95", "Power" };
+    [ObservableProperty] private string _presetCode = "";
+    [ObservableProperty] private string _presetName = "";
+    [ObservableProperty] private string _presetDescription = "";
+    [ObservableProperty] private StationLayoutPreset? _selectedPreset;
+    [ObservableProperty] private string _searchPresetCode = "";
+    [ObservableProperty] private string _presetStatusMessage = "";
     public string[] AvailableCollectionCategories { get; } = { "Online", "Card", "Cash", "Other" };
 
 
@@ -1473,8 +1480,37 @@ public partial class NozzleItemVm : ObservableObject
 {
     public int PumpMappingId { get; set; }
     [ObservableProperty] private int _nozzleNumber;
-    [ObservableProperty] private string _fuelType = "HSD";
-    [ObservableProperty] private string _tankName = "";
+
+    private string _fuelType = "MS-I";
+    public string FuelType
+    {
+        get => _fuelType;
+        set
+        {
+            if (string.IsNullOrWhiteSpace(value)) return;
+            if (SetProperty(ref _fuelType, value))
+            {
+                OnFuelTypeChangedCallback?.Invoke(this, value);
+            }
+        }
+    }
+
+    private string _tankName = "";
+    public string TankName
+    {
+        get => _tankName;
+        set
+        {
+            if (string.IsNullOrWhiteSpace(value)) return;
+            if (SetProperty(ref _tankName, value))
+            {
+                OnTankNameChangedCallback?.Invoke(this, value);
+            }
+        }
+    }
+
+    public Action<NozzleItemVm, string>? OnTankNameChangedCallback { get; set; }
+    public Action<NozzleItemVm, string>? OnFuelTypeChangedCallback { get; set; }
 }
 
 public partial class PumpCardVm : ObservableObject
@@ -1627,6 +1663,14 @@ public partial class DeveloperMainWindowViewModel
             }
             RefreshAvailableTankNames();
 
+            // Load Products
+            var products = await _stationConfigService.GetAllProductsAsync();
+            ConfiguredProducts.Clear();
+            foreach (var p in products)
+            {
+                ConfiguredProducts.Add(p);
+            }
+
             // Load Pump Mappings
             var mappings = await _stationConfigService.GetAllPumpMappingsAsync();
             ConfiguredPumps.Clear();
@@ -1640,23 +1684,18 @@ public partial class DeveloperMainWindowViewModel
                 var pumpVm = new PumpCardVm { PumpId = g.Key };
                 foreach (var nozzle in g.OrderBy(n => n.NozzleNumber))
                 {
-                    pumpVm.Nozzles.Add(new NozzleItemVm
+                    var nozzleVm = new NozzleItemVm
                     {
                         PumpMappingId = nozzle.PumpMappingId,
                         NozzleNumber = nozzle.NozzleNumber,
                         FuelType = nozzle.FuelType,
-                        TankName = string.IsNullOrWhiteSpace(nozzle.TankName) ? (AvailableTankNames.FirstOrDefault() ?? "Tank 1") : nozzle.TankName
-                    });
+                        TankName = string.IsNullOrWhiteSpace(nozzle.TankName) ? (AvailableTankNames.FirstOrDefault() ?? "Tank 1") : nozzle.TankName,
+                        OnTankNameChangedCallback = HandleNozzleTankChanged,
+                        OnFuelTypeChangedCallback = HandleNozzleFuelTypeChanged
+                    };
+                    pumpVm.Nozzles.Add(nozzleVm);
                 }
                 ConfiguredPumps.Add(pumpVm);
-            }
-
-            // Load Products
-            var products = await _stationConfigService.GetAllProductsAsync();
-            ConfiguredProducts.Clear();
-            foreach (var p in products)
-            {
-                ConfiguredProducts.Add(p);
             }
 
             // Load Collection Types
@@ -1666,6 +1705,11 @@ public partial class DeveloperMainWindowViewModel
             {
                 ConfiguredCollectionTypes.Add(c);
             }
+
+            // Load Saved Presets
+            await LoadAllPresetsAsync();
+
+            RefreshAvailableFuelTypes();
 
             StationStatusMessage = $"✅ Loaded {ConfiguredPumps.Count} pumps, {ConfiguredTanks.Count} tanks.";
             CollectionStatusMessage = $"✅ Loaded {ConfiguredCollectionTypes.Count} collection types.";
@@ -1677,19 +1721,97 @@ public partial class DeveloperMainWindowViewModel
         }
     }
 
+    public void RefreshAvailableFuelTypes()
+    {
+        // STRICTLY from Configured Storage Tanks only (excluding all lubricants, DEF, oils, etc.)
+        var targetTypes = ConfiguredTanks
+            .Select(t => t.FuelType?.Trim())
+            .Where(f => !string.IsNullOrWhiteSpace(f))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(f => f)
+            .ToList();
+
+        if (targetTypes.Count == 0)
+        {
+            targetTypes = new List<string> { "MS-I", "HSD", "MS-II", "CNG" };
+        }
+
+        // In-place synchronization to prevent WPF ComboBoxes from clearing selections
+        for (int i = AvailableFuelTypes.Count - 1; i >= 0; i--)
+        {
+            if (!targetTypes.Contains(AvailableFuelTypes[i], StringComparer.OrdinalIgnoreCase))
+            {
+                AvailableFuelTypes.RemoveAt(i);
+            }
+        }
+
+        foreach (var t in targetTypes)
+        {
+            if (!AvailableFuelTypes.Contains(t, StringComparer.OrdinalIgnoreCase))
+            {
+                AvailableFuelTypes.Add(t);
+            }
+        }
+    }
+
     private void RefreshAvailableTankNames()
     {
-        AvailableTankNames.Clear();
-        foreach (var t in ConfiguredTanks.Select(t => t.TankName).Where(n => !string.IsNullOrWhiteSpace(n)).Distinct())
+        var targetTanks = ConfiguredTanks
+            .Select(t => t.TankName?.Trim())
+            .Where(n => !string.IsNullOrWhiteSpace(n))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (targetTanks.Count == 0)
         {
-            AvailableTankNames.Add(t);
+            targetTanks = new List<string> { "MS - 20KL", "HSD - 20KL", "HSD - 20KL II", "CNG Line" };
         }
-        if (AvailableTankNames.Count == 0)
+
+        for (int i = AvailableTankNames.Count - 1; i >= 0; i--)
         {
-            AvailableTankNames.Add("MS - 20KL");
-            AvailableTankNames.Add("HSD - 20KL");
-            AvailableTankNames.Add("HSD - 20KL II");
-            AvailableTankNames.Add("CNG Line");
+            if (!targetTanks.Contains(AvailableTankNames[i], StringComparer.OrdinalIgnoreCase))
+            {
+                AvailableTankNames.RemoveAt(i);
+            }
+        }
+
+        foreach (var t in targetTanks)
+        {
+            if (!AvailableTankNames.Contains(t, StringComparer.OrdinalIgnoreCase))
+            {
+                AvailableTankNames.Add(t);
+            }
+        }
+
+        RefreshAvailableFuelTypes();
+    }
+
+    private void HandleNozzleTankChanged(NozzleItemVm nozzle, string tankName)
+    {
+        if (nozzle == null || string.IsNullOrWhiteSpace(tankName)) return;
+        var tankMatch = ConfiguredTanks.FirstOrDefault(t => string.Equals(t.TankName, tankName, StringComparison.OrdinalIgnoreCase));
+        if (tankMatch != null && !string.IsNullOrWhiteSpace(tankMatch.FuelType))
+        {
+            if (!string.Equals(nozzle.FuelType, tankMatch.FuelType, StringComparison.OrdinalIgnoreCase))
+            {
+                nozzle.FuelType = tankMatch.FuelType;
+            }
+        }
+    }
+
+    private void HandleNozzleFuelTypeChanged(NozzleItemVm nozzle, string fuelType)
+    {
+        if (nozzle == null || string.IsNullOrWhiteSpace(fuelType)) return;
+        var currentTank = ConfiguredTanks.FirstOrDefault(t => string.Equals(t.TankName, nozzle.TankName, StringComparison.OrdinalIgnoreCase));
+        if (currentTank != null && string.Equals(currentTank.FuelType, fuelType, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var matchingTank = ConfiguredTanks.FirstOrDefault(t => string.Equals(t.FuelType, fuelType, StringComparison.OrdinalIgnoreCase));
+        if (matchingTank != null)
+        {
+            nozzle.TankName = matchingTank.TankName;
         }
     }
 
@@ -1700,12 +1822,16 @@ public partial class DeveloperMainWindowViewModel
         var newPump = new PumpCardVm { PumpId = nextPumpId };
         
         var nextNozzle = ConfiguredPumps.SelectMany(p => p.Nozzles).Select(n => n.NozzleNumber).DefaultIfEmpty(0).Max() + 1;
-        var defaultTank = AvailableTankNames.FirstOrDefault() ?? "Tank 1";
+        var defaultTank = AvailableTankNames.FirstOrDefault() ?? (ConfiguredTanks.FirstOrDefault()?.TankName ?? "Tank 1");
+        var defaultFuel = ConfiguredTanks.FirstOrDefault(t => t.TankName == defaultTank)?.FuelType ?? (AvailableFuelTypes.FirstOrDefault() ?? "HSD");
+
         newPump.Nozzles.Add(new NozzleItemVm
         {
             NozzleNumber = nextNozzle,
-            FuelType = "HSD",
-            TankName = defaultTank
+            FuelType = defaultFuel,
+            TankName = defaultTank,
+            OnTankNameChangedCallback = HandleNozzleTankChanged,
+            OnFuelTypeChangedCallback = HandleNozzleFuelTypeChanged
         });
 
         ConfiguredPumps.Add(newPump);
@@ -1725,12 +1851,16 @@ public partial class DeveloperMainWindowViewModel
     {
         if (pump == null) return;
         var nextNozzle = ConfiguredPumps.SelectMany(p => p.Nozzles).Select(n => n.NozzleNumber).DefaultIfEmpty(0).Max() + 1;
-        var defaultTank = AvailableTankNames.FirstOrDefault() ?? "Tank 1";
+        var defaultTank = AvailableTankNames.FirstOrDefault() ?? (ConfiguredTanks.FirstOrDefault()?.TankName ?? "Tank 1");
+        var defaultFuel = ConfiguredTanks.FirstOrDefault(t => t.TankName == defaultTank)?.FuelType ?? (AvailableFuelTypes.FirstOrDefault() ?? "MS-I");
+
         pump.Nozzles.Add(new NozzleItemVm
         {
             NozzleNumber = nextNozzle,
-            FuelType = "MS-I",
-            TankName = defaultTank
+            FuelType = defaultFuel,
+            TankName = defaultTank,
+            OnTankNameChangedCallback = HandleNozzleTankChanged,
+            OnFuelTypeChangedCallback = HandleNozzleFuelTypeChanged
         });
         StationStatusMessage = $"Added Nozzle {nextNozzle} to Pump {pump.PumpId}.";
     }
@@ -1756,6 +1886,7 @@ public partial class DeveloperMainWindowViewModel
         if (param.Nozzle != null && !string.IsNullOrWhiteSpace(param.TankName))
         {
             param.Nozzle.TankName = param.TankName;
+            HandleNozzleTankChanged(param.Nozzle, param.TankName);
             StationStatusMessage = $"Attached Nozzle {param.Nozzle.NozzleNumber} to {param.TankName}.";
         }
     }
@@ -1786,8 +1917,8 @@ public partial class DeveloperMainWindowViewModel
                         PumpMappingId = nozzle.PumpMappingId,
                         PumpId = pump.PumpId,
                         NozzleNumber = nozzle.NozzleNumber,
-                        FuelType = nozzle.FuelType,
-                        TankName = nozzle.TankName,
+                        FuelType = string.IsNullOrWhiteSpace(nozzle.FuelType) ? "MS-I" : nozzle.FuelType.Trim(),
+                        TankName = nozzle.TankName ?? "",
                         IsActive = true,
                         CreatedAt = DateTime.Now
                     });
@@ -1825,6 +1956,7 @@ public partial class DeveloperMainWindowViewModel
             IsActive = true,
             CreatedAt = DateTime.Now
         });
+        RefreshAvailableTankNames();
         StationStatusMessage = "Added new Tank. Click 'Save Tanks' to commit.";
     }
 
@@ -1837,6 +1969,7 @@ public partial class DeveloperMainWindowViewModel
             await _stationConfigService.DeleteTankAsync(tank.TankId);
         }
         ConfiguredTanks.Remove(tank);
+        RefreshAvailableTankNames();
         StationStatusMessage = $"Deleted tank: {tank.TankName}";
     }
 
@@ -1857,6 +1990,215 @@ public partial class DeveloperMainWindowViewModel
         catch (Exception ex)
         {
             StationStatusMessage = $"❌ Save error: {ex.Message}";
+        }
+    }
+
+    // ── PRESET MANAGEMENT ──
+
+    [RelayCommand]
+    public void GeneratePresetCode()
+    {
+        var rand = new Random();
+        var letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+        var code = $"{letters[rand.Next(letters.Length)]}{letters[rand.Next(letters.Length)]}{letters[rand.Next(letters.Length)]}-{rand.Next(100, 999)}";
+        PresetCode = code;
+        PresetName = $"{ConfiguredPumps.Count}-Pump Layout";
+    }
+
+    [RelayCommand]
+    public async Task LoadAllPresetsAsync()
+    {
+        try
+        {
+            var presets = await _stationConfigService.GetAllPresetsAsync();
+            SavedPresets.Clear();
+            foreach (var p in presets)
+            {
+                SavedPresets.Add(p);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Failed to load presets");
+        }
+    }
+
+    [RelayCommand]
+    public async Task SavePresetAsync()
+    {
+        if (string.IsNullOrWhiteSpace(PresetCode))
+        {
+            GeneratePresetCode();
+        }
+
+        if (string.IsNullOrWhiteSpace(PresetName))
+        {
+            PresetName = $"{ConfiguredPumps.Count}-Pump Layout";
+        }
+
+        PresetStatusMessage = "⏳ Saving preset...";
+        try
+        {
+            var presetData = new StationPresetData
+            {
+                PresetCode = PresetCode.Trim().ToUpperInvariant(),
+                PresetName = PresetName.Trim(),
+                Description = PresetDescription?.Trim() ?? "",
+                Tanks = ConfiguredTanks.Select(t => new TankPresetItem
+                {
+                    TankName = t.TankName,
+                    CapacityKL = t.CapacityKL,
+                    FuelType = t.FuelType,
+                    IsActive = t.IsActive,
+                    HasTesting = t.HasTesting
+                }).ToList(),
+                Pumps = ConfiguredPumps.Select(p => new PumpPresetItem
+                {
+                    PumpId = p.PumpId,
+                    Nozzles = p.Nozzles.Select(n => new NozzlePresetItem
+                    {
+                        NozzleNumber = n.NozzleNumber,
+                        FuelType = n.FuelType,
+                        TankName = n.TankName
+                    }).ToList()
+                }).ToList()
+            };
+
+            var json = System.Text.Json.JsonSerializer.Serialize(presetData, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+
+            var entity = new StationLayoutPreset
+            {
+                PresetCode = PresetCode.Trim().ToUpperInvariant(),
+                PresetName = PresetName.Trim(),
+                Description = PresetDescription?.Trim() ?? "",
+                LayoutJson = json,
+                PumpCount = ConfiguredPumps.Count,
+                NozzleCount = ConfiguredPumps.SelectMany(p => p.Nozzles).Count(),
+                TankCount = ConfiguredTanks.Count,
+                IsActive = true
+            };
+
+            var success = await _stationConfigService.SavePresetAsync(entity);
+            if (success)
+            {
+                await LoadAllPresetsAsync();
+                SelectedPreset = SavedPresets.FirstOrDefault(p => p.PresetCode.Equals(entity.PresetCode, StringComparison.OrdinalIgnoreCase));
+                PresetStatusMessage = $"✅ Preset '{PresetName}' ({entity.PresetCode}) successfully saved!";
+                MessageBox.Show($"Station layout preset successfully saved with code:\n\n{entity.PresetCode}\n\nYou can use this code anytime to restore this mapping.",
+                    "Preset Saved", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            else
+            {
+                PresetStatusMessage = "❌ Failed to save preset.";
+            }
+        }
+        catch (Exception ex)
+        {
+            PresetStatusMessage = $"❌ Error: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    public async Task LoadPresetByCodeAsync(string? codeParam)
+    {
+        var targetCode = (codeParam ?? SearchPresetCode ?? SelectedPreset?.PresetCode ?? PresetCode ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(targetCode))
+        {
+            PresetStatusMessage = "❌ Please enter a Preset Code to load.";
+            MessageBox.Show("Please enter or select a Preset Code.", "Preset Code Required", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        PresetStatusMessage = $"⏳ Loading preset '{targetCode}'...";
+        try
+        {
+            var preset = await _stationConfigService.GetPresetByCodeAsync(targetCode);
+            if (preset == null)
+            {
+                PresetStatusMessage = $"❌ Preset code '{targetCode}' not found in database.";
+                MessageBox.Show($"Preset with code '{targetCode}' was not found in saved presets.", "Not Found", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var presetData = System.Text.Json.JsonSerializer.Deserialize<StationPresetData>(preset.LayoutJson);
+            if (presetData == null)
+            {
+                PresetStatusMessage = "❌ Corrupt preset layout data.";
+                return;
+            }
+
+            // Populate Tanks
+            ConfiguredTanks.Clear();
+            foreach (var t in presetData.Tanks)
+            {
+                ConfiguredTanks.Add(new TankDefinition
+                {
+                    TankName = t.TankName,
+                    CapacityKL = t.CapacityKL,
+                    FuelType = t.FuelType,
+                    IsActive = t.IsActive,
+                    HasTesting = t.HasTesting,
+                    CreatedAt = DateTime.Now
+                });
+            }
+            RefreshAvailableTankNames();
+
+            // Populate Pumps & Nozzles
+            ConfiguredPumps.Clear();
+            foreach (var p in presetData.Pumps)
+            {
+                var pumpVm = new PumpCardVm { PumpId = p.PumpId };
+                foreach (var n in p.Nozzles)
+                {
+                    var nozzleVm = new NozzleItemVm
+                    {
+                        NozzleNumber = n.NozzleNumber,
+                        FuelType = n.FuelType,
+                        TankName = n.TankName,
+                        OnTankNameChangedCallback = HandleNozzleTankChanged
+                    };
+                    pumpVm.Nozzles.Add(nozzleVm);
+                }
+                ConfiguredPumps.Add(pumpVm);
+            }
+
+            RefreshAvailableFuelTypes();
+
+            PresetCode = preset.PresetCode;
+            PresetName = preset.PresetName;
+            PresetDescription = preset.Description;
+            SelectedPreset = SavedPresets.FirstOrDefault(p => p.PresetCode.Equals(preset.PresetCode, StringComparison.OrdinalIgnoreCase));
+
+            StationStatusMessage = $"✅ Loaded preset '{preset.PresetName}' ({preset.PresetCode}). Click 'Save Station Layout' & 'Save Tanks' to commit.";
+            PresetStatusMessage = $"✅ Preset '{preset.PresetCode}' loaded successfully ({ConfiguredPumps.Count} pumps, {ConfiguredTanks.Count} tanks).";
+            MessageBox.Show($"Preset '{preset.PresetName}' ({preset.PresetCode}) loaded onto canvas.\n\nClick 'Save Station Layout' and 'Save Tanks' when ready to apply to active station database.",
+                "Preset Loaded", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            PresetStatusMessage = $"❌ Error loading preset: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    public async Task DeletePresetAsync(StationLayoutPreset? preset)
+    {
+        var target = preset ?? SelectedPreset;
+        if (target == null) return;
+
+        var result = MessageBox.Show($"Are you sure you want to delete preset '{target.PresetName}' ({target.PresetCode})?",
+            "Confirm Delete Preset", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (result != MessageBoxResult.Yes) return;
+
+        try
+        {
+            await _stationConfigService.DeletePresetAsync(target.PresetId);
+            SavedPresets.Remove(target);
+            PresetStatusMessage = $"Deleted preset: {target.PresetCode}";
+        }
+        catch (Exception ex)
+        {
+            PresetStatusMessage = $"❌ Error deleting preset: {ex.Message}";
         }
     }
 
@@ -1950,4 +2292,36 @@ public partial class DeveloperMainWindowViewModel
         }
     }
 }
+
+public class StationPresetData
+{
+    public string PresetCode { get; set; } = "";
+    public string PresetName { get; set; } = "";
+    public string Description { get; set; } = "";
+    public List<TankPresetItem> Tanks { get; set; } = new();
+    public List<PumpPresetItem> Pumps { get; set; } = new();
+}
+
+public class TankPresetItem
+{
+    public string TankName { get; set; } = "";
+    public double CapacityKL { get; set; }
+    public string FuelType { get; set; } = "";
+    public bool IsActive { get; set; } = true;
+    public bool HasTesting { get; set; } = true;
+}
+
+public class PumpPresetItem
+{
+    public int PumpId { get; set; }
+    public List<NozzlePresetItem> Nozzles { get; set; } = new();
+}
+
+public class NozzlePresetItem
+{
+    public int NozzleNumber { get; set; }
+    public string FuelType { get; set; } = "";
+    public string TankName { get; set; } = "";
+}
+
 
