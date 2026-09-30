@@ -714,8 +714,34 @@ public class DuplicateResolutionService
     }
 
     /// <summary>
+    /// Purges all DSM entries and all associated child records across the database.
+    /// </summary>
+    public async Task<Result<string>> DeleteAllDsmEntriesAsync()
+    {
+        try
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<DbContext>();
+
+            var allIds = await db.Set<DsmEntry>().Select(e => e.DsmEntryId).ToListAsync();
+            if (allIds.Count == 0)
+            {
+                return Result<string>.Ok("Database already has 0 DSM entries.");
+            }
+
+            return await DeleteAnyDsmEntryAsync(allIds);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to purge all DsmEntries");
+            return Result<string>.Fail($"Purge failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
     /// Attempts to repair structural corruptions in specified DsmEntry records.
     /// </summary>
+
     public async Task<Result<string>> FixCorruptedDsmEntryAsync(IEnumerable<int> dsmEntryIds)
     {
         var idList = dsmEntryIds?.Distinct().Where(id => id > 0).ToList() ?? new List<int>();

@@ -42,6 +42,7 @@ public class FuelProDbContext : DbContext
     public DbSet<DsmProfile> DsmProfiles => Set<DsmProfile>();
     public DbSet<CreditorRepayment> CreditorRepayments => Set<CreditorRepayment>();
     public DbSet<Creditor> Creditors => Set<Creditor>();
+    public DbSet<OpeningBalance> OpeningBalances => Set<OpeningBalance>();
     public DbSet<SyncChangeLog> SyncChangeLogs => Set<SyncChangeLog>();
     public DbSet<SyncIdMapping> SyncIdMappings => Set<SyncIdMapping>();
     public DbSet<FuelProfitMargin> FuelProfitMargins => Set<FuelProfitMargin>();
@@ -392,6 +393,20 @@ public class FuelProDbContext : DbContext
             entity.HasIndex(e => new { e.DsmUserId, e.AttendanceDate, e.ShiftType }).IsUnique();
         });
 
+        // OpeningBalance
+        modelBuilder.Entity<OpeningBalance>(entity =>
+        {
+            entity.HasKey(e => e.OpeningBalanceId);
+            entity.HasIndex(e => e.SyncGuid).IsUnique();
+            entity.HasIndex(e => new { e.EntityType, e.EntityIdentifier });
+            entity.Property(e => e.IsActive).HasDefaultValue(true);
+
+            entity.HasOne(e => e.Creditor)
+                  .WithMany()
+                  .HasForeignKey(e => e.CreditorId)
+                  .OnDelete(DeleteBehavior.SetNull);
+        });
+
         // DsmPersonalDebtor
         modelBuilder.Entity<DsmPersonalDebtor>(entity =>
         {
@@ -402,6 +417,7 @@ public class FuelProDbContext : DbContext
 
             entity.HasIndex(e => e.SyncGuid).IsUnique();
             entity.HasIndex(e => new { e.DsmName, e.Date });
+            entity.Property(e => e.EntryType).HasDefaultValue("Operational");
         });
 
         // DsmPersonalDebtorRepayment

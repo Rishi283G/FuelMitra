@@ -291,12 +291,18 @@ public class ExcelExportService
                 worksheet.Cell(currentRow, 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
 
                 worksheet.Cell(currentRow, 2).Value = tx.Description;
+
+                bool isOpeningRow = !string.IsNullOrEmpty(tx.Description) && (
+                    tx.Description.Equals("Opening Balance", StringComparison.OrdinalIgnoreCase) ||
+                    tx.Description.Equals("Historical Opening Balance", StringComparison.OrdinalIgnoreCase) ||
+                    tx.Description.IndexOf("Opening Balance", StringComparison.OrdinalIgnoreCase) >= 0
+                );
                 
-                worksheet.Cell(currentRow, 3).Value = tx.Debit > 0 ? tx.Debit : "";
+                worksheet.Cell(currentRow, 3).Value = (!isOpeningRow && tx.Debit > 0) ? tx.Debit : "";
                 worksheet.Cell(currentRow, 3).Style.NumberFormat.Format = "₹#,##0.00";
                 worksheet.Cell(currentRow, 3).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
 
-                worksheet.Cell(currentRow, 4).Value = tx.Credit > 0 ? tx.Credit : "";
+                worksheet.Cell(currentRow, 4).Value = (!isOpeningRow && tx.Credit > 0) ? tx.Credit : "";
                 worksheet.Cell(currentRow, 4).Style.NumberFormat.Format = "₹#,##0.00";
                 worksheet.Cell(currentRow, 4).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
 
@@ -309,13 +315,21 @@ public class ExcelExportService
                     var cell = worksheet.Cell(currentRow, col);
                     cell.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
                     cell.Style.Border.OutsideBorderColor = XLColor.LightGray;
-                    if (isAlternate)
+                    if (isOpeningRow)
+                    {
+                        cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#F1F5F9");
+                        cell.Style.Font.Bold = true;
+                    }
+                    else if (isAlternate)
                     {
                         cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#FCE4EC");
                     }
                 }
 
-                isAlternate = !isAlternate;
+                if (!isOpeningRow)
+                {
+                    isAlternate = !isAlternate;
+                }
                 currentRow++;
             }
 
@@ -934,7 +948,7 @@ public class ExcelExportService
             int maxCols = 14;
 
             // Header Block
-            worksheet.Cell(r, 1).Value = string.IsNullOrWhiteSpace(report.StationName) ? "Kandhare Petroleum" : report.StationName;
+            worksheet.Cell(r, 1).Value = string.IsNullOrWhiteSpace(report.StationName) ? "Mitali Service Station" : report.StationName;
             worksheet.Cell(r, 1).Style.Font.Bold = true;
             worksheet.Cell(r, 1).Style.Font.FontSize = 16;
             worksheet.Cell(r, 1).Style.Font.FontColor = XLColor.White;
@@ -1022,7 +1036,7 @@ public class ExcelExportService
             if (report.DsmSummaryRows != null && report.DsmSummaryRows.Count > 0)
             {
                 WriteSectionHeader(worksheet, ref r, "3. DSM Sales & Collection Summary", maxCols);
-                var dsmHeaders = new List<string> { "DSM Name", "Pump", "PhonePe (M)", "PhonePe (N)", "Card (M)", "Card (N)", "PetroCard", "Bank Cash", "Cash In Hand", "Debtors", "Expenses", "Testing", "Gross Sales", "Difference" };
+                var dsmHeaders = new List<string> { "DSM Name", "Pump", "PhonePe (M)", "PhonePe (N)", "Card (M)", "Card (N)", "PetroCard", "Bank Cash", "Cash In Hand", "Debtors", "Expenses", "Testing", "Others", "Gross Sales", "Difference" };
                 WriteTableHeaders(worksheet, ref r, dsmHeaders);
 
                 bool isAlt = false;
@@ -1040,9 +1054,10 @@ public class ExcelExportService
                     worksheet.Cell(r, 10).Value = row.DebtorSales; worksheet.Cell(r, 10).Style.NumberFormat.Format = "₹#,##0.00";
                     worksheet.Cell(r, 11).Value = row.Expenses; worksheet.Cell(r, 11).Style.NumberFormat.Format = "₹#,##0.00";
                     worksheet.Cell(r, 12).Value = row.Testing; worksheet.Cell(r, 12).Style.NumberFormat.Format = "₹#,##0.00";
-                    worksheet.Cell(r, 13).Value = row.GrossSale; worksheet.Cell(r, 13).Style.NumberFormat.Format = "₹#,##0.00";
-                    worksheet.Cell(r, 14).Value = row.Difference; worksheet.Cell(r, 14).Style.NumberFormat.Format = "₹#,##0.00";
-                    ApplyRowBorders(worksheet, r, 14, isAlt);
+                    worksheet.Cell(r, 13).Value = row.Others; worksheet.Cell(r, 13).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 14).Value = row.GrossSale; worksheet.Cell(r, 14).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 15).Value = row.Difference; worksheet.Cell(r, 15).Style.NumberFormat.Format = "₹#,##0.00";
+                    ApplyRowBorders(worksheet, r, 15, isAlt);
                     isAlt = !isAlt;
                     r++;
                 }
@@ -1062,9 +1077,10 @@ public class ExcelExportService
                     worksheet.Cell(r, 10).Value = t.DebtorSales; worksheet.Cell(r, 10).Style.NumberFormat.Format = "₹#,##0.00";
                     worksheet.Cell(r, 11).Value = t.Expenses; worksheet.Cell(r, 11).Style.NumberFormat.Format = "₹#,##0.00";
                     worksheet.Cell(r, 12).Value = t.Testing; worksheet.Cell(r, 12).Style.NumberFormat.Format = "₹#,##0.00";
-                    worksheet.Cell(r, 13).Value = t.GrossSale; worksheet.Cell(r, 13).Style.NumberFormat.Format = "₹#,##0.00";
-                    worksheet.Cell(r, 14).Value = t.Difference; worksheet.Cell(r, 14).Style.NumberFormat.Format = "₹#,##0.00";
-                    ApplyTotalRowBorders(worksheet, r, 14);
+                    worksheet.Cell(r, 13).Value = t.Others; worksheet.Cell(r, 13).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 14).Value = t.GrossSale; worksheet.Cell(r, 14).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, 15).Value = t.Difference; worksheet.Cell(r, 15).Style.NumberFormat.Format = "₹#,##0.00";
+                    ApplyTotalRowBorders(worksheet, r, 15);
                     r++;
                 }
                 r++;
@@ -1155,14 +1171,17 @@ public class ExcelExportService
             }
 
             // 6. Fuel Dispensed Summary
-            if (report.FuelSales != null && report.FuelSales.Count > 0)
+            var dsrFuelSales = report.DsrFuelSales ?? report.FuelSales;
+            var dsrTotalLitres = report.DsrFuelSales != null ? report.DsrTotalFuelLitres : report.TotalFuelLitres;
+            var dsrTotalAmount = report.DsrFuelSales != null ? report.DsrTotalFuelAmount : report.TotalFuelAmount;
+            if (dsrFuelSales != null && dsrFuelSales.Count > 0)
             {
                 WriteSectionHeader(worksheet, ref r, "6. Fuel Dispensed Summary", maxCols);
                 var fuelHeaders = new List<string> { "Product / Fuel Type", "Litres Dispensed", "Rate (₹)", "Total Amount (₹)" };
                 WriteTableHeaders(worksheet, ref r, fuelHeaders);
 
                 bool isAlt = false;
-                foreach (var fs in report.FuelSales)
+                foreach (var fs in dsrFuelSales)
                 {
                     worksheet.Cell(r, 1).Value = fs.Description;
                     worksheet.Cell(r, 2).Value = fs.Litres; worksheet.Cell(r, 2).Style.NumberFormat.Format = "#,##0.00";
@@ -1174,9 +1193,9 @@ public class ExcelExportService
                 }
 
                 worksheet.Cell(r, 1).Value = "TOTAL FUEL SALE";
-                worksheet.Cell(r, 2).Value = report.TotalFuelLitres; worksheet.Cell(r, 2).Style.NumberFormat.Format = "#,##0.00";
+                worksheet.Cell(r, 2).Value = dsrTotalLitres; worksheet.Cell(r, 2).Style.NumberFormat.Format = "#,##0.00";
                 worksheet.Cell(r, 3).Value = "";
-                worksheet.Cell(r, 4).Value = report.TotalFuelAmount; worksheet.Cell(r, 4).Style.NumberFormat.Format = "₹#,##0.00";
+                worksheet.Cell(r, 4).Value = dsrTotalAmount; worksheet.Cell(r, 4).Style.NumberFormat.Format = "₹#,##0.00";
                 ApplyTotalRowBorders(worksheet, r, 4);
                 r++;
                 r++;
@@ -1248,7 +1267,7 @@ public class ExcelExportService
             int maxCols = 13;
 
             // Header Block
-            worksheet.Cell(r, 1).Value = string.IsNullOrWhiteSpace(report.StationName) ? "Kandhare Petroleum" : report.StationName;
+            worksheet.Cell(r, 1).Value = string.IsNullOrWhiteSpace(report.StationName) ? "Mitali Service Station" : report.StationName;
             worksheet.Cell(r, 1).Style.Font.Bold = true;
             worksheet.Cell(r, 1).Style.Font.FontSize = 16;
             worksheet.Cell(r, 1).Style.Font.FontColor = XLColor.White;
@@ -1437,14 +1456,17 @@ public class ExcelExportService
             }
 
             // 5. Fuel Sales Summary
-            if (report.FuelSales != null && report.FuelSales.Count > 0)
+            var dayDsrFuelSales = report.DsrFuelSales ?? report.FuelSales;
+            var dayDsrTotalLitres = report.DsrFuelSales != null ? report.DsrTotalFuelLitres : report.TotalFuelLitres;
+            var dayDsrTotalAmount = report.DsrFuelSales != null ? report.DsrTotalFuelAmount : report.TotalFuelAmount;
+            if (dayDsrFuelSales != null && dayDsrFuelSales.Count > 0)
             {
                 WriteSectionHeader(worksheet, ref r, "5. Fuel Dispensed Summary", maxCols);
                 var fuelHeaders = new List<string> { "Product / Fuel Type", "Litres Dispensed", "Rate (₹)", "Total Amount (₹)" };
                 WriteTableHeaders(worksheet, ref r, fuelHeaders);
 
                 bool isAlt = false;
-                foreach (var fs in report.FuelSales)
+                foreach (var fs in dayDsrFuelSales)
                 {
                     worksheet.Cell(r, 1).Value = fs.Description;
                     worksheet.Cell(r, 2).Value = fs.Litres; worksheet.Cell(r, 2).Style.NumberFormat.Format = "#,##0.00";
@@ -1456,9 +1478,9 @@ public class ExcelExportService
                 }
 
                 worksheet.Cell(r, 1).Value = "TOTAL FUEL SALE";
-                worksheet.Cell(r, 2).Value = report.TotalFuelLitres; worksheet.Cell(r, 2).Style.NumberFormat.Format = "#,##0.00";
+                worksheet.Cell(r, 2).Value = dayDsrTotalLitres; worksheet.Cell(r, 2).Style.NumberFormat.Format = "#,##0.00";
                 worksheet.Cell(r, 3).Value = "";
-                worksheet.Cell(r, 4).Value = report.TotalFuelAmount; worksheet.Cell(r, 4).Style.NumberFormat.Format = "₹#,##0.00";
+                worksheet.Cell(r, 4).Value = dayDsrTotalAmount; worksheet.Cell(r, 4).Style.NumberFormat.Format = "₹#,##0.00";
                 ApplyTotalRowBorders(worksheet, r, 4);
                 r++;
                 r++;

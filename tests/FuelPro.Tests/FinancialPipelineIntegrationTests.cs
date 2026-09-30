@@ -251,8 +251,8 @@ public class FinancialPipelineIntegrationTests : IDisposable
 
         // 3. Verify consistency across all three modules
         
-        // Assert Gross Sales
-        Assert.Equal(3000, dayTotalVm.TotalDayFuelSaleAmount);
+        // Assert Sales: DayTotalVm shows DSR (Actual Customer Sales Only = Gross 3000 - Testing 50 = 2950), while Dashboards preserve Gross Sales (3000)
+        Assert.Equal(2950, dayTotalVm.TotalDayFuelSaleAmount);
         Assert.Equal(3000, dashboardVm.TodayTotalSale);
         Assert.Equal(3000, ownerVm.TodayTotalSale);
 
@@ -294,10 +294,10 @@ public class FinancialPipelineIntegrationTests : IDisposable
         //                    + (Bank Cash) 100 + (Cash in hand) 100 + (Debtors) 50 + (Expenses) 50 + (Testing) 50
         //                  = 3050
         // Sales = 3000
-        // Expected Mismatch = 50 (Total Collections 3050 - Sales 3000)
-        Assert.Equal(-10, dayTotalVm.Difference);
+        // Expected Mismatch = 50 (Total Collections 3050 - Sales 3000), but Entry 2 had individual shortage of 1050
+        Assert.Equal(-1050, dayTotalVm.Difference);
         Assert.Equal(50, dashboardVm.TodayTotalMismatch);
-        Assert.Equal(-10, ownerVm.TodayTotalMismatch);
+        Assert.Equal(-1050, ownerVm.TodayTotalMismatch);
 
     }
 

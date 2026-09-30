@@ -1,0 +1,335 @@
+<UserControl x:Class="FuelPro.UI.Views.OpeningBalanceManagementView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             xmlns:converters="clr-namespace:FuelPro.UI.Converters"
+             xmlns:viewmodels="clr-namespace:FuelPro.UI.ViewModels"
+             mc:Ignorable="d" 
+             d:DataContext="{d:DesignInstance Type=viewmodels:OpeningBalanceManagementViewModel}"
+             d:DesignHeight="600" d:DesignWidth="900">
+
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+        <converters:IndianCurrencyConverter x:Key="CurrencyConverter" />
+        <converters:StringToVisibilityConverter x:Key="StringToVis" />
+
+        <Style TargetType="TextBlock" x:Key="CardSectionTitle">
+            <Setter Property="FontSize" Value="18" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{DynamicResource MaterialDesign.Brush.Primary.Light}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="8,0,0,0" />
+        </Style>
+
+        <Style TargetType="DataGrid" BasedOn="{StaticResource {x:Type DataGrid}}">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{DynamicResource MaterialDesign.Brush.Divider}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="HorizontalGridLinesBrush" Value="{DynamicResource MaterialDesign.Brush.Divider}" />
+            <Setter Property="VerticalGridLinesBrush" Value="{DynamicResource MaterialDesign.Brush.Divider}" />
+            <Setter Property="HeadersVisibility" Value="Column" />
+            <Setter Property="AutoGenerateColumns" Value="False" />
+            <Setter Property="CanUserAddRows" Value="False" />
+            <Setter Property="CanUserDeleteRows" Value="False" />
+            <Setter Property="IsReadOnly" Value="True" />
+            <Setter Property="materialDesign:DataGridAssist.CellPadding" Value="10 6" />
+            <Setter Property="materialDesign:DataGridAssist.ColumnHeaderPadding" Value="10 8" />
+        </Style>
+    </UserControl.Resources>
+
+    <StackPanel>
+        <!-- Header -->
+        <Grid Margin="0,0,0,16">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Orientation="Horizontal" Grid.Column="0">
+                <materialDesign:PackIcon Kind="ScaleBalance" Width="26" Height="26" VerticalAlignment="Center"
+                                         Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                <TextBlock Text="Historical Opening Balances" Style="{StaticResource CardSectionTitle}"/>
+            </StackPanel>
+
+            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                <Button Content="+ New Opening Balance"
+                        Command="{Binding OpenCreateFormCommand}"
+                        Style="{StaticResource MaterialDesignRaisedButton}"
+                        Height="36" Padding="16,0" Margin="0,0,8,0"
+                        IsEnabled="{Binding CanManageOpeningBalances}"
+                        ToolTip="Set a historical opening balance for a Debtor or DSM" />
+                <Button Content="Refresh"
+                        Command="{Binding LoadDataCommand}"
+                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                        Height="36" Padding="12,0" />
+            </StackPanel>
+        </Grid>
+
+        <!-- Informational banner -->
+        <Border Background="#E8F4FD" BorderBrush="#2196F3" BorderThickness="1" CornerRadius="6" Padding="12,8" Margin="0,0,0,14">
+            <StackPanel Orientation="Horizontal">
+                <materialDesign:PackIcon Kind="InformationOutline" Width="18" Height="18" Foreground="#1976D2" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                <TextBlock Text="Historical Opening Balances represent initial financial state carried forward into PyroSync. They do not alter daily shift totals or DSR logs."
+                           FontSize="12" Foreground="#0D47A1" VerticalAlignment="Center"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Status & Notification Message -->
+        <Border Background="#E8F5E9" BorderBrush="#4CAF50" BorderThickness="1" CornerRadius="4" Padding="10,6" Margin="0,0,0,12"
+                Visibility="{Binding StatusMessage, Converter={StaticResource StringToVis}}">
+            <TextBlock Text="{Binding StatusMessage}" Foreground="#2E7D32" FontWeight="SemiBold" FontSize="13"/>
+        </Border>
+
+        <!-- CREATE / EDIT MODAL CARD (IN-LINE FORM) -->
+        <materialDesign:Card Margin="0,0,0,16" Padding="16" UniformCornerRadius="8" Background="#FAFAFA"
+                             BorderBrush="{DynamicResource MaterialDesign.Brush.Primary}" BorderThickness="1"
+                             Visibility="{Binding IsFormOpen, Converter={StaticResource BoolToVis}}">
+            <StackPanel>
+                <Grid Margin="0,0,0,12">
+                    <TextBlock Text="{Binding FormTitle}" FontSize="16" FontWeight="Bold"
+                               Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                    <Button Style="{StaticResource MaterialDesignIconButton}" HorizontalAlignment="Right" Width="28" Height="28"
+                            Command="{Binding CancelFormCommand}" ToolTip="Close Form">
+                        <materialDesign:PackIcon Kind="Close" Width="18" Height="18"/>
+                    </Button>
+                </Grid>
+
+                <!-- Entity Type Selection (Disabled during edit) -->
+                <Grid Margin="0,0,0,12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="16" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Account Type:" FontWeight="SemiBold" VerticalAlignment="Center" Grid.Column="0"/>
+                    <StackPanel Orientation="Horizontal" Grid.Column="2" IsEnabled="{Binding CanChangeEntityType}">
+                        <RadioButton Content="Debtor / Customer"
+                                     IsChecked="{Binding IsDebtorAccountType, Mode=TwoWay}"
+                                     Margin="0,0,24,0" GroupName="FormAccountType"
+                                     Style="{StaticResource MaterialDesignRadioButton}"/>
+                        <RadioButton Content="DSM Staff (Loss Starting Position)"
+                                     IsChecked="{Binding IsDsmAccountType, Mode=TwoWay}"
+                                     GroupName="FormAccountType"
+                                     Style="{StaticResource MaterialDesignRadioButton}"/>
+                    </StackPanel>
+                </Grid>
+
+                <!-- Fields -->
+                <Grid Margin="0,0,0,12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="2*" />
+                        <ColumnDefinition Width="12" />
+                        <ColumnDefinition Width="1.5*" />
+                        <ColumnDefinition Width="12" />
+                        <ColumnDefinition Width="1.5*" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Entity Dropdown (Debtor) -->
+                    <ComboBox Grid.Column="0" ItemsSource="{Binding DebtorsList}"
+                              SelectedItem="{Binding SelectedCreditor}"
+                              DisplayMemberPath="Name"
+                              materialDesign:HintAssist.Hint="Select Debtor *"
+                              materialDesign:HintAssist.IsFloating="True"
+                              Style="{StaticResource MaterialDesignOutlinedComboBox}"
+                              Visibility="{Binding IsDebtorAccountType, Converter={StaticResource BoolToVis}}"
+                              IsEnabled="{Binding CanChangeEntityType}"/>
+
+                    <!-- Entity Dropdown (DSM) -->
+                    <ComboBox Grid.Column="0" ItemsSource="{Binding DsmProfilesList}"
+                              SelectedItem="{Binding SelectedDsmProfile}"
+                              DisplayMemberPath="DsmName"
+                              materialDesign:HintAssist.Hint="Select DSM Staff *"
+                              materialDesign:HintAssist.IsFloating="True"
+                              Style="{StaticResource MaterialDesignOutlinedComboBox}"
+                              Visibility="{Binding IsDsmAccountType, Converter={StaticResource BoolToVis}}"
+                              IsEnabled="{Binding CanChangeEntityType}"/>
+
+                    <!-- Opening Date -->
+                    <DatePicker Grid.Column="2" SelectedDate="{Binding FormOpeningDate}"
+                                materialDesign:HintAssist.Hint="Opening Date *"
+                                materialDesign:HintAssist.IsFloating="True"
+                                Style="{StaticResource MaterialDesignOutlinedDatePicker}"/>
+
+                    <!-- Amount -->
+                    <TextBox Grid.Column="4" Text="{Binding FormAmountText, UpdateSourceTrigger=PropertyChanged}"
+                             materialDesign:HintAssist.Hint="Opening Amount (₹) *"
+                             materialDesign:HintAssist.IsFloating="True"
+                             Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                </Grid>
+
+                <!-- Notes / Remarks -->
+                <TextBox Text="{Binding FormNotes, UpdateSourceTrigger=PropertyChanged}"
+                         materialDesign:HintAssist.Hint="Notes / Historical Context (Optional)"
+                         materialDesign:HintAssist.IsFloating="True"
+                         Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                         Margin="0,0,0,12"/>
+
+                <!-- Invariant notice for DSM Staff -->
+                <Border Background="#FFF8E1" BorderBrush="#FFE082" BorderThickness="1" CornerRadius="4" Padding="10,6" Margin="0,0,0,12"
+                        Visibility="{Binding IsDsmAccountType, Converter={StaticResource BoolToVis}}">
+                    <StackPanel Orientation="Horizontal">
+                        <materialDesign:PackIcon Kind="ShieldLockOutline" Width="16" Height="16" Foreground="#FF8F00" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <TextBlock Text="DSM Historical Opening Losses are system-protected: Salary deduction is disabled and they do not affect payroll or shift accounts."
+                                   FontSize="11" Foreground="#5D4037" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Validation Message -->
+                <TextBlock Text="{Binding ValidationMessage}" Foreground="#D32F2F" FontWeight="SemiBold"
+                           Margin="0,0,0,12" Visibility="{Binding ValidationMessage, Converter={StaticResource StringToVis}}"/>
+
+                <!-- Actions -->
+                <StackPanel Orientation="Horizontal">
+                    <Button Content="Save Opening Balance"
+                            Command="{Binding SaveFormCommand}"
+                            Style="{StaticResource MaterialDesignRaisedButton}"
+                            Height="38" Padding="20,0" Margin="0,0,8,0"/>
+                    <Button Content="Cancel"
+                            Command="{Binding CancelFormCommand}"
+                            Style="{StaticResource MaterialDesignOutlinedButton}"
+                            Height="38" Padding="16,0"/>
+                </StackPanel>
+            </StackPanel>
+        </materialDesign:Card>
+
+        <!-- TAB NAVIGATION FOR FILTERING -->
+        <TabControl Style="{StaticResource MaterialDesignTabControl}" Margin="0,0,0,12"
+                    SelectedIndex="{Binding SelectedTabIndex, Mode=TwoWay}">
+            <!-- TAB 1: DEBTOR OPENING BALANCES -->
+            <TabItem Header="Debtor Opening Balances" Height="40">
+                <DataGrid ItemsSource="{Binding DebtorBalances}" MaxHeight="280" Margin="0,8,0,0">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Debtor Name" Binding="{Binding EntityDisplayName}" Width="2*" FontWeight="SemiBold"/>
+                        <DataGridTextColumn Header="Opening Date" Binding="{Binding OpeningDateFormatted}" Width="1.2*"/>
+                        <DataGridTextColumn Header="Opening Amount" Binding="{Binding AmountFormatted}" Width="1.4*" FontWeight="SemiBold" Foreground="#C62828"/>
+                        <DataGridTextColumn Header="Notes" Binding="{Binding Notes}" Width="2*"/>
+                        <DataGridTemplateColumn Header="Status" Width="1*">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Border CornerRadius="4" Padding="6,2" HorizontalAlignment="Center">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Background" Value="#EEEEEE"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                        <Setter Property="Background" Value="#E8F5E9"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                        <TextBlock Text="{Binding StatusText}" FontWeight="Bold" FontSize="11">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Foreground" Value="#757575"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                            <Setter Property="Foreground" Value="#2E7D32"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </Border>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTextColumn Header="Last Updated" Binding="{Binding UpdatedAtFormatted}" Width="1.5*"/>
+                        
+                        <!-- Actions -->
+                        <DataGridTemplateColumn Header="Actions" Width="1.3*">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                        <Button Command="{Binding DataContext.OpenEditFormCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}"
+                                                Style="{StaticResource MaterialDesignIconForegroundButton}"
+                                                ToolTip="Edit Opening Balance" Width="26" Height="26" Padding="0" Margin="0,0,4,0"
+                                                IsEnabled="{Binding CanEdit}">
+                                            <materialDesign:PackIcon Kind="Pencil" Width="16" Height="16" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                        </Button>
+                                        <Button Command="{Binding DataContext.DeactivateCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}"
+                                                Style="{StaticResource MaterialDesignIconForegroundButton}"
+                                                ToolTip="Deactivate Historical Opening Balance (Preserves repayments)" Width="26" Height="26" Padding="0"
+                                                IsEnabled="{Binding CanDeactivate}">
+                                            <materialDesign:PackIcon Kind="Cancel" Width="16" Height="16" Foreground="#D32F2F"/>
+                                        </Button>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </TabItem>
+
+            <!-- TAB 2: DSM LOSS OPENING BALANCES -->
+            <TabItem Header="DSM Loss Opening Balances" Height="40">
+                <DataGrid ItemsSource="{Binding DsmBalances}" MaxHeight="280" Margin="0,8,0,0">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="DSM Name" Binding="{Binding EntityDisplayName}" Width="2*" FontWeight="SemiBold"/>
+                        <DataGridTextColumn Header="Opening Date" Binding="{Binding OpeningDateFormatted}" Width="1.2*"/>
+                        <DataGridTextColumn Header="Opening Loss" Binding="{Binding AmountFormatted}" Width="1.4*" FontWeight="SemiBold" Foreground="#E65100"/>
+                        <DataGridTextColumn Header="Notes" Binding="{Binding Notes}" Width="2*"/>
+                        <DataGridTemplateColumn Header="Status" Width="1*">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Border CornerRadius="4" Padding="6,2" HorizontalAlignment="Center">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Background" Value="#EEEEEE"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                        <Setter Property="Background" Value="#E8F5E9"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                        <TextBlock Text="{Binding StatusText}" FontWeight="Bold" FontSize="11">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Foreground" Value="#757575"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                            <Setter Property="Foreground" Value="#2E7D32"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </Border>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTextColumn Header="Last Updated" Binding="{Binding UpdatedAtFormatted}" Width="1.5*"/>
+
+                        <!-- Actions -->
+                        <DataGridTemplateColumn Header="Actions" Width="1.3*">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                        <Button Command="{Binding DataContext.OpenEditFormCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}"
+                                                Style="{StaticResource MaterialDesignIconForegroundButton}"
+                                                ToolTip="Edit Opening Balance" Width="26" Height="26" Padding="0" Margin="0,0,4,0"
+                                                IsEnabled="{Binding CanEdit}">
+                                            <materialDesign:PackIcon Kind="Pencil" Width="16" Height="16" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                        </Button>
+                                        <Button Command="{Binding DataContext.DeactivateCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}"
+                                                Style="{StaticResource MaterialDesignIconForegroundButton}"
+                                                ToolTip="Deactivate Historical Opening Loss (Preserves repayments)" Width="26" Height="26" Padding="0"
+                                                IsEnabled="{Binding CanDeactivate}">
+                                            <materialDesign:PackIcon Kind="Cancel" Width="16" Height="16" Foreground="#D32F2F"/>
+                                        </Button>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </TabItem>
+        </TabControl>
+    </StackPanel>
+</UserControl>

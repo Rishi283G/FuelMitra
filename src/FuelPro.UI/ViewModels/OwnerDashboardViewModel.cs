@@ -45,7 +45,10 @@ public partial class OwnerDashboardViewModel : ObservableObject, IDisposable
     [ObservableProperty] private double _todayTotalMismatch;
     [ObservableProperty] private int _totalDsmEntries;
 
-    // Fuel-wise breakdown
+    // Dynamic Fuel-wise breakdown
+    public ObservableCollection<FuelSaleRowDto> FuelSalesBreakdown { get; } = new();
+
+    // Fuel-wise breakdown properties (backward-compatible)
     [ObservableProperty] private double _todayHsdLitres;
     [ObservableProperty] private double _todayMsILitres;
     [ObservableProperty] private double _todayMsIILitres;
@@ -135,6 +138,7 @@ public partial class OwnerDashboardViewModel : ObservableObject, IDisposable
         DsmEntryService.DebtorChanged += OnDataChanged;
         DsmEntryService.PayrollChanged += OnDataChanged;
         DsmEntryService.InventoryChanged += OnDataChanged;
+        DsmEntryService.StationConfigurationChanged += OnDataChanged;
         if (_collectionTypeService != null) _collectionTypeService.CollectionTypesChanged += OnDataChanged;
 
         _ = SetPresetAsync(SelectedPreset);
@@ -142,19 +146,15 @@ public partial class OwnerDashboardViewModel : ObservableObject, IDisposable
 
     private void OnSyncStatusChanged(FuelPro.Sync.SyncStatusInfo status)
     {
-        System.Windows.Application.Current.Dispatcher.Invoke(async () =>
+        System.Windows.Application.Current.Dispatcher.Invoke(() =>
         {
             UpdateSyncDisplay(status.LastSyncTime == default ? (DateTime?)null : status.LastSyncTime, status.PendingRecords);
-            if (status.StatusMessage == "Synced")
-            {
-                await LoadDataAsync();
-            }
         });
     }
 
     private void OnDataChanged()
     {
-        System.Windows.Application.Current.Dispatcher.InvokeAsync(async () => await LoadDataAsync());
+        System.Windows.Application.Current.Dispatcher.InvokeAsync(async () => await LoadDataAsync(isBackgroundRefresh: true));
     }
 
     public void Dispose()
@@ -165,6 +165,7 @@ public partial class OwnerDashboardViewModel : ObservableObject, IDisposable
         DsmEntryService.DebtorChanged -= OnDataChanged;
         DsmEntryService.PayrollChanged -= OnDataChanged;
         DsmEntryService.InventoryChanged -= OnDataChanged;
+        DsmEntryService.StationConfigurationChanged -= OnDataChanged;
         if (_collectionTypeService != null) _collectionTypeService.CollectionTypesChanged -= OnDataChanged;
         GC.SuppressFinalize(this);
     }
@@ -220,11 +221,22 @@ public partial class OwnerDashboardViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task LoadDataAsync()
     {
-        IsLoading = true;
+        await LoadDataInternalAsync(false);
+    }
+
+    public async Task LoadDataAsync(bool isBackgroundRefresh)
+    {
+        await LoadDataInternalAsync(isBackgroundRefresh);
+    }
+
+    private async Task LoadDataInternalAsync(bool isBackgroundRefresh)
+    {
+        if (!isBackgroundRefresh)
+        {
+            IsLoading = true;
+        }
         try
         {
-            try { await _syncEngine.ForceSyncAsync(); } catch { }
-
             var entriesResult = await _dsmEntryRepository.GetEntriesForDateRangeAsync(StartDate.Date, EndDate.Date.AddDays(1));
             var entries = entriesResult.Success && entriesResult.Data != null ? entriesResult.Data : new List<DsmEntry>();
 
@@ -265,7 +277,7 @@ public partial class OwnerDashboardViewModel : ObservableObject, IDisposable
             var aggregationService = App.Services.GetRequiredService<IShiftAggregationService>();
             var summaryRows = dayReport.DsmSummaryRows ?? aggregationService.BuildDsmSummaryRows(entries);
             var shiftTotals = dayReport.DsmShiftTotals ?? aggregationService.BuildDsmShiftTotals(summaryRows);
-            DsmShiftTotals = new ObservableCollection<DsmShiftTotalDto>(shiftTotals);
+            UpdateDsmShiftTotals(shiftTotals);
 
             TodayTotalSale = dayReport.TotalFuelAmount + dayReport.OtherCashTotal + dayReport.OilDefSalesTotal;
             TodayTotalCollection = dayReport.ActualCollection;
@@ -280,34 +292,89 @@ public partial class OwnerDashboardViewModel : ObservableObject, IDisposable
             TodayTotalPetroCard = dayReport.CollectionBreakdown.Where(c => c.Category.Contains("Petro", StringComparison.OrdinalIgnoreCase)).Sum(c => c.Amount);
             TodayTotalDebit = dayReport.CreditorsTotal;
 
+            // In-place smooth update for Fuel Sales Breakdown
+            UpdateFuelSalesBreakdown(dayReport.FuelSales);
+
             // Populate Dynamic Payment Mode Breakdown (Always show all active configured payment modes)
-            PaymentBreakdown.Clear();
             var breakdown = dayReport.CollectionBreakdown ?? new List<CollectionCategoryDto>();
             var activeTypes = _collectionTypeService != null ? await _collectionTypeService.GetActiveCollectionTypesAsync() : new List<CollectionTypeMaster>();
+            var newPaymentRows = new List<DayCollectionSummaryRow>();
 
-            // 1. Bank Cash (Deposit)
-            double cashDepositAmt = breakdown.FirstOrDefault(c => string.Equals(c.Category, "Cash Deposit", StringComparison.OrdinalIgnoreCase))?.Amount ?? 0;
-            PaymentBreakdown.Add(new DayCollectionSummaryRow
+            // 1. Bank Cash (Deposit) - Merge all bank cash / cash deposit variations into one single option
+            double cashDepositAmt = breakdown
+                .Where(c => c.Category.Equals("Cash Deposit", StringComparison.OrdinalIgnoreCase) ||
+                            c.Category.Equals("Cash Deposit (Bank)", StringComparison.OrdinalIgnoreCase) ||
+                            c.Category.Equals("Bank Cash (Deposit)", StringComparison.OrdinalIgnoreCase) ||
+                            c.Category.Equals("Bank Cash", StringComparison.OrdinalIgnoreCase) ||
+                            c.Category.Equals("Cash (Deposit)", StringComparison.OrdinalIgnoreCase) ||
+                            c.Category.Equals("CASH_DEPOSIT", StringComparison.OrdinalIgnoreCase))
+                .Sum(c => c.Amount);
+
+            newPaymentRows.Add(new DayCollectionSummaryRow
             {
                 CollectionMode = "Bank Cash (Deposit)",
                 Amount = cashDepositAmt,
                 DisplayColor = "#2E7D32"
             });
 
-            // 2. Cash In Hand
-            double cashInHandAmt = breakdown.FirstOrDefault(c => string.Equals(c.Category, "Cash In Hand", StringComparison.OrdinalIgnoreCase))?.Amount ?? 0;
-            PaymentBreakdown.Add(new DayCollectionSummaryRow
+            // 2. Cash In Hand - Merge all hand cash variations
+            double cashInHandAmt = breakdown
+                .Where(c => c.Category.Equals("Cash In Hand", StringComparison.OrdinalIgnoreCase) ||
+                            c.Category.Equals("Hand Cash", StringComparison.OrdinalIgnoreCase) ||
+                            c.Category.Equals("Cash 2", StringComparison.OrdinalIgnoreCase) ||
+                            c.Category.Equals("CASH_IN_HAND", StringComparison.OrdinalIgnoreCase))
+                .Sum(c => c.Amount);
+
+            newPaymentRows.Add(new DayCollectionSummaryRow
             {
                 CollectionMode = "Cash In Hand",
                 Amount = cashInHandAmt,
                 DisplayColor = "#388E3C"
             });
 
-            // 3. Active configured collection types
-            var handledCategories = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Cash Deposit", "Cash In Hand", "Bank Cash", "Cash", "Cash (Deposit)", "Bank Cash (Deposit)" };
+            // Mark all cash deposit, hand cash, and standard cash variations as handled so they are not duplicated
+            var handledCategories = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "Cash Deposit",
+                "Cash Deposit (Bank)",
+                "Bank Cash (Deposit)",
+                "Bank Cash",
+                "Cash (Deposit)",
+                "CASH_DEPOSIT",
+                "CASH_DEPOSIT_BANK",
+                "BANK_CASH",
+                "Cash In Hand",
+                "Hand Cash",
+                "Cash 2",
+                "CASH_IN_HAND",
+                "HAND_CASH",
+                "Cash"
+            };
+
+            bool IsCashVariant(CollectionTypeMaster t)
+            {
+                if (string.IsNullOrWhiteSpace(t.Code) && string.IsNullOrWhiteSpace(t.DisplayName)) return false;
+                var code = t.Code ?? "";
+                var name = t.DisplayName ?? "";
+                return code.Equals("CASH_DEPOSIT", StringComparison.OrdinalIgnoreCase) ||
+                       code.Equals("CASH_DEPOSIT_BANK", StringComparison.OrdinalIgnoreCase) ||
+                       code.Equals("BANK_CASH", StringComparison.OrdinalIgnoreCase) ||
+                       code.Equals("CASH_IN_HAND", StringComparison.OrdinalIgnoreCase) ||
+                       code.Equals("HAND_CASH", StringComparison.OrdinalIgnoreCase) ||
+                       code.Equals("CASH", StringComparison.OrdinalIgnoreCase) ||
+                       name.Equals("Cash", StringComparison.OrdinalIgnoreCase) ||
+                       name.Equals("Cash Deposit", StringComparison.OrdinalIgnoreCase) ||
+                       name.Equals("Cash Deposit (Bank)", StringComparison.OrdinalIgnoreCase) ||
+                       name.Equals("Bank Cash (Deposit)", StringComparison.OrdinalIgnoreCase) ||
+                       name.Equals("Bank Cash", StringComparison.OrdinalIgnoreCase) ||
+                       name.Equals("Cash In Hand", StringComparison.OrdinalIgnoreCase) ||
+                       name.Equals("Hand Cash", StringComparison.OrdinalIgnoreCase);
+            }
+
+            // 3. Active configured collection types (excluding duplicate cash variants)
             if (activeTypes != null && activeTypes.Any())
             {
-                foreach (var t in activeTypes.Where(t => !t.Code.Equals("CASH_DEPOSIT", StringComparison.OrdinalIgnoreCase) && !t.DisplayName.Equals("Cash", StringComparison.OrdinalIgnoreCase)))
+                foreach (var t in activeTypes.Where(t => !IsCashVariant(t)))
                 {
                     var match = breakdown.FirstOrDefault(c => string.Equals(c.Category, t.DisplayName, StringComparison.OrdinalIgnoreCase) ||
                                                               string.Equals(c.Category, t.Code, StringComparison.OrdinalIgnoreCase) ||
@@ -320,6 +387,10 @@ public partial class OwnerDashboardViewModel : ObservableObject, IDisposable
                     handledCategories.Add(t.Code);
 
                     string cat = t.DisplayName;
+                    if (t.Code == "CARD" && (cat == "Credit / Debit Card" || cat == "Credit Card" || cat == "Card"))
+                    {
+                        cat = "PineLab Card";
+                    }
                     bool isPetro = cat.Contains("Petro", StringComparison.OrdinalIgnoreCase);
                     bool isCard = cat.Contains("Card", StringComparison.OrdinalIgnoreCase) || cat.Contains("PineLab", StringComparison.OrdinalIgnoreCase);
                     bool isPhonePe = cat.Contains("PhonePe", StringComparison.OrdinalIgnoreCase);
@@ -328,7 +399,7 @@ public partial class OwnerDashboardViewModel : ObservableObject, IDisposable
                                    isPetro ? "#6A1B9A" :
                                    isCard ? "#0288D1" : "#1565C0";
 
-                    PaymentBreakdown.Add(new DayCollectionSummaryRow
+                    newPaymentRows.Add(new DayCollectionSummaryRow
                     {
                         CollectionMode = cat,
                         Amount = amt,
@@ -338,16 +409,16 @@ public partial class OwnerDashboardViewModel : ObservableObject, IDisposable
             }
             else
             {
-                PaymentBreakdown.Add(new DayCollectionSummaryRow { CollectionMode = "PhonePe", Amount = TodayTotalPhonePe, DisplayColor = "#5E35B1" });
-                PaymentBreakdown.Add(new DayCollectionSummaryRow { CollectionMode = "PineLabs Card", Amount = TodayTotalCreditCard, DisplayColor = "#0288D1" });
-                PaymentBreakdown.Add(new DayCollectionSummaryRow { CollectionMode = "PetroCard", Amount = TodayTotalPetroCard, DisplayColor = "#6A1B9A" });
+                newPaymentRows.Add(new DayCollectionSummaryRow { CollectionMode = "PhonePe", Amount = TodayTotalPhonePe, DisplayColor = "#5E35B1" });
+                newPaymentRows.Add(new DayCollectionSummaryRow { CollectionMode = "PineLabs Card", Amount = TodayTotalCreditCard, DisplayColor = "#0288D1" });
+                newPaymentRows.Add(new DayCollectionSummaryRow { CollectionMode = "PetroCard", Amount = TodayTotalPetroCard, DisplayColor = "#6A1B9A" });
                 handledCategories.Add("PhonePe");
                 handledCategories.Add("PineLabs Card");
                 handledCategories.Add("PetroCard");
             }
 
             // 4. Debtors (Credit)
-            PaymentBreakdown.Add(new DayCollectionSummaryRow
+            newPaymentRows.Add(new DayCollectionSummaryRow
             {
                 CollectionMode = "Debtors (Credit)",
                 Amount = dayReport.CreditorsTotal,
@@ -362,6 +433,10 @@ public partial class OwnerDashboardViewModel : ObservableObject, IDisposable
             foreach (var c in breakdown)
             {
                 if (handledCategories.Contains(c.Category) ||
+                    c.Category.Contains("Cash Deposit", StringComparison.OrdinalIgnoreCase) ||
+                    c.Category.Contains("Bank Cash", StringComparison.OrdinalIgnoreCase) ||
+                    c.Category.Contains("Cash In Hand", StringComparison.OrdinalIgnoreCase) ||
+                    c.Category.Contains("Hand Cash", StringComparison.OrdinalIgnoreCase) ||
                     c.Category.Contains("Testing", StringComparison.OrdinalIgnoreCase) ||
                     c.Category.Equals("Expenses", StringComparison.OrdinalIgnoreCase) ||
                     c.Category.Contains("DSM Short", StringComparison.OrdinalIgnoreCase) ||
@@ -370,7 +445,7 @@ public partial class OwnerDashboardViewModel : ObservableObject, IDisposable
                     continue;
                 }
 
-                PaymentBreakdown.Add(new DayCollectionSummaryRow
+                newPaymentRows.Add(new DayCollectionSummaryRow
                 {
                     CollectionMode = c.Category,
                     Amount = c.Amount,
@@ -378,10 +453,39 @@ public partial class OwnerDashboardViewModel : ObservableObject, IDisposable
                 });
             }
 
-            TodayHsdLitres = dayReport.FuelSales.FirstOrDefault(f => f.FuelType == "HSD")?.Litres ?? 0;
-            TodayMsILitres = dayReport.FuelSales.FirstOrDefault(f => f.FuelType == "MS-I")?.Litres ?? 0;
-            TodayMsIILitres = dayReport.FuelSales.FirstOrDefault(f => f.FuelType == "MS-II")?.Litres ?? 0;
-            TodayCngLitres = dayReport.FuelSales.FirstOrDefault(f => f.FuelType == "CNG")?.Litres ?? 0;
+            // Perform in-place smooth differential update for Payment Breakdown
+            UpdatePaymentBreakdown(newPaymentRows);
+
+            TodayHsdLitres = dayReport.FuelSales
+                .Where(f => string.Equals(f.FuelType, "HSD", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(f.FuelType, "Diesel", StringComparison.OrdinalIgnoreCase) ||
+                            (f.Description != null && f.Description.Contains("HSD", StringComparison.OrdinalIgnoreCase)))
+                .Sum(f => f.Litres);
+
+            TodayMsILitres = dayReport.FuelSales
+                .Where(f => (string.Equals(f.FuelType, "MS-I", StringComparison.OrdinalIgnoreCase) ||
+                             string.Equals(f.FuelType, "MS", StringComparison.OrdinalIgnoreCase) ||
+                             string.Equals(f.FuelType, "Petrol", StringComparison.OrdinalIgnoreCase) ||
+                             (f.Description != null && (f.Description.Contains("MS", StringComparison.OrdinalIgnoreCase) || f.Description.Contains("Petrol", StringComparison.OrdinalIgnoreCase))))
+                            && !string.Equals(f.FuelType, "SPEED", StringComparison.OrdinalIgnoreCase)
+                            && !(f.Description != null && (f.Description.Contains("SPEED", StringComparison.OrdinalIgnoreCase) || f.Description.Contains("20KL II", StringComparison.OrdinalIgnoreCase) || f.Description.Contains("XP", StringComparison.OrdinalIgnoreCase) || f.Description.Contains("Power", StringComparison.OrdinalIgnoreCase))))
+                .Sum(f => f.Litres);
+
+            TodayMsIILitres = dayReport.FuelSales
+                .Where(f => string.Equals(f.FuelType, "SPEED", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(f.FuelType, "MS-II", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(f.FuelType, "Power", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(f.FuelType, "XP", StringComparison.OrdinalIgnoreCase) ||
+                            (f.Description != null && (f.Description.Contains("SPEED", StringComparison.OrdinalIgnoreCase) ||
+                                                       f.Description.Contains("XP", StringComparison.OrdinalIgnoreCase) ||
+                                                       f.Description.Contains("Power", StringComparison.OrdinalIgnoreCase) ||
+                                                       f.Description.Contains("20KL II", StringComparison.OrdinalIgnoreCase))))
+                .Sum(f => f.Litres);
+
+            TodayCngLitres = dayReport.FuelSales
+                .Where(f => string.Equals(f.FuelType, "CNG", StringComparison.OrdinalIgnoreCase) ||
+                            (f.Description != null && f.Description.Contains("CNG", StringComparison.OrdinalIgnoreCase)))
+                .Sum(f => f.Litres);
             TodayTotalLitres = dayReport.TotalFuelLitres;
             TodayTotalMismatch = dayReport.Difference;
             OilDefSalesTotal = dayReport.OilDefSalesTotal;
@@ -401,7 +505,110 @@ public partial class OwnerDashboardViewModel : ObservableObject, IDisposable
         {
             Serilog.Log.Error(ex, "Failed to load Owner Dashboard data");
         }
-        finally { IsLoading = false; }
+        finally
+        {
+            if (!isBackgroundRefresh)
+            {
+                IsLoading = false;
+            }
+        }
+    }
+
+    private void UpdateFuelSalesBreakdown(List<FuelSaleRowDto> newSales)
+    {
+        for (int i = 0; i < newSales.Count; i++)
+        {
+            var newItem = newSales[i];
+            var existing = FuelSalesBreakdown.FirstOrDefault(f => string.Equals(f.Description, newItem.Description, StringComparison.OrdinalIgnoreCase));
+            if (existing != null)
+            {
+                if (Math.Abs(existing.Litres - newItem.Litres) > 0.001) existing.Litres = newItem.Litres;
+                if (Math.Abs(existing.Rate - newItem.Rate) > 0.001) existing.Rate = newItem.Rate;
+                if (Math.Abs(existing.Amount - newItem.Amount) > 0.001) existing.Amount = newItem.Amount;
+                if (existing.FuelType != newItem.FuelType) existing.FuelType = newItem.FuelType;
+            }
+            else
+            {
+                FuelSalesBreakdown.Insert(Math.Min(i, FuelSalesBreakdown.Count), new FuelSaleRowDto
+                {
+                    Description = newItem.Description,
+                    FuelType = newItem.FuelType,
+                    Litres = newItem.Litres,
+                    Rate = newItem.Rate,
+                    Amount = newItem.Amount
+                });
+            }
+        }
+
+        for (int i = FuelSalesBreakdown.Count - 1; i >= 0; i--)
+        {
+            var current = FuelSalesBreakdown[i];
+            if (!newSales.Any(n => string.Equals(n.Description, current.Description, StringComparison.OrdinalIgnoreCase)))
+            {
+                FuelSalesBreakdown.RemoveAt(i);
+            }
+        }
+    }
+
+    private void UpdatePaymentBreakdown(List<DayCollectionSummaryRow> newItems)
+    {
+        for (int i = 0; i < newItems.Count; i++)
+        {
+            var newItem = newItems[i];
+            var existing = PaymentBreakdown.FirstOrDefault(p => string.Equals(p.CollectionMode, newItem.CollectionMode, StringComparison.OrdinalIgnoreCase));
+            if (existing != null)
+            {
+                if (Math.Abs(existing.Amount - newItem.Amount) > 0.001) existing.Amount = newItem.Amount;
+                if (existing.DisplayColor != newItem.DisplayColor) existing.DisplayColor = newItem.DisplayColor;
+            }
+            else
+            {
+                PaymentBreakdown.Insert(Math.Min(i, PaymentBreakdown.Count), new DayCollectionSummaryRow
+                {
+                    CollectionMode = newItem.CollectionMode,
+                    Amount = newItem.Amount,
+                    DisplayColor = newItem.DisplayColor
+                });
+            }
+        }
+
+        for (int i = PaymentBreakdown.Count - 1; i >= 0; i--)
+        {
+            var current = PaymentBreakdown[i];
+            if (!newItems.Any(n => string.Equals(n.CollectionMode, current.CollectionMode, StringComparison.OrdinalIgnoreCase)))
+            {
+                PaymentBreakdown.RemoveAt(i);
+            }
+        }
+    }
+
+    private void UpdateDsmShiftTotals(List<DsmShiftTotalDto> newTotals)
+    {
+        for (int i = 0; i < newTotals.Count; i++)
+        {
+            var newItem = newTotals[i];
+            if (i < DsmShiftTotals.Count)
+            {
+                var existing = DsmShiftTotals[i];
+                if (existing.DsmName != newItem.DsmName ||
+                    existing.SessionsCount != newItem.SessionsCount ||
+                    Math.Abs(existing.GrossSales - newItem.GrossSales) > 0.01 ||
+                    Math.Abs(existing.TotalCollection - newItem.TotalCollection) > 0.01 ||
+                    Math.Abs(existing.Mismatch - newItem.Mismatch) > 0.01)
+                {
+                    DsmShiftTotals[i] = newItem;
+                }
+            }
+            else
+            {
+                DsmShiftTotals.Add(newItem);
+            }
+        }
+
+        while (DsmShiftTotals.Count > newTotals.Count)
+        {
+            DsmShiftTotals.RemoveAt(DsmShiftTotals.Count - 1);
+        }
     }
 
     public void UpdateSyncDisplay(DateTime? lastSync, int pending)
@@ -444,44 +651,61 @@ public partial class OwnerDashboardViewModel : ObservableObject, IDisposable
     {
         try
         {
-            var summaryCards = new List<GenericGridPrintCard>
+            string period = StartDate.Date == EndDate.Date 
+                ? StartDate.ToString("dd-MMM-yyyy") 
+                : $"{StartDate:dd-MMM-yyyy} to {EndDate:dd-MMM-yyyy}";
+
+            var payload = new
             {
-                new() { Label = "Total Gross Sales", Value = "₹" + TodayTotalSale.ToString("N2"), Highlight = true },
-                new() { Label = "Volume Sold", Value = TodayTotalLitres.ToString("N2") + " L", Highlight = false },
-                new() { Label = "Net Collection", Value = "₹" + TodayTotalCollection.ToString("N2"), Highlight = false },
-                new() { Label = "Total Expenses", Value = "₹" + TodayTotalExpenses.ToString("N2"), Highlight = false },
-                new() { Label = "Net Mismatch", Value = "₹" + TodayTotalMismatch.ToString("N2"), Highlight = false }
+                statementPeriod = period,
+                presetLabel = SelectedPreset,
+                generatedOn = DateTime.Now.ToString("dd-MMM-yyyy hh:mm tt"),
+                kpis = new
+                {
+                    grossSales = TodayTotalSale,
+                    totalVolume = TodayTotalLitres,
+                    netCollection = TodayTotalCollection,
+                    expenses = TodayTotalExpenses,
+                    mismatch = TodayTotalMismatch,
+                    oilDefSales = OilDefSalesTotal,
+                    oilDefProfit = OilDefProfitTotal,
+                    netProfit = RangeNetProfit,
+                    debtorsOutstanding = OutstandingDebtors,
+                    dsmEntries = TotalDsmEntries
+                },
+                fuelSales = FuelSalesBreakdown.Select(f => new
+                {
+                    description = f.Description,
+                    fuelType = f.FuelType,
+                    litres = f.Litres,
+                    rate = f.Rate,
+                    amount = f.Amount,
+                    testingLitres = 0.0
+                }).ToList(),
+                paymentBreakdown = PaymentBreakdown.Select(p => new
+                {
+                    collectionMode = p.CollectionMode,
+                    category = p.CollectionMode.Contains("Cash") ? "Cash Mode" : (p.CollectionMode.Contains("Credit") || p.CollectionMode.Contains("Debtor") ? "Credit Mode" : "Digital Mode"),
+                    amount = p.Amount
+                }).ToList(),
+                dsmShiftTotals = DsmShiftTotals.Select(d => new
+                {
+                    dsmName = d.DsmName,
+                    shiftCount = d.SessionsCount,
+                    assignedPumps = d.AssignedPumpsDisplay,
+                    grossSales = d.GrossSales,
+                    digitalAmount = d.DigitalTotal,
+                    bankCash = d.CashDeposit,
+                    cashInHand = d.CashInHand,
+                    debtors = d.Debit,
+                    expenses = d.Expenses,
+                    testingLitres = d.Testing,
+                    totalCollection = d.TotalCollection,
+                    mismatch = d.Mismatch
+                }).ToList()
             };
 
-            var headers = new List<string> { "Category / Section", "Item Name / Description", "Value" };
-            var rows = new List<List<string>>
-            {
-                new() { "Fuel Sales Volume", "MS1 / Diesel (HSD)", TodayHsdLitres.ToString("N2") + " L" },
-                new() { "Fuel Sales Volume", "MS-I (Petrol)", TodayMsILitres.ToString("N2") + " L" },
-                new() { "Fuel Sales Volume", "MS-II (Power Petrol)", TodayMsIILitres.ToString("N2") + " L" },
-                new() { "Fuel Sales Volume", "CNG", TodayCngLitres.ToString("N2") + " L" },
-                new() { "Payment Mode Breakdown", "Cash", "₹" + TodayTotalCash.ToString("N2") },
-                new() { "Payment Mode Breakdown", "PhonePe", "₹" + TodayTotalPhonePe.ToString("N2") },
-                new() { "Payment Mode Breakdown", "PineLabs Card", "₹" + TodayTotalCreditCard.ToString("N2") },
-                new() { "Payment Mode Breakdown", "Petro Card", "₹" + TodayTotalPetroCard.ToString("N2") },
-                new() { "Payment Mode Breakdown", "Debit (Debtors)", "₹" + TodayTotalDebit.ToString("N2") }
-            };
-
-            string subtitle = StartDate.Date == EndDate.Date 
-                ? $"Statement for Date: {StartDate:dd-MMM-yyyy}" 
-                : $"Statement for Date Range: {StartDate:dd-MMM-yyyy} to {EndDate:dd-MMM-yyyy}";
-
-            var printData = new GenericGridPrintData
-            {
-                Title = "Owner Daily Dashboard Summary",
-                Subtitle = subtitle,
-                SummaryCards = summaryCards,
-                Headers = headers,
-                Rows = rows,
-                ShowSignatures = true
-            };
-
-            _printService.PrintGenericGrid(printData);
+            _printService.PrintOwnerDashboard(payload);
         }
         catch (Exception ex)
         {
@@ -502,22 +726,52 @@ public partial class OwnerDashboardViewModel : ObservableObject, IDisposable
                 new() { Label = "Volume Sold", Value = TodayTotalLitres.ToString("N2") + " L", Highlight = false },
                 new() { Label = "Net Collection", Value = "₹" + TodayTotalCollection.ToString("N2"), Highlight = false },
                 new() { Label = "Total Expenses", Value = "₹" + TodayTotalExpenses.ToString("N2"), Highlight = false },
-                new() { Label = "Net Mismatch", Value = "₹" + TodayTotalMismatch.ToString("N2"), Highlight = false }
+                new() { Label = "Net Mismatch", Value = "₹" + TodayTotalMismatch.ToString("N2"), Highlight = false },
+                new() { Label = "Oil & DEF Sales", Value = "₹" + OilDefSalesTotal.ToString("N2"), Highlight = false },
+                new() { Label = "Oil & DEF Profit", Value = "₹" + OilDefProfitTotal.ToString("N2"), Highlight = false },
+                new() { Label = "Net Profit", Value = "₹" + RangeNetProfit.ToString("N2"), Highlight = true },
+                new() { Label = "Debtors Outstanding", Value = "₹" + OutstandingDebtors.ToString("N2"), Highlight = false },
+                new() { Label = "DSM Entries", Value = TotalDsmEntries.ToString(), Highlight = false }
             };
 
-            var headers = new List<string> { "Category / Section", "Item Name / Description", "Value" };
-            var rows = new List<List<string>>
+            var headers = new List<string> { "Section", "Item / Name", "Details", "Amount / Value" };
+            var rows = new List<List<string>>();
+
+            // 1. Fuel Sales Breakdown
+            foreach (var fs in FuelSalesBreakdown)
             {
-                new() { "Fuel Sales Volume", "MS1 / Diesel (HSD)", TodayHsdLitres.ToString("N2") + " L" },
-                new() { "Fuel Sales Volume", "MS-I (Petrol)", TodayMsILitres.ToString("N2") + " L" },
-                new() { "Fuel Sales Volume", "MS-II (Power Petrol)", TodayMsIILitres.ToString("N2") + " L" },
-                new() { "Fuel Sales Volume", "CNG", TodayCngLitres.ToString("N2") + " L" },
-                new() { "Payment Mode Breakdown", "Cash", "₹" + TodayTotalCash.ToString("N2") },
-                new() { "Payment Mode Breakdown", "PhonePe", "₹" + TodayTotalPhonePe.ToString("N2") },
-                new() { "Payment Mode Breakdown", "PineLabs Card", "₹" + TodayTotalCreditCard.ToString("N2") },
-                new() { "Payment Mode Breakdown", "Petro Card", "₹" + TodayTotalPetroCard.ToString("N2") },
-                new() { "Payment Mode Breakdown", "Debit (Debtors)", "₹" + TodayTotalDebit.ToString("N2") }
-            };
+                rows.Add(new List<string>
+                {
+                    "1. Fuel Sales Breakdown",
+                    fs.Description,
+                    $"{fs.Litres:N2} L @ ₹{fs.Rate:N2}/L",
+                    $"₹{fs.Amount:N2}"
+                });
+            }
+
+            // 2. Payment Modes
+            foreach (var pb in PaymentBreakdown)
+            {
+                rows.Add(new List<string>
+                {
+                    "2. Payment Modes",
+                    pb.CollectionMode,
+                    pb.CollectionMode.Contains("Cash") ? "Cash Mode" : (pb.CollectionMode.Contains("Credit") || pb.CollectionMode.Contains("Debtor") ? "Credit Mode" : "Digital Mode"),
+                    $"₹{pb.Amount:N2}"
+                });
+            }
+
+            // 3. DSM Shift Totals
+            foreach (var st in DsmShiftTotals)
+            {
+                rows.Add(new List<string>
+                {
+                    "3. DSM Shift Summary",
+                    st.DsmName,
+                    $"Shifts: {st.SessionsCount}, Pumps: {st.AssignedPumpsDisplay}",
+                    $"Gross: ₹{st.GrossSales:N2} | Coll: ₹{st.TotalCollection:N2} | Mis: ₹{st.Mismatch:N2}"
+                });
+            }
 
             string subtitle = StartDate.Date == EndDate.Date 
                 ? $"Statement for Date: {StartDate:dd-MMM-yyyy}" 
@@ -525,7 +779,7 @@ public partial class OwnerDashboardViewModel : ObservableObject, IDisposable
 
             var printData = new GenericGridPrintData
             {
-                Title = "Owner Daily Dashboard Summary",
+                Title = "Owner Operations & Financial Dashboard Summary",
                 Subtitle = subtitle,
                 SummaryCards = summaryCards,
                 Headers = headers,

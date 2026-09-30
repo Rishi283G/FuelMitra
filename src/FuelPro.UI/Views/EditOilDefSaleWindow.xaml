@@ -1,0 +1,52 @@
+<Window x:Class="FuelPro.UI.Views.EditOilDefSaleWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+        Title="Edit Sales Transaction"
+        Width="480" Height="420"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="{DynamicResource MaterialDesign.Brush.Background}"
+        TextElement.Foreground="{DynamicResource MaterialDesign.Brush.Foreground}"
+        FontFamily="{materialDesign:MaterialDesignFont}">
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,16">
+            <materialDesign:PackIcon Kind="CashRegister" Width="26" Height="26" Foreground="#2E7D32" VerticalAlignment="Center"/>
+            <TextBlock Text="Edit Sales Transaction" FontSize="18" FontWeight="Bold" Margin="10,0,0,0" VerticalAlignment="Center"/>
+        </StackPanel>
+
+        <!-- Form Fields -->
+        <StackPanel Grid.Row="1" VerticalAlignment="Top">
+            <TextBlock x:Name="ProductLabel" Text="Product: Castrol Oil" FontSize="14" FontWeight="SemiBold" Foreground="#00796B" Margin="0,0,0,14"/>
+
+            <DatePicker x:Name="SaleDatePicker" materialDesign:HintAssist.Hint="Sale Date"
+                        Margin="0,0,0,14" Height="48"
+                        Style="{StaticResource MaterialDesignOutlinedDatePicker}"/>
+
+            <TextBox x:Name="QuantityTextBox" materialDesign:HintAssist.Hint="Quantity Sold"
+                     Margin="0,0,0,14" Height="48"
+                     TextChanged="OnValuesChanged"
+                     Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+
+            <TextBox x:Name="RateTextBox" materialDesign:HintAssist.Hint="Sale Rate (₹ per unit)"
+                     Margin="0,0,0,14" Height="48"
+                     TextChanged="OnValuesChanged"
+                     Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+
+            <TextBlock x:Name="TotalAmountLabel" Text="Total Amount: ₹0.00" FontSize="14" FontWeight="Bold" Foreground="#2E7D32" Margin="4,0,0,0"/>
+        </StackPanel>
+
+        <!-- Action Buttons -->
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button Content="Cancel" Click="Cancel_Click" Style="{StaticResource MaterialDesignOutlinedButton}" Margin="0,0,8,0"/>
+            <Button Content="Save Changes" Click="Save_Click" Style="{StaticResource MaterialDesignRaisedButton}" Background="#2E7D32" BorderBrush="#2E7D32"/>
+        </StackPanel>
+    </Grid>
+</Window>

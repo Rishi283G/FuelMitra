@@ -18,6 +18,11 @@ public class ShiftReportDto
     public double OtherCashTotal { get; set; }
     public double GrandTotalSaleAmount { get; set; }
 
+    // DSR Presentation (Actual Customer Sales = Gross Meter Sales - Correctly Matched Testing)
+    public List<FuelSaleRowDto> DsrFuelSales { get; set; } = new();
+    public double DsrTotalFuelLitres { get; set; }
+    public double DsrTotalFuelAmount { get; set; }
+
     // Tank Summary (AGS)
     public List<NozzleGroupDto> TankSummary { get; set; } = new();
     public List<NozzleGroupDto> NozzleGroups { get; set; } = new();
@@ -88,6 +93,11 @@ public class DayReportDto
     public double OtherCashTotal { get; set; }
     public double GrandTotalSaleAmount { get; set; }
 
+    // DSR Presentation (Actual Customer Sales = Gross Meter Sales - Correctly Matched Testing)
+    public List<FuelSaleRowDto> DsrFuelSales { get; set; } = new();
+    public double DsrTotalFuelLitres { get; set; }
+    public double DsrTotalFuelAmount { get; set; }
+
     // Tank Summary (AGS)
     public List<NozzleGroupDto> TankSummary { get; set; } = new();
 
@@ -148,6 +158,7 @@ public class CollectionCategoryDto
     public double BaseAmount { get; set; }
     public double RecoveryAmount { get; set; }
     public double Volume { get; set; }
+    public bool IsInformational { get; set; }
 
     public string DescriptionWithBreakdown =>
         Volume > 0
@@ -164,13 +175,47 @@ public class RepaymentBreakdownDto
     public bool IsReconcilable { get; set; }
 }
 
-public class FuelSaleRowDto
+public class FuelSaleRowDto : System.ComponentModel.INotifyPropertyChanged
 {
-    public string Description { get; set; } = string.Empty;
-    public string FuelType { get; set; } = string.Empty;
-    public double Litres { get; set; }
-    public double Rate { get; set; }
-    public double Amount { get; set; }
+    private string _description = string.Empty;
+    private string _fuelType = string.Empty;
+    private double _litres;
+    private double _rate;
+    private double _amount;
+
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+
+    public string Description
+    {
+        get => _description;
+        set { if (_description != value) { _description = value; OnPropertyChanged(nameof(Description)); } }
+    }
+
+    public string FuelType
+    {
+        get => _fuelType;
+        set { if (_fuelType != value) { _fuelType = value; OnPropertyChanged(nameof(FuelType)); } }
+    }
+
+    public double Litres
+    {
+        get => _litres;
+        set { if (Math.Abs(_litres - value) > 0.0001) { _litres = value; OnPropertyChanged(nameof(Litres)); } }
+    }
+
+    public double Rate
+    {
+        get => _rate;
+        set { if (Math.Abs(_rate - value) > 0.0001) { _rate = value; OnPropertyChanged(nameof(Rate)); } }
+    }
+
+    public double Amount
+    {
+        get => _amount;
+        set { if (Math.Abs(_amount - value) > 0.0001) { _amount = value; OnPropertyChanged(nameof(Amount)); } }
+    }
+
+    protected void OnPropertyChanged(string name) => PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(name));
 }
 
 public class OilDefSaleDisplayRow

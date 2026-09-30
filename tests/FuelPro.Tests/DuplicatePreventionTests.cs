@@ -117,9 +117,12 @@ public class DuplicatePreventionTests : IDisposable
         using var scope = _serviceProvider.CreateScope();
         var dsmService = scope.ServiceProvider.GetRequiredService<DsmEntryService>();
 
+        int nozzleNumber = PumpConfiguration.GetNozzlesForPump(pumpId, date).FirstOrDefault();
+        if (nozzleNumber == 0) nozzleNumber = 1;
+
         var nozzleReadings = new List<NozzleReading>
         {
-            new() { NozzleNumber = 1, FuelType = "MS-I", OpeningReading = 1000, ClosingReading = 1100, Rate = 100 }
+            new() { NozzleNumber = nozzleNumber, FuelType = "MS-I", OpeningReading = 1000, ClosingReading = 1100, Rate = 100 }
         };
 
         var payment = new PaymentCollection

@@ -50,7 +50,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const { data, error } = await supabase
         .from('DsmUsers')
-        .select('SyncGuid, EmployeeCode, FullName, MobileNumber, station_id, DsmPumpAssignments(PumpId, ConnectedPumpId, ShiftType, AssignedDate, IsActive)')
+        .select('SyncGuid, EmployeeCode, FullName, MobileNumber, station_id, DsmPumpAssignments(PumpId, ConnectedPumpId, ConnectedPumpIdsJson, ShiftType, AssignedDate, IsActive)')
         .eq('AuthUserId', authUserId)
         .eq('IsActive', true)
         .single();
@@ -64,6 +64,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         ? activeAssignments.sort((a: any, b: any) => new Date(b.AssignedDate).getTime() - new Date(a.AssignedDate).getTime())[0]
         : null;
 
+      let connectedPumps: number[] = [];
+      if (activeAssignment?.ConnectedPumpIdsJson) {
+        try {
+          const parsed = typeof activeAssignment.ConnectedPumpIdsJson === 'string'
+            ? JSON.parse(activeAssignment.ConnectedPumpIdsJson)
+            : activeAssignment.ConnectedPumpIdsJson;
+          if (Array.isArray(parsed)) {
+            connectedPumps = parsed.filter((id: any) => typeof id === 'number' && id > 0 && id !== activeAssignment.PumpId);
+          }
+        } catch {}
+      }
+      if (connectedPumps.length === 0 && activeAssignment?.ConnectedPumpId) {
+        if (activeAssignment.ConnectedPumpId !== activeAssignment.PumpId) {
+          connectedPumps = [activeAssignment.ConnectedPumpId];
+        }
+      }
+
       return {
         id: data.SyncGuid,
         AuthUserId: authUserId,
@@ -72,7 +89,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         MobileNumber: data.MobileNumber,
         StationId: data.station_id,
         AssignedPump: activeAssignment ? activeAssignment.PumpId : null,
-        ConnectedPump: activeAssignment ? activeAssignment.ConnectedPumpId : null,
+        ConnectedPump: connectedPumps.length > 0 ? connectedPumps[0] : (activeAssignment ? activeAssignment.ConnectedPumpId : null),
+        ConnectedPumps: connectedPumps,
         AssignedShift: activeAssignment ? activeAssignment.ShiftType : null,
         AssignedDate: activeAssignment ? activeAssignment.AssignedDate : null,
       };

@@ -175,6 +175,7 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
 
         DsmEntryService.DsmEntryChanged += OnDataChanged;
         DsmEntryService.DebtorChanged += OnDataChanged;
+        DsmEntryService.StationConfigurationChanged += OnDataChanged;
     }
 
     private async Task UpdateCollectionDisplayNamesAsync()
@@ -308,17 +309,27 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
         {
             DsmPrintRows = new List<(string Shift, DsmSummaryRowDto Row)>();
 
-            var entriesResult = await _dsmRepo.GetEntriesForDateRangeAsync(StartDate.Date, EndDate.Date.AddDays(1));
-            var allEntries = entriesResult.Success && entriesResult.Data != null ? entriesResult.Data : new List<DsmEntry>();
-            _allEntries = allEntries;
+            // Run independent queries in parallel
+            var entriesTask = _dsmRepo.GetEntriesForDateRangeAsync(StartDate.Date, EndDate.Date.AddDays(1));
+            var shiftsTask = _shiftRepo.GetShiftsByDateRangeAsync(StartDate.Date, EndDate.Date.AddDays(1));
+            var repaymentsTask = _repaymentRepo.GetByDateRangeAsync(StartDate.Date, EndDate.Date.AddDays(1));
+            var pdRepaymentsTask = _personalDebtorRepo.GetRepaymentsByDateRangeAsync(StartDate.Date, EndDate.Date.AddDays(1));
+            var settingsTask = _settingsRepo.GetSettingsAsync();
 
-            var shiftsResult = await _shiftRepo.GetShiftsByDateRangeAsync(StartDate.Date, EndDate.Date.AddDays(1));
+            var shiftsResult = await shiftsTask;
             var shifts = shiftsResult.Success && shiftsResult.Data != null ? shiftsResult.Data : new List<Shift>();
-            
             var todayShifts = shifts.Where(s => s.ShiftDate.Date >= StartDate.Date && s.ShiftDate.Date <= EndDate.Date).ToList();
             var todayShiftIds = todayShifts.Select(s => s.ShiftId).ToList();
 
-            var expResult = await _expenseRepo.GetExpensesByShiftIdsAsync(todayShiftIds);
+            var expTask = _expenseRepo.GetExpensesByShiftIdsAsync(todayShiftIds);
+
+            await Task.WhenAll(entriesTask, expTask, repaymentsTask, pdRepaymentsTask, settingsTask);
+
+            var entriesResult = await entriesTask;
+            var allEntries = entriesResult.Success && entriesResult.Data != null ? entriesResult.Data : new List<DsmEntry>();
+            _allEntries = allEntries;
+
+            var expResult = await expTask;
             var allExpenses = expResult.Success && expResult.Data != null ? expResult.Data : new List<Expense>();
 
             if (allEntries.Where(e => e.Shift != null && e.Shift.ShiftDate.Date >= StartDate.Date && e.Shift.ShiftDate.Date <= EndDate.Date).Count() == 0)
@@ -330,23 +341,51 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
 
             // Load repayments for today + 1 day
             DebtorRepayments.Clear();
-            var repaymentsRes = await _repaymentRepo.GetByDateRangeAsync(StartDate.Date, EndDate.Date.AddDays(1));
-            var repayments = repaymentsRes.Success && repaymentsRes.Data != null ? repaymentsRes.Data : new List<CreditorRepayment>();
+            var repaymentsRes = await repaymentsTask;
+            var repayments = repaymentsRes.Success && repaymentsRes.Data != null 
+                ? repaymentsRes.Data.Where(r => !r.CreditorName.Contains("DSM Loss", StringComparison.OrdinalIgnoreCase)).ToList() 
+                : new List<CreditorRepayment>();
 
-            // Personal Debtor repayments are handled under DSM Loss section
-            
+            var pdRepaymentsRes = await pdRepaymentsTask;
+            var pdRepayments = pdRepaymentsRes.Success && pdRepaymentsRes.Data != null 
+                ? pdRepaymentsRes.Data 
+                : new List<DsmPersonalDebtorRepayment>();
+
+            foreach (var dsmRep in pdRepayments)
+            {
+                var dsmName = dsmRep.DsmPersonalDebtor?.DsmName ?? "DSM";
+                var parts = new List<string>();
+                if (!string.IsNullOrWhiteSpace(dsmRep.CardTid)) parts.Add($"TID: {dsmRep.CardTid}");
+                if (!string.IsNullOrWhiteSpace(dsmRep.CardBatch)) parts.Add($"Batch: {dsmRep.CardBatch}");
+                string refDisplay = string.Join(", ", parts);
+
+                string? shiftType = dsmRep.Shift?.ShiftType;
+                repayments.Add(new CreditorRepayment
+                {
+                    CreditorRepaymentId = dsmRep.Id,
+                    CreditorName = $"DSM Loss ({dsmName})",
+                    RepaymentDate = dsmRep.Date,
+                    Amount = dsmRep.Amount,
+                    PaymentMode = dsmRep.PaymentMethod ?? "Cash",
+                    CardTid = dsmRep.CardTid ?? "",
+                    CardBatch = dsmRep.CardBatch ?? "",
+                    ShiftNumber = shiftType
+                });
+            }
+
             // Only add today's repayments to the UI list of debtor repayments on-screen (tomorrow's Shift A repayments are silently aggregated into the report)
             foreach (var r in repayments.Where(x => x.RepaymentDate.Date >= StartDate.Date && x.RepaymentDate.Date <= EndDate.Date))
             {
                 DebtorRepayments.Add(r);
             }
 
-            var settings = await _settingsRepo.GetSettingsAsync();
-            double defaultHsd = settings.Success ? settings.Data!.HsdRate : 90.35;
-            double defaultMsI = settings.Success ? settings.Data!.MsIRate : 103.81;
-            double defaultMsII = settings.Success ? settings.Data!.MsIIRate : 103.81;
-            double defaultCng = settings.Success ? settings.Data!.CngRate : 85.0;
-            string stationName = settings.Success ? settings.Data!.PumpStationName : "PyroSync";
+            var settingsRes = await settingsTask;
+            var settings = settingsRes.Success && settingsRes.Data != null ? settingsRes.Data : null;
+            double defaultHsd = settings != null ? settings.HsdRate : 90.35;
+            double defaultMsI = settings != null ? settings.MsIRate : 103.81;
+            double defaultMsII = settings != null ? settings.MsIIRate : 103.81;
+            double defaultCng = settings != null ? settings.CngRate : 85.0;
+            string stationName = settings != null && !string.IsNullOrWhiteSpace(settings.PumpStationName) ? settings.PumpStationName : "Mitali Service Station";
 
             var report = _reportService.CalculateDayReport(
                 StartDate,
@@ -371,19 +410,17 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
 
             CurrentReport = report;
 
-            var settingsRes = await _settingsRepo.GetSettingsAsync();
-            if (settingsRes.Success && settingsRes.Data != null)
+            if (settings != null)
             {
-                var set = settingsRes.Data;
                 ManagerOptions.Clear();
-                if (!string.IsNullOrWhiteSpace(set.Shift1Manager)) ManagerOptions.Add(set.Shift1Manager.Trim());
-                if (!string.IsNullOrWhiteSpace(set.Shift2Manager)) ManagerOptions.Add(set.Shift2Manager.Trim());
-                if (!string.IsNullOrWhiteSpace(set.Shift3Manager)) ManagerOptions.Add(set.Shift3Manager.Trim());
+                if (!string.IsNullOrWhiteSpace(settings.Shift1Manager)) ManagerOptions.Add(settings.Shift1Manager.Trim());
+                if (!string.IsNullOrWhiteSpace(settings.Shift2Manager)) ManagerOptions.Add(settings.Shift2Manager.Trim());
+                if (!string.IsNullOrWhiteSpace(settings.Shift3Manager)) ManagerOptions.Add(settings.Shift3Manager.Trim());
 
                 if (string.IsNullOrWhiteSpace(SelectedShift1Manager))
-                    SelectedShift1Manager = set.Shift1Manager ?? "";
+                    SelectedShift1Manager = settings.Shift1Manager ?? "";
                 if (string.IsNullOrWhiteSpace(SelectedShift2Manager))
-                    SelectedShift2Manager = set.Shift2Manager ?? "";
+                    SelectedShift2Manager = settings.Shift2Manager ?? "";
             }
             if (CurrentReport != null)
             {
@@ -394,13 +431,42 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
             // 1. Calculate Nozzle-wise Sale
             CalculateNozzleWiseSale(allEntries);
 
-            TotalDayFuelSaleAmount = report.TotalFuelAmount;
-            TotalDayLitres = report.TotalFuelLitres;
-            TotalHsdLitres = report.FuelSales.Where(f => f.FuelType == "HSD").Sum(f => f.Litres);
-            TotalMsILitres = report.FuelSales.Where(f => f.FuelType == "MS-I").Sum(f => f.Litres);
-            TotalMsIILitres = report.FuelSales.Where(f => f.FuelType == "MS-II").Sum(f => f.Litres);
+            var dsrSource = report.DsrFuelSales ?? report.FuelSales;
+
+            TotalDayFuelSaleAmount = report.DsrFuelSales != null ? report.DsrTotalFuelAmount : report.TotalFuelAmount;
+            TotalDayLitres = report.DsrFuelSales != null ? report.DsrTotalFuelLitres : report.TotalFuelLitres;
+            TotalHsdLitres = dsrSource
+                .Where(f => string.Equals(f.FuelType, "HSD", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(f.FuelType, "Diesel", StringComparison.OrdinalIgnoreCase) ||
+                            (f.Description != null && f.Description.Contains("HSD", StringComparison.OrdinalIgnoreCase)))
+                .Sum(f => f.Litres);
+
+            TotalMsILitres = dsrSource
+                .Where(f => (string.Equals(f.FuelType, "MS-I", StringComparison.OrdinalIgnoreCase) ||
+                             string.Equals(f.FuelType, "MS", StringComparison.OrdinalIgnoreCase) ||
+                             string.Equals(f.FuelType, "Petrol", StringComparison.OrdinalIgnoreCase) ||
+                             (f.Description != null && (f.Description.Contains("MS", StringComparison.OrdinalIgnoreCase) || f.Description.Contains("Petrol", StringComparison.OrdinalIgnoreCase))))
+                            && !string.Equals(f.FuelType, "SPEED", StringComparison.OrdinalIgnoreCase)
+                            && !(f.Description != null && (f.Description.Contains("SPEED", StringComparison.OrdinalIgnoreCase) || f.Description.Contains("20KL II", StringComparison.OrdinalIgnoreCase) || f.Description.Contains("XP", StringComparison.OrdinalIgnoreCase) || f.Description.Contains("Power", StringComparison.OrdinalIgnoreCase))))
+                .Sum(f => f.Litres);
+
+            TotalMsIILitres = dsrSource
+                .Where(f => string.Equals(f.FuelType, "SPEED", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(f.FuelType, "MS-II", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(f.FuelType, "Power", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(f.FuelType, "XP", StringComparison.OrdinalIgnoreCase) ||
+                            (f.Description != null && (f.Description.Contains("SPEED", StringComparison.OrdinalIgnoreCase) ||
+                                                       f.Description.Contains("XP", StringComparison.OrdinalIgnoreCase) ||
+                                                       f.Description.Contains("Power", StringComparison.OrdinalIgnoreCase) ||
+                                                       f.Description.Contains("20KL II", StringComparison.OrdinalIgnoreCase))))
+                .Sum(f => f.Litres);
+
             TotalMsLitres = TotalMsILitres + TotalMsIILitres;
-            TotalCngLitres = report.FuelSales.Where(f => f.FuelType == "CNG").Sum(f => f.Litres);
+
+            TotalCngLitres = dsrSource
+                .Where(f => string.Equals(f.FuelType, "CNG", StringComparison.OrdinalIgnoreCase) ||
+                            (f.Description != null && f.Description.Contains("CNG", StringComparison.OrdinalIgnoreCase)))
+                .Sum(f => f.Litres);
 
             // Rebind Creditor and Expense rows
             CreditorRows = new ObservableCollection<DebitRegisterRowDto>(report.CreditorRows);
@@ -427,23 +493,29 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
                     continue;
                 }
 
-                bool isCash = cat.Contains("Cash", StringComparison.OrdinalIgnoreCase);
-                if (isCash)
+                bool isOthers = c.IsInformational || cat.StartsWith("Others", StringComparison.OrdinalIgnoreCase) || cat.Equals("Other", StringComparison.OrdinalIgnoreCase);
+                bool isCash = !isOthers && cat.Contains("Cash", StringComparison.OrdinalIgnoreCase);
+
+                if (!isOthers)
                 {
-                    cashTotal += c.Amount;
-                }
-                else
-                {
-                    digitalTotal += c.Amount;
+                    if (isCash)
+                    {
+                        cashTotal += c.Amount;
+                    }
+                    else
+                    {
+                        digitalTotal += c.Amount;
+                    }
                 }
 
-                string color = isCash ? "#2E7D32" :
+                string color = isOthers ? "#546E7A" :
+                               isCash ? "#2E7D32" :
                                cat.Contains("Card", StringComparison.OrdinalIgnoreCase) ? "#E65100" :
                                cat.Contains("Petro", StringComparison.OrdinalIgnoreCase) ? "#6A1B9A" : "#1565C0";
 
                 CollectionRows.Add(new DayCollectionSummaryRow
                 {
-                    CollectionMode = cat,
+                    CollectionMode = isOthers ? $"{cat} (Record)" : cat,
                     Amount = c.Amount,
                     DisplayColor = color
                 });
@@ -468,7 +540,7 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
             SplitPineLabsCard = CreditCardTotal;
             SplitCredit = CreditorsTotal;
             SplitOther = PetroCardTotal + report.OtherCashTotal;
-            OthersTotal = report.OtherCashTotal;
+            OthersTotal = (report.DsmSummaryTotals?.Others ?? 0) > 0 ? report.DsmSummaryTotals!.Others : report.OtherCashTotal;
 
             TestingSummaryRows.Clear();
             if (report?.TestingSummaryItems != null)
@@ -527,12 +599,14 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
     {
         var nozzleRows = new List<NozzleSummaryRowDto>();
 
-        // Group by Pump and canonical fuel type (from PumpConfiguration, not stored FuelType)
+        // Group by Pump and fuel type
         var allReadings = allEntries.SelectMany(e => e.NozzleReadings.Select(r => new
         {
             e.PumpId,
             Reading = r,
-            CanonicalFuelType = FuelPro.Core.Common.PumpConfiguration.GetFuelTypeDisplayName(e.PumpId, r.NozzleNumber, e.Shift?.ShiftDate ?? SelectedDate)
+            CanonicalFuelType = (!string.IsNullOrWhiteSpace(r.FuelType) && !int.TryParse(r.FuelType, out _))
+                ? r.FuelType
+                : FuelPro.Core.Common.PumpConfiguration.GetFuelTypeDisplayName(e.PumpId, r.NozzleNumber, e.Shift?.ShiftDate ?? SelectedDate)
         })).ToList();
 
         var pumpGroups = allReadings.GroupBy(x => new { x.PumpId, FuelType = x.CanonicalFuelType });
@@ -561,10 +635,10 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
 
         NozzleSaleRows = new ObservableCollection<NozzleSummaryRowDto>(nozzleRows.OrderBy(r => r.PumpId).ThenBy(r => r.FuelType));
         TotalDayLitres = nozzleRows.Sum(r => r.NetSaleLitres);
-        TotalHsdLitres = nozzleRows.Where(r => r.FuelType == "HSD").Sum(r => r.NetSaleLitres);
-        TotalMsILitres = nozzleRows.Where(r => r.FuelType == "MS-I").Sum(r => r.NetSaleLitres);
-        TotalMsIILitres = nozzleRows.Where(r => r.FuelType == "MS-II").Sum(r => r.NetSaleLitres);
-        TotalCngLitres = nozzleRows.Where(r => r.FuelType == "CNG").Sum(r => r.NetSaleLitres);
+        TotalHsdLitres = nozzleRows.Where(r => string.Equals(r.FuelType, "HSD", StringComparison.OrdinalIgnoreCase) || (r.FuelType != null && r.FuelType.Contains("HSD", StringComparison.OrdinalIgnoreCase))).Sum(r => r.NetSaleLitres);
+        TotalMsILitres = nozzleRows.Where(r => string.Equals(r.FuelType, "MS-I", StringComparison.OrdinalIgnoreCase) || (r.FuelType != null && (r.FuelType.Contains("MS-I", StringComparison.OrdinalIgnoreCase) || r.FuelType.Contains("MS- 20KL I", StringComparison.OrdinalIgnoreCase)))).Sum(r => r.NetSaleLitres);
+        TotalMsIILitres = nozzleRows.Where(r => string.Equals(r.FuelType, "MS-II", StringComparison.OrdinalIgnoreCase) || (r.FuelType != null && (r.FuelType.Contains("MS-II", StringComparison.OrdinalIgnoreCase) || r.FuelType.Contains("20KL II", StringComparison.OrdinalIgnoreCase)))).Sum(r => r.NetSaleLitres);
+        TotalCngLitres = nozzleRows.Where(r => string.Equals(r.FuelType, "CNG", StringComparison.OrdinalIgnoreCase) || (r.FuelType != null && r.FuelType.Contains("CNG", StringComparison.OrdinalIgnoreCase))).Sum(r => r.NetSaleLitres);
         TotalMsLitres = TotalMsILitres + TotalMsIILitres;
         TotalDayFuelSaleAmount = nozzleRows.Sum(r => r.Amount);
     }
@@ -655,9 +729,9 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
     }
 }
 
-public class DayCollectionSummaryRow
+public partial class DayCollectionSummaryRow : ObservableObject
 {
-    public string CollectionMode { get; set; } = string.Empty;
-    public double Amount { get; set; }
-    public string DisplayColor { get; set; } = "#1565C0";
+    [ObservableProperty] private string _collectionMode = string.Empty;
+    [ObservableProperty] private double _amount;
+    [ObservableProperty] private string _displayColor = "#1565C0";
 }

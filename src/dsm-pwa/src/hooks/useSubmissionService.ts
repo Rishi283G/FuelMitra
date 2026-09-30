@@ -63,6 +63,7 @@ export function useSubmissionService() {
         cash1Denominations: (draft as any).cash1Denominations || null,
         testingEntries: (draft as any).testingEntries || [],
         connectedPumpId: (draft as any).connectedPumpId || null,
+        connectedPumpIds: (draft as any).connectedPumpIds || ((draft as any).connectedPumpId ? [(draft as any).connectedPumpId] : []),
         oilDefSales: draft.oilDefSales || []
       };
 

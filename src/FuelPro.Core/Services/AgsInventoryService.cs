@@ -202,9 +202,32 @@ public class AgsInventoryService : IAgsInventoryService
                         .ToList();
                 }
 
+                var isCng = string.Equals(tank.FuelType, "CNG", StringComparison.OrdinalIgnoreCase) || 
+                            tank.TankName.Contains("CNG", StringComparison.OrdinalIgnoreCase);
+
+                if (tankNozzles.Count == 0 && isCng)
+                {
+                    tankNozzles = dynamicMappings
+                        .Where(m => (m.FuelType != null && m.FuelType.Contains("CNG", StringComparison.OrdinalIgnoreCase)) || 
+                                    (m.TankName != null && m.TankName.Contains("CNG", StringComparison.OrdinalIgnoreCase)))
+                        .OrderBy(m => m.NozzleNumber)
+                        .Select(m => CreateItem(m.NozzleNumber, m.FuelType))
+                        .ToList();
+                }
+
                 var dispensed = tankNozzles.Sum(x => x.SaleLitres);
+                if (dispensed == 0 && loadedEntries != null && isCng)
+                {
+                    var cngSales = loadedEntries
+                        .SelectMany(e => e.NozzleReadings ?? new List<NozzleReading>())
+                        .Where(r => string.Equals(r.FuelType, "CNG", StringComparison.OrdinalIgnoreCase) || 
+                                    (r.FuelType != null && r.FuelType.Contains("CNG", StringComparison.OrdinalIgnoreCase)))
+                        .Sum(r => r.SaleLitres);
+                    if (cngSales > 0) dispensed = cngSales;
+                }
+
                 double testingLitres = 0;
-                if (loadedEntries != null)
+                if (loadedEntries != null && !isCng)
                 {
                     foreach (var entry in loadedEntries)
                     {
@@ -699,9 +722,32 @@ public class AgsInventoryService : IAgsInventoryService
                         .ToList();
                 }
 
+                var isCng = string.Equals(tank.FuelType, "CNG", StringComparison.OrdinalIgnoreCase) || 
+                            tank.TankName.Contains("CNG", StringComparison.OrdinalIgnoreCase);
+
+                if (tankNozzles.Count == 0 && isCng)
+                {
+                    tankNozzles = dynamicMappings
+                        .Where(m => (m.FuelType != null && m.FuelType.Contains("CNG", StringComparison.OrdinalIgnoreCase)) || 
+                                    (m.TankName != null && m.TankName.Contains("CNG", StringComparison.OrdinalIgnoreCase)))
+                        .OrderBy(m => m.NozzleNumber)
+                        .Select(m => CreateItem(m.NozzleNumber, m.FuelType))
+                        .ToList();
+                }
+
                 var dispensed = tankNozzles.Sum(x => x.SaleLitres);
+                if (dispensed == 0 && loadedEntries != null && isCng)
+                {
+                    var cngSales = loadedEntries
+                        .SelectMany(e => e.NozzleReadings ?? new List<NozzleReading>())
+                        .Where(r => string.Equals(r.FuelType, "CNG", StringComparison.OrdinalIgnoreCase) || 
+                                    (r.FuelType != null && r.FuelType.Contains("CNG", StringComparison.OrdinalIgnoreCase)))
+                        .Sum(r => r.SaleLitres);
+                    if (cngSales > 0) dispensed = cngSales;
+                }
+
                 double testingLitres = 0;
-                if (loadedEntries != null)
+                if (loadedEntries != null && !isCng)
                 {
                     foreach (var entry in loadedEntries)
                     {

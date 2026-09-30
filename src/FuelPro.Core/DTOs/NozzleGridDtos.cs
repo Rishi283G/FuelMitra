@@ -115,4 +115,9 @@ public class NozzleGroupDto : INotifyPropertyChanged
     public double StockLtr => Stock;
     public double SaleLitres => FuelDispensed;
     public double StockVariance => Stock - CalculatedStock;
+
+    public bool IsCng => string.Equals(FuelType, "CNG", System.StringComparison.OrdinalIgnoreCase) || 
+                         (GroupName != null && GroupName.Contains("CNG", System.StringComparison.OrdinalIgnoreCase));
+    public string Unit => IsCng ? "Kg" : "L";
+    public string FullUnit => IsCng ? "Kg" : "Ltr";
 }

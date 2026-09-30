@@ -1,7 +1,9 @@
 using System;
 using System.IO;
 using System.Collections.Generic;
+using System.Data.Common;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using FuelPro.Core.Models;
@@ -33,6 +35,9 @@ public static class SeedData
                 Log.Warning(ex, "Non-fatal: Failed to ensure non-unique index on Shifts before MigrateAsync");
             }
 
+            // Safely baseline legacy database if existing schema is already materialized
+            await BaselineLegacyMigrationsIfRequiredAsync(context);
+
             await context.Database.MigrateAsync();
         }
         else
@@ -40,10 +45,18 @@ public static class SeedData
             await context.Database.EnsureCreatedAsync();
         }
 
-        // Ensure Settings manager columns exist for SyncEngine
+        // Ensure Settings manager and dynamic JSON columns exist for SyncEngine & dynamic features
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE Settings ADD COLUMN Shift1Manager TEXT NULL;"); } catch { }
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE Settings ADD COLUMN Shift2Manager TEXT NULL;"); } catch { }
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE Settings ADD COLUMN Shift3Manager TEXT NULL;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE Settings ADD COLUMN FuelRatesJson TEXT NULL;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE Settings ADD COLUMN TankDefinitionsJson TEXT NULL;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE Settings ADD COLUMN CollectionTypesJson TEXT NULL;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE Settings ADD COLUMN AppFeatureSettingsJson TEXT NULL;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE Settings ADD COLUMN PumpMappingsJson TEXT NULL;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE Settings ADD COLUMN PumpConnectionRulesJson TEXT NULL;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE PaymentCollections ADD COLUMN DynamicItemsJson TEXT NULL;"); } catch { }
+
 
         // Legacy dynamic columns added for database compatibility
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE PaymentCollections ADD COLUMN CashDeposit REAL NOT NULL DEFAULT 0.0;"); } catch { }
@@ -60,6 +73,8 @@ public static class SeedData
         // DsmPumpAssignment lifecycle columns (added via try-catch so existing databases are safe)
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE DsmPumpAssignments ADD COLUMN ConnectedPumpId INTEGER NULL;"); } catch { }
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE DsmPumpAssignments ADD COLUMN CompletedDate TEXT NULL;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE DsmEntries ADD COLUMN ConnectedPumpIdsJson TEXT NULL;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE DsmPumpAssignments ADD COLUMN ConnectedPumpIdsJson TEXT NULL;"); } catch { }
 
         // Dynamically execute SQLite schema updates for ProductMaster
         try
@@ -161,6 +176,7 @@ public static class SeedData
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE SyncChangeLogs ADD COLUMN SyncGuid TEXT NULL;"); } catch { }
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE SyncChangeLogs ADD COLUMN RecordGuid TEXT NULL;"); } catch { }
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE Settings ADD COLUMN CngRate REAL NOT NULL DEFAULT 85.0;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE Settings ADD COLUMN FuelRatesJson TEXT NULL;"); } catch { }
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE Settings ADD COLUMN Shift1Manager TEXT NULL;"); } catch { }
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE Settings ADD COLUMN Shift2Manager TEXT NULL;"); } catch { }
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE Settings ADD COLUMN Shift3Manager TEXT NULL;"); } catch { }
@@ -184,6 +200,7 @@ public static class SeedData
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE KhandharePetroleumEntries ADD COLUMN SyncGuid TEXT NOT NULL DEFAULT '';"); } catch { }
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE DsmPersonalDebtors ADD COLUMN SyncGuid TEXT NOT NULL DEFAULT '';"); } catch { }
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE DsmPersonalDebtors ADD COLUMN DeductFromSalary INTEGER NOT NULL DEFAULT 1;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE DsmPersonalDebtors ADD COLUMN EntryType TEXT NOT NULL DEFAULT 'Operational';"); } catch { }
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE DsmPersonalDebtorRepayments ADD COLUMN SyncGuid TEXT NOT NULL DEFAULT '';"); } catch { }
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE DsmQrPayments ADD COLUMN SyncGuid TEXT NOT NULL DEFAULT '';"); } catch { }
 
@@ -484,7 +501,8 @@ public static class SeedData
                 );
             ");
             await context.Database.ExecuteSqlRawAsync(@"
-                CREATE UNIQUE INDEX IF NOT EXISTS IX_PumpExpenses_ExpenseDate ON PumpExpenses (ExpenseDate);
+                DROP INDEX IF EXISTS IX_PumpExpenses_ExpenseDate;
+                CREATE INDEX IF NOT EXISTS IX_PumpExpenses_ExpenseDate ON PumpExpenses (ExpenseDate);
             ");
         }
         catch (Exception ex) { Log.Error(ex, "Failed to create PumpExpenses table"); }
@@ -632,73 +650,59 @@ public static class SeedData
         }
 
         // Seed default AppFeatureSettings
+        var featureSeedTimestamp = DateTime.Now;
         if (!await context.AppFeatureSettings.AnyAsync())
         {
-            var now = DateTime.Now;
-            var defaultFeatures = new List<AppFeatureSetting>
-            {
-                // Manager (Admin) Features
-                new() { FeatureKey = "Admin_DsmEntry", TargetRole = "Manager", DisplayName = "DSM Entry", Category = "Operations", DisplayOrder = 1, IsEnabled = true, UpdatedAt = now },
-                new() { FeatureKey = "Admin_OilDefDailyLog", TargetRole = "Manager", DisplayName = "Oil & DEF Daily Log", Category = "Operations", DisplayOrder = 2, IsEnabled = true, UpdatedAt = now },
-                new() { FeatureKey = "Admin_FinalCalculation", TargetRole = "Manager", DisplayName = "Final Calculation", Category = "Operations", DisplayOrder = 3, IsEnabled = true, UpdatedAt = now },
-                new() { FeatureKey = "Admin_DayTotal", TargetRole = "Manager", DisplayName = "Day Total", Category = "Operations", DisplayOrder = 4, IsEnabled = true, UpdatedAt = now },
-                new() { FeatureKey = "Admin_DebtorManagement", TargetRole = "Manager", DisplayName = "Debtor Management", Category = "Debtors", DisplayOrder = 5, IsEnabled = true, UpdatedAt = now },
-                new() { FeatureKey = "Admin_DsmPersonalDebtor", TargetRole = "Manager", DisplayName = "DSM Loss / Personal Debtors", Category = "Debtors", DisplayOrder = 6, IsEnabled = true, UpdatedAt = now },
-                new() { FeatureKey = "Admin_DsmApprovalQueue", TargetRole = "Manager", DisplayName = "DSM Approval Queue", Category = "DSM Management", DisplayOrder = 7, IsEnabled = true, UpdatedAt = now },
-                new() { FeatureKey = "Admin_DsmManagement", TargetRole = "Manager", DisplayName = "DSM & Device Management", Category = "DSM Management", DisplayOrder = 8, IsEnabled = true, UpdatedAt = now },
-                new() { FeatureKey = "Admin_CardSettlement", TargetRole = "Manager", DisplayName = "TID Sheet / Card Settlement", Category = "Financials", DisplayOrder = 9, IsEnabled = true, UpdatedAt = now },
-                new() { FeatureKey = "Admin_AgsImport", TargetRole = "Manager", DisplayName = "AGS Import", Category = "Integrations", DisplayOrder = 10, IsEnabled = true, UpdatedAt = now },
-                new() { FeatureKey = "Admin_PettyCash", TargetRole = "Manager", DisplayName = "Petty Cash", Category = "Financials", DisplayOrder = 11, IsEnabled = true, UpdatedAt = now },
-                new() { FeatureKey = "Admin_FuelTankerEntry", TargetRole = "Manager", DisplayName = "Fuel Tanker Entry", Category = "Stock", DisplayOrder = 12, IsEnabled = true, UpdatedAt = now },
-                new() { FeatureKey = "Admin_TankStockHistory", TargetRole = "Manager", DisplayName = "Tank Stock History", Category = "Stock", DisplayOrder = 13, IsEnabled = true, UpdatedAt = now },
-                new() { FeatureKey = "Admin_Settings", TargetRole = "Manager", DisplayName = "Settings", Category = "General", DisplayOrder = 14, IsEnabled = true, UpdatedAt = now },
-
-                // Owner Features
-                new() { FeatureKey = "Owner_Dashboard", TargetRole = "Owner", DisplayName = "Dashboard", Category = "Overview", DisplayOrder = 1, IsEnabled = true, UpdatedAt = now },
-                new() { FeatureKey = "Owner_DailyPerformance", TargetRole = "Owner", DisplayName = "Daily Performance", Category = "Performance", DisplayOrder = 2, IsEnabled = true, UpdatedAt = now },
-                new() { FeatureKey = "Owner_MonthlyPerformance", TargetRole = "Owner", DisplayName = "Monthly Performance", Category = "Performance", DisplayOrder = 3, IsEnabled = true, UpdatedAt = now },
-                new() { FeatureKey = "Owner_ProfitLoss", TargetRole = "Owner", DisplayName = "Profit & Loss", Category = "Financials", DisplayOrder = 4, IsEnabled = true, UpdatedAt = now },
-                new() { FeatureKey = "Owner_ExpenseAnalysis", TargetRole = "Owner", DisplayName = "Expense Analysis", Category = "Financials", DisplayOrder = 5, IsEnabled = true, UpdatedAt = now },
-                new() { FeatureKey = "Owner_MismatchLedger", TargetRole = "Owner", DisplayName = "Mismatch Ledger", Category = "Audit", DisplayOrder = 6, IsEnabled = true, UpdatedAt = now },
-                new() { FeatureKey = "Owner_CollectionSummary", TargetRole = "Owner", DisplayName = "Collection Summary", Category = "Financials", DisplayOrder = 7, IsEnabled = true, UpdatedAt = now },
-                new() { FeatureKey = "Owner_SalaryCalculation", TargetRole = "Owner", DisplayName = "DSM Salary & Payroll", Category = "Payroll", DisplayOrder = 8, IsEnabled = true, UpdatedAt = now },
-                new() { FeatureKey = "Owner_OilDefInventory", TargetRole = "Owner", DisplayName = "Oil & DEF Summary", Category = "Stock", DisplayOrder = 9, IsEnabled = true, UpdatedAt = now },
-                new() { FeatureKey = "Owner_CardSettlement", TargetRole = "Owner", DisplayName = "Card Settlement / TID", Category = "Financials", DisplayOrder = 10, IsEnabled = true, UpdatedAt = now },
-                new() { FeatureKey = "Owner_DebtorManagement", TargetRole = "Owner", DisplayName = "Debtor Management", Category = "Debtors", DisplayOrder = 11, IsEnabled = true, UpdatedAt = now },
-                new() { FeatureKey = "Owner_PumpExpenses", TargetRole = "Owner", DisplayName = "Pump Expenses", Category = "Financials", DisplayOrder = 12, IsEnabled = true, UpdatedAt = now },
-                new() { FeatureKey = "Owner_PettyCash", TargetRole = "Owner", DisplayName = "Petty Cash", Category = "Financials", DisplayOrder = 13, IsEnabled = true, UpdatedAt = now },
-                new() { FeatureKey = "Owner_DsmPersonalDebtor", TargetRole = "Owner", DisplayName = "DSM Loss", Category = "Debtors", DisplayOrder = 14, IsEnabled = true, UpdatedAt = now },
-                new() { FeatureKey = "Owner_Reports", TargetRole = "Owner", DisplayName = "Reports & Analytics", Category = "Reports", DisplayOrder = 15, IsEnabled = true, UpdatedAt = now },
-
-                // Global & Workflow Features
-                new() { FeatureKey = "Integration_DsmPwa", TargetRole = "Global", DisplayName = "DSM PWA Mobile App Integration", Category = "Integrations", DisplayOrder = 1, IsEnabled = true, UpdatedAt = now },
-                new() { FeatureKey = "Collection_UseMorningNight", TargetRole = "Global", DisplayName = "Split Collections into Morning / Night", Category = "Collections", DisplayOrder = 2, IsEnabled = false, UpdatedAt = now },
-                new() { FeatureKey = "UI_DebtorManagement_AsNewPage", TargetRole = "Global", DisplayName = "Debtor Management on Dedicated Page (vs Shift Total)", Category = "Navigation", DisplayOrder = 5, IsEnabled = true, Description = "When enabled, Debtor Management appears as a dedicated page below Oil & DEF Log. When disabled, it embeds inside Shift Total (Final Calculation).", UpdatedAt = now },
-                new() { FeatureKey = "Operations_CrossDsmQr", TargetRole = "Manager", DisplayName = "Cross-DSM QR Payments", Category = "Collections", DisplayOrder = 15, IsEnabled = true, UpdatedAt = now },
-                new() { FeatureKey = "Operations_PersonalLedger", TargetRole = "Manager", DisplayName = "Personal Ledger", Category = "Operations", DisplayOrder = 16, IsEnabled = true, UpdatedAt = now }
-            };
-
+            var defaultFeatures = AppFeatureSetting.GetCanonicalDefaults(featureSeedTimestamp);
             context.AppFeatureSettings.AddRange(defaultFeatures);
             await context.SaveChangesAsync();
-            Log.Information("Seeded default AppFeatureSettings configuration matrix");
+            Log.Information("Seeded default AppFeatureSettings configuration matrix ({Count} features)", defaultFeatures.Count);
+
+            // Populate Settings.AppFeatureSettingsJson so cloud sync has a coherent snapshot
+            try
+            {
+                var setting = await context.Settings.FirstOrDefaultAsync();
+                if (setting != null)
+                {
+                    setting.AppFeatureSettingsJson = JsonSerializer.Serialize(defaultFeatures);
+                    setting.LastUpdated = featureSeedTimestamp;
+                    await context.SaveChangesAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "Failed to update Settings.AppFeatureSettingsJson during initial feature seeding.");
+            }
         }
         else
         {
-            var now = DateTime.Now;
-            // Ensure any new features are added if missing in existing DB
-            if (!await context.AppFeatureSettings.AnyAsync(f => f.FeatureKey == "Operations_CrossDsmQr"))
+            // Backfill any missing canonical features into existing DB without overwriting customized settings
+            var canonical = AppFeatureSetting.GetCanonicalDefaults(featureSeedTimestamp);
+            var existingKeys = (await context.AppFeatureSettings.Select(f => f.FeatureKey).ToListAsync()).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var missing = canonical.Where(c => !existingKeys.Contains(c.FeatureKey)).ToList();
+            if (missing.Count > 0)
             {
-                context.AppFeatureSettings.Add(new AppFeatureSetting { FeatureKey = "Operations_CrossDsmQr", TargetRole = "Manager", DisplayName = "Cross-DSM QR Payments", Category = "Collections", DisplayOrder = 15, IsEnabled = true, UpdatedAt = now });
+                context.AppFeatureSettings.AddRange(missing);
+                await context.SaveChangesAsync();
+                Log.Information("Added {Count} missing canonical features to existing database", missing.Count);
             }
-            if (!await context.AppFeatureSettings.AnyAsync(f => f.FeatureKey == "Operations_PersonalLedger"))
+
+            // Ensure Settings.AppFeatureSettingsJson is populated if currently null
+            try
             {
-                context.AppFeatureSettings.Add(new AppFeatureSetting { FeatureKey = "Operations_PersonalLedger", TargetRole = "Manager", DisplayName = "Personal Ledger", Category = "Operations", DisplayOrder = 16, IsEnabled = true, UpdatedAt = now });
+                var setting = await context.Settings.FirstOrDefaultAsync();
+                if (setting != null && string.IsNullOrWhiteSpace(setting.AppFeatureSettingsJson))
+                {
+                    var allFeatures = await context.AppFeatureSettings.ToListAsync();
+                    if (allFeatures.Count > 0)
+                    {
+                        setting.AppFeatureSettingsJson = JsonSerializer.Serialize(allFeatures);
+                        setting.LastUpdated = featureSeedTimestamp;
+                        await context.SaveChangesAsync();
+                    }
+                }
             }
-            if (!await context.AppFeatureSettings.AnyAsync(f => f.FeatureKey == "UI_DebtorManagement_AsNewPage"))
-            {
-                context.AppFeatureSettings.Add(new AppFeatureSetting { FeatureKey = "UI_DebtorManagement_AsNewPage", TargetRole = "Global", DisplayName = "Debtor Management on Dedicated Page (vs Shift Total)", Category = "Navigation", DisplayOrder = 5, IsEnabled = true, Description = "When enabled, Debtor Management appears as a dedicated page below Oil & DEF Log. When disabled, it embeds inside Shift Total (Final Calculation).", UpdatedAt = now });
-            }
-            await context.SaveChangesAsync();
+            catch { }
         }
 
 
@@ -740,6 +744,74 @@ public static class SeedData
                 await context.SaveChangesAsync();
                 Log.Information("Migrated {Count} OilDefInventories to new ProductMaster schema", unmigratedInventories.Count);
             }
+        }
+
+        // Deduplicate duplicate ProductMasters in database
+        try
+        {
+            var allProducts = await context.ProductMasters.OrderBy(p => p.Id).ToListAsync();
+            var duplicateGroups = allProducts
+                .GroupBy(p => p.ProductName.Trim().ToLowerInvariant())
+                .Where(g => g.Count() > 1)
+                .ToList();
+
+            if (duplicateGroups.Any())
+            {
+                foreach (var group in duplicateGroups)
+                {
+                    var primary = group.First();
+                    var duplicates = group.Skip(1).ToList();
+                    var duplicateIds = duplicates.Select(d => d.Id).ToList();
+
+                    Log.Information("Deduplicating product '{ProductName}': Primary ID {PrimaryId}, removing duplicate IDs {DuplicateIds}", 
+                        primary.ProductName, primary.Id, string.Join(", ", duplicateIds));
+
+                    // 1. Reassign OilDefDailyLogs
+                    var logs = await context.OilDefDailyLogs
+                        .Where(l => duplicateIds.Contains(l.ProductId))
+                        .ToListAsync();
+                    foreach (var l in logs)
+                    {
+                        l.ProductId = primary.Id;
+                    }
+
+                    // 2. Reassign OilDefPurchases
+                    var purchases = await context.OilDefPurchases
+                        .Where(p => duplicateIds.Contains(p.ProductId))
+                        .ToListAsync();
+                    foreach (var p in purchases)
+                    {
+                        p.ProductId = primary.Id;
+                    }
+
+                    // 3. Reassign OilDefInventories
+                    var inventories = await context.OilDefInventories
+                        .Where(i => duplicateIds.Contains(i.ProductId))
+                        .ToListAsync();
+                    foreach (var i in inventories)
+                    {
+                        i.ProductId = primary.Id;
+                    }
+
+                    // 4. Update SyncIdMappings
+                    var mappings = await context.SyncIdMappings
+                        .Where(m => m.TableName == "ProductMasters" && duplicateIds.Contains(m.LocalId))
+                        .ToListAsync();
+                    foreach (var m in mappings)
+                    {
+                        m.LocalId = primary.Id;
+                    }
+
+                    // 5. Remove duplicates
+                    context.ProductMasters.RemoveRange(duplicates);
+                }
+                await context.SaveChangesAsync();
+                Log.Information("Successfully deduplicated {Count} product groups in ProductMaster", duplicateGroups.Count);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Failed to deduplicate ProductMasters");
         }
 
         // Migrate legacy "Admin" role → "Manager"
@@ -817,7 +889,7 @@ public static class SeedData
             }
         }
 
-        // Seed default settings or migrate legacy pump name
+        // Seed default settings if none exist
         var settings = await context.Settings.FirstOrDefaultAsync();
         if (settings == null)
         {
@@ -827,14 +899,14 @@ public static class SeedData
                 MsIRate = 103.81,
                 MsIIRate = 103.81,
                 CngRate = 85.0,
-                PumpStationName = "Kandhare Petroleum",
+                PumpStationName = "Mitali Service Station",
                 LastUpdated = DateTime.Now
             };
             context.Settings.Add(defaultSettings);
         }
-        else
+        else if (string.IsNullOrWhiteSpace(settings.PumpStationName))
         {
-            settings.PumpStationName = "Kandhare Petroleum";
+            settings.PumpStationName = "Mitali Service Station";
             context.Entry(settings).State = EntityState.Modified;
         }
 
@@ -920,5 +992,152 @@ public static class SeedData
         }
 
         await context.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Detects legacy databases where schemas were materialized outside of EF Core migrations,
+    /// and safely baselines existing migrations in __EFMigrationsHistory so future migrations execute cleanly.
+    /// </summary>
+    public static async Task BaselineLegacyMigrationsIfRequiredAsync(FuelProDbContext context)
+    {
+        if (!context.Database.IsRelational()) return;
+
+        var connection = context.Database.GetDbConnection();
+        bool closeConnection = false;
+        if (connection.State != System.Data.ConnectionState.Open)
+        {
+            await connection.OpenAsync();
+            closeConnection = true;
+        }
+
+        try
+        {
+            // 1. Detect if legacy core tables exist
+            var isLegacyDb = TableExists(connection, "Settings") && 
+                             TableExists(connection, "Shifts") && 
+                             TableExists(connection, "DsmEntries");
+
+            if (!isLegacyDb)
+            {
+                // Brand new database or fresh install — let standard EF migrations handle everything
+                return;
+            }
+
+            // 2. Ensure __EFMigrationsHistory exists so we can inspect/baseline safely
+            await context.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE IF NOT EXISTS ""__EFMigrationsHistory"" (
+                    ""MigrationId"" TEXT NOT NULL CONSTRAINT ""PK___EFMigrationsHistory"" PRIMARY KEY,
+                    ""ProductVersion"" TEXT NOT NULL
+                );");
+
+            // 3. Inspect migration state
+            var appliedMigrations = (await context.Database.GetAppliedMigrationsAsync()).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var allMigrations = context.Database.GetMigrations().ToList();
+
+            var unappliedMigrations = allMigrations.Where(m => !appliedMigrations.Contains(m)).ToList();
+            if (unappliedMigrations.Count == 0)
+            {
+                // All migrations already recorded
+                return;
+            }
+
+            Log.Information("Legacy database detected with {AppliedCount} applied and {UnappliedCount} unrecorded migrations. Evaluating schema compatibility for baselining.",
+                appliedMigrations.Count, unappliedMigrations.Count);
+
+            var productVersion = typeof(DbContext).Assembly.GetName().Version?.ToString() ?? "8.0.11";
+            int baselinedCount = 0;
+
+            foreach (var migrationId in unappliedMigrations)
+            {
+                if (IsMigrationSchemaPresent(connection, migrationId))
+                {
+                    using var insertCmd = connection.CreateCommand();
+                    insertCmd.CommandText = @"
+                        INSERT OR IGNORE INTO ""__EFMigrationsHistory"" (""MigrationId"", ""ProductVersion"")
+                        VALUES (@mId, @pVer);";
+
+                    var p1 = insertCmd.CreateParameter();
+                    p1.ParameterName = "@mId";
+                    p1.Value = migrationId;
+                    insertCmd.Parameters.Add(p1);
+
+                    var p2 = insertCmd.CreateParameter();
+                    p2.ParameterName = "@pVer";
+                    p2.Value = productVersion;
+                    insertCmd.Parameters.Add(p2);
+
+                    await insertCmd.ExecuteNonQueryAsync();
+                    baselinedCount++;
+                }
+                else
+                {
+                    Log.Information("Migration {MigrationId} schema is not yet materialized in legacy DB. Leaving as pending for MigrateAsync.", migrationId);
+                }
+            }
+
+            if (baselinedCount > 0)
+            {
+                Log.Information("Legacy database baseline completed: safely baselined {BaselinedCount} pre-existing migrations into __EFMigrationsHistory. Remaining pending migrations: {PendingCount}.",
+                    baselinedCount, unappliedMigrations.Count - baselinedCount);
+            }
+        }
+        finally
+        {
+            if (closeConnection)
+            {
+                await connection.CloseAsync();
+            }
+        }
+    }
+
+    private static bool IsMigrationSchemaPresent(DbConnection connection, string migrationId)
+    {
+        return migrationId switch
+        {
+            "20260421082012_InitialCreate" => TableExists(connection, "Settings") && TableExists(connection, "Shifts") && TableExists(connection, "DsmEntries"),
+            "20260421104914_AddOthersToPayment" => ColumnExists(connection, "PaymentCollections", "Others"),
+            "20260421125454_ReconciliationV2" => ColumnExists(connection, "DsmEntries", "GrossSales") && ColumnExists(connection, "DsmEntries", "TotalCollection"),
+            "20260421131956_AddCashDepositToPayment" => ColumnExists(connection, "PaymentCollections", "CashDeposit"),
+            "20260422140102_AddLitresAndRateToTesting" => ColumnExists(connection, "TestingEntries", "Litres"),
+            "20260422161230_AddDsmProfilesAndCreditorRepayments" => TableExists(connection, "DsmProfiles") && TableExists(connection, "CreditorRepayments"),
+            "20260424052601_AddAgsImport" => TableExists(connection, "AgsDailySummaries"),
+            "20260424053749_AddChequeNoToDebitEntry" => ColumnExists(connection, "DebitEntries", "ChequeNo"),
+            "20260509193233_SplitPineLabCard" => ColumnExists(connection, "PaymentCollections", "PhonePe") && ColumnExists(connection, "PaymentCollections", "PhonePeCard"),
+            "20260619105954_AddDsmPhase1Tables" => TableExists(connection, "DsmUsers") && TableExists(connection, "DsmPumpAssignments"),
+            "20260619130135_AddEmailToDsmUser" => ColumnExists(connection, "DsmUsers", "Email"),
+            "20260626182136_AddP3ShinNvlAndCardSettlement" => ColumnExists(connection, "PaymentCollections", "CardTid") || ColumnExists(connection, "DebitEntries", "VehicleNumber"),
+            "20260710200724_AddDayPeriodPaymentFields" => ColumnExists(connection, "PaymentCollections", "CreditCardDay") || ColumnExists(connection, "PaymentCollections", "PhonePeDay"),
+            "20260711123112_AddDsmPumpAssignmentCompletedDate" => ColumnExists(connection, "DsmPumpAssignments", "CompletedDate"),
+            "20260721090022_AddKhandharePetroleumEntries" => TableExists(connection, "KhandharePetroleumEntries"),
+            var m when m.EndsWith("_AddOpeningBalancesTable") => TableExists(connection, "OpeningBalances") && ColumnExists(connection, "DsmPersonalDebtors", "EntryType"),
+            _ => false // For any new/unrecognized future migration, return false so MigrateAsync() executes it!
+        };
+    }
+
+    private static bool TableExists(DbConnection connection, string tableName)
+    {
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "SELECT 1 FROM sqlite_master WHERE type='table' AND name = @name;";
+        var p = cmd.CreateParameter();
+        p.ParameterName = "@name";
+        p.Value = tableName;
+        cmd.Parameters.Add(p);
+        return cmd.ExecuteScalar() != null;
+    }
+
+    private static bool ColumnExists(DbConnection connection, string tableName, string columnName)
+    {
+        if (!TableExists(connection, tableName)) return false;
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = $"PRAGMA table_info(\"{tableName}\");";
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            if (string.Equals(reader["name"]?.ToString(), columnName, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 }

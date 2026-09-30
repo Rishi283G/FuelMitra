@@ -288,7 +288,12 @@ export default function DashboardScreen({ onNavigate }: DashboardProps) {
             <p className="greeting-station">
               Station ID: {profile?.StationId}
               {profile?.AssignedPump
-                ? ` · Pump ${profile.AssignedPump}${profile.ConnectedPump ? ` + Pump ${profile.ConnectedPump} (Connected)` : ""} (Shift ${profile.AssignedShift})`
+                ? ` · Pump ${profile.AssignedPump}${(() => {
+                    const cPumps = profile?.ConnectedPumps && profile.ConnectedPumps.length > 0
+                      ? profile.ConnectedPumps
+                      : (profile?.ConnectedPump ? [profile.ConnectedPump] : []);
+                    return cPumps.length > 0 ? ` + ${cPumps.map(p => `Pump ${p}`).join(' + ')} (Connected)` : '';
+                  })()} (Shift ${profile.AssignedShift})`
                 : " · No Active Assignment"}
             </p>
           </div>

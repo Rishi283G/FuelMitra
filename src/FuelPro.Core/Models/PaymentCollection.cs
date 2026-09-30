@@ -89,9 +89,15 @@ public class PaymentCollection
     public ICollection<PaymentCollectionItem> Items { get; set; } = new List<PaymentCollectionItem>();
 
     /// <summary>
+    /// Serialized JSON for dynamic collection items, ensuring reliable cloud sync.
+    /// </summary>
+    public string? DynamicItemsJson { get; set; }
+
+    /// <summary>
     /// Computes total of all dynamic collection items.
     /// </summary>
     [NotMapped]
     public double DynamicItemsTotal => Items?.Sum(i => i.Amount) ?? 0;
 }
+
 

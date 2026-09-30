@@ -133,7 +133,7 @@ public class FinancialCalculationService : IFinancialCalculationService
                         msIIPurchaseCost += (nr.SaleLitres * purchaseRate);
                         result.FuelProfit.MsIIPurchaseProfit += purchaseProfit;
                     }
-                    else if (ft == "CNG")
+                    else if (string.Equals(ft, "CNG", StringComparison.OrdinalIgnoreCase) || (ft != null && ft.Contains("CNG", StringComparison.OrdinalIgnoreCase)))
                     {
                         result.FuelProfit.CngLitres += nr.SaleLitres;
                         result.FuelProfit.CngProfit += profit;
@@ -288,7 +288,9 @@ public class FinancialCalculationService : IFinancialCalculationService
             .ToListAsync();
 
         var allPersonalDebtors = await _dbContext.DsmPersonalDebtors
-            .Where(d => d.Date.Year == year && d.Date.Month == month)
+            .Where(d => d.Date.Year == year && d.Date.Month == month
+                        && d.EntryType != "OpeningBalance"
+                        && d.EntryType != "DeactivatedOpening")
             .ToListAsync();
 
         var rows = new List<DsmSalaryRowDto>();
@@ -353,7 +355,10 @@ public class FinancialCalculationService : IFinancialCalculationService
             }
 
             var personalDebtorDeduction = allPersonalDebtors
-                .Where(d => string.Equals(d.DsmName, name, StringComparison.OrdinalIgnoreCase) && d.DeductFromSalary)
+                .Where(d => string.Equals(d.DsmName, name, StringComparison.OrdinalIgnoreCase) 
+                            && d.DeductFromSalary 
+                            && d.EntryType != "OpeningBalance" 
+                            && d.EntryType != "DeactivatedOpening")
                 .Sum(d => d.Amount - d.RepaidAmount);
 
             // Compute automatic Pending Advance deduction
@@ -448,15 +453,20 @@ public class FinancialCalculationService : IFinancialCalculationService
             SalesQuantity = 0,
             SalesRevenue = 0,
             CostOfGoodsSold = 0,
+            AdjustedQuantity = 0,
+            AdjustmentLoss = 0,
             TotalProfit = 0
         };
+
+        var endOfDay = endDate.Date.AddDays(1);
 
         foreach (var product in products)
         {
             // 1. Opening Stock: last daily log before startDate
             var lastLogBefore = await _dbContext.OilDefDailyLogs
-                .Where(l => l.ProductId == product.Id && l.LogDate < startDate.Date)
+                .Where(l => l.ProductId == product.Id && l.LogDate.Date < startDate.Date)
                 .OrderByDescending(l => l.LogDate)
+                .ThenByDescending(l => l.Id)
                 .FirstOrDefaultAsync();
 
             double opening = 0.0;
@@ -475,9 +485,8 @@ public class FinancialCalculationService : IFinancialCalculationService
             detail.OpeningStock += opening;
 
             // 2. Closing Stock: last daily log in range or before
-            var endOfDay = endDate.Date.AddDays(1);
             var lastLogInRange = await _dbContext.OilDefDailyLogs
-                .Where(l => l.ProductId == product.Id && l.LogDate >= startDate.Date && l.LogDate < endOfDay)
+                .Where(l => l.ProductId == product.Id && l.LogDate.Date >= startDate.Date && l.LogDate.Date < endOfDay)
                 .OrderByDescending(l => l.LogDate)
                 .ThenByDescending(l => l.Id)
                 .FirstOrDefaultAsync();
@@ -495,7 +504,7 @@ public class FinancialCalculationService : IFinancialCalculationService
 
             // 3. Purchases in range
             var purchases = await _dbContext.OilDefPurchases
-                .Where(p => p.ProductId == product.Id && p.PurchaseDate >= startDate.Date && p.PurchaseDate <= endDate.Date)
+                .Where(p => p.ProductId == product.Id && p.PurchaseDate >= startDate.Date && p.PurchaseDate < endOfDay)
                 .ToListAsync();
 
             double purchasedQty = purchases.Sum(p => p.Quantity);
@@ -518,16 +527,23 @@ public class FinancialCalculationService : IFinancialCalculationService
                 avgPurchasePrice = lastPurchase?.UnitPrice ?? product.DefaultSaleRate * 0.8;
             }
 
-            // 4. Sales in range
+            // 4. Sales and Adjustments in range
             var logs = await _dbContext.OilDefDailyLogs
                 .Where(l => l.ProductId == product.Id && l.LogDate >= startDate.Date && l.LogDate < endOfDay)
                 .ToListAsync();
 
             double salesQty = logs.Sum(l => l.SoldQuantity);
             double salesRevenue = logs.Sum(l => l.SoldQuantity * (l.OverrideSaleRate ?? product.DefaultSaleRate));
+            double adjQty = logs.Sum(l => l.AdjustmentQuantity);
 
             detail.SalesQuantity += salesQty;
             detail.SalesRevenue += salesRevenue;
+            detail.AdjustedQuantity += adjQty;
+
+            double adjLoss = logs
+                .Where(l => l.AdjustmentQuantity < 0)
+                .Sum(l => Math.Abs(l.AdjustmentQuantity) * (l.OverrideSaleRate ?? product.DefaultSaleRate));
+            detail.AdjustmentLoss += adjLoss;
 
             double cogs = salesQty * avgPurchasePrice;
             detail.CostOfGoodsSold += cogs;
@@ -562,6 +578,8 @@ public class FinancialCalculationService : IFinancialCalculationService
         detail.SalesQuantity = Math.Round(detail.SalesQuantity, 2);
         detail.SalesRevenue = Math.Round(detail.SalesRevenue, 2);
         detail.CostOfGoodsSold = Math.Round(detail.CostOfGoodsSold, 2);
+        detail.AdjustedQuantity = Math.Round(detail.AdjustedQuantity, 2);
+        detail.AdjustmentLoss = Math.Round(detail.AdjustmentLoss, 2);
         detail.SalePrice = Math.Round(detail.SalePrice, 2);
         detail.TotalProfit = Math.Round(detail.TotalProfit, 2);
 

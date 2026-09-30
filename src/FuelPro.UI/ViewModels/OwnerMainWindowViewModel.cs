@@ -16,7 +16,7 @@ public partial class OwnerMainWindowViewModel : ObservableObject
     [ObservableProperty] private object? _currentView;
     [ObservableProperty] private string _windowTitle = "PyroSync — Owner";
     [ObservableProperty] private string _currentDateTime = DateTime.Now.ToString("dd MMM yyyy  hh:mm tt");
-    [ObservableProperty] private string _stationName = "Shree Mahakaleshwar Petroleum";
+    [ObservableProperty] private string _stationName = "Mitali Service Station";
     
     public string LogoSource => App.GetLogoPath(false);
     public string SidebarLogoSource => App.GetLogoPath(true);
@@ -120,12 +120,15 @@ public partial class OwnerMainWindowViewModel : ObservableObject
         _ = LoadStationNameAsync();
     }
 
+    private OwnerDashboardViewModel? _dashboardViewModel;
+
     [RelayCommand]
     private void NavigateToDashboard()
     {
         if (!IsDashboardVisible) return;
         SelectedNavIndex = 0;
-        CurrentView = App.Services.GetRequiredService<OwnerDashboardViewModel>();
+        _dashboardViewModel ??= App.Services.GetRequiredService<OwnerDashboardViewModel>();
+        CurrentView = _dashboardViewModel;
     }
 
     [RelayCommand]
@@ -231,7 +234,9 @@ public partial class OwnerMainWindowViewModel : ObservableObject
     {
         if (!IsDsmPersonalDebtorVisible) return;
         SelectedNavIndex = 13;
-        CurrentView = App.Services.GetRequiredService<DsmPersonalDebtorViewModel>();
+        var vm = App.Services.GetRequiredService<DsmPersonalDebtorViewModel>();
+        _ = vm.LoadDataAsync();
+        CurrentView = vm;
     }
 
     [RelayCommand]

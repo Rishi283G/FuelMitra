@@ -34,6 +34,9 @@ public class DsmEntryService
     public static event Action? SettingsChanged;
     public static void RaiseSettingsChanged() => SettingsChanged?.Invoke();
 
+    public static event Action? StationConfigurationChanged;
+    public static void RaiseStationConfigurationChanged() => StationConfigurationChanged?.Invoke();
+
     private readonly IDsmEntryRepository _dsmRepo;
     private readonly INozzleReadingRepository _nozzleRepo;
     private readonly IPaymentRepository _paymentRepo;
@@ -93,10 +96,71 @@ public class DsmEntryService
         string? endTime = null,
         List<DsmPersonalDebtor>? personalDebtors = null,
         List<KhandharePetroleumEntry>? khandharePetroleumEntries = null,
-        List<DsmQrPaymentEntry>? qrPayments = null)
+        List<DsmQrPaymentEntry>? qrPayments = null,
+        IEnumerable<int>? connectedPumpIds = null)
     {
         try
         {
+            // 1. Resolve effective connected pumps with backward-compatible fallback
+            List<int> effectiveConnectedPumps;
+            var resolvedFromInput = PumpConnectionConfiguration.ResolveEffectiveConnectedPumpIds(connectedPumpId, null, connectedPumpIds)
+                .Where(id => id != pumpId)
+                .ToList();
+
+            if (resolvedFromInput.Count > 0 || connectedPumpIds != null || (connectedPumpId.HasValue && connectedPumpId.Value > 0))
+            {
+                effectiveConnectedPumps = resolvedFromInput;
+            }
+            else
+            {
+                var stationConfigService = _serviceProvider.GetService<IStationConfigurationService>();
+                if (stationConfigService != null)
+                {
+                    var config = await stationConfigService.GetPumpConnectionConfigurationAsync();
+                    if (config != null && config.IsEnabled)
+                    {
+                        var grp = config.Groups.FirstOrDefault(g => g.PrimaryPumpId == pumpId);
+                        effectiveConnectedPumps = grp != null
+                            ? grp.ConnectedPumpIds.Where(id => id > 0 && id != pumpId).Distinct().ToList()
+                            : new List<int>();
+                    }
+                    else
+                    {
+                        effectiveConnectedPumps = new List<int>();
+                    }
+                }
+                else
+                {
+                    effectiveConnectedPumps = new List<int>();
+                }
+            }
+
+            var allEffectivePumps = new List<int> { pumpId }.Concat(effectiveConnectedPumps).Distinct().ToList();
+
+            // 2. Strict Upfront Validation (BEFORE ANY DB WRITE)
+            // Duplicate nozzle reading check
+            var duplicateNozzle = nozzleReadings
+                .GroupBy(r => r.NozzleNumber)
+                .FirstOrDefault(g => g.Count() > 1);
+            if (duplicateNozzle != null)
+            {
+                return Result<DsmEntry>.Fail($"Duplicate nozzle reading found for Nozzle {duplicateNozzle.Key}.");
+            }
+
+            // Nozzle ownership validation - must belong to configured group and resolve to a valid physical pump
+            foreach (var nr in nozzleReadings)
+            {
+                var nozzlePumpId = PumpConfiguration.GetPumpIdForNozzle(nr.NozzleNumber, date);
+                if (nozzlePumpId <= 0)
+                {
+                    return Result<DsmEntry>.Fail($"Nozzle {nr.NozzleNumber} could not be resolved to a valid pump for date {date:yyyy-MM-dd}.");
+                }
+                if (!allEffectivePumps.Contains(nozzlePumpId))
+                {
+                    return Result<DsmEntry>.Fail($"Nozzle {nr.NozzleNumber} belongs to Pump {nozzlePumpId}, which is not part of connection group [{string.Join(", ", allEffectivePumps)}].");
+                }
+            }
+
             // Check shift lock
             var shiftResult = await _shiftRepo.GetOrCreateShiftAsync(date, shiftType);
             if (!shiftResult.Success) return Result<DsmEntry>.Fail(shiftResult.Error);
@@ -105,8 +169,6 @@ public class DsmEntryService
             if (shift.IsLocked)
                 return Result<DsmEntry>.Fail("This shift is locked and cannot be edited.");
 
-
-
             // Pre-calculate nozzle readings SaleLitres and Amount in memory so they are available for gross sales calculations
             foreach (var nr in nozzleReadings)
             {
@@ -114,32 +176,22 @@ public class DsmEntryService
                 nr.Amount = nr.SaleLitres * nr.Rate;
             }
 
-            // Split nozzle readings into primary and connected pump nozzles
-            var primaryReadings = new List<NozzleReading>();
-            var connectedReadings = new List<NozzleReading>();
-            foreach (var nr in nozzleReadings)
-            {
-                var nozzlePumpId = PumpConfiguration.GetPumpIdForNozzle(nr.NozzleNumber, date);
-                if (nozzlePumpId == 0) nozzlePumpId = pumpId;
+            // Dynamic partitioning of nozzle readings by physical pump
+            var readingsByPump = nozzleReadings
+                .GroupBy(nr => PumpConfiguration.GetPumpIdForNozzle(nr.NozzleNumber, date))
+                .ToDictionary(g => g.Key, g => g.ToList());
 
-                if (connectedPumpId.HasValue && nozzlePumpId == connectedPumpId.Value)
-                {
-                    connectedReadings.Add(nr);
-                }
-                else
-                {
-                    primaryReadings.Add(nr);
-                }
-            }
+            var primaryReadings = readingsByPump.TryGetValue(pumpId, out var pr) ? pr : new List<NozzleReading>();
 
-            // Create or update DSM entry
+            // Create or update primary DSM entry
             var entry = new DsmEntry
             {
                 DsmEntryId = existingEntryId ?? 0,
                 ShiftId = shift.ShiftId,
                 DsmName = dsmName,
                 PumpId = pumpId,
-                ConnectedPumpId = connectedPumpId,
+                ConnectedPumpId = effectiveConnectedPumps.FirstOrDefault() > 0 ? effectiveConnectedPumps.FirstOrDefault() : null,
+                ConnectedPumpIdsJson = effectiveConnectedPumps.Count > 0 ? System.Text.Json.JsonSerializer.Serialize(effectiveConnectedPumps) : null,
                 StartTime = startTime,
                 EndTime = endTime
             };
@@ -219,19 +271,30 @@ public class DsmEntryService
             if (fullResult.Success && fullResult.Data != null)
             {
                 var calc = _dsmCalculationService.Calculate(ToCalculationDto(fullResult.Data));
-                var connectedGross = connectedPumpId.HasValue ? (decimal)connectedReadings.Sum(x => x.Amount) : 0m;
-                savedEntry.GrossSales = calc.GrossSales + connectedGross;
+                var totalConnectedGross = (decimal)effectiveConnectedPumps
+                    .Sum(slavePumpId => readingsByPump.TryGetValue(slavePumpId, out var sr) ? sr.Sum(x => x.Amount) : 0);
+
+                var existingSlavesRes = await _dsmRepo.GetEntriesForShiftAsync(shift.ShiftId);
+                var existingSlaves = existingSlavesRes.Success && existingSlavesRes.Data != null ? existingSlavesRes.Data : new List<DsmEntry>();
+                var slaveTesting = (decimal)effectiveConnectedPumps.Sum(spId =>
+                    existingSlaves.Where(e => e.PumpId == spId && e.TestingEntries != null)
+                                  .SelectMany(e => e.TestingEntries)
+                                  .Sum(t => t.Amount));
+                var groupTesting = (fullResult.Data.TestingEntries?.Sum(t => (decimal)t.Amount) ?? 0m) + slaveTesting;
+
+                savedEntry.GrossSales = calc.GrossSales + totalConnectedGross;
                 savedEntry.TotalInDirect = calc.TotalInDirect;
                 savedEntry.TotalCreditors = calc.TotalCreditors;
                 savedEntry.TotalCollection = calc.TotalCollection;
-                savedEntry.Mismatch = calc.TotalCollection - savedEntry.GrossSales;
+                var netGrossSales = savedEntry.GrossSales - groupTesting;
+                savedEntry.Mismatch = calc.TotalCollection - netGrossSales;
                 await _dsmRepo.SaveEntryAsync(savedEntry);
 
-                // Automatic DSM Loss (Personal Debtor) handling based on shortage (> 10)
+                // Automatic DSM Loss (Personal Debtor) handling based on shortage (no tolerance)
                 try
                 {
                     double totalShortage = savedEntry.Mismatch < 0 ? (double)Math.Abs(savedEntry.Mismatch) : 0;
-                    double dsmLossAmount = totalShortage > 10.0 ? (totalShortage - 10.0) : 0.0;
+                    double dsmLossAmount = totalShortage;
                     var currentPDsRes = await _personalDebtorRepo.GetByDsmEntryIdAsync(savedEntry.DsmEntryId);
                     var pdList = currentPDsRes.Success && currentPDsRes.Data != null ? currentPDsRes.Data : new List<DsmPersonalDebtor>();
                     bool pdChanged = false;
@@ -279,23 +342,22 @@ public class DsmEntryService
                 }
             }
 
-            // Save the connected pump entry if one is specified
-            if (connectedPumpId.HasValue)
+            // Save slave DsmEntry for each connected pump
+            var shiftEntriesResult = await _dsmRepo.GetEntriesForShiftAsync(shift.ShiftId);
+            var shiftEntries = shiftEntriesResult.Success && shiftEntriesResult.Data != null ? shiftEntriesResult.Data : new List<DsmEntry>();
+            var activeSlaveEntryIds = new HashSet<int>();
+
+            foreach (var slavePumpId in effectiveConnectedPumps)
             {
-                DsmEntry? existingConnectedEntry = null;
-                var shiftEntriesResult = await _dsmRepo.GetEntriesForShiftAsync(shift.ShiftId);
-                if (shiftEntriesResult.Success && shiftEntriesResult.Data != null)
-                {
-                    existingConnectedEntry = shiftEntriesResult.Data.FirstOrDefault(e =>
-                        savedEntry.DsmEntryId != 0 && e.ReconciledToPumpId == savedEntry.DsmEntryId);
-                }
+                var existingSlaveEntry = shiftEntries.FirstOrDefault(e =>
+                    savedEntry.DsmEntryId != 0 && e.ReconciledToPumpId == savedEntry.DsmEntryId && e.PumpId == slavePumpId);
 
                 var connectedEntry = new DsmEntry
                 {
-                    DsmEntryId = existingConnectedEntry?.DsmEntryId ?? 0,
+                    DsmEntryId = existingSlaveEntry?.DsmEntryId ?? 0,
                     ShiftId = shift.ShiftId,
                     DsmName = dsmName,
-                    PumpId = connectedPumpId.Value,
+                    PumpId = slavePumpId,
                     ReconciledToPumpId = savedEntry.DsmEntryId,
                     StartTime = startTime,
                     EndTime = endTime
@@ -305,8 +367,11 @@ public class DsmEntryService
                 if (saveConnResult.Success)
                 {
                     var savedConnectedEntry = saveConnResult.Data!;
-                    await _nozzleRepo.SaveReadingsAsync(savedConnectedEntry.DsmEntryId, connectedReadings);
-                    
+                    activeSlaveEntryIds.Add(savedConnectedEntry.DsmEntryId);
+
+                    var slaveReadings = readingsByPump.TryGetValue(slavePumpId, out var sr) ? sr : new List<NozzleReading>();
+                    await _nozzleRepo.SaveReadingsAsync(savedConnectedEntry.DsmEntryId, slaveReadings);
+
                     var connPayment = new PaymentCollection { DsmEntryId = savedConnectedEntry.DsmEntryId };
                     await _paymentRepo.SavePaymentAsync(connPayment);
 
@@ -320,31 +385,72 @@ public class DsmEntryService
                     {
                         var calc = _dsmCalculationService.Calculate(ToCalculationDto(connFullResult.Data));
                         savedConnectedEntry.GrossSales = calc.GrossSales;
-                        savedConnectedEntry.TotalInDirect = calc.TotalInDirect;
-                        savedConnectedEntry.TotalCreditors = calc.TotalCreditors;
-                        savedConnectedEntry.TotalCollection = calc.TotalCollection;
+                        savedConnectedEntry.TotalInDirect = 0m;
+                        savedConnectedEntry.TotalCreditors = 0m;
+                        savedConnectedEntry.TotalCollection = 0m;
                         savedConnectedEntry.Mismatch = 0m; // Connected entry mismatch is always 0 because collections are in primary
                         await _dsmRepo.SaveEntryAsync(savedConnectedEntry);
                     }
                 }
             }
 
-            // Sync ConnectedPumpId for saved primary entry
-            var finalShiftEntriesResult = await _dsmRepo.GetEntriesForShiftAsync(shift.ShiftId);
-            if (finalShiftEntriesResult.Success && finalShiftEntriesResult.Data != null)
+            // Remove orphaned slave entries (e.g. if edited connection group had more slaves previously)
+            var orphanedSlaves = shiftEntries.Where(e =>
+                savedEntry.DsmEntryId != 0
+                && e.ReconciledToPumpId == savedEntry.DsmEntryId
+                && !activeSlaveEntryIds.Contains(e.DsmEntryId)).ToList();
+
+            if (orphanedSlaves.Count > 0)
             {
-                var shiftEntries = finalShiftEntriesResult.Data;
-                var firstEntry = shiftEntries.FirstOrDefault(e => e.DsmEntryId == savedEntry.DsmEntryId);
-                if (firstEntry != null && firstEntry.ConnectedPumpId != connectedPumpId)
+                try
                 {
-                    firstEntry.ConnectedPumpId = connectedPumpId;
-                    await _dsmRepo.SaveEntryAsync(firstEntry);
+                    using var scope = _serviceProvider.CreateScope();
+                    var dbContext = scope.ServiceProvider.GetRequiredService<DbContext>();
+                    foreach (var orphan in orphanedSlaves)
+                    {
+                        var entryToDelete = await dbContext.Set<DsmEntry>().FindAsync(orphan.DsmEntryId);
+                        if (entryToDelete != null)
+                        {
+                            dbContext.Set<DsmEntry>().Remove(entryToDelete);
+                        }
+                    }
+                    await dbContext.SaveChangesAsync();
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error(ex, "Failed to clean up orphaned slave entries for DsmEntryId {DsmEntryId}", savedEntry.DsmEntryId);
                 }
             }
 
-            _logger.Information("DSM entry saved successfully: {DsmName} Pump {PumpId}", dsmName, pumpId);
+            // Sync ConnectedPumpId and ConnectedPumpIdsJson for saved primary entry
+            var finalShiftEntriesResult = await _dsmRepo.GetEntriesForShiftAsync(shift.ShiftId);
+            if (finalShiftEntriesResult.Success && finalShiftEntriesResult.Data != null)
+            {
+                var finalEntries = finalShiftEntriesResult.Data;
+                var firstEntry = finalEntries.FirstOrDefault(e => e.DsmEntryId == savedEntry.DsmEntryId);
+                if (firstEntry != null)
+                {
+                    var targetConnId = effectiveConnectedPumps.FirstOrDefault() > 0 ? effectiveConnectedPumps.FirstOrDefault() : (int?)null;
+                    var targetConnJson = effectiveConnectedPumps.Count > 0 ? System.Text.Json.JsonSerializer.Serialize(effectiveConnectedPumps) : null;
+                    if (firstEntry.ConnectedPumpId != targetConnId || firstEntry.ConnectedPumpIdsJson != targetConnJson)
+                    {
+                        firstEntry.ConnectedPumpId = targetConnId;
+                        firstEntry.ConnectedPumpIdsJson = targetConnJson;
+                        await _dsmRepo.SaveEntryAsync(firstEntry);
+                    }
+                }
+            }
+
+            _logger.Information("DSM entry saved successfully: {DsmName} Pump {PumpId} with {SlaveCount} slaves", dsmName, pumpId, effectiveConnectedPumps.Count);
             RaiseDsmEntryChanged();
-            return Result<DsmEntry>.Ok(savedEntry);
+
+            var finalReload = await _dsmRepo.GetFullEntryAsync(savedEntry.DsmEntryId);
+            var returnEntry = finalReload.Success && finalReload.Data != null ? finalReload.Data : savedEntry;
+            if (returnEntry.TestingEntries == null)
+            {
+                returnEntry.TestingEntries = testingEntries;
+            }
+            return Result<DsmEntry>.Ok(returnEntry);
         }
         catch (DbUpdateException dbEx)
         {
@@ -371,6 +477,23 @@ public class DsmEntryService
     }
 
     /// <summary>
+    /// Gets full dynamic fuel rates dictionary from settings.
+    /// </summary>
+    public async Task<Dictionary<string, double>> GetFuelRatesMapAsync()
+    {
+        var result = await _settingsRepo.GetSettingsAsync();
+        if (result.Success && result.Data != null)
+            return result.Data.FuelRates;
+        return new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["HSD - 20KL"] = 90.35,
+            ["MS - 20KL"] = 103.81,
+            ["HSD - 20KL II"] = 90.35,
+            ["CNG"] = 85.0
+        };
+    }
+
+    /// <summary>
     /// Gets all DSM entries for a shift as summary DTOs.
     /// </summary>
     public async Task<Result<List<DsmEntrySummaryDto>>> GetShiftEntrySummariesAsync(int shiftId)
@@ -392,41 +515,47 @@ public class DsmEntryService
             int sequenceCounter = 1;
             foreach (var primary in primaryEntries)
             {
-                var connectedSlave = allSlaves
+                var primaryConnectedPumps = primary.GetEffectiveConnectedPumpIds();
+                var connectedSlaves = allSlaves
                     .Where(e => !usedSlaveIds.Contains(e.DsmEntryId)
                         && (e.ReconciledToPumpId == primary.DsmEntryId 
+                            || (primaryConnectedPumps.Contains(e.PumpId) && string.Equals((e.DsmName ?? "").Trim(), (primary.DsmName ?? "").Trim(), StringComparison.OrdinalIgnoreCase))
                             || (primary.ConnectedPumpId.HasValue && e.PumpId == primary.ConnectedPumpId.Value && string.Equals((e.DsmName ?? "").Trim(), (primary.DsmName ?? "").Trim(), StringComparison.OrdinalIgnoreCase))
                             || (e.ReconciledToPumpId == primary.PumpId && string.Equals((e.DsmName ?? "").Trim(), (primary.DsmName ?? "").Trim(), StringComparison.OrdinalIgnoreCase))))
-                    .OrderBy(e => e.ReconciledToPumpId == primary.DsmEntryId ? 0 : 1)
-                    .ThenBy(e => e.DsmEntryId >= primary.DsmEntryId ? (e.DsmEntryId - primary.DsmEntryId) : (100000 + Math.Abs(e.DsmEntryId - primary.DsmEntryId)))
-                    .FirstOrDefault();
+                    .ToList();
 
-                if (connectedSlave != null)
+                foreach (var s in connectedSlaves)
                 {
-                    usedSlaveIds.Add(connectedSlave.DsmEntryId);
+                    usedSlaveIds.Add(s.DsmEntryId);
                 }
 
-                var connectedSlaves = connectedSlave != null ? new List<DsmEntry> { connectedSlave } : new List<DsmEntry>();
+                var group = new List<DsmEntry> { primary };
+                group.AddRange(connectedSlaves);
 
-                double totalGrossSales = primary.NozzleReadings != null && primary.NozzleReadings.Count > 0
-                    ? primary.NozzleReadings.Sum(n => (double)n.Amount)
-                    : 0;
+                var distinctNozzles = group
+                    .SelectMany(e => e.NozzleReadings ?? new List<NozzleReading>())
+                    .GroupBy(n => n.NozzleNumber)
+                    .Select(g => g.First())
+                    .ToList();
 
-                foreach (var slave in connectedSlaves)
+                double totalGrossSales = distinctNozzles.Count > 0 
+                    ? distinctNozzles.Sum(n => (double)n.Amount)
+                    : (primary.GrossSales > 0 ? (double)primary.GrossSales : (double)group.Sum(e => e.GrossSales));
+
+                var calcDto = ToCalculationDto(primary);
+                var calc = _dsmCalculationService.Calculate(calcDto);
+                double totalCollection = (double)calc.TotalCollection;
+                if (totalCollection == 0 && primary.TotalCollection > 0)
                 {
-                    if (slave.NozzleReadings != null && slave.NozzleReadings.Count > 0)
-                    {
-                        totalGrossSales += slave.NozzleReadings.Sum(n => (double)n.Amount);
-                    }
+                    totalCollection = (double)primary.TotalCollection;
                 }
 
-                if (totalGrossSales == 0)
-                {
-                    totalGrossSales = (double)primary.GrossSales;
-                }
+                double totalTesting = (double)group
+                    .SelectMany(e => e.TestingEntries ?? new List<TestingEntry>())
+                    .Sum(t => t.Amount);
 
-                double totalCollection = (double)primary.TotalCollection;
-                double mismatch = totalCollection - totalGrossSales;
+                double netSales = totalGrossSales - totalTesting;
+                double mismatch = primary.Mismatch != 0 ? (double)primary.Mismatch : (totalCollection - netSales);
 
                 summaries.Add(new DsmEntrySummaryDto
                 {
@@ -434,9 +563,12 @@ public class DsmEntryService
                     DsmEntryId = primary.DsmEntryId,
                     DsmName = primary.DsmName,
                     PumpId = primary.PumpId,
-                    ConnectedPumpId = primary.ConnectedPumpId ?? connectedSlave?.PumpId,
+                    ConnectedPumpId = primary.ConnectedPumpId ?? connectedSlaves.FirstOrDefault()?.PumpId,
+                    ConnectedPumpIdsJson = primary.ConnectedPumpIdsJson ?? (connectedSlaves.Count > 0 ? System.Text.Json.JsonSerializer.Serialize(connectedSlaves.Select(s => s.PumpId).Distinct()) : null),
                     ReconciledToPumpId = null,
                     GrossSales = totalGrossSales,
+                    TestingAmount = totalTesting,
+                    NetSales = netSales,
                     TotalPaymentIn = totalCollection,
                     Difference = mismatch,
                     CreatedAt = primary.CreatedAt
@@ -527,10 +659,69 @@ public class DsmEntryService
         string? endTime = null,
         List<DsmPersonalDebtor>? personalDebtors = null,
         List<KhandharePetroleumEntry>? khandharePetroleumEntries = null,
-        List<DsmQrPaymentEntry>? qrPayments = null)
+        List<DsmQrPaymentEntry>? qrPayments = null,
+        IEnumerable<int>? connectedPumpIds = null)
     {
         try
         {
+            // 1. Resolve effective connected pumps with backward-compatible fallback
+            List<int> effectiveConnectedPumps;
+            var resolvedFromInput = PumpConnectionConfiguration.ResolveEffectiveConnectedPumpIds(connectedPumpId, null, connectedPumpIds)
+                .Where(id => id != pumpId)
+                .ToList();
+
+            if (resolvedFromInput.Count > 0 || connectedPumpIds != null || (connectedPumpId.HasValue && connectedPumpId.Value > 0))
+            {
+                effectiveConnectedPumps = resolvedFromInput;
+            }
+            else
+            {
+                var stationConfigService = _serviceProvider.GetService<IStationConfigurationService>();
+                if (stationConfigService != null)
+                {
+                    var config = await stationConfigService.GetPumpConnectionConfigurationAsync();
+                    if (config != null && config.IsEnabled)
+                    {
+                        var grp = config.Groups.FirstOrDefault(g => g.PrimaryPumpId == pumpId);
+                        effectiveConnectedPumps = grp != null
+                            ? grp.ConnectedPumpIds.Where(id => id > 0 && id != pumpId).Distinct().ToList()
+                            : new List<int>();
+                    }
+                    else
+                    {
+                        effectiveConnectedPumps = new List<int>();
+                    }
+                }
+                else
+                {
+                    effectiveConnectedPumps = new List<int>();
+                }
+            }
+
+            var allEffectivePumps = new List<int> { pumpId }.Concat(effectiveConnectedPumps).Distinct().ToList();
+
+            // 2. Strict Upfront Validation (BEFORE ANY DB WRITE)
+            var duplicateNozzle = nozzleReadings
+                .GroupBy(r => r.NozzleNumber)
+                .FirstOrDefault(g => g.Count() > 1);
+            if (duplicateNozzle != null)
+            {
+                return Result<DsmEntry>.Fail($"Duplicate nozzle reading found for Nozzle {duplicateNozzle.Key}.");
+            }
+
+            foreach (var nr in nozzleReadings)
+            {
+                var nozzlePumpId = PumpConfiguration.GetPumpIdForNozzle(nr.NozzleNumber, date);
+                if (nozzlePumpId <= 0)
+                {
+                    return Result<DsmEntry>.Fail($"Nozzle {nr.NozzleNumber} could not be resolved to a valid pump for date {date:yyyy-MM-dd}.");
+                }
+                if (!allEffectivePumps.Contains(nozzlePumpId))
+                {
+                    return Result<DsmEntry>.Fail($"Nozzle {nr.NozzleNumber} belongs to Pump {nozzlePumpId}, which is not part of connection group [{string.Join(", ", allEffectivePumps)}].");
+                }
+            }
+
             var dateOnly = date.Date;
             var altShift = shiftType == "A" ? "I" : (shiftType == "B" ? "II" : (shiftType == "C" ? "III" : (shiftType == "I" ? "A" : (shiftType == "II" ? "B" : (shiftType == "III" ? "C" : shiftType)))));
             
@@ -570,27 +761,14 @@ public class DsmEntryService
                 nr.Amount = nr.SaleLitres * nr.Rate;
             }
 
-            // Split nozzle readings into primary and connected pump nozzles
-            var primaryReadings = new List<NozzleReading>();
-            var connectedReadings = new List<NozzleReading>();
-            foreach (var nr in nozzleReadings)
-            {
-                var nozzlePumpId = PumpConfiguration.GetPumpIdForNozzle(nr.NozzleNumber, date);
-                if (nozzlePumpId == 0) nozzlePumpId = pumpId;
+            // Dynamic partitioning of nozzle readings by physical pump
+            var readingsByPump = nozzleReadings
+                .GroupBy(nr => PumpConfiguration.GetPumpIdForNozzle(nr.NozzleNumber, date))
+                .ToDictionary(g => g.Key, g => g.ToList());
 
-                if (connectedPumpId.HasValue && nozzlePumpId == connectedPumpId.Value)
-                {
-                    connectedReadings.Add(nr);
-                }
-                else
-                {
-                    primaryReadings.Add(nr);
-                }
-            }
+            var primaryReadings = readingsByPump.TryGetValue(pumpId, out var pr) ? pr : new List<NozzleReading>();
 
-
-
-            // Create or update DSM entry
+            // Create or update primary DSM entry
             DsmEntry? entry = null;
             if (existingEntryId.HasValue && existingEntryId.Value != 0)
             {
@@ -602,7 +780,8 @@ public class DsmEntryService
                 entry.ShiftId = shift.ShiftId;
                 entry.DsmName = dsmName;
                 entry.PumpId = pumpId;
-                entry.ConnectedPumpId = connectedPumpId;
+                entry.ConnectedPumpId = effectiveConnectedPumps.FirstOrDefault() > 0 ? effectiveConnectedPumps.FirstOrDefault() : null;
+                entry.ConnectedPumpIdsJson = effectiveConnectedPumps.Count > 0 ? System.Text.Json.JsonSerializer.Serialize(effectiveConnectedPumps) : null;
                 entry.StartTime = startTime;
                 entry.EndTime = endTime;
                 entry.UpdatedAt = DateTime.Now;
@@ -614,7 +793,8 @@ public class DsmEntryService
                     ShiftId = shift.ShiftId,
                     DsmName = dsmName,
                     PumpId = pumpId,
-                    ConnectedPumpId = connectedPumpId,
+                    ConnectedPumpId = effectiveConnectedPumps.FirstOrDefault() > 0 ? effectiveConnectedPumps.FirstOrDefault() : null,
+                    ConnectedPumpIdsJson = effectiveConnectedPumps.Count > 0 ? System.Text.Json.JsonSerializer.Serialize(effectiveConnectedPumps) : null,
                     StartTime = startTime,
                     EndTime = endTime,
                     CreatedAt = DateTime.Now,
@@ -633,8 +813,6 @@ public class DsmEntryService
             {
                 r.DsmEntryId = savedEntryId;
                 r.DsmEntry = null;
-                r.SaleLitres = r.ClosingReading - r.OpeningReading;
-                r.Amount = r.SaleLitres * r.Rate;
             }
             context.Set<NozzleReading>().AddRange(primaryReadings);
 
@@ -642,15 +820,44 @@ public class DsmEntryService
             var existingPayment = await context.Set<PaymentCollection>().FirstOrDefaultAsync(p => p.DsmEntryId == savedEntryId);
             if (existingPayment != null)
             {
-                payment.PaymentId = existingPayment.PaymentId;
-                payment.DsmEntryId = savedEntryId;
-                payment.DsmEntry = null;
-                context.Entry(existingPayment).CurrentValues.SetValues(payment);
+                existingPayment.PhonePeMorning = payment.PhonePeMorning;
+                existingPayment.PhonePeNight = payment.PhonePeNight;
+                existingPayment.PhonePeDay = payment.PhonePeDay;
+                existingPayment.PhonePeCardMorning = payment.PhonePeCardMorning;
+                existingPayment.PhonePeCardNight = payment.PhonePeCardNight;
+                existingPayment.PhonePeCardDay = payment.PhonePeCardDay;
+                existingPayment.CreditCardMorning = payment.CreditCardMorning;
+                existingPayment.CreditCardNight = payment.CreditCardNight;
+                existingPayment.CreditCardDay = payment.CreditCardDay;
+                existingPayment.PetroCardMorning = payment.PetroCardMorning;
+                existingPayment.PetroCardNight = payment.PetroCardNight;
+                existingPayment.PetroCardDay = payment.PetroCardDay;
+                existingPayment.CashDeposit = payment.CashDeposit;
+                existingPayment.Others = payment.Others;
+
+                existingPayment.CardTid = payment.CardTid;
+                existingPayment.CardBatch = payment.CardBatch;
+                existingPayment.PhonePeTid = payment.PhonePeTid;
+                existingPayment.PhonePeBatch = payment.PhonePeBatch;
+                existingPayment.PetroCardTid = payment.PetroCardTid;
+                existingPayment.PetroCardBatch = payment.PetroCardBatch;
+                existingPayment.PhonePeTidMorning = payment.PhonePeTidMorning;
+                existingPayment.PhonePeBatchMorning = payment.PhonePeBatchMorning;
+                existingPayment.PhonePeTidNight = payment.PhonePeTidNight;
+                existingPayment.PhonePeBatchNight = payment.PhonePeBatchNight;
+                existingPayment.CreditCardTidMorning = payment.CreditCardTidMorning;
+                existingPayment.CreditCardBatchMorning = payment.CreditCardBatchMorning;
+                existingPayment.CreditCardTidNight = payment.CreditCardTidNight;
+                existingPayment.CreditCardBatchNight = payment.CreditCardBatchNight;
+                existingPayment.PetroCardTidMorning = payment.PetroCardTidMorning;
+                existingPayment.PetroCardBatchMorning = payment.PetroCardBatchMorning;
+                existingPayment.PetroCardTidNight = payment.PetroCardTidNight;
+                existingPayment.PetroCardBatchNight = payment.PetroCardBatchNight;
+                existingPayment.DynamicItemsJson = payment.DynamicItemsJson;
             }
             else
             {
                 payment.DsmEntryId = savedEntryId;
-                payment.DsmEntry = null;
                 context.Set<PaymentCollection>().Add(payment);
             }
 
@@ -695,14 +902,13 @@ public class DsmEntryService
             context.Set<CashDenomination>().AddRange(cashDenominations);
 
             // Save Personal Debtors
-            var existingPersonal = await context.Set<DsmPersonalDebtor>().Where(p => p.DsmEntryId == savedEntryId).ToListAsync();
-            context.Set<DsmPersonalDebtor>().RemoveRange(existingPersonal);
+            var existingPD = await context.Set<DsmPersonalDebtor>().Where(p => p.DsmEntryId == savedEntryId).ToListAsync();
+            context.Set<DsmPersonalDebtor>().RemoveRange(existingPD);
             if (personalDebtors != null)
             {
                 foreach (var p in personalDebtors)
                 {
                     p.DsmEntryId = savedEntryId;
-                    p.DsmEntry = null;
                     p.DsmName = dsmName;
                     p.Date = shift.ShiftDate;
                     if (string.IsNullOrEmpty(p.Time))
@@ -721,7 +927,6 @@ public class DsmEntryService
                 foreach (var kp in khandharePetroleumEntries)
                 {
                     kp.DsmEntryId = savedEntryId;
-                    kp.DsmEntry = null;
                     kp.DsmName = dsmName;
                     kp.Date = shift.ShiftDate;
                 }
@@ -736,7 +941,6 @@ public class DsmEntryService
                 foreach (var q in qrPayments)
                 {
                     q.DsmEntryId = savedEntryId;
-                    q.DsmEntry = null;
                     q.DsmName = dsmName;
                     q.Date = shift.ShiftDate;
                 }
@@ -758,22 +962,38 @@ public class DsmEntryService
                 .Include(e => e.QrPayments)
                 .FirstOrDefaultAsync(e => e.DsmEntryId == savedEntryId);
 
+            var shiftEntries = await context.Set<DsmEntry>()
+                .Include(e => e.TestingEntries)
+                .Where(e => e.ShiftId == shift.ShiftId)
+                .ToListAsync();
+
             if (fullEntry != null)
             {
                 var calc = _dsmCalculationService.Calculate(ToCalculationDto(fullEntry));
-                var connectedGross = connectedPumpId.HasValue ? (decimal)connectedReadings.Sum(x => x.Amount) : 0m;
-                entry.GrossSales = calc.GrossSales + connectedGross;
+                var totalConnectedGross = (decimal)effectiveConnectedPumps
+                    .Sum(slavePumpId => readingsByPump.TryGetValue(slavePumpId, out var sr) ? sr.Sum(x => x.Amount) : 0);
+
+                var slaveTesting = (decimal)effectiveConnectedPumps.Sum(spId =>
+                    shiftEntries.Where(e => e.PumpId == spId && e.TestingEntries != null)
+                                .SelectMany(e => e.TestingEntries)
+                                .Sum(t => t.Amount));
+                var groupTesting = (fullEntry.TestingEntries?.Sum(t => (decimal)t.Amount) ?? 0m) + slaveTesting;
+
+                entry.GrossSales = calc.GrossSales + totalConnectedGross;
                 entry.TotalInDirect = calc.TotalInDirect;
                 entry.TotalCreditors = calc.TotalCreditors;
                 entry.TotalCollection = calc.TotalCollection;
-                entry.Mismatch = calc.TotalCollection - entry.GrossSales;
+                var netGrossSales = entry.GrossSales - groupTesting;
+                entry.Mismatch = calc.TotalCollection - netGrossSales;
                 entry.UpdatedAt = DateTime.Now;
 
-                // Automatic threshold check for DSM Loss vs Short (> 10)
+                // Automatic DSM Loss (Personal Debtor) handling based on shortage (no tolerance)
                 double totalShortage = entry.Mismatch < 0 ? (double)Math.Abs(entry.Mismatch) : 0;
-                double dsmLossAmount = totalShortage > 10.0 ? (totalShortage - 10.0) : 0.0;
-                var existingAutoLoss = await context.Set<DsmPersonalDebtor>()
-                    .FirstOrDefaultAsync(p => p.DsmEntryId == savedEntryId && p.Remarks != null && p.Remarks.Contains("Shortage"));
+                double dsmLossAmount = totalShortage;
+                var existingAutoLoss = context.Set<DsmPersonalDebtor>().Local
+                    .FirstOrDefault(p => p.DsmEntryId == savedEntryId && p.Remarks != null && p.Remarks.Contains("Shortage"))
+                    ?? await context.Set<DsmPersonalDebtor>()
+                        .FirstOrDefaultAsync(p => p.DsmEntryId == savedEntryId && p.Remarks != null && p.Remarks.Contains("Shortage"));
                 if (dsmLossAmount > 0)
                 {
                     if (existingAutoLoss == null)
@@ -805,21 +1025,22 @@ public class DsmEntryService
                 await context.SaveChangesAsync();
             }
 
-            // Save connected pump entry if specified
-            if (connectedPumpId.HasValue)
+            // Save connected pump entries (slaves)
+            shiftEntries = await context.Set<DsmEntry>()
+                .Where(e => e.ShiftId == shift.ShiftId)
+                .ToListAsync();
+            var activeSlaveEntryIds = new HashSet<int>();
+
+            foreach (var slavePumpId in effectiveConnectedPumps)
             {
-                DsmEntry? existingConnectedEntry = null;
-                var shiftEntries = await context.Set<DsmEntry>()
-                    .Where(e => e.ShiftId == shift.ShiftId)
-                    .ToListAsync();
-                
-                existingConnectedEntry = shiftEntries.FirstOrDefault(e =>
-                    entry.DsmEntryId != 0 && e.ReconciledToPumpId == entry.DsmEntryId);
+                var existingConnectedEntry = shiftEntries.FirstOrDefault(e =>
+                    entry.DsmEntryId != 0 && e.ReconciledToPumpId == entry.DsmEntryId && e.PumpId == slavePumpId);
 
                 DsmEntry connectedEntry;
                 if (existingConnectedEntry != null)
                 {
                     existingConnectedEntry.ReconciledToPumpId = entry.DsmEntryId;
+                    existingConnectedEntry.DsmName = dsmName;
                     existingConnectedEntry.StartTime = startTime;
                     existingConnectedEntry.EndTime = endTime;
                     existingConnectedEntry.UpdatedAt = DateTime.Now;
@@ -831,7 +1052,7 @@ public class DsmEntryService
                     {
                         ShiftId = shift.ShiftId,
                         DsmName = dsmName,
-                        PumpId = connectedPumpId.Value,
+                        PumpId = slavePumpId,
                         ReconciledToPumpId = entry.DsmEntryId,
                         StartTime = startTime,
                         EndTime = endTime,
@@ -843,18 +1064,20 @@ public class DsmEntryService
 
                 await context.SaveChangesAsync();
                 var savedConnEntryId = connectedEntry.DsmEntryId;
+                activeSlaveEntryIds.Add(savedConnEntryId);
 
                 // Save nozzle readings for connected pump
                 var existingConnNozzles = await context.Set<NozzleReading>().Where(r => r.DsmEntryId == savedConnEntryId).ToListAsync();
                 context.Set<NozzleReading>().RemoveRange(existingConnNozzles);
-                foreach (var r in connectedReadings)
+                var slaveReadings = readingsByPump.TryGetValue(slavePumpId, out var sr) ? sr : new List<NozzleReading>();
+                foreach (var r in slaveReadings)
                 {
                     r.DsmEntryId = savedConnEntryId;
                     r.DsmEntry = null;
                     r.SaleLitres = r.ClosingReading - r.OpeningReading;
                     r.Amount = r.SaleLitres * r.Rate;
                 }
-                context.Set<NozzleReading>().AddRange(connectedReadings);
+                context.Set<NozzleReading>().AddRange(slaveReadings);
 
                 // Save empty child tables for connected pump to avoid null refs
                 var existingConnPayment = await context.Set<PaymentCollection>().FirstOrDefaultAsync(p => p.DsmEntryId == savedConnEntryId);
@@ -890,9 +1113,9 @@ public class DsmEntryService
                 {
                     var calc = _dsmCalculationService.Calculate(ToCalculationDto(fullConnEntry));
                     connectedEntry.GrossSales = calc.GrossSales;
-                    connectedEntry.TotalInDirect = calc.TotalInDirect;
-                    connectedEntry.TotalCreditors = calc.TotalCreditors;
-                    connectedEntry.TotalCollection = calc.TotalCollection;
+                    connectedEntry.TotalInDirect = 0m;
+                    connectedEntry.TotalCreditors = 0m;
+                    connectedEntry.TotalCollection = 0m;
                     connectedEntry.Mismatch = 0m;
                     connectedEntry.UpdatedAt = DateTime.Now;
                     context.Entry(connectedEntry).State = EntityState.Modified;
@@ -900,19 +1123,33 @@ public class DsmEntryService
                 }
             }
 
-            // Sync ConnectedPumpId on saved primary entry
-            var firstEntry = await context.Set<DsmEntry>().FirstOrDefaultAsync(e => e.DsmEntryId == savedEntryId);
-            if (firstEntry != null && firstEntry.ConnectedPumpId != connectedPumpId)
+            // Remove orphaned slave entries
+            var orphanedSlaves = shiftEntries.Where(e =>
+                entry.DsmEntryId != 0
+                && e.ReconciledToPumpId == entry.DsmEntryId
+                && !activeSlaveEntryIds.Contains(e.DsmEntryId)).ToList();
+
+            if (orphanedSlaves.Count > 0)
             {
-                firstEntry.ConnectedPumpId = connectedPumpId;
-                context.Entry(firstEntry).State = EntityState.Modified;
+                context.Set<DsmEntry>().RemoveRange(orphanedSlaves);
+                await context.SaveChangesAsync();
+            }
+
+            // Sync ConnectedPumpId and ConnectedPumpIdsJson on saved primary entry
+            var targetConnId = effectiveConnectedPumps.FirstOrDefault() > 0 ? effectiveConnectedPumps.FirstOrDefault() : (int?)null;
+            var targetConnJson = effectiveConnectedPumps.Count > 0 ? System.Text.Json.JsonSerializer.Serialize(effectiveConnectedPumps) : null;
+            if (entry.ConnectedPumpId != targetConnId || entry.ConnectedPumpIdsJson != targetConnJson)
+            {
+                entry.ConnectedPumpId = targetConnId;
+                entry.ConnectedPumpIdsJson = targetConnJson;
+                context.Entry(entry).State = EntityState.Modified;
                 await context.SaveChangesAsync();
             }
 
             // Propagate nozzle readings downstream
             await PropagateNozzleReadingsWithContextAsync(context, date, shiftType);
 
-            _logger.Information("DSM entry saved successfully via transaction context: {DsmName} Pump {PumpId}", dsmName, pumpId);
+            _logger.Information("DSM entry saved successfully via transaction context: {DsmName} Pump {PumpId} with {SlaveCount} slaves", dsmName, pumpId, effectiveConnectedPumps.Count);
             RaiseDsmEntryChanged();
             return Result<DsmEntry>.Ok(entry);
         }

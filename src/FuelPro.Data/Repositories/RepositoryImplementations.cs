@@ -674,13 +674,17 @@ public class NozzleReadingRepository : INozzleReadingRepository
     {
         try
         {
-            var existing = await _context.NozzleReadings
-                .Where(r => r.DsmEntryId == dsmEntryId)
-                .ToListAsync();
+            var existing = await _context.NozzleReadings.Where(r => r.DsmEntryId == dsmEntryId).ToListAsync();
             _context.NozzleReadings.RemoveRange(existing);
 
-            foreach (var r in readings)
+            var distinctReadings = (readings ?? new List<NozzleReading>())
+                .GroupBy(r => r.NozzleNumber)
+                .Select(g => g.Last())
+                .ToList();
+
+            foreach (var r in distinctReadings)
             {
+                r.NozzleReadingId = 0;
                 r.DsmEntryId = dsmEntryId;
                 r.DsmEntry = null;
                 if (r.ClosingReading < r.OpeningReading)
@@ -690,7 +694,7 @@ public class NozzleReadingRepository : INozzleReadingRepository
                 r.SaleLitres = r.ClosingReading - r.OpeningReading;
                 r.Amount = r.SaleLitres * r.Rate;
             }
-            _context.NozzleReadings.AddRange(readings);
+            _context.NozzleReadings.AddRange(distinctReadings);
             await _context.SaveChangesAsync();
             return Result.Ok();
         }
@@ -777,7 +781,25 @@ public class PaymentRepository : IPaymentRepository
                 existing.PhonePeTidNight = payment.PhonePeTidNight;
                 existing.PhonePeBatchNight = payment.PhonePeBatchNight;
 
-                // Synchronize dynamic collection items
+                // Synchronize dynamic collection items & DynamicItemsJson
+                if (payment.Items != null && payment.Items.Count > 0)
+                {
+                    var json = Newtonsoft.Json.JsonConvert.SerializeObject(payment.Items.Select(i => new
+                    {
+                        i.CollectionTypeCode,
+                        i.Amount,
+                        i.Tid,
+                        i.Batch,
+                        i.Slot
+                    }));
+                    existing.DynamicItemsJson = json;
+                    payment.DynamicItemsJson = json;
+                }
+                else
+                {
+                    existing.DynamicItemsJson = null;
+                }
+
                 if (existing.Items != null && existing.Items.Count > 0)
                 {
                     _context.PaymentCollectionItems.RemoveRange(existing.Items);
@@ -795,6 +817,17 @@ public class PaymentRepository : IPaymentRepository
             }
             else
             {
+                if (payment.Items != null && payment.Items.Count > 0 && string.IsNullOrEmpty(payment.DynamicItemsJson))
+                {
+                    payment.DynamicItemsJson = Newtonsoft.Json.JsonConvert.SerializeObject(payment.Items.Select(i => new
+                    {
+                        i.CollectionTypeCode,
+                        i.Amount,
+                        i.Tid,
+                        i.Batch,
+                        i.Slot
+                    }));
+                }
                 _context.PaymentCollections.Add(payment);
             }
             await _context.SaveChangesAsync();
@@ -835,17 +868,78 @@ public class DebitEntryRepository : IDebitEntryRepository
     {
         try
         {
-            var existing = await _context.DebitEntries
-                .Where(d => d.DsmEntryId == dsmEntryId).ToListAsync();
+            var existing = await _context.DebitEntries.Where(d => d.DsmEntryId == dsmEntryId).ToListAsync();
             _context.DebitEntries.RemoveRange(existing);
 
-            foreach (var d in debits)
+            // Deduplicate incoming debits to prevent accidental duplication
+            var distinctDebits = new List<DebitEntry>();
+            if (debits != null)
             {
-                d.DsmEntryId = dsmEntryId;
-                d.DsmEntry = null;
+                foreach (var d in debits)
+                {
+                    if (string.IsNullOrWhiteSpace(d.DebtorName) || d.Amount <= 0) continue;
+                    
+                    if (!distinctDebits.Any(existingD => 
+                        string.Equals(existingD.DebtorName?.Trim(), d.DebtorName?.Trim(), StringComparison.OrdinalIgnoreCase)
+                        && Math.Abs(existingD.Amount - d.Amount) < 0.001
+                        && string.Equals(existingD.ChequeNo?.Trim(), d.ChequeNo?.Trim(), StringComparison.OrdinalIgnoreCase)
+                        && string.Equals(existingD.VehicleNumber?.Trim(), d.VehicleNumber?.Trim(), StringComparison.OrdinalIgnoreCase)))
+                    {
+                        d.DebitId = 0;
+                        d.DsmEntryId = dsmEntryId;
+                        d.DsmEntry = null;
+                        distinctDebits.Add(d);
+                    }
+                }
             }
-            _context.DebitEntries.AddRange(debits);
+
+            // Auto-register any new debtor name in Creditors table
+            bool newCreditorAdded = false;
+            foreach (var d in distinctDebits)
+            {
+                var cleanName = d.DebtorName.Trim();
+                var creditor = await _context.Creditors
+                    .FirstOrDefaultAsync(c => c.Name.ToLower() == cleanName.ToLower());
+
+                if (creditor == null)
+                {
+                    creditor = new Creditor
+                    {
+                        Name = cleanName,
+                        IsActive = true,
+                        CreatedAt = DateTime.Now
+                    };
+                    _context.Creditors.Add(creditor);
+                    await _context.SaveChangesAsync(); // generate CreditorId
+                    newCreditorAdded = true;
+                }
+
+                if (!string.IsNullOrWhiteSpace(d.VehicleNumber))
+                {
+                    var cleanVeh = d.VehicleNumber.Trim();
+                    var hasVeh = await _context.DebtorVehicles
+                        .AnyAsync(v => v.CreditorId == creditor.CreditorId && v.VehicleNumber.ToLower() == cleanVeh.ToLower());
+                    if (!hasVeh)
+                    {
+                        _context.DebtorVehicles.Add(new DebtorVehicle
+                        {
+                            CreditorId = creditor.CreditorId,
+                            VehicleNumber = cleanVeh,
+                            CreatedAt = DateTime.Now
+                        });
+                        newCreditorAdded = true;
+                    }
+                }
+            }
+
+            _context.DebitEntries.AddRange(distinctDebits);
             await _context.SaveChangesAsync();
+
+            if (newCreditorAdded)
+            {
+                FuelPro.Core.Services.DsmEntryService.RaiseDebtorChanged();
+            }
+
             return Result.Ok();
         }
         catch (Exception ex)
@@ -878,20 +972,20 @@ public class TestingEntryRepository : ITestingEntryRepository
         }
     }
 
-    public async Task<Result> SaveTestingEntriesAsync(int dsmEntryId, List<TestingEntry> entries)
+    public async Task<Result> SaveTestingEntriesAsync(int dsmEntryId, List<TestingEntry> testingEntries)
     {
         try
         {
-            var existing = await _context.TestingEntries
-                .Where(t => t.DsmEntryId == dsmEntryId).ToListAsync();
+            var existing = await _context.TestingEntries.Where(t => t.DsmEntryId == dsmEntryId).ToListAsync();
             _context.TestingEntries.RemoveRange(existing);
 
-            foreach (var e in entries)
+            foreach (var t in testingEntries)
             {
-                e.DsmEntryId = dsmEntryId;
-                e.DsmEntry = null;
+                t.TestingId = 0;
+                t.DsmEntryId = dsmEntryId;
+                t.DsmEntry = null;
             }
-            _context.TestingEntries.AddRange(entries);
+            _context.TestingEntries.AddRange(testingEntries);
             await _context.SaveChangesAsync();
             return Result.Ok();
         }
@@ -944,16 +1038,29 @@ public class ExpenseRepository : IExpenseRepository
     {
         try
         {
-            var existing = await _context.Expenses
-                .Where(e => e.DsmEntryId == dsmEntryId).ToListAsync();
+            var existing = await _context.Expenses.Where(e => e.DsmEntryId == dsmEntryId).ToListAsync();
             _context.Expenses.RemoveRange(existing);
 
-            foreach (var e in expenses)
+            var distinctExpenses = new List<Expense>();
+            if (expenses != null)
             {
-                e.DsmEntryId = dsmEntryId;
-                e.DsmEntry = null;
+                foreach (var e in expenses)
+                {
+                    if (string.IsNullOrWhiteSpace(e.Description) || e.Amount <= 0) continue;
+
+                    if (!distinctExpenses.Any(existingE =>
+                        string.Equals(existingE.Description?.Trim(), e.Description?.Trim(), StringComparison.OrdinalIgnoreCase)
+                        && Math.Abs(existingE.Amount - e.Amount) < 0.001))
+                    {
+                        e.ExpenseId = 0;
+                        e.DsmEntryId = dsmEntryId;
+                        e.DsmEntry = null;
+                        distinctExpenses.Add(e);
+                    }
+                }
             }
-            _context.Expenses.AddRange(expenses);
+
+            _context.Expenses.AddRange(distinctExpenses);
             await _context.SaveChangesAsync();
             return Result.Ok();
         }
@@ -1793,43 +1900,60 @@ public class PumpExpenseRepository : IPumpExpenseRepository
         }
     }
 
+    public async Task<Result<PumpExpense>> GetByIdAsync(int id)
+    {
+        try
+        {
+            var item = await _context.PumpExpenses.FindAsync(id);
+            return item != null 
+                ? Result<PumpExpense>.Ok(item) 
+                : Result<PumpExpense>.Fail("Expense not found.");
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to get pump expense by id");
+            return Result<PumpExpense>.Fail($"Failed to load pump expense: {ex.Message}");
+        }
+    }
+
     public async Task<Result<PumpExpense>> AddOrUpdateAsync(PumpExpense expense)
     {
         try
         {
-            var existing = await _context.PumpExpenses
-                .FirstOrDefaultAsync(e => e.ExpenseDate == expense.ExpenseDate.Date);
+            if (expense.Id > 0)
+            {
+                var existing = await _context.PumpExpenses.FindAsync(expense.Id);
+                if (existing != null)
+                {
+                    existing.ExpenseDate = expense.ExpenseDate.Date;
+                    existing.Rent = expense.Rent;
+                    existing.Salary = expense.Salary;
+                    existing.TripSheetLoss = expense.TripSheetLoss;
+                    existing.DsmShort = expense.DsmShort;
+                    existing.BankingExpenses = expense.BankingExpenses;
+                    existing.BpclPortalExpenses = expense.BpclPortalExpenses;
+                    existing.FuelAndTravel = expense.FuelAndTravel;
+                    existing.OilPurchase = expense.OilPurchase;
+                    existing.RepairsAndMaintenance = expense.RepairsAndMaintenance;
+                    existing.ElectricityExpenses = expense.ElectricityExpenses;
+                    existing.OfficeExpenses = expense.OfficeExpenses;
+                    existing.PrintingExpense = expense.PrintingExpense;
+                    existing.OtherDescription = expense.OtherDescription;
+                    existing.OtherAmount = expense.OtherAmount;
+                    existing.Remarks = expense.Remarks;
+                    
+                    _context.PumpExpenses.Update(existing);
+                    await _context.SaveChangesAsync();
+                    return Result<PumpExpense>.Ok(existing);
+                }
+            }
 
-            if (existing != null)
-            {
-                existing.Rent = expense.Rent;
-                existing.Salary = expense.Salary;
-                existing.TripSheetLoss = expense.TripSheetLoss;
-                existing.DsmShort = expense.DsmShort;
-                existing.BankingExpenses = expense.BankingExpenses;
-                existing.BpclPortalExpenses = expense.BpclPortalExpenses;
-                existing.FuelAndTravel = expense.FuelAndTravel;
-                existing.OilPurchase = expense.OilPurchase;
-                existing.RepairsAndMaintenance = expense.RepairsAndMaintenance;
-                existing.ElectricityExpenses = expense.ElectricityExpenses;
-                existing.OfficeExpenses = expense.OfficeExpenses;
-                existing.PrintingExpense = expense.PrintingExpense;
-                existing.OtherDescription = expense.OtherDescription;
-                existing.OtherAmount = expense.OtherAmount;
-                existing.Remarks = expense.Remarks;
-                
-                _context.PumpExpenses.Update(existing);
-                await _context.SaveChangesAsync();
-                return Result<PumpExpense>.Ok(existing);
-            }
-            else
-            {
-                expense.ExpenseDate = expense.ExpenseDate.Date;
-                expense.CreatedAt = DateTime.Now;
-                _context.PumpExpenses.Add(expense);
-                await _context.SaveChangesAsync();
-                return Result<PumpExpense>.Ok(expense);
-            }
+            // Always create a new separate entry when Id is 0
+            expense.ExpenseDate = expense.ExpenseDate.Date;
+            expense.CreatedAt = DateTime.Now;
+            _context.PumpExpenses.Add(expense);
+            await _context.SaveChangesAsync();
+            return Result<PumpExpense>.Ok(expense);
         }
         catch (Exception ex)
         {

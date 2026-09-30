@@ -29,8 +29,15 @@ public class FinalCalcPrintData
 public class CreditorRepaymentPrintDto
 {
     public string DebtorName { get; set; } = string.Empty;
+    public string CreditorName { get; set; } = string.Empty;
     public string PaymentMode { get; set; } = string.Empty;
     public string RefNo { get; set; } = string.Empty;
+    public string ReferenceDisplay { get; set; } = string.Empty;
+    public string CardTid { get; set; } = string.Empty;
+    public string CardBatch { get; set; } = string.Empty;
+    public string Tid { get; set; } = string.Empty;
+    public string Batch { get; set; } = string.Empty;
+    public string ChequeNo { get; set; } = string.Empty;
     public decimal Amount { get; set; }
 }
 

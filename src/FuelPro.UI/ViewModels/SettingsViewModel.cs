@@ -18,6 +18,26 @@ using FuelPro.Core.DTOs;
 
 namespace FuelPro.UI.ViewModels;
 
+public partial class FuelRateItemVm : ObservableObject
+{
+    public string TankName { get; set; } = "";
+    public string FuelType { get; set; } = "";
+    public string DisplayName { get; set; } = "";
+    public string Unit { get; set; } = "₹/L";
+    public string HintText => $"{DisplayName} Rate ({Unit})";
+
+    [ObservableProperty] private string _rateText = "0.00";
+    public double Rate
+    {
+        get
+        {
+            if (double.TryParse(RateText, NumberStyles.Any, CultureInfo.CurrentCulture, out var v)) return v;
+            if (double.TryParse(RateText, NumberStyles.Any, CultureInfo.InvariantCulture, out v)) return v;
+            return 0.0;
+        }
+    }
+}
+
 public partial class SettingsViewModel : ObservableObject
 {
     private readonly ISettingsRepository _settingsRepo;
@@ -27,9 +47,13 @@ public partial class SettingsViewModel : ObservableObject
     private readonly LicenseManager _licenseManager;
     private readonly FuelPro.Sync.SyncConfigService _syncConfigService;
     private readonly FuelPro.Sync.SyncEngine _syncEngine;
+    private readonly IStationConfigurationService? _stationConfigService;
 
     [ObservableProperty] private string _pumpStationName = "";
     [ObservableProperty] private string _hsdRate = "";
+
+    // Dynamic Fuel Rates
+    public ObservableCollection<FuelRateItemVm> FuelRateItems { get; } = new();
 
     // Cloud Sync Settings
     [ObservableProperty] private string _supabaseUrl = "";
@@ -109,6 +133,8 @@ public partial class SettingsViewModel : ObservableObject
 
     private readonly IDsmProfileRepository _profileRepo;
 
+    public OpeningBalanceManagementViewModel OpeningBalanceVm { get; }
+
     public SettingsViewModel()
     {
         _settingsRepo = App.Services.GetRequiredService<ISettingsRepository>();
@@ -119,6 +145,25 @@ public partial class SettingsViewModel : ObservableObject
         _syncConfigService = App.Services.GetRequiredService<FuelPro.Sync.SyncConfigService>();
         _syncEngine = App.Services.GetRequiredService<FuelPro.Sync.SyncEngine>();
         _profileRepo = App.Services.GetRequiredService<IDsmProfileRepository>();
+        _stationConfigService = App.Services.GetService<IStationConfigurationService>();
+        OpeningBalanceVm = App.Services.GetRequiredService<OpeningBalanceManagementViewModel>();
+
+        if (_stationConfigService != null)
+        {
+            _stationConfigService.StationConfigurationChanged += () =>
+            {
+                var dispatcher = System.Windows.Application.Current?.Dispatcher;
+                if (dispatcher != null && !dispatcher.CheckAccess())
+                {
+                    dispatcher.BeginInvoke(async () => await LoadFuelRatesAsync());
+                }
+                else
+                {
+                    _ = LoadFuelRatesAsync();
+                }
+            };
+        }
+
         for (var month = 1; month <= 12; month++)
         {
             MonthOptions.Add(new KeyValuePair<int, string>(month, CultureInfo.CurrentCulture.DateTimeFormat.GetMonthName(month)));
@@ -130,6 +175,71 @@ public partial class SettingsViewModel : ObservableObject
         }
         _ = LoadAsync();
         LoadLicenseInfo();
+    }
+
+    public async Task LoadFuelRatesAsync()
+    {
+        try
+        {
+            var items = new List<FuelRateItemVm>();
+            var seenKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            if (_stationConfigService != null)
+            {
+                var tanks = await _stationConfigService.GetAllTanksAsync();
+                var activeTanks = tanks.Where(t => t.IsActive).ToList();
+
+                foreach (var tank in activeTanks)
+                {
+                    string tankKey = tank.TankName?.Trim() ?? "";
+                    string fuelType = tank.FuelType?.Trim() ?? "";
+                    if (string.IsNullOrWhiteSpace(tankKey)) continue;
+
+                    string displayKey = !string.IsNullOrWhiteSpace(fuelType) && !string.Equals(tankKey, fuelType, StringComparison.OrdinalIgnoreCase)
+                        ? $"{fuelType} ({tankKey})"
+                        : tankKey;
+
+                    if (seenKeys.Contains(displayKey)) continue;
+                    seenKeys.Add(displayKey);
+
+                    string unit = (fuelType.Contains("CNG", StringComparison.OrdinalIgnoreCase) || tankKey.Contains("CNG", StringComparison.OrdinalIgnoreCase))
+                        ? "₹/Kg"
+                        : "₹/L";
+
+                    double currentRate = _settings?.GetRateFor(tankKey, 0.0) ?? 0.0;
+                    if (currentRate <= 0 && !string.IsNullOrWhiteSpace(fuelType)) currentRate = _settings?.GetRateFor(fuelType, 0.0) ?? 0.0;
+                    if (currentRate <= 0) currentRate = _settings?.GetRateFor(displayKey, 0.0) ?? 0.0;
+
+                    items.Add(new FuelRateItemVm
+                    {
+                        TankName = tankKey,
+                        FuelType = !string.IsNullOrWhiteSpace(fuelType) ? fuelType : tankKey,
+                        DisplayName = displayKey,
+                        Unit = unit,
+                        RateText = currentRate > 0 ? currentRate.ToString("0.##", CultureInfo.InvariantCulture) : "0.00"
+                    });
+                }
+            }
+
+            // Fallback if no tanks configured in database
+            if (items.Count == 0)
+            {
+                items.Add(new FuelRateItemVm { TankName = "HSD - 20KL", FuelType = "HSD", DisplayName = "HSD (HSD - 20KL)", Unit = "₹/L", RateText = (_settings?.HsdRate ?? 90.35).ToString("0.##", CultureInfo.InvariantCulture) });
+                items.Add(new FuelRateItemVm { TankName = "MS - 20KL", FuelType = "MS-I", DisplayName = "MS-I (MS - 20KL)", Unit = "₹/L", RateText = (_settings?.MsIRate ?? 103.81).ToString("0.##", CultureInfo.InvariantCulture) });
+                items.Add(new FuelRateItemVm { TankName = "HSD - 20KL II", FuelType = "MS-II", DisplayName = "MS-II (HSD - 20KL II)", Unit = "₹/L", RateText = (_settings?.MsIIRate ?? 103.81).ToString("0.##", CultureInfo.InvariantCulture) });
+                items.Add(new FuelRateItemVm { TankName = "CNG Line", FuelType = "CNG", DisplayName = "CNG (CNG Line)", Unit = "₹/Kg", RateText = (_settings?.CngRate ?? 85.0).ToString("0.##", CultureInfo.InvariantCulture) });
+            }
+
+            FuelRateItems.Clear();
+            foreach (var itm in items)
+            {
+                FuelRateItems.Add(itm);
+            }
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to load dynamic fuel rates in Settings");
+        }
     }
 
     private async Task LoadAsync()
@@ -150,6 +260,8 @@ public partial class SettingsViewModel : ObservableObject
             LastUpdated = _settings.LastUpdated.ToString("dd MMM yyyy hh:mm tt");
         }
 
+        await LoadFuelRatesAsync();
+
         // Load Cloud Sync Settings
         var syncSettings = await _syncConfigService.GetSettingsAsync();
         SupabaseUrl = syncSettings.SupabaseUrl;
@@ -164,8 +276,6 @@ public partial class SettingsViewModel : ObservableObject
         if (usersResult.Success)
             foreach (var u in usersResult.Data!) Users.Add(u);
 
-
-
         var creditorsResult = await _creditorRepo.GetAllActiveAsync();
         Creditors.Clear();
         if (creditorsResult.Success)
@@ -177,20 +287,40 @@ public partial class SettingsViewModel : ObservableObject
     {
         if (_settings == null) return;
 
-        if (!TryParseRate(HsdRate, out var hsd) ||
-            !TryParseRate(MsIRate, out var ms1) ||
-            !TryParseRate(MsIIRate, out var ms2) ||
-            !TryParseRate(CngRate, out var cng))
+        var ratesDict = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in FuelRateItems)
         {
-            StatusMessage = "❌ Invalid rate values. Please enter valid numbers.";
-            return;
+            if (item.Rate <= 0)
+            {
+                StatusMessage = $"❌ Invalid rate for {item.DisplayName}. Please enter a positive number.";
+                return;
+            }
+            if (!string.IsNullOrWhiteSpace(item.TankName))
+                ratesDict[item.TankName] = item.Rate;
+            if (!string.IsNullOrWhiteSpace(item.FuelType))
+                ratesDict[item.FuelType] = item.Rate;
+            if (!string.IsNullOrWhiteSpace(item.DisplayName))
+                ratesDict[item.DisplayName] = item.Rate;
         }
 
+        _settings.FuelRates = ratesDict;
         _settings.PumpStationName = PumpStationName;
-        _settings.HsdRate = hsd;
-        _settings.MsIRate = ms1;
-        _settings.MsIIRate = ms2;
-        _settings.CngRate = cng;
+
+        // Legacy synchronizations
+        foreach (var kvp in ratesDict)
+        {
+            var k = kvp.Key;
+            var v = kvp.Value;
+            if (k.Contains("HSD", StringComparison.OrdinalIgnoreCase) && !k.Contains("II", StringComparison.OrdinalIgnoreCase))
+                _settings.HsdRate = v;
+            else if (k.Contains("MS-I", StringComparison.OrdinalIgnoreCase) || k.Equals("MS", StringComparison.OrdinalIgnoreCase) || k.Contains("MS -", StringComparison.OrdinalIgnoreCase))
+                _settings.MsIRate = v;
+            else if (k.Contains("MS-II", StringComparison.OrdinalIgnoreCase) || k.Contains("HSD - 20KL II", StringComparison.OrdinalIgnoreCase))
+                _settings.MsIIRate = v;
+            else if (k.Contains("CNG", StringComparison.OrdinalIgnoreCase))
+                _settings.CngRate = v;
+        }
+
         _settings.Shift1Manager = Shift1Manager?.Trim();
         _settings.Shift2Manager = Shift2Manager?.Trim();
         _settings.Shift3Manager = Shift3Manager?.Trim();

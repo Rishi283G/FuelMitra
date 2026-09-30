@@ -122,7 +122,7 @@ public static class FuelTypeExtensions
         FuelType.HSD => "HSD - 20KL",
         FuelType.MS_I => "MS - 20KL",
         FuelType.MS_II => "HSD - 20KL II",
-        FuelType.CNG => "CNG",
+        FuelType.CNG => "CNG Line",
         _ => fuelType.ToString()
     };
 
@@ -134,7 +134,8 @@ public static class FuelTypeExtensions
         "HSD" => "HSD - 20KL",
         "MS-I" => "MS - 20KL",
         "MS-II" => "HSD - 20KL II",
-        "CNG" => "CNG",
+        "CNG" => "CNG Line",
+        "CNG Line" => "CNG Line",
         _ => canonicalName
     };
 

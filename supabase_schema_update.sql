@@ -128,6 +128,7 @@ ALTER TABLE "DsmSalaryAdjustments" ADD COLUMN IF NOT EXISTS "PendingAdvanceDeduc
 
 -- Table: DsmEntries
 ALTER TABLE "DsmEntries" ADD COLUMN IF NOT EXISTS "ConnectedPumpId" integer NULL;
+ALTER TABLE "DsmEntries" ADD COLUMN IF NOT EXISTS "ConnectedPumpIdsJson" text NULL;
 ALTER TABLE "DsmEntries" ADD COLUMN IF NOT EXISTS "ReconciledToPumpId" integer NULL;
 ALTER TABLE "DsmEntries" ADD COLUMN IF NOT EXISTS "StartTime" text NULL;
 ALTER TABLE "DsmEntries" ADD COLUMN IF NOT EXISTS "EndTime" text NULL;
@@ -317,6 +318,7 @@ CREATE TABLE IF NOT EXISTS "DsmPersonalDebtorRepayments" (
 );
 
 ALTER TABLE "DsmPumpAssignments" ADD COLUMN IF NOT EXISTS "ConnectedPumpId" integer NULL;
+ALTER TABLE "DsmPumpAssignments" ADD COLUMN IF NOT EXISTS "ConnectedPumpIdsJson" text NULL;
 
 -- Ensure PettyCashTransactions has all required columns for sync
 CREATE TABLE IF NOT EXISTS "PettyCashTransactions" (

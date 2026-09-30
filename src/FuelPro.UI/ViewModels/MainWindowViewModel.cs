@@ -19,7 +19,7 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty] private string _currentDateTime = DateTime.Now.ToString("dd MMM yyyy  hh:mm tt");
     [ObservableProperty] private string _dbPath = App.DbPath;
     [ObservableProperty] private string _lastSaveTime = "—";
-    [ObservableProperty] private string _stationName = "Shree Mahakaleshwar Petroleum";
+    [ObservableProperty] private string _stationName = "Mitali Service Station";
     
     public string LogoSource => App.GetLogoPath(false);
     public string SidebarLogoSource => App.GetLogoPath(true);
@@ -147,6 +147,12 @@ public partial class MainWindowViewModel : ObservableObject
 
     private readonly Dictionary<Type, object> _cachedViews = new();
 
+    public void SetCachedView<T>(T view) where T : class
+    {
+        var type = typeof(T);
+        _cachedViews[type] = view;
+    }
+
     private T GetOrCreateView<T>() where T : class
     {
         var type = typeof(T);
@@ -231,7 +237,9 @@ public partial class MainWindowViewModel : ObservableObject
     {
         if (!IsDsmPersonalDebtorVisible) return;
         SelectedNavIndex = 14;
-        CurrentView = GetOrCreateView<DsmPersonalDebtorViewModel>();
+        var vm = GetOrCreateView<DsmPersonalDebtorViewModel>();
+        _ = vm.LoadDataAsync();
+        CurrentView = vm;
     }
 
     [RelayCommand]

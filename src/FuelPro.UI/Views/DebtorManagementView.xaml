@@ -84,7 +84,8 @@
                                 <DataGrid ItemsSource="{Binding Debtors}" SelectedItem="{Binding SelectedDebtor}" AutoGenerateColumns="False" IsReadOnly="True" VerticalScrollBarVisibility="Auto">
                                     <DataGrid.Columns>
                                         <DataGridTextColumn Header="Debtor Name" Binding="{Binding Name}" Width="2.5*" FontWeight="SemiBold"/>
-                                        <DataGridTextColumn Header="Phone" Binding="{Binding Phone}" Width="2*"/>
+                                        <DataGridTextColumn Header="Phone" Binding="{Binding Phone}" Width="1.8*"/>
+                                        <DataGridTextColumn Header="Opening Balance" Binding="{Binding OpeningBalance, Converter={StaticResource CurrencyConverter}}" Width="2*" Foreground="#5D4037"/>
                                         <DataGridTextColumn Header="Total Debt" Binding="{Binding TotalDebt, Converter={StaticResource CurrencyConverter}}" Width="2*"/>
                                         <DataGridTextColumn Header="Total Repaid" Binding="{Binding TotalRepayment, Converter={StaticResource CurrencyConverter}}" Width="2*" Foreground="Green"/>
                                         <DataGridTextColumn Header="Outstanding Balance" Binding="{Binding OutstandingBalance, Converter={StaticResource CurrencyConverter}}" Width="2.5*" FontWeight="Bold" Foreground="Red"/>
@@ -158,7 +159,14 @@
                                     <StackPanel>
                                         <TextBlock Text="Log Repayment" Style="{StaticResource SectionTitle}"/>
                                         
-                                        <ComboBox ItemsSource="{Binding DebtorsList}" SelectedValue="{Binding SelectedDebtorName, UpdateSourceTrigger=PropertyChanged}" SelectedValuePath="Name" DisplayMemberPath="Name" IsEditable="True" materialDesign:HintAssist.Hint="Select Debtor" Style="{StaticResource MaterialDesignOutlinedComboBox}" Margin="0,0,0,12"/>
+                                        <ComboBox ItemsSource="{Binding DebtorsList}" 
+                                                  Text="{Binding SelectedDebtorName, UpdateSourceTrigger=PropertyChanged}"
+                                                  SelectedValue="{Binding SelectedDebtorName, UpdateSourceTrigger=PropertyChanged}" 
+                                                  SelectedValuePath="Name" DisplayMemberPath="Name" 
+                                                  IsEditable="True" 
+                                                  materialDesign:HintAssist.Hint="Select Debtor" 
+                                                  Style="{StaticResource MaterialDesignOutlinedComboBox}" 
+                                                  Margin="0,0,0,12"/>
                                         
                                         <!-- Selected Debtor Live Outstanding Badge -->
                                         <Border Margin="0,0,0,12" Background="#FFF5F5" BorderBrush="#FFCDD2" BorderThickness="1" CornerRadius="6" Padding="12,8"
@@ -209,27 +217,14 @@
                                             </TextBox.Style>
                                         </TextBox>
 
-                                        <!-- Amount Received: manual entry for non-Cash modes -->
-                                        <TextBox Margin="0,0,0,16">
-                                            <TextBox.Style>
-                                                <Style TargetType="TextBox" BasedOn="{StaticResource MaterialDesignOutlinedTextBox}">
-                                                    <Setter Property="Visibility" Value="Visible"/>
-                                                    <Setter Property="IsEnabled" Value="True"/>
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding SelectedPaymentMode}" Value="Cash">
-                                                            <Setter Property="Visibility" Value="Collapsed"/>
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </TextBox.Style>
-                                            <TextBox.Text>
-                                                <Binding Path="RepaymentAmount" UpdateSourceTrigger="LostFocus" StringFormat="F2"/>
-                                            </TextBox.Text>
-                                            <materialDesign:HintAssist.Hint>Amount Received (₹)</materialDesign:HintAssist.Hint>
-                                        </TextBox>
+                                        <!-- Amount Received: accessible for all modes (including Cash) -->
+                                        <TextBox Text="{Binding RepaymentAmount, UpdateSourceTrigger=PropertyChanged, StringFormat=F2}"
+                                                 materialDesign:HintAssist.Hint="Amount Received (₹)"
+                                                 Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                                 Margin="0,0,0,12"/>
 
-                                        <!-- Cash total auto-calculated from denominations (read-only display) -->
-                                        <Border Margin="0,0,0,16" BorderBrush="{DynamicResource MaterialDesign.Brush.Primary}" BorderThickness="1" CornerRadius="4" Padding="12,8">
+                                        <!-- Cash total auto-calculated badge (visible for Cash payments) -->
+                                        <Border Margin="0,0,0,12" BorderBrush="{DynamicResource MaterialDesign.Brush.Primary}" BorderThickness="1" CornerRadius="4" Padding="12,8">
                                             <Border.Style>
                                                 <Style TargetType="Border">
                                                     <Setter Property="Visibility" Value="Collapsed"/>
@@ -242,10 +237,10 @@
                                             </Border.Style>
                                             <StackPanel Orientation="Horizontal">
                                                 <materialDesign:PackIcon Kind="Calculator" Width="18" Height="18" VerticalAlignment="Center" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" Margin="0,0,8,0"/>
-                                                <TextBlock VerticalAlignment="Center" FontSize="14">
+                                                <TextBlock VerticalAlignment="Center" FontSize="13">
                                                     <Run Text="Cash Total: ₹" FontWeight="SemiBold"/>
-                                                    <Run Text="{Binding RepaymentAmount, Mode=OneWay, StringFormat=F2}" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
-                                                    <Run Text="  (auto-calculated from denominations)" Foreground="Gray" FontSize="11"/>
+                                                    <Run Text="{Binding RepaymentAmount, Mode=OneWay, StringFormat=N2}" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                                    <Run Text="  (enter denominations below or type direct amount)" Foreground="Gray" FontSize="11"/>
                                                 </TextBlock>
                                             </StackPanel>
                                         </Border>
@@ -376,7 +371,14 @@
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
 
-                            <ComboBox Grid.Column="0" ItemsSource="{Binding DebtorsList}" SelectedValue="{Binding LedgerDebtorName, UpdateSourceTrigger=PropertyChanged}" SelectedValuePath="Name" DisplayMemberPath="Name" IsEditable="True" materialDesign:HintAssist.Hint="Select Debtor for Ledger" Style="{StaticResource MaterialDesignOutlinedComboBox}" Margin="0,0,12,0"/>
+                            <ComboBox Grid.Column="0" ItemsSource="{Binding DebtorsList}" 
+                                      Text="{Binding LedgerDebtorName, UpdateSourceTrigger=PropertyChanged}"
+                                      SelectedValue="{Binding LedgerDebtorName, UpdateSourceTrigger=PropertyChanged}" 
+                                      SelectedValuePath="Name" DisplayMemberPath="Name" 
+                                      IsEditable="True" 
+                                      materialDesign:HintAssist.Hint="Select Debtor for Ledger" 
+                                      Style="{StaticResource MaterialDesignOutlinedComboBox}" 
+                                      Margin="0,0,12,0"/>
                             
                             <DatePicker Grid.Column="1" SelectedDate="{Binding LedgerStartDate}" materialDesign:HintAssist.Hint="Start Date" Style="{StaticResource MaterialDesignOutlinedDatePicker}" Margin="0,0,12,0"/>
                             <DatePicker Grid.Column="2" SelectedDate="{Binding LedgerEndDate}" materialDesign:HintAssist.Hint="End Date" Style="{StaticResource MaterialDesignOutlinedDatePicker}" Margin="0,0,12,0"/>

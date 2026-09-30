@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using FuelPro.Core.Common;
 using FuelPro.Core.DTOs;
 using FuelPro.Core.Models;
+using FuelPro.Core.Repositories;
 using Serilog;
 
 namespace FuelPro.Core.Services;
@@ -111,18 +112,47 @@ public class ReportService : IReportService
             else if (string.Equals(mode, "Bank Transfer", StringComparison.OrdinalIgnoreCase) || string.Equals(mode, "Cheque", StringComparison.OrdinalIgnoreCase)) dto.BankCashRepayments += r.Amount;
 
             string refNo = "";
-            if (string.Equals(r.PaymentMode, "PhonePe", StringComparison.OrdinalIgnoreCase) || string.Equals(r.PaymentMode, "Credit Card", StringComparison.OrdinalIgnoreCase) || string.Equals(r.PaymentMode, "PineLabs Card", StringComparison.OrdinalIgnoreCase) || string.Equals(r.PaymentMode, "PetroCard", StringComparison.OrdinalIgnoreCase) || string.Equals(r.PaymentMode, "Petro Card", StringComparison.OrdinalIgnoreCase) || string.Equals(r.PaymentMode, "Bank Transfer", StringComparison.OrdinalIgnoreCase))
-                refNo = $"TID: {r.CardTid}, Batch: {r.CardBatch}";
-            else if (string.Equals(r.PaymentMode, "Cheque", StringComparison.OrdinalIgnoreCase))
-                refNo = $"Chq: {r.ChequeNo}";
+            if (!string.IsNullOrWhiteSpace(r.ReferenceDisplay) && r.ReferenceDisplay != "—")
+            {
+                refNo = r.ReferenceDisplay;
+            }
+            else
+            {
+                if (string.Equals(r.PaymentMode, "PhonePe", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(r.PaymentMode, "Credit Card", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(r.PaymentMode, "PineLabs Card", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(r.PaymentMode, "PetroCard", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(r.PaymentMode, "Petro Card", StringComparison.OrdinalIgnoreCase))
+                {
+                    var parts = new List<string>();
+                    if (!string.IsNullOrWhiteSpace(r.CardTid)) parts.Add($"TID: {r.CardTid}");
+                    if (!string.IsNullOrWhiteSpace(r.CardBatch)) parts.Add($"Batch: {r.CardBatch}");
+                    refNo = parts.Count > 0 ? string.Join(", ", parts) : "";
+                }
+                else if (string.Equals(r.PaymentMode, "Bank Transfer", StringComparison.OrdinalIgnoreCase))
+                {
+                    refNo = !string.IsNullOrWhiteSpace(r.CardTid) ? $"Ref: {r.CardTid}" : "";
+                }
+                else if (string.Equals(r.PaymentMode, "Cheque", StringComparison.OrdinalIgnoreCase))
+                {
+                    refNo = !string.IsNullOrWhiteSpace(r.ChequeNo) ? $"Chq: {r.ChequeNo}" : (!string.IsNullOrWhiteSpace(r.CardTid) ? $"Chq: {r.CardTid}" : "");
+                }
+            }
 
             if (!r.CreditorName.Contains("DSM Loss", StringComparison.OrdinalIgnoreCase))
             {
                 dto.DebtorRepayments.Add(new CreditorRepaymentPrintDto
                 {
                     DebtorName = r.CreditorName,
+                    CreditorName = r.CreditorName,
                     PaymentMode = r.PaymentMode,
                     RefNo = refNo,
+                    ReferenceDisplay = refNo,
+                    CardTid = r.CardTid ?? "",
+                    CardBatch = r.CardBatch ?? "",
+                    Tid = r.CardTid ?? "",
+                    Batch = r.CardBatch ?? "",
+                    ChequeNo = r.ChequeNo ?? "",
                     Amount = (decimal)r.Amount
                 });
             }
@@ -206,7 +236,12 @@ public class ReportService : IReportService
 
         foreach (var entry in entriesList)
         {
-            foreach (var t in entry.TestingEntries)
+            var distinctTesting = (entry.TestingEntries ?? new List<TestingEntry>())
+                .GroupBy(t => !string.IsNullOrWhiteSpace(t.FuelType) && t.FuelType != "MS" && t.FuelType != "HSD" ? t.FuelType.Trim().ToUpperInvariant() : t.TestingId.ToString())
+                .Select(g => g.Last())
+                .ToList();
+
+            foreach (var t in distinctTesting)
             {
                 var tankName = PumpConfiguration.GetTestingTankCategory(t.FuelType, entry.PumpId, date.Date);
                 if (!PumpConfiguration.IsTestingEnabledForTank(tankName))
@@ -244,6 +279,12 @@ public class ReportService : IReportService
         }
         dto.TestingSummaryItems = testingSummaryList;
         double testingTotal = testingSummaryList.Sum(t => t.Amount);
+
+        // DSR Presentation (Actual Customer Sales = Gross Meter Sales - Correctly Matched Testing)
+        var (dsrSales, dsrLitres, dsrAmount) = BuildDsrFuelSales(dto.FuelSales, testingSummaryList);
+        dto.DsrFuelSales = dsrSales;
+        dto.DsrTotalFuelLitres = dsrLitres;
+        dto.DsrTotalFuelAmount = dsrAmount;
 
         // 10. DSM Short calculation
         double totalDsmShort = CalculateDsmShort(entriesList);
@@ -338,9 +379,9 @@ public class ReportService : IReportService
         }
 
         // All other enabled dynamic collection types from Dev side (always show with 0 if no entries)
-        var builtInCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "PHONEPE", "CREDIT_CARD", "PINELAB_CARD", "PETROCARD", "CASH_DEPOSIT" };
+        var builtInCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "PHONEPE", "CREDIT_CARD", "PINELAB_CARD", "PETROCARD", "CASH_DEPOSIT", "OTHERS", "OTHER" };
         var dynamicActiveTypes = allColTypes
-            .Where(t => t.IsActive && !builtInCodes.Contains(t.Code))
+            .Where(t => t.IsActive && !builtInCodes.Contains(t.Code) && !string.Equals(t.Code?.Replace("_", ""), "OTHERS", StringComparison.OrdinalIgnoreCase) && !string.Equals(t.Code?.Replace("_", ""), "OTHER", StringComparison.OrdinalIgnoreCase))
             .OrderBy(t => t.DisplayOrder)
             .ToList();
 
@@ -362,6 +403,21 @@ public class ReportService : IReportService
                 Amount = sum,
                 BaseAmount = sum,
                 RecoveryAmount = 0
+            });
+        }
+
+        // Include Others (for record purpose only)
+        double totalOthers = entriesList.Sum(e => e.PaymentCollection?.Others ?? 0);
+        if (totalOthers > 0 || allColTypes.Any(t => (string.Equals(t.Code?.Replace("_", ""), "OTHERS", StringComparison.OrdinalIgnoreCase) || string.Equals(t.Code?.Replace("_", ""), "OTHER", StringComparison.OrdinalIgnoreCase)) && t.IsActive))
+        {
+            var othType = allColTypes.FirstOrDefault(t => string.Equals(t.Code?.Replace("_", ""), "OTHERS", StringComparison.OrdinalIgnoreCase) || string.Equals(t.Code?.Replace("_", ""), "OTHER", StringComparison.OrdinalIgnoreCase));
+            breakdownList.Add(new CollectionCategoryDto
+            {
+                Category = othType?.DisplayName ?? "Others",
+                Amount = totalOthers,
+                BaseAmount = totalOthers,
+                RecoveryAmount = 0,
+                IsInformational = true
             });
         }
 
@@ -390,7 +446,7 @@ public class ReportService : IReportService
         dto.CollectionBreakdown = breakdownList;
 
 
-        dto.ActualCollection = dto.CollectionBreakdown.Where(c => c.Category != "DSM Short").Sum(c => c.Amount);
+        dto.ActualCollection = dto.CollectionBreakdown.Where(c => c.Category != "DSM Short" && !c.IsInformational && !string.Equals(c.Category, "Others", StringComparison.OrdinalIgnoreCase) && !string.Equals(c.Category, "Other", StringComparison.OrdinalIgnoreCase)).Sum(c => c.Amount);
         dto.ExpectedCollection = dto.TotalFuelAmount + reconcilableRecoveriesTotal;
         double rawDiff = dto.ActualCollection - dto.ExpectedCollection;
         dto.Difference = rawDiff < -0.01 ? -dto.TotalDsmShort : (rawDiff > 0.01 ? rawDiff : 0);
@@ -413,14 +469,14 @@ public class ReportService : IReportService
             else
             {
                 var (_, _, mismatch) = CalculateEntryTotals(e);
-                if (mismatch < -10.0 && !e.ReconciledToPumpId.HasValue)
+                if (mismatch < -0.01 && !e.ReconciledToPumpId.HasValue)
                 {
                     personalDebtorsList.Add(new DsmPersonalDebtorPrintDto
                     {
                         DsmName = e.DsmName,
                         FuelProduct = "Fuel",
                         Remarks = $"Shift Shortage (Pump {e.PumpId})",
-                        Amount = Math.Abs(mismatch) - 10.0
+                        Amount = Math.Abs(mismatch)
                     });
                 }
             }
@@ -451,7 +507,23 @@ public class ReportService : IReportService
             })
             .ToList();
 
-        dto.PersonalDebtorRepayments = ExtractPersonalDebtorRepayments(entriesList, date);
+        dto.PersonalDebtorRepayments = repaymentsList
+            .Where(r => r.CreditorName.Contains("DSM Loss", StringComparison.OrdinalIgnoreCase))
+            .Select(r =>
+            {
+                string dsmName = (r.CreditorName ?? "")
+                    .Replace("(DSM Loss)", "", StringComparison.OrdinalIgnoreCase)
+                    .Replace("DSM Loss", "", StringComparison.OrdinalIgnoreCase)
+                    .Trim(' ', '(', ')');
+                return new DsmPersonalDebtorRepaymentPrintDto
+                {
+                    DsmName = string.IsNullOrEmpty(dsmName) ? "DSM" : dsmName,
+                    PaymentMethod = r.PaymentMode ?? "Cash",
+                    RefNo = r.ReferenceDisplay ?? "",
+                    Amount = r.Amount
+                };
+            })
+            .ToList();
 
         return dto;
     }
@@ -475,7 +547,10 @@ public class ReportService : IReportService
 
         // 1. Fuel Sales (Table E / DSR)
         var entriesList = MergeConnectedPumpEntries(entries ?? new List<DsmEntry>());
-        var todayEntries = entriesList.Where(e => e.Shift != null && e.Shift.ShiftDate.Date >= startDate.Date && e.Shift.ShiftDate.Date <= endDate.Date).ToList();
+        var todayEntries = entriesList.Where(e => {
+            var d = e.Shift != null ? e.Shift.ShiftDate.Date : (e.CreatedAt != default ? e.CreatedAt.Date : startDate.Date);
+            return d >= startDate.Date && d <= endDate.Date;
+        }).ToList();
 
         dto.FuelSales = BuildDynamicFuelSales(todayEntries, hsdRate, msIRate, msIIRate, cngRate, startDate);
         dto.TotalFuelLitres = dto.FuelSales.Sum(f => f.Litres);
@@ -526,20 +601,47 @@ public class ReportService : IReportService
             else if (string.Equals(mode, "Bank Transfer", StringComparison.OrdinalIgnoreCase) || string.Equals(mode, "Cheque", StringComparison.OrdinalIgnoreCase)) dto.BankCashRepayments += r.Amount;
 
             string refNo = "";
-            if (string.Equals(r.PaymentMode, "PhonePe", StringComparison.OrdinalIgnoreCase) || string.Equals(r.PaymentMode, "Credit Card", StringComparison.OrdinalIgnoreCase) || string.Equals(r.PaymentMode, "PineLabs Card", StringComparison.OrdinalIgnoreCase) || string.Equals(r.PaymentMode, "PetroCard", StringComparison.OrdinalIgnoreCase) || string.Equals(r.PaymentMode, "Petro Card", StringComparison.OrdinalIgnoreCase))
-                refNo = !string.IsNullOrWhiteSpace(r.CardTid) ? $"TID: {r.CardTid}, Batch: {r.CardBatch}" : "";
-            else if (string.Equals(r.PaymentMode, "Bank Transfer", StringComparison.OrdinalIgnoreCase))
-                refNo = !string.IsNullOrWhiteSpace(r.CardTid) ? $"Ref: {r.CardTid}" : "";
-            else if (string.Equals(r.PaymentMode, "Cheque", StringComparison.OrdinalIgnoreCase))
-                refNo = !string.IsNullOrWhiteSpace(r.ChequeNo) ? $"Chq: {r.ChequeNo}" : (!string.IsNullOrWhiteSpace(r.CardTid) ? $"Chq: {r.CardTid}" : "");
+            if (!string.IsNullOrWhiteSpace(r.ReferenceDisplay) && r.ReferenceDisplay != "—")
+            {
+                refNo = r.ReferenceDisplay;
+            }
+            else
+            {
+                if (string.Equals(r.PaymentMode, "PhonePe", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(r.PaymentMode, "Credit Card", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(r.PaymentMode, "PineLabs Card", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(r.PaymentMode, "PetroCard", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(r.PaymentMode, "Petro Card", StringComparison.OrdinalIgnoreCase))
+                {
+                    var parts = new List<string>();
+                    if (!string.IsNullOrWhiteSpace(r.CardTid)) parts.Add($"TID: {r.CardTid}");
+                    if (!string.IsNullOrWhiteSpace(r.CardBatch)) parts.Add($"Batch: {r.CardBatch}");
+                    refNo = parts.Count > 0 ? string.Join(", ", parts) : "";
+                }
+                else if (string.Equals(r.PaymentMode, "Bank Transfer", StringComparison.OrdinalIgnoreCase))
+                {
+                    refNo = !string.IsNullOrWhiteSpace(r.CardTid) ? $"Ref: {r.CardTid}" : "";
+                }
+                else if (string.Equals(r.PaymentMode, "Cheque", StringComparison.OrdinalIgnoreCase))
+                {
+                    refNo = !string.IsNullOrWhiteSpace(r.ChequeNo) ? $"Chq: {r.ChequeNo}" : (!string.IsNullOrWhiteSpace(r.CardTid) ? $"Chq: {r.CardTid}" : "");
+                }
+            }
 
             if (!r.CreditorName.Contains("DSM Loss", StringComparison.OrdinalIgnoreCase))
             {
                 dto.DebtorRepayments.Add(new CreditorRepaymentPrintDto
                 {
                     DebtorName = r.CreditorName,
+                    CreditorName = r.CreditorName,
                     PaymentMode = r.PaymentMode,
                     RefNo = refNo,
+                    ReferenceDisplay = refNo,
+                    CardTid = r.CardTid ?? "",
+                    CardBatch = r.CardBatch ?? "",
+                    Tid = r.CardTid ?? "",
+                    Batch = r.CardBatch ?? "",
+                    ChequeNo = r.ChequeNo ?? "",
                     Amount = (decimal)r.Amount
                 });
             }
@@ -623,7 +725,12 @@ public class ReportService : IReportService
 
         foreach (var entry in todayEntries)
         {
-            foreach (var t in entry.TestingEntries)
+            var distinctTesting = (entry.TestingEntries ?? new List<TestingEntry>())
+                .GroupBy(t => !string.IsNullOrWhiteSpace(t.FuelType) && t.FuelType != "MS" && t.FuelType != "HSD" ? t.FuelType.Trim().ToUpperInvariant() : t.TestingId.ToString())
+                .Select(g => g.Last())
+                .ToList();
+
+            foreach (var t in distinctTesting)
             {
                 var tankName = PumpConfiguration.GetTestingTankCategory(t.FuelType, entry.PumpId, startDate.Date);
                 if (!PumpConfiguration.IsTestingEnabledForTank(tankName))
@@ -661,6 +768,12 @@ public class ReportService : IReportService
         }
         dto.TestingSummaryItems = dayTestingSummaryList;
         double testingTotal = dayTestingSummaryList.Sum(t => t.Amount);
+
+        // Day DSR Presentation (Actual Customer Sales = Gross Meter Sales - Correctly Matched Testing)
+        var (dayDsrSales, dayDsrLitres, dayDsrAmount) = BuildDsrFuelSales(dto.FuelSales, dayTestingSummaryList);
+        dto.DsrFuelSales = dayDsrSales;
+        dto.DsrTotalFuelLitres = dayDsrLitres;
+        dto.DsrTotalFuelAmount = dayDsrAmount;
 
         // 10. DSM Short calculation
         double totalDsmShort = CalculateDsmShort(todayEntries);
@@ -732,10 +845,10 @@ public class ReportService : IReportService
         }
 
         // All other enabled dynamic collection types from Dev side (always show with 0 if no entries)
-        var builtInCodesDay = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "PHONEPE", "CREDIT_CARD", "PINELAB_CARD", "PETROCARD", "CASH_DEPOSIT" };
+        var builtInCodesDay = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "PHONEPE", "CREDIT_CARD", "PINELAB_CARD", "PETROCARD", "CASH_DEPOSIT", "OTHERS", "OTHER" };
 
         var dynamicActiveTypesDay = allColTypes
-            .Where(t => t.IsActive && !builtInCodesDay.Contains(t.Code))
+            .Where(t => t.IsActive && !builtInCodesDay.Contains(t.Code) && !string.Equals(t.Code?.Replace("_", ""), "OTHERS", StringComparison.OrdinalIgnoreCase) && !string.Equals(t.Code?.Replace("_", ""), "OTHER", StringComparison.OrdinalIgnoreCase))
             .OrderBy(t => t.DisplayOrder)
             .ToList();
 
@@ -757,6 +870,21 @@ public class ReportService : IReportService
                 Amount = sum,
                 BaseAmount = sum,
                 RecoveryAmount = 0
+            });
+        }
+
+        // Include Others (for record purpose only)
+        double totalDayOthers = todayEntries.Sum(e => e.PaymentCollection?.Others ?? 0);
+        if (totalDayOthers > 0 || allColTypes.Any(t => (string.Equals(t.Code?.Replace("_", ""), "OTHERS", StringComparison.OrdinalIgnoreCase) || string.Equals(t.Code?.Replace("_", ""), "OTHER", StringComparison.OrdinalIgnoreCase)) && t.IsActive))
+        {
+            var othType = allColTypes.FirstOrDefault(t => string.Equals(t.Code?.Replace("_", ""), "OTHERS", StringComparison.OrdinalIgnoreCase) || string.Equals(t.Code?.Replace("_", ""), "OTHER", StringComparison.OrdinalIgnoreCase));
+            dayBreakdown.Add(new CollectionCategoryDto
+            {
+                Category = othType?.DisplayName ?? "Others",
+                Amount = totalDayOthers,
+                BaseAmount = totalDayOthers,
+                RecoveryAmount = 0,
+                IsInformational = true
             });
         }
 
@@ -786,7 +914,7 @@ public class ReportService : IReportService
         dto.CollectionBreakdown = dayBreakdown;
 
         // 12. Final Reconciliation
-        dto.ActualCollection = dto.CollectionBreakdown.Where(c => c.Category != "DSM Short").Sum(c => c.Amount);
+        dto.ActualCollection = dto.CollectionBreakdown.Where(c => c.Category != "DSM Short" && !c.IsInformational && !string.Equals(c.Category, "Others", StringComparison.OrdinalIgnoreCase) && !string.Equals(c.Category, "Other", StringComparison.OrdinalIgnoreCase)).Sum(c => c.Amount);
         dto.ExpectedCollection = dto.TotalFuelAmount + reconcilableRecoveriesTotal;
         double rawDiff = dto.ActualCollection - dto.ExpectedCollection;
         dto.Difference = rawDiff < -0.01 ? -dto.TotalDsmShort : (rawDiff > 0.01 ? rawDiff : 0);
@@ -809,14 +937,14 @@ public class ReportService : IReportService
             else
             {
                 var (_, _, mismatch) = CalculateEntryTotals(e);
-                if (mismatch < -10.0 && !e.ReconciledToPumpId.HasValue)
+                if (mismatch < -0.01 && !e.ReconciledToPumpId.HasValue)
                 {
                     dayPersonalDebtorsList.Add(new DsmPersonalDebtorPrintDto
                     {
                         DsmName = e.DsmName,
                         FuelProduct = "Fuel",
                         Remarks = $"Shift Shortage (Pump {e.PumpId})",
-                        Amount = Math.Abs(mismatch) - 10.0
+                        Amount = Math.Abs(mismatch)
                     });
                 }
             }
@@ -847,16 +975,32 @@ public class ReportService : IReportService
             })
             .ToList();
 
-        dto.PersonalDebtorRepayments = ExtractPersonalDebtorRepayments(todayEntries, startDate);
+        dto.PersonalDebtorRepayments = repaymentsList
+            .Where(r => r.CreditorName.Contains("DSM Loss", StringComparison.OrdinalIgnoreCase))
+            .Select(r =>
+            {
+                string dsmName = (r.CreditorName ?? "")
+                    .Replace("(DSM Loss)", "", StringComparison.OrdinalIgnoreCase)
+                    .Replace("DSM Loss", "", StringComparison.OrdinalIgnoreCase)
+                    .Trim(' ', '(', ')');
+                return new DsmPersonalDebtorRepaymentPrintDto
+                {
+                    DsmName = string.IsNullOrEmpty(dsmName) ? "DSM" : dsmName,
+                    PaymentMethod = r.PaymentMode ?? "Cash",
+                    RefNo = r.ReferenceDisplay ?? "",
+                    Amount = r.Amount
+                };
+            })
+            .ToList();
 
         return dto;
     }
 
     public static (double GrossSales, double TotalCollection, double Mismatch) CalculateEntryTotals(DsmEntry e)
     {
-        double gs = e.NozzleReadings != null && e.NozzleReadings.Count > 0 
-            ? e.NozzleReadings.Sum(n => n.Amount) 
-            : (double)e.GrossSales;
+        double gs = (double)e.GrossSales > 0 
+            ? (double)e.GrossSales 
+            : (e.NozzleReadings != null && e.NozzleReadings.Count > 0 ? e.NozzleReadings.Sum(n => n.Amount) : 0);
 
         double cash1 = e.CashDenominations != null && e.CashDenominations.Any(c => c.CashType == "Cash1")
             ? e.CashDenominations.Where(c => c.CashType == "Cash1").Sum(c => c.TotalAmount)
@@ -895,8 +1039,9 @@ public class ReportService : IReportService
         double expenses = (e.Expenses?.Sum(x => x.Amount) ?? 0) + (e.KhandharePetroleumEntries?.Sum(kp => kp.Amount) ?? 0);
         double testing = e.TestingEntries?.Sum(t => t.Amount) ?? 0;
 
-        double totalCollection = cash1 + cash2 + phTotal + ppcTotal + ccTotal + petroTotal + dynamicColl + debits + expenses + testing;
-        double mismatch = totalCollection - gs;
+        double totalCollection = cash1 + cash2 + phTotal + ppcTotal + ccTotal + petroTotal + dynamicColl + debits + expenses;
+        double netGrossSales = gs - testing;
+        double mismatch = totalCollection - netGrossSales;
 
         return (gs, totalCollection, mismatch);
     }
@@ -911,16 +1056,7 @@ public class ReportService : IReportService
 
             if (mismatch < -0.01)
             {
-                double rawShort = Math.Abs(mismatch);
-                if (e.PersonalDebtors != null && e.PersonalDebtors.Count > 0)
-                {
-                    totalDsmShort += rawShort;
-                }
-                else
-                {
-                    double netShort = rawShort > 10.0 ? 10.0 : rawShort;
-                    totalDsmShort += netShort;
-                }
+                totalDsmShort += Math.Abs(mismatch);
             }
         }
         return totalDsmShort;
@@ -953,19 +1089,46 @@ public class ReportService : IReportService
 
         foreach (var primary in primaryEntries)
         {
-            var slave = slaveEntries
-                .Where(e => !usedSlaveIds.Contains(e.DsmEntryId)
-                    && (e.ReconciledToPumpId == primary.DsmEntryId || (e.ReconciledToPumpId == primary.PumpId && string.Equals((e.DsmName ?? "").Trim(), (primary.DsmName ?? "").Trim(), StringComparison.OrdinalIgnoreCase))))
-                .OrderBy(e => e.ReconciledToPumpId == primary.DsmEntryId ? 0 : 1)
-                .ThenBy(e => e.DsmEntryId >= primary.DsmEntryId ? (e.DsmEntryId - primary.DsmEntryId) : (100000 + Math.Abs(e.DsmEntryId - primary.DsmEntryId)))
-                .FirstOrDefault();
+            var primaryConnectedPumps = primary.GetEffectiveConnectedPumpIds();
+            var connectedSlaves = new List<DsmEntry>();
 
-            if (slave != null)
+            foreach (var slavePumpId in primaryConnectedPumps)
             {
-                usedSlaveIds.Add(slave.DsmEntryId);
+                var candidates = slaveEntries
+                    .Where(s => !usedSlaveIds.Contains(s.DsmEntryId)
+                        && s.PumpId == slavePumpId
+                        && (s.ShiftId == primary.ShiftId || primary.ShiftId == 0 || s.ShiftId == 0))
+                    .ToList();
+
+                var bestSlave = candidates
+                    .OrderBy(s => {
+                        bool nameMatches = string.IsNullOrWhiteSpace(s.DsmName) || string.IsNullOrWhiteSpace(primary.DsmName)
+                            || string.Equals((s.DsmName ?? "").Trim(), (primary.DsmName ?? "").Trim(), StringComparison.OrdinalIgnoreCase);
+                        bool explicitRecon = s.ReconciledToPumpId == primary.DsmEntryId;
+                        bool notClaimed = !s.ReconciledToPumpId.HasValue || !primaryEntries.Any(p => p.DsmEntryId == s.ReconciledToPumpId.Value && p.DsmEntryId != primary.DsmEntryId);
+
+                        if (nameMatches && explicitRecon) return 0;
+                        if (nameMatches && notClaimed) return 1;
+                        if (nameMatches) return 2;
+                        if (explicitRecon) return 3;
+                        if (!claimedByOther(s, primaryEntries, primary)) return 4;
+                        return 5;
+
+                        static bool claimedByOther(DsmEntry slave, List<DsmEntry> primaries, DsmEntry curPrimary) =>
+                            slave.ReconciledToPumpId.HasValue && primaries.Any(p => p.DsmEntryId == slave.ReconciledToPumpId.Value && p.DsmEntryId != curPrimary.DsmEntryId);
+                    })
+                    .ThenBy(s => s.DsmEntryId >= primary.DsmEntryId ? (s.DsmEntryId - primary.DsmEntryId) : (100000 + Math.Abs(s.DsmEntryId - primary.DsmEntryId)))
+                    .FirstOrDefault();
+
+                if (bestSlave != null)
+                {
+                    usedSlaveIds.Add(bestSlave.DsmEntryId);
+                    connectedSlaves.Add(bestSlave);
+                }
             }
 
-            var group = slave != null ? new List<DsmEntry> { primary, slave } : new List<DsmEntry> { primary };
+            var group = new List<DsmEntry> { primary };
+            group.AddRange(connectedSlaves);
 
             var distinctNozzles = group
                 .SelectMany(e => e.NozzleReadings ?? new List<NozzleReading>())
@@ -977,6 +1140,9 @@ public class ReportService : IReportService
                 ? (decimal)distinctNozzles.Sum(n => n.Amount)
                 : (primary.GrossSales > 0 ? primary.GrossSales : (decimal)group.Sum(e => e.GrossSales));
 
+            // Legacy first connected pump ID:
+            int? firstSlavePumpId = primary.ConnectedPumpId ?? connectedSlaves.FirstOrDefault()?.PumpId;
+
             var merged = new DsmEntry
             {
                 DsmEntryId = primary.DsmEntryId,
@@ -984,7 +1150,8 @@ public class ReportService : IReportService
                 Shift = primary.Shift,
                 DsmName = primary.DsmName,
                 PumpId = primary.PumpId,
-                ConnectedPumpId = primary.ConnectedPumpId ?? slave?.PumpId,
+                ConnectedPumpId = firstSlavePumpId,
+                ConnectedPumpIdsJson = primary.ConnectedPumpIdsJson ?? (connectedSlaves.Count > 0 ? JsonSerializer.Serialize(connectedSlaves.Select(s => s.PumpId).Distinct().ToList()) : null),
                 ReconciledToPumpId = null,
                 StartTime = primary.StartTime,
                 EndTime = primary.EndTime,
@@ -997,27 +1164,33 @@ public class ReportService : IReportService
                 UpdatedAt = primary.UpdatedAt
             };
 
-            // Merge child collections for THIS specific submission group only
+            // Child collections:
+            // Nozzles: aggregated from primary + all slaves
             merged.NozzleReadings = distinctNozzles;
-            merged.CashDenominations = primary.CashDenominations ?? new List<CashDenomination>();
-            merged.DebitEntries = group.SelectMany(e => e.DebitEntries ?? new List<DebitEntry>()).ToList();
-            merged.Expenses = group.SelectMany(e => e.Expenses ?? new List<Expense>()).ToList();
-            merged.TestingEntries = group.SelectMany(e => e.TestingEntries ?? new List<TestingEntry>()).ToList();
-            merged.PersonalDebtors = group.SelectMany(e => e.PersonalDebtors ?? new List<DsmPersonalDebtor>()).ToList();
-            merged.KhandharePetroleumEntries = group.SelectMany(e => e.KhandharePetroleumEntries ?? new List<KhandharePetroleumEntry>()).ToList();
-            merged.QrPayments = group.SelectMany(e => e.QrPayments ?? new List<DsmQrPaymentEntry>()).ToList();
-            if (primary.PaymentCollection != null)
-            {
-                var combinedItems = (primary.PaymentCollection.Items ?? new List<PaymentCollectionItem>())
-                    .Concat(slave?.PaymentCollection?.Items ?? new List<PaymentCollectionItem>())
-                    .ToList();
-                merged.PaymentCollection = primary.PaymentCollection;
-                merged.PaymentCollection.Items = combinedItems;
-            }
-            else if (slave?.PaymentCollection != null)
-            {
-                merged.PaymentCollection = slave.PaymentCollection;
-            }
+
+            // Financial collections: PRIMARY ONLY per Phase 3 rules, with graceful fallback to slave if primary has none
+            merged.CashDenominations = (primary.CashDenominations != null && primary.CashDenominations.Count > 0)
+                ? primary.CashDenominations
+                : connectedSlaves.SelectMany(s => s.CashDenominations ?? new List<CashDenomination>()).ToList();
+            merged.DebitEntries = (primary.DebitEntries != null && primary.DebitEntries.Count > 0)
+                ? primary.DebitEntries
+                : connectedSlaves.SelectMany(s => s.DebitEntries ?? new List<DebitEntry>()).ToList();
+            merged.Expenses = (primary.Expenses != null && primary.Expenses.Count > 0)
+                ? primary.Expenses
+                : connectedSlaves.SelectMany(s => s.Expenses ?? new List<Expense>()).ToList();
+            merged.TestingEntries = (primary.TestingEntries ?? new List<TestingEntry>())
+                .Concat(connectedSlaves.SelectMany(s => s.TestingEntries ?? new List<TestingEntry>()))
+                .ToList();
+            merged.PersonalDebtors = (primary.PersonalDebtors != null && primary.PersonalDebtors.Count > 0)
+                ? primary.PersonalDebtors
+                : connectedSlaves.SelectMany(s => s.PersonalDebtors ?? new List<DsmPersonalDebtor>()).ToList();
+            merged.KhandharePetroleumEntries = (primary.KhandharePetroleumEntries != null && primary.KhandharePetroleumEntries.Count > 0)
+                ? primary.KhandharePetroleumEntries
+                : connectedSlaves.SelectMany(s => s.KhandharePetroleumEntries ?? new List<KhandharePetroleumEntry>()).ToList();
+            merged.QrPayments = (primary.QrPayments != null && primary.QrPayments.Count > 0)
+                ? primary.QrPayments
+                : connectedSlaves.SelectMany(s => s.QrPayments ?? new List<DsmQrPaymentEntry>()).ToList();
+            merged.PaymentCollection = primary.PaymentCollection ?? connectedSlaves.FirstOrDefault(s => s.PaymentCollection != null)?.PaymentCollection;
 
             var (calcGs, calcTot, calcMis) = CalculateEntryTotals(merged);
             merged.GrossSales = (decimal)calcGs;
@@ -1189,91 +1362,6 @@ public class ReportService : IReportService
         }
     }
 
-    private static List<DsmPersonalDebtorRepaymentPrintDto> ExtractPersonalDebtorRepayments(IEnumerable<DsmEntry> entries, DateTime date)
-    {
-        var list = new List<DsmPersonalDebtorRepaymentPrintDto>();
-        try
-        {
-            var spProp = Type.GetType("FuelPro.UI.App, FuelPro.UI")?.GetProperty("Services");
-            var sp = spProp?.GetValue(null) as IServiceProvider;
-            if (sp != null)
-            {
-                var dbType = Type.GetType("FuelPro.Data.FuelProDbContext, FuelPro.Data");
-                if (dbType != null)
-                {
-                    var db = sp.GetService(dbType) as Microsoft.EntityFrameworkCore.DbContext;
-                    if (db != null)
-                    {
-                        var set = db.Set<DsmPersonalDebtorRepayment>();
-                        var startDate = date.Date;
-                        var endDate = startDate.AddDays(1);
-                        var repayments = set.Include(r => r.DsmPersonalDebtor)
-                            .Where(r => r.Date >= startDate && r.Date < endDate)
-                            .ToList();
-                        foreach (var r in repayments)
-                        {
-                            string pMode = r.PaymentMethod ?? "Cash";
-                            string refNo = "";
-                            if (string.Equals(pMode, "Bank Transfer", StringComparison.OrdinalIgnoreCase))
-                                refNo = !string.IsNullOrWhiteSpace(r.CardTid) ? $"Ref: {r.CardTid}" : "";
-                            else if (string.Equals(pMode, "Cheque", StringComparison.OrdinalIgnoreCase))
-                                refNo = !string.IsNullOrWhiteSpace(r.CardTid) ? $"Chq: {r.CardTid}" : "";
-                            else if (!string.IsNullOrWhiteSpace(r.CardTid) || !string.IsNullOrWhiteSpace(r.CardBatch))
-                            {
-                                var details = new List<string>();
-                                if (!string.IsNullOrWhiteSpace(r.CardTid)) details.Add($"TID: {r.CardTid}");
-                                if (!string.IsNullOrWhiteSpace(r.CardBatch)) details.Add($"Batch: {r.CardBatch}");
-                                refNo = string.Join(", ", details);
-                            }
-
-                            list.Add(new DsmPersonalDebtorRepaymentPrintDto
-                            {
-                                DsmName = r.DsmPersonalDebtor?.DsmName ?? "DSM",
-                                PaymentMethod = pMode,
-                                RefNo = refNo,
-                                Amount = r.Amount
-                            });
-                        }
-
-                        var creditorRepaymentsSet = db.Set<CreditorRepayment>();
-                        var creditorDsmLossRepayments = creditorRepaymentsSet
-                            .Where(r => r.RepaymentDate >= startDate && r.RepaymentDate < endDate && r.CreditorName.Contains("DSM Loss"))
-                            .ToList();
-                        foreach (var r in creditorDsmLossRepayments)
-                        {
-                            string pMode = r.PaymentMode ?? "Cash";
-                            string refNo = "";
-                            if (string.Equals(pMode, "Bank Transfer", StringComparison.OrdinalIgnoreCase))
-                                refNo = !string.IsNullOrWhiteSpace(r.CardTid) ? $"Ref: {r.CardTid}" : "";
-                            else if (string.Equals(pMode, "Cheque", StringComparison.OrdinalIgnoreCase))
-                                refNo = !string.IsNullOrWhiteSpace(r.ChequeNo) ? $"Chq: {r.ChequeNo}" : (!string.IsNullOrWhiteSpace(r.CardTid) ? $"Chq: {r.CardTid}" : "");
-                            else if (!string.IsNullOrWhiteSpace(r.CardTid) || !string.IsNullOrWhiteSpace(r.CardBatch))
-                            {
-                                var details = new List<string>();
-                                if (!string.IsNullOrWhiteSpace(r.CardTid)) details.Add($"TID: {r.CardTid}");
-                                if (!string.IsNullOrWhiteSpace(r.CardBatch)) details.Add($"Batch: {r.CardBatch}");
-                                refNo = string.Join(", ", details);
-                            }
-
-                            string dsmName = (r.CreditorName ?? "").Replace("(DSM Loss)", "").Replace("DSM Loss", "").Trim();
-                            list.Add(new DsmPersonalDebtorRepaymentPrintDto
-                            {
-                                DsmName = string.IsNullOrEmpty(dsmName) ? "DSM" : dsmName,
-                                PaymentMethod = pMode,
-                                RefNo = refNo,
-                                Amount = r.Amount
-                            });
-                        }
-                    }
-                }
-            }
-        }
-        catch
-        {
-            // Ignore if missing
-        }
-        return list;
-    }
 
     private List<FuelSaleRowDto> BuildDynamicFuelSales(List<DsmEntry> entries, double hsdRate, double msIRate, double msIIRate, double cngRate, DateTime? reportDate = null)
     {
@@ -1285,56 +1373,106 @@ public class ReportService : IReportService
         {
             try
             {
-                var allTanksTask = stationConfig.GetAllTanksAsync();
-                var allMappingsTask = stationConfig.GetAllPumpMappingsAsync();
-                Task.WaitAll(allTanksTask, allMappingsTask);
-                dynamicTanks = allTanksTask.Result.Where(t => t.IsActive).ToList();
-                dynamicMappings = allMappingsTask.Result.Where(m => m.IsActive).ToList();
+                var tanksResult = stationConfig.GetAllTanksAsync().GetAwaiter().GetResult();
+                var mappingsResult = stationConfig.GetAllPumpMappingsAsync().GetAwaiter().GetResult();
+                dynamicTanks = tanksResult.Where(t => t.IsActive).ToList();
+                dynamicMappings = mappingsResult.Where(m => m.IsActive).ToList();
             }
-            catch { }
+            catch (Exception ex)
+            {
+                _logger.Warning(ex, "Non-fatal: Failed to load dynamic tanks/mappings from StationConfigurationService");
+            }
         }
 
-        // Collect all nozzle readings with their pump & shift context
-        var allReadings = entries
-            .SelectMany(e => (e.NozzleReadings ?? new List<NozzleReading>()).Select(r => new
+        if (dynamicTanks.Count == 0 && PumpConfiguration.NozzleTankMap.Count > 0)
+        {
+            var distinctTankNames = PumpConfiguration.NozzleTankMap.Values.Where(v => !string.IsNullOrWhiteSpace(v)).Distinct();
+            foreach (var tName in distinctTankNames)
             {
-                e.PumpId,
+                var fType = tName.Contains("MS", StringComparison.OrdinalIgnoreCase) ? "MS-I" :
+                            tName.Contains("CNG", StringComparison.OrdinalIgnoreCase) ? "CNG" : "HSD";
+                dynamicTanks.Add(new TankDefinition { TankName = tName, FuelType = fType, IsActive = true });
+            }
+        }
+
+        var allReadings = entries
+            .SelectMany(e => (e.NozzleReadings ?? Enumerable.Empty<NozzleReading>()).Select(r => new
+            {
+                PumpId = e.PumpId,
                 Reading = r,
-                ShiftDate = e.Shift?.ShiftDate ?? reportDate,
-                TankName = PumpConfiguration.GetTankName(e.PumpId, r.NozzleNumber, e.Shift?.ShiftDate ?? reportDate),
-                FuelTypeDisplayName = PumpConfiguration.GetFuelTypeDisplayName(e.PumpId, r.NozzleNumber, e.Shift?.ShiftDate ?? reportDate)
+                TankName = (r.FuelType != null && r.FuelType.Contains("CNG", StringComparison.OrdinalIgnoreCase))
+                    ? "CNG Line"
+                    : PumpConfiguration.GetTankName(e.PumpId, r.NozzleNumber, e.Shift?.ShiftDate ?? reportDate),
+                FuelTypeDisplayName = (r.FuelType != null && r.FuelType.Contains("CNG", StringComparison.OrdinalIgnoreCase))
+                    ? "CNG"
+                    : PumpConfiguration.GetFuelTypeDisplayName(e.PumpId, r.NozzleNumber, e.Shift?.ShiftDate ?? reportDate)
             }))
             .ToList();
+
+        var allocatedReadings = new HashSet<object>();
 
         if (dynamicTanks.Count > 0)
         {
             foreach (var tank in dynamicTanks)
             {
-                // Find all (PumpId, NozzleNumber) pairs mapped to this tank
+                var isCng = string.Equals(tank.FuelType, "CNG", StringComparison.OrdinalIgnoreCase) || 
+                            tank.TankName.Contains("CNG", StringComparison.OrdinalIgnoreCase);
+
+                // Find all (PumpId, NozzleNumber) pairs and NozzleNumbers mapped to this tank
                 var tankNozzlePairs = dynamicMappings
                     .Where(m => string.Equals(m.TankName, tank.TankName, StringComparison.OrdinalIgnoreCase))
                     .Select(m => (m.PumpId, m.NozzleNumber))
                     .ToHashSet();
 
-                if (tankNozzlePairs.Count == 0)
-                {
-                    tankNozzlePairs = dynamicMappings
-                        .Where(m => string.Equals(m.FuelType, tank.FuelType, StringComparison.OrdinalIgnoreCase))
-                        .Select(m => (m.PumpId, m.NozzleNumber))
-                        .ToHashSet();
-                }
+                var tankNozzleNumbers = dynamicMappings
+                    .Where(m => string.Equals(m.TankName, tank.TankName, StringComparison.OrdinalIgnoreCase))
+                    .Select(m => m.NozzleNumber)
+                    .ToHashSet();
 
                 var matchedReadings = allReadings
-                    .Where(x => (tankNozzlePairs.Count > 0 && tankNozzlePairs.Contains((x.PumpId, x.Reading.NozzleNumber))) ||
-                                string.Equals(x.TankName, tank.TankName, StringComparison.OrdinalIgnoreCase) ||
-                                (tankNozzlePairs.Count == 0 && string.Equals(x.FuelTypeDisplayName, tank.FuelType, StringComparison.OrdinalIgnoreCase)))
+                    .Where(x => 
+                        !allocatedReadings.Contains(x) &&
+                        (
+                            (tankNozzlePairs.Count > 0 && (tankNozzlePairs.Contains((x.PumpId, x.Reading.NozzleNumber)) || tankNozzleNumbers.Contains(x.Reading.NozzleNumber))) ||
+                            string.Equals(x.TankName, tank.TankName, StringComparison.OrdinalIgnoreCase) ||
+                            (!dynamicMappings.Any(m => m.NozzleNumber == x.Reading.NozzleNumber) &&
+                                (
+                                    (isCng && (string.Equals(x.Reading.FuelType, "CNG", StringComparison.OrdinalIgnoreCase) || (x.Reading.FuelType != null && x.Reading.FuelType.Contains("CNG", StringComparison.OrdinalIgnoreCase)))) ||
+                                    (!isCng && string.Equals(x.Reading.FuelType, tank.FuelType, StringComparison.OrdinalIgnoreCase))
+                                )
+                            )
+                        )
+                        // Make sure we never assign CNG reading to an HSD/MS tank or vice versa
+                        && (!isCng ? !(x.Reading.FuelType != null && x.Reading.FuelType.Contains("CNG", StringComparison.OrdinalIgnoreCase)) : true)
+                    )
                     .ToList();
+
+                foreach (var mr in matchedReadings)
+                {
+                    allocatedReadings.Add(mr);
+                }
 
                 var litres = matchedReadings.Sum(x => x.Reading.SaleLitres);
                 var amount = matchedReadings.Sum(x => x.Reading.Amount);
-                double defaultRate = string.Equals(tank.FuelType, "MS-I", StringComparison.OrdinalIgnoreCase) ? msIRate :
-                                     string.Equals(tank.FuelType, "MS-II", StringComparison.OrdinalIgnoreCase) ? msIIRate :
-                                     string.Equals(tank.FuelType, "CNG", StringComparison.OrdinalIgnoreCase) ? cngRate : hsdRate;
+                var settingsRepo = _serviceProvider?.GetService<ISettingsRepository>();
+                var settings = settingsRepo != null ? settingsRepo.GetSettingsAsync().GetAwaiter().GetResult() : null;
+                double defaultRate = 0;
+                if (settings?.Success == true && settings.Data != null)
+                {
+                    defaultRate = settings.Data.GetRateFor(tank.TankName, 0);
+                    if (defaultRate <= 0) defaultRate = settings.Data.GetRateFor(tank.FuelType, 0);
+                }
+                if (defaultRate <= 0)
+                {
+                    defaultRate = string.Equals(tank.FuelType, "MS-I", StringComparison.OrdinalIgnoreCase) ? msIRate :
+                                  string.Equals(tank.FuelType, "MS-II", StringComparison.OrdinalIgnoreCase) ? msIIRate :
+                                  isCng ? cngRate : hsdRate;
+                }
+
+                if (amount == 0 && litres > 0 && defaultRate > 0)
+                {
+                    amount = litres * defaultRate;
+                }
                 double rate = litres > 0 ? Math.Round(amount / litres, 2) : defaultRate;
 
                 result.Add(new FuelSaleRowDto
@@ -1345,6 +1483,40 @@ public class ReportService : IReportService
                     Rate = rate,
                     Amount = amount
                 });
+            }
+
+            // Also check for any unallocated readings (e.g. CNG readings if no CNG tank was added in tanks table)
+            var unallocated = allReadings.Where(r => !allocatedReadings.Contains(r)).ToList();
+            if (unallocated.Count > 0)
+            {
+                var groups = unallocated.GroupBy(r => {
+                    bool isCng = r.Reading.FuelType != null && r.Reading.FuelType.Contains("CNG", StringComparison.OrdinalIgnoreCase);
+                    if (isCng) return "CNG Line";
+                    return !string.IsNullOrWhiteSpace(r.TankName) ? r.TankName : (!string.IsNullOrWhiteSpace(r.Reading.FuelType) ? r.Reading.FuelType : (r.FuelTypeDisplayName ?? "Other"));
+                });
+                foreach (var g in groups)
+                {
+                    var groupName = g.Key;
+                    var litres = g.Sum(x => x.Reading.SaleLitres);
+                    var amount = g.Sum(x => x.Reading.Amount);
+                    bool isCngGroup = string.Equals(groupName, "CNG", StringComparison.OrdinalIgnoreCase) || groupName.Contains("CNG", StringComparison.OrdinalIgnoreCase);
+                    double defaultRate = isCngGroup ? cngRate :
+                                          string.Equals(groupName, "MS-I", StringComparison.OrdinalIgnoreCase) ? msIRate :
+                                          string.Equals(groupName, "MS-II", StringComparison.OrdinalIgnoreCase) ? msIIRate : hsdRate;
+                    if (amount == 0 && litres > 0 && defaultRate > 0) amount = litres * defaultRate;
+                    double rate = litres > 0 ? Math.Round(amount / litres, 2) : defaultRate;
+
+                    var displayFuelType = isCngGroup ? "CNG" : (g.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x.FuelTypeDisplayName))?.FuelTypeDisplayName ?? (groupName.Contains("MS") ? "MS-I" : (groupName.Contains("SPEED") ? "SPEED" : (groupName.Contains("CNG") ? "CNG" : "HSD"))));
+
+                    result.Add(new FuelSaleRowDto
+                    {
+                        Description = isCngGroup ? "CNG Line" : groupName,
+                        FuelType = isCngGroup ? "CNG" : displayFuelType,
+                        Litres = litres,
+                        Rate = rate,
+                        Amount = amount
+                    });
+                }
             }
         }
         else
@@ -1367,9 +1539,97 @@ public class ReportService : IReportService
             if (msIIL > 0 || msIIA > 0)
                 result.Add(new FuelSaleRowDto { Description = "MS-II", FuelType = "MS-II", Litres = msIIL, Rate = msIIL > 0 ? Math.Round(msIIA / msIIL, 2) : msIIRate, Amount = msIIA });
             if (cngL > 0 || cngA > 0)
-                result.Add(new FuelSaleRowDto { Description = "CNG", FuelType = "CNG", Litres = cngL, Rate = cngL > 0 ? Math.Round(cngA / cngL, 2) : cngRate, Amount = cngA });
+                result.Add(new FuelSaleRowDto { Description = "CNG Line", FuelType = "CNG", Litres = cngL, Rate = cngL > 0 ? Math.Round(cngA / cngL, 2) : cngRate, Amount = cngA });
         }
 
         return result;
+    }
+
+    private static (List<FuelSaleRowDto> DsrSales, double TotalLitres, double TotalAmount) BuildDsrFuelSales(
+        List<FuelSaleRowDto> meterFuelSales,
+        List<TestingSummaryItem> testingItems)
+    {
+        var dsrList = new List<FuelSaleRowDto>();
+        if (meterFuelSales == null || meterFuelSales.Count == 0)
+        {
+            return (dsrList, 0, 0);
+        }
+
+        var tests = testingItems != null ? new List<TestingSummaryItem>(testingItems) : new List<TestingSummaryItem>();
+        var usedTests = new HashSet<TestingSummaryItem>();
+
+        foreach (var fs in meterFuelSales)
+        {
+            // Match testing strictly to this tank using tank category mapping
+            var matchedTests = tests.Where(t => !usedTests.Contains(t) &&
+                IsTankMatch(t.TankName, fs.Description)
+            ).ToList();
+
+            foreach (var t in matchedTests)
+            {
+                usedTests.Add(t);
+            }
+
+            double testLitres = matchedTests.Sum(t => t.VolumeLitres);
+            double testAmount = matchedTests.Sum(t => t.Amount);
+
+            double dsrLitres = Math.Max(0, fs.Litres - testLitres);
+            double dsrAmount = Math.Max(0, fs.Amount - testAmount);
+            double dsrRate = dsrLitres > 0 ? Math.Round(dsrAmount / dsrLitres, 2) : fs.Rate;
+
+            dsrList.Add(new FuelSaleRowDto
+            {
+                Description = fs.Description,
+                FuelType = fs.FuelType,
+                Litres = dsrLitres,
+                Rate = dsrRate,
+                Amount = dsrAmount
+            });
+        }
+
+        double totalLitres = dsrList.Sum(f => f.Litres);
+        double totalAmount = dsrList.Sum(f => f.Amount);
+        return (dsrList, totalLitres, totalAmount);
+    }
+
+    private static bool IsTankMatch(string? testTankName, string? fuelDescription)
+    {
+        if (string.IsNullOrWhiteSpace(testTankName) || string.IsNullOrWhiteSpace(fuelDescription))
+            return false;
+
+        testTankName = testTankName.Trim();
+        fuelDescription = fuelDescription.Trim();
+
+        // 1. Exact match (e.g. "MS - 20KL" == "MS - 20KL", "HSD - 20KL" == "HSD - 20KL")
+        if (string.Equals(testTankName, fuelDescription, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        // 2. Alphanumeric match (e.g. "MS - 20KL" vs "MS-20KL")
+        if (NormalizeTankKey(testTankName) == NormalizeTankKey(fuelDescription))
+            return true;
+
+        // 3. Normalized fallback for short descriptions ("HSD", "MS", "MS-II")
+        bool testHasII = testTankName.Contains("II", StringComparison.OrdinalIgnoreCase);
+        bool fuelHasII = fuelDescription.Contains("II", StringComparison.OrdinalIgnoreCase);
+
+        if (testHasII != fuelHasII)
+            return false; // Prevent cross-tank matching between Tank I and Tank II
+
+        if (testTankName.Contains("HSD", StringComparison.OrdinalIgnoreCase) && fuelDescription.Contains("HSD", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (testTankName.Contains("MS", StringComparison.OrdinalIgnoreCase) && fuelDescription.Contains("MS", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (testTankName.Contains("CNG", StringComparison.OrdinalIgnoreCase) && fuelDescription.Contains("CNG", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return false;
+    }
+
+    private static string NormalizeTankKey(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return string.Empty;
+        return new string(name.Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant();
     }
 }

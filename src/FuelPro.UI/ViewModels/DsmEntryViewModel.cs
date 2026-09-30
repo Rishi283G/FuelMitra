@@ -22,6 +22,8 @@ public partial class NozzleReadingRow : ObservableObject
 {
     public Action? OnRowChanged { get; set; }
 
+    [ObservableProperty] private int _pumpId;
+    public string PumpLabel => PumpId > 0 ? $"Pump {PumpId}" : "";
     [ObservableProperty] private int _nozzleNumber;
     [ObservableProperty] private string _fuelType = "";
     public string FuelTypeLabel => FuelPro.Core.Common.FuelTypeExtensions.ToFriendlyLabel(FuelType);
@@ -100,19 +102,24 @@ public partial class DebitRow : ObservableObject
     {
         AvailableVehicles.Clear();
         VehicleNumber = null;
-        if (string.IsNullOrWhiteSpace(value)) return;
-
-        var creditor = _creditors.FirstOrDefault(c => string.Equals(c.Name, value, StringComparison.OrdinalIgnoreCase));
-        if (creditor != null && creditor.Vehicles != null)
+        if (!string.IsNullOrWhiteSpace(value))
         {
-            foreach (var v in creditor.Vehicles.Where(x => x.IsActive))
+            var creditor = _creditors.FirstOrDefault(c => string.Equals(c.Name, value, StringComparison.OrdinalIgnoreCase));
+            if (creditor != null && creditor.Vehicles != null)
             {
-                AvailableVehicles.Add(v.VehicleNumber);
+                foreach (var v in creditor.Vehicles.Where(x => x.IsActive))
+                {
+                    AvailableVehicles.Add(v.VehicleNumber);
+                }
             }
         }
+        OnRowChanged?.Invoke();
     }
 
     partial void OnAmountChanged(double? value) => OnRowChanged?.Invoke();
+    partial void OnChequeNoChanged(string? value) => OnRowChanged?.Invoke();
+    partial void OnVehicleNumberChanged(string? value) => OnRowChanged?.Invoke();
+    partial void OnPaymentMethodChanged(string value) => OnRowChanged?.Invoke();
 }
 
 public partial class ExpenseRow : ObservableObject
@@ -122,6 +129,7 @@ public partial class ExpenseRow : ObservableObject
     [ObservableProperty] private string _description = "";
     [ObservableProperty] private double? _amount;
 
+    partial void OnDescriptionChanged(string value) => OnRowChanged?.Invoke();
     partial void OnAmountChanged(double? value) => OnRowChanged?.Invoke();
 }
 
@@ -280,6 +288,18 @@ public partial class DsmEntryViewModel : ObservableObject
     [ObservableProperty] private string _dsmName = "";
     [ObservableProperty] private PumpDisplayItem _selectedPump = null!;
     [ObservableProperty] private PumpDisplayItem? _selectedConnectedPump;
+    [ObservableProperty] private List<int> _activeConnectedPumpIds = new();
+    public string ActiveConnectedPumpsDisplay
+    {
+        get
+        {
+            if (ActiveConnectedPumpIds != null && ActiveConnectedPumpIds.Count > 0)
+            {
+                return $"Pump {string.Join(" + Pump ", ActiveConnectedPumpIds)}";
+            }
+            return SelectedConnectedPump != null ? SelectedConnectedPump.DisplayText : "None";
+        }
+    }
     [ObservableProperty] private double _connectedPumpGrossSales;
     [ObservableProperty] private string _connectedPumpStatus = "";
     [ObservableProperty] private string _statusMessage = "";
@@ -389,6 +409,11 @@ public partial class DsmEntryViewModel : ObservableObject
     // Reconciliation (computed)
     [ObservableProperty] private double _totalLitres;
     [ObservableProperty] private double _grossSales;
+    [ObservableProperty] private double _meterGrossSales;
+    [ObservableProperty] private double _totalTestingAmount;
+    [ObservableProperty] private double _netGrossSales;
+    [ObservableProperty] private string _meterGrossSalesSubtitle = string.Empty;
+    [ObservableProperty] private bool _hasTesting;
     [ObservableProperty] private double _totalPaymentIn;
     [ObservableProperty] private double _totalDebtors;
     [ObservableProperty] private double _finalAdjusted;
@@ -698,7 +723,62 @@ public partial class DsmEntryViewModel : ObservableObject
         if (value != null)
         {
             RefreshConnectablePumpOptions();
-            if (!_isEditing) LoadNozzlesForPump();
+            if (!_isEditing)
+            {
+                _ = HandlePumpSelectionAsync(value);
+            }
+        }
+    }
+
+    private async Task HandlePumpSelectionAsync(PumpDisplayItem value)
+    {
+        await ResolveActiveConnectionGroupAsync();
+        await LoadNozzlesForPumpAsync();
+    }
+
+    private async Task ResolveActiveConnectionGroupAsync()
+    {
+        if (SelectedPump == null)
+        {
+            ActiveConnectedPumpIds = new List<int>();
+            SelectedConnectedPump = null;
+            return;
+        }
+
+        try
+        {
+            if (_stationConfigService != null)
+            {
+                var config = await _stationConfigService.GetPumpConnectionConfigurationAsync();
+                if (config != null && config.IsEnabled)
+                {
+                    var group = config.GetGroupForPump(SelectedPump.PumpId);
+                    if (group != null)
+                    {
+                        var connectedIds = group.GetConnectedPumps(SelectedPump.PumpId);
+                        ActiveConnectedPumpIds = connectedIds;
+                        var firstConnected = connectedIds.FirstOrDefault();
+                        SelectedConnectedPump = firstConnected > 0
+                            ? ConnectablePumpOptions.FirstOrDefault(p => p.PumpId == firstConnected)
+                            : null;
+                        return;
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to resolve active pump connection group");
+        }
+
+        // Fallback: If legacy SelectedConnectedPump is chosen
+        if (SelectedConnectedPump != null && SelectedConnectedPump.PumpId != SelectedPump.PumpId)
+        {
+            ActiveConnectedPumpIds = new List<int> { SelectedConnectedPump.PumpId };
+        }
+        else
+        {
+            ActiveConnectedPumpIds = new List<int>();
         }
     }
 
@@ -734,6 +814,17 @@ public partial class DsmEntryViewModel : ObservableObject
     }
     partial void OnSelectedConnectedPumpChanged(PumpDisplayItem? value)
     {
+        if (value != null && SelectedPump != null && value.PumpId != SelectedPump.PumpId)
+        {
+            if (!ActiveConnectedPumpIds.Contains(value.PumpId))
+            {
+                ActiveConnectedPumpIds = new List<int> { value.PumpId };
+            }
+        }
+        else if (value == null && (ActiveConnectedPumpIds == null || ActiveConnectedPumpIds.Count <= 1))
+        {
+            ActiveConnectedPumpIds = new List<int>();
+        }
         _ = RefreshConnectedPumpGrossSalesAsync();
         if (!_isEditing) LoadNozzlesForPump();
     }
@@ -745,6 +836,11 @@ public partial class DsmEntryViewModel : ObservableObject
 
     private async Task LoadNozzlesForPumpAsync()
     {
+        if (!_isEditing && SelectedPump != null && (ActiveConnectedPumpIds == null || ActiveConnectedPumpIds.Count == 0))
+        {
+            await ResolveActiveConnectionGroupAsync();
+        }
+
         // Capture entered values to restore later
         var tempReadings = new Dictionary<int, (double? Opening, double? Closing, double? Rate, bool Override)>();
         if (!_isEditing)
@@ -759,26 +855,38 @@ public partial class DsmEntryViewModel : ObservableObject
         OpeningWarnings.Clear();
         if (SelectedPump == null) return;
 
-        var primaryNozzles = PumpConfiguration.GetNozzlesForPump(SelectedPump.PumpId, SelectedDate);
-        var connectedNozzles = SelectedConnectedPump != null
-            ? PumpConfiguration.GetNozzlesForPump(SelectedConnectedPump.PumpId, SelectedDate)
-            : Array.Empty<int>();
-        var nozzles = primaryNozzles.Concat(connectedNozzles).ToList();
+        var effectivePumps = new List<int> { SelectedPump.PumpId };
+        if (ActiveConnectedPumpIds != null && ActiveConnectedPumpIds.Count > 0)
+        {
+            effectivePumps.AddRange(ActiveConnectedPumpIds);
+        }
+        else if (SelectedConnectedPump != null && SelectedConnectedPump.PumpId != SelectedPump.PumpId)
+        {
+            effectivePumps.Add(SelectedConnectedPump.PumpId);
+        }
+        var allEffectivePumps = effectivePumps.Distinct().ToList();
+
+        var nozzles = new List<int>();
+        foreach (var pId in allEffectivePumps)
+        {
+            nozzles.AddRange(PumpConfiguration.GetNozzlesForPump(pId, SelectedDate));
+        }
+        nozzles = nozzles.Distinct().OrderBy(n => n).ToList();
 
         var (hsdRate, msIRate, msIIRate, cngRate) = await _dsmService.GetCurrentRatesAsync();
+        var ratesMap = await _dsmService.GetFuelRatesMapAsync();
         
-        // Fetch previous shift closings for primary pump
-        var previousResult = await _nozzleRepository.GetPreviousShiftClosingsAsync(SelectedDate, SelectedShift, SelectedPump.PumpId, EditingEntryId);
-        var previousClosings = previousResult.Success ? previousResult.Data! : new Dictionary<int, double>();
-
-        // Fetch previous shift closings for connected pump if active
-        var connectedPreviousClosings = new Dictionary<int, double>();
-        if (SelectedConnectedPump != null)
+        // Fetch previous shift closings for all effective pumps in group
+        var allPreviousClosings = new Dictionary<int, double>();
+        foreach (var pId in allEffectivePumps)
         {
-            var connPrevResult = await _nozzleRepository.GetPreviousShiftClosingsAsync(SelectedDate, SelectedShift, SelectedConnectedPump.PumpId, EditingEntryId);
-            if (connPrevResult.Success && connPrevResult.Data != null)
+            var prevResult = await _nozzleRepository.GetPreviousShiftClosingsAsync(SelectedDate, SelectedShift, pId, EditingEntryId);
+            if (prevResult.Success && prevResult.Data != null)
             {
-                connectedPreviousClosings = connPrevResult.Data;
+                foreach (var kvp in prevResult.Data)
+                {
+                    allPreviousClosings[kvp.Key] = kvp.Value;
+                }
             }
         }
 
@@ -804,14 +912,10 @@ public partial class DsmEntryViewModel : ObservableObject
             if (nozzlePumpId == 0) nozzlePumpId = SelectedPump.PumpId;
 
             var fuelType = PumpConfiguration.GetFuelType(nozzlePumpId, n, SelectedDate);
-            var rate = fuelType switch
-            {
-                FuelType.HSD => hsdRate,
-                FuelType.MS_I => msIRate,
-                FuelType.MS_II => msIIRate,
-                FuelType.CNG => cngRate,
-                _ => msIRate
-            };
+            var tankName = PumpConfiguration.GetTankName(nozzlePumpId, n, SelectedDate);
+            var fuelTypeName = PumpConfiguration.GetFuelTypeDisplayName(nozzlePumpId, n, SelectedDate);
+
+            double rate = ResolveFuelRate(tankName, fuelTypeName, fuelType, ratesMap, hsdRate, msIRate, msIIRate, cngRate);
 
             double? openingFromAgsPreviousShift = previousAgsClosings.TryGetValue(n, out var prevAgsClosing)
                 ? prevAgsClosing
@@ -819,10 +923,7 @@ public partial class DsmEntryViewModel : ObservableObject
             AgsNozzleReading? currentAgsRow = null;
             var hasCurrentAgs = currentAgsReadings != null && currentAgsReadings.TryGetValue(n, out currentAgsRow);
             
-            var isConnectedNozzle = SelectedConnectedPump != null && nozzlePumpId == SelectedConnectedPump.PumpId;
-            var hasPreviousDsm = isConnectedNozzle
-                ? (connectedPreviousClosings.TryGetValue(n, out var previousDsmClosing) || previousClosings.TryGetValue(n, out previousDsmClosing))
-                : (previousClosings.TryGetValue(n, out previousDsmClosing) || connectedPreviousClosings.TryGetValue(n, out previousDsmClosing));
+            var hasPreviousDsm = allPreviousClosings.TryGetValue(n, out var previousDsmClosing);
 
             double? openingReading = null;
             if (hasCurrentAgs && currentAgsRow?.OpeningReading > 0)
@@ -870,6 +971,7 @@ public partial class DsmEntryViewModel : ObservableObject
             NozzleReadings.Add(new NozzleReadingRow
             {
                 NozzleNumber = n,
+                PumpId = nozzlePumpId,
                 FuelType = PumpConfiguration.GetFuelTypeDisplayName(nozzlePumpId, n, SelectedDate),
                 AutoOpeningReading = openingReading,
                 OpeningReading = openingReading,
@@ -961,7 +1063,14 @@ public partial class DsmEntryViewModel : ObservableObject
     {
         ConnectedPumpGrossSales = 0;
         ConnectedPumpStatus = "";
-        if (SelectedConnectedPump == null || string.IsNullOrWhiteSpace(DsmName))
+
+        var effectiveConnectedPumps = ActiveConnectedPumpIds.Where(p => SelectedPump == null || p != SelectedPump.PumpId).Distinct().ToList();
+        if (effectiveConnectedPumps.Count == 0 && SelectedConnectedPump != null && SelectedPump != null && SelectedConnectedPump.PumpId != SelectedPump.PumpId)
+        {
+            effectiveConnectedPumps.Add(SelectedConnectedPump.PumpId);
+        }
+
+        if (effectiveConnectedPumps.Count == 0 || string.IsNullOrWhiteSpace(DsmName))
         {
             RecalculateAll();
             return;
@@ -971,7 +1080,8 @@ public partial class DsmEntryViewModel : ObservableObject
             .GetShiftAsync(SelectedDate, SelectedShift);
         if (!shiftResult.Success || shiftResult.Data == null)
         {
-            ConnectedPumpStatus = $"Connected pump {SelectedConnectedPump.PumpId} will be included after that entry is saved.";
+            var pList = string.Join(", ", effectiveConnectedPumps);
+            ConnectedPumpStatus = $"Connected pump(s) {pList} will be included after entries are saved.";
             RecalculateAll();
             return;
         }
@@ -984,49 +1094,60 @@ public partial class DsmEntryViewModel : ObservableObject
             return;
         }
 
-        DsmEntry? connectedEntry = null;
-        if (EditingEntryId.HasValue)
-        {
-            connectedEntry = entriesResult.Data.FirstOrDefault(e =>
-                e.PumpId == SelectedConnectedPump.PumpId
-                && (e.ReconciledToPumpId == EditingEntryId.Value || e.ReconciledToPumpId == SelectedPump?.PumpId));
-        }
+        double totalConnectedGross = 0;
+        var foundPumps = new List<int>();
+        var repo = App.Services.GetRequiredService<IDsmEntryRepository>();
 
-        if (connectedEntry == null)
+        foreach (var connPumpId in effectiveConnectedPumps)
         {
-            connectedEntry = entriesResult.Data
-                .Where(e => e.PumpId == SelectedConnectedPump.PumpId
-                    && string.Equals(e.DsmName, DsmName, StringComparison.OrdinalIgnoreCase))
-                .OrderByDescending(e => e.DsmEntryId)
-                .FirstOrDefault();
-        }
-
-        if (connectedEntry == null)
-        {
-            if (_isEditing)
+            DsmEntry? connectedEntry = null;
+            if (EditingEntryId.HasValue)
             {
-                ConnectedPumpStatus = $"Connected pump {SelectedConnectedPump.PumpId} nozzles included in form.";
+                connectedEntry = entriesResult.Data.FirstOrDefault(e =>
+                    e.PumpId == connPumpId
+                    && (e.ReconciledToPumpId == EditingEntryId.Value || e.ReconciledToPumpId == SelectedPump?.PumpId));
+            }
+
+            if (connectedEntry == null)
+            {
+                connectedEntry = entriesResult.Data
+                    .Where(e => e.PumpId == connPumpId
+                        && string.Equals(e.DsmName, DsmName, StringComparison.OrdinalIgnoreCase))
+                    .OrderByDescending(e => e.DsmEntryId)
+                    .FirstOrDefault();
+            }
+
+            if (connectedEntry != null)
+            {
+                if (connectedEntry.NozzleReadings == null || connectedEntry.NozzleReadings.Count == 0)
+                {
+                    var fullConnected = await repo.GetFullEntryAsync(connectedEntry.DsmEntryId);
+                    if (fullConnected.Success && fullConnected.Data != null)
+                    {
+                        connectedEntry = fullConnected.Data;
+                    }
+                }
+
+                double gross = (connectedEntry.NozzleReadings ?? new List<NozzleReading>()).Sum(n => n.Amount);
+                totalConnectedGross += gross;
+                foundPumps.Add(connPumpId);
+            }
+        }
+
+        ConnectedPumpGrossSales = totalConnectedGross;
+        if (effectiveConnectedPumps.Count > 0)
+        {
+            var pList = string.Join(", ", effectiveConnectedPumps.Select(p => $"Pump {p}"));
+            if (foundPumps.Count > 0)
+            {
+                ConnectedPumpStatus = $"Primary: Pump {SelectedPump?.PumpId} | Connected: {pList} | Included sales: ₹{ConnectedPumpGrossSales:N2}";
             }
             else
             {
-                ConnectedPumpStatus = $"Connected pump {SelectedConnectedPump.PumpId} entry not found yet for this shift.";
-            }
-            RecalculateAll();
-            return;
-        }
-
-        if (connectedEntry.NozzleReadings == null || connectedEntry.NozzleReadings.Count == 0)
-        {
-            var fullConnected = await App.Services.GetRequiredService<IDsmEntryRepository>()
-                .GetFullEntryAsync(connectedEntry.DsmEntryId);
-            if (fullConnected.Success && fullConnected.Data != null)
-            {
-                connectedEntry = fullConnected.Data;
+                ConnectedPumpStatus = $"Primary: Pump {SelectedPump?.PumpId} | Connected: {pList} (Partitioned across {1 + effectiveConnectedPumps.Count} pumps)";
             }
         }
 
-        ConnectedPumpGrossSales = (connectedEntry.NozzleReadings ?? new List<NozzleReading>()).Sum(n => n.Amount);
-        ConnectedPumpStatus = $"Including Pump {SelectedConnectedPump.PumpId} nozzle gross sale: ₹{ConnectedPumpGrossSales:N2}";
         RecalculateAll();
     }
 
@@ -1074,7 +1195,7 @@ public partial class DsmEntryViewModel : ObservableObject
             TestingRows.Add(new TestingRow
             {
                 NozzleNumber = nozzle.NozzleNumber,
-                FuelType = $"Nozzle {nozzle.NozzleNumber} ({nozzle.FuelTypeLabel})",
+                FuelType = $"Nozzle {nozzle.NozzleNumber} ({nozzle.FuelType})",
                 TankName = tank,
                 Rate = nozzle.Rate,
                 OnRowChanged = RecalculateAll
@@ -1097,30 +1218,112 @@ public partial class DsmEntryViewModel : ObservableObject
             .ToList();
     }
 
+    private static double ResolveFuelRate(string? tankName, string? fuelTypeName, FuelType fuelType, Dictionary<string, double> ratesMap, double hsdRate, double msIRate, double msIIRate, double cngRate)
+    {
+        if (ratesMap != null && ratesMap.Count > 0)
+        {
+            var normTank = (tankName ?? "").Trim();
+            var normFuel = (fuelTypeName ?? "").Trim();
+
+            // 1. Direct exact key match (case-insensitive)
+            if (!string.IsNullOrEmpty(normTank) && ratesMap.TryGetValue(normTank, out var tr) && tr > 0)
+                return tr;
+
+            if (!string.IsNullOrEmpty(normFuel) && ratesMap.TryGetValue(normFuel, out var fr) && fr > 0)
+                return fr;
+
+            // 2. Exact match in keys by normalized comparison
+            foreach (var kv in ratesMap)
+            {
+                if (kv.Value <= 0) continue;
+                var key = kv.Key.Trim();
+
+                if (!string.IsNullOrEmpty(normTank) && (string.Equals(key, normTank, StringComparison.OrdinalIgnoreCase) || key.Contains(normTank, StringComparison.OrdinalIgnoreCase) || normTank.Contains(key, StringComparison.OrdinalIgnoreCase)))
+                    return kv.Value;
+
+                if (!string.IsNullOrEmpty(normFuel) && (string.Equals(key, normFuel, StringComparison.OrdinalIgnoreCase) || key.Contains(normFuel, StringComparison.OrdinalIgnoreCase) || normFuel.Contains(key, StringComparison.OrdinalIgnoreCase)))
+                    return kv.Value;
+            }
+
+            // 3. Keyword-based matching for specialized and standard fuel types
+            string combined = $"{normFuel} {normTank}".ToUpperInvariant();
+
+            if (combined.Contains("SPEED") || combined.Contains("XP95") || combined.Contains("POWER") || combined.Contains("TURBO") || combined.Contains("EXTRA"))
+            {
+                var speedMatch = ratesMap.FirstOrDefault(kv => kv.Value > 0 && (kv.Key.Contains("SPEED", StringComparison.OrdinalIgnoreCase) || kv.Key.Contains("XP95", StringComparison.OrdinalIgnoreCase) || kv.Key.Contains("POWER", StringComparison.OrdinalIgnoreCase)));
+                if (speedMatch.Value > 0) return speedMatch.Value;
+            }
+
+            if (combined.Contains("HSD") || combined.Contains("DIESEL"))
+            {
+                var hsdMatch = ratesMap.FirstOrDefault(kv => kv.Value > 0 && (kv.Key.Contains("HSD", StringComparison.OrdinalIgnoreCase) || kv.Key.Contains("DIESEL", StringComparison.OrdinalIgnoreCase)));
+                if (hsdMatch.Value > 0) return hsdMatch.Value;
+            }
+
+            if (combined.Contains("MS-II") || combined.Contains("MS2") || combined.Contains("MS_II") || combined.Contains("20KL II"))
+            {
+                var ms2Match = ratesMap.FirstOrDefault(kv => kv.Value > 0 && (kv.Key.Contains("MS-II", StringComparison.OrdinalIgnoreCase) || kv.Key.Contains("MS2", StringComparison.OrdinalIgnoreCase) || kv.Key.Contains("20KL II", StringComparison.OrdinalIgnoreCase)));
+                if (ms2Match.Value > 0) return ms2Match.Value;
+            }
+
+            if (combined.Contains("MS-I") || combined.Contains("MS") || combined.Contains("PETROL"))
+            {
+                var ms1Match = ratesMap.FirstOrDefault(kv => kv.Value > 0 && (kv.Key.Contains("MS-I", StringComparison.OrdinalIgnoreCase) || kv.Key.Contains("MS", StringComparison.OrdinalIgnoreCase) || kv.Key.Contains("PETROL", StringComparison.OrdinalIgnoreCase)));
+                if (ms1Match.Value > 0) return ms1Match.Value;
+            }
+
+            if (combined.Contains("CNG"))
+            {
+                var cngMatch = ratesMap.FirstOrDefault(kv => kv.Value > 0 && kv.Key.Contains("CNG", StringComparison.OrdinalIgnoreCase));
+                if (cngMatch.Value > 0) return cngMatch.Value;
+            }
+        }
+
+        // Fallback to standard 4-rate switch
+        return fuelType switch
+        {
+            FuelType.HSD => hsdRate,
+            FuelType.MS_I => msIRate,
+            FuelType.MS_II => msIIRate,
+            FuelType.CNG => cngRate,
+            _ => msIRate
+        };
+    }
+
     public void RecalculateAll()
     {
-        if (_isSaved && !_isEditing)
+        if (!_isEditing && IsSaved)
         {
             IsSaved = false;
         }
         TotalLitres = NozzleReadings.Sum(n => n.SaleLitres);
         var calc = _dsmCalculationService.Calculate(BuildCalculationDto());
         
+        double rawGross;
         // If nozzle readings have no closing values (e.g. historical entry with missing nozzle child records)
         // but the entry has a saved GrossSales from DB, preserve the saved GrossSales rather than zeroing it out.
         if (calc.GrossSales == 0 && _savedEntryGrossSales.HasValue && _savedEntryGrossSales.Value > 0 && NozzleReadings.All(n => !n.ClosingReading.HasValue || n.ClosingReading == 0))
         {
-            GrossSales = (double)_savedEntryGrossSales.Value;
+            rawGross = (double)_savedEntryGrossSales.Value;
         }
         else
         {
-            GrossSales = (double)calc.GrossSales;
+            rawGross = (double)calc.GrossSales;
         }
 
+        MeterGrossSales = rawGross;
+        TotalTestingAmount = (double)calc.TotalTesting;
+        NetGrossSales = (double)calc.NetGrossSales;
+        HasTesting = TotalTestingAmount > 0;
+        MeterGrossSalesSubtitle = HasTesting
+            ? $"Meter: ₹{MeterGrossSales:N2} - Test: ₹{TotalTestingAmount:N2}"
+            : string.Empty;
+
+        GrossSales = NetGrossSales;
         TotalPaymentIn = (double)calc.TotalInDirect;
         TotalDebtors = (double)calc.TotalCreditors;
         FinalAdjusted = (double)calc.TotalCollection;
-        Difference = FinalAdjusted - GrossSales;
+        Difference = (double)calc.Mismatch;
     }
 
     [RelayCommand]
@@ -1243,7 +1446,7 @@ public partial class DsmEntryViewModel : ObservableObject
                     Amount = d.Amount ?? 0, 
                     ChequeNo = d.ChequeNo,
                     VehicleNumber = d.VehicleNumber,
-                    PaymentMethod = "Credit"
+                    PaymentMethod = string.IsNullOrEmpty(d.PaymentMethod) ? "Credit" : d.PaymentMethod
                 }).ToList();
 
             var testingModels = BuildTestingModels();
@@ -1291,7 +1494,8 @@ public partial class DsmEntryViewModel : ObservableObject
                 EndTime,
                 null,
                 kpModels,
-                qrModels);
+                qrModels,
+                connectedPumpIds: ActiveConnectedPumpIds);
 
             if (result.Success)
             {
@@ -1299,7 +1503,6 @@ public partial class DsmEntryViewModel : ObservableObject
                 StatusMessage = "✅ DSM Entry saved successfully!";
                 _draftService.ClearDraft();
                 await LoadShiftEntriesAsync();
-                await LoadNozzlesForPumpAsync();
                 IsSaved = true;
                 OnPropertyChanged(nameof(CanSaveCurrentEntry));
                 SaveEntryCommand.NotifyCanExecuteChanged();
@@ -1347,6 +1550,7 @@ public partial class DsmEntryViewModel : ObservableObject
         CreditCardTidMorning = CreditCardBatchMorning = CreditCardTidNight = CreditCardBatchNight = null;
         PetroCardTid = PetroCardBatch = PetroCardTidMorning = PetroCardBatchMorning = PetroCardTidNight = PetroCardBatchNight = null;
         SelectedConnectedPump = null;
+        ActiveConnectedPumpIds = new();
         ConnectedPumpGrossSales = 0;
         ConnectedPumpStatus = "";
         TestingRows.Clear();
@@ -1396,73 +1600,115 @@ public partial class DsmEntryViewModel : ObservableObject
             var pumpMatch = PumpOptions.FirstOrDefault(p => p.PumpId == entry.PumpId);
             if (pumpMatch != null) SelectedPump = pumpMatch;
 
-            // Connected pump
-            DsmEntry? connectedEntry = null;
-            int? targetConnectedPumpId = entry.ConnectedPumpId;
-            if (!targetConnectedPumpId.HasValue && entry.NozzleReadings != null)
+            // Connected pumps reconstruction
+            var effectiveConnectedIds = entry.GetEffectiveConnectedPumpIds();
+            if (effectiveConnectedIds.Count == 0 && entry.NozzleReadings != null)
             {
                 foreach (var nr in entry.NozzleReadings)
                 {
                     var nozzlePumpId = PumpConfiguration.GetPumpIdForNozzle(nr.NozzleNumber, entry.Shift?.ShiftDate ?? SelectedDate);
-                    if (nozzlePumpId != 0 && nozzlePumpId != entry.PumpId)
+                    if (nozzlePumpId != 0 && nozzlePumpId != entry.PumpId && !effectiveConnectedIds.Contains(nozzlePumpId))
                     {
-                        targetConnectedPumpId = nozzlePumpId;
-                        break;
+                        effectiveConnectedIds.Add(nozzlePumpId);
                     }
                 }
             }
 
-            var repo = App.Services.GetRequiredService<IDsmEntryRepository>();
-            if (targetConnectedPumpId.HasValue)
+            ActiveConnectedPumpIds = effectiveConnectedIds.Distinct().Where(id => id != entry.PumpId).ToList();
+            if (ActiveConnectedPumpIds.Count > 0)
             {
-                var connMatch = ConnectablePumpOptions.FirstOrDefault(p => p.PumpId == targetConnectedPumpId.Value);
+                var firstConnId = ActiveConnectedPumpIds[0];
+                var connMatch = ConnectablePumpOptions.FirstOrDefault(p => p.PumpId == firstConnId);
                 SelectedConnectedPump = connMatch;
-
-                var shiftId = entry.ShiftId;
-                var entriesResult = await repo.GetEntriesForShiftAsync(shiftId);
-                if (entriesResult.Success && entriesResult.Data != null)
-                {
-                    var rawConn = entriesResult.Data
-                        .Where(e => e.PumpId == targetConnectedPumpId.Value
-                            && (e.ReconciledToPumpId == entry.DsmEntryId || e.ReconciledToPumpId == entry.PumpId || string.Equals(e.DsmName, entry.DsmName, StringComparison.OrdinalIgnoreCase)))
-                        .OrderBy(e => e.ReconciledToPumpId == entry.DsmEntryId ? 0 : 1)
-                        .ThenBy(e => e.DsmEntryId >= entry.DsmEntryId ? (e.DsmEntryId - entry.DsmEntryId) : (100000 + Math.Abs(e.DsmEntryId - entry.DsmEntryId)))
-                        .FirstOrDefault();
-                    if (rawConn != null)
-                    {
-                        var fullConnected = await repo.GetFullEntryAsync(rawConn.DsmEntryId);
-                        if (fullConnected.Success && fullConnected.Data != null)
-                        {
-                            connectedEntry = fullConnected.Data;
-                        }
-                    }
-                }
             }
             else
             {
                 SelectedConnectedPump = null;
             }
 
-            // Capture existing saved GrossSales from DB (to prevent 0 GrossSales on historical entries missing child NozzleReadings)
-            _savedEntryGrossSales = (entry.GrossSales > 0 ? (double)entry.GrossSales : null);
-            if (connectedEntry != null && connectedEntry.GrossSales > 0)
+            var repo = App.Services.GetRequiredService<IDsmEntryRepository>();
+            var allSlaveEntries = new List<DsmEntry>();
+
+            if (ActiveConnectedPumpIds.Count > 0)
             {
-                _savedEntryGrossSales = (_savedEntryGrossSales ?? 0) + (double)connectedEntry.GrossSales;
+                var shiftId = entry.ShiftId;
+                var entriesResult = await repo.GetEntriesForShiftAsync(shiftId);
+                if (entriesResult.Success && entriesResult.Data != null)
+                {
+                    foreach (var connPumpId in ActiveConnectedPumpIds)
+                    {
+                        var rawConn = entriesResult.Data
+                            .Where(e => e.DsmEntryId != entry.DsmEntryId
+                                && e.PumpId == connPumpId
+                                && (e.ReconciledToPumpId == entry.DsmEntryId || e.ReconciledToPumpId == entry.PumpId || string.Equals(e.DsmName, entry.DsmName, StringComparison.OrdinalIgnoreCase)))
+                            .OrderBy(e => e.ReconciledToPumpId == entry.DsmEntryId ? 0 : 1)
+                            .ThenBy(e => e.DsmEntryId >= entry.DsmEntryId ? (e.DsmEntryId - entry.DsmEntryId) : (100000 + Math.Abs(e.DsmEntryId - entry.DsmEntryId)))
+                            .FirstOrDefault();
+
+                        if (rawConn != null)
+                        {
+                            var fullConnected = await repo.GetFullEntryAsync(rawConn.DsmEntryId);
+                            if (fullConnected.Success && fullConnected.Data != null && fullConnected.Data.DsmEntryId != entry.DsmEntryId)
+                            {
+                                allSlaveEntries.Add(fullConnected.Data);
+                            }
+                        }
+                    }
+                }
+            }
+            var connectedEntry = allSlaveEntries.FirstOrDefault();
+
+            // Capture existing saved GrossSales from DB (to prevent 0 GrossSales on historical entries missing child NozzleReadings)
+            // If primary GrossSales already represents the group total, DO NOT add slave GrossSales.
+            if (entry.GrossSales > 0)
+            {
+                _savedEntryGrossSales = (double)entry.GrossSales;
+            }
+            else
+            {
+                double slaveSum = 0;
+                foreach (var slave in allSlaveEntries)
+                {
+                    if (slave.GrossSales > 0)
+                    {
+                        slaveSum += (double)slave.GrossSales;
+                    }
+                }
+                _savedEntryGrossSales = slaveSum > 0 ? slaveSum : (double?)null;
             }
 
             // Explicitly load nozzles loading
             await LoadNozzlesForPumpAsync();
 
             // Populate payment losslessly (preserve both Morning and Night slots for all shifts)
-            var paymentSource = entry.PaymentCollection ?? connectedEntry?.PaymentCollection;
-            PhonePeCardMorning = paymentSource?.PhonePeCardMorning > 0 ? paymentSource?.PhonePeCardMorning : (paymentSource?.PhonePeCardDay > 0 ? paymentSource?.PhonePeCardDay : paymentSource?.PhonePeCardMorning);
-            PhonePeCardNight = paymentSource?.PhonePeCardNight;
-            PhonePeMorning = paymentSource?.PhonePeMorning > 0 ? paymentSource?.PhonePeMorning : (paymentSource?.PhonePeDay > 0 ? paymentSource?.PhonePeDay : paymentSource?.PhonePeMorning);
-            PhonePeNight = paymentSource?.PhonePeNight;
-            CreditCardMorning = paymentSource?.CreditCardMorning > 0 ? paymentSource?.CreditCardMorning : (paymentSource?.CreditCardDay > 0 ? paymentSource?.CreditCardDay : paymentSource?.CreditCardMorning);
-            CreditCardNight = paymentSource?.CreditCardNight;
-            PetroCardMorning = paymentSource?.PetroCardMorning > 0 ? paymentSource?.PetroCardMorning : (paymentSource?.PetroCardDay > 0 ? paymentSource?.PetroCardDay : paymentSource?.PetroCardMorning);
-            PetroCardNight = paymentSource?.PetroCardNight;
+            var paymentSource = entry.PaymentCollection ?? (connectedEntry != null && connectedEntry.DsmEntryId != entry.DsmEntryId ? connectedEntry.PaymentCollection : null);
+            bool isShiftB = string.Equals(SelectedShift, "B", StringComparison.OrdinalIgnoreCase)
+                         || string.Equals(entry.Shift?.ShiftType, "B", StringComparison.OrdinalIgnoreCase)
+                         || string.Equals(entry.Shift?.ShiftType, "II", StringComparison.OrdinalIgnoreCase);
+
+            if (isShiftB)
+            {
+                PhonePeCardMorning = paymentSource?.PhonePeCardDay > 0 ? paymentSource.PhonePeCardDay : (paymentSource?.PhonePeCardMorning > 0 ? paymentSource.PhonePeCardMorning : (double?)null);
+                PhonePeCardNight = paymentSource?.PhonePeCardNight;
+                PhonePeMorning = paymentSource?.PhonePeDay > 0 ? paymentSource.PhonePeDay : (paymentSource?.PhonePeMorning > 0 ? paymentSource.PhonePeMorning : (double?)null);
+                PhonePeNight = paymentSource?.PhonePeNight;
+                CreditCardMorning = paymentSource?.CreditCardDay > 0 ? paymentSource.CreditCardDay : (paymentSource?.CreditCardMorning > 0 ? paymentSource.CreditCardMorning : (double?)null);
+                CreditCardNight = paymentSource?.CreditCardNight;
+                PetroCardMorning = paymentSource?.PetroCardDay > 0 ? paymentSource.PetroCardDay : (paymentSource?.PetroCardMorning > 0 ? paymentSource.PetroCardMorning : (double?)null);
+                PetroCardNight = paymentSource?.PetroCardNight;
+            }
+            else
+            {
+                PhonePeCardMorning = paymentSource?.PhonePeCardMorning > 0 ? paymentSource.PhonePeCardMorning : (paymentSource?.PhonePeCardDay > 0 ? paymentSource.PhonePeCardDay : (double?)null);
+                PhonePeCardNight = paymentSource?.PhonePeCardNight;
+                PhonePeMorning = paymentSource?.PhonePeMorning > 0 ? paymentSource.PhonePeMorning : (paymentSource?.PhonePeDay > 0 ? paymentSource.PhonePeDay : (double?)null);
+                PhonePeNight = paymentSource?.PhonePeNight;
+                CreditCardMorning = paymentSource?.CreditCardMorning > 0 ? paymentSource.CreditCardMorning : (paymentSource?.CreditCardDay > 0 ? paymentSource.CreditCardDay : (double?)null);
+                CreditCardNight = paymentSource?.CreditCardNight;
+                PetroCardMorning = paymentSource?.PetroCardMorning > 0 ? paymentSource.PetroCardMorning : (paymentSource?.PetroCardDay > 0 ? paymentSource.PetroCardDay : (double?)null);
+                PetroCardNight = paymentSource?.PetroCardNight;
+            }
+
             Others = paymentSource?.Others;
             CashDeposit = paymentSource?.CashDeposit;
 
@@ -1494,32 +1740,42 @@ public partial class DsmEntryViewModel : ObservableObject
             // Populate nozzle readings (override auto-loaded ones)
             foreach (var nozzleRow in NozzleReadings)
             {
-                var savedReading = entry.NozzleReadings.FirstOrDefault(n => n.NozzleNumber == nozzleRow.NozzleNumber);
-                if (savedReading == null && connectedEntry != null)
+                var savedReading = entry.NozzleReadings?.FirstOrDefault(n => n.NozzleNumber == nozzleRow.NozzleNumber);
+                if (savedReading == null)
                 {
-                    savedReading = connectedEntry.NozzleReadings.FirstOrDefault(n => n.NozzleNumber == nozzleRow.NozzleNumber);
+                    foreach (var slave in allSlaveEntries)
+                    {
+                        savedReading = slave.NozzleReadings?.FirstOrDefault(n => n.NozzleNumber == nozzleRow.NozzleNumber);
+                        if (savedReading != null) break;
+                    }
                 }
 
                 if (savedReading != null)
                 {
-                    if (savedReading.OpeningReading > 0)
-                    {
-                        nozzleRow.OpeningReading = savedReading.OpeningReading;
-                    }
-                    else if (!nozzleRow.OpeningReading.HasValue || nozzleRow.OpeningReading == 0)
-                    {
-                        nozzleRow.OpeningReading = savedReading.OpeningReading;
-                    }
+                    nozzleRow.OpeningReading = savedReading.OpeningReading;
                     nozzleRow.ClosingReading = savedReading.ClosingReading;
                     if (savedReading.Rate > 0) nozzleRow.Rate = savedReading.Rate;
                 }
             }
 
-            // Populate debits
+            // Populate debits with strict deduplication
             Debits.Clear();
             var allDebits = new List<DebitEntry>();
             if (entry.DebitEntries != null) allDebits.AddRange(entry.DebitEntries);
-            if (connectedEntry?.DebitEntries != null) allDebits.AddRange(connectedEntry.DebitEntries);
+            foreach (var slave in allSlaveEntries)
+            {
+                if (slave.DebitEntries != null)
+                {
+                    foreach (var cd in slave.DebitEntries)
+                    {
+                        if (!allDebits.Any(d => (d.DebitId != 0 && d.DebitId == cd.DebitId)
+                            || (string.Equals(d.DebtorName, cd.DebtorName, StringComparison.OrdinalIgnoreCase) && Math.Abs(d.Amount - cd.Amount) < 0.001)))
+                        {
+                            allDebits.Add(cd);
+                        }
+                    }
+                }
+            }
 
             foreach (var debit in allDebits)
             {
@@ -1543,11 +1799,24 @@ public partial class DsmEntryViewModel : ObservableObject
                 Debits.Add(row);
             }
 
-            // Populate expenses
+            // Populate expenses with strict deduplication
             Expenses.Clear();
             var allExpenses = new List<Expense>();
             if (entry.Expenses != null) allExpenses.AddRange(entry.Expenses);
-            if (connectedEntry?.Expenses != null) allExpenses.AddRange(connectedEntry.Expenses);
+            foreach (var slave in allSlaveEntries)
+            {
+                if (slave.Expenses != null)
+                {
+                    foreach (var ce in slave.Expenses)
+                    {
+                        if (!allExpenses.Any(e => (e.ExpenseId != 0 && e.ExpenseId == ce.ExpenseId)
+                            || (string.Equals(e.Description, ce.Description, StringComparison.OrdinalIgnoreCase) && Math.Abs(e.Amount - ce.Amount) < 0.001)))
+                        {
+                            allExpenses.Add(ce);
+                        }
+                    }
+                }
+            }
 
             foreach (var expense in allExpenses)
             {
@@ -1559,16 +1828,23 @@ public partial class DsmEntryViewModel : ObservableObject
                 });
             }
 
-            // Populate Khandhare Petroleum entries
+            // Populate Khandhare Petroleum entries with strict deduplication
             KhandharePetroleumEntries.Clear();
             var allKp = new List<KhandharePetroleumEntry>();
             if (entry.KhandharePetroleumEntries != null && entry.KhandharePetroleumEntries.Count > 0)
             {
                 allKp.AddRange(entry.KhandharePetroleumEntries);
             }
-            if (connectedEntry?.KhandharePetroleumEntries != null && connectedEntry.KhandharePetroleumEntries.Count > 0)
+            if (connectedEntry != null && connectedEntry.DsmEntryId != entry.DsmEntryId && connectedEntry.KhandharePetroleumEntries != null && connectedEntry.KhandharePetroleumEntries.Count > 0)
             {
-                allKp.AddRange(connectedEntry.KhandharePetroleumEntries);
+                foreach (var ckp in connectedEntry.KhandharePetroleumEntries)
+                {
+                    if (!allKp.Any(k => (k.Id != 0 && k.Id == ckp.Id)
+                        || (string.Equals(k.SlipNumber, ckp.SlipNumber, StringComparison.OrdinalIgnoreCase) && Math.Abs(k.Amount - ckp.Amount) < 0.001)))
+                    {
+                        allKp.Add(ckp);
+                    }
+                }
             }
 
             // Fallback 1: Query local DB for KhandharePetroleumEntries by (Date, DsmName) or DsmEntryId
@@ -1672,16 +1948,23 @@ public partial class DsmEntryViewModel : ObservableObject
                 });
             }
 
-            // Populate Cross-DSM QR Payments
+            // Populate Cross-DSM QR Payments with strict deduplication
             QrPayments.Clear();
             var allQr = new List<DsmQrPaymentEntry>();
             if (entry.QrPayments != null && entry.QrPayments.Count > 0)
             {
                 allQr.AddRange(entry.QrPayments);
             }
-            if (connectedEntry?.QrPayments != null && connectedEntry.QrPayments.Count > 0)
+            if (connectedEntry != null && connectedEntry.DsmEntryId != entry.DsmEntryId && connectedEntry.QrPayments != null && connectedEntry.QrPayments.Count > 0)
             {
-                allQr.AddRange(connectedEntry.QrPayments);
+                foreach (var cqr in connectedEntry.QrPayments)
+                {
+                    if (!allQr.Any(q => (q.Id != 0 && q.Id == cqr.Id)
+                        || (string.Equals(q.TargetDsmName, cqr.TargetDsmName, StringComparison.OrdinalIgnoreCase) && Math.Abs(q.Amount - cqr.Amount) < 0.001)))
+                    {
+                        allQr.Add(cqr);
+                    }
+                }
             }
 
             foreach (var qr in allQr)
@@ -1704,7 +1987,10 @@ public partial class DsmEntryViewModel : ObservableObject
 
             var allTesting = new List<TestingEntry>();
             if (entry.TestingEntries != null) allTesting.AddRange(entry.TestingEntries);
-            if (connectedEntry?.TestingEntries != null) allTesting.AddRange(connectedEntry.TestingEntries);
+            foreach (var slave in allSlaveEntries)
+            {
+                if (slave.TestingEntries != null) allTesting.AddRange(slave.TestingEntries);
+            }
 
             foreach (var testEntry in allTesting)
             {
@@ -1744,7 +2030,7 @@ public partial class DsmEntryViewModel : ObservableObject
 
             // Populate cash denominations
             var cash1Data = entry.CashDenominations.FirstOrDefault(c => c.CashType == "Cash1")
-                ?? connectedEntry?.CashDenominations.FirstOrDefault(c => c.CashType == "Cash1");
+                ?? allSlaveEntries.Select(s => s.CashDenominations?.FirstOrDefault(c => c.CashType == "Cash1")).FirstOrDefault(c => c != null);
             Cash1 = new CashDenomRow
             {
                 CashType = "Cash1",
@@ -1760,7 +2046,7 @@ public partial class DsmEntryViewModel : ObservableObject
             };
 
             var cash2Data = entry.CashDenominations.FirstOrDefault(c => c.CashType == "Cash2")
-                ?? connectedEntry?.CashDenominations.FirstOrDefault(c => c.CashType == "Cash2");
+                ?? allSlaveEntries.Select(s => s.CashDenominations?.FirstOrDefault(c => c.CashType == "Cash2")).FirstOrDefault(c => c != null);
             Cash2 = new CashDenomRow
             {
                 CashType = "Cash2",
@@ -1796,6 +2082,7 @@ public partial class DsmEntryViewModel : ObservableObject
                 {
                     if (window.DataContext is MainWindowViewModel mwvm)
                     {
+                        mwvm.SetCachedView<DsmEntryViewModel>(newVm);
                         mwvm.CurrentView = newVm;
                         updated = true;
                         break;
@@ -1823,6 +2110,7 @@ public partial class DsmEntryViewModel : ObservableObject
                     {
                         if (window.DataContext is MainWindowViewModel mwvm)
                         {
+                            mwvm.SetCachedView<DsmEntryViewModel>(newVm);
                             mwvm.CurrentView = newVm;
                             break;
                         }
@@ -1883,21 +2171,24 @@ public partial class DsmEntryViewModel : ObservableObject
                 }
             }
 
-            // Self-healing: if the primary entry's ConnectedPumpId is not set, check if any entry reconciles to it
+            // Self-healing: if the primary entry's ConnectedPumpId is not set, check if any entries reconcile to it
             if (!entry.ConnectedPumpId.HasValue && !entry.ReconciledToPumpId.HasValue)
             {
                 var shiftId = entry.ShiftId;
                 var entriesResult = await repo.GetEntriesForShiftAsync(shiftId);
                 if (entriesResult.Success && entriesResult.Data != null)
                 {
-                    var connectedRaw = entriesResult.Data
-                        .Where(e => (e.ReconciledToPumpId == entry.DsmEntryId || e.ReconciledToPumpId == entry.PumpId)
+                    var reconcilingSlaves = entriesResult.Data
+                        .Where(e => e.DsmEntryId != entry.DsmEntryId
+                            && e.PumpId != entry.PumpId
+                            && (e.ReconciledToPumpId == entry.DsmEntryId || e.ReconciledToPumpId == entry.PumpId)
                             && string.Equals(e.DsmName, entry.DsmName, StringComparison.OrdinalIgnoreCase))
-                        .OrderBy(e => e.DsmEntryId >= entry.DsmEntryId ? (e.DsmEntryId - entry.DsmEntryId) : (100000 + Math.Abs(e.DsmEntryId - entry.DsmEntryId)))
-                        .FirstOrDefault();
-                    if (connectedRaw != null)
+                        .ToList();
+                    if (reconcilingSlaves.Count > 0)
                     {
-                        entry.ConnectedPumpId = connectedRaw.PumpId;
+                        var slavePumpIds = reconcilingSlaves.Select(s => s.PumpId).Distinct().ToList();
+                        entry.ConnectedPumpId = slavePumpIds.FirstOrDefault();
+                        entry.ConnectedPumpIdsJson = System.Text.Json.JsonSerializer.Serialize(slavePumpIds);
                     }
                 }
             }
@@ -1953,8 +2244,12 @@ public partial class DsmEntryViewModel : ObservableObject
         if (dsmEntries.Count > 1)
         {
             double totalSales = dsmEntries.Sum(e => (double)e.GrossSales);
+            double totalNetSales = dsmEntries.Sum(e => (double)e.NetSales);
             double totalCollection = dsmEntries.Sum(e => (double)e.TotalCollection);
-            DsmCumulativeShiftSummaryMessage = $"ℹ️ {DsmName} has {dsmEntries.Count} sessions in Shift {SelectedShift}. Combined Gross Sales: ₹{totalSales:N2}, Combined Collection: ₹{totalCollection:N2}";
+            string salesText = totalNetSales != totalSales && totalNetSales > 0
+                ? $"Gross: ₹{totalSales:N2}, Net: ₹{totalNetSales:N2}"
+                : $"Gross Sales: ₹{totalSales:N2}";
+            DsmCumulativeShiftSummaryMessage = $"ℹ️ {DsmName} has {dsmEntries.Count} sessions in Shift {SelectedShift}. Combined {salesText}, Combined Collection: ₹{totalCollection:N2}";
         }
         else
         {
@@ -2130,7 +2425,7 @@ public partial class DsmEntryViewModel : ObservableObject
 
         var settings = App.Services.GetRequiredService<ISettingsRepository>();
         var settingsResult = settings.GetSettingsAsync().GetAwaiter().GetResult();
-        var stationName = settingsResult.Success ? settingsResult.Data?.PumpStationName ?? "PyroSync" : "PyroSync";
+        var stationName = settingsResult.Success && !string.IsNullOrWhiteSpace(settingsResult.Data?.PumpStationName) ? settingsResult.Data.PumpStationName : "Mitali Service Station";
 
         var nozzleRows = NozzleReadings.Select(n => new DsmNozzlePrintRow
         {
@@ -2211,7 +2506,7 @@ public partial class DsmEntryViewModel : ObservableObject
         var printData = new DsmSheetPrintData
         {
             StationName  = stationName,
-            CompanyName  = "PyroSync",
+            CompanyName  = stationName,
             Date         = SelectedDate.ToString("dd/MM/yyyy"),
             Shift        = SelectedShift,
             DsmName      = DsmName,
@@ -2250,7 +2545,7 @@ public partial class DsmEntryViewModel : ObservableObject
 
         var settings = App.Services.GetRequiredService<ISettingsRepository>();
         var settingsResult = settings.GetSettingsAsync().GetAwaiter().GetResult();
-        var stationName = settingsResult.Success ? settingsResult.Data?.PumpStationName ?? "PyroSync" : "PyroSync";
+        var stationName = settingsResult.Success && !string.IsNullOrWhiteSpace(settingsResult.Data?.PumpStationName) ? settingsResult.Data.PumpStationName : "Mitali Service Station";
 
         var rows = ShiftEntries.Select(e => new ShiftSummaryDsmRow
         {

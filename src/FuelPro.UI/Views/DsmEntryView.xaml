@@ -95,8 +95,9 @@
                               materialDesign:DataGridAssist.CellPadding="12 8"
                               materialDesign:DataGridAssist.ColumnHeaderPadding="12 8">
                         <DataGrid.Columns>
+                            <DataGridTextColumn Header="Pump" Binding="{Binding PumpLabel}" IsReadOnly="True" Width="85"/>
                             <DataGridTextColumn Header="Nozzle" Binding="{Binding NozzleNumber}" IsReadOnly="True" Width="80"/>
-                            <DataGridTextColumn Header="Fuel Type" Binding="{Binding FuelTypeLabel}" IsReadOnly="True" Width="90"/>
+                            <DataGridTextColumn Header="Fuel Type" Binding="{Binding FuelType}" IsReadOnly="True" Width="90"/>
                             <DataGridTemplateColumn Header="Opening Reading" Width="210">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
@@ -478,10 +479,10 @@
                                             <!-- Main Line (No conditional details needed) -->
                                             <Grid>
                                                 <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="2.2*"/>
-                                                    <ColumnDefinition Width="1.6*"/>
-                                                    <ColumnDefinition Width="1.6*"/>
-                                                    <ColumnDefinition Width="1.4*"/>
+                                                    <ColumnDefinition Width="2.1*"/>
+                                                    <ColumnDefinition Width="2.0*"/>
+                                                    <ColumnDefinition Width="1.1*"/>
+                                                    <ColumnDefinition Width="1.2*"/>
                                                     <ColumnDefinition Width="Auto"/>
                                                 </Grid.ColumnDefinitions>
                                                 
@@ -882,10 +883,10 @@
                                     <DataTemplate>
                                         <Grid Margin="0,4">
                                             <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="1.6*"/>
                                                 <ColumnDefinition Width="1.5*"/>
-                                                <ColumnDefinition Width="1.2*"/>
-                                                <ColumnDefinition Width="1.2*"/>
-                                                <ColumnDefinition Width="1.2*"/>
+                                                <ColumnDefinition Width="1.0*"/>
+                                                <ColumnDefinition Width="1.1*"/>
                                                 <ColumnDefinition Width="Auto"/>
                                             </Grid.ColumnDefinitions>
                                             <TextBox Grid.Column="0" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0"
@@ -925,8 +926,11 @@
                                Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}" Margin="0,0,0,16"/>
                     <UniformGrid Columns="5">
                         <StackPanel HorizontalAlignment="Center">
-                            <TextBlock Text="Gross Sales" Opacity="0.6" HorizontalAlignment="Center"/>
-                            <TextBlock Text="{Binding GrossSales, StringFormat='₹{0:N2}'}" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center"/>
+                            <TextBlock Text="Net Sales" Opacity="0.6" HorizontalAlignment="Center"/>
+                            <TextBlock Text="{Binding NetGrossSales, StringFormat='₹{0:N2}'}" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center"/>
+                            <TextBlock Text="{Binding MeterGrossSalesSubtitle}" FontSize="10" Opacity="0.85" HorizontalAlignment="Center"
+                                       Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}"
+                                       Visibility="{Binding HasTesting, Converter={StaticResource BoolVisConv}}" Margin="0,2,0,0"/>
                         </StackPanel>
                         <StackPanel HorizontalAlignment="Center">
                             <TextBlock Text="Total In (Direct)" Opacity="0.6" HorizontalAlignment="Center"/>
@@ -939,12 +943,13 @@
                         <StackPanel HorizontalAlignment="Center">
                             <TextBlock Text="Total Collection" Opacity="0.6" HorizontalAlignment="Center"/>
                             <TextBlock Text="{Binding FinalAdjusted, StringFormat='₹{0:N2}'}" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center"/>
+                            <TextBlock Text="Direct + Debtors + Exp" FontSize="10" Opacity="0.5" HorizontalAlignment="Center" Margin="0,2,0,0"/>
                         </StackPanel>
                         <StackPanel HorizontalAlignment="Center">
                             <TextBlock Text="Mismatch" Opacity="0.6" HorizontalAlignment="Center"/>
                             <TextBlock Text="{Binding Difference, StringFormat='₹{0:N2}'}" FontSize="22" FontWeight="Bold"
                                        Foreground="{Binding Difference, Converter={StaticResource DiffColorConv}}" HorizontalAlignment="Center"
-                                       ToolTip="Mismatch = Total Collection - Gross Sales. Total Collection includes direct payments, debtors, testing, and expenses."/>
+                                       ToolTip="Mismatch = Total Collection - Net Sales. Total Collection includes direct payments, debtors, and expenses. Testing is deducted from gross sales."/>
                         </StackPanel>
                     </UniformGrid>
                 </StackPanel>
@@ -993,15 +998,66 @@
                     </Grid>
                     <DataGrid ItemsSource="{Binding ShiftEntries}" IsReadOnly="True"
                               HeadersVisibility="Column"
+                              GridLinesVisibility="All"
+                              AlternatingRowBackground="#FAFAFA"
                               PreviewMouseWheel="DataGrid_PreviewMouseWheel">
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="#" Binding="{Binding SequenceDisplay}" Width="50"/>
-                            <DataGridTextColumn Header="DSM Name" Binding="{Binding DsmName}" Width="*"/>
-                            <DataGridTextColumn Header="Pump" Binding="{Binding PumpDisplay}" Width="160"/>
+                            <DataGridTextColumn Header="#" Binding="{Binding SequenceDisplay}" Width="50">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="HorizontalAlignment" Value="Center" />
+                                        <Setter Property="VerticalAlignment" Value="Center" />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTextColumn Header="DSM Name" Binding="{Binding DsmName}" Width="*" FontWeight="SemiBold"/>
+                            <DataGridTextColumn Header="Pump" Binding="{Binding PumpDisplay}" Width="150"/>
 
-                            <DataGridTextColumn Header="Gross Sales" Binding="{Binding GrossSales, StringFormat=N2}" Width="140"/>
-                            <DataGridTextColumn Header="Total Collection" Binding="{Binding TotalPaymentIn, StringFormat=N2}" Width="140"/>
-                            <DataGridTextColumn Header="Mismatch" Binding="{Binding Difference, StringFormat=N2}" Width="120"/>
+                            <DataGridTextColumn Header="Gross Sales" Binding="{Binding GrossSales, StringFormat=N2}" Width="110">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="HorizontalAlignment" Value="Right" />
+                                        <Setter Property="VerticalAlignment" Value="Center" />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+
+                            <DataGridTextColumn Header="Testing" Binding="{Binding TestingAmount, StringFormat=N2}" Width="90">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="HorizontalAlignment" Value="Right" />
+                                        <Setter Property="VerticalAlignment" Value="Center" />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+
+                            <DataGridTextColumn Header="Net Sales" Binding="{Binding NetSales, StringFormat=N2}" Width="110" FontWeight="SemiBold">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="HorizontalAlignment" Value="Right" />
+                                        <Setter Property="VerticalAlignment" Value="Center" />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+
+                            <DataGridTextColumn Header="Total Collection" Binding="{Binding TotalPaymentIn, StringFormat=N2}" Width="120">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="HorizontalAlignment" Value="Right" />
+                                        <Setter Property="VerticalAlignment" Value="Center" />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+
+                            <DataGridTextColumn Header="Mismatch" Binding="{Binding Difference, StringFormat=N2}" Width="110" FontWeight="Bold">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="HorizontalAlignment" Value="Right" />
+                                        <Setter Property="VerticalAlignment" Value="Center" />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+
                             <DataGridTemplateColumn Header="Action" Width="90">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>

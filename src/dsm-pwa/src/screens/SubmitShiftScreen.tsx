@@ -704,10 +704,14 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         console.error("Failed to fetch rates from Settings:", e);
       }
 
-      // We load nozzles of both the primary and connected pump (deduplicated)
+      // We load nozzles of both the primary and all connected pumps (deduplicated)
+      const connectedPumps = profile?.ConnectedPumps && profile.ConnectedPumps.length > 0
+        ? profile.ConnectedPumps
+        : (profile?.ConnectedPump ? [profile.ConnectedPump] : []);
+
       const pumpsToFetch = Array.from(
         new Set(
-          [pumpId, profile.ConnectedPump].filter(
+          [pumpId, ...connectedPumps].filter(
             (p): p is number => typeof p === "number" && p > 0,
           ),
         ),
@@ -1132,21 +1136,22 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     );
 
   const grandProductSales = shiftOilTotal + shiftDefTotal;
+  const netFuelSales = Math.max(0, grossSales - totalTesting);
+  const totalSalesLiability = netFuelSales + grandProductSales;
 
   const kpTotal = khandhareEntries.reduce((sum, item) => sum + item.amount, 0);
   const qrTotal = qrPayments.reduce((sum, item) => sum + item.amount, 0);
+  const totalExpenses = expense + kpTotal;
   const totalCollections =
     cash +
+    cashDeposit +
     upiTotal +
     cardTotal +
     petroCardTotal +
-    cashDeposit +
+    qrTotal +
     creditTotal +
-    totalTesting +
-    kpTotal +
-    qrTotal;
-  const mismatch =
-    totalCollections + expense - (grossSales + grandProductSales);
+    totalExpenses;
+  const mismatch = totalCollections - totalSalesLiability;
 
   // ── Validation ───────────────────────────────────────────────
   function validateReadings(): string[] {
@@ -1442,8 +1447,14 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       }
     }
 
+    const connectedPumps = profile?.ConnectedPumps && profile.ConnectedPumps.length > 0
+      ? profile.ConnectedPumps
+      : (profile?.ConnectedPump ? [profile.ConnectedPump] : []);
+
     const draftData = {
       pumpId,
+      connectedPumpId: connectedPumps.length > 0 ? connectedPumps[0] : (profile?.ConnectedPump || null),
+      connectedPumpIds: connectedPumps,
       shiftDate,
       shiftType: shiftType as "A" | "B" | "C",
       notes,
@@ -1639,24 +1650,34 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                 }}
               >
                 Pump {pumpId}
-                {profile?.ConnectedPump
-                  ? ` + Pump ${profile.ConnectedPump} (Connected)`
-                  : ""}
+                {(() => {
+                  const cPumps = profile?.ConnectedPumps && profile.ConnectedPumps.length > 0
+                    ? profile.ConnectedPumps
+                    : (profile?.ConnectedPump ? [profile.ConnectedPump] : []);
+                  return cPumps.length > 0
+                    ? ` + ${cPumps.map((p) => `Pump ${p}`).join(" + ")} (Connected)`
+                    : "";
+                })()}
               </div>
-              {profile?.ConnectedPump && (
-                <span
-                  style={{
-                    fontSize: "0.7rem",
-                    color: "#38bdf8",
-                    marginTop: "4px",
-                    display: "block",
-                    lineHeight: "1.2",
-                  }}
-                >
-                  ℹ️ You are entering readings for both Pump {pumpId} and
-                  Connected Pump {profile.ConnectedPump}.
-                </span>
-              )}
+              {(() => {
+                const cPumps = profile?.ConnectedPumps && profile.ConnectedPumps.length > 0
+                  ? profile.ConnectedPumps
+                  : (profile?.ConnectedPump ? [profile.ConnectedPump] : []);
+                return cPumps.length > 0 ? (
+                  <span
+                    style={{
+                      fontSize: "0.7rem",
+                      color: "#38bdf8",
+                      marginTop: "4px",
+                      display: "block",
+                      lineHeight: "1.2",
+                    }}
+                  >
+                    ℹ️ You are entering readings for Pump {pumpId} and
+                    Connected {cPumps.map((p) => `Pump ${p}`).join(", ")}.
+                  </span>
+                ) : null;
+              })()}
             </div>
             <div className="field-group">
               <label className="field-label">Assigned Shift</label>
@@ -3577,10 +3598,30 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
             style={{ marginBottom: "16px" }}
           >
             <div className="mismatch-row">
-              <span>Gross Sales (Fuel)</span>
+              <span>Gross Sales (Meter)</span>
               <span>
                 ₹
                 {grossSales.toLocaleString("en-IN", {
+                  minimumFractionDigits: 2,
+                })}
+              </span>
+            </div>
+            {totalTesting > 0 && (
+              <div className="mismatch-row">
+                <span>Less Testing (Non-Sale)</span>
+                <span style={{ color: "#38bdf8" }}>
+                  -₹
+                  {totalTesting.toLocaleString("en-IN", {
+                    minimumFractionDigits: 2,
+                  })}
+                </span>
+              </div>
+            )}
+            <div className="mismatch-row">
+              <span style={{ fontWeight: 600 }}>Net Fuel Sales</span>
+              <span style={{ fontWeight: 600 }}>
+                ₹
+                {netFuelSales.toLocaleString("en-IN", {
                   minimumFractionDigits: 2,
                 })}
               </span>

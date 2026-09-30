@@ -50,26 +50,78 @@ public class StationConfigurationService : IStationConfigurationService
 
             var incomingList = mappings.ToList();
             var existingAll = await db.PumpMappings.ToListAsync();
-            db.PumpMappings.RemoveRange(existingAll);
-            await db.SaveChangesAsync();
+
+            var processedIds = new HashSet<int>();
 
             foreach (var item in incomingList)
             {
-                db.PumpMappings.Add(new PumpMapping
+                PumpMapping? match = null;
+                if (item.PumpMappingId > 0)
                 {
-                    PumpId = item.PumpId,
-                    NozzleNumber = item.NozzleNumber,
-                    FuelType = item.FuelType,
-                    TankName = item.TankName,
-                    IsActive = true,
-                    CreatedAt = DateTime.Now
-                });
+                    match = existingAll.FirstOrDefault(m => m.PumpMappingId == item.PumpMappingId && !processedIds.Contains(m.PumpMappingId));
+                }
+                if (match == null)
+                {
+                    match = existingAll.FirstOrDefault(m => m.PumpId == item.PumpId && m.NozzleNumber == item.NozzleNumber && !processedIds.Contains(m.PumpMappingId));
+                }
+                if (match == null)
+                {
+                    match = existingAll.FirstOrDefault(m => m.NozzleNumber == item.NozzleNumber && !processedIds.Contains(m.PumpMappingId));
+                }
+
+                if (match != null)
+                {
+                    match.PumpId = item.PumpId;
+                    match.NozzleNumber = item.NozzleNumber;
+                    match.FuelType = string.IsNullOrWhiteSpace(item.FuelType) ? "MS-I" : item.FuelType.Trim();
+                    match.TankName = item.TankName ?? "";
+                    match.IsActive = true;
+                    db.Entry(match).State = EntityState.Modified;
+                    processedIds.Add(match.PumpMappingId);
+                    item.PumpMappingId = match.PumpMappingId;
+                }
+                else
+                {
+                    var newEntity = new PumpMapping
+                    {
+                        PumpId = item.PumpId,
+                        NozzleNumber = item.NozzleNumber,
+                        FuelType = string.IsNullOrWhiteSpace(item.FuelType) ? "MS-I" : item.FuelType.Trim(),
+                        TankName = item.TankName ?? "",
+                        IsActive = true,
+                        CreatedAt = item.CreatedAt != default ? item.CreatedAt : DateTime.Now
+                    };
+                    db.PumpMappings.Add(newEntity);
+                }
+            }
+
+            // Remove any obsolete mappings that are no longer part of the station layout
+            foreach (var existing in existingAll)
+            {
+                if (!processedIds.Contains(existing.PumpMappingId))
+                {
+                    db.PumpMappings.Remove(existing);
+                }
             }
 
             await db.SaveChangesAsync();
 
             // Re-initialize PumpConfiguration in-memory mapping
-            var allActive = await db.PumpMappings.ToListAsync();
+            var allActive = await db.PumpMappings
+                .OrderBy(m => m.PumpId)
+                .ThenBy(m => m.NozzleNumber)
+                .ToListAsync();
+
+            // Update Setting.PumpMappingsJson so Settings sync propagates active layout to cloud
+            var setting = await db.Settings.FirstOrDefaultAsync();
+            if (setting != null)
+            {
+                setting.PumpMappingsJson = System.Text.Json.JsonSerializer.Serialize(allActive);
+                setting.LastUpdated = DateTime.Now;
+                db.Entry(setting).State = EntityState.Modified;
+                await db.SaveChangesAsync();
+            }
+
             PumpConfiguration.InitializeFromDb(allActive);
 
             StationConfigurationChanged?.Invoke();
@@ -132,29 +184,54 @@ public class StationConfigurationService : IStationConfigurationService
             using var scope = _serviceProvider.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<FuelProDbContext>();
 
+            TankDefinition? existing = null;
             if (tank.TankId > 0)
             {
-                var existing = await db.TankDefinitions.FindAsync(tank.TankId);
-                if (existing != null)
-                {
-                    existing.TankName = tank.TankName;
-                    existing.CapacityKL = tank.CapacityKL;
-                    existing.FuelType = tank.FuelType;
-                    existing.IsActive = tank.IsActive;
-                    existing.HasTesting = tank.HasTesting;
-                    db.Entry(existing).State = EntityState.Modified;
-                }
+                existing = await db.TankDefinitions.FindAsync(tank.TankId);
+            }
+            if (existing == null && !string.IsNullOrWhiteSpace(tank.TankName))
+            {
+                existing = await db.TankDefinitions.FirstOrDefaultAsync(x => x.TankName.Trim().ToLower() == tank.TankName.Trim().ToLower());
+            }
+
+            if (existing != null)
+            {
+                existing.TankName = tank.TankName.Trim();
+                existing.CapacityKL = tank.CapacityKL;
+                existing.FuelType = tank.FuelType;
+                existing.IsActive = tank.IsActive;
+                existing.HasTesting = tank.HasTesting;
+                db.Entry(existing).State = EntityState.Modified;
+                await db.SaveChangesAsync();
+                tank.TankId = existing.TankId;
             }
             else
             {
                 tank.CreatedAt = DateTime.Now;
+                tank.TankName = tank.TankName.Trim();
                 db.TankDefinitions.Add(tank);
+                await db.SaveChangesAsync();
             }
-
-            await db.SaveChangesAsync();
 
             var allActiveTanks = await db.TankDefinitions.ToListAsync();
             PumpConfiguration.InitializeTanksFromDb(allActiveTanks);
+
+            // Sync updated tanks to Settings.TankDefinitionsJson
+            try
+            {
+                var setting = await db.Settings.FirstOrDefaultAsync();
+                if (setting != null)
+                {
+                    setting.TankDefinitionsJson = System.Text.Json.JsonSerializer.Serialize(allActiveTanks);
+                    setting.LastUpdated = DateTime.Now;
+                    db.Entry(setting).State = EntityState.Modified;
+                    await db.SaveChangesAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.Warning(ex, "Failed to update Settings.TankDefinitionsJson in SaveTankAsync");
+            }
 
             StationConfigurationChanged?.Invoke();
             return true;
@@ -164,6 +241,90 @@ public class StationConfigurationService : IStationConfigurationService
             _logger.Error(ex, "Failed to save tank: {Name}", tank.TankName);
             return false;
         }
+    }
+
+    public async Task<bool> SaveTanksAsync(IEnumerable<TankDefinition> tanks)
+    {
+        try
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<FuelProDbContext>();
+
+            var existingDbTanks = await db.TankDefinitions.ToListAsync();
+            var incomingList = tanks.ToList();
+
+            foreach (var incoming in incomingList)
+            {
+                TankDefinition? match = null;
+                if (incoming.TankId > 0)
+                {
+                    match = existingDbTanks.FirstOrDefault(x => x.TankId == incoming.TankId);
+                }
+                if (match == null && !string.IsNullOrWhiteSpace(incoming.TankName))
+                {
+                    match = existingDbTanks.FirstOrDefault(x => string.Equals(x.TankName.Trim(), incoming.TankName.Trim(), StringComparison.OrdinalIgnoreCase));
+                }
+
+                if (match != null)
+                {
+                    match.TankName = incoming.TankName.Trim();
+                    match.CapacityKL = incoming.CapacityKL;
+                    match.FuelType = incoming.FuelType;
+                    match.IsActive = incoming.IsActive;
+                    match.HasTesting = incoming.HasTesting;
+                    db.Entry(match).State = EntityState.Modified;
+                    incoming.TankId = match.TankId;
+                }
+                else
+                {
+                    var newEntity = new TankDefinition
+                    {
+                        TankName = incoming.TankName.Trim(),
+                        CapacityKL = incoming.CapacityKL,
+                        FuelType = incoming.FuelType,
+                        IsActive = incoming.IsActive,
+                        HasTesting = incoming.HasTesting,
+                        CreatedAt = DateTime.Now
+                    };
+                    db.TankDefinitions.Add(newEntity);
+                }
+            }
+
+            await db.SaveChangesAsync();
+
+            var allActiveTanks = await db.TankDefinitions.ToListAsync();
+            PumpConfiguration.InitializeTanksFromDb(allActiveTanks);
+
+            // Sync updated tanks to Settings.TankDefinitionsJson
+            try
+            {
+                var setting = await db.Settings.FirstOrDefaultAsync();
+                if (setting != null)
+                {
+                    setting.TankDefinitionsJson = System.Text.Json.JsonSerializer.Serialize(allActiveTanks);
+                    setting.LastUpdated = DateTime.Now;
+                    db.Entry(setting).State = EntityState.Modified;
+                    await db.SaveChangesAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.Warning(ex, "Failed to update Settings.TankDefinitionsJson in SaveTanksAsync");
+            }
+
+            StationConfigurationChanged?.Invoke();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to batch save tanks");
+            return false;
+        }
+    }
+
+    public void NotifyConfigurationChanged()
+    {
+        StationConfigurationChanged?.Invoke();
     }
 
     public async Task<bool> DeleteTankAsync(int tankId)
@@ -180,6 +341,23 @@ public class StationConfigurationService : IStationConfigurationService
 
                 var allActiveTanks = await db.TankDefinitions.ToListAsync();
                 PumpConfiguration.InitializeTanksFromDb(allActiveTanks);
+
+                // Sync updated tanks to Settings.TankDefinitionsJson
+                try
+                {
+                    var setting = await db.Settings.FirstOrDefaultAsync();
+                    if (setting != null)
+                    {
+                        setting.TankDefinitionsJson = System.Text.Json.JsonSerializer.Serialize(allActiveTanks);
+                        setting.LastUpdated = DateTime.Now;
+                        db.Entry(setting).State = EntityState.Modified;
+                        await db.SaveChangesAsync();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.Warning(ex, "Failed to update Settings.TankDefinitionsJson in DeleteTankAsync");
+                }
 
                 StationConfigurationChanged?.Invoke();
             }
@@ -341,4 +519,89 @@ public class StationConfigurationService : IStationConfigurationService
             return false;
         }
     }
+
+    private const string PumpConnectionConfigMetaKey = "Station.PumpConnectionRules";
+
+    public async Task<PumpConnectionConfiguration> GetPumpConnectionConfigurationAsync()
+    {
+        try
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<FuelProDbContext>();
+            var meta = await db.AppMeta.AsNoTracking().FirstOrDefaultAsync(m => m.Key == PumpConnectionConfigMetaKey);
+            if (meta != null && !string.IsNullOrWhiteSpace(meta.Value))
+            {
+                var config = System.Text.Json.JsonSerializer.Deserialize<PumpConnectionConfiguration>(meta.Value);
+                if (config != null)
+                {
+                    return config;
+                }
+            }
+
+            // Fallback: Check Setting.PumpConnectionRulesJson if AppMeta is not present
+            var setting = await db.Settings.AsNoTracking().FirstOrDefaultAsync();
+            if (setting != null && !string.IsNullOrWhiteSpace(setting.PumpConnectionRulesJson))
+            {
+                var config = System.Text.Json.JsonSerializer.Deserialize<PumpConnectionConfiguration>(setting.PumpConnectionRulesJson);
+                if (config != null)
+                {
+                    return config;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to load pump connection configuration from AppMeta/Settings");
+        }
+
+        return new PumpConnectionConfiguration();
+    }
+
+    public async Task<bool> SavePumpConnectionConfigurationAsync(PumpConnectionConfiguration config)
+    {
+        try
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<FuelProDbContext>();
+            var json = System.Text.Json.JsonSerializer.Serialize(config);
+
+            // 1. Persist to AppMeta (fast local key-value store)
+            var meta = await db.AppMeta.FirstOrDefaultAsync(m => m.Key == PumpConnectionConfigMetaKey);
+            if (meta != null)
+            {
+                meta.Value = json;
+                db.Entry(meta).State = EntityState.Modified;
+            }
+            else
+            {
+                db.AppMeta.Add(new AppMeta { Key = PumpConnectionConfigMetaKey, Value = json });
+            }
+
+            // 2. Persist to Settings.PumpConnectionRulesJson (for cloud snapshot & settings sync)
+            try
+            {
+                var setting = await db.Settings.FirstOrDefaultAsync();
+                if (setting != null)
+                {
+                    setting.PumpConnectionRulesJson = json;
+                    setting.LastUpdated = DateTime.Now;
+                    db.Entry(setting).State = EntityState.Modified;
+                }
+            }
+            catch (Exception exSetting)
+            {
+                _logger.Warning(exSetting, "Failed to update Settings.PumpConnectionRulesJson during SavePumpConnectionConfigurationAsync");
+            }
+
+            await db.SaveChangesAsync();
+            StationConfigurationChanged?.Invoke();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to persist pump connection configuration to AppMeta/Settings");
+            return false;
+        }
+    }
 }
+

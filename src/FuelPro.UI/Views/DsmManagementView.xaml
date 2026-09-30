@@ -143,9 +143,21 @@
                                   materialDesign:HintAssist.Hint="Select Pump" materialDesign:HintAssist.IsFloating="True"
                                   Style="{StaticResource MaterialDesignOutlinedComboBox}"/>
 
-                        <ComboBox ItemsSource="{Binding PumpOptions}" SelectedItem="{Binding SelectedConnectedPumpId}" Margin="0,0,0,12"
-                                  materialDesign:HintAssist.Hint="Connected Pump (Optional)" materialDesign:HintAssist.IsFloating="True"
-                                  Style="{StaticResource MaterialDesignOutlinedComboBox}"/>
+                        <!-- Multi-Pump Connected Selection -->
+                        <TextBlock Text="Connected Pumps (Optional, up to 3)" FontSize="12" FontWeight="SemiBold" 
+                                   Foreground="{DynamicResource MaterialDesign.Brush.Foreground}" Margin="0,4,0,4"/>
+                        <ItemsControl ItemsSource="{Binding ConnectedPumpOptions}" Margin="0,0,0,12">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel Orientation="Horizontal"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <CheckBox Content="{Binding DisplayName}" IsChecked="{Binding IsSelected}" Margin="0,0,12,4" FontWeight="SemiBold"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
 
                         <ComboBox ItemsSource="{Binding ShiftOptions}" SelectedItem="{Binding SelectedShift}" Margin="0,0,0,12"
                                   materialDesign:HintAssist.Hint="Select Shift" materialDesign:HintAssist.IsFloating="True"
@@ -182,15 +194,10 @@
                                   GridLinesVisibility="Horizontal" HeadersVisibility="Column">
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="DSM Name" Binding="{Binding DsmUser.FullName}" Width="*"/>
-                                <DataGridTemplateColumn Header="Pumps Assigned" Width="150">
+                                <DataGridTemplateColumn Header="Pumps Assigned" Width="220">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
-                                            <StackPanel Orientation="Horizontal">
-                                                <TextBlock Text="{Binding PumpId, StringFormat='Pump {0}'}" FontWeight="SemiBold"/>
-                                                <TextBlock Text="{Binding ConnectedPumpId, StringFormat=' + Pump {0}'}" 
-                                                           FontWeight="SemiBold"
-                                                           Visibility="{Binding ConnectedPumpId, Converter={StaticResource NullToVisibilityConverter}}"/>
-                                            </StackPanel>
+                                            <TextBlock Text="{Binding DisplayPumps}" FontWeight="SemiBold" TextWrapping="Wrap"/>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>

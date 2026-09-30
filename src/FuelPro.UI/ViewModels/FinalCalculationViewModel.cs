@@ -33,7 +33,6 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
     private readonly IAgsInventoryService _inventoryService;
     private readonly IReportService _reportService;
     private readonly ILogger _logger = Log.ForContext<FinalCalculationViewModel>();
-    public DebtorManagementViewModel DebtorManagementVm { get; }
 
     [ObservableProperty] private DateTime _selectedDate = DateTime.Today;
     [ObservableProperty] private string _selectedShift = "A";
@@ -166,6 +165,13 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string _petroCardHeader = "PetroCard";
     [ObservableProperty] private ObservableCollection<FuelSaleRowDto> _fuelSaleRows = new();
 
+    private DebtorManagementViewModel? _debtorManagementVm;
+    public DebtorManagementViewModel DebtorManagementVm
+    {
+        get => _debtorManagementVm ??= App.Services.GetRequiredService<DebtorManagementViewModel>();
+        set => _debtorManagementVm = value;
+    }
+
     public FinalCalculationViewModel()
     {
         _shiftRepo = App.Services.GetRequiredService<IShiftRepository>();
@@ -183,7 +189,6 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
         _reportService = App.Services.GetRequiredService<IReportService>();
         _featureService = App.Services.GetRequiredService<IFeatureToggleService>();
         _collectionTypeService = App.Services?.GetService<ICollectionTypeService>();
-        DebtorManagementVm = App.Services.GetRequiredService<DebtorManagementViewModel>();
 
         _featureService.FeatureConfigurationChanged += () =>
         {
@@ -250,7 +255,7 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
             var pc = types.FirstOrDefault(c => string.Equals(c.Code, "PETROCARD", StringComparison.OrdinalIgnoreCase)
                                             || string.Equals(c.Code, "PETRO_CARD", StringComparison.OrdinalIgnoreCase));
 
-            PhonePeHeader = ph?.DisplayName ?? "PhonePe";
+            PhonePeHeader = ph?.DisplayName ?? "PhonePe Direct";
             CreditCardHeader = cc?.DisplayName ?? "Credit / Debit Card";
             PetroCardHeader = pc?.DisplayName ?? "PetroCard";
 
@@ -290,7 +295,17 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
         HasData = false;
         try
         {
-            var shiftResult = await _shiftRepo.GetShiftAsync(SelectedDate, SelectedShift);
+            // Launch parallel tasks for all independent queries
+            var shiftTask = _shiftRepo.GetShiftAsync(SelectedDate, SelectedShift);
+            var rateOverridesTask = _fuelRateRepo.GetByShiftAsync(SelectedDate, SelectedShift);
+            var settingsTask = _settingsRepo.GetSettingsAsync();
+            var otherCashTask = _otherCashRepo.GetByShiftAsync(SelectedDate, SelectedShift);
+            var tidSheetTodayTask = _tidService.GetTidSheetAsync(SelectedDate.Date);
+            var tidSheetTomorrowTask = _tidService.GetTidSheetAsync(SelectedDate.Date.AddDays(1));
+            var repaymentsTask = _repaymentRepo.GetByDateRangeAsync(SelectedDate.Date, SelectedDate.Date.AddDays(1));
+            var pdRepaymentsTask = _personalDebtorRepo.GetRepaymentsByDateAsync(SelectedDate.Date);
+
+            var shiftResult = await shiftTask;
             if (!shiftResult.Success || shiftResult.Data == null)
             {
                 StatusMessage = "No DSM entries found for this date and shift.";
@@ -302,7 +317,13 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
             ShiftId = shift.ShiftId;
             IsShiftLocked = shift.IsLocked;
 
-            var entriesResult = await _dsmRepo.GetEntriesForShiftAsync(shift.ShiftId);
+            // Fetch shift-dependent entries and expenses in parallel
+            var entriesTask = _dsmRepo.GetEntriesForShiftAsync(shift.ShiftId);
+            var shiftExpensesTask = _expenseRepo.GetByShiftIdAsync(shift.ShiftId);
+
+            await Task.WhenAll(entriesTask, shiftExpensesTask, rateOverridesTask, settingsTask, otherCashTask, tidSheetTodayTask, tidSheetTomorrowTask, repaymentsTask, pdRepaymentsTask);
+
+            var entriesResult = await entriesTask;
             if (!entriesResult.Success || entriesResult.Data == null || entriesResult.Data.Count == 0)
             {
                 StatusMessage = "No DSM entries found for this date and shift.";
@@ -312,13 +333,12 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
 
             _loadedEntries = entriesResult.Data;
 
-            // Load extra shift collections, rates, and repayments
-            var rateOverrides = await _fuelRateRepo.GetByShiftAsync(SelectedDate, SelectedShift);
+            var rateOverrides = await rateOverridesTask;
             var rateDict = rateOverrides.Success
                 ? rateOverrides.Data!.ToDictionary(r => r.FuelType, r => r.OverrideRate)
                 : new Dictionary<string, double>();
 
-            var settings = await _settingsRepo.GetSettingsAsync();
+            var settings = await settingsTask;
             double defaultHsd = settings.Success ? settings.Data!.HsdRate : 90.35;
             double defaultMsI = settings.Success ? settings.Data!.MsIRate : 103.81;
             double defaultMsII = settings.Success ? settings.Data!.MsIIRate : 103.81;
@@ -329,17 +349,55 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
             double msIIRate = rateDict.TryGetValue("MS-II", out var mr2) ? mr2 : defaultMsII;
             double cngRate = rateDict.TryGetValue("CNG", out var cr) ? cr : defaultCng;
 
-            var shiftExpensesResult = await _expenseRepo.GetByShiftIdAsync(shift.ShiftId);
+            var shiftExpensesResult = await shiftExpensesTask;
             var shiftExpenses = shiftExpensesResult.Success ? shiftExpensesResult.Data! : new List<Expense>();
 
-            var otherCashResult = await _otherCashRepo.GetByShiftAsync(SelectedDate, SelectedShift);
+            var otherCashResult = await otherCashTask;
             var otherCash = otherCashResult.Success ? otherCashResult.Data! : new List<ShiftOtherCash>();
 
-            await LoadDebtorRepaymentsAsync();
+            var repaymentsRes = await repaymentsTask;
+            var repayments = repaymentsRes.Success && repaymentsRes.Data != null 
+                ? repaymentsRes.Data.Where(r => !r.CreditorName.Contains("DSM Loss", StringComparison.OrdinalIgnoreCase)).ToList() 
+                : new List<CreditorRepayment>();
+            DebtorRepayments.Clear();
+            foreach (var r in repayments.Where(x => x.RepaymentDate.Date == SelectedDate.Date))
+            {
+                DebtorRepayments.Add(r);
+            }
 
-            var tidSheetToday = await _tidService.GetTidSheetAsync(SelectedDate.Date);
-            var tidSheetTomorrow = await _tidService.GetTidSheetAsync(SelectedDate.Date.AddDays(1));
-            string stationName = settings.Success ? settings.Data!.PumpStationName : "PyroSync";
+            var pdRepaymentsRes = await pdRepaymentsTask;
+            var pdRepayments = pdRepaymentsRes.Success && pdRepaymentsRes.Data != null 
+                ? pdRepaymentsRes.Data 
+                : new List<DsmPersonalDebtorRepayment>();
+
+            var shiftPdRepayments = pdRepayments.Where(pdr =>
+                pdr.ShiftId.HasValue && pdr.ShiftId.Value == shift.ShiftId
+            ).ToList();
+
+            foreach (var dsmRep in shiftPdRepayments)
+            {
+                var dsmName = dsmRep.DsmPersonalDebtor?.DsmName ?? "DSM";
+                var parts = new List<string>();
+                if (!string.IsNullOrWhiteSpace(dsmRep.CardTid)) parts.Add($"TID: {dsmRep.CardTid}");
+                if (!string.IsNullOrWhiteSpace(dsmRep.CardBatch)) parts.Add($"Batch: {dsmRep.CardBatch}");
+                string refDisplay = string.Join(", ", parts);
+
+                DebtorRepayments.Add(new CreditorRepayment
+                {
+                    CreditorRepaymentId = dsmRep.Id,
+                    CreditorName = $"DSM Loss ({dsmName})",
+                    RepaymentDate = dsmRep.Date,
+                    Amount = dsmRep.Amount,
+                    PaymentMode = dsmRep.PaymentMethod ?? "Cash",
+                    CardTid = dsmRep.CardTid ?? "",
+                    CardBatch = dsmRep.CardBatch ?? "",
+                    ShiftNumber = shift.ShiftType
+                });
+            }
+
+            var tidSheetToday = await tidSheetTodayTask;
+            var tidSheetTomorrow = await tidSheetTomorrowTask;
+            string stationName = settings.Success && !string.IsNullOrWhiteSpace(settings.Data?.PumpStationName) ? settings.Data.PumpStationName : "Mitali Service Station";
 
             var report = _reportService.CalculateShiftReport(
                 SelectedDate,
@@ -354,10 +412,9 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
 
             CurrentReport = report;
 
-            var settingsRes = await _settingsRepo.GetSettingsAsync();
-            if (settingsRes.Success && settingsRes.Data != null)
+            if (settings.Success && settings.Data != null)
             {
-                var set = settingsRes.Data;
+                var set = settings.Data;
                 ManagerOptions.Clear();
                 if (!string.IsNullOrWhiteSpace(set.Shift1Manager)) ManagerOptions.Add(set.Shift1Manager.Trim());
                 if (!string.IsNullOrWhiteSpace(set.Shift2Manager)) ManagerOptions.Add(set.Shift2Manager.Trim());
@@ -398,28 +455,57 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
             ExpenseRows = new ObservableCollection<ExpenseRegisterRowDto>(report.ExpenseRows);
             ExpensesTotal = report.ExpensesTotal;
 
-            HsdLitres = report.FuelSales.FirstOrDefault(f => f.FuelType == "HSD")?.Litres ?? 0;
-            HsdRate = report.FuelSales.FirstOrDefault(f => f.FuelType == "HSD")?.Rate ?? hsdRate;
-            HsdAmount = report.FuelSales.FirstOrDefault(f => f.FuelType == "HSD")?.Amount ?? 0;
+            var dsrSource = report.DsrFuelSales ?? report.FuelSales;
 
-            MsILitres = report.FuelSales.FirstOrDefault(f => f.FuelType == "MS-I")?.Litres ?? 0;
-            MsIRate = report.FuelSales.FirstOrDefault(f => f.FuelType == "MS-I")?.Rate ?? msIRate;
-            MsIAmount = report.FuelSales.FirstOrDefault(f => f.FuelType == "MS-I")?.Amount ?? 0;
+            var hsdSales = dsrSource
+                .Where(f => string.Equals(f.FuelType, "HSD", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(f.FuelType, "Diesel", StringComparison.OrdinalIgnoreCase) ||
+                            (f.Description != null && f.Description.Contains("HSD", StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+            HsdLitres = hsdSales.Sum(f => f.Litres);
+            HsdAmount = hsdSales.Sum(f => f.Amount);
+            HsdRate = HsdLitres > 0 ? Math.Round(HsdAmount / HsdLitres, 2) : (hsdSales.FirstOrDefault()?.Rate ?? hsdRate);
 
-            MsIILitres = report.FuelSales.FirstOrDefault(f => f.FuelType == "MS-II")?.Litres ?? 0;
-            MsIIRate = report.FuelSales.FirstOrDefault(f => f.FuelType == "MS-II")?.Rate ?? msIIRate;
-            MsIIAmount = report.FuelSales.FirstOrDefault(f => f.FuelType == "MS-II")?.Amount ?? 0;
+            var msISales = dsrSource
+                .Where(f => (string.Equals(f.FuelType, "MS-I", StringComparison.OrdinalIgnoreCase) ||
+                             string.Equals(f.FuelType, "MS", StringComparison.OrdinalIgnoreCase) ||
+                             string.Equals(f.FuelType, "Petrol", StringComparison.OrdinalIgnoreCase) ||
+                             (f.Description != null && (f.Description.Contains("MS", StringComparison.OrdinalIgnoreCase) || f.Description.Contains("Petrol", StringComparison.OrdinalIgnoreCase))))
+                            && !string.Equals(f.FuelType, "SPEED", StringComparison.OrdinalIgnoreCase)
+                            && !(f.Description != null && (f.Description.Contains("SPEED", StringComparison.OrdinalIgnoreCase) || f.Description.Contains("20KL II", StringComparison.OrdinalIgnoreCase) || f.Description.Contains("XP", StringComparison.OrdinalIgnoreCase) || f.Description.Contains("Power", StringComparison.OrdinalIgnoreCase))))
+                .ToList();
+            MsILitres = msISales.Sum(f => f.Litres);
+            MsIAmount = msISales.Sum(f => f.Amount);
+            MsIRate = MsILitres > 0 ? Math.Round(MsIAmount / MsILitres, 2) : (msISales.FirstOrDefault()?.Rate ?? msIRate);
 
-            CngLitres = report.FuelSales.FirstOrDefault(f => f.FuelType == "CNG")?.Litres ?? 0;
-            CngRate = report.FuelSales.FirstOrDefault(f => f.FuelType == "CNG")?.Rate ?? cngRate;
-            CngAmount = report.FuelSales.FirstOrDefault(f => f.FuelType == "CNG")?.Amount ?? 0;
+            var msIISales = dsrSource
+                .Where(f => string.Equals(f.FuelType, "SPEED", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(f.FuelType, "MS-II", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(f.FuelType, "Power", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(f.FuelType, "XP", StringComparison.OrdinalIgnoreCase) ||
+                            (f.Description != null && (f.Description.Contains("SPEED", StringComparison.OrdinalIgnoreCase) ||
+                                                       f.Description.Contains("XP", StringComparison.OrdinalIgnoreCase) ||
+                                                       f.Description.Contains("Power", StringComparison.OrdinalIgnoreCase) ||
+                                                       f.Description.Contains("20KL II", StringComparison.OrdinalIgnoreCase))))
+                .ToList();
+            MsIILitres = msIISales.Sum(f => f.Litres);
+            MsIIAmount = msIISales.Sum(f => f.Amount);
+            MsIIRate = MsIILitres > 0 ? Math.Round(MsIIAmount / MsIILitres, 2) : (msIISales.FirstOrDefault()?.Rate ?? msIIRate);
+
+            var cngSales = dsrSource
+                .Where(f => string.Equals(f.FuelType, "CNG", StringComparison.OrdinalIgnoreCase) ||
+                            (f.Description != null && f.Description.Contains("CNG", StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+            CngLitres = cngSales.Sum(f => f.Litres);
+            CngAmount = cngSales.Sum(f => f.Amount);
+            CngRate = CngLitres > 0 ? Math.Round(CngAmount / CngLitres, 2) : (cngSales.FirstOrDefault()?.Rate ?? cngRate);
 
             MsTotalLitres = MsILitres + MsIILitres;
             MsTotalAmount = MsIAmount + MsIIAmount;
 
-            FuelSaleRows = new ObservableCollection<FuelSaleRowDto>(report.FuelSales);
-            TotalLitres = report.TotalFuelLitres;
-            TotalFuelSaleAmount = report.TotalFuelAmount;
+            FuelSaleRows = new ObservableCollection<FuelSaleRowDto>(dsrSource);
+            TotalLitres = report.DsrFuelSales != null ? report.DsrTotalFuelLitres : report.TotalFuelLitres;
+            TotalFuelSaleAmount = report.DsrFuelSales != null ? report.DsrTotalFuelAmount : report.TotalFuelAmount;
             OtherCashTotal = report.OtherCashTotal;
             GrandTotalSaleAmount = report.GrandTotalSaleAmount;
 
@@ -478,12 +564,26 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
 
     private void RecalcReconciliation()
     {
+        _ = RecalcReconciliationAsync();
+    }
+
+    private async Task RecalcReconciliationAsync()
+    {
         if (_loadedEntries == null || _loadedEntries.Count == 0) return;
 
-        var settings = _settingsRepo.GetSettingsAsync().GetAwaiter().GetResult();
-        string stationName = settings.Success ? settings.Data!.PumpStationName : "PyroSync";
+        var settingsTask = _settingsRepo.GetSettingsAsync();
+        var rateOverridesTask = _fuelRateRepo.GetByShiftAsync(SelectedDate, SelectedShift);
+        var shiftExpensesTask = _expenseRepo.GetByShiftIdAsync(ShiftId);
+        var otherCashTask = _otherCashRepo.GetByShiftAsync(SelectedDate, SelectedShift);
+        var tidSheetTodayTask = _tidService.GetTidSheetAsync(SelectedDate.Date);
+        var tidSheetTomorrowTask = _tidService.GetTidSheetAsync(SelectedDate.Date.AddDays(1));
 
-        var rateOverrides = _fuelRateRepo.GetByShiftAsync(SelectedDate, SelectedShift).GetAwaiter().GetResult();
+        await Task.WhenAll(settingsTask, rateOverridesTask, shiftExpensesTask, otherCashTask, tidSheetTodayTask, tidSheetTomorrowTask);
+
+        var settings = await settingsTask;
+        string stationName = settings.Success && !string.IsNullOrWhiteSpace(settings.Data?.PumpStationName) ? settings.Data.PumpStationName : "Mitali Service Station";
+
+        var rateOverrides = await rateOverridesTask;
         var rateDict = rateOverrides.Success
             ? rateOverrides.Data!.ToDictionary(r => r.FuelType, r => r.OverrideRate)
             : new Dictionary<string, double>();
@@ -498,14 +598,14 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
         double msIIRate = rateDict.TryGetValue("MS-II", out var mr2) ? mr2 : defaultMsII;
         double cngRate = rateDict.TryGetValue("CNG", out var cr) ? cr : defaultCng;
 
-        var shiftExpensesResult = _expenseRepo.GetByShiftIdAsync(ShiftId).GetAwaiter().GetResult();
+        var shiftExpensesResult = await shiftExpensesTask;
         var shiftExpenses = shiftExpensesResult.Success ? shiftExpensesResult.Data! : new List<Expense>();
 
-        var otherCashResult = _otherCashRepo.GetByShiftAsync(SelectedDate, SelectedShift).GetAwaiter().GetResult();
+        var otherCashResult = await otherCashTask;
         var otherCash = otherCashResult.Success ? otherCashResult.Data! : new List<ShiftOtherCash>();
 
-        var tidSheetToday = _tidService.GetTidSheetAsync(SelectedDate.Date).GetAwaiter().GetResult();
-        var tidSheetTomorrow = _tidService.GetTidSheetAsync(SelectedDate.Date.AddDays(1)).GetAwaiter().GetResult();
+        var tidSheetToday = await tidSheetTodayTask;
+        var tidSheetTomorrow = await tidSheetTomorrowTask;
 
         var report = _reportService.CalculateShiftReport(
             SelectedDate,
@@ -746,11 +846,11 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
 
             WriteCsvEntry(zip, $"DSM_Summary_{dateStr}_Shift{shiftLabel}.csv", w =>
             {
-                w.WriteLine("DSM Name,Pump No.,P.Pe Card (Morning),P.Pe Card (Night),Phone Pe,PineLab Card (Morning),PineLab Card (Night),Petro Card,Bank Cash,Debit,Expenses,Testing,Cash In Hand,Gross Sale");
+                w.WriteLine("DSM Name,Pump No.,P.Pe Card (Morning),P.Pe Card (Night),Phone Pe,PineLab Card (Morning),PineLab Card (Night),Petro Card,Bank Cash,Debit,Expenses,Testing,Cash In Hand,Others,Gross Sale");
                 foreach (var r in DsmSummaryRows)
-                    w.WriteLine($"{r.DsmName},{r.PumpId},{r.PhonePeCardMorning:F2},{r.PhonePeCardNight:F2},{r.PhonePe:F2},{r.CreditCardMorning:F2},{r.CreditCardNight:F2},{r.PetroCard:F2},{r.CashDeposit:F2},{r.Debit:F2},{r.Expenses:F2},{r.Testing:F2},{r.CashInHand:F2},{r.GrossSales:F2}");
+                    w.WriteLine($"{r.DsmName},{r.PumpId},{r.PhonePeCardMorning:F2},{r.PhonePeCardNight:F2},{r.PhonePe:F2},{r.CreditCardMorning:F2},{r.CreditCardNight:F2},{r.PetroCard:F2},{r.CashDeposit:F2},{r.Debit:F2},{r.Expenses:F2},{r.Testing:F2},{r.CashInHand:F2},{r.Others:F2},{r.GrossSales:F2}");
                 if (DsmSummaryTotals != null)
-                    w.WriteLine($"TOTAL,,{DsmSummaryTotals.PhonePeCardMorning:F2},{DsmSummaryTotals.PhonePeCardNight:F2},{DsmSummaryTotals.PhonePe:F2},{DsmSummaryTotals.CreditCardMorning:F2},{DsmSummaryTotals.CreditCardNight:F2},{DsmSummaryTotals.PetroCard:F2},{DsmSummaryTotals.CashDeposit:F2},{DsmSummaryTotals.Debit:F2},{DsmSummaryTotals.Expenses:F2},{DsmSummaryTotals.Testing:F2},{DsmSummaryTotals.CashInHand:F2},{DsmSummaryTotals.GrossSales:F2}");
+                    w.WriteLine($"TOTAL,,{DsmSummaryTotals.PhonePeCardMorning:F2},{DsmSummaryTotals.PhonePeCardNight:F2},{DsmSummaryTotals.PhonePe:F2},{DsmSummaryTotals.CreditCardMorning:F2},{DsmSummaryTotals.CreditCardNight:F2},{DsmSummaryTotals.PetroCard:F2},{DsmSummaryTotals.CashDeposit:F2},{DsmSummaryTotals.Debit:F2},{DsmSummaryTotals.Expenses:F2},{DsmSummaryTotals.Testing:F2},{DsmSummaryTotals.CashInHand:F2},{DsmSummaryTotals.Others:F2},{DsmSummaryTotals.GrossSales:F2}");
             });
 
             WriteCsvEntry(zip, $"Cash_Details_{dateStr}_Shift{shiftLabel}.csv", w =>

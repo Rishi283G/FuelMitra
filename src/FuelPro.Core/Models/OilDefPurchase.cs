@@ -34,5 +34,8 @@ public class OilDefPurchase
     public double TotalCost { get; set; }
 
     [NotMapped]
+    public string ProductNameDisplay => !string.IsNullOrWhiteSpace(Product?.ProductName) ? Product.ProductName : ProductType;
+
+    [NotMapped]
     public bool IsEditable => PurchaseDate.Date == DateTime.Today;
 }

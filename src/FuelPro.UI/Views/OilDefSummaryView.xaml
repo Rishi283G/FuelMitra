@@ -237,14 +237,34 @@
                                    Foreground="{DynamicResource MaterialDesign.Brush.Primary}" Margin="0,0,0,10"/>
                         <DataGrid ItemsSource="{Binding RecentSalesLogs}" AutoGenerateColumns="False"
                                   IsReadOnly="True" materialDesign:DataGridAssist.CellPadding="8 6"
+                                  GridLinesVisibility="All"
+                                  VerticalGridLinesBrush="#CFD8DC"
+                                  HorizontalGridLinesBrush="#ECEFF1"
                                   MaxHeight="300" VerticalScrollBarVisibility="Auto">
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="Date" Binding="{Binding LogDate, StringFormat='{}{0:dd-MMM-yyyy}'}" Width="120"/>
-                                <DataGridTextColumn Header="Product" Binding="{Binding Product.ProductName}" Width="2*"/>
-                                <DataGridTextColumn Header="Category" Binding="{Binding ProductType}" Width="80"/>
-                                <DataGridTextColumn Header="Qty Sold" Binding="{Binding SoldQuantity, StringFormat='{}{0:N2}'}" Width="100"/>
-                                <DataGridTextColumn Header="Rate" Binding="{Binding OverrideSaleRate, StringFormat='₹{0:N2}'}" Width="100"/>
-                                <DataGridTextColumn Header="Stock After" Binding="{Binding RemainingStock, StringFormat='{}{0:N2}'}" Width="100"/>
+                                <DataGridTextColumn Header="Date" Binding="{Binding LogDate, StringFormat='{}{0:dd-MMM-yyyy}'}" Width="110"/>
+                                <DataGridTextColumn Header="Product Name" Binding="{Binding ProductNameDisplay}" Width="2.2*" MinWidth="170" FontWeight="SemiBold"/>
+                                <DataGridTextColumn Header="Category" Binding="{Binding ProductType}" Width="85"/>
+                                <DataGridTextColumn Header="Qty Sold" Binding="{Binding SoldQuantity, StringFormat='{}{0:N2}'}" Width="85"/>
+                                <DataGridTextColumn Header="Rate (₹)" Binding="{Binding EffectiveRate, StringFormat='₹{0:N2}'}" Width="105"/>
+                                <DataGridTextColumn Header="Total Amount (₹)" Binding="{Binding SalesValue, StringFormat='₹{0:N2}'}" Width="120" FontWeight="Bold" Foreground="#2E7D32"/>
+                                <DataGridTextColumn Header="Stock After" Binding="{Binding RemainingStock, StringFormat='{}{0:N2}'}" Width="95"/>
+                                <DataGridTemplateColumn Header="Actions" Width="140">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal">
+                                                <Button Content="Edit" Style="{StaticResource MaterialDesignFlatButton}"
+                                                        Command="{Binding DataContext.EditSaleLogCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}"
+                                                        Height="26" Padding="6,0" Margin="0,0,4,0"/>
+                                                <Button Content="Delete" Style="{StaticResource MaterialDesignFlatButton}" Foreground="Red"
+                                                        Command="{Binding DataContext.DeleteSaleLogCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}"
+                                                        Height="26" Padding="6,0"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
                             </DataGrid.Columns>
                         </DataGrid>
                     </StackPanel>
@@ -258,15 +278,34 @@
                                    Foreground="{DynamicResource MaterialDesign.Brush.Primary}" Margin="0,0,0,10"/>
                         <DataGrid ItemsSource="{Binding RecentPurchases}" AutoGenerateColumns="False"
                                   IsReadOnly="True" materialDesign:DataGridAssist.CellPadding="8 6"
+                                  GridLinesVisibility="All"
+                                  VerticalGridLinesBrush="#CFD8DC"
+                                  HorizontalGridLinesBrush="#ECEFF1"
                                   MaxHeight="250" VerticalScrollBarVisibility="Auto">
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="Date" Binding="{Binding PurchaseDate, StringFormat='{}{0:dd-MMM-yyyy}'}" Width="120"/>
-                                <DataGridTextColumn Header="Product" Binding="{Binding Product.ProductName}" Width="2*"/>
-                                <DataGridTextColumn Header="Supplier" Binding="{Binding SupplierName}" Width="1.5*"/>
-                                <DataGridTextColumn Header="Invoice #" Binding="{Binding InvoiceNumber}" Width="100"/>
-                                <DataGridTextColumn Header="Qty Purchased" Binding="{Binding Quantity, StringFormat='{}{0:N2}'}" Width="110"/>
-                                <DataGridTextColumn Header="Unit Price" Binding="{Binding UnitPrice, StringFormat='₹{0:N2}'}" Width="100"/>
-                                <DataGridTextColumn Header="Total Cost" Binding="{Binding TotalCost, StringFormat='₹{0:N2}'}" Width="110"/>
+                                <DataGridTextColumn Header="Date" Binding="{Binding PurchaseDate, StringFormat='{}{0:dd-MMM-yyyy}'}" Width="110"/>
+                                <DataGridTextColumn Header="Product Name" Binding="{Binding ProductNameDisplay}" Width="2*" MinWidth="170" FontWeight="SemiBold"/>
+                                <DataGridTextColumn Header="Supplier" Binding="{Binding SupplierName}" Width="1.4*" MinWidth="120"/>
+                                <DataGridTextColumn Header="Invoice #" Binding="{Binding InvoiceNumber}" Width="95"/>
+                                <DataGridTextColumn Header="Qty Purchased" Binding="{Binding Quantity, StringFormat='{}{0:N2}'}" Width="105"/>
+                                <DataGridTextColumn Header="Unit Price (₹)" Binding="{Binding UnitPrice, StringFormat='₹{0:N2}'}" Width="105"/>
+                                <DataGridTextColumn Header="Total Cost (₹)" Binding="{Binding TotalCost, StringFormat='₹{0:N2}'}" Width="115" FontWeight="Bold" Foreground="#2E7D32"/>
+                                <DataGridTemplateColumn Header="Actions" Width="140">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal">
+                                                <Button Content="Edit" Style="{StaticResource MaterialDesignFlatButton}"
+                                                        Command="{Binding DataContext.EditPurchaseCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}"
+                                                        Height="26" Padding="6,0" Margin="0,0,4,0"/>
+                                                <Button Content="Delete" Style="{StaticResource MaterialDesignFlatButton}" Foreground="Red"
+                                                        Command="{Binding DataContext.DeletePurchaseCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}"
+                                                        Height="26" Padding="6,0"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
                             </DataGrid.Columns>
                         </DataGrid>
                     </StackPanel>
@@ -280,13 +319,33 @@
                                    Foreground="#C62828" Margin="0,0,0,10"/>
                         <DataGrid ItemsSource="{Binding AdjustmentRows}" AutoGenerateColumns="False"
                                   IsReadOnly="True" materialDesign:DataGridAssist.CellPadding="8 6"
+                                  GridLinesVisibility="All"
+                                  VerticalGridLinesBrush="#CFD8DC"
+                                  HorizontalGridLinesBrush="#ECEFF1"
                                   MaxHeight="250" VerticalScrollBarVisibility="Auto">
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="Date &amp; Time" Binding="{Binding Date, StringFormat='{}{0:dd-MMM-yyyy hh:mm tt}'}" Width="150"/>
-                                <DataGridTextColumn Header="Product" Binding="{Binding ProductName}" Width="2*"/>
-                                <DataGridTextColumn Header="Adj. Qty" Binding="{Binding AdjustmentQty, StringFormat='{}{0:N2}'}" Width="100"/>
-                                <DataGridTextColumn Header="Reason" Binding="{Binding Type}" Width="2*"/>
-                                <DataGridTextColumn Header="Remarks" Binding="{Binding Remarks}" Width="2*"/>
+                                <DataGridTextColumn Header="Date &amp; Time" Binding="{Binding Date, StringFormat='{}{0:dd-MMM-yyyy hh:mm tt}'}" Width="145"/>
+                                <DataGridTextColumn Header="Product Name" Binding="{Binding ProductName}" Width="2*" MinWidth="170" FontWeight="SemiBold"/>
+                                <DataGridTextColumn Header="Adj. Qty" Binding="{Binding AdjustmentQty, StringFormat='{}{0:N2}'}" Width="85" FontWeight="Bold"/>
+                                <DataGridTextColumn Header="Remaining Stock" Binding="{Binding RemainingStock, StringFormat='{}{0:N2}'}" Width="110"/>
+                                <DataGridTextColumn Header="Reason" Binding="{Binding Type}" Width="1.4*"/>
+                                <DataGridTextColumn Header="Remarks" Binding="{Binding Remarks}" Width="1.6*"/>
+                                <DataGridTemplateColumn Header="Actions" Width="140">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal">
+                                                <Button Content="Edit" Style="{StaticResource MaterialDesignFlatButton}"
+                                                        Command="{Binding DataContext.EditAdjustmentCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}"
+                                                        Height="26" Padding="6,0" Margin="0,0,4,0"/>
+                                                <Button Content="Delete" Style="{StaticResource MaterialDesignFlatButton}" Foreground="Red"
+                                                        Command="{Binding DataContext.DeleteAdjustmentCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}"
+                                                        Height="26" Padding="6,0"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
                             </DataGrid.Columns>
                         </DataGrid>
                     </StackPanel>

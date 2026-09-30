@@ -69,6 +69,7 @@ public partial class CollectionSummaryViewModel : ObservableObject, IDisposable
         DsmEntryService.DsmEntryChanged += OnDataChanged;
         DsmEntryService.PettyCashChanged += OnDataChanged;
         DsmEntryService.DebtorChanged += OnDataChanged;
+        DsmEntryService.StationConfigurationChanged += OnDataChanged;
         if (_collectionTypeService != null) _collectionTypeService.CollectionTypesChanged += OnDataChanged;
 
         _ = LoadAsync();
@@ -84,6 +85,7 @@ public partial class CollectionSummaryViewModel : ObservableObject, IDisposable
         DsmEntryService.DsmEntryChanged -= OnDataChanged;
         DsmEntryService.PettyCashChanged -= OnDataChanged;
         DsmEntryService.DebtorChanged -= OnDataChanged;
+        DsmEntryService.StationConfigurationChanged -= OnDataChanged;
         if (_collectionTypeService != null) _collectionTypeService.CollectionTypesChanged -= OnDataChanged;
         GC.SuppressFinalize(this);
     }
@@ -219,7 +221,7 @@ public partial class CollectionSummaryViewModel : ObservableObject, IDisposable
                     nonCashSum += amt;
                 }
 
-                dayRow.DayTotal = cashDeposit + cashInHand + nonCashSum + debit;
+                dayRow.DayTotal = dayReport.ActualCollection;
                 DayRows.Add(dayRow);
 
                 TotalCashDeposit += cashDeposit;
@@ -243,10 +245,17 @@ public partial class CollectionSummaryViewModel : ObservableObject, IDisposable
                             continue;
                         }
 
-                        if (aggregatedModes.ContainsKey(cat.Category))
-                            aggregatedModes[cat.Category] += cat.Amount;
+                        string displayName = cat.Category;
+                        bool isOthers = cat.IsInformational || cat.Category.StartsWith("Others", StringComparison.OrdinalIgnoreCase) || cat.Category.Equals("Other", StringComparison.OrdinalIgnoreCase);
+                        if (isOthers && !displayName.Contains("(Record)", StringComparison.OrdinalIgnoreCase))
+                        {
+                            displayName = $"{displayName} (Record)";
+                        }
+
+                        if (aggregatedModes.ContainsKey(displayName))
+                            aggregatedModes[displayName] += cat.Amount;
                         else
-                            aggregatedModes[cat.Category] = cat.Amount;
+                            aggregatedModes[displayName] = cat.Amount;
                     }
                 }
             }
@@ -255,12 +264,14 @@ public partial class CollectionSummaryViewModel : ObservableObject, IDisposable
             foreach (var kvp in aggregatedModes)
             {
                 string cat = kvp.Key;
-                bool isCash = cat.Contains("Cash", StringComparison.OrdinalIgnoreCase);
-                bool isDebtor = cat.Contains("Debtor", StringComparison.OrdinalIgnoreCase) || cat.Contains("Debit", StringComparison.OrdinalIgnoreCase);
-                bool isPetro = cat.Contains("Petro", StringComparison.OrdinalIgnoreCase);
-                bool isCard = cat.Contains("Card", StringComparison.OrdinalIgnoreCase) || cat.Contains("PineLab", StringComparison.OrdinalIgnoreCase);
+                bool isOthers = cat.Contains("(Record)", StringComparison.OrdinalIgnoreCase) || cat.StartsWith("Others", StringComparison.OrdinalIgnoreCase) || cat.Equals("Other", StringComparison.OrdinalIgnoreCase);
+                bool isPetro = !isOthers && cat.Contains("Petro", StringComparison.OrdinalIgnoreCase);
+                bool isCard = !isOthers && (cat.Contains("Card", StringComparison.OrdinalIgnoreCase) || cat.Contains("PineLab", StringComparison.OrdinalIgnoreCase));
+                bool isCash = !isOthers && !isCard && cat.Contains("Cash", StringComparison.OrdinalIgnoreCase);
+                bool isDebtor = !isOthers && !isCard && (cat.Contains("Debtor", StringComparison.OrdinalIgnoreCase) || cat.Contains("Debit", StringComparison.OrdinalIgnoreCase));
 
-                string color = isCash ? "#2E7D32" :
+                string color = isOthers ? "#546E7A" :
+                               isCash ? "#2E7D32" :
                                isDebtor ? "#E65100" :
                                isPetro ? "#6A1B9A" :
                                isCard ? "#0288D1" : "#1565C0";
@@ -274,7 +285,7 @@ public partial class CollectionSummaryViewModel : ObservableObject, IDisposable
             }
 
             // If Debtors not already in ModeTotals, add it
-            if (!ModeTotals.Any(m => m.CollectionMode.Contains("Debit", StringComparison.OrdinalIgnoreCase) || m.CollectionMode.Contains("Debtor", StringComparison.OrdinalIgnoreCase)) && TotalDebit > 0)
+            if (!ModeTotals.Any(m => !m.CollectionMode.Contains("Card", StringComparison.OrdinalIgnoreCase) && (m.CollectionMode.Contains("Debit", StringComparison.OrdinalIgnoreCase) || m.CollectionMode.Contains("Debtor", StringComparison.OrdinalIgnoreCase))) && TotalDebit > 0)
             {
                 ModeTotals.Add(new DayCollectionSummaryRow
                 {
@@ -284,14 +295,19 @@ public partial class CollectionSummaryViewModel : ObservableObject, IDisposable
                 });
             }
 
-            GrandTotal = TotalCashDeposit + TotalCashInHand + ModeTotals.Where(m => !m.CollectionMode.Contains("Cash", StringComparison.OrdinalIgnoreCase)).Sum(m => m.Amount);
-            if (GrandTotal <= 0)
+            GrandTotal = DayRows.Sum(r => r.DayTotal);
+            if (GrandTotal <= 0 && DayRows.Count == 0)
             {
                 GrandTotal = TotalCashDeposit + TotalCashInHand + TotalPhonePe + TotalPhonePeCard + TotalCreditCard + TotalPetroCard + TotalDebit;
             }
 
             TotalDigital = ModeTotals
-                .Where(m => !m.CollectionMode.Contains("Cash", StringComparison.OrdinalIgnoreCase) && !m.CollectionMode.Contains("Debit", StringComparison.OrdinalIgnoreCase) && !m.CollectionMode.Contains("Debtor", StringComparison.OrdinalIgnoreCase))
+                .Where(m => !m.CollectionMode.Contains("Cash", StringComparison.OrdinalIgnoreCase) &&
+                            !m.CollectionMode.Contains("Debtor", StringComparison.OrdinalIgnoreCase) &&
+                            (!m.CollectionMode.Contains("Debit", StringComparison.OrdinalIgnoreCase) || m.CollectionMode.Contains("Card", StringComparison.OrdinalIgnoreCase) || m.CollectionMode.Contains("PineLab", StringComparison.OrdinalIgnoreCase)) &&
+                            !m.CollectionMode.Contains("(Record)", StringComparison.OrdinalIgnoreCase) &&
+                            !m.CollectionMode.Contains("Others", StringComparison.OrdinalIgnoreCase) &&
+                            !m.CollectionMode.Contains("Other", StringComparison.OrdinalIgnoreCase))
                 .Sum(m => m.Amount);
             if (TotalDigital <= 0)
             {

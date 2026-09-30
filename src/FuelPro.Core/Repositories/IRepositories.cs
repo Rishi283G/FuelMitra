@@ -151,6 +151,7 @@ public interface IPumpExpenseRepository
 {
     Task<Result<List<PumpExpense>>> GetByDateRangeAsync(DateTime startDate, DateTime endDate);
     Task<Result<PumpExpense>> GetByDateAsync(DateTime date);
+    Task<Result<PumpExpense>> GetByIdAsync(int id);
     Task<Result<PumpExpense>> AddOrUpdateAsync(PumpExpense expense);
     Task<Result> DeleteAsync(int id);
 }
@@ -176,4 +177,15 @@ public interface ITankDailyStockRepository
     Task<Result<List<TankDailyStock>>> GetByDateRangeAsync(DateTime startDate, DateTime endDate);
     Task<Result<List<TankDailyStock>>> GetByDateAsync(DateTime date);
     Task<Result<TankDailyStock>> UpsertAsync(TankDailyStock stock);
+}
+
+public interface IOpeningBalanceRepository
+{
+    Task<Result<OpeningBalance?>> GetActiveByEntityAsync(string entityType, string entityIdentifier);
+    Task<Result<OpeningBalance?>> GetByIdAsync(int openingBalanceId);
+    Task<Result<List<OpeningBalance>>> GetAllActiveAsync();
+    Task<Result<List<OpeningBalance>>> GetAllByEntityTypeAsync(string entityType);
+    Task<Result<OpeningBalance>> SaveOpeningBalanceAsync(OpeningBalance openingBalance);
+    Task<Result> DeactivateOpeningBalanceAsync(int openingBalanceId);
+    Task<Result<DsmPersonalDebtor?>> GetDsmAnchorAsync(string dsmName);
 }

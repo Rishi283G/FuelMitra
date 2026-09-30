@@ -466,12 +466,52 @@ public partial class App : Application
             EnsureColumnExists(connection, "DsmPumpAssignments", "CompletedDate", "ALTER TABLE DsmPumpAssignments ADD COLUMN CompletedDate TEXT NULL;");
         }
 
-        // Settings Manager columns
+        // Settings Manager & Dynamic Config JSON columns
         if (TableExists(connection, "Settings"))
         {
             EnsureColumnExists(connection, "Settings", "Shift1Manager", "ALTER TABLE Settings ADD COLUMN Shift1Manager TEXT NULL;");
             EnsureColumnExists(connection, "Settings", "Shift2Manager", "ALTER TABLE Settings ADD COLUMN Shift2Manager TEXT NULL;");
             EnsureColumnExists(connection, "Settings", "Shift3Manager", "ALTER TABLE Settings ADD COLUMN Shift3Manager TEXT NULL;");
+            EnsureColumnExists(connection, "Settings", "FuelRatesJson", "ALTER TABLE Settings ADD COLUMN FuelRatesJson TEXT NULL;");
+            EnsureColumnExists(connection, "Settings", "TankDefinitionsJson", "ALTER TABLE Settings ADD COLUMN TankDefinitionsJson TEXT NULL;");
+            EnsureColumnExists(connection, "Settings", "CollectionTypesJson", "ALTER TABLE Settings ADD COLUMN CollectionTypesJson TEXT NULL;");
+            EnsureColumnExists(connection, "Settings", "AppFeatureSettingsJson", "ALTER TABLE Settings ADD COLUMN AppFeatureSettingsJson TEXT NULL;");
+            EnsureColumnExists(connection, "Settings", "PumpMappingsJson", "ALTER TABLE Settings ADD COLUMN PumpMappingsJson TEXT NULL;");
+            EnsureColumnExists(connection, "Settings", "PumpConnectionRulesJson", "ALTER TABLE Settings ADD COLUMN PumpConnectionRulesJson TEXT NULL;");
+        }
+
+        // ─── OpeningBalances Table & DsmPersonalDebtors EntryType (Independent of PaymentCollections) ─────
+        if (!TableExists(connection, "OpeningBalances"))
+        {
+            using var cmdOb = connection.CreateCommand();
+            cmdOb.CommandText = @"
+                CREATE TABLE ""OpeningBalances"" (
+                    ""OpeningBalanceId"" INTEGER NOT NULL CONSTRAINT ""PK_OpeningBalances"" PRIMARY KEY AUTOINCREMENT,
+                    ""SyncGuid"" TEXT NOT NULL,
+                    ""EntityType"" TEXT NOT NULL,
+                    ""EntityIdentifier"" TEXT NOT NULL,
+                    ""CreditorId"" INTEGER NULL,
+                    ""OpeningDate"" TEXT NOT NULL,
+                    ""Amount"" REAL NOT NULL,
+                    ""Notes"" TEXT NULL,
+                    ""IsActive"" INTEGER NOT NULL DEFAULT 1,
+                    ""CreatedAt"" TEXT NOT NULL,
+                    ""UpdatedAt"" TEXT NOT NULL,
+                    ""CreatedBy"" TEXT NULL,
+                    CONSTRAINT ""FK_OpeningBalances_Creditors_CreditorId"" FOREIGN KEY (""CreditorId"") REFERENCES ""Creditors"" (""CreditorId"") ON DELETE SET NULL
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS ""IX_OpeningBalances_SyncGuid"" ON ""OpeningBalances"" (""SyncGuid"");
+                CREATE INDEX IF NOT EXISTS ""IX_OpeningBalances_CreditorId"" ON ""OpeningBalances"" (""CreditorId"");
+            ";
+            cmdOb.ExecuteNonQuery();
+            Log.Information("Created OpeningBalances table");
+        }
+
+        if (TableExists(connection, "DsmPersonalDebtors"))
+        {
+            EnsureColumnExists(connection, "DsmPersonalDebtors", "SyncGuid", "ALTER TABLE DsmPersonalDebtors ADD COLUMN SyncGuid TEXT NOT NULL DEFAULT '';");
+            EnsureColumnExists(connection, "DsmPersonalDebtors", "DeductFromSalary", "ALTER TABLE DsmPersonalDebtors ADD COLUMN DeductFromSalary INTEGER NOT NULL DEFAULT 1;");
+            EnsureColumnExists(connection, "DsmPersonalDebtors", "EntryType", "ALTER TABLE DsmPersonalDebtors ADD COLUMN EntryType TEXT NOT NULL DEFAULT 'Operational';");
         }
 
         // Guard: skip column additions for tables that don't exist yet (e.g. fresh install)
@@ -479,8 +519,11 @@ public partial class App : Application
             return;
 
         EnsureColumnExists(connection, "PaymentCollections", "CashDeposit", "ALTER TABLE PaymentCollections ADD COLUMN CashDeposit REAL NOT NULL DEFAULT 0.0;");
+        EnsureColumnExists(connection, "PaymentCollections", "DynamicItemsJson", "ALTER TABLE PaymentCollections ADD COLUMN DynamicItemsJson TEXT NULL;");
         EnsureColumnExists(connection, "DsmEntries", "ConnectedPumpId", "ALTER TABLE DsmEntries ADD COLUMN ConnectedPumpId INTEGER NULL;");
+        EnsureColumnExists(connection, "DsmEntries", "ConnectedPumpIdsJson", "ALTER TABLE DsmEntries ADD COLUMN ConnectedPumpIdsJson TEXT NULL;");
         EnsureColumnExists(connection, "DsmEntries", "ReconciledToPumpId", "ALTER TABLE DsmEntries ADD COLUMN ReconciledToPumpId INTEGER NULL;");
+        EnsureColumnExists(connection, "DsmPumpAssignments", "ConnectedPumpIdsJson", "ALTER TABLE DsmPumpAssignments ADD COLUMN ConnectedPumpIdsJson TEXT NULL;");
 
 
         // Phase 3 additions: DsmEntry Start/End times
@@ -803,6 +846,7 @@ public partial class App : Application
                     ""CardBatch"" TEXT NULL,
                     ""SequenceNumber"" INTEGER NOT NULL,
                     ""RepaidAmount"" REAL NOT NULL,
+                    ""EntryType"" TEXT NOT NULL DEFAULT 'Operational',
                     ""CreatedAt"" TEXT NOT NULL,
                     CONSTRAINT ""FK_DsmPersonalDebtors_DsmEntries_DsmEntryId"" FOREIGN KEY (""DsmEntryId"") REFERENCES ""DsmEntries"" (""DsmEntryId"") ON DELETE SET NULL
                 );";
@@ -814,6 +858,7 @@ public partial class App : Application
 
         EnsureColumnExists(connection, "DsmPersonalDebtors", "SyncGuid", "ALTER TABLE DsmPersonalDebtors ADD COLUMN SyncGuid TEXT NOT NULL DEFAULT '';");
         EnsureColumnExists(connection, "DsmPersonalDebtors", "DeductFromSalary", "ALTER TABLE DsmPersonalDebtors ADD COLUMN DeductFromSalary INTEGER NOT NULL DEFAULT 1;");
+        EnsureColumnExists(connection, "DsmPersonalDebtors", "EntryType", "ALTER TABLE DsmPersonalDebtors ADD COLUMN EntryType TEXT NOT NULL DEFAULT 'Operational';");
 
         // Check if DsmPersonalDebtorRepayments exists
         cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='DsmPersonalDebtorRepayments'";
@@ -1068,6 +1113,277 @@ public partial class App : Application
             }
             catch { }
         }
+
+        // ── One-time cleanup: remove duplicate records created by missing sync dedup ──
+        try
+        {
+            using var cleanupCmd = connection.CreateCommand();
+
+            // 1. OilDefPurchases — dedup by (ProductId, PurchaseDate, InvoiceNumber, Quantity, UnitPrice)
+            if (TableExists(connection, "OilDefPurchases"))
+            {
+                cleanupCmd.CommandText = @"
+                    DELETE FROM OilDefPurchases WHERE Id NOT IN (
+                        SELECT MIN(Id) FROM OilDefPurchases
+                        GROUP BY ProductId, date(PurchaseDate), LOWER(COALESCE(InvoiceNumber,'')), 
+                               CAST(ROUND(Quantity * 100) AS INTEGER), CAST(ROUND(UnitPrice * 100) AS INTEGER)
+                    );";
+                int delPurchases = cleanupCmd.ExecuteNonQuery();
+                if (delPurchases > 0)
+                    Log.Information("Duplicate cleanup: removed {Count} duplicate OilDefPurchases rows", delPurchases);
+
+                // Also remove stale SyncIdMappings pointing to now-deleted OilDefPurchases
+                cleanupCmd.CommandText = @"
+                    DELETE FROM SyncIdMappings WHERE TableName = 'OilDefPurchases' 
+                    AND LocalId NOT IN (SELECT Id FROM OilDefPurchases);";
+                cleanupCmd.ExecuteNonQuery();
+            }
+
+            // 2. CreditorRepayments — dedup by (CreditorName, RepaymentDate, Amount, PaymentMode)
+            if (TableExists(connection, "CreditorRepayments"))
+            {
+                cleanupCmd.CommandText = @"
+                    DELETE FROM CreditorRepayments WHERE CreditorRepaymentId NOT IN (
+                        SELECT MIN(CreditorRepaymentId) FROM CreditorRepayments
+                        GROUP BY LOWER(COALESCE(CreditorName,'')), date(RepaymentDate), 
+                               CAST(ROUND(Amount * 100) AS INTEGER), LOWER(COALESCE(PaymentMode,''))
+                    );";
+                int delRepayments = cleanupCmd.ExecuteNonQuery();
+                if (delRepayments > 0)
+                    Log.Information("Duplicate cleanup: removed {Count} duplicate CreditorRepayments rows", delRepayments);
+
+                cleanupCmd.CommandText = @"
+                    DELETE FROM SyncIdMappings WHERE TableName = 'CreditorRepayments' 
+                    AND LocalId NOT IN (SELECT CreditorRepaymentId FROM CreditorRepayments);";
+                cleanupCmd.ExecuteNonQuery();
+            }
+
+            // 3. DsmPersonalDebtorRepayments — dedup by (DsmPersonalDebtorId, Date, Amount, PaymentMethod)
+            if (TableExists(connection, "DsmPersonalDebtorRepayments"))
+            {
+                cleanupCmd.CommandText = @"
+                    DELETE FROM DsmPersonalDebtorRepayments WHERE Id NOT IN (
+                        SELECT MIN(Id) FROM DsmPersonalDebtorRepayments
+                        GROUP BY DsmPersonalDebtorId, date(Date), 
+                               CAST(ROUND(Amount * 100) AS INTEGER), LOWER(COALESCE(PaymentMethod,''))
+                    );";
+                int delDsmRepayments = cleanupCmd.ExecuteNonQuery();
+                if (delDsmRepayments > 0)
+                    Log.Information("Duplicate cleanup: removed {Count} duplicate DsmPersonalDebtorRepayments rows", delDsmRepayments);
+
+                cleanupCmd.CommandText = @"
+                    DELETE FROM SyncIdMappings WHERE TableName = 'DsmPersonalDebtorRepayments' 
+                    AND LocalId NOT IN (SELECT Id FROM DsmPersonalDebtorRepayments);";
+                cleanupCmd.ExecuteNonQuery();
+            }
+
+            // 4. Creditors — dedup by Name (case-insensitive), re-point FKs before deleting duplicates
+            if (TableExists(connection, "Creditors"))
+            {
+                // Re-point DebtorVehicles FKs to the canonical (lowest-Id) creditor before deleting duplicates
+                if (TableExists(connection, "DebtorVehicles"))
+                {
+                    cleanupCmd.CommandText = @"
+                        UPDATE DebtorVehicles SET CreditorId = (
+                            SELECT MIN(c2.CreditorId) FROM Creditors c2 
+                            WHERE LOWER(TRIM(c2.Name)) = (
+                                SELECT LOWER(TRIM(c3.Name)) FROM Creditors c3 WHERE c3.CreditorId = DebtorVehicles.CreditorId
+                            )
+                        )
+                        WHERE CreditorId NOT IN (
+                            SELECT MIN(CreditorId) FROM Creditors GROUP BY LOWER(TRIM(Name))
+                        );";
+                    cleanupCmd.ExecuteNonQuery();
+                }
+
+                cleanupCmd.CommandText = @"
+                    DELETE FROM Creditors WHERE CreditorId NOT IN (
+                        SELECT MIN(CreditorId) FROM Creditors GROUP BY LOWER(TRIM(Name))
+                    );";
+                int delCreditors = cleanupCmd.ExecuteNonQuery();
+                if (delCreditors > 0)
+                    Log.Information("Duplicate cleanup: removed {Count} duplicate Creditors rows", delCreditors);
+
+                cleanupCmd.CommandText = @"
+                    DELETE FROM SyncIdMappings WHERE TableName = 'Creditors' 
+                    AND LocalId NOT IN (SELECT CreditorId FROM Creditors);";
+                cleanupCmd.ExecuteNonQuery();
+            }
+
+            // 5. OilDefDailyLogs — dedup stock adjustments, sales logs, purchase logs
+            if (TableExists(connection, "OilDefDailyLogs"))
+            {
+                // Stock adjustments: dedup by (ProductId, date(LogDate), strftime('%H:%M', LogDate), AdjustmentQuantity, AdjustmentType)
+                cleanupCmd.CommandText = @"
+                    DELETE FROM OilDefDailyLogs WHERE AdjustmentQuantity != 0 AND Id NOT IN (
+                        SELECT MIN(Id) FROM OilDefDailyLogs
+                        WHERE AdjustmentQuantity != 0
+                        GROUP BY ProductId, date(LogDate), strftime('%H:%M', LogDate), 
+                               CAST(ROUND(AdjustmentQuantity * 100) AS INTEGER), LOWER(COALESCE(AdjustmentType,''))
+                    );";
+                int delAdj = cleanupCmd.ExecuteNonQuery();
+                if (delAdj > 0)
+                    Log.Information("Duplicate cleanup: removed {Count} duplicate OilDefDailyLogs adjustment rows", delAdj);
+
+                // Sales logs: dedup by (ProductId, date(LogDate), SoldQuantity, OverrideSaleRate)
+                cleanupCmd.CommandText = @"
+                    DELETE FROM OilDefDailyLogs WHERE SoldQuantity > 0 AND AdjustmentQuantity = 0 AND AddedQuantity = 0 AND Id NOT IN (
+                        SELECT MIN(Id) FROM OilDefDailyLogs
+                        WHERE SoldQuantity > 0 AND AdjustmentQuantity = 0 AND AddedQuantity = 0
+                        GROUP BY ProductId, date(LogDate), 
+                               CAST(ROUND(SoldQuantity * 100) AS INTEGER), CAST(ROUND(COALESCE(OverrideSaleRate, 0) * 100) AS INTEGER)
+                    );";
+                int delSales = cleanupCmd.ExecuteNonQuery();
+                if (delSales > 0)
+                    Log.Information("Duplicate cleanup: removed {Count} duplicate OilDefDailyLogs sales rows", delSales);
+
+                // Purchase daily logs: dedup by (ProductId, date(LogDate), AddedQuantity)
+                cleanupCmd.CommandText = @"
+                    DELETE FROM OilDefDailyLogs WHERE AddedQuantity > 0 AND AdjustmentQuantity = 0 AND SoldQuantity = 0 AND Id NOT IN (
+                        SELECT MIN(Id) FROM OilDefDailyLogs
+                        WHERE AddedQuantity > 0 AND AdjustmentQuantity = 0 AND SoldQuantity = 0
+                        GROUP BY ProductId, date(LogDate), 
+                               CAST(ROUND(AddedQuantity * 100) AS INTEGER)
+                    );";
+                int delPurch = cleanupCmd.ExecuteNonQuery();
+                if (delPurch > 0)
+                    Log.Information("Duplicate cleanup: removed {Count} duplicate OilDefDailyLogs purchase rows", delPurch);
+
+                cleanupCmd.CommandText = @"
+                    DELETE FROM SyncIdMappings WHERE TableName = 'OilDefDailyLogs' 
+                    AND LocalId NOT IN (SELECT Id FROM OilDefDailyLogs);";
+                cleanupCmd.ExecuteNonQuery();
+            }
+
+            // 6. OilDefInventories — dedup by (ProductId, Year, Month)
+            if (TableExists(connection, "OilDefInventories"))
+            {
+                cleanupCmd.CommandText = @"
+                    DELETE FROM OilDefInventories WHERE Id NOT IN (
+                        SELECT MIN(Id) FROM OilDefInventories
+                        GROUP BY ProductId, Year, Month
+                    );";
+                int delInv = cleanupCmd.ExecuteNonQuery();
+                if (delInv > 0)
+                    Log.Information("Duplicate cleanup: removed {Count} duplicate OilDefInventories rows", delInv);
+
+                cleanupCmd.CommandText = @"
+                    DELETE FROM SyncIdMappings WHERE TableName = 'OilDefInventories' 
+                    AND LocalId NOT IN (SELECT Id FROM OilDefInventories);";
+                cleanupCmd.ExecuteNonQuery();
+            }
+
+            // 7. ProductMasters — dedup by ProductName (case-insensitive)
+            if (TableExists(connection, "ProductMasters"))
+            {
+                if (TableExists(connection, "OilDefDailyLogs"))
+                {
+                    cleanupCmd.CommandText = @"
+                        UPDATE OilDefDailyLogs SET ProductId = (
+                            SELECT MIN(p2.Id) FROM ProductMasters p2
+                            WHERE LOWER(TRIM(p2.ProductName)) = (
+                                SELECT LOWER(TRIM(p3.ProductName)) FROM ProductMasters p3 WHERE p3.Id = OilDefDailyLogs.ProductId
+                            )
+                        )
+                        WHERE ProductId NOT IN (
+                            SELECT MIN(Id) FROM ProductMasters GROUP BY LOWER(TRIM(ProductName))
+                        );";
+                    cleanupCmd.ExecuteNonQuery();
+                }
+
+                if (TableExists(connection, "OilDefPurchases"))
+                {
+                    cleanupCmd.CommandText = @"
+                        UPDATE OilDefPurchases SET ProductId = (
+                            SELECT MIN(p2.Id) FROM ProductMasters p2
+                            WHERE LOWER(TRIM(p2.ProductName)) = (
+                                SELECT LOWER(TRIM(p3.ProductName)) FROM ProductMasters p3 WHERE p3.Id = OilDefPurchases.ProductId
+                            )
+                        )
+                        WHERE ProductId NOT IN (
+                            SELECT MIN(Id) FROM ProductMasters GROUP BY LOWER(TRIM(ProductName))
+                        );";
+                    cleanupCmd.ExecuteNonQuery();
+                }
+
+                if (TableExists(connection, "OilDefInventories"))
+                {
+                    cleanupCmd.CommandText = @"
+                        UPDATE OilDefInventories SET ProductId = (
+                            SELECT MIN(p2.Id) FROM ProductMasters p2
+                            WHERE LOWER(TRIM(p2.ProductName)) = (
+                                SELECT LOWER(TRIM(p3.ProductName)) FROM ProductMasters p3 WHERE p3.Id = OilDefInventories.ProductId
+                            )
+                        )
+                        WHERE ProductId NOT IN (
+                            SELECT MIN(Id) FROM ProductMasters GROUP BY LOWER(TRIM(ProductName))
+                        );";
+                    cleanupCmd.ExecuteNonQuery();
+                }
+
+                cleanupCmd.CommandText = @"
+                    DELETE FROM ProductMasters WHERE Id NOT IN (
+                        SELECT MIN(Id) FROM ProductMasters GROUP BY LOWER(TRIM(ProductName))
+                    );";
+                int delProd = cleanupCmd.ExecuteNonQuery();
+                if (delProd > 0)
+                    Log.Information("Duplicate cleanup: removed {Count} duplicate ProductMasters rows", delProd);
+
+                cleanupCmd.CommandText = @"
+                    DELETE FROM SyncIdMappings WHERE TableName = 'ProductMasters' 
+                    AND LocalId NOT IN (SELECT Id FROM ProductMasters);";
+                cleanupCmd.ExecuteNonQuery();
+            }
+
+            // 8. Recalculate RemainingStock running balances in OilDefDailyLogs
+            if (TableExists(connection, "OilDefDailyLogs"))
+            {
+                using var recalcCmd = connection.CreateCommand();
+                recalcCmd.CommandText = @"
+                    SELECT Id, ProductId, AddedQuantity, SoldQuantity, AdjustmentQuantity 
+                    FROM OilDefDailyLogs 
+                    ORDER BY ProductId, LogDate, Id;";
+                using var reader = recalcCmd.ExecuteReader();
+                var updates = new List<(int Id, double Remaining)>();
+                int currentProdId = -1;
+                double currentRunning = 0.0;
+
+                while (reader.Read())
+                {
+                    int id = reader.GetInt32(0);
+                    int prodId = reader.GetInt32(1);
+                    double added = reader.IsDBNull(2) ? 0.0 : reader.GetDouble(2);
+                    double sold = reader.IsDBNull(3) ? 0.0 : reader.GetDouble(3);
+                    double adj = reader.IsDBNull(4) ? 0.0 : reader.GetDouble(4);
+
+                    if (prodId != currentProdId)
+                    {
+                        currentProdId = prodId;
+                        currentRunning = 0.0;
+                    }
+
+                    currentRunning = currentRunning + added - sold + adj;
+                    updates.Add((id, currentRunning));
+                }
+                reader.Close();
+
+                if (updates.Count > 0)
+                {
+                    using var updateCmd = connection.CreateCommand();
+                    var sb = new System.Text.StringBuilder();
+                    foreach (var u in updates)
+                    {
+                        sb.AppendLine($"UPDATE OilDefDailyLogs SET RemainingStock = {u.Remaining:F4} WHERE Id = {u.Id};");
+                    }
+                    updateCmd.CommandText = sb.ToString();
+                    updateCmd.ExecuteNonQuery();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Non-fatal: duplicate cleanup migration failed");
+        }
     }
 
     private static bool TableExists(SqliteConnection connection, string tableName)
@@ -1131,6 +1447,7 @@ public partial class App : Application
         services.AddTransient<IDsmPersonalDebtorRepository, DsmPersonalDebtorRepository>();
         services.AddTransient<IFuelTankerRepository, FuelTankerRepository>();
         services.AddTransient<ITankDailyStockRepository, TankDailyStockRepository>();
+        services.AddTransient<IOpeningBalanceRepository, OpeningBalanceRepository>();
 
         // Services
         services.AddSingleton<AuthService>();
@@ -1171,6 +1488,7 @@ public partial class App : Application
         services.AddTransient<Views.LoginView>();
         services.AddTransient<Views.MainWindow>();
         services.AddTransient<Views.OwnerMainWindow>();
+        services.AddTransient<Views.OpeningBalanceManagementView>();
 
         // ViewModels
         services.AddTransient<LoginViewModel>();
@@ -1180,6 +1498,7 @@ public partial class App : Application
         services.AddTransient<FinalCalculationViewModel>();
         services.AddTransient<DayTotalViewModel>();
         services.AddTransient<SettingsViewModel>();
+        services.AddTransient<OpeningBalanceManagementViewModel>();
         services.AddTransient<CardSettlementViewModel>();
         services.AddTransient<AgsImportViewModel>();
         services.AddTransient<OilDefDailyLogViewModel>();
@@ -1209,7 +1528,7 @@ public partial class App : Application
         services.AddTransient<MismatchLedgerViewModel>();
 
         // Developer ViewModels
-        services.AddTransient<DeveloperMainWindowViewModel>();
+        services.AddTransient<DeveloperMainWindowViewModel>(sp => new DeveloperMainWindowViewModel());
         services.AddTransient<DsmManagementViewModel>();
         services.AddTransient<DsmApprovalQueueViewModel>();
 

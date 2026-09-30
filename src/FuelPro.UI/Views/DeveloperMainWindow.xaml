@@ -428,13 +428,16 @@
                                     </StackPanel>
                                 </Border>
 
-                                <StackPanel Orientation="Horizontal">
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
                                     <Button Content="Unlock Settings" Command="{Binding UnlockConfigurationCommand}" Height="40" Padding="20,0" Style="{StaticResource MaterialDesignOutlinedButton}" Margin="0,0,12,0" 
                                             Visibility="{Binding IsConfigLocked, Converter={StaticResource BooleanToVisibilityConverter}}"/>
                                     <Button Content="Save Credentials" Command="{Binding SaveCloudConfigCommand}" Height="40" Padding="24,0" Style="{StaticResource MaterialDesignRaisedButton}" Margin="0,0,12,0"
                                             IsEnabled="{Binding IsConfigLocked, Converter={StaticResource InverseBoolConverter}}"/>
                                     <Button Content="Test Connection" Command="{Binding TestConnectionCommand}" Height="40" Padding="20,0" Style="{StaticResource MaterialDesignOutlinedButton}" Margin="0,0,16,0"
                                             IsEnabled="{Binding IsConfigLocked, Converter={StaticResource InverseBoolConverter}}"/>
+                                    <Button Content="☁️ Download Complete Station Image" Command="{Binding PullCompleteStationSnapshotCommand}" Height="40" Padding="20,0" 
+                                            Style="{StaticResource MaterialDesignRaisedButton}" Background="#0288D1" BorderBrush="#0288D1" Foreground="White" Margin="0,0,16,0"
+                                            ToolTip="Fetches complete nozzle mapping, storage tanks, collection types, presets, and feature toggles from Supabase for this Station ID"/>
                                     <TextBlock Text="{Binding ConfigStatusMessage}" VerticalAlignment="Center" FontSize="13" FontWeight="SemiBold"/>
                                 </StackPanel>
                             </StackPanel>
@@ -741,15 +744,27 @@
                                                  materialDesign:HintAssist.IsFloating="False"
                                                  Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
 
-                                        <Button Grid.Column="3" Command="{Binding LoadRecentDsmEntriesCommand}"
-                                                Style="{StaticResource MaterialDesignOutlinedButton}"
-                                                Height="32" Padding="12,0" FontSize="11">
-                                            <StackPanel Orientation="Horizontal">
-                                                <materialDesign:PackIcon Kind="Refresh" Width="14" Height="14" Margin="0,0,4,0" VerticalAlignment="Center"/>
-                                                <TextBlock Text="Refresh List" VerticalAlignment="Center"/>
-                                            </StackPanel>
-                                        </Button>
+                                        <StackPanel Grid.Column="3" Orientation="Horizontal">
+                                            <Button Command="{Binding LoadRecentDsmEntriesCommand}"
+                                                    Style="{StaticResource MaterialDesignOutlinedButton}"
+                                                    Height="32" Padding="12,0" FontSize="11" Margin="0,0,8,0">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <materialDesign:PackIcon Kind="Refresh" Width="14" Height="14" Margin="0,0,4,0" VerticalAlignment="Center"/>
+                                                    <TextBlock Text="Refresh List" VerticalAlignment="Center"/>
+                                                </StackPanel>
+                                            </Button>
+                                            <Button Command="{Binding DeleteAllRecentDsmEntriesCommand}"
+                                                    Style="{StaticResource MaterialDesignOutlinedButton}"
+                                                    Foreground="#E53935" BorderBrush="#E53935"
+                                                    Height="32" Padding="12,0" FontSize="11">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <materialDesign:PackIcon Kind="DeleteSweep" Width="14" Height="14" Margin="0,0,4,0" VerticalAlignment="Center"/>
+                                                    <TextBlock Text="Purge All Entries" VerticalAlignment="Center"/>
+                                                </StackPanel>
+                                            </Button>
+                                        </StackPanel>
                                     </Grid>
+
 
                                     <DataGrid ItemsSource="{Binding FilteredRecentDsmEntries}" AutoGenerateColumns="False"
                                               IsReadOnly="True" MaxHeight="300"
@@ -1097,7 +1112,15 @@
 
                                         <Button Content="All Features On" Command="{Binding ApplyClientPresetCommand}" CommandParameter="Full"
                                                 Style="{StaticResource MaterialDesignOutlinedButton}" Foreground="#ECEFF1" BorderBrush="#ECEFF1"
-                                                Height="32" Padding="10,0" Margin="0,0,12,0" FontSize="11"/>
+                                                Height="32" Padding="10,0" Margin="0,0,8,0" FontSize="11"/>
+
+                                        <Button Content="☁️ Load from Cloud" Command="{Binding LoadFeaturesFromCloudCommand}"
+                                                Style="{StaticResource MaterialDesignOutlinedButton}" Foreground="#80CBC4" BorderBrush="#80CBC4"
+                                                Height="32" Padding="10,0" Margin="0,0,8,0" FontSize="11" ToolTip="Fetch client features from Supabase for this Station ID"/>
+
+                                        <Button Content="☁️ Save to Cloud" Command="{Binding SaveFeaturesToCloudCommand}"
+                                                Style="{StaticResource MaterialDesignOutlinedButton}" Foreground="#FFD54F" BorderBrush="#FFD54F"
+                                                Height="32" Padding="10,0" Margin="0,0,8,0" FontSize="11" ToolTip="Save client features to Supabase for this Station ID"/>
 
                                         <Button Content="Save All Features" Command="{Binding SaveFeaturesCommand}"
                                                 Style="{StaticResource MaterialDesignRaisedButton}" Background="#00897B" BorderBrush="#00897B" Foreground="White"
@@ -1224,7 +1247,7 @@
                                                  Foreground="White" FontSize="12" Margin="0,0,12,0" VerticalAlignment="Center"/>
 
                                         <!-- Save Preset Button -->
-                                        <Button Grid.Column="3" Content="💾 Save Preset" Command="{Binding SaveAsPresetCommand}"
+                                        <Button Grid.Column="3" Content="💾 Save Preset" Command="{Binding SavePresetCommand}"
                                                 Style="{StaticResource MaterialDesignRaisedButton}" Background="#00897B" BorderBrush="#00897B" Foreground="White"
                                                 Height="32" Padding="14,0" FontSize="11" FontWeight="Bold"/>
 
@@ -1241,6 +1264,7 @@
                                         <ComboBox Grid.Column="7" ItemsSource="{Binding SavedPresets}" SelectedItem="{Binding SelectedPreset}"
                                                   DisplayMemberPath="PresetName" Width="180" Height="30" FontSize="11" Foreground="#90CAF9"
                                                   materialDesign:HintAssist.Hint="Pick Saved Preset" materialDesign:HintAssist.IsFloating="False"
+                                                  ToolTip="Select a preset to populate code and details. Click 'Load Code' to load onto canvas."
                                                   Margin="0,0,0,0">
                                             <ComboBox.ItemContainerStyle>
                                                 <Style TargetType="ComboBoxItem">
@@ -1250,6 +1274,22 @@
                                             </ComboBox.ItemContainerStyle>
                                         </ComboBox>
                                     </Grid>
+
+                                    <!-- Cloud Preset Actions Bar -->
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                                        <Button Content="☁️ Save Preset to Cloud" Command="{Binding SavePresetToCloudCommand}"
+                                                Style="{StaticResource MaterialDesignOutlinedButton}" Foreground="#FFD54F" BorderBrush="#FFD54F"
+                                                Height="32" Padding="14,0" Margin="0,0,8,0" FontSize="11" FontWeight="Bold"
+                                                ToolTip="Save this preset and complete station mapping to Supabase Cloud for this Station ID"/>
+
+                                        <Button Content="☁️ Load from Cloud" Command="{Binding LoadPresetFromCloudCommand}"
+                                                Style="{StaticResource MaterialDesignOutlinedButton}" Foreground="#80CBC4" BorderBrush="#80CBC4"
+                                                Height="32" Padding="14,0" Margin="0,0,12,0" FontSize="11" FontWeight="Bold"
+                                                ToolTip="Fetch and restore preset and station mapping from Supabase Cloud for this Station ID"/>
+
+                                        <TextBlock Text="Tip: Use Cloud Save/Load to synchronize your layout across multiple computers instantly using the Station ID."
+                                                   FontSize="11" Foreground="#90A4AE" VerticalAlignment="Center"/>
+                                    </StackPanel>
 
                                     <!-- Saved Presets Expander Table -->
                                     <Expander Header="📁 View All Saved Presets in Database" Foreground="#90CAF9" FontSize="12" Background="#1B2428" Padding="8,4">
@@ -1317,7 +1357,19 @@
 
                                         <Button Content="Save Tanks" Command="{Binding SaveTanksCommand}"
                                                 Style="{StaticResource MaterialDesignOutlinedButton}" Foreground="#90CAF9" BorderBrush="#90CAF9"
-                                                Height="32" Padding="12,0" Margin="0,0,12,0" FontSize="11"/>
+                                                Height="32" Padding="12,0" Margin="0,0,8,0" FontSize="11"/>
+
+                                        <Button Content="⚡ Auto-Number" Command="{Binding AutoSequenceNozzlesCommand}"
+                                                Style="{StaticResource MaterialDesignOutlinedButton}" Foreground="#80CBC4" BorderBrush="#80CBC4"
+                                                Height="32" Padding="12,0" Margin="0,0,8,0" FontSize="11" ToolTip="Sequentially re-number all nozzles from 1 onwards"/>
+
+                                        <Button Content="☁️ Load from Cloud" Command="{Binding LoadStationLayoutFromCloudCommand}"
+                                                Style="{StaticResource MaterialDesignOutlinedButton}" Foreground="#80CBC4" BorderBrush="#80CBC4"
+                                                Height="32" Padding="10,0" Margin="0,0,8,0" FontSize="11" ToolTip="Pull station layout from Supabase for this Station ID"/>
+
+                                        <Button Content="☁️ Push to Cloud" Command="{Binding SaveStationLayoutToCloudCommand}"
+                                                Style="{StaticResource MaterialDesignOutlinedButton}" Foreground="#FFD54F" BorderBrush="#FFD54F"
+                                                Height="32" Padding="10,0" Margin="0,0,8,0" FontSize="11" ToolTip="Push station layout directly to Supabase for this Station ID"/>
 
                                         <Button Content="Save Station Layout" Command="{Binding SaveStationLayoutCommand}"
                                                 Style="{StaticResource MaterialDesignRaisedButton}" Background="#F57C00" BorderBrush="#F57C00" Foreground="White"
@@ -1422,11 +1474,11 @@
                                             </Style>
                                         </DataGrid.ColumnHeaderStyle>
                                         <DataGrid.Columns>
-                                            <DataGridTextColumn Header="Tank Name" Binding="{Binding TankName, UpdateSourceTrigger=PropertyChanged}" Width="200"/>
-                                            <DataGridTextColumn Header="Capacity (KL)" Binding="{Binding CapacityKL, UpdateSourceTrigger=PropertyChanged}" Width="120"/>
-                                            <DataGridTextColumn Header="Fuel Product" Binding="{Binding FuelType, UpdateSourceTrigger=PropertyChanged}" Width="150"/>
-                                            <DataGridCheckBoxColumn Header="Has Testing" Binding="{Binding HasTesting, UpdateSourceTrigger=PropertyChanged}" Width="90"/>
-                                            <DataGridCheckBoxColumn Header="Active" Binding="{Binding IsActive, UpdateSourceTrigger=PropertyChanged}" Width="80"/>
+                                            <DataGridTextColumn Header="Tank Name" Binding="{Binding TankName, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}" Width="200"/>
+                                            <DataGridTextColumn Header="Capacity (KL)" Binding="{Binding CapacityKL, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}" Width="120"/>
+                                            <DataGridTextColumn Header="Fuel Product" Binding="{Binding FuelType, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}" Width="150"/>
+                                            <DataGridCheckBoxColumn Header="Has Testing" Binding="{Binding HasTesting, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}" Width="90"/>
+                                            <DataGridCheckBoxColumn Header="Active" Binding="{Binding IsActive, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}" Width="80"/>
                                             <DataGridTemplateColumn Header="Actions" Width="100">
                                                 <DataGridTemplateColumn.CellTemplate>
                                                     <DataTemplate>
@@ -1440,7 +1492,242 @@
                                 </StackPanel>
                             </materialDesign:Card>
 
-                            <!-- Section 2: Shift Cycle & Settlement Schedule Configuration -->
+                            <!-- Section 3: Pump Connection Configuration -->
+                            <materialDesign:Card Padding="16,14" Margin="0,0,0,16" Background="#212C32">
+                                <StackPanel>
+                                    <Grid Margin="0,0,0,12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <StackPanel Grid.Column="0">
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                                <materialDesign:PackIcon Kind="TransitConnectionVariant" Width="22" Height="22" Foreground="#80CBC4" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                                <TextBlock Text="PUMP CONNECTION CONFIGURATION" FontSize="18" FontWeight="Bold" Foreground="White" VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                            <TextBlock Text="Configure multi-pump connection groups (2, 3, or 4 pumps) for combined DSM entries and collective cash settlement." FontSize="12" Foreground="#CFD8DC"/>
+                                            <TextBlock Text="{Binding PumpConnectionStatusMessage}" FontSize="12" FontWeight="SemiBold" Foreground="#80CBC4" Margin="0,4,0,0"/>
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Button Content="+ Add Group" Command="{Binding AddPumpConnectionGroupCommand}"
+                                                    IsEnabled="{Binding IsPumpConnectionEnabled}"
+                                                    Style="{StaticResource MaterialDesignOutlinedButton}" Foreground="#80CBC4" BorderBrush="#80CBC4"
+                                                    Height="32" Padding="12,0" Margin="0,0,8,0" FontSize="11"
+                                                    ToolTip="Add a new pump connection group"/>
+
+                                            <Button Content="Save Connections" Command="{Binding SavePumpConnectionConfigurationCommand}"
+                                                    Style="{StaticResource MaterialDesignRaisedButton}" Background="#00897B" BorderBrush="#00897B" Foreground="White"
+                                                    Height="34" Padding="16,0" FontSize="12" FontWeight="Bold"
+                                                    ToolTip="Save pump connection rules to station metadata"/>
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <!-- Mode Selection & Master Switch Bar -->
+                                    <Border Background="#1E272C" CornerRadius="8" Padding="14,10" Margin="0,0,0,12">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="24"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <!-- Master Switch -->
+                                            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                                <ToggleButton IsChecked="{Binding IsPumpConnectionEnabled, Mode=TwoWay}"
+                                                              Style="{StaticResource MaterialDesignSwitchToggleButton}"
+                                                              VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                                <TextBlock Text="Enable Pump Connections" FontSize="13" FontWeight="Bold" Foreground="White" VerticalAlignment="Center"/>
+                                            </StackPanel>
+
+                                            <!-- Separator -->
+                                            <Rectangle Grid.Column="1" Width="1" Height="24" Fill="#37474F" HorizontalAlignment="Center"/>
+
+                                            <!-- Connection Mode Radio Group -->
+                                            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                                <TextBlock Text="Connection Mode:" FontSize="13" FontWeight="SemiBold" Foreground="#CFD8DC" VerticalAlignment="Center" Margin="0,0,12,0"/>
+
+                                                <RadioButton Content="OFF" IsChecked="{Binding IsModeOff, Mode=TwoWay}"
+                                                             GroupName="PumpConnModeGroup" Margin="0,0,14,0" Foreground="#ECEFF1" FontSize="12"/>
+
+                                                <RadioButton Content="2 PUMPS" IsChecked="{Binding IsMode2Pumps, Mode=TwoWay}"
+                                                             GroupName="PumpConnModeGroup" Margin="0,0,14,0" Foreground="#80CBC4" FontSize="12" FontWeight="SemiBold"
+                                                             ToolTip="2 Pumps: 1 Primary + 1 Connected Pump"/>
+
+                                                <RadioButton Content="3 PUMPS" IsChecked="{Binding IsMode3Pumps, Mode=TwoWay}"
+                                                             GroupName="PumpConnModeGroup" Margin="0,0,14,0" Foreground="#FFD54F" FontSize="12" FontWeight="SemiBold"
+                                                             ToolTip="3 Pumps: 1 Primary + 2 Connected Pumps"/>
+
+                                                <RadioButton Content="4 PUMPS" IsChecked="{Binding IsMode4Pumps, Mode=TwoWay}"
+                                                             GroupName="PumpConnModeGroup" Foreground="#FF8A65" FontSize="12" FontWeight="SemiBold"
+                                                             ToolTip="4 Pumps: 1 Primary + 3 Connected Pumps"/>
+                                            </StackPanel>
+
+                                            <!-- Help Note -->
+                                            <TextBlock Grid.Column="3" Text="Developer Only" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                       FontSize="11" Foreground="#90A4AE" FontStyle="Italic"/>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- Validation Banner -->
+                                    <Border CornerRadius="6" Padding="10,6" Margin="0,0,0,12">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Background" Value="#102A26"/>
+                                                <Setter Property="BorderBrush" Value="#00897B"/>
+                                                <Setter Property="BorderThickness" Value="1"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding HasPumpConnectionValidationError}" Value="True">
+                                                        <Setter Property="Background" Value="#331414"/>
+                                                        <Setter Property="BorderBrush" Value="#E53935"/>
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding IsPumpConnectionEnabled}" Value="False">
+                                                        <Setter Property="Background" Value="#1E272C"/>
+                                                        <Setter Property="BorderBrush" Value="#37474F"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                        <StackPanel Orientation="Horizontal">
+                                            <materialDesign:PackIcon Kind="InformationOutline" Width="18" Height="18" VerticalAlignment="Center" Margin="0,0,8,0">
+                                                <materialDesign:PackIcon.Style>
+                                                    <Style TargetType="materialDesign:PackIcon">
+                                                        <Setter Property="Foreground" Value="#80CBC4"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding HasPumpConnectionValidationError}" Value="True">
+                                                                <Setter Property="Foreground" Value="#FF5252"/>
+                                                                <Setter Property="Kind" Value="AlertCircleOutline"/>
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding IsPumpConnectionEnabled}" Value="False">
+                                                                <Setter Property="Foreground" Value="#90A4AE"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </materialDesign:PackIcon.Style>
+                                            </materialDesign:PackIcon>
+                                            <TextBlock Text="{Binding PumpConnectionValidationSummary}" FontSize="12" VerticalAlignment="Center">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Foreground" Value="#80CBC4"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding HasPumpConnectionValidationError}" Value="True">
+                                                                <Setter Property="Foreground" Value="#FF8A80"/>
+                                                                <Setter Property="FontWeight" Value="SemiBold"/>
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding IsPumpConnectionEnabled}" Value="False">
+                                                                <Setter Property="Foreground" Value="#90A4AE"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <!-- OFF Mode Placeholder Banner -->
+                                    <Border Background="#1A2327" CornerRadius="8" Padding="20,16" Margin="0,0,0,8"
+                                            Visibility="{Binding IsPumpConnectionEnabled, Converter={StaticResource InverseBoolConverter}}">
+                                        <StackPanel HorizontalAlignment="Center">
+                                            <materialDesign:PackIcon Kind="LinkOff" Width="36" Height="36" Foreground="#78909C" HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                                            <TextBlock Text="Pump Connection Architecture is currently OFF" FontSize="14" FontWeight="Bold" Foreground="#ECEFF1" HorizontalAlignment="Center" Margin="0,0,0,4"/>
+                                            <TextBlock Text="Standard single-pump assignment behavior is strictly preserved. Toggle 'Enable Pump Connections' or select a connection mode (2, 3, or 4 Pumps) above to configure multi-pump groups." FontSize="12" Foreground="#90A4AE" HorizontalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <!-- Active Groups Configuration Canvas -->
+                                    <StackPanel Visibility="{Binding IsPumpConnectionEnabled, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <ItemsControl ItemsSource="{Binding PumpConnectionGroups}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <WrapPanel Orientation="Horizontal"/>
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <materialDesign:Card Width="390" Margin="0,0,16,16" Padding="14" Background="#1E272C" materialDesign:ElevationAssist.Elevation="Dp2">
+                                                        <StackPanel>
+                                                            <!-- Group Card Header -->
+                                                            <Grid Margin="0,0,0,10">
+                                                                <StackPanel Orientation="Horizontal">
+                                                                    <materialDesign:PackIcon Kind="ServerNetwork" Width="18" Height="18" Foreground="#80CBC4" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                                                    <TextBox Text="{Binding GroupName, UpdateSourceTrigger=PropertyChanged}"
+                                                                             Foreground="#80CBC4" FontWeight="Bold" FontSize="14"
+                                                                             Background="Transparent" BorderThickness="0,0,0,1" BorderBrush="#546E7A"
+                                                                             Width="160" VerticalAlignment="Center"/>
+                                                                </StackPanel>
+                                                                <Button Content="✕ Delete" Command="{Binding DataContext.RemovePumpConnectionGroupCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                        CommandParameter="{Binding}"
+                                                                        Style="{StaticResource MaterialDesignFlatButton}" Foreground="#E57373" Height="24" Padding="6,0" FontSize="10" HorizontalAlignment="Right"/>
+                                                            </Grid>
+
+                                                            <!-- Primary Pump Picker -->
+                                                            <Border Background="#263238" CornerRadius="6" Padding="10,8" Margin="0,0,0,10">
+                                                                <Grid>
+                                                                    <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="Auto"/>
+                                                                        <ColumnDefinition Width="*"/>
+                                                                    </Grid.ColumnDefinitions>
+                                                                    <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,10,0">
+                                                                        <TextBlock Text="PRIMARY PUMP" FontSize="10" FontWeight="Bold" Foreground="#FFD54F"/>
+                                                                        <TextBlock Text="(DSM Anchor &amp; Collections)" FontSize="9" Foreground="#90A4AE"/>
+                                                                    </StackPanel>
+                                                                    <ComboBox Grid.Column="1" ItemsSource="{Binding AvailablePrimaryPumps}"
+                                                                              SelectedItem="{Binding PrimaryPumpId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                                              Height="32" Foreground="#FFD54F" FontWeight="Bold" FontSize="13"
+                                                                              Background="#1E272C" Padding="8,4" HorizontalAlignment="Stretch">
+                                                                        <ComboBox.ItemTemplate>
+                                                                            <DataTemplate>
+                                                                                <TextBlock Text="{Binding StringFormat='Pump #{0}'}" Foreground="#FFD54F" FontWeight="Bold"/>
+                                                                            </DataTemplate>
+                                                                        </ComboBox.ItemTemplate>
+                                                                        <ComboBox.ItemContainerStyle>
+                                                                            <Style TargetType="ComboBoxItem">
+                                                                                <Setter Property="Foreground" Value="White"/>
+                                                                                <Setter Property="Background" Value="#263238"/>
+                                                                            </Style>
+                                                                        </ComboBox.ItemContainerStyle>
+                                                                    </ComboBox>
+                                                                </Grid>
+                                                            </Border>
+
+                                                            <!-- Connected Slaves Checkboxes -->
+                                                            <TextBlock Text="Connected Slave Pumps:" FontSize="11" FontWeight="Bold" Foreground="#CFD8DC" Margin="0,0,0,6"/>
+                                                            <Border Background="#263238" CornerRadius="6" Padding="8,6" Margin="0,0,0,8">
+                                                                <ItemsControl ItemsSource="{Binding CandidateSlaves}">
+                                                                    <ItemsControl.ItemsPanel>
+                                                                        <ItemsPanelTemplate>
+                                                                            <WrapPanel Orientation="Horizontal"/>
+                                                                        </ItemsPanelTemplate>
+                                                                    </ItemsControl.ItemsPanel>
+                                                                    <ItemsControl.ItemTemplate>
+                                                                        <DataTemplate>
+                                                                            <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                                                      IsEnabled="{Binding IsEnabled}"
+                                                                                      ToolTip="{Binding DisabledReason}"
+                                                                                      Margin="0,2,12,2"
+                                                                                      Style="{StaticResource MaterialDesignCheckBox}">
+                                                                                <TextBlock Text="{Binding PumpId, StringFormat='Pump #{0}'}" FontSize="12" Foreground="White"/>
+                                                                            </CheckBox>
+                                                                        </DataTemplate>
+                                                                    </ItemsControl.ItemTemplate>
+                                                                </ItemsControl>
+                                                            </Border>
+
+                                                            <!-- Group Validation Error if any -->
+                                                            <TextBlock Text="{Binding ValidationMessage}" FontSize="11" Foreground="#FF8A80" TextWrapping="Wrap"
+                                                                       Visibility="{Binding HasError, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                                                        </StackPanel>
+                                                    </materialDesign:Card>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </StackPanel>
+                            </materialDesign:Card>
+
+                            <!-- Section 4: Shift Cycle & Settlement Schedule Configuration -->
                             <materialDesign:Card Padding="16,12" Margin="0,0,0,16" Background="#263238">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
@@ -1502,6 +1789,14 @@
                                                 Style="{StaticResource MaterialDesignOutlinedButton}" Foreground="#81C784" BorderBrush="#81C784"
                                                 Height="32" Padding="12,0" Margin="0,0,8,0" FontSize="11"/>
 
+                                        <Button Content="☁️ Load from Cloud" Command="{Binding LoadCollectionsFromCloudCommand}"
+                                                Style="{StaticResource MaterialDesignOutlinedButton}" Foreground="#80CBC4" BorderBrush="#80CBC4"
+                                                Height="32" Padding="10,0" Margin="0,0,8,0" FontSize="11" ToolTip="Fetch collection types from Supabase for this Station ID"/>
+
+                                        <Button Content="☁️ Save to Cloud" Command="{Binding SaveCollectionsToCloudCommand}"
+                                                Style="{StaticResource MaterialDesignOutlinedButton}" Foreground="#FFD54F" BorderBrush="#FFD54F"
+                                                Height="32" Padding="10,0" Margin="0,0,8,0" FontSize="11" ToolTip="Save collection types to Supabase for this Station ID"/>
+
                                         <Button Content="Save Collection Types" Command="{Binding SaveCollectionsCommand}"
                                                 Style="{StaticResource MaterialDesignRaisedButton}" Background="#388E3C" BorderBrush="#388E3C" Foreground="White"
                                                 Height="34" Padding="16,0" FontSize="12" FontWeight="Bold"/>
@@ -1549,8 +1844,24 @@
                                                 </DataTemplate>
                                             </DataGridTemplateColumn.CellTemplate>
                                         </DataGridTemplateColumn>
-                                        <DataGridCheckBoxColumn Header="Requires TID / Batch" Binding="{Binding HasTidBatch, UpdateSourceTrigger=PropertyChanged}" Width="150"/>
-                                        <DataGridCheckBoxColumn Header="Active" Binding="{Binding IsActive, UpdateSourceTrigger=PropertyChanged}" Width="80"/>
+                                        <DataGridTemplateColumn Header="Requires TID / Batch" Width="150">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <CheckBox IsChecked="{Binding HasTidBatch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                              HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                              Style="{StaticResource MaterialDesignCheckBox}"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                        <DataGridTemplateColumn Header="Active" Width="80">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <CheckBox IsChecked="{Binding IsActive, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                              HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                              Style="{StaticResource MaterialDesignCheckBox}"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
                                         <DataGridTemplateColumn Header="Reorder / Actions" Width="200">
                                             <DataGridTemplateColumn.CellTemplate>
                                                 <DataTemplate>

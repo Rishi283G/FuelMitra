@@ -51,6 +51,10 @@ public partial class PumpExpensesViewModel : ObservableObject
 
     [ObservableProperty] private string _newCategoryName = "";
 
+    [ObservableProperty] private int _editingExpenseId;
+    [ObservableProperty] private string _formTitle = "Log New Pump Expense";
+    [ObservableProperty] private bool _isEditing;
+
     // Range selector for history
     [ObservableProperty] private DateTime _historyStartDate = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
     [ObservableProperty] private DateTime _historyEndDate = DateTime.Today;
@@ -59,7 +63,7 @@ public partial class PumpExpensesViewModel : ObservableObject
     [ObservableProperty] private double _totalPumpExpensesAmount;
     [ObservableProperty] private double _grandTotalExpensesAmount;
 
-    public ObservableCollection<PumpExpense> HistoryExpenses { get; } = new();
+    public ObservableCollection<PumpExpenseHistoryItemViewModel> HistoryExpenses { get; } = new();
     public ObservableCollection<CategoryExpenseItemViewModel> CategoryExpenses { get; } = new();
     public ObservableCollection<KhandharePetroleumEntry> HistoryKpEntries { get; } = new();
 
@@ -86,7 +90,13 @@ public partial class PumpExpensesViewModel : ObservableObject
         System.Windows.Application.Current.Dispatcher.InvokeAsync(async () => await LoadHistoryAsync());
     }
 
-    partial void OnExpenseDateChanged(DateTime value) => _ = LoadExpenseForDateAsync();
+    partial void OnExpenseDateChanged(DateTime value)
+    {
+        if (!IsEditing)
+        {
+            _ = ResetCategoryItemsAsync();
+        }
+    }
     partial void OnHistoryStartDateChanged(DateTime value) => _ = LoadHistoryAsync();
     partial void OnHistoryEndDateChanged(DateTime value) => _ = LoadHistoryAsync();
 
@@ -96,7 +106,10 @@ public partial class PumpExpensesViewModel : ObservableObject
         IsLoading = true;
         try
         {
-            await LoadExpenseForDateAsync();
+            if (EditingExpenseId == 0)
+            {
+                await ResetCategoryItemsAsync();
+            }
             await LoadHistoryAsync();
         }
         finally
@@ -105,79 +118,46 @@ public partial class PumpExpensesViewModel : ObservableObject
         }
     }
 
-    private async Task LoadExpenseForDateAsync()
+    [RelayCommand]
+    public async Task ClearFormAsync()
     {
+        EditingExpenseId = 0;
+        IsEditing = false;
+        FormTitle = "Log New Pump Expense";
+        Rent = 0;
+        Salary = 0;
+        TripSheetLoss = 0;
+        DsmShort = 0;
+        BankingExpenses = 0;
+        BpclPortalExpenses = 0;
+        FuelAndTravel = 0;
+        OilPurchase = 0;
+        RepairsAndMaintenance = 0;
+        ElectricityExpenses = 0;
+        OfficeExpenses = 0;
+        PrintingExpense = 0;
+        Remarks = "";
         StatusMessage = "";
-        
-        // Load active categories
+        await ResetCategoryItemsAsync();
+    }
+
+    private async Task ResetCategoryItemsAsync()
+    {
         var activeCategories = await _dbContext.ExpenseCategories
             .Where(c => c.IsActive)
             .OrderBy(c => c.Name)
             .ToListAsync();
 
         CategoryExpenses.Clear();
-
-        var result = await _pumpExpenseRepo.GetByDateAsync(ExpenseDate);
-        if (result.Success && result.Data != null)
+        foreach (var cat in activeCategories)
         {
-            var exp = result.Data;
-            Rent = exp.Rent;
-            Salary = exp.Salary;
-            TripSheetLoss = exp.TripSheetLoss;
-            DsmShort = exp.DsmShort;
-            BankingExpenses = exp.BankingExpenses;
-            BpclPortalExpenses = exp.BpclPortalExpenses;
-            FuelAndTravel = exp.FuelAndTravel;
-            OilPurchase = exp.OilPurchase;
-            RepairsAndMaintenance = exp.RepairsAndMaintenance;
-            ElectricityExpenses = exp.ElectricityExpenses;
-            OfficeExpenses = exp.OfficeExpenses;
-            PrintingExpense = exp.PrintingExpense;
-            Remarks = exp.Remarks;
-
-            // Load existing items for this PumpExpense
-            var items = await _dbContext.PumpExpenseCategoryItems
-                .Where(i => i.PumpExpenseId == exp.Id)
-                .ToListAsync();
-
-            foreach (var cat in activeCategories)
+            CategoryExpenses.Add(new CategoryExpenseItemViewModel
             {
-                var existingItem = items.FirstOrDefault(i => i.CategoryId == cat.Id);
-                CategoryExpenses.Add(new CategoryExpenseItemViewModel
-                {
-                    CategoryId = cat.Id,
-                    CategoryName = cat.Name,
-                    Amount = existingItem?.Amount ?? 0,
-                    Remarks = existingItem?.Remarks ?? ""
-                });
-            }
-        }
-        else
-        {
-            Rent = 0;
-            Salary = 0;
-            TripSheetLoss = 0;
-            DsmShort = 0;
-            BankingExpenses = 0;
-            BpclPortalExpenses = 0;
-            FuelAndTravel = 0;
-            OilPurchase = 0;
-            RepairsAndMaintenance = 0;
-            ElectricityExpenses = 0;
-            OfficeExpenses = 0;
-            PrintingExpense = 0;
-            Remarks = "";
-
-            foreach (var cat in activeCategories)
-            {
-                CategoryExpenses.Add(new CategoryExpenseItemViewModel
-                {
-                    CategoryId = cat.Id,
-                    CategoryName = cat.Name,
-                    Amount = 0,
-                    Remarks = ""
-                });
-            }
+                CategoryId = cat.Id,
+                CategoryName = cat.Name,
+                Amount = 0,
+                Remarks = ""
+            });
         }
     }
 
@@ -188,13 +168,11 @@ public partial class PumpExpensesViewModel : ObservableObject
         double pumpExpSum = 0;
         if (result.Success && result.Data != null)
         {
-            foreach (var item in result.Data.OrderByDescending(e => e.ExpenseDate))
+            foreach (var item in result.Data.OrderByDescending(e => e.ExpenseDate).ThenByDescending(e => e.Id))
             {
-                HistoryExpenses.Add(item);
-                pumpExpSum += (item.Rent + item.Salary + item.TripSheetLoss + item.DsmShort + 
-                               item.BankingExpenses + item.BpclPortalExpenses + item.FuelAndTravel + 
-                               item.OilPurchase + item.RepairsAndMaintenance + item.ElectricityExpenses + 
-                               item.OfficeExpenses + item.PrintingExpense + item.OtherAmount);
+                var vm = new PumpExpenseHistoryItemViewModel(item);
+                HistoryExpenses.Add(vm);
+                pumpExpSum += vm.TotalAmount;
             }
         }
         TotalPumpExpensesAmount = pumpExpSum;
@@ -264,6 +242,7 @@ public partial class PumpExpensesViewModel : ObservableObject
 
             var exp = new PumpExpense
             {
+                Id = EditingExpenseId,
                 ExpenseDate = ExpenseDate.Date,
                 Rent = Rent,
                 Salary = Salary,
@@ -326,9 +305,10 @@ public partial class PumpExpensesViewModel : ObservableObject
                 // Log changes in Audit Log
                 var auditLogService = App.Services.GetRequiredService<IAuditLogService>();
                 var username = currentUser?.Username ?? "Unknown";
-                await auditLogService.LogAsync("PumpExpenses", savedExp.Id, "Save", null, null, $"Total: {savedExp.Rent + savedExp.Salary + savedExp.OtherAmount}", username);
+                await auditLogService.LogAsync("PumpExpenses", savedExp.Id, EditingExpenseId > 0 ? "Update" : "Save", null, null, $"Total: {savedExp.Rent + savedExp.Salary + savedExp.OtherAmount}", username);
 
-                StatusMessage = "✅ Saved successfully!";
+                StatusMessage = EditingExpenseId > 0 ? "✅ Updated successfully!" : "✅ Saved new entry successfully!";
+                await ClearFormAsync();
                 await LoadHistoryAsync();
             }
             else
@@ -343,8 +323,14 @@ public partial class PumpExpensesViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task DeleteAsync(PumpExpense? exp)
+    private async Task DeleteAsync(object? param)
     {
+        PumpExpense? exp = param switch
+        {
+            PumpExpenseHistoryItemViewModel vm => vm.Expense,
+            PumpExpense e => e,
+            _ => null
+        };
         if (exp == null) return;
 
         // Verify DayLock
@@ -362,7 +348,7 @@ public partial class PumpExpensesViewModel : ObservableObject
         }
 
         var confirm = MessageBox.Show(
-            $"Are you sure you want to delete the pump expenses logged for {exp.ExpenseDate:dd-MMM-yyyy}?",
+            $"Are you sure you want to delete the expense entry (ID: #{exp.Id}) logged for {exp.ExpenseDate:dd-MMM-yyyy}?",
             "Confirm Delete", MessageBoxButton.YesNo, MessageBoxImage.Warning);
         
         if (confirm != MessageBoxResult.Yes) return;
@@ -375,8 +361,12 @@ public partial class PumpExpensesViewModel : ObservableObject
             var username = currentUser?.Username ?? "Unknown";
             await auditLogService.LogAsync("PumpExpenses", exp.Id, "Delete", null, $"Total: {exp.Rent + exp.Salary + exp.OtherAmount}", null, username);
 
-            StatusMessage = "✅ Log deleted successfully.";
-            await LoadAsync();
+            StatusMessage = "✅ Entry deleted successfully.";
+            if (EditingExpenseId == exp.Id)
+            {
+                await ClearFormAsync();
+            }
+            await LoadHistoryAsync();
         }
         else
         {
@@ -409,15 +399,60 @@ public partial class PumpExpensesViewModel : ObservableObject
 
         NewCategoryName = "";
         
-        // Reload list for the current selected date
-        await LoadExpenseForDateAsync();
+        // Reload list
+        await ResetCategoryItemsAsync();
     }
 
     [RelayCommand]
-    private void Edit(PumpExpense? exp)
+    private async Task Edit(object? param)
     {
+        PumpExpense? exp = param switch
+        {
+            PumpExpenseHistoryItemViewModel vm => vm.Expense,
+            PumpExpense e => e,
+            _ => null
+        };
         if (exp == null) return;
-        ExpenseDate = exp.ExpenseDate; // This triggers OnExpenseDateChanged and loads data automatically
+        EditingExpenseId = exp.Id;
+        IsEditing = true;
+        FormTitle = $"Edit Pump Expense (ID: #{exp.Id})";
+        ExpenseDate = exp.ExpenseDate;
+        Rent = exp.Rent;
+        Salary = exp.Salary;
+        TripSheetLoss = exp.TripSheetLoss;
+        DsmShort = exp.DsmShort;
+        BankingExpenses = exp.BankingExpenses;
+        BpclPortalExpenses = exp.BpclPortalExpenses;
+        FuelAndTravel = exp.FuelAndTravel;
+        OilPurchase = exp.OilPurchase;
+        RepairsAndMaintenance = exp.RepairsAndMaintenance;
+        ElectricityExpenses = exp.ElectricityExpenses;
+        OfficeExpenses = exp.OfficeExpenses;
+        PrintingExpense = exp.PrintingExpense;
+        Remarks = exp.Remarks;
+
+        // Load specific items for this expense
+        var activeCategories = await _dbContext.ExpenseCategories
+            .Where(c => c.IsActive)
+            .OrderBy(c => c.Name)
+            .ToListAsync();
+
+        var items = await _dbContext.PumpExpenseCategoryItems
+            .Where(i => i.PumpExpenseId == exp.Id)
+            .ToListAsync();
+
+        CategoryExpenses.Clear();
+        foreach (var cat in activeCategories)
+        {
+            var existingItem = items.FirstOrDefault(i => i.CategoryId == cat.Id);
+            CategoryExpenses.Add(new CategoryExpenseItemViewModel
+            {
+                CategoryId = cat.Id,
+                CategoryName = cat.Name,
+                Amount = existingItem?.Amount ?? 0,
+                Remarks = existingItem?.Remarks ?? ""
+            });
+        }
     }
 
     [RelayCommand]
@@ -553,5 +588,85 @@ public class CategoryExpenseItemViewModel : ObservableObject
     {
         get => _remarks;
         set => SetProperty(ref _remarks, value);
+    }
+}
+
+public record ExpenseBreakdownItem(string Name, double Amount, string ColorHex);
+
+public partial class PumpExpenseHistoryItemViewModel : ObservableObject
+{
+    public PumpExpense Expense { get; }
+
+    [ObservableProperty] private bool _isExpanded;
+
+    public int Id => Expense.Id;
+    public DateTime ExpenseDate => Expense.ExpenseDate;
+    public double Rent => Expense.Rent;
+    public double Salary => Expense.Salary;
+    public double TripSheetLoss => Expense.TripSheetLoss;
+    public double DsmShort => Expense.DsmShort;
+    public double BankingExpenses => Expense.BankingExpenses;
+    public double BpclPortalExpenses => Expense.BpclPortalExpenses;
+    public double FuelAndTravel => Expense.FuelAndTravel;
+    public double OilPurchase => Expense.OilPurchase;
+    public double RepairsAndMaintenance => Expense.RepairsAndMaintenance;
+    public double ElectricityExpenses => Expense.ElectricityExpenses;
+    public double OfficeExpenses => Expense.OfficeExpenses;
+    public double PrintingExpense => Expense.PrintingExpense;
+    public string OtherDescription => Expense.OtherDescription;
+    public double OtherAmount => Expense.OtherAmount;
+    public string Remarks => Expense.Remarks;
+    public DateTime CreatedAt => Expense.CreatedAt;
+
+    public double TotalAmount => Rent + Salary + TripSheetLoss + DsmShort + BankingExpenses +
+                                 BpclPortalExpenses + FuelAndTravel + OilPurchase + RepairsAndMaintenance +
+                                 ElectricityExpenses + OfficeExpenses + PrintingExpense + OtherAmount;
+
+    public List<ExpenseBreakdownItem> BreakdownItems
+    {
+        get
+        {
+            var list = new List<ExpenseBreakdownItem>();
+            if (Rent > 0) list.Add(new("Rent", Rent, "#D32F2F"));
+            if (Salary > 0) list.Add(new("Staff Salary", Salary, "#1976D2"));
+            if (TripSheetLoss > 0) list.Add(new("Trip Sheet Loss", TripSheetLoss, "#E64A19"));
+            if (DsmShort > 0) list.Add(new("DSM Short", DsmShort, "#C2185B"));
+            if (BankingExpenses > 0) list.Add(new("Banking Expenses", BankingExpenses, "#7B1FA2"));
+            if (BpclPortalExpenses > 0) list.Add(new("BPCL Portal", BpclPortalExpenses, "#512DA8"));
+            if (FuelAndTravel > 0) list.Add(new("Fuel & Travel", FuelAndTravel, "#303F9F"));
+            if (OilPurchase > 0) list.Add(new("Oil Purchase", OilPurchase, "#0288D1"));
+            if (RepairsAndMaintenance > 0) list.Add(new("Repairs & Maint.", RepairsAndMaintenance, "#00796B"));
+            if (ElectricityExpenses > 0) list.Add(new("Electricity", ElectricityExpenses, "#388E3C"));
+            if (OfficeExpenses > 0) list.Add(new("Office Expenses", OfficeExpenses, "#689F38"));
+            if (PrintingExpense > 0) list.Add(new("Printing", PrintingExpense, "#AFB42B"));
+            if (OtherAmount > 0) list.Add(new(!string.IsNullOrWhiteSpace(OtherDescription) ? $"Other ({OtherDescription})" : "Other Amount", OtherAmount, "#455A64"));
+
+            if (list.Count == 0)
+            {
+                list.Add(new("No breakdown amounts specified", 0, "#9E9E9E"));
+            }
+            return list;
+        }
+    }
+
+    public string ActiveFieldsSummary
+    {
+        get
+        {
+            var active = BreakdownItems.Where(b => b.Amount > 0).Select(b => $"{b.Name}: ₹{b.Amount:N0}").ToList();
+            if (active.Count == 0) return "—";
+            return string.Join(" • ", active);
+        }
+    }
+
+    [RelayCommand]
+    private void ToggleExpand()
+    {
+        IsExpanded = !IsExpanded;
+    }
+
+    public PumpExpenseHistoryItemViewModel(PumpExpense expense)
+    {
+        Expense = expense;
     }
 }

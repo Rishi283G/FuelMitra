@@ -8,6 +8,28 @@
         <converters:LitresConverter x:Key="LitresConverter"/>
         <converters:EqualToBoolConverter x:Key="EqualToBoolConverter"/>
         <converters:BoolToVisibilityConverter x:Key="BoolToVis" />
+
+        <Style TargetType="DataGrid" BasedOn="{StaticResource {x:Type DataGrid}}">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{DynamicResource MaterialDesign.Brush.Divider}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="HorizontalGridLinesBrush" Value="{DynamicResource MaterialDesign.Brush.Divider}" />
+            <Setter Property="VerticalGridLinesBrush" Value="{DynamicResource MaterialDesign.Brush.Divider}" />
+            <Setter Property="GridLinesVisibility" Value="All" />
+            <Setter Property="CanUserResizeColumns" Value="True" />
+            <Setter Property="materialDesign:DataGridAssist.CellPadding" Value="8 6" />
+        </Style>
+
+        <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource MaterialDesignDataGridColumnHeader}">
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Background" Value="#F8F9FA" />
+            <Setter Property="Foreground" Value="{DynamicResource MaterialDesign.Brush.Foreground}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource MaterialDesign.Brush.Divider}" />
+            <Setter Property="BorderThickness" Value="0,0,1,1" />
+            <Setter Property="Padding" Value="8,8" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+        </Style>
     </UserControl.Resources>
 
     <TabControl materialDesign:ColorZoneAssist.Mode="Standard" Margin="16">
@@ -181,28 +203,55 @@
         <TabItem Header="DSM Loss Dashboard">
             <Grid Margin="0,16,0,0">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="4*"/>
-                    <ColumnDefinition Width="6*"/>
+                    <ColumnDefinition Width="3.2*" MinWidth="280" MaxWidth="450"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="6.8*"/>
                 </Grid.ColumnDefinitions>
 
                 <!-- Left Column: DSM Accounts Summaries -->
-                <materialDesign:Card Grid.Column="0" Margin="0,0,8,0" Padding="16" UniformCornerRadius="8" Background="{DynamicResource MaterialDesign.Brush.Surface}">
+                <materialDesign:Card Grid.Column="0" Margin="0,0,4,0" Padding="16" UniformCornerRadius="8" Background="{DynamicResource MaterialDesign.Brush.Surface}">
                     <DockPanel LastChildFill="True">
                         <TextBlock DockPanel.Dock="Top" Text="DSM Accounts Overview" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" Margin="0,0,0,12"/>
                         
-                        <DataGrid ItemsSource="{Binding PersonalDsmSummaries}" SelectedItem="{Binding SelectedPersonalSummary}" AutoGenerateColumns="False" IsReadOnly="True" VerticalScrollBarVisibility="Auto">
+                        <DataGrid ItemsSource="{Binding PersonalDsmSummaries}" SelectedItem="{Binding SelectedPersonalSummary}" AutoGenerateColumns="False" IsReadOnly="True"
+                                  VerticalScrollBarVisibility="Auto" AlternatingRowBackground="#FAFAFA" GridLinesVisibility="All">
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="DSM Name" Binding="{Binding DsmName}" Width="2*" FontWeight="SemiBold"/>
-                                <DataGridTextColumn Header="Total Borrowed" Binding="{Binding TotalBorrowed, Converter={StaticResource CurrencyConverter}}" Width="2*"/>
-                                <DataGridTextColumn Header="Total Repaid" Binding="{Binding TotalRepaid, Converter={StaticResource CurrencyConverter}}" Width="2*" Foreground="Green"/>
-                                <DataGridTextColumn Header="Balance" Binding="{Binding Balance, Converter={StaticResource CurrencyConverter}}" Width="2*" FontWeight="Bold" Foreground="Red"/>
+                                <DataGridTextColumn Header="DSM Name" Binding="{Binding DsmName}" Width="1.8*" FontWeight="SemiBold"/>
+                                <DataGridTextColumn Header="Total Borrowed" Binding="{Binding TotalBorrowed, Converter={StaticResource CurrencyConverter}}" Width="1.4*">
+                                    <DataGridTextColumn.ElementStyle>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="HorizontalAlignment" Value="Right" />
+                                            <Setter Property="VerticalAlignment" Value="Center" />
+                                        </Style>
+                                    </DataGridTextColumn.ElementStyle>
+                                </DataGridTextColumn>
+                                <DataGridTextColumn Header="Total Repaid" Binding="{Binding TotalRepaid, Converter={StaticResource CurrencyConverter}}" Width="1.4*" Foreground="Green">
+                                    <DataGridTextColumn.ElementStyle>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="HorizontalAlignment" Value="Right" />
+                                            <Setter Property="VerticalAlignment" Value="Center" />
+                                        </Style>
+                                    </DataGridTextColumn.ElementStyle>
+                                </DataGridTextColumn>
+                                <DataGridTextColumn Header="Balance" Binding="{Binding Balance, Converter={StaticResource CurrencyConverter}}" Width="1.4*" FontWeight="Bold" Foreground="Red">
+                                    <DataGridTextColumn.ElementStyle>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="HorizontalAlignment" Value="Right" />
+                                            <Setter Property="VerticalAlignment" Value="Center" />
+                                        </Style>
+                                    </DataGridTextColumn.ElementStyle>
+                                </DataGridTextColumn>
                             </DataGrid.Columns>
                         </DataGrid>
                     </DockPanel>
                 </materialDesign:Card>
 
+                <!-- Splitter -->
+                <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Center" VerticalAlignment="Stretch"
+                              Background="Transparent" ResizeBehavior="PreviousAndNext" Cursor="SizeWE"/>
+
                 <!-- Right Column: Ledger -->
-                <Grid Grid.Column="1" Margin="8,0,0,0">
+                <Grid Grid.Column="2" Margin="4,0,0,0">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
@@ -238,14 +287,67 @@
                             
                             <TextBlock DockPanel.Dock="Top" Text="{Binding PersonalLedgerStatus}" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" Margin="0,0,0,8" FontSize="12"/>
 
-                            <DataGrid ItemsSource="{Binding PersonalLedger}" AutoGenerateColumns="False" IsReadOnly="True" VerticalScrollBarVisibility="Auto">
+                            <DataGrid ItemsSource="{Binding PersonalLedger}" AutoGenerateColumns="False" IsReadOnly="True"
+                                      VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                                      AlternatingRowBackground="#FAFAFA" GridLinesVisibility="All">
                                 <DataGrid.Columns>
-                                    <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat={}{0:dd-MMM-yyyy}}" Width="1.5*"/>
-                                    <DataGridTextColumn Header="Particulars" Binding="{Binding Description}" Width="3.5*"/>
-                                    <DataGridTextColumn Header="Remarks / Debtor" Binding="{Binding Remarks}" Width="2*"/>
-                                    <DataGridTextColumn Header="Debit (+)" Binding="{Binding Debit, Converter={StaticResource CurrencyConverter}}" Width="2*" Foreground="Red" FontWeight="SemiBold"/>
-                                    <DataGridTextColumn Header="Credit (-)" Binding="{Binding Credit, Converter={StaticResource CurrencyConverter}}" Width="2*" Foreground="Green" FontWeight="SemiBold"/>
-                                    <DataGridTextColumn Header="Balance" Binding="{Binding RunningBalance, Converter={StaticResource CurrencyConverter}}" Width="2*" FontWeight="Bold"/>
+                                    <!-- Date -->
+                                    <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat={}{0:dd-MMM-yyyy}}" Width="95" MinWidth="90">
+                                        <DataGridTextColumn.ElementStyle>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="HorizontalAlignment" Value="Center" />
+                                                <Setter Property="VerticalAlignment" Value="Center" />
+                                            </Style>
+                                        </DataGridTextColumn.ElementStyle>
+                                    </DataGridTextColumn>
+
+                                    <!-- Particulars -->
+                                    <DataGridTemplateColumn Header="Particulars" Width="1.5*" MinWidth="150">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Description}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Description}" VerticalAlignment="Center" Margin="2,0"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+
+                                    <!-- Remarks -->
+                                    <DataGridTemplateColumn Header="Remarks" Width="3*" MinWidth="270">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Remarks}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Remarks}" VerticalAlignment="Center" Margin="2,0"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+
+                                    <!-- Debit (+) -->
+                                    <DataGridTextColumn Header="Debit (+)" Binding="{Binding Debit, Converter={StaticResource CurrencyConverter}}" Width="95" MinWidth="85" Foreground="#D32F2F" FontWeight="SemiBold">
+                                        <DataGridTextColumn.ElementStyle>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="HorizontalAlignment" Value="Right" />
+                                                <Setter Property="VerticalAlignment" Value="Center" />
+                                            </Style>
+                                        </DataGridTextColumn.ElementStyle>
+                                    </DataGridTextColumn>
+
+                                    <!-- Credit (-) -->
+                                    <DataGridTextColumn Header="Credit (-)" Binding="{Binding Credit, Converter={StaticResource CurrencyConverter}}" Width="95" MinWidth="85" Foreground="#2E7D32" FontWeight="SemiBold">
+                                        <DataGridTextColumn.ElementStyle>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="HorizontalAlignment" Value="Right" />
+                                                <Setter Property="VerticalAlignment" Value="Center" />
+                                            </Style>
+                                        </DataGridTextColumn.ElementStyle>
+                                    </DataGridTextColumn>
+
+                                    <!-- Balance -->
+                                    <DataGridTextColumn Header="Balance" Binding="{Binding RunningBalance, Converter={StaticResource CurrencyConverter}}" Width="100" MinWidth="90" FontWeight="Bold">
+                                        <DataGridTextColumn.ElementStyle>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="HorizontalAlignment" Value="Right" />
+                                                <Setter Property="VerticalAlignment" Value="Center" />
+                                            </Style>
+                                        </DataGridTextColumn.ElementStyle>
+                                    </DataGridTextColumn>
                                 </DataGrid.Columns>
                             </DataGrid>
                         </DockPanel>

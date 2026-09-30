@@ -137,7 +137,13 @@ public class ShiftCalculationService
             dto.MsIIRate = msIIReadings.FirstOrDefault()?.Rate ?? 0;
             dto.MsIIAmount = msIIReadings.Sum(r => r.Amount);
 
-            var cngReadings = readingsWithPump.Where(x => PumpConfiguration.GetFuelTypeDisplayName(x.PumpId, x.Reading.NozzleNumber, shift.ShiftDate) == "CNG").Select(x => x.Reading).ToList();
+            var cngReadings = readingsWithPump.Where(x => {
+                var ft = PumpConfiguration.GetFuelTypeDisplayName(x.PumpId, x.Reading.NozzleNumber, shift.ShiftDate);
+                return string.Equals(ft, "CNG", StringComparison.OrdinalIgnoreCase) || 
+                       (ft != null && ft.Contains("CNG", StringComparison.OrdinalIgnoreCase)) ||
+                       string.Equals(x.Reading.FuelType, "CNG", StringComparison.OrdinalIgnoreCase) ||
+                       (x.Reading.FuelType != null && x.Reading.FuelType.Contains("CNG", StringComparison.OrdinalIgnoreCase));
+            }).Select(x => x.Reading).ToList();
             dto.CngLitres = cngReadings.Sum(r => r.SaleLitres);
             dto.CngRate = cngReadings.FirstOrDefault()?.Rate ?? 0;
             dto.CngAmount = cngReadings.Sum(r => r.Amount);

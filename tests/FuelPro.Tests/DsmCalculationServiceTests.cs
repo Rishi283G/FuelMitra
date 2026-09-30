@@ -79,6 +79,8 @@ public class DsmCalculationServiceTests
             .Options;
 
         using var context = new FuelPro.Data.FuelProDbContext(options);
+        try { context.Database.ExecuteSqlRaw("ALTER TABLE DsmEntries ADD COLUMN ConnectedPumpIdsJson TEXT NULL;"); } catch { }
+        try { context.Database.ExecuteSqlRaw("ALTER TABLE DsmPumpAssignments ADD COLUMN ConnectedPumpIdsJson TEXT NULL;"); } catch { }
 
         var shifts = context.Shifts.AsNoTracking().OrderByDescending(s => s.ShiftId).Take(20).ToList();
         System.Console.WriteLine("=== SHIFTS ===");

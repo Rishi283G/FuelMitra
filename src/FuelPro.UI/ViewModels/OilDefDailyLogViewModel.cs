@@ -145,14 +145,47 @@ public partial class OilDefDailyLogViewModel : ObservableObject
     {
         try
         {
-            ActiveProducts.Clear();
             var products = await _dbContext.ProductMasters
                 .Where(p => p.IsActive)
                 .OrderBy(p => p.ProductName)
                 .ToListAsync();
-            foreach (var p in products) ActiveProducts.Add(p);
-            SelectedProduct = ActiveProducts.FirstOrDefault();
-            SelectedProductForPurchase = ActiveProducts.FirstOrDefault();
+
+            // Distinct by ProductName in case of any lingering duplicate rows
+            var distinctProducts = products
+                .GroupBy(p => p.ProductName.Trim(), StringComparer.OrdinalIgnoreCase)
+                .Select(g => g.First())
+                .ToList();
+
+            var currentMonth = DateTime.Today;
+            foreach (var p in distinctProducts)
+            {
+                var latestLog = await _dbContext.OilDefDailyLogs
+                    .Where(l => l.ProductId == p.Id)
+                    .OrderByDescending(l => l.LogDate)
+                    .ThenByDescending(l => l.Id)
+                    .FirstOrDefaultAsync();
+
+                if (latestLog != null)
+                {
+                    p.CurrentStock = Math.Round(latestLog.RemainingStock, 2);
+                }
+                else
+                {
+                    var inv = await _dbContext.OilDefInventories
+                        .Where(i => i.ProductId == p.Id && i.Year == currentMonth.Year && i.Month == currentMonth.Month)
+                        .FirstOrDefaultAsync();
+                    p.CurrentStock = Math.Round(inv?.OpeningStock ?? 0.0, 2);
+                }
+            }
+
+            var prevSelectedId = SelectedProduct?.Id;
+            var prevPurchaseSelectedId = SelectedProductForPurchase?.Id;
+
+            ActiveProducts.Clear();
+            foreach (var p in distinctProducts) ActiveProducts.Add(p);
+
+            SelectedProduct = ActiveProducts.FirstOrDefault(p => p.Id == prevSelectedId) ?? ActiveProducts.FirstOrDefault();
+            SelectedProductForPurchase = ActiveProducts.FirstOrDefault(p => p.Id == prevPurchaseSelectedId) ?? ActiveProducts.FirstOrDefault();
         }
         catch (Exception ex)
         {
@@ -297,12 +330,11 @@ public partial class OilDefDailyLogViewModel : ObservableObject
             HistoryLogs.Clear();
             var logs = await _dbContext.OilDefDailyLogs
                 .Include(l => l.Product)
-                .Where(l => l.SoldQuantity > 0 || l.AddedQuantity > 0)
+                .Where(l => l.SoldQuantity > 0)
                 .OrderByDescending(l => l.LogDate)
                 .ThenByDescending(l => l.Id)
                 .Take(50)
                 .ToListAsync();
-            foreach (var l in logs) HistoryLogs.Add(l);
 
             HistoryAdjustments.Clear();
             var adjustments = await _dbContext.OilDefDailyLogs
@@ -312,7 +344,92 @@ public partial class OilDefDailyLogViewModel : ObservableObject
                 .ThenByDescending(l => l.Id)
                 .Take(50)
                 .ToListAsync();
-            foreach (var a in adjustments) HistoryAdjustments.Add(a);
+
+            var productIds = logs.Select(x => x.ProductId)
+                .Union(adjustments.Select(x => x.ProductId))
+                .Distinct()
+                .ToList();
+
+            var allProductLogs = await _dbContext.OilDefDailyLogs
+                .Where(l => productIds.Contains(l.ProductId))
+                .OrderBy(l => l.LogDate)
+                .ThenBy(l => l.Id)
+                .ToListAsync();
+
+            // Find the most recent overall log for each product (across all transactions)
+            var latestLogPerProduct = allProductLogs
+                .GroupBy(x => x.ProductId)
+                .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.LogDate).ThenByDescending(x => x.Id).First());
+
+            // Track which log is the latest sale/adjustment entry for each product
+            var mostRecentSalePerProduct = logs
+                .GroupBy(x => x.ProductId)
+                .ToDictionary(g => g.Key, g => g.First().Id);
+
+            var mostRecentAdjPerProduct = adjustments
+                .GroupBy(x => x.ProductId)
+                .ToDictionary(g => g.Key, g => g.First().Id);
+
+            foreach (var l in logs)
+            {
+                if (l.Product == null && l.ProductId > 0)
+                {
+                    l.Product = ActiveProducts.FirstOrDefault(p => p.Id == l.ProductId);
+                }
+
+                var productLogsOnDate = allProductLogs
+                    .Where(x => x.ProductId == l.ProductId && x.LogDate.Date == l.LogDate.Date)
+                    .ToList();
+
+                // Most recent sale for this product shows latest available stock and current day's adjustments; older entries preserve historical state
+                bool isLatestSale = mostRecentSalePerProduct.TryGetValue(l.ProductId, out var latestSaleId) && latestSaleId == l.Id;
+                if (isLatestSale)
+                {
+                    l.DayAdjustments = productLogsOnDate.Sum(x => x.AdjustmentQuantity);
+                    if (latestLogPerProduct.TryGetValue(l.ProductId, out var latestLog))
+                    {
+                        l.EffectiveStockAfter = latestLog.RemainingStock;
+                    }
+                    else
+                    {
+                        l.EffectiveStockAfter = l.RemainingStock;
+                    }
+                }
+                else
+                {
+                    l.DayAdjustments = 0.0;
+                    l.EffectiveStockAfter = l.RemainingStock;
+                }
+
+                HistoryLogs.Add(l);
+            }
+
+            foreach (var a in adjustments)
+            {
+                if (a.Product == null && a.ProductId > 0)
+                {
+                    a.Product = ActiveProducts.FirstOrDefault(p => p.Id == a.ProductId);
+                }
+
+                var productLogsOnDate = allProductLogs
+                    .Where(x => x.ProductId == a.ProductId && x.LogDate.Date == a.LogDate.Date)
+                    .ToList();
+
+                a.DayAdjustments = productLogsOnDate.Sum(x => x.AdjustmentQuantity);
+
+                // Most recent adjustment for this product shows latest available stock; older entries preserve historical stock
+                bool isLatestAdj = mostRecentAdjPerProduct.TryGetValue(a.ProductId, out var latestAdjId) && latestAdjId == a.Id;
+                if (isLatestAdj && latestLogPerProduct.TryGetValue(a.ProductId, out var latestLog))
+                {
+                    a.EffectiveStockAfter = latestLog.RemainingStock;
+                }
+                else
+                {
+                    a.EffectiveStockAfter = a.RemainingStock;
+                }
+
+                HistoryAdjustments.Add(a);
+            }
 
             HistoryPurchases.Clear();
             var purchases = await _dbContext.OilDefPurchases
@@ -320,7 +437,14 @@ public partial class OilDefDailyLogViewModel : ObservableObject
                 .OrderByDescending(p => p.PurchaseDate)
                 .Take(50)
                 .ToListAsync();
-            foreach (var p in purchases) HistoryPurchases.Add(p);
+            foreach (var p in purchases)
+            {
+                if (p.Product == null && p.ProductId > 0)
+                {
+                    p.Product = ActiveProducts.FirstOrDefault(x => x.Id == p.ProductId);
+                }
+                HistoryPurchases.Add(p);
+            }
         }
         catch (Exception ex)
         {
@@ -357,6 +481,73 @@ public partial class OilDefDailyLogViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private async Task DeletePurchaseAsync(OilDefPurchase purchase)
+    {
+        if (purchase == null) return;
+
+        var prodName = purchase.Product?.ProductName ?? purchase.ProductType;
+        var result = MessageBox.Show($"Are you sure you want to delete purchase of {purchase.Quantity:N2} unit(s) for '{prodName}' (Invoice: {purchase.InvoiceNumber}) on {purchase.PurchaseDate:dd-MMM-yyyy}?",
+            "Confirm Delete Purchase", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (result != MessageBoxResult.Yes) return;
+
+        IsLoading = true;
+        try
+        {
+            var entity = await _dbContext.OilDefPurchases.FindAsync(purchase.Id);
+            if (entity != null)
+            {
+                var prodId = entity.ProductId;
+                var purchaseDate = entity.PurchaseDate.Date;
+
+                _dbContext.OilDefPurchases.Remove(entity);
+                await _dbContext.SaveChangesAsync();
+
+                // Recalculate day's AddedQuantity on OilDefDailyLog
+                var dayPurchasesSum = await _dbContext.OilDefPurchases
+                    .Where(p => p.ProductId == prodId && p.PurchaseDate.Date == purchaseDate)
+                    .SumAsync(p => p.Quantity);
+
+                var dailyLog = await _dbContext.OilDefDailyLogs
+                    .FirstOrDefaultAsync(l => l.ProductId == prodId && l.LogDate.Date == purchaseDate && l.AddedQuantity > 0);
+
+                if (dailyLog != null)
+                {
+                    dailyLog.AddedQuantity = dayPurchasesSum;
+                    if (dailyLog.AddedQuantity == 0 && dailyLog.SoldQuantity == 0 && dailyLog.AdjustmentQuantity == 0)
+                    {
+                        _dbContext.OilDefDailyLogs.Remove(dailyLog);
+                    }
+                    else
+                    {
+                        _dbContext.Entry(dailyLog).State = EntityState.Modified;
+                    }
+                    await _dbContext.SaveChangesAsync();
+                }
+
+                await RecalculateRunningBalancesAsync(prodId, purchaseDate);
+            }
+
+            if (EditingPurchase?.Id == purchase.Id)
+            {
+                CancelEditPurchase();
+            }
+
+            await LoadDashboardDataAsync();
+            await LoadProductsAsync();
+            await LoadHistoryAsync();
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to delete purchase {PurchaseId}", purchase.Id);
+            MessageBox.Show($"Failed to delete purchase: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    [RelayCommand]
     private void EditSaleLog(OilDefDailyLog log)
     {
         if (log == null) return;
@@ -364,7 +555,7 @@ public partial class OilDefDailyLogViewModel : ObservableObject
         SaleDate = log.LogDate;
         SelectedProduct = ActiveProducts.FirstOrDefault(p => p.Id == log.ProductId);
         SaleQty = log.SoldQuantity;
-        SaleRate = log.OverrideSaleRate ?? log.Product?.DefaultSaleRate ?? 0;
+        SaleRate = log.EffectiveRate;
     }
 
     [RelayCommand]
@@ -392,8 +583,20 @@ public partial class OilDefDailyLogViewModel : ObservableObject
             var entity = await _dbContext.OilDefDailyLogs.FindAsync(log.Id);
             if (entity != null)
             {
-                _dbContext.OilDefDailyLogs.Remove(entity);
+                var prodId = entity.ProductId;
+                var logDate = entity.LogDate.Date;
+                if (entity.AddedQuantity == 0 && entity.AdjustmentQuantity == 0)
+                {
+                    _dbContext.OilDefDailyLogs.Remove(entity);
+                }
+                else
+                {
+                    entity.SoldQuantity = 0;
+                    entity.OverrideSaleRate = null;
+                    _dbContext.Entry(entity).State = EntityState.Modified;
+                }
                 await _dbContext.SaveChangesAsync();
+                await RecalculateRunningBalancesAsync(prodId, logDate);
             }
 
             if (EditingSaleLog?.Id == log.Id)
@@ -402,6 +605,7 @@ public partial class OilDefDailyLogViewModel : ObservableObject
             }
 
             await LoadDashboardDataAsync();
+            await LoadProductsAsync();
             await LoadHistoryAsync();
         }
         catch (Exception ex)
@@ -426,7 +630,17 @@ public partial class OilDefDailyLogViewModel : ObservableObject
             {
                 var prodId = entity.ProductId;
                 var logDate = entity.LogDate.Date;
-                _dbContext.OilDefDailyLogs.Remove(entity);
+                if (entity.SoldQuantity == 0 && entity.AddedQuantity == 0)
+                {
+                    _dbContext.OilDefDailyLogs.Remove(entity);
+                }
+                else
+                {
+                    entity.AdjustmentQuantity = 0;
+                    entity.AdjustmentType = null;
+                    entity.Remarks = null;
+                    _dbContext.Entry(entity).State = EntityState.Modified;
+                }
                 await _dbContext.SaveChangesAsync();
                 await RecalculateRunningBalancesAsync(prodId, logDate);
             }
@@ -437,6 +651,7 @@ public partial class OilDefDailyLogViewModel : ObservableObject
             }
 
             await LoadDashboardDataAsync();
+            await LoadProductsAsync();
             await LoadHistoryAsync();
         }
         catch (Exception ex)
@@ -495,47 +710,48 @@ public partial class OilDefDailyLogViewModel : ObservableObject
                     return;
                 }
 
-                // If product or date changed, clean up the old log record
-                if (EditingSaleLog.ProductId != SelectedProduct.Id || EditingSaleLog.LogDate.Date != SaleDate.Date)
+                var entity = await _dbContext.OilDefDailyLogs.FindAsync(EditingSaleLog.Id);
+                if (entity != null)
                 {
-                    var oldLog = await _dbContext.OilDefDailyLogs.FindAsync(EditingSaleLog.Id);
-                    if (oldLog != null)
+                    var oldProductId = entity.ProductId;
+                    var oldDate = entity.LogDate.Date;
+                    var newDate = SaleDate.Date;
+
+                    entity.ProductId = SelectedProduct.Id;
+                    entity.ProductType = SelectedProduct.Category;
+                    entity.LogDate = newDate == DateTime.Today ? DateTime.Now : newDate;
+                    entity.SoldQuantity = SaleQty;
+                    entity.OverrideSaleRate = Math.Abs(SaleRate - SelectedProduct.DefaultSaleRate) > 0.01 ? SaleRate : null;
+                    _dbContext.Entry(entity).State = EntityState.Modified;
+                    await _dbContext.SaveChangesAsync();
+
+                    if (oldProductId != SelectedProduct.Id || oldDate != newDate)
                     {
-                        oldLog.SoldQuantity = 0;
-                        oldLog.OverrideSaleRate = null;
-                        _dbContext.Entry(oldLog).State = EntityState.Modified;
-                        await _dbContext.SaveChangesAsync();
-                        await RecalculateRunningBalancesAsync(oldLog.ProductId, oldLog.LogDate);
+                        await RecalculateRunningBalancesAsync(oldProductId, oldDate);
                     }
+                    await RecalculateRunningBalancesAsync(SelectedProduct.Id, newDate);
+
+                    MessageBox.Show("Sale entry updated and stock recalculated successfully!", "PyroSync — Success", MessageBoxButton.OK, MessageBoxImage.Information);
                 }
-            }
-
-            var log = await _dbContext.OilDefDailyLogs
-                .FirstOrDefaultAsync(l => l.ProductId == SelectedProduct.Id && l.LogDate == SaleDate.Date);
-
-            if (log != null)
-            {
-                log.SoldQuantity = SaleQty;
-                log.OverrideSaleRate = Math.Abs(SaleRate - SelectedProduct.DefaultSaleRate) > 0.01 ? SaleRate : null;
-                _dbContext.Entry(log).State = EntityState.Modified;
             }
             else
             {
-                log = new OilDefDailyLog
+                var newLog = new OilDefDailyLog
                 {
-                    LogDate = SaleDate.Date,
+                    LogDate = SaleDate.Date == DateTime.Today ? DateTime.Now : SaleDate.Date,
                     ProductId = SelectedProduct.Id,
                     ProductType = SelectedProduct.Category,
                     SoldQuantity = SaleQty,
-                    OverrideSaleRate = Math.Abs(SaleRate - SelectedProduct.DefaultSaleRate) > 0.01 ? SaleRate : null
+                    OverrideSaleRate = Math.Abs(SaleRate - SelectedProduct.DefaultSaleRate) > 0.01 ? SaleRate : null,
+                    AddedQuantity = 0,
+                    AdjustmentQuantity = 0
                 };
-                _dbContext.OilDefDailyLogs.Add(log);
+                _dbContext.OilDefDailyLogs.Add(newLog);
+                await _dbContext.SaveChangesAsync();
+                await RecalculateRunningBalancesAsync(SelectedProduct.Id, SaleDate.Date);
+
+                MessageBox.Show("Sales logged and stock recalculated successfully!", "PyroSync — Success", MessageBoxButton.OK, MessageBoxImage.Information);
             }
-
-            await _dbContext.SaveChangesAsync();
-            await RecalculateRunningBalancesAsync(SelectedProduct.Id, SaleDate.Date);
-
-            MessageBox.Show("Sales logged and stock recalculated successfully!", "PyroSync — Success", MessageBoxButton.OK, MessageBoxImage.Information);
             
             // Reset
             SaleQty = 0;
@@ -543,6 +759,7 @@ public partial class OilDefDailyLogViewModel : ObservableObject
             EditingSaleLog = null; // Clear edit state
 
             await LoadDashboardDataAsync();
+            await LoadProductsAsync();
             await LoadHistoryAsync();
         }
         catch (Exception ex)
@@ -609,35 +826,42 @@ public partial class OilDefDailyLogViewModel : ObservableObject
                 if (oldProductId != SelectedProductForPurchase.Id || oldPurchaseDate != PurchaseDate.Date)
                 {
                     var totalPurchasedOnOldDay = await _dbContext.OilDefPurchases
-                        .Where(p => p.ProductId == oldProductId && p.PurchaseDate == oldPurchaseDate)
+                        .Where(p => p.ProductId == oldProductId && p.PurchaseDate.Date == oldPurchaseDate)
                         .SumAsync(p => p.Quantity);
 
                     var oldLog = await _dbContext.OilDefDailyLogs
-                        .FirstOrDefaultAsync(l => l.ProductId == oldProductId && l.LogDate == oldPurchaseDate);
+                        .FirstOrDefaultAsync(l => l.ProductId == oldProductId && l.LogDate.Date == oldPurchaseDate && l.AddedQuantity > 0);
 
                     if (oldLog != null)
                     {
                         oldLog.AddedQuantity = totalPurchasedOnOldDay;
-                        _dbContext.Entry(oldLog).State = EntityState.Modified;
+                        if (oldLog.AddedQuantity == 0 && oldLog.SoldQuantity == 0 && oldLog.AdjustmentQuantity == 0)
+                        {
+                            _dbContext.OilDefDailyLogs.Remove(oldLog);
+                        }
+                        else
+                        {
+                            _dbContext.Entry(oldLog).State = EntityState.Modified;
+                        }
                         await _dbContext.SaveChangesAsync();
-                        await RecalculateRunningBalancesAsync(oldProductId, oldPurchaseDate);
                     }
+                    await RecalculateRunningBalancesAsync(oldProductId, oldPurchaseDate);
                 }
 
                 // Recalculate new day/product
                 var totalPurchasedOnDay = await _dbContext.OilDefPurchases
-                    .Where(p => p.ProductId == SelectedProductForPurchase.Id && p.PurchaseDate == PurchaseDate.Date)
+                    .Where(p => p.ProductId == SelectedProductForPurchase.Id && p.PurchaseDate.Date == PurchaseDate.Date)
                     .SumAsync(p => p.Quantity);
 
                 var log = await _dbContext.OilDefDailyLogs
-                    .FirstOrDefaultAsync(l => l.ProductId == SelectedProductForPurchase.Id && l.LogDate == PurchaseDate.Date);
+                    .FirstOrDefaultAsync(l => l.ProductId == SelectedProductForPurchase.Id && l.LogDate.Date == PurchaseDate.Date && l.AddedQuantity > 0);
 
                 if (log != null)
                 {
                     log.AddedQuantity = totalPurchasedOnDay;
                     _dbContext.Entry(log).State = EntityState.Modified;
                 }
-                else
+                else if (totalPurchasedOnDay > 0)
                 {
                     log = new OilDefDailyLog
                     {
@@ -672,11 +896,11 @@ public partial class OilDefDailyLogViewModel : ObservableObject
 
                 // Aggregate total purchases of this product on this day to update AddedQuantity in log
                 var totalPurchasedOnDay = await _dbContext.OilDefPurchases
-                    .Where(p => p.ProductId == SelectedProductForPurchase.Id && p.PurchaseDate == PurchaseDate.Date)
+                    .Where(p => p.ProductId == SelectedProductForPurchase.Id && p.PurchaseDate.Date == PurchaseDate.Date)
                     .SumAsync(p => p.Quantity);
 
                 var log = await _dbContext.OilDefDailyLogs
-                    .FirstOrDefaultAsync(l => l.ProductId == SelectedProductForPurchase.Id && l.LogDate == PurchaseDate.Date);
+                    .FirstOrDefaultAsync(l => l.ProductId == SelectedProductForPurchase.Id && l.LogDate.Date == PurchaseDate.Date && l.AddedQuantity > 0);
 
                 if (log != null)
                 {
@@ -709,6 +933,7 @@ public partial class OilDefDailyLogViewModel : ObservableObject
             EditingPurchase = null; // Clear edit state
 
             await LoadDashboardDataAsync();
+            await LoadProductsAsync();
             await LoadHistoryAsync();
         }
         catch (Exception ex)
@@ -763,19 +988,15 @@ public partial class OilDefDailyLogViewModel : ObservableObject
                     logToEdit.AdjustmentQuantity = effectiveQty;
                     logToEdit.AdjustmentType = SelectedAdjustmentType;
                     logToEdit.Remarks = AdjustmentRemarks;
+                    logToEdit.LogDate = AdjustmentDate.Date.Add(DateTime.Now.TimeOfDay);
                     _dbContext.Entry(logToEdit).State = EntityState.Modified;
                 }
             }
             else
             {
-                var now = DateTime.Now;
-                DateTime entryTimeStamp = AdjustmentDate.Date == DateTime.Today
-                    ? now
-                    : AdjustmentDate.Date.Add(now.TimeOfDay);
-
                 var newAdjustmentLog = new OilDefDailyLog
                 {
-                    LogDate = entryTimeStamp,
+                    LogDate = AdjustmentDate.Date == DateTime.Today ? DateTime.Now : AdjustmentDate.Date,
                     ProductId = SelectedProduct.Id,
                     ProductType = SelectedProduct.Category,
                     AdjustmentQuantity = effectiveQty,
@@ -798,6 +1019,7 @@ public partial class OilDefDailyLogViewModel : ObservableObject
             EditingAdjustmentLog = null; // Clear edit state
 
             await LoadDashboardDataAsync();
+            await LoadProductsAsync();
             await LoadHistoryAsync();
         }
         catch (Exception ex)
@@ -851,7 +1073,7 @@ public partial class OilDefDailyLogViewModel : ObservableObject
                 var tracked = await _dbContext.ProductMasters.FindAsync(EditingProduct.Id);
                 if (tracked != null)
                 {
-                    tracked.ProductName = NewProductName;
+                    tracked.ProductName = NewProductName.Trim();
                     tracked.Category = NewProductCategory;
                     tracked.Unit = NewProductUnit;
                     tracked.DefaultSaleRate = NewProductDefaultSaleRate;
@@ -862,9 +1084,17 @@ public partial class OilDefDailyLogViewModel : ObservableObject
             }
             else
             {
+                var exists = await _dbContext.ProductMasters
+                    .AnyAsync(p => p.ProductName.ToLower() == NewProductName.Trim().ToLower());
+                if (exists)
+                {
+                    MessageBox.Show($"Product '{NewProductName.Trim()}' already exists in the catalog.", "Duplicate Product", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
                 var product = new ProductMaster
                 {
-                    ProductName = NewProductName,
+                    ProductName = NewProductName.Trim(),
                     Category = NewProductCategory,
                     Unit = NewProductUnit,
                     DefaultSaleRate = NewProductDefaultSaleRate,
@@ -921,10 +1151,10 @@ public partial class OilDefDailyLogViewModel : ObservableObject
         IsLoading = true;
         try
         {
-            // Build the print DTO structure
-            var oilProductsList = new List<object>();
-            var defProductsList = new List<object>();
+            var start = StartDate.Date;
+            var endOfDay = EndDate.Date.AddDays(1);
 
+            // Build the print DTO structure
             var products = await _dbContext.ProductMasters.Where(p => p.IsActive).ToListAsync();
 
             var oilProducts = products.Where(p => p.Category == "Oil").ToList();
@@ -937,21 +1167,23 @@ public partial class OilDefDailyLogViewModel : ObservableObject
                 {
                     // opening
                     var lastLogBefore = await _dbContext.OilDefDailyLogs
-                        .Where(l => l.ProductId == product.Id && l.LogDate < StartDate.Date)
+                        .Where(l => l.ProductId == product.Id && l.LogDate < start)
                         .OrderByDescending(l => l.LogDate)
+                        .ThenByDescending(l => l.Id)
                         .FirstOrDefaultAsync();
                     double opening = lastLogBefore?.RemainingStock ?? 0.0;
 
                     // closing
                     var lastLogInRange = await _dbContext.OilDefDailyLogs
-                        .Where(l => l.ProductId == product.Id && l.LogDate >= StartDate.Date && l.LogDate <= EndDate.Date)
+                        .Where(l => l.ProductId == product.Id && l.LogDate >= start && l.LogDate < endOfDay)
                         .OrderByDescending(l => l.LogDate)
+                        .ThenByDescending(l => l.Id)
                         .FirstOrDefaultAsync();
                     double closing = lastLogInRange?.RemainingStock ?? opening;
 
                     // purchases
                     var purchases = await _dbContext.OilDefPurchases
-                        .Where(p => p.ProductId == product.Id && p.PurchaseDate >= StartDate.Date && p.PurchaseDate <= EndDate.Date)
+                        .Where(p => p.ProductId == product.Id && p.PurchaseDate >= start && p.PurchaseDate < endOfDay)
                         .ToListAsync();
                     double pQty = purchases.Sum(p => p.Quantity);
                     double pVal = purchases.Sum(p => p.TotalCost);
@@ -964,18 +1196,19 @@ public partial class OilDefDailyLogViewModel : ObservableObject
                     else
                     {
                         var lastPurchase = await _dbContext.OilDefPurchases
-                            .Where(p => p.ProductId == product.Id && p.PurchaseDate < StartDate.Date)
+                            .Where(p => p.ProductId == product.Id && p.PurchaseDate < start)
                             .OrderByDescending(p => p.PurchaseDate)
                             .FirstOrDefaultAsync();
                         avgCost = lastPurchase?.UnitPrice ?? product.DefaultSaleRate * 0.8;
                     }
 
-                    // sales
+                    // sales and adjustments
                     var logs = await _dbContext.OilDefDailyLogs
-                        .Where(l => l.ProductId == product.Id && l.LogDate >= StartDate.Date && l.LogDate <= EndDate.Date)
+                        .Where(l => l.ProductId == product.Id && l.LogDate >= start && l.LogDate < endOfDay)
                         .ToListAsync();
                     double sQty = logs.Sum(l => l.SoldQuantity);
                     double sVal = logs.Sum(l => l.SoldQuantity * (l.OverrideSaleRate ?? product.DefaultSaleRate));
+                    double adjQty = logs.Sum(l => l.AdjustmentQuantity);
 
                     double profit = sVal - (sQty * avgCost);
 
@@ -986,6 +1219,7 @@ public partial class OilDefDailyLogViewModel : ObservableObject
                         openingStock = opening,
                         purchasedQty = pQty,
                         soldQty = sQty,
+                        adjustedQty = adjQty,
                         closingStock = closing,
                         purchaseValue = pVal,
                         salesValue = sVal,
@@ -998,18 +1232,68 @@ public partial class OilDefDailyLogViewModel : ObservableObject
             var oilRows = await BuildProductPrintRows(oilProducts);
             var defRows = await BuildProductPrintRows(defProducts);
 
+            // Fetch adjustments in range
+            var adjustmentsList = await _dbContext.OilDefDailyLogs
+                .Include(l => l.Product)
+                .Where(l => l.LogDate >= start && l.LogDate < endOfDay && l.AdjustmentQuantity != 0)
+                .OrderByDescending(l => l.LogDate)
+                .ThenByDescending(l => l.Id)
+                .Select(adj => new
+                {
+                    date = adj.LogDate.ToString("dd-MMM-yyyy hh:mm tt"),
+                    productName = adj.Product != null ? adj.Product.ProductName : adj.ProductType,
+                    category = adj.Product != null ? adj.Product.Category : adj.ProductType,
+                    unit = adj.Product != null ? adj.Product.Unit : "Units",
+                    adjustmentQty = adj.AdjustmentQuantity,
+                    remainingStock = adj.RemainingStock,
+                    type = !string.IsNullOrWhiteSpace(adj.AdjustmentType) ? adj.AdjustmentType : "—",
+                    remarks = adj.Remarks ?? ""
+                })
+                .ToListAsync();
+
+            var oilProdIds = oilProducts.Select(p => p.Id).ToList();
+            var defProdIds = defProducts.Select(p => p.Id).ToList();
+
+            var oilAdjustedQty = await _dbContext.OilDefDailyLogs
+                .Where(l => l.LogDate >= start && l.LogDate < endOfDay && oilProdIds.Contains(l.ProductId))
+                .SumAsync(l => l.AdjustmentQuantity);
+
+            var defAdjustedQty = await _dbContext.OilDefDailyLogs
+                .Where(l => l.LogDate >= start && l.LogDate < endOfDay && defProdIds.Contains(l.ProductId))
+                .SumAsync(l => l.AdjustmentQuantity);
+
+            // Calculate total adjustment loss
+            double totalAdjustmentLoss = 0;
+            var negAdjustments = await _dbContext.OilDefDailyLogs
+                .Include(l => l.Product)
+                .Where(l => l.LogDate >= start && l.LogDate < endOfDay && l.AdjustmentQuantity < 0)
+                .ToListAsync();
+            foreach (var neg in negAdjustments)
+            {
+                double rate = neg.OverrideSaleRate ?? neg.Product?.DefaultSaleRate ?? 0;
+                totalAdjustmentLoss += Math.Abs(neg.AdjustmentQuantity) * rate;
+            }
+
+            var settings = await _dbContext.Settings.FirstOrDefaultAsync();
+            var stationName = !string.IsNullOrWhiteSpace(settings?.StationDisplayName) ? settings.StationDisplayName : (!string.IsNullOrWhiteSpace(settings?.PumpStationName) ? settings.PumpStationName : "Mitali Service Station");
+
             var payload = new
             {
-                stationName = _dbContext.Settings.Select(s => s.PumpStationName).FirstOrDefault() ?? "PyroSync",
+                stationName = stationName,
                 startDate = StartDate.ToString("dd-MMM-yyyy"),
                 endDate = EndDate.ToString("dd-MMM-yyyy"),
                 oilProducts = oilRows,
                 defProducts = defRows,
+                adjustments = adjustmentsList,
+                totalAdjustmentLoss = totalAdjustmentLoss,
+                totalSalesRevenue = OilSalesValue + DefSalesValue,
+                totalProfit = OilGrossProfit + DefGrossProfit,
                 oilSummary = new
                 {
                     openingStock = OilOpening,
                     purchasedQty = OilPurchasedQty,
                     soldQty = OilSoldQty,
+                    adjustedQty = oilAdjustedQty,
                     closingStock = OilClosing,
                     purchaseValue = OilPurchaseValue,
                     salesValue = OilSalesValue,
@@ -1020,6 +1304,7 @@ public partial class OilDefDailyLogViewModel : ObservableObject
                     openingStock = DefOpening,
                     purchasedQty = DefPurchasedQty,
                     soldQty = DefSoldQty,
+                    adjustedQty = defAdjustedQty,
                     closingStock = DefClosing,
                     purchaseValue = DefPurchaseValue,
                     salesValue = DefSalesValue,
@@ -1041,15 +1326,30 @@ public partial class OilDefDailyLogViewModel : ObservableObject
     {
         try
         {
-            var prevRemaining = await _dbContext.OilDefDailyLogs
-                .Where(l => l.ProductId == productId && l.LogDate < fromDate)
+            var from = fromDate.Date;
+            var prevLog = await _dbContext.OilDefDailyLogs
+                .Where(l => l.ProductId == productId && l.LogDate.Date < from)
                 .OrderByDescending(l => l.LogDate)
-                .Select(l => l.RemainingStock)
+                .ThenByDescending(l => l.Id)
                 .FirstOrDefaultAsync();
 
+            double prevRemaining = 0.0;
+            if (prevLog != null)
+            {
+                prevRemaining = prevLog.RemainingStock;
+            }
+            else
+            {
+                var monthInv = await _dbContext.OilDefInventories
+                    .Where(i => i.ProductId == productId && i.Year == from.Year && i.Month == from.Month)
+                    .FirstOrDefaultAsync();
+                prevRemaining = monthInv?.OpeningStock ?? 0.0;
+            }
+
             var subsequentLogs = await _dbContext.OilDefDailyLogs
-                .Where(l => l.ProductId == productId && l.LogDate >= fromDate)
+                .Where(l => l.ProductId == productId && l.LogDate.Date >= from)
                 .OrderBy(l => l.LogDate)
+                .ThenBy(l => l.Id)
                 .ToListAsync();
 
             double running = prevRemaining;

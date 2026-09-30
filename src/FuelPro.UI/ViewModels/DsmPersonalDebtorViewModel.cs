@@ -46,7 +46,20 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
 {
     private readonly FuelProDbContext _dbContext;
     private readonly PrintService _printService;
+    private readonly IShiftRepository _shiftRepo;
+    private readonly IFeatureToggleService _featureService;
     private readonly ILogger _logger = Log.ForContext<DsmPersonalDebtorViewModel>();
+
+    // Shift selection
+    public ObservableCollection<string> AvailableShifts { get; } = new() { "Shift A", "Shift B" };
+    [ObservableProperty] private string _selectedShift = "Shift A";
+
+    // Dynamic Personal Ledger
+    public bool IsPersonalLedgerEnabled => _featureService?.IsFeatureEnabled("Operations_PersonalLedger", true) ?? true;
+    public string PersonalLedgerTitle => _featureService?.GetFeatureDisplayName("Operations_PersonalLedger", "Personal Ledger") ?? "Personal Ledger";
+    public string PersonalLedgerTabHeader => $"{PersonalLedgerTitle} Ledger";
+    public string PrintPersonalLedgerText => $"Print {PersonalLedgerTitle}";
+    public string TotalPersonalLedgerLabel => $"Total {PersonalLedgerTitle}: ";
 
     [ObservableProperty] private bool _isLoading;
 
@@ -123,6 +136,32 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
         _printService = App.Services.GetRequiredService<PrintService>();
         _excelExportService = App.Services.GetRequiredService<ExcelExportService>();
         _collectionTypeService = App.Services.GetService<ICollectionTypeService>();
+        _shiftRepo = App.Services.GetRequiredService<IShiftRepository>();
+        _featureService = App.Services.GetRequiredService<IFeatureToggleService>();
+
+        _featureService.FeatureConfigurationChanged += () =>
+        {
+            var dispatcher = System.Windows.Application.Current?.Dispatcher;
+            if (dispatcher != null && !dispatcher.CheckAccess())
+            {
+                dispatcher.BeginInvoke(() =>
+                {
+                    OnPropertyChanged(nameof(IsPersonalLedgerEnabled));
+                    OnPropertyChanged(nameof(PersonalLedgerTitle));
+                    OnPropertyChanged(nameof(PersonalLedgerTabHeader));
+                    OnPropertyChanged(nameof(PrintPersonalLedgerText));
+                    OnPropertyChanged(nameof(TotalPersonalLedgerLabel));
+                });
+            }
+            else
+            {
+                OnPropertyChanged(nameof(IsPersonalLedgerEnabled));
+                OnPropertyChanged(nameof(PersonalLedgerTitle));
+                OnPropertyChanged(nameof(PersonalLedgerTabHeader));
+                OnPropertyChanged(nameof(PrintPersonalLedgerText));
+                OnPropertyChanged(nameof(TotalPersonalLedgerLabel));
+            }
+        };
 
         if (_collectionTypeService != null)
         {
@@ -153,7 +192,11 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
             if (_collectionTypeService != null)
             {
                 var activeTypes = await _collectionTypeService.GetActiveCollectionTypesAsync();
-                foreach (var t in activeTypes.Where(t => !t.Code.Equals("CASH_DEPOSIT", StringComparison.OrdinalIgnoreCase) && !t.DisplayName.Equals("Cash", StringComparison.OrdinalIgnoreCase)))
+                foreach (var t in activeTypes.Where(t => !t.Code.Equals("CASH_DEPOSIT", StringComparison.OrdinalIgnoreCase) && 
+                                                         !t.Code.Equals("CASH_DEPOSIT_BANK", StringComparison.OrdinalIgnoreCase) &&
+                                                         !t.DisplayName.Equals("Cash", StringComparison.OrdinalIgnoreCase) &&
+                                                         !t.DisplayName.Contains("Cash Deposit", StringComparison.OrdinalIgnoreCase) &&
+                                                         !t.DisplayName.Contains("Bank Cash", StringComparison.OrdinalIgnoreCase)))
                 {
                     if (!modes.Contains(t.DisplayName))
                     {
@@ -244,7 +287,9 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
     [RelayCommand]
     public async Task LoadDataAsync()
     {
+        if (IsLoading) return;
         IsLoading = true;
+        var currentDsmName = SelectedSummary?.DsmName;
         try
         {
             var allDsms = await _dbContext.DsmUsers.Select(u => u.FullName).Distinct().ToListAsync();
@@ -257,13 +302,15 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
             var summaryList = new List<DsmPersonalDebtorSummaryRow>();
             foreach (var dsm in allDsms)
             {
-                double totalBorrowed = 0;
+                double operationalBorrowed = 0;
+                double openingBalance = 0;
                 double totalRepaid = 0;
 
                 if (debtorsGrouped.TryGetValue(dsm, out var debits))
                 {
-                    totalBorrowed = debits.Sum(d => d.Amount);
-                    var personalDebtorIds = debits.Select(d => d.Id).ToList();
+                    operationalBorrowed = debits.Where(d => d.EntryType == "Operational").Sum(d => d.Amount);
+                    openingBalance = debits.Where(d => d.EntryType == "OpeningBalance").Sum(d => d.Amount);
+                    var personalDebtorIds = debits.Where(d => d.EntryType != "DeactivatedOpening").Select(d => d.Id).ToList();
                     totalRepaid = repaymentsList
                         .Where(r => personalDebtorIds.Contains(r.DsmPersonalDebtorId))
                         .Sum(r => r.Amount);
@@ -272,7 +319,8 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
                 summaryList.Add(new DsmPersonalDebtorSummaryRow
                 {
                     DsmName = dsm,
-                    TotalBorrowed = totalBorrowed,
+                    OpeningBalance = openingBalance,
+                    TotalBorrowed = operationalBorrowed,
                     TotalRepaid = totalRepaid
                 });
             }
@@ -283,8 +331,9 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
                 if (!summaryList.Any(s => string.Equals(s.DsmName, dsm, StringComparison.OrdinalIgnoreCase)))
                 {
                     var debits = debtorsGrouped[dsm];
-                    var totalBorrowed = debits.Sum(d => d.Amount);
-                    var personalDebtorIds = debits.Select(d => d.Id).ToList();
+                    var operationalBorrowed = debits.Where(d => d.EntryType == "Operational").Sum(d => d.Amount);
+                    var openingBalance = debits.Where(d => d.EntryType == "OpeningBalance").Sum(d => d.Amount);
+                    var personalDebtorIds = debits.Where(d => d.EntryType != "DeactivatedOpening").Select(d => d.Id).ToList();
                     var totalRepaid = repaymentsList
                         .Where(r => personalDebtorIds.Contains(r.DsmPersonalDebtorId))
                         .Sum(r => r.Amount);
@@ -292,7 +341,8 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
                     summaryList.Add(new DsmPersonalDebtorSummaryRow
                     {
                         DsmName = dsm,
-                        TotalBorrowed = totalBorrowed,
+                        OpeningBalance = openingBalance,
+                        TotalBorrowed = operationalBorrowed,
                         TotalRepaid = totalRepaid
                     });
                 }
@@ -304,6 +354,20 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
             foreach (var s in summary)
             {
                 DsmSummaries.Add(s);
+            }
+
+            if (!string.IsNullOrEmpty(currentDsmName))
+            {
+                SelectedSummary = DsmSummaries.FirstOrDefault(s => string.Equals(s.DsmName, currentDsmName, StringComparison.OrdinalIgnoreCase)) ?? DsmSummaries.FirstOrDefault();
+            }
+            else if (SelectedSummary == null)
+            {
+                SelectedSummary = DsmSummaries.FirstOrDefault();
+            }
+
+            if (SelectedSummary != null)
+            {
+                await LoadLedgerAsync();
             }
         }
         catch (Exception ex)
@@ -339,16 +403,49 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
                 .Where(r => r.DsmPersonalDebtor != null && r.DsmPersonalDebtor.DsmName == dsmName && r.Date.Date >= LedgerStartDate.Date && r.Date.Date <= LedgerEndDate.Date)
                 .ToListAsync();
 
+            var priorDebits = await _dbContext.DsmPersonalDebtors
+                .Where(d => d.DsmName == dsmName && d.Date.Date < LedgerStartDate.Date && d.EntryType != "DeactivatedOpening")
+                .SumAsync(d => (double?)d.Amount) ?? 0;
+
+            var priorRepayments = await _dbContext.DsmPersonalDebtorRepayments
+                .Include(r => r.DsmPersonalDebtor)
+                .Where(r => r.DsmPersonalDebtor != null && r.DsmPersonalDebtor.DsmName == dsmName && r.Date.Date < LedgerStartDate.Date)
+                .SumAsync(r => (double?)r.Amount) ?? 0;
+
+            double periodOpeningBalance = priorDebits - priorRepayments;
+
             var list = new List<DsmPersonalDebtorLedgerRow>();
 
             foreach (var d in debits)
             {
+                if (d.EntryType == "DeactivatedOpening") continue;
+
+                string description;
+                bool canEdit = true;
+                if (d.EntryType == "OpeningBalance")
+                {
+                    description = "Historical Opening Balance";
+                    canEdit = false;
+                }
+                else if (!string.IsNullOrWhiteSpace(d.FuelProduct))
+                {
+                    description = $"Advance ({d.FuelProduct})";
+                }
+                else if (!string.IsNullOrWhiteSpace(d.Remarks) && d.Remarks.Contains("Shortage", StringComparison.OrdinalIgnoreCase))
+                {
+                    description = "Shift Shortage (DSM Loss)";
+                }
+                else
+                {
+                    description = "Borrowed / Advance";
+                }
+
                 list.Add(new DsmPersonalDebtorLedgerRow
                 {
                     TransactionId = d.Id,
-                    TransactionType = "Borrow",
+                    TransactionType = d.EntryType == "OpeningBalance" ? "OpeningBalance" : "Borrow",
                     Date = d.Date,
-                    Description = $"Borrowed: {d.FuelProduct} ({(string.IsNullOrEmpty(d.Remarks) ? "No remarks" : d.Remarks)})",
+                    Description = description,
                     Debit = d.Amount,
                     Credit = 0,
                     FuelProduct = d.FuelProduct,
@@ -357,7 +454,8 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
                     CardTid = d.CardTid,
                     CardBatch = d.CardBatch,
                     Amount = d.Amount,
-                    CreatedAt = d.CreatedAt
+                    CreatedAt = d.CreatedAt,
+                    CanEdit = canEdit
                 });
             }
 
@@ -396,14 +494,28 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
                 });
             }
 
-            var sorted = list.OrderBy(x => x.Date).ThenBy(x => x.TransactionType == "Borrow" ? 0 : 1).ToList();
+            var sorted = list.OrderBy(x => x.Date).ThenBy(x => x.TransactionType == "OpeningBalance" ? 0 : (x.TransactionType == "Borrow" ? 1 : 2)).ToList();
 
-            double running = 0;
+            double running = periodOpeningBalance;
+            if (periodOpeningBalance != 0 || priorDebits > 0 || priorRepayments > 0)
+            {
+                DsmLedger.Add(new DsmPersonalDebtorLedgerRow
+                {
+                    TransactionId = 0,
+                    TransactionType = "OpeningBalance",
+                    Date = LedgerStartDate.Date,
+                    Description = "Opening Balance",
+                    Debit = 0,
+                    Credit = 0,
+                    RunningBalance = periodOpeningBalance,
+                    CanEdit = false
+                });
+            }
+
             foreach (var item in sorted)
             {
                 running += (item.Debit - item.Credit);
                 item.RunningBalance = running;
-                item.CanEdit = true;
             }
 
             foreach (var item in sorted)
@@ -411,8 +523,8 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
                 DsmLedger.Add(item);
             }
 
-            LedgerTotalDebt = sorted.Sum(x => x.Debit);
-            LedgerTotalRepayments = sorted.Sum(x => x.Credit);
+            LedgerTotalDebt = sorted.Where(x => x.TransactionType == "Borrow").Sum(x => x.Debit);
+            LedgerTotalRepayments = sorted.Where(x => x.TransactionType == "Repayment").Sum(x => x.Credit);
             LedgerOutstandingBalance = running;
 
             LedgerStatus = sorted.Count > 0 ? $"Loaded {sorted.Count} transactions." : "No transactions found in date range.";
@@ -427,7 +539,7 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
     [RelayCommand]
     private void StartEditTransaction(DsmPersonalDebtorLedgerRow? row)
     {
-        if (row == null) return;
+        if (row == null || !row.CanEdit) return;
         SelectedLedgerRow = row;
         EditTxAmount = row.Amount;
         EditTxRemarks = row.Remarks ?? "";
@@ -551,7 +663,7 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
     [RelayCommand]
     private async Task DeleteTransactionAsync(DsmPersonalDebtorLedgerRow? row)
     {
-        if (row == null) return;
+        if (row == null || !row.CanEdit) return;
 
         var confirm = MessageBox.Show(
             $"Are you sure you want to delete this {row.TransactionType} transaction of amount ₹{row.Amount:F2}?\nThis action cannot be undone.",
@@ -636,7 +748,7 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
     private async Task RecalculateRepaidAmountsAsync(string dsmName)
     {
         var borrowings = await _dbContext.DsmPersonalDebtors
-            .Where(b => b.DsmName == dsmName)
+            .Where(b => b.DsmName == dsmName && b.EntryType != "DeactivatedOpening")
             .OrderBy(b => b.Date)
             .ThenBy(b => b.Id)
             .ToListAsync();
@@ -686,7 +798,7 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
             var dsmName = SelectedSummary.DsmName;
 
             var primaryBorrow = await _dbContext.DsmPersonalDebtors
-                .Where(b => b.DsmName == dsmName && b.Amount > b.RepaidAmount)
+                .Where(b => b.DsmName == dsmName && b.Amount > b.RepaidAmount && b.EntryType != "DeactivatedOpening")
                 .OrderBy(b => b.Date)
                 .ThenBy(b => b.Id)
                 .FirstOrDefaultAsync();
@@ -694,7 +806,7 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
             if (primaryBorrow == null)
             {
                 primaryBorrow = await _dbContext.DsmPersonalDebtors
-                    .Where(b => b.DsmName == dsmName)
+                    .Where(b => b.DsmName == dsmName && b.EntryType != "DeactivatedOpening")
                     .OrderByDescending(b => b.Date)
                     .ThenByDescending(b => b.Id)
                     .FirstOrDefaultAsync();
@@ -717,9 +829,14 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
                 await _dbContext.SaveChangesAsync();
             }
 
+            string shiftType = SelectedShift.Contains("B", StringComparison.OrdinalIgnoreCase) ? "B" : "A";
+            var shiftResult = await _shiftRepo.GetOrCreateShiftAsync(RepaymentDate.Date, shiftType);
+            int? resolvedShiftId = shiftResult.Success && shiftResult.Data != null ? shiftResult.Data.ShiftId : null;
+
             var repayment = new DsmPersonalDebtorRepayment
             {
                 DsmPersonalDebtorId = primaryBorrow.Id,
+                ShiftId = resolvedShiftId,
                 Amount = RepaymentAmount,
                 Date = RepaymentDate,
                 PaymentMethod = SelectedPaymentMode,
@@ -873,7 +990,7 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
                 DebtorPhone = "N/A",
                 StartDate = LedgerStartDate.ToString("dd-MMM-yyyy"),
                 EndDate = LedgerEndDate.ToString("dd-MMM-yyyy"),
-                OpeningBalance = DsmLedger.FirstOrDefault()?.RunningBalance ?? 0,
+                OpeningBalance = DsmLedger.FirstOrDefault()?.TransactionType == "OpeningBalance" ? DsmLedger.FirstOrDefault()!.RunningBalance : 0,
                 TotalDebt = LedgerTotalDebt,
                 TotalRepayments = LedgerTotalRepayments,
                 ClosingBalance = LedgerOutstandingBalance,

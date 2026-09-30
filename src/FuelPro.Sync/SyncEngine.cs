@@ -63,6 +63,7 @@ public class SyncEngine
         "SyncChangeLogs",
         // New tables from P3_shin_nvl
         "DebtorVehicles",
+        "OpeningBalances",
         "PumpMappings",
         "AuditLogs",
         "DayLocks",
@@ -79,7 +80,9 @@ public class SyncEngine
         "TankDailyStocks",
         // Salary & Payroll
         "DsmSalaryHistories",
-        "DsmSalaryPayments"
+        "DsmSalaryPayments",
+        // Dynamic Configurations (TankDefinitions, CollectionTypes, AppFeatureSettings, PaymentCollectionItems synced via Settings & PaymentCollections)
+        "DsmQrPayments"
     };
 
     // ── FK Configuration ──────────────────────────────────────────────
@@ -96,6 +99,7 @@ public class SyncEngine
     {
         new TableSyncConfig("SyncChangeLogs", Array.Empty<FkMapping>()),
         new TableSyncConfig("Settings", Array.Empty<FkMapping>()),
+        new TableSyncConfig("PumpMappings", Array.Empty<FkMapping>()),
         new TableSyncConfig("DsmProfiles", Array.Empty<FkMapping>()),
         new TableSyncConfig("DsmUsers", Array.Empty<FkMapping>()),
         new TableSyncConfig("DsmDevices", new[] { new FkMapping("DsmUserId", "DsmUsers") }),
@@ -104,6 +108,7 @@ public class SyncEngine
         new TableSyncConfig("DsmAttendance", new[] { new FkMapping("DsmUserId", "DsmUsers") }),
         new TableSyncConfig("Creditors", Array.Empty<FkMapping>()),
         new TableSyncConfig("DebtorVehicles", new[] { new FkMapping("CreditorId", "Creditors") }),
+        new TableSyncConfig("OpeningBalances", new[] { new FkMapping("CreditorId", "Creditors") }),
         new TableSyncConfig("ProductMasters", Array.Empty<FkMapping>()),
         new TableSyncConfig("Shifts", Array.Empty<FkMapping>()),
         new TableSyncConfig("AgsShiftImports", Array.Empty<FkMapping>()),
@@ -124,7 +129,6 @@ public class SyncEngine
         new TableSyncConfig("AgsNozzleReadings", new[] { new FkMapping("AgsShiftImportId", "AgsShiftImports") }),
         new TableSyncConfig("AgsTankStocks", new[] { new FkMapping("AgsShiftImportId", "AgsShiftImports") }),
         // New tables from P3_shin_nvl
-        new TableSyncConfig("PumpMappings", Array.Empty<FkMapping>()),
         new TableSyncConfig("AuditLogs", Array.Empty<FkMapping>()),
         new TableSyncConfig("DayLocks", Array.Empty<FkMapping>()),
         new TableSyncConfig("PumpExpenses", Array.Empty<FkMapping>()),
@@ -143,6 +147,9 @@ public class SyncEngine
             new FkMapping("ShiftExpenseId", "Expenses")
         }),
         new TableSyncConfig("KhandharePetroleumEntries", new[] {
+            new FkMapping("DsmEntryId", "DsmEntries")
+        }),
+        new TableSyncConfig("DsmQrPayments", new[] {
             new FkMapping("DsmEntryId", "DsmEntries")
         }),
         new TableSyncConfig("FuelTankers", Array.Empty<FkMapping>()),
@@ -250,15 +257,15 @@ public class SyncEngine
                 .Select(m => m.LocalId)
                 .ToListAsync());
 
-            var loggedIds = new HashSet<int>(await context.SyncChangeLogs
-                .Where(l => l.TableName == tableName)
+            var pendingLoggedIds = new HashSet<int>(await context.SyncChangeLogs
+                .Where(l => l.TableName == tableName && !l.IsSynced)
                 .Select(l => l.RecordId)
                 .ToListAsync());
 
             int queuedForTable = 0;
             foreach (var localId in localIds)
             {
-                if (!mappedIds.Contains(localId) && !loggedIds.Contains(localId))
+                if (!mappedIds.Contains(localId) && !pendingLoggedIds.Contains(localId))
                 {
                     context.SyncChangeLogs.Add(new SyncChangeLog
                     {
@@ -301,6 +308,18 @@ public class SyncEngine
         var settings = await _configService.GetSettingsAsync();
 
         int totalQueued = 0;
+
+        try
+        {
+            // Reset IsSynced = 0 for any existing logs with this stationId or unassigned so they are pushed immediately
+            await context.Database.ExecuteSqlRawAsync(
+                "UPDATE SyncChangeLogs SET IsSynced = 0, StationId = {0} WHERE StationId = {0} OR StationId IS NULL OR StationId = ''",
+                stationId);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning(ex, "Failed to reset IsSynced flags on SyncChangeLogs");
+        }
 
         foreach (var tableName in SyncedTables)
         {
@@ -685,10 +704,38 @@ public class SyncEngine
                                 }
                             }
 
-                            // ── Add station metadata ──
+                            // ── Add station metadata & dynamic JSON serialization ──
                             dict["station_id"] = settings.StationId;
                             dict["local_id"] = op.RecordId;
                             dict["machine_id"] = settings.MachineId;
+
+                            if (record is PaymentCollection pcPush)
+                            {
+                                var dynItems = await context.PaymentCollectionItems.Where(i => i.PaymentId == pcPush.PaymentId).ToListAsync();
+                                if (dynItems.Count > 0)
+                                {
+                                    dict["DynamicItemsJson"] = JsonConvert.SerializeObject(dynItems.Select(i => new
+                                    {
+                                        i.CollectionTypeCode,
+                                        i.Amount,
+                                        i.Tid,
+                                        i.Batch,
+                                        i.Slot
+                                    }));
+                                }
+                            }
+                            else if (record is Setting)
+                            {
+                                var activeTanks = await context.TankDefinitions.ToListAsync();
+                                var activeCollTypes = await context.CollectionTypes.ToListAsync();
+                                var activeFeatures = await context.AppFeatureSettings.ToListAsync();
+                                var activePumpMappings = await context.PumpMappings.ToListAsync();
+
+                                dict["TankDefinitionsJson"] = JsonConvert.SerializeObject(activeTanks);
+                                dict["CollectionTypesJson"] = JsonConvert.SerializeObject(activeCollTypes);
+                                dict["AppFeatureSettingsJson"] = JsonConvert.SerializeObject(activeFeatures);
+                                dict["PumpMappingsJson"] = JsonConvert.SerializeObject(activePumpMappings);
+                            }
 
                             recordsToUpsert.Add(dict);
                         }
@@ -742,11 +789,28 @@ public class SyncEngine
                     foreach (var batch in batches)
                     {
                         var json = JsonConvert.SerializeObject(batch);
-                        var onConflictColumn = (tableName == "CashDenominations") ? "DsmEntryId,CashType" : "SyncGuid";
-                        var response = await _httpClient.SendRequestAsync(HttpMethod.Post, tableName, json, isUpsert: true, onConflict: onConflictColumn);
-                        if (!response.IsSuccessStatusCode && tableName == "CashDenominations")
+                        var response = await _httpClient.SendRequestAsync(HttpMethod.Post, tableName, json, isUpsert: true, onConflict: "SyncGuid");
+
+                        // Auto-strip missing column retry loop (e.g. PGRST204: Could not find the 'AppFeatureSettingsJson' column)
+                        while (!response.IsSuccessStatusCode && response.StatusCode == System.Net.HttpStatusCode.BadRequest)
                         {
-                            response = await _httpClient.SendRequestAsync(HttpMethod.Post, tableName, json, isUpsert: true, onConflict: "SyncGuid");
+                            var errorStr = await response.Content.ReadAsStringAsync();
+                            var colMatch = System.Text.RegularExpressions.Regex.Match(errorStr, @"Could not find the '([^']+)' column");
+                            if (colMatch.Success)
+                            {
+                                var missingCol = colMatch.Groups[1].Value;
+                                _logger.Warning("Supabase table {Table} is missing column '{Col}'. Stripping and retrying push...", tableName, missingCol);
+                                foreach (var r in batch)
+                                {
+                                    r.Remove(missingCol);
+                                }
+                                json = JsonConvert.SerializeObject(batch);
+                                response = await _httpClient.SendRequestAsync(HttpMethod.Post, tableName, json, isUpsert: true, onConflict: "SyncGuid");
+                            }
+                            else
+                            {
+                                break;
+                            }
                         }
 
                         if (!response.IsSuccessStatusCode)
@@ -758,8 +822,12 @@ public class SyncEngine
                             {
                                 _logger.Information("Record already exists in Supabase for table {Table}; proceeding.", tableName);
                             }
+                            else if (response.StatusCode == System.Net.HttpStatusCode.NotFound || error.Contains("PGRST205") || error.Contains("Could not find the table"))
+                            {
+                                _logger.Information("Table {Table} is not present in Supabase schema (PGRST205). State is synchronized via JSON fields in parent tables.", tableName);
+                                // Table not present in Supabase - allow change logs to be marked synced
+                            }
                             else if (response.StatusCode == System.Net.HttpStatusCode.BadRequest ||
-                                response.StatusCode == System.Net.HttpStatusCode.NotFound ||
                                 response.StatusCode == System.Net.HttpStatusCode.UnprocessableEntity ||
                                 error.Contains("PGRST") || error.Contains("column") || error.Contains("constraint"))
                             {
@@ -908,30 +976,50 @@ public class SyncEngine
                 ? DateTime.MinValue.ToUniversalTime().ToString("o") 
                 : settings.LastSyncTime.AddMinutes(-5).ToUniversalTime().ToString("o");
 
-            // Fetch records updated since tableQueryTime for this StationId (supporting station_id aliases)
-            var stationFilter = string.Equals(settings.StationId, "KANDHARE-PETROLEUM", StringComparison.OrdinalIgnoreCase)
-                ? $"station_id=eq.{settings.StationId}"
-                : $"or=(station_id.eq.{settings.StationId},station_id.eq.KANDHARE-PETROLEUM,station_id.is.null)";
+            // Fetch records updated since tableQueryTime for this StationId (strictly isolated per station)
+            var stationFilter = tableDef.TableName == "DsmQrPayments"
+                ? (!string.IsNullOrWhiteSpace(settings.StationId) ? $"StationId=eq.{settings.StationId.Trim()}" : "StationId=is.null")
+                : (!string.IsNullOrWhiteSpace(settings.StationId) ? $"station_id=eq.{settings.StationId.Trim()}" : "station_id=is.null");
+
             var response = await _httpClient.SendRequestAsync(HttpMethod.Get,
                 $"{tableDef.TableName}?{stationFilter}&updated_at=gt.{tableQueryTime}");
-            if (!response.IsSuccessStatusCode)
-            {
-                // Fallback to simple query if complex or-filter fails
-                response = await _httpClient.SendRequestAsync(HttpMethod.Get,
-                    $"{tableDef.TableName}?updated_at=gt.{tableQueryTime}");
-            }
+
             if (!response.IsSuccessStatusCode)
             {
                 var error = await response.Content.ReadAsStringAsync();
-                _logger.Warning("Supabase GET failed for table {Table}: {Error}", tableDef.TableName, error);
+                if (error.Contains("42703"))
+                {
+                    // If updated_at or StationId column is missing, fallback without updated_at filter
+                    response = await _httpClient.SendRequestAsync(HttpMethod.Get, $"{tableDef.TableName}?{stationFilter}");
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        var altStationFilter = stationFilter.StartsWith("StationId")
+                            ? (!string.IsNullOrWhiteSpace(settings.StationId) ? $"station_id=eq.{settings.StationId.Trim()}" : "station_id=is.null")
+                            : (!string.IsNullOrWhiteSpace(settings.StationId) ? $"StationId=eq.{settings.StationId.Trim()}" : "StationId=is.null");
+                        response = await _httpClient.SendRequestAsync(HttpMethod.Get, $"{tableDef.TableName}?{altStationFilter}");
+                    }
+                }
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var error = await response.Content.ReadAsStringAsync();
+                if (error.Contains("PGRST205") || error.Contains("Could not find the table"))
+                {
+                    _logger.Information("Table {Table} not present in Supabase schema (PGRST205); skipping pull.", tableDef.TableName);
+                }
+                else
+                {
+                    _logger.Warning("Supabase GET failed for table {Table} with filter {Filter}: {Error}", tableDef.TableName, stationFilter, error);
+                }
                 continue;
             }
 
-
-
             var json = await response.Content.ReadAsStringAsync();
-            var records = JsonConvert.DeserializeObject<List<Dictionary<string, object>>>(json);
-            if (records == null || records.Count == 0) continue;
+            var rawRecords = JsonConvert.DeserializeObject<List<Dictionary<string, object?>>>(json);
+            if (rawRecords == null || rawRecords.Count == 0) continue;
+
+            var records = rawRecords.Select(r => new Dictionary<string, object?>(r, StringComparer.OrdinalIgnoreCase)).ToList();
 
             if (!guidToLocal.ContainsKey(tableDef.TableName))
                 guidToLocal[tableDef.TableName] = new Dictionary<string, int>();
@@ -945,11 +1033,11 @@ public class SyncEngine
                 foreach (var dict in records)
                 {
                     // ── Get the SyncGuid from the pulled record ──
-                    if (!dict.TryGetValue("SyncGuid", out var syncGuidObj) || syncGuidObj == null) continue;
+                    if (!TryGetDictValue(dict, "SyncGuid", out var syncGuidObj) || syncGuidObj == null) continue;
                     var remoteGuid = syncGuidObj.ToString()!;
 
                     // Skip records that this machine pushed (avoid re-importing our own changes)
-                    if (dict.TryGetValue("machine_id", out var machineIdObj) && machineIdObj != null)
+                    if (TryGetDictValue(dict, "machine_id", out var machineIdObj) && machineIdObj != null)
                     {
                         if (machineIdObj.ToString() == settings.MachineId)
                         {
@@ -976,7 +1064,7 @@ public class SyncEngine
                     bool fkFailed = false;
                     foreach (var fk in tableDef.ForeignKeys)
                     {
-                        if (!dict.TryGetValue(fk.FkProperty, out var fkVal) || fkVal == null) continue;
+                        if (!TryGetDictValue(dict, fk.FkProperty, out var fkVal) || fkVal == null) continue;
 
                         var parentGuid = fkVal.ToString()!;
                         // Check if it looks like a GUID (not a plain integer — backward compat)
@@ -989,11 +1077,34 @@ public class SyncEngine
                             }
                             else
                             {
-                                _logger.Warning(
-                                    "Pull: FK {Fk}={Val} in {Table} has no mapping in {Ref}. Skipping record {Guid}.",
-                                    fk.FkProperty, parentGuid, tableDef.TableName, fk.ReferencedTable, remoteGuid);
-                                fkFailed = true;
-                                break;
+                                // Step 1a: Check if SyncIdMappings in local DB already has this mapping
+                                var existingMapping = await context.SyncIdMappings
+                                    .FirstOrDefaultAsync(m => m.TableName == fk.ReferencedTable && m.RemoteGuid == parentGuid);
+                                if (existingMapping != null)
+                                {
+                                    if (!guidToLocal.ContainsKey(fk.ReferencedTable))
+                                        guidToLocal[fk.ReferencedTable] = new Dictionary<string, int>();
+                                    guidToLocal[fk.ReferencedTable][parentGuid] = existingMapping.LocalId;
+                                    dict[fk.FkProperty] = existingMapping.LocalId;
+                                    continue;
+                                }
+
+                                // Step 1b: On-demand fetch of missing parent record from Supabase
+                                var resolvedParentId = await FetchAndImportMissingParentAsync(
+                                    context, guidToLocal, fk.ReferencedTable, parentGuid, settings);
+
+                                if (resolvedParentId.HasValue)
+                                {
+                                    dict[fk.FkProperty] = resolvedParentId.Value;
+                                }
+                                else
+                                {
+                                    _logger.Warning(
+                                        "Pull: FK {Fk}={Val} in {Table} has no mapping in {Ref} and could not be fetched. Skipping record {Guid}.",
+                                        fk.FkProperty, parentGuid, tableDef.TableName, fk.ReferencedTable, remoteGuid);
+                                    fkFailed = true;
+                                    break;
+                                }
                             }
                         }
                         // else: it's already a local integer (legacy data), leave as-is
@@ -1010,6 +1121,11 @@ public class SyncEngine
                         entity = await context.FindAsync(entityType.ClrType, existingLocalId);
                         if (entity == null)
                         {
+                            if (tableDef.TableName == "PumpMappings")
+                            {
+                                // Do not resurrect locally deleted pump mappings
+                                continue;
+                            }
                             // Mapping is stale (record was deleted locally) — re-create
                             entity = Activator.CreateInstance(entityType.ClrType);
                             if (entity == null) continue;
@@ -1107,6 +1223,129 @@ public class SyncEngine
                                 }
                             }
                         }
+                        else if (tableDef.TableName == "NozzleReadings")
+                        {
+                            if (dict.TryGetValue("DsmEntryId", out var dsmIdObj) && dsmIdObj != null &&
+                                dict.TryGetValue("NozzleNumber", out var nNoObj) && nNoObj != null)
+                            {
+                                int localDsmEntryId = Convert.ToInt32(dsmIdObj);
+                                int nozzleNumber = Convert.ToInt32(nNoObj);
+                                matchedLocalEntity = context.Set<NozzleReading>().Local
+                                    .FirstOrDefault(nr => nr.DsmEntryId == localDsmEntryId && nr.NozzleNumber == nozzleNumber);
+                                if (matchedLocalEntity == null)
+                                {
+                                    matchedLocalEntity = await context.Set<NozzleReading>()
+                                        .FirstOrDefaultAsync(nr => nr.DsmEntryId == localDsmEntryId && nr.NozzleNumber == nozzleNumber);
+                                }
+                            }
+                        }
+                        else if (tableDef.TableName == "TestingEntries")
+                        {
+                            if (dict.TryGetValue("DsmEntryId", out var dsmIdObj) && dsmIdObj != null &&
+                                dict.TryGetValue("FuelType", out var ftObj) && ftObj != null)
+                            {
+                                int localDsmEntryId = Convert.ToInt32(dsmIdObj);
+                                string fuelType = ftObj.ToString()!.Trim();
+                                matchedLocalEntity = context.Set<TestingEntry>().Local
+                                    .FirstOrDefault(t => t.DsmEntryId == localDsmEntryId && string.Equals(t.FuelType, fuelType, StringComparison.OrdinalIgnoreCase));
+                                if (matchedLocalEntity == null)
+                                {
+                                    matchedLocalEntity = await context.Set<TestingEntry>()
+                                        .FirstOrDefaultAsync(t => t.DsmEntryId == localDsmEntryId && (t.FuelType != null && t.FuelType.ToLower() == fuelType.ToLower()));
+                                }
+                            }
+                        }
+                        else if (tableDef.TableName == "DebitEntries")
+                        {
+                            if (dict.TryGetValue("DsmEntryId", out var dsmIdObj) && dsmIdObj != null &&
+                                dict.TryGetValue("DebtorName", out var dNameObj) && dNameObj != null)
+                            {
+                                int localDsmEntryId = Convert.ToInt32(dsmIdObj);
+                                string debtorName = dNameObj.ToString()!.Trim();
+                                double amt = dict.TryGetValue("Amount", out var amtObj) && amtObj != null ? Convert.ToDouble(amtObj) : 0;
+                                matchedLocalEntity = context.Set<DebitEntry>().Local
+                                    .FirstOrDefault(d => d.DsmEntryId == localDsmEntryId && string.Equals(d.DebtorName, debtorName, StringComparison.OrdinalIgnoreCase) && Math.Abs(d.Amount - amt) < 0.01);
+                                if (matchedLocalEntity == null)
+                                {
+                                    matchedLocalEntity = await context.Set<DebitEntry>()
+                                        .FirstOrDefaultAsync(d => d.DsmEntryId == localDsmEntryId && (d.DebtorName != null && d.DebtorName.ToLower() == debtorName.ToLower()) && Math.Abs(d.Amount - amt) < 0.01);
+                                }
+                            }
+                        }
+                        else if (tableDef.TableName == "Expenses")
+                        {
+                            dict.TryGetValue("DsmEntryId", out var dsmIdObj);
+                            dict.TryGetValue("ShiftId", out var sIdObj);
+                            dict.TryGetValue("Description", out var descObj);
+                            dict.TryGetValue("Amount", out var amtObj);
+                            int? localDsmId = dsmIdObj != null ? Convert.ToInt32(dsmIdObj) : null;
+                            int? localShiftId = sIdObj != null ? Convert.ToInt32(sIdObj) : null;
+                            string desc = descObj?.ToString()?.Trim() ?? "";
+                            double amt = amtObj != null ? Convert.ToDouble(amtObj) : 0;
+
+                            if ((localDsmId.HasValue || localShiftId.HasValue) && !string.IsNullOrEmpty(desc))
+                            {
+                                matchedLocalEntity = context.Set<Expense>().Local
+                                    .FirstOrDefault(e => (localDsmId.HasValue ? e.DsmEntryId == localDsmId : e.ShiftId == localShiftId)
+                                                         && string.Equals(e.Description, desc, StringComparison.OrdinalIgnoreCase)
+                                                         && Math.Abs(e.Amount - amt) < 0.01);
+                                if (matchedLocalEntity == null)
+                                {
+                                    matchedLocalEntity = await context.Set<Expense>()
+                                        .FirstOrDefaultAsync(e => (localDsmId.HasValue ? e.DsmEntryId == localDsmId : e.ShiftId == localShiftId)
+                                                                  && (e.Description != null && e.Description.ToLower() == desc.ToLower())
+                                                                  && Math.Abs(e.Amount - amt) < 0.01);
+                                }
+                            }
+                        }
+                        else if (tableDef.TableName == "KhandharePetroleumEntries")
+                        {
+                            dict.TryGetValue("DsmEntryId", out var dsmIdObj);
+                            dict.TryGetValue("SlipNumber", out var slipObj);
+                            dict.TryGetValue("Name", out var nameObj);
+                            dict.TryGetValue("Amount", out var amtObj);
+                            int? localDsmId = dsmIdObj != null ? Convert.ToInt32(dsmIdObj) : null;
+                            string slip = slipObj?.ToString()?.Trim() ?? "";
+                            string name = nameObj?.ToString()?.Trim() ?? "";
+                            double amt = amtObj != null ? Convert.ToDouble(amtObj) : 0;
+
+                            if (localDsmId.HasValue)
+                            {
+                                matchedLocalEntity = context.Set<KhandharePetroleumEntry>().Local
+                                    .FirstOrDefault(k => k.DsmEntryId == localDsmId && 
+                                                         (!string.IsNullOrEmpty(slip) ? string.Equals(k.SlipNumber, slip, StringComparison.OrdinalIgnoreCase) : (string.Equals(k.Name, name, StringComparison.OrdinalIgnoreCase) && Math.Abs(k.Amount - amt) < 0.01)));
+                                if (matchedLocalEntity == null)
+                                {
+                                    matchedLocalEntity = await context.Set<KhandharePetroleumEntry>()
+                                        .FirstOrDefaultAsync(k => k.DsmEntryId == localDsmId && 
+                                                                  (!string.IsNullOrEmpty(slip) ? (k.SlipNumber != null && k.SlipNumber.ToLower() == slip.ToLower()) : ((k.Name != null && k.Name.ToLower() == name.ToLower()) && Math.Abs(k.Amount - amt) < 0.01)));
+                                }
+                            }
+                        }
+                        else if (tableDef.TableName == "DsmQrPayments")
+                        {
+                            dict.TryGetValue("DsmEntryId", out var dsmIdObj);
+                            dict.TryGetValue("Tid", out var tidObj);
+                            dict.TryGetValue("Batch", out var batchObj);
+                            dict.TryGetValue("Amount", out var amtObj);
+                            int? localDsmId = dsmIdObj != null ? Convert.ToInt32(dsmIdObj) : null;
+                            string tid = tidObj?.ToString()?.Trim() ?? "";
+                            string batch = batchObj?.ToString()?.Trim() ?? "";
+                            double amt = amtObj != null ? Convert.ToDouble(amtObj) : 0;
+
+                            if (localDsmId.HasValue)
+                            {
+                                matchedLocalEntity = context.Set<DsmQrPaymentEntry>().Local
+                                    .FirstOrDefault(q => q.DsmEntryId == localDsmId &&
+                                                         (!string.IsNullOrEmpty(tid) ? (string.Equals(q.Tid, tid, StringComparison.OrdinalIgnoreCase) && string.Equals(q.Batch, batch, StringComparison.OrdinalIgnoreCase)) : Math.Abs(q.Amount - amt) < 0.01));
+                                if (matchedLocalEntity == null)
+                                {
+                                    matchedLocalEntity = await context.Set<DsmQrPaymentEntry>()
+                                        .FirstOrDefaultAsync(q => q.DsmEntryId == localDsmId &&
+                                                                  (!string.IsNullOrEmpty(tid) ? (q.Tid != null && q.Tid.ToLower() == tid.ToLower()) && (q.Batch != null && q.Batch.ToLower() == batch.ToLower()) : Math.Abs(q.Amount - amt) < 0.01));
+                                }
+                            }
+                        }
                         else if (tableDef.TableName == "CashDenominations")
                         {
                             // CashDenominations has a UNIQUE index on (DsmEntryId, CashType).
@@ -1126,6 +1365,305 @@ public class SyncEngine
                                 {
                                     matchedLocalEntity = await context.Set<CashDenomination>()
                                         .FirstOrDefaultAsync(cd => cd.DsmEntryId == localDsmEntryId && cd.CashType == cashType);
+                                }
+                            }
+                        }
+                        else if (tableDef.TableName == "PumpMappings")
+                        {
+                            int pId = 0;
+                            if (dict.TryGetValue("PumpId", out var pObj) && pObj != null) pId = Convert.ToInt32(pObj);
+                            else if (dict.TryGetValue("pump_id", out var pObj2) && pObj2 != null) pId = Convert.ToInt32(pObj2);
+
+                            int nNo = 0;
+                            if (dict.TryGetValue("NozzleNumber", out var nObj) && nObj != null) nNo = Convert.ToInt32(nObj);
+                            else if (dict.TryGetValue("nozzle_number", out var nObj2) && nObj2 != null) nNo = Convert.ToInt32(nObj2);
+
+                            if (pId > 0 && nNo > 0)
+                            {
+                                matchedLocalEntity = context.Set<PumpMapping>().Local
+                                    .FirstOrDefault(pm => pm.PumpId == pId && pm.NozzleNumber == nNo);
+                                if (matchedLocalEntity == null)
+                                {
+                                    matchedLocalEntity = await context.Set<PumpMapping>()
+                                        .FirstOrDefaultAsync(pm => pm.PumpId == pId && pm.NozzleNumber == nNo);
+                                }
+                                if (matchedLocalEntity == null)
+                                {
+                                    matchedLocalEntity = context.Set<PumpMapping>().Local
+                                        .FirstOrDefault(pm => pm.NozzleNumber == nNo);
+                                    if (matchedLocalEntity == null)
+                                    {
+                                        matchedLocalEntity = await context.Set<PumpMapping>()
+                                            .FirstOrDefaultAsync(pm => pm.NozzleNumber == nNo);
+                                    }
+                                }
+                            }
+                        }
+                        else if (tableDef.TableName == "ProductMasters")
+                        {
+                            if (dict.TryGetValue("ProductName", out var pNameObj) && pNameObj != null)
+                            {
+                                string pName = pNameObj.ToString()!.Trim();
+                                matchedLocalEntity = context.Set<ProductMaster>().Local
+                                    .FirstOrDefault(p => string.Equals(p.ProductName, pName, StringComparison.OrdinalIgnoreCase));
+                                if (matchedLocalEntity == null)
+                                {
+                                    matchedLocalEntity = await context.Set<ProductMaster>()
+                                        .FirstOrDefaultAsync(p => p.ProductName.ToLower() == pName.ToLower());
+                                }
+                            }
+                        }
+                        else if (tableDef.TableName == "TankDefinitions")
+                        {
+                            if (dict.TryGetValue("TankName", out var tNameObj) && tNameObj != null)
+                            {
+                                string tName = tNameObj.ToString()!.Trim();
+                                matchedLocalEntity = context.Set<TankDefinition>().Local
+                                    .FirstOrDefault(t => string.Equals(t.TankName, tName, StringComparison.OrdinalIgnoreCase));
+                                if (matchedLocalEntity == null)
+                                {
+                                    matchedLocalEntity = await context.Set<TankDefinition>()
+                                        .FirstOrDefaultAsync(t => t.TankName.ToLower() == tName.ToLower());
+                                }
+                            }
+                        }
+                        else if (tableDef.TableName == "AppFeatureSettings")
+                        {
+                            if (dict.TryGetValue("FeatureKey", out var fKeyObj) && fKeyObj != null &&
+                                dict.TryGetValue("TargetRole", out var tRoleObj) && tRoleObj != null)
+                            {
+                                string fKey = fKeyObj.ToString()!.Trim();
+                                string tRole = tRoleObj.ToString()!.Trim();
+                                matchedLocalEntity = context.Set<AppFeatureSetting>().Local
+                                    .FirstOrDefault(f => string.Equals(f.FeatureKey, fKey, StringComparison.OrdinalIgnoreCase) && string.Equals(f.TargetRole, tRole, StringComparison.OrdinalIgnoreCase));
+                                if (matchedLocalEntity == null)
+                                {
+                                    matchedLocalEntity = await context.Set<AppFeatureSetting>()
+                                        .FirstOrDefaultAsync(f => f.FeatureKey.ToLower() == fKey.ToLower() && f.TargetRole.ToLower() == tRole.ToLower());
+                                }
+                            }
+                        }
+                        else if (tableDef.TableName == "CollectionTypes")
+                        {
+                            if (dict.TryGetValue("Code", out var codeObj) && codeObj != null)
+                            {
+                                string code = codeObj.ToString()!.Trim();
+                                matchedLocalEntity = context.Set<CollectionTypeMaster>().Local
+                                    .FirstOrDefault(c => string.Equals(c.Code, code, StringComparison.OrdinalIgnoreCase));
+                                if (matchedLocalEntity == null)
+                                {
+                                    matchedLocalEntity = await context.Set<CollectionTypeMaster>()
+                                        .FirstOrDefaultAsync(c => c.Code.ToLower() == code.ToLower());
+                                }
+                            }
+                        }
+                        else if (tableDef.TableName == "OilDefPurchases")
+                        {
+                            dict.TryGetValue("ProductId", out var prodIdObj);
+                            dict.TryGetValue("PurchaseDate", out var pDateObj);
+                            dict.TryGetValue("InvoiceNumber", out var invoiceObj);
+                            dict.TryGetValue("Quantity", out var qtyObj);
+                            dict.TryGetValue("UnitPrice", out var upObj);
+                            int? productId = prodIdObj != null ? Convert.ToInt32(prodIdObj) : null;
+                            DateTime? purchaseDate = pDateObj != null ? Convert.ToDateTime(pDateObj) : null;
+                            string invoice = invoiceObj?.ToString()?.Trim() ?? "";
+                            double qty = qtyObj != null ? Convert.ToDouble(qtyObj) : 0;
+                            double unitPrice = upObj != null ? Convert.ToDouble(upObj) : 0;
+
+                            if (productId.HasValue && purchaseDate.HasValue)
+                            {
+                                var pDate = purchaseDate.Value.Date;
+                                matchedLocalEntity = context.Set<OilDefPurchase>().Local
+                                    .FirstOrDefault(p => p.ProductId == productId && p.PurchaseDate.Date == pDate
+                                        && string.Equals(p.InvoiceNumber, invoice, StringComparison.OrdinalIgnoreCase)
+                                        && Math.Abs(p.Quantity - qty) < 0.01 && Math.Abs(p.UnitPrice - unitPrice) < 0.01);
+                                if (matchedLocalEntity == null)
+                                {
+                                    matchedLocalEntity = await context.Set<OilDefPurchase>()
+                                        .FirstOrDefaultAsync(p => p.ProductId == productId && p.PurchaseDate.Date == pDate
+                                            && (p.InvoiceNumber != null && p.InvoiceNumber.ToLower() == invoice.ToLower())
+                                            && Math.Abs(p.Quantity - qty) < 0.01 && Math.Abs(p.UnitPrice - unitPrice) < 0.01);
+                                }
+                            }
+                        }
+                        else if (tableDef.TableName == "CreditorRepayments")
+                        {
+                            dict.TryGetValue("CreditorName", out var cNameObj);
+                            dict.TryGetValue("RepaymentDate", out var rDateObj);
+                            dict.TryGetValue("Amount", out var amtObj);
+                            dict.TryGetValue("PaymentMode", out var pmObj);
+                            string cName = cNameObj?.ToString()?.Trim() ?? "";
+                            DateTime? rDate = rDateObj != null ? Convert.ToDateTime(rDateObj) : null;
+                            double amt = amtObj != null ? Convert.ToDouble(amtObj) : 0;
+                            string payMode = pmObj?.ToString()?.Trim() ?? "";
+
+                            if (!string.IsNullOrEmpty(cName) && rDate.HasValue)
+                            {
+                                var rd = rDate.Value.Date;
+                                matchedLocalEntity = context.Set<CreditorRepayment>().Local
+                                    .FirstOrDefault(r => r.CreditorName.Equals(cName, StringComparison.OrdinalIgnoreCase)
+                                        && r.RepaymentDate.Date == rd && Math.Abs(r.Amount - amt) < 0.01
+                                        && string.Equals(r.PaymentMode, payMode, StringComparison.OrdinalIgnoreCase));
+                                if (matchedLocalEntity == null)
+                                {
+                                    matchedLocalEntity = await context.Set<CreditorRepayment>()
+                                        .FirstOrDefaultAsync(r => r.CreditorName.ToLower() == cName.ToLower()
+                                            && r.RepaymentDate.Date == rd && Math.Abs(r.Amount - amt) < 0.01
+                                            && r.PaymentMode.ToLower() == payMode.ToLower());
+                                }
+                            }
+                        }
+                        else if (tableDef.TableName == "DsmPersonalDebtorRepayments")
+                        {
+                            dict.TryGetValue("DsmPersonalDebtorId", out var debtorIdObj);
+                            dict.TryGetValue("Date", out var dateObj);
+                            dict.TryGetValue("Amount", out var amtObj);
+                            dict.TryGetValue("PaymentMethod", out var pmObj);
+                            int? debtorId = debtorIdObj != null ? Convert.ToInt32(debtorIdObj) : null;
+                            DateTime? date = dateObj != null ? Convert.ToDateTime(dateObj) : null;
+                            double amt = amtObj != null ? Convert.ToDouble(amtObj) : 0;
+                            string payMethod = pmObj?.ToString()?.Trim() ?? "";
+
+                            if (debtorId.HasValue && date.HasValue)
+                            {
+                                var d = date.Value.Date;
+                                matchedLocalEntity = context.Set<DsmPersonalDebtorRepayment>().Local
+                                    .FirstOrDefault(r => r.DsmPersonalDebtorId == debtorId && r.Date.Date == d
+                                        && Math.Abs(r.Amount - amt) < 0.01
+                                        && string.Equals(r.PaymentMethod, payMethod, StringComparison.OrdinalIgnoreCase));
+                                if (matchedLocalEntity == null)
+                                {
+                                    matchedLocalEntity = await context.Set<DsmPersonalDebtorRepayment>()
+                                        .FirstOrDefaultAsync(r => r.DsmPersonalDebtorId == debtorId && r.Date.Date == d
+                                            && Math.Abs(r.Amount - amt) < 0.01
+                                            && r.PaymentMethod.ToLower() == payMethod.ToLower());
+                                }
+                            }
+                        }
+                        else if (tableDef.TableName == "Creditors")
+                        {
+                            if (dict.TryGetValue("Name", out var nameObj) && nameObj != null)
+                            {
+                                string cName = nameObj.ToString()!.Trim();
+                                matchedLocalEntity = context.Set<Creditor>().Local
+                                    .FirstOrDefault(c => string.Equals(c.Name, cName, StringComparison.OrdinalIgnoreCase));
+                                if (matchedLocalEntity == null)
+                                {
+                                    matchedLocalEntity = await context.Set<Creditor>()
+                                        .FirstOrDefaultAsync(c => c.Name.ToLower() == cName.ToLower());
+                                }
+                            }
+                        }
+                        else if (tableDef.TableName == "OilDefDailyLogs")
+                        {
+                            dict.TryGetValue("ProductId", out var prodIdObj);
+                            dict.TryGetValue("LogDate", out var logDateObj);
+                            dict.TryGetValue("AdjustmentQuantity", out var adjQtyObj);
+                            dict.TryGetValue("AdjustmentType", out var adjTypeObj);
+                            dict.TryGetValue("SoldQuantity", out var soldQtyObj);
+                            dict.TryGetValue("AddedQuantity", out var addedQtyObj);
+                            dict.TryGetValue("Remarks", out var remObj);
+                            int? productId = prodIdObj != null ? Convert.ToInt32(prodIdObj) : null;
+                            DateTime? logDate = logDateObj != null ? Convert.ToDateTime(logDateObj) : null;
+                            double adjQty = adjQtyObj != null ? Convert.ToDouble(adjQtyObj) : 0;
+                            string adjType = adjTypeObj?.ToString()?.Trim() ?? "";
+                            double soldQty = soldQtyObj != null ? Convert.ToDouble(soldQtyObj) : 0;
+                            double addedQty = addedQtyObj != null ? Convert.ToDouble(addedQtyObj) : 0;
+                            string remarks = remObj?.ToString()?.Trim() ?? "";
+
+                            if (productId.HasValue && logDate.HasValue)
+                            {
+                                var ld = logDate.Value;
+                                if (Math.Abs(adjQty) > 0.001)
+                                {
+                                    // Stock adjustment: match by ProductId, date, AdjustmentQuantity, and AdjustmentType
+                                    matchedLocalEntity = context.Set<OilDefDailyLog>().Local
+                                        .FirstOrDefault(l => l.ProductId == productId.Value && l.LogDate.Date == ld.Date
+                                            && Math.Abs(l.AdjustmentQuantity - adjQty) < 0.01
+                                            && string.Equals(l.AdjustmentType ?? "", adjType, StringComparison.OrdinalIgnoreCase)
+                                            && (Math.Abs((l.LogDate - ld).TotalMinutes) < 2 || string.Equals(l.Remarks ?? "", remarks, StringComparison.OrdinalIgnoreCase)));
+
+                                    if (matchedLocalEntity == null)
+                                    {
+                                        matchedLocalEntity = await context.Set<OilDefDailyLog>()
+                                            .FirstOrDefaultAsync(l => l.ProductId == productId.Value && l.LogDate.Date == ld.Date
+                                                && Math.Abs(l.AdjustmentQuantity - adjQty) < 0.01
+                                                && ((l.AdjustmentType == null && adjType == "") || (l.AdjustmentType != null && l.AdjustmentType.ToLower() == adjType.ToLower())));
+                                    }
+                                }
+                                else if (soldQty > 0.001)
+                                {
+                                    // Sales log: match by ProductId, date, SoldQuantity
+                                    matchedLocalEntity = context.Set<OilDefDailyLog>().Local
+                                        .FirstOrDefault(l => l.ProductId == productId.Value && l.LogDate.Date == ld.Date
+                                            && Math.Abs(l.SoldQuantity - soldQty) < 0.01 && Math.Abs(l.AdjustmentQuantity) < 0.001);
+
+                                    if (matchedLocalEntity == null)
+                                    {
+                                        matchedLocalEntity = await context.Set<OilDefDailyLog>()
+                                            .FirstOrDefaultAsync(l => l.ProductId == productId.Value && l.LogDate.Date == ld.Date
+                                                && Math.Abs(l.SoldQuantity - soldQty) < 0.01 && Math.Abs(l.AdjustmentQuantity) < 0.001);
+                                    }
+                                }
+                                else if (addedQty > 0.001)
+                                {
+                                    // Purchase log: match by ProductId, date, AddedQuantity
+                                    matchedLocalEntity = context.Set<OilDefDailyLog>().Local
+                                        .FirstOrDefault(l => l.ProductId == productId.Value && l.LogDate.Date == ld.Date
+                                            && Math.Abs(l.AddedQuantity - addedQty) < 0.01 && Math.Abs(l.AdjustmentQuantity) < 0.001);
+
+                                    if (matchedLocalEntity == null)
+                                    {
+                                        matchedLocalEntity = await context.Set<OilDefDailyLog>()
+                                            .FirstOrDefaultAsync(l => l.ProductId == productId.Value && l.LogDate.Date == ld.Date
+                                                && Math.Abs(l.AddedQuantity - addedQty) < 0.01 && Math.Abs(l.AdjustmentQuantity) < 0.001);
+                                    }
+                                }
+                            }
+                        }
+                        else if (tableDef.TableName == "OilDefInventories")
+                        {
+                            dict.TryGetValue("ProductId", out var prodIdObj);
+                            dict.TryGetValue("Year", out var yearObj);
+                            dict.TryGetValue("Month", out var monthObj);
+                            int? productId = prodIdObj != null ? Convert.ToInt32(prodIdObj) : null;
+                            int? year = yearObj != null ? Convert.ToInt32(yearObj) : null;
+                            int? month = monthObj != null ? Convert.ToInt32(monthObj) : null;
+
+                            if (productId.HasValue && year.HasValue && month.HasValue)
+                            {
+                                matchedLocalEntity = context.Set<OilDefInventory>().Local
+                                    .FirstOrDefault(i => i.ProductId == productId.Value && i.Year == year.Value && i.Month == month.Value);
+                                if (matchedLocalEntity == null)
+                                {
+                                    matchedLocalEntity = await context.Set<OilDefInventory>()
+                                        .FirstOrDefaultAsync(i => i.ProductId == productId.Value && i.Year == year.Value && i.Month == month.Value);
+                                }
+                            }
+                        }
+                        else if (tableDef.TableName == "OpeningBalances")
+                        {
+                            var entityTypeVal = dict.GetValueOrDefault("EntityType")?.ToString();
+                            var entityIdentVal = dict.GetValueOrDefault("EntityIdentifier")?.ToString();
+
+                            // First match by SyncGuid if existing locally
+                            matchedLocalEntity = context.Set<OpeningBalance>().Local
+                                .FirstOrDefault(o => o.SyncGuid == remoteGuid);
+                            if (matchedLocalEntity == null)
+                            {
+                                matchedLocalEntity = await context.Set<OpeningBalance>()
+                                    .FirstOrDefaultAsync(o => o.SyncGuid == remoteGuid);
+                            }
+
+                            // If not matched by SyncGuid, match active record by EntityType + EntityIdentifier within station
+                            if (matchedLocalEntity == null && !string.IsNullOrEmpty(entityTypeVal) && !string.IsNullOrEmpty(entityIdentVal))
+                            {
+                                matchedLocalEntity = context.Set<OpeningBalance>().Local
+                                    .FirstOrDefault(o => o.EntityType == entityTypeVal && o.EntityIdentifier == entityIdentVal && o.IsActive);
+                                if (matchedLocalEntity == null)
+                                {
+                                    matchedLocalEntity = await context.Set<OpeningBalance>()
+                                        .FirstOrDefaultAsync(o => o.EntityType == entityTypeVal && o.EntityIdentifier == entityIdentVal && o.IsActive);
                                 }
                             }
                         }
@@ -1161,7 +1699,7 @@ public class SyncEngine
                     {
                         if (prop.IsPrimaryKey()) continue;
 
-                        if (dict.TryGetValue(prop.Name, out var val))
+                        if (TryGetDictValue(dict, prop.Name, out var val))
                         {
                             if (val == null)
                             {
@@ -1179,6 +1717,14 @@ public class SyncEngine
                                     converted = DateTime.Parse(val.ToString()!);
                                 else if (targetType == typeof(Guid))
                                     converted = Guid.Parse(val.ToString()!);
+                                else if (targetType == typeof(bool))
+                                    converted = Convert.ToBoolean(val);
+                                else if (targetType == typeof(int))
+                                    converted = Convert.ToInt32(val);
+                                else if (targetType == typeof(double))
+                                    converted = Convert.ToDouble(val);
+                                else if (targetType == typeof(decimal))
+                                    converted = Convert.ToDecimal(val);
                                 else if (targetType.IsEnum)
                                     converted = Enum.Parse(targetType, val.ToString()!);
                                 else
@@ -1221,6 +1767,441 @@ public class SyncEngine
                 }
 
                 _logger.Information("Pulled {Count} records for table {Table}", records.Count, tableDef.TableName);
+
+                // Post-pull recalculations & caches
+                if (records.Count > 0)
+                {
+                    if (tableDef.TableName == "OilDefDailyLogs" || tableDef.TableName == "OilDefPurchases" || tableDef.TableName == "ProductMasters")
+                    {
+                        try
+                        {
+                            var productIds = await context.ProductMasters.Select(p => p.Id).ToListAsync();
+                            foreach (var pid in productIds)
+                            {
+                                var earliestLog = await context.OilDefDailyLogs
+                                    .Where(l => l.ProductId == pid)
+                                    .OrderBy(l => l.LogDate)
+                                    .FirstOrDefaultAsync();
+                                if (earliestLog != null)
+                                {
+                                    var from = earliestLog.LogDate.Date;
+                                    var prevLog = await context.OilDefDailyLogs
+                                        .Where(l => l.ProductId == pid && l.LogDate.Date < from)
+                                        .OrderByDescending(l => l.LogDate)
+                                        .ThenByDescending(l => l.Id)
+                                        .FirstOrDefaultAsync();
+
+                                    double prevRemaining = prevLog?.RemainingStock ?? 0.0;
+                                    var subsequentLogs = await context.OilDefDailyLogs
+                                        .Where(l => l.ProductId == pid && l.LogDate.Date >= from)
+                                        .OrderBy(l => l.LogDate)
+                                        .ThenBy(l => l.Id)
+                                        .ToListAsync();
+
+                                    double running = prevRemaining;
+                                    foreach (var log in subsequentLogs)
+                                    {
+                                        running = running + log.AddedQuantity - log.SoldQuantity + log.AdjustmentQuantity;
+                                        log.RemainingStock = running;
+                                        context.Entry(log).State = EntityState.Modified;
+                                    }
+                                }
+                            }
+                            await context.SaveChangesAsync();
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.Error(ex, "Failed to recalculate running balances after pull");
+                        }
+                    }
+                    else if (tableDef.TableName == "PaymentCollections")
+                    {
+                        try
+                        {
+                            var pcList = await context.PaymentCollections.Where(p => !string.IsNullOrEmpty(p.DynamicItemsJson)).ToListAsync();
+                            foreach (var pc in pcList)
+                            {
+                                if (!string.IsNullOrWhiteSpace(pc.DynamicItemsJson))
+                                {
+                                    var items = JsonConvert.DeserializeObject<List<PaymentCollectionItem>>(pc.DynamicItemsJson);
+                                    if (items != null && items.Count > 0)
+                                    {
+                                        var existing = await context.PaymentCollectionItems.Where(i => i.PaymentId == pc.PaymentId).ToListAsync();
+                                        context.PaymentCollectionItems.RemoveRange(existing);
+                                        foreach (var itm in items)
+                                        {
+                                            context.PaymentCollectionItems.Add(new PaymentCollectionItem
+                                            {
+                                                PaymentId = pc.PaymentId,
+                                                CollectionTypeCode = itm.CollectionTypeCode ?? "OTHERS",
+                                                Amount = itm.Amount,
+                                                Tid = itm.Tid,
+                                                Batch = itm.Batch,
+                                                Slot = itm.Slot ?? "General"
+                                            });
+                                        }
+                                    }
+                                }
+                            }
+                            await context.SaveChangesAsync();
+                            FuelPro.Core.Services.DsmEntryService.RaiseDsmEntryChanged();
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.Error(ex, "Failed to synchronize PaymentCollectionItems from DynamicItemsJson");
+                        }
+                    }
+                    else if (tableDef.TableName == "Settings")
+                    {
+                        try
+                        {
+                            var currentSetting = await context.Settings.FirstOrDefaultAsync();
+                            if (currentSetting != null)
+                            {
+                                bool configChanged = false;
+
+                                // 1. Tanks
+                                if (!string.IsNullOrWhiteSpace(currentSetting.TankDefinitionsJson))
+                                {
+                                    var tanks = JsonConvert.DeserializeObject<List<TankDefinition>>(currentSetting.TankDefinitionsJson);
+                                    if (tanks != null && tanks.Count > 0)
+                                    {
+                                        var existingTanks = await context.TankDefinitions.ToListAsync();
+                                        var processedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+                                        foreach (var t in tanks)
+                                        {
+                                            var existingTank = existingTanks.FirstOrDefault(x => string.Equals(x.TankName, t.TankName, StringComparison.OrdinalIgnoreCase));
+                                            if (existingTank != null)
+                                            {
+                                                existingTank.CapacityKL = t.CapacityKL;
+                                                existingTank.FuelType = t.FuelType;
+                                                existingTank.IsActive = t.IsActive;
+                                                existingTank.HasTesting = t.HasTesting;
+                                                processedNames.Add(existingTank.TankName);
+                                            }
+                                            else
+                                            {
+                                                context.TankDefinitions.Add(new TankDefinition
+                                                {
+                                                    TankName = t.TankName,
+                                                    CapacityKL = t.CapacityKL,
+                                                    FuelType = t.FuelType,
+                                                    IsActive = t.IsActive,
+                                                    HasTesting = t.HasTesting,
+                                                    CreatedAt = DateTime.Now
+                                                });
+                                                processedNames.Add(t.TankName);
+                                            }
+                                        }
+
+                                        // Remove obsolete / phantom seed tanks not present in station's tank definitions
+                                        foreach (var existing in existingTanks)
+                                        {
+                                            if (!processedNames.Contains(existing.TankName) &&
+                                                !tanks.Any(t => string.Equals(t.TankName, existing.TankName, StringComparison.OrdinalIgnoreCase)))
+                                            {
+                                                context.TankDefinitions.Remove(existing);
+                                            }
+                                        }
+
+                                        configChanged = true;
+                                    }
+                                }
+
+                                // 2. Collection Types
+                                if (!string.IsNullOrWhiteSpace(currentSetting.CollectionTypesJson))
+                                {
+                                    var types = JsonConvert.DeserializeObject<List<CollectionTypeMaster>>(currentSetting.CollectionTypesJson);
+                                    if (types != null && types.Count > 0)
+                                    {
+                                        var existingCts = await context.CollectionTypes.ToListAsync();
+                                        var processedCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+                                        foreach (var ct in types)
+                                        {
+                                            var existingCt = existingCts.FirstOrDefault(x => string.Equals(x.Code, ct.Code, StringComparison.OrdinalIgnoreCase));
+                                            if (existingCt != null)
+                                            {
+                                                existingCt.DisplayName = ct.DisplayName;
+                                                existingCt.Category = ct.Category;
+                                                existingCt.HasTidBatch = ct.HasTidBatch;
+                                                existingCt.DisplayOrder = ct.DisplayOrder;
+                                                existingCt.IsActive = ct.IsActive;
+                                                processedCodes.Add(existingCt.Code);
+                                            }
+                                            else
+                                            {
+                                                context.CollectionTypes.Add(new CollectionTypeMaster
+                                                {
+                                                    Code = ct.Code,
+                                                    DisplayName = ct.DisplayName,
+                                                    Category = ct.Category,
+                                                    HasTidBatch = ct.HasTidBatch,
+                                                    DisplayOrder = ct.DisplayOrder,
+                                                    IsActive = ct.IsActive,
+                                                    IsSystem = ct.IsSystem,
+                                                    CreatedAt = DateTime.Now
+                                                });
+                                                processedCodes.Add(ct.Code);
+                                            }
+                                        }
+
+                                        // Remove obsolete non-system collection types not present in station config
+                                        foreach (var existing in existingCts)
+                                        {
+                                            if (!existing.IsSystem && !processedCodes.Contains(existing.Code) &&
+                                                !types.Any(t => string.Equals(t.Code, existing.Code, StringComparison.OrdinalIgnoreCase)))
+                                            {
+                                                context.CollectionTypes.Remove(existing);
+                                            }
+                                        }
+
+                                        configChanged = true;
+                                    }
+                                }
+
+                                // 3. Features
+                                if (!string.IsNullOrWhiteSpace(currentSetting.AppFeatureSettingsJson))
+                                {
+                                    var features = JsonConvert.DeserializeObject<List<AppFeatureSetting>>(currentSetting.AppFeatureSettingsJson);
+                                    if (features != null && features.Count > 0)
+                                    {
+                                        foreach (var feat in features)
+                                        {
+                                            var existingFeat = await context.AppFeatureSettings.FirstOrDefaultAsync(x => x.FeatureKey == feat.FeatureKey && x.TargetRole == feat.TargetRole);
+                                            if (existingFeat != null)
+                                            {
+                                                existingFeat.IsEnabled = feat.IsEnabled;
+                                                existingFeat.DisplayName = feat.DisplayName;
+                                                existingFeat.Category = feat.Category;
+                                                existingFeat.DisplayOrder = feat.DisplayOrder;
+                                                existingFeat.UpdatedAt = DateTime.Now;
+                                            }
+                                            else
+                                            {
+                                                context.AppFeatureSettings.Add(new AppFeatureSetting
+                                                {
+                                                    FeatureKey = feat.FeatureKey,
+                                                    TargetRole = feat.TargetRole,
+                                                    DisplayName = feat.DisplayName,
+                                                    Category = feat.Category,
+                                                    DisplayOrder = feat.DisplayOrder,
+                                                    IsEnabled = feat.IsEnabled,
+                                                    UpdatedAt = DateTime.Now
+                                                });
+                                            }
+                                        }
+                                        configChanged = true;
+                                    }
+                                }
+
+                                // 4. Pump Mappings
+                                if (!string.IsNullOrWhiteSpace(currentSetting.PumpMappingsJson))
+                                {
+                                    var dynamicPumpMappings = JsonConvert.DeserializeObject<List<PumpMapping>>(currentSetting.PumpMappingsJson);
+                                    if (dynamicPumpMappings != null && dynamicPumpMappings.Count > 0)
+                                    {
+                                        var existingMappings = await context.PumpMappings.ToListAsync();
+                                        var processedIds = new HashSet<int>();
+
+                                        foreach (var m in dynamicPumpMappings)
+                                        {
+                                            var existing = existingMappings.FirstOrDefault(x => x.PumpId == m.PumpId && x.NozzleNumber == m.NozzleNumber && !processedIds.Contains(x.PumpMappingId));
+                                            if (existing == null)
+                                            {
+                                                existing = existingMappings.FirstOrDefault(x => x.NozzleNumber == m.NozzleNumber && !processedIds.Contains(x.PumpMappingId));
+                                            }
+
+                                            if (existing != null)
+                                            {
+                                                existing.PumpId = m.PumpId;
+                                                existing.NozzleNumber = m.NozzleNumber;
+                                                existing.FuelType = m.FuelType;
+                                                existing.TankName = m.TankName;
+                                                existing.IsActive = m.IsActive;
+                                                processedIds.Add(existing.PumpMappingId);
+                                            }
+                                            else
+                                            {
+                                                var newEntity = new PumpMapping
+                                                {
+                                                    PumpId = m.PumpId,
+                                                    NozzleNumber = m.NozzleNumber,
+                                                    FuelType = m.FuelType,
+                                                    TankName = m.TankName,
+                                                    IsActive = m.IsActive,
+                                                    CreatedAt = DateTime.Now
+                                                };
+                                                context.PumpMappings.Add(newEntity);
+                                                await context.SaveChangesAsync();
+                                                processedIds.Add(newEntity.PumpMappingId);
+                                            }
+                                        }
+
+                                        // Crucial: remove obsolete seeded mappings not present in station's configured pump mappings
+                                        foreach (var existing in existingMappings)
+                                        {
+                                            if (!processedIds.Contains(existing.PumpMappingId))
+                                            {
+                                                context.PumpMappings.Remove(existing);
+                                            }
+                                        }
+
+                                        configChanged = true;
+                                    }
+                                }
+
+                                await context.SaveChangesAsync();
+
+                                if (configChanged)
+                                {
+                                    var updatedTanks = await context.TankDefinitions.ToListAsync();
+                                    var updatedMappings = await context.PumpMappings.ToListAsync();
+                                    FuelPro.Core.Common.PumpConfiguration.InitializeFromDb(updatedMappings);
+                                    FuelPro.Core.Common.PumpConfiguration.InitializeTanksFromDb(updatedTanks);
+                                    FuelPro.Core.Services.DsmEntryService.RaiseStationConfigurationChanged();
+                                    FuelPro.Core.Services.DsmEntryService.RaiseDsmEntryChanged();
+                                    _serviceProvider.GetService<FuelPro.Core.Services.ICollectionTypeService>()?.NotifyCollectionTypesChanged();
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.Error(ex, "Failed to deserialize dynamic configurations from Settings");
+                        }
+                    }
+                    else if (tableDef.TableName == "PumpMappings")
+                    {
+                        try
+                        {
+                            if (records.Count > 0)
+                            {
+                                var pulledNozzleKeys = new HashSet<(int PumpId, int NozzleNumber)>();
+                                foreach (var r in records)
+                                {
+                                    int pId = 0;
+                                    if (r.TryGetValue("PumpId", out var p) && p != null) pId = Convert.ToInt32(p);
+                                    else if (r.TryGetValue("pump_id", out var p2) && p2 != null) pId = Convert.ToInt32(p2);
+
+                                    int nNo = 0;
+                                    if (r.TryGetValue("NozzleNumber", out var n) && n != null) nNo = Convert.ToInt32(n);
+                                    else if (r.TryGetValue("nozzle_number", out var n2) && n2 != null) nNo = Convert.ToInt32(n2);
+
+                                    if (pId > 0 && nNo > 0) pulledNozzleKeys.Add((pId, nNo));
+                                }
+
+                                await context.SaveChangesAsync();
+                            }
+
+                            var currentMappings = await context.PumpMappings.ToListAsync();
+                            FuelPro.Core.Common.PumpConfiguration.InitializeFromDb(currentMappings);
+
+                            // Dynamically update / synchronize TankDefinitions from PumpMappings if TankDefinitions table is not standalone in cloud
+                            var distinctTanksFromMappings = currentMappings
+                                .Where(m => !string.IsNullOrWhiteSpace(m.TankName))
+                                .GroupBy(m => m.TankName.Trim(), StringComparer.OrdinalIgnoreCase)
+                                .ToList();
+
+                            if (distinctTanksFromMappings.Count > 0)
+                            {
+                                var existingTanks = await context.TankDefinitions.ToListAsync();
+                                var validNames = new HashSet<string>(distinctTanksFromMappings.Select(g => g.Key), StringComparer.OrdinalIgnoreCase);
+
+                                foreach (var et in existingTanks)
+                                {
+                                    if (!validNames.Contains(et.TankName))
+                                    {
+                                        context.TankDefinitions.Remove(et);
+                                    }
+                                }
+
+                                foreach (var g in distinctTanksFromMappings)
+                                {
+                                    var tankName = g.Key;
+                                    var fuelType = g.First().FuelType;
+                                    var existing = existingTanks.FirstOrDefault(t => string.Equals(t.TankName, tankName, StringComparison.OrdinalIgnoreCase));
+                                    if (existing != null)
+                                    {
+                                        existing.FuelType = fuelType;
+                                        existing.IsActive = true;
+                                    }
+                                    else
+                                    {
+                                        context.TankDefinitions.Add(new TankDefinition
+                                        {
+                                            TankName = tankName,
+                                            FuelType = fuelType,
+                                            CapacityKL = tankName.Contains("CNG", StringComparison.OrdinalIgnoreCase) ? 5 : 20,
+                                            HasTesting = !tankName.Contains("CNG", StringComparison.OrdinalIgnoreCase),
+                                            IsActive = true,
+                                            CreatedAt = DateTime.Now
+                                        });
+                                    }
+                                }
+                                await context.SaveChangesAsync();
+                                var currentTanks = await context.TankDefinitions.ToListAsync();
+                                FuelPro.Core.Common.PumpConfiguration.InitializeTanksFromDb(currentTanks);
+                            }
+
+                            FuelPro.Core.Services.DsmEntryService.RaiseStationConfigurationChanged();
+                            FuelPro.Core.Services.DsmEntryService.RaiseDsmEntryChanged();
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.Error(ex, "Failed to reinitialize pump mappings after pull");
+                        }
+                    }
+                    else if (tableDef.TableName == "TankDefinitions")
+                    {
+                        try
+                        {
+                            if (records.Count > 0)
+                            {
+                                var pulledTankNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                                foreach (var r in records)
+                                {
+                                    string? tName = null;
+                                    if (r.TryGetValue("TankName", out var t) && t != null) tName = t.ToString();
+                                    else if (r.TryGetValue("tank_name", out var t2) && t2 != null) tName = t2.ToString();
+
+                                    if (!string.IsNullOrWhiteSpace(tName)) pulledTankNames.Add(tName.Trim());
+                                }
+
+                                var allLocalTanks = await context.TankDefinitions.ToListAsync();
+                                foreach (var localTank in allLocalTanks)
+                                {
+                                    if (!pulledTankNames.Contains(localTank.TankName))
+                                    {
+                                        context.TankDefinitions.Remove(localTank);
+                                    }
+                                }
+                                await context.SaveChangesAsync();
+                            }
+
+                            var currentTanks = await context.TankDefinitions.ToListAsync();
+                            FuelPro.Core.Common.PumpConfiguration.InitializeTanksFromDb(currentTanks);
+                            FuelPro.Core.Services.DsmEntryService.RaiseStationConfigurationChanged();
+                            FuelPro.Core.Services.DsmEntryService.RaiseDsmEntryChanged();
+                            _serviceProvider.GetService<IStationConfigurationService>()?.GetAllTanksAsync();
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.Error(ex, "Failed to reinitialize tank definitions after pull");
+                        }
+                    }
+                    else if (tableDef.TableName == "CollectionTypes")
+                    {
+                        try
+                        {
+                            _serviceProvider.GetService<FuelPro.Core.Services.ICollectionTypeService>()?.NotifyCollectionTypesChanged();
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.Error(ex, "Failed to notify collection types after pull");
+                        }
+                    }
+                }
             }
             finally
             {
@@ -1234,6 +2215,686 @@ public class SyncEngine
 
         UpdateStatus(settings.LastSyncTime, 0, true, "Synced");
     }
+
+    /// <summary>
+    /// Explicitly pushes the complete station configuration snapshot (pumps, nozzles, tanks, features, collections)
+    /// directly to Supabase cloud under the active StationId.
+    /// <summary>
+    /// Explicitly pushes the complete station configuration snapshot (pumps, nozzles, tanks, features, collections)
+    /// directly to Supabase cloud under the active StationId.
+    /// </summary>
+    public async Task<(bool Success, string Message)> PushStationSnapshotToCloudAsync(string? specificStationId = null)
+    {
+        var settings = await _configService.GetSettingsAsync();
+        if (string.IsNullOrEmpty(settings.SupabaseUrl) || string.IsNullOrEmpty(settings.SupabaseApiKey))
+        {
+            _logger.Warning("Cannot push station snapshot: Supabase URL or API Key is missing.");
+            return (false, "Supabase URL or API Key is not configured. Please enter credentials in Cloud Config.");
+        }
+
+        var stationId = !string.IsNullOrWhiteSpace(specificStationId) ? specificStationId.Trim() : settings.StationId.Trim();
+        if (string.IsNullOrWhiteSpace(stationId))
+        {
+            _logger.Warning("Cannot push station snapshot: StationId is empty.");
+            return (false, "Station ID is empty. Please set a Station ID.");
+        }
+
+        try
+        {
+            _httpClient.Configure(settings.SupabaseUrl, settings.SupabaseApiKey);
+
+            using var scope = _serviceProvider.CreateScope();
+            using var context = scope.ServiceProvider.GetRequiredService<FuelProDbContext>();
+
+            var localSetting = await context.Settings.FirstOrDefaultAsync();
+            if (localSetting == null)
+            {
+                localSetting = new Setting();
+                context.Settings.Add(localSetting);
+            }
+
+            // 1. Storage Tanks
+            var allTanks = await context.TankDefinitions.ToListAsync();
+            localSetting.TankDefinitionsJson = JsonConvert.SerializeObject(allTanks);
+
+            // 2. Pump Mappings
+            var allMappings = await context.PumpMappings.ToListAsync();
+            localSetting.PumpMappingsJson = JsonConvert.SerializeObject(allMappings);
+
+            // 3. Collection Types
+            var allCollections = await context.CollectionTypes.ToListAsync();
+            localSetting.CollectionTypesJson = JsonConvert.SerializeObject(allCollections);
+
+            // 4. Feature Settings
+            var allFeatures = await context.AppFeatureSettings.ToListAsync();
+            localSetting.AppFeatureSettingsJson = JsonConvert.SerializeObject(allFeatures);
+
+            // 5. Pump Connection Rules
+            var metaRules = await context.AppMeta.AsNoTracking().FirstOrDefaultAsync(m => m.Key == "Station.PumpConnectionRules");
+            if (metaRules != null && !string.IsNullOrWhiteSpace(metaRules.Value))
+            {
+                localSetting.PumpConnectionRulesJson = metaRules.Value;
+            }
+
+            await context.SaveChangesAsync();
+
+            // Find existing SyncGuid for this station in remote or local
+            string? targetSyncGuid = null;
+            try
+            {
+                var checkResp = await _httpClient.SendRequestAsync(HttpMethod.Get, $"Settings?station_id=eq.{stationId}&limit=1");
+                if (!checkResp.IsSuccessStatusCode)
+                {
+                    checkResp = await _httpClient.SendRequestAsync(HttpMethod.Get, $"Settings?StationId=eq.{stationId}&limit=1");
+                }
+                if (checkResp.IsSuccessStatusCode)
+                {
+                    var checkJson = await checkResp.Content.ReadAsStringAsync();
+                    var checkList = JsonConvert.DeserializeObject<List<Dictionary<string, object?>>>(checkJson);
+                    if (checkList != null && checkList.Count > 0)
+                    {
+                        if (TryGetDictValue(checkList[0], "SyncGuid", out var sgVal) && sgVal != null)
+                        {
+                            targetSyncGuid = sgVal.ToString();
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.Warning(ex, "Could not pre-fetch existing Settings row from Supabase");
+            }
+
+            if (string.IsNullOrEmpty(targetSyncGuid))
+            {
+                var existingMapping = await context.SyncIdMappings.FirstOrDefaultAsync(m => m.TableName == "Settings" && m.LocalId == localSetting.SettingId);
+                if (existingMapping != null && !string.IsNullOrEmpty(existingMapping.RemoteGuid))
+                {
+                    targetSyncGuid = existingMapping.RemoteGuid;
+                }
+                else
+                {
+                    targetSyncGuid = Guid.NewGuid().ToString();
+                    context.SyncIdMappings.Add(new SyncIdMapping
+                    {
+                        TableName = "Settings",
+                        LocalId = localSetting.SettingId,
+                        RemoteGuid = targetSyncGuid
+                    });
+                    await context.SaveChangesAsync();
+                }
+            }
+
+            // Prepare Payload for Supabase Settings table
+            var payload = new Dictionary<string, object?>
+            {
+                ["SyncGuid"] = targetSyncGuid,
+                ["station_id"] = stationId,
+                ["machine_id"] = settings.MachineId,
+                ["StationName"] = localSetting.PumpStationName ?? "Fuel Station",
+                ["PumpMappingsJson"] = localSetting.PumpMappingsJson,
+                ["PumpConnectionRulesJson"] = localSetting.PumpConnectionRulesJson,
+                ["TankDefinitionsJson"] = localSetting.TankDefinitionsJson,
+                ["CollectionTypesJson"] = localSetting.CollectionTypesJson,
+                ["AppFeatureSettingsJson"] = localSetting.AppFeatureSettingsJson,
+                ["FuelRatesJson"] = localSetting.FuelRatesJson,
+                ["updated_at"] = DateTime.UtcNow.ToString("o")
+            };
+
+            var json = JsonConvert.SerializeObject(payload);
+            var response = await _httpClient.SendRequestAsync(HttpMethod.Post, "Settings", json, isUpsert: true, onConflict: "SyncGuid");
+
+            // Auto-strip missing column retry loop (e.g. PGRST204: Could not find the 'xyz' column)
+            while (!response.IsSuccessStatusCode && response.StatusCode == System.Net.HttpStatusCode.BadRequest)
+            {
+                var errorStr = await response.Content.ReadAsStringAsync();
+                var colMatch = System.Text.RegularExpressions.Regex.Match(errorStr, @"Could not find the '([^']+)' column");
+                if (colMatch.Success)
+                {
+                    var missingCol = colMatch.Groups[1].Value;
+                    _logger.Warning("Supabase Settings table is missing column '{Col}'. Stripping and retrying push...", missingCol);
+                    payload.Remove(missingCol);
+                    json = JsonConvert.SerializeObject(payload);
+                    response = await _httpClient.SendRequestAsync(HttpMethod.Post, "Settings", json, isUpsert: true, onConflict: "SyncGuid");
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var error = await response.Content.ReadAsStringAsync();
+                _logger.Warning("PushStationSnapshotToCloudAsync failed with on_conflict=SyncGuid: {Error}. Retrying with station_id onConflict...", error);
+                response = await _httpClient.SendRequestAsync(HttpMethod.Post, "Settings", json, isUpsert: true, onConflict: "station_id");
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.Warning("PushStationSnapshotToCloudAsync retrying via direct PATCH Settings?station_id=eq.{StationId}...", stationId);
+                response = await _httpClient.SendRequestAsync(HttpMethod.Patch, $"Settings?station_id=eq.{stationId}", json);
+                if (!response.IsSuccessStatusCode)
+                {
+                    response = await _httpClient.SendRequestAsync(HttpMethod.Patch, $"Settings?StationId=eq.{stationId}", json);
+                }
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.Warning("PushStationSnapshotToCloudAsync retrying via plain POST Settings...");
+                response = await _httpClient.SendRequestAsync(HttpMethod.Post, "Settings", json, isUpsert: false);
+            }
+
+            if (response.IsSuccessStatusCode)
+            {
+                _logger.Information("Successfully pushed complete Station Snapshot to Supabase for station {StationId}", stationId);
+                // Also trigger full force sync to push any individual changed rows
+                _ = Task.Run(async () =>
+                {
+                    try { await ForceSyncAsync(); } catch { }
+                });
+                return (true, $"Station layout and configuration successfully saved to Cloud for Station '{stationId}'.");
+            }
+            else
+            {
+                var err = await response.Content.ReadAsStringAsync();
+                _logger.Error("Failed to push station snapshot to Supabase: {Error}", err);
+                return (false, $"Supabase push failed (HTTP {response.StatusCode}): {err}");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Exception in PushStationSnapshotToCloudAsync");
+            return (false, $"Exception during cloud push: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Explicitly queries Supabase for the station snapshot for the active StationId,
+    /// merges the pump mappings, tanks, collection types, and feature toggles into local SQLite,
+    /// cleans up obsolete seed defaults, re-initializes memory caches, and notifies UI.
+    /// </summary>
+    public async Task<(bool Success, string Message)> PullStationSnapshotFromCloudAsync(string? specificStationId = null)
+    {
+        var settings = await _configService.GetSettingsAsync();
+        if (string.IsNullOrEmpty(settings.SupabaseUrl) || string.IsNullOrEmpty(settings.SupabaseApiKey))
+        {
+            _logger.Warning("Cannot pull station snapshot: Supabase URL or API Key is missing.");
+            return (false, "Supabase URL or API Key is not configured. Please enter credentials in Cloud Config.");
+        }
+
+        var stationId = !string.IsNullOrWhiteSpace(specificStationId) ? specificStationId.Trim() : settings.StationId.Trim();
+        if (string.IsNullOrWhiteSpace(stationId))
+        {
+            _logger.Warning("Cannot pull station snapshot: StationId is empty.");
+            return (false, "Station ID is empty. Please set a Station ID.");
+        }
+
+        try
+        {
+            _httpClient.Configure(settings.SupabaseUrl, settings.SupabaseApiKey);
+
+            _logger.Information("Pulling station snapshot from Supabase for Station {StationId}...", stationId);
+            var response = await _httpClient.SendRequestAsync(HttpMethod.Get, $"Settings?station_id=eq.{stationId}&order=updated_at.desc&limit=1");
+            if (!response.IsSuccessStatusCode)
+            {
+                response = await _httpClient.SendRequestAsync(HttpMethod.Get, $"Settings?StationId=eq.{stationId}&order=updated_at.desc&limit=1");
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var err = await response.Content.ReadAsStringAsync();
+                _logger.Warning("Failed to pull Settings for station {StationId}: {Error}", stationId, err);
+                return (false, $"Failed to query Supabase (HTTP {response.StatusCode}): {err}");
+            }
+
+            var json = await response.Content.ReadAsStringAsync();
+            var rawList = JsonConvert.DeserializeObject<List<Dictionary<string, object?>>>(json);
+            if (rawList == null || rawList.Count == 0)
+            {
+                _logger.Warning("No Settings snapshot found in Supabase for station {StationId}", stationId);
+                return (false, $"No cloud snapshot found in Supabase for Station ID '{stationId}'. Please click 'Save Preset to Cloud' or 'Push to Cloud' on the configuration machine first.");
+            }
+
+            var dict = new Dictionary<string, object?>(rawList[0], StringComparer.OrdinalIgnoreCase);
+
+            using var scope = _serviceProvider.CreateScope();
+            using var context = scope.ServiceProvider.GetRequiredService<FuelProDbContext>();
+
+            var localSetting = await context.Settings.FirstOrDefaultAsync();
+            if (localSetting == null)
+            {
+                localSetting = new Setting();
+                context.Settings.Add(localSetting);
+            }
+
+            if (TryGetDictValue(dict, "StationName", out var snVal) && snVal != null)
+                localSetting.PumpStationName = snVal.ToString()!;
+
+            // 1. Tanks
+            if (TryGetDictValue(dict, "TankDefinitionsJson", out var tanksJsonObj) && tanksJsonObj != null)
+            {
+                var tanksJson = tanksJsonObj.ToString();
+                if (!string.IsNullOrWhiteSpace(tanksJson))
+                {
+                    localSetting.TankDefinitionsJson = tanksJson;
+                    var tanks = JsonConvert.DeserializeObject<List<TankDefinition>>(tanksJson);
+                    if (tanks != null && tanks.Count > 0)
+                    {
+                        var existingTanks = await context.TankDefinitions.ToListAsync();
+                        var processedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+                        foreach (var t in tanks)
+                        {
+                            var existingTank = existingTanks.FirstOrDefault(x => string.Equals(x.TankName, t.TankName, StringComparison.OrdinalIgnoreCase));
+                            if (existingTank != null)
+                            {
+                                existingTank.CapacityKL = t.CapacityKL;
+                                existingTank.FuelType = t.FuelType;
+                                existingTank.IsActive = t.IsActive;
+                                existingTank.HasTesting = t.HasTesting;
+                                processedNames.Add(existingTank.TankName);
+                            }
+                            else
+                            {
+                                context.TankDefinitions.Add(new TankDefinition
+                                {
+                                    TankName = t.TankName,
+                                    CapacityKL = t.CapacityKL,
+                                    FuelType = t.FuelType,
+                                    IsActive = t.IsActive,
+                                    HasTesting = t.HasTesting,
+                                    CreatedAt = DateTime.Now
+                                });
+                                processedNames.Add(t.TankName);
+                            }
+                        }
+
+                        foreach (var existing in existingTanks)
+                        {
+                            if (!processedNames.Contains(existing.TankName))
+                            {
+                                context.TankDefinitions.Remove(existing);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 2. Collection Types
+            if (TryGetDictValue(dict, "CollectionTypesJson", out var ctJsonObj) && ctJsonObj != null)
+            {
+                var ctJson = ctJsonObj.ToString();
+                if (!string.IsNullOrWhiteSpace(ctJson))
+                {
+                    localSetting.CollectionTypesJson = ctJson;
+                    var types = JsonConvert.DeserializeObject<List<CollectionTypeMaster>>(ctJson);
+                    if (types != null && types.Count > 0)
+                    {
+                        var existingCts = await context.CollectionTypes.ToListAsync();
+                        var processedCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+                        foreach (var ct in types)
+                        {
+                            var existingCt = existingCts.FirstOrDefault(x => string.Equals(x.Code, ct.Code, StringComparison.OrdinalIgnoreCase));
+                            if (existingCt != null)
+                            {
+                                existingCt.DisplayName = ct.DisplayName;
+                                existingCt.Category = ct.Category;
+                                existingCt.HasTidBatch = ct.HasTidBatch;
+                                existingCt.DisplayOrder = ct.DisplayOrder;
+                                existingCt.IsActive = ct.IsActive;
+                                processedCodes.Add(existingCt.Code);
+                            }
+                            else
+                            {
+                                context.CollectionTypes.Add(new CollectionTypeMaster
+                                {
+                                    Code = ct.Code,
+                                    DisplayName = ct.DisplayName,
+                                    Category = ct.Category,
+                                    HasTidBatch = ct.HasTidBatch,
+                                    DisplayOrder = ct.DisplayOrder,
+                                    IsActive = ct.IsActive,
+                                    IsSystem = ct.IsSystem,
+                                    CreatedAt = DateTime.Now
+                                });
+                                processedCodes.Add(ct.Code);
+                            }
+                        }
+
+                        foreach (var existing in existingCts)
+                        {
+                            if (!existing.IsSystem && !processedCodes.Contains(existing.Code))
+                            {
+                                context.CollectionTypes.Remove(existing);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 3. Feature Settings
+            if (TryGetDictValue(dict, "AppFeatureSettingsJson", out var featJsonObj) && featJsonObj != null)
+            {
+                var featJson = featJsonObj.ToString();
+                if (!string.IsNullOrWhiteSpace(featJson))
+                {
+                    localSetting.AppFeatureSettingsJson = featJson;
+                    var features = JsonConvert.DeserializeObject<List<AppFeatureSetting>>(featJson);
+                    if (features != null && features.Count > 0)
+                    {
+                        foreach (var feat in features)
+                        {
+                            var existingFeat = await context.AppFeatureSettings.FirstOrDefaultAsync(x => x.FeatureKey == feat.FeatureKey && x.TargetRole == feat.TargetRole);
+                            if (existingFeat != null)
+                            {
+                                existingFeat.IsEnabled = feat.IsEnabled;
+                                existingFeat.DisplayName = feat.DisplayName;
+                                existingFeat.Category = feat.Category;
+                                existingFeat.DisplayOrder = feat.DisplayOrder;
+                                existingFeat.UpdatedAt = DateTime.Now;
+                            }
+                            else
+                            {
+                                context.AppFeatureSettings.Add(new AppFeatureSetting
+                                {
+                                    FeatureKey = feat.FeatureKey,
+                                    TargetRole = feat.TargetRole,
+                                    DisplayName = feat.DisplayName,
+                                    Category = feat.Category,
+                                    DisplayOrder = feat.DisplayOrder,
+                                    IsEnabled = feat.IsEnabled,
+                                    UpdatedAt = DateTime.Now
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 4. Pump Mappings
+            if (TryGetDictValue(dict, "PumpMappingsJson", out var pmJsonObj) && pmJsonObj != null)
+            {
+                var pmJson = pmJsonObj.ToString();
+                if (!string.IsNullOrWhiteSpace(pmJson))
+                {
+                    localSetting.PumpMappingsJson = pmJson;
+                    var dynamicPumpMappings = JsonConvert.DeserializeObject<List<PumpMapping>>(pmJson);
+                    if (dynamicPumpMappings != null && dynamicPumpMappings.Count > 0)
+                    {
+                        var existingMappings = await context.PumpMappings.ToListAsync();
+                        var processedIds = new HashSet<int>();
+
+                        foreach (var m in dynamicPumpMappings)
+                        {
+                            var existing = existingMappings.FirstOrDefault(x => x.PumpId == m.PumpId && x.NozzleNumber == m.NozzleNumber && !processedIds.Contains(x.PumpMappingId));
+                            if (existing == null)
+                            {
+                                existing = existingMappings.FirstOrDefault(x => x.NozzleNumber == m.NozzleNumber && !processedIds.Contains(x.PumpMappingId));
+                            }
+
+                            if (existing != null)
+                            {
+                                existing.PumpId = m.PumpId;
+                                existing.NozzleNumber = m.NozzleNumber;
+                                existing.FuelType = m.FuelType;
+                                existing.TankName = m.TankName;
+                                existing.IsActive = m.IsActive;
+                                processedIds.Add(existing.PumpMappingId);
+                            }
+                            else
+                            {
+                                var newEntity = new PumpMapping
+                                {
+                                    PumpId = m.PumpId,
+                                    NozzleNumber = m.NozzleNumber,
+                                    FuelType = m.FuelType,
+                                    TankName = m.TankName,
+                                    IsActive = m.IsActive,
+                                    CreatedAt = DateTime.Now
+                                };
+                                context.PumpMappings.Add(newEntity);
+                                await context.SaveChangesAsync();
+                                processedIds.Add(newEntity.PumpMappingId);
+                            }
+                        }
+
+                        foreach (var existing in existingMappings)
+                        {
+                            if (!processedIds.Contains(existing.PumpMappingId))
+                            {
+                                context.PumpMappings.Remove(existing);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 5. Pump Connection Rules
+            if (TryGetDictValue(dict, "PumpConnectionRulesJson", out var pcrJsonObj) && pcrJsonObj != null)
+            {
+                var pcrJson = pcrJsonObj.ToString();
+                if (!string.IsNullOrWhiteSpace(pcrJson))
+                {
+                    localSetting.PumpConnectionRulesJson = pcrJson;
+                    var meta = await context.AppMeta.FirstOrDefaultAsync(m => m.Key == "Station.PumpConnectionRules");
+                    if (meta != null)
+                    {
+                        meta.Value = pcrJson;
+                        context.Entry(meta).State = EntityState.Modified;
+                    }
+                    else
+                    {
+                        context.AppMeta.Add(new AppMeta { Key = "Station.PumpConnectionRules", Value = pcrJson });
+                    }
+                }
+            }
+
+            // Also check for StationLayoutPresets if present
+            try
+            {
+                if (localSetting.PumpMappingsJson != null && localSetting.TankDefinitionsJson != null)
+                {
+                    var existingPreset = await context.StationLayoutPresets.FirstOrDefaultAsync(p => p.PresetCode == $"{stationId}-PRESET");
+                    var presetPayload = new StationPresetData
+                    {
+                        PresetName = $"{stationId} Cloud Layout",
+                        PresetCode = $"{stationId}-PRESET",
+                        Description = $"Preset fetched from Supabase Cloud on {DateTime.Now:dd-MMM-yyyy HH:mm}",
+                        Tanks = await context.TankDefinitions.Select(t => new TankPresetItem
+                        {
+                            TankName = t.TankName,
+                            CapacityKL = t.CapacityKL,
+                            FuelType = t.FuelType,
+                            IsActive = t.IsActive,
+                            HasTesting = t.HasTesting
+                        }).ToListAsync(),
+                        Pumps = (await context.PumpMappings.ToListAsync())
+                            .GroupBy(p => p.PumpId)
+                            .OrderBy(g => g.Key)
+                            .Select(g => new PumpPresetItem
+                            {
+                                PumpId = g.Key,
+                                Nozzles = g.OrderBy(n => n.NozzleNumber).Select(n => new NozzlePresetItem
+                                {
+                                    NozzleNumber = n.NozzleNumber,
+                                    FuelType = n.FuelType,
+                                    TankName = n.TankName
+                                }).ToList()
+                            }).ToList()
+                    };
+
+                    var presetJson = JsonConvert.SerializeObject(presetPayload, Formatting.Indented);
+                    if (existingPreset != null)
+                    {
+                        existingPreset.LayoutJson = presetJson;
+                        existingPreset.PumpCount = presetPayload.Pumps.Count;
+                        existingPreset.NozzleCount = presetPayload.Pumps.SelectMany(p => p.Nozzles).Count();
+                        existingPreset.TankCount = presetPayload.Tanks.Count;
+                        existingPreset.UpdatedAt = DateTime.Now;
+                    }
+                    else
+                    {
+                        context.StationLayoutPresets.Add(new StationLayoutPreset
+                        {
+                            PresetCode = $"{stationId}-PRESET",
+                            PresetName = $"{stationId} Cloud Layout",
+                            Description = $"Preset fetched from Supabase Cloud on {DateTime.Now:dd-MMM-yyyy HH:mm}",
+                            LayoutJson = presetJson,
+                            PumpCount = presetPayload.Pumps.Count,
+                            NozzleCount = presetPayload.Pumps.SelectMany(p => p.Nozzles).Count(),
+                            TankCount = presetPayload.Tanks.Count,
+                            IsActive = true,
+                            CreatedAt = DateTime.Now
+                        });
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.Warning(ex, "Failed to auto-generate local preset from pulled station snapshot");
+            }
+
+            await context.SaveChangesAsync();
+
+            // Refresh runtime state & caches
+            var updatedTanks = await context.TankDefinitions.ToListAsync();
+            var updatedMappings = await context.PumpMappings.ToListAsync();
+            FuelPro.Core.Common.PumpConfiguration.InitializeFromDb(updatedMappings);
+            FuelPro.Core.Common.PumpConfiguration.InitializeTanksFromDb(updatedTanks);
+            FuelPro.Core.Services.DsmEntryService.RaiseStationConfigurationChanged();
+            FuelPro.Core.Services.DsmEntryService.RaiseDsmEntryChanged();
+            _serviceProvider.GetService<FuelPro.Core.Services.ICollectionTypeService>()?.NotifyCollectionTypesChanged();
+            _serviceProvider.GetService<FuelPro.Core.Services.IFeatureToggleService>()?.RefreshCacheAsync();
+
+            _logger.Information("Successfully applied complete Station Snapshot from Supabase for station {StationId}", stationId);
+            return (true, $"Successfully applied station configuration from cloud for Station '{stationId}'.");
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Exception in PullStationSnapshotFromCloudAsync");
+            return (false, $"Exception during cloud fetch: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// On-demand pulls a referenced parent record from Supabase by its SyncGuid,
+    /// inserting it into the local database and registering its local ID.
+    /// </summary>
+    private async Task<int?> FetchAndImportMissingParentAsync(
+        FuelProDbContext context,
+        Dictionary<string, Dictionary<string, int>> guidToLocal,
+        string parentTableName,
+        string parentGuid,
+        SyncSettings settings)
+    {
+        try
+        {
+            var parentEntityType = context.Model.GetEntityTypes().FirstOrDefault(t => t.GetTableName() == parentTableName);
+            if (parentEntityType == null) return null;
+            var pkProp = parentEntityType.FindPrimaryKey()?.Properties.FirstOrDefault();
+            if (pkProp == null) return null;
+
+            _logger.Information("On-demand pulling missing parent {ParentTable} with SyncGuid={Guid}...", parentTableName, parentGuid);
+            var response = await _httpClient.SendRequestAsync(HttpMethod.Get, $"{parentTableName}?SyncGuid=eq.{parentGuid}");
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            var json = await response.Content.ReadAsStringAsync();
+            var records = JsonConvert.DeserializeObject<List<Dictionary<string, object>>>(json);
+            if (records == null || records.Count == 0) return null;
+
+            var pDict = records[0];
+
+            // Resolve grandparent FKs on the parent if needed
+            if (FkConfigByTable.TryGetValue(parentTableName, out var grandParentFks))
+            {
+                foreach (var gpFk in grandParentFks)
+                {
+                    if (pDict.TryGetValue(gpFk.FkProperty, out var gpVal) && gpVal != null)
+                    {
+                        var gpGuid = gpVal.ToString()!;
+                        if (Guid.TryParse(gpGuid, out _))
+                        {
+                            var gpMap = guidToLocal.GetValueOrDefault(gpFk.ReferencedTable);
+                            if (gpMap != null && gpMap.TryGetValue(gpGuid, out var gpLocalId))
+                            {
+                                pDict[gpFk.FkProperty] = gpLocalId;
+                            }
+                            else
+                            {
+                                var gpResolved = await FetchAndImportMissingParentAsync(context, guidToLocal, gpFk.ReferencedTable, gpGuid, settings);
+                                if (gpResolved.HasValue)
+                                    pDict[gpFk.FkProperty] = gpResolved.Value;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Create entity
+            var parentEntity = Activator.CreateInstance(parentEntityType.ClrType);
+            if (parentEntity == null) return null;
+
+            var entry = context.Entry(parentEntity);
+            foreach (var prop in parentEntityType.GetProperties())
+            {
+                if (prop.IsPrimaryKey()) continue;
+
+                if (pDict.TryGetValue(prop.Name, out var val))
+                {
+                    if (val == null)
+                    {
+                        var isNullable = Nullable.GetUnderlyingType(prop.ClrType) != null || !prop.ClrType.IsValueType;
+                        if (isNullable) entry.Property(prop.Name).CurrentValue = null;
+                    }
+                    else
+                    {
+                        var targetType = Nullable.GetUnderlyingType(prop.ClrType) ?? prop.ClrType;
+                        object? converted;
+                        if (targetType == typeof(DateTime))
+                            converted = DateTime.Parse(val.ToString()!);
+                        else if (targetType == typeof(Guid))
+                            converted = Guid.Parse(val.ToString()!);
+                        else if (targetType.IsEnum)
+                            converted = Enum.Parse(targetType, val.ToString()!);
+                        else
+                            converted = Convert.ChangeType(val, targetType);
+                        entry.Property(prop.Name).CurrentValue = converted;
+                    }
+                }
+            }
+
+            context.Add(parentEntity);
+            await context.SaveChangesAsync();
+
+            var newLocalId = (int)entry.Property(pkProp.Name).CurrentValue!;
+            if (!guidToLocal.ContainsKey(parentTableName))
+                guidToLocal[parentTableName] = new Dictionary<string, int>();
+            guidToLocal[parentTableName][parentGuid] = newLocalId;
+
+            context.SyncIdMappings.Add(new SyncIdMapping
+            {
+                TableName = parentTableName,
+                RemoteGuid = parentGuid,
+                LocalId = newLocalId
+            });
+            await context.SaveChangesAsync();
+
+            _logger.Information("Successfully imported missing parent {ParentTable} (SyncGuid={Guid}) as LocalId={Id}", parentTableName, parentGuid, newLocalId);
+            return newLocalId;
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to on-demand import parent {ParentTable} SyncGuid={Guid}", parentTableName, parentGuid);
+            return null;
+        }
+    }
+
 
     // ═══════════════════════════════════════════════════════════════════
     // HELPERS
@@ -1387,5 +3048,25 @@ public class SyncEngine
                 return i + 1;
         }
         return int.MaxValue;
+    }
+
+    private static bool TryGetDictValue(Dictionary<string, object?> dict, string propName, out object? value)
+    {
+        if (dict.TryGetValue(propName, out value) && value != null) return true;
+
+        // Try underscore / snake_case version e.g. PhonePeMorning -> phone_pe_morning, DsmEntryId -> dsm_entry_id
+        var snakeCase = string.Concat(propName.Select((x, i) => i > 0 && char.IsUpper(x) ? "_" + x.ToString() : x.ToString())).ToLower();
+        if (dict.TryGetValue(snakeCase, out value) && value != null) return true;
+
+        // Try without underscores e.g. dynamic_items_json -> dynamicitemsjson
+        var noUnderscore = propName.Replace("_", "");
+        if (dict.TryGetValue(noUnderscore, out value) && value != null) return true;
+
+        if (dict.ContainsKey(propName)) { value = dict[propName]; return true; }
+        if (dict.ContainsKey(snakeCase)) { value = dict[snakeCase]; return true; }
+        if (dict.ContainsKey(noUnderscore)) { value = dict[noUnderscore]; return true; }
+
+        value = null;
+        return false;
     }
 }

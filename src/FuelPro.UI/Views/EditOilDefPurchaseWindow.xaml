@@ -1,0 +1,66 @@
+<Window x:Class="FuelPro.UI.Views.EditOilDefPurchaseWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+        Title="Edit Purchase Transaction"
+        Width="500" Height="520"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="{DynamicResource MaterialDesign.Brush.Background}"
+        TextElement.Foreground="{DynamicResource MaterialDesign.Brush.Foreground}"
+        FontFamily="{materialDesign:MaterialDesignFont}">
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,16">
+            <materialDesign:PackIcon Kind="TruckDeliveryOutline" Width="26" Height="26" Foreground="#1565C0" VerticalAlignment="Center"/>
+            <TextBlock Text="Edit Purchase Transaction" FontSize="18" FontWeight="Bold" Margin="10,0,0,0" VerticalAlignment="Center"/>
+        </StackPanel>
+
+        <!-- Form Fields -->
+        <StackPanel Grid.Row="1" VerticalAlignment="Top">
+            <TextBlock x:Name="ProductLabel" Text="Product: Castrol Oil" FontSize="14" FontWeight="SemiBold" Foreground="#00796B" Margin="0,0,0,14"/>
+
+            <DatePicker x:Name="PurchaseDatePicker" materialDesign:HintAssist.Hint="Purchase Date"
+                        Margin="0,0,0,12" Height="48"
+                        Style="{StaticResource MaterialDesignOutlinedDatePicker}"/>
+
+            <TextBox x:Name="SupplierTextBox" materialDesign:HintAssist.Hint="Supplier Name"
+                     Margin="0,0,0,12" Height="48"
+                     Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+
+            <TextBox x:Name="InvoiceTextBox" materialDesign:HintAssist.Hint="Invoice Number"
+                     Margin="0,0,0,12" Height="48"
+                     Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+
+            <Grid Margin="0,0,0,12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="12"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBox Grid.Column="0" x:Name="QuantityTextBox" materialDesign:HintAssist.Hint="Qty Purchased"
+                         Height="48" TextChanged="OnValuesChanged"
+                         Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+
+                <TextBox Grid.Column="2" x:Name="UnitPriceTextBox" materialDesign:HintAssist.Hint="Unit Price (₹)"
+                         Height="48" TextChanged="OnValuesChanged"
+                         Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+            </Grid>
+
+            <TextBlock x:Name="TotalCostLabel" Text="Total Cost: ₹0.00" FontSize="14" FontWeight="Bold" Foreground="#1565C0" Margin="4,0,0,0"/>
+        </StackPanel>
+
+        <!-- Action Buttons -->
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button Content="Cancel" Click="Cancel_Click" Style="{StaticResource MaterialDesignOutlinedButton}" Margin="0,0,8,0"/>
+            <Button Content="Save Changes" Click="Save_Click" Style="{StaticResource MaterialDesignRaisedButton}" Background="#1565C0" BorderBrush="#1565C0"/>
+        </StackPanel>
+    </Grid>
+</Window>

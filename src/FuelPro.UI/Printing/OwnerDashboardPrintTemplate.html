@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Owner Dashboard Operational & Financial Summary</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #0f172a;
+            font-size: 11.5px;
+            line-height: 1.4;
+            background: #f8fafc;
+            padding-top: 50px;
+        }
+        #toolbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 44px;
+            background: #005F73;
+            color: #ffffff;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            z-index: 9999;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+        #toolbar span {
+            font-size: 14px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+        #toolbar button {
+            background: #ffffff;
+            color: #005F73;
+            border: none;
+            padding: 6px 16px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-left: 8px;
+        }
+        #toolbar button:hover {
+            background: #e2e8f0;
+        }
+        .page {
+            max-width: 1000px;
+            margin: 15px auto 40px;
+            background: #ffffff;
+            padding: 24px 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            border: 1px solid #e2e8f0;
+        }
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 2.5px solid #005F73;
+            padding-bottom: 12px;
+            margin-bottom: 16px;
+        }
+        .header-title-box {
+            flex: 1;
+            text-align: center;
+        }
+        .header h1 {
+            color: #005F73;
+            font-size: 22px;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+        .header .tagline {
+            font-size: 11.5px;
+            font-weight: 700;
+            color: #028090;
+            letter-spacing: 1px;
+            margin-top: 2px;
+        }
+        .header .doc-title {
+            font-size: 13px;
+            font-weight: 800;
+            color: #1e293b;
+            margin-top: 4px;
+            text-transform: uppercase;
+        }
+        .logo-box {
+            width: 75px;
+            height: 75px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .logo-box img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+        .meta-info-container {
+            display: flex;
+            justify-content: space-between;
+            background-color: #f1f5f9;
+            padding: 10px 16px;
+            border-radius: 6px;
+            margin-bottom: 16px;
+            border: 1.5px solid #cbd5e1;
+        }
+        .meta-group h3 {
+            font-size: 10.5px;
+            font-weight: 800;
+            color: #005F73;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 2px;
+        }
+        .meta-group p {
+            font-size: 12.5px;
+            font-weight: 700;
+            color: #0f172a;
+        }
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .kpi-card {
+            background-color: #ffffff;
+            border: 1.5px solid #cbd5e1;
+            border-radius: 6px;
+            padding: 8px 6px;
+            text-align: center;
+        }
+        .kpi-card.primary {
+            background: #e0f2fe;
+            border-color: #0284c7;
+        }
+        .kpi-card.success {
+            background: #dcfce7;
+            border-color: #16a34a;
+        }
+        .kpi-card.warning {
+            background: #fef3c7;
+            border-color: #d97706;
+        }
+        .kpi-card.danger {
+            background: #fee2e2;
+            border-color: #dc2626;
+        }
+        .kpi-card.purple {
+            background: #f3e8ff;
+            border-color: #9333ea;
+        }
+        .kpi-label {
+            font-size: 10px;
+            font-weight: 800;
+            color: #475569;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            margin-bottom: 4px;
+        }
+        .kpi-value {
+            font-size: 14px;
+            font-weight: 800;
+            color: #0f172a;
+        }
+        .section-header {
+            font-size: 13px;
+            font-weight: 800;
+            color: #005F73;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin: 18px 0 8px 0;
+            border-left: 4px solid #005F73;
+            padding-left: 8px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 16px;
+            font-size: 11px;
+        }
+        th {
+            background-color: #005F73;
+            color: #ffffff;
+            text-align: left;
+            padding: 6px 8px;
+            font-weight: 800;
+            font-size: 10.5px;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            border: 1px solid #004d5d;
+        }
+        td {
+            padding: 5px 8px;
+            border: 1px solid #cbd5e1;
+            color: #1e293b;
+            font-weight: 600;
+        }
+        tr:nth-child(even) {
+            background-color: #f8fafc;
+        }
+        .text-right {
+            text-align: right;
+        }
+        .text-center {
+            text-align: center;
+        }
+        .font-bold {
+            font-weight: 800 !important;
+        }
+        .total-row td {
+            background-color: #e2e8f0 !important;
+            font-weight: 800 !important;
+            font-size: 11.5px;
+            border-top: 2px solid #005F73;
+            border-bottom: 2px solid #005F73;
+            color: #0f172a;
+        }
+        .grid-2col {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+        .signatures {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            margin-top: 36px;
+            text-align: center;
+        }
+        .sig-box {
+            border-top: 1.5px solid #475569;
+            padding-top: 6px;
+            font-size: 11px;
+            font-weight: 700;
+            color: #334155;
+        }
+        .footer {
+            margin-top: 24px;
+            text-align: center;
+            font-size: 10px;
+            font-weight: 600;
+            color: #64748b;
+            border-top: 1px solid #e2e8f0;
+            padding-top: 8px;
+        }
+        @media print {
+            #toolbar {
+                display: none !important;
+            }
+            body {
+                background: #ffffff;
+                padding-top: 0;
+                font-size: 10.5px;
+            }
+            .page {
+                max-width: 100%;
+                margin: 0;
+                padding: 0;
+                border: none;
+                box-shadow: none;
+            }
+            th, .total-row td, .kpi-card {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+            @page {
+                size: A4 portrait;
+                margin: 10mm;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div id="toolbar">
+    <span id="toolbarTitle">📊 Owner Dashboard Operational & Financial Report</span>
+    <div>
+        <button onclick="window.print()">🖨️ Print / Save PDF</button>
+        <button onclick="window.close()">✖ Close</button>
+    </div>
+</div>
+
+<div class="page">
+    <div class="header">
+        <div class="logo-box">
+            <img id="stationLogo" src="" alt="" style="display: none;" />
+        </div>
+        <div class="header-title-box">
+            <h1 id="stationName">FUEL STATION</h1>
+            <div class="tagline" id="stationTagline">KANDHARE NANGADE SURVE GROUP</div>
+            <div class="doc-title">Owner Dashboard Operational Summary</div>
+        </div>
+        <div class="logo-box" style="visibility: hidden;"></div>
+    </div>
+
+    <div class="meta-info-container">
+        <div class="meta-group">
+            <h3>Statement Period</h3>
+            <p id="statementPeriod">Today</p>
+        </div>
+        <div class="meta-group">
+            <h3>Filter Preset</h3>
+            <p id="presetLabel">Custom Date</p>
+        </div>
+        <div class="meta-group" style="text-align: right;">
+            <h3>Generated On</h3>
+            <p id="generatedOn">-</p>
+        </div>
+    </div>
+
+    <!-- 10 Primary KPI Cards -->
+    <div class="kpi-grid">
+        <div class="kpi-card primary">
+            <div class="kpi-label">Gross Sales</div>
+            <div class="kpi-value" id="kpiGrossSales">₹0.00</div>
+        </div>
+        <div class="kpi-card success">
+            <div class="kpi-label">Volume Sold</div>
+            <div class="kpi-value" id="kpiTotalVolume">0.00 L</div>
+        </div>
+        <div class="kpi-card warning">
+            <div class="kpi-label">Net Collection</div>
+            <div class="kpi-value" id="kpiNetCollection">₹0.00</div>
+        </div>
+        <div class="kpi-card danger">
+            <div class="kpi-label">Total Expenses</div>
+            <div class="kpi-value" id="kpiExpenses">₹0.00</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">Net Mismatch</div>
+            <div class="kpi-value" id="kpiMismatch">₹0.00</div>
+        </div>
+        <div class="kpi-card purple">
+            <div class="kpi-label">Oil/DEF Sales</div>
+            <div class="kpi-value" id="kpiOilDefSales">₹0.00</div>
+        </div>
+        <div class="kpi-card purple">
+            <div class="kpi-label">Oil/DEF Profit</div>
+            <div class="kpi-value" id="kpiOilDefProfit">₹0.00</div>
+        </div>
+        <div class="kpi-card success">
+            <div class="kpi-label">Net Profit</div>
+            <div class="kpi-value" id="kpiNetProfit">₹0.00</div>
+        </div>
+        <div class="kpi-card danger">
+            <div class="kpi-label">Debtors Outstanding</div>
+            <div class="kpi-value" id="kpiDebtorsOutstanding">₹0.00</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">DSM Shifts</div>
+            <div class="kpi-value" id="kpiDsmEntries">0 Entries</div>
+        </div>
+    </div>
+
+    <!-- Section 1 & Section 2 in 2-Column Grid -->
+    <div class="grid-2col">
+        <!-- Section 1: Fuel Sales & Tank Breakdown -->
+        <div>
+            <div class="section-header">1. Fuel Sales &amp; Tank Breakdown</div>
+            <table id="fuelSalesTable">
+                <thead>
+                    <tr>
+                        <th>Tank / Fuel</th>
+                        <th class="text-right">Litres (L)</th>
+                        <th class="text-right">Rate (₹)</th>
+                        <th class="text-right">Amount (₹)</th>
+                        <th class="text-right">Testing (L)</th>
+                    </tr>
+                </thead>
+                <tbody id="fuelSalesBody">
+                    <tr><td colspan="5" class="text-center">No fuel sales data available</td></tr>
+                </tbody>
+                <tfoot>
+                    <tr class="total-row" id="fuelSalesTotalRow">
+                        <td>TOTAL</td>
+                        <td class="text-right" id="fuelTotalLitres">0.00 L</td>
+                        <td class="text-center">-</td>
+                        <td class="text-right" id="fuelTotalAmount">₹0.00</td>
+                        <td class="text-right" id="fuelTotalTesting">0.00 L</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+
+        <!-- Section 2: Payment Mode & Collection Breakdown -->
+        <div>
+            <div class="section-header">2. Payment &amp; Collection Modes</div>
+            <table id="paymentModesTable">
+                <thead>
+                    <tr>
+                        <th>Collection Mode</th>
+                        <th>Category</th>
+                        <th class="text-right">Amount (₹)</th>
+                        <th class="text-right">Share %</th>
+                    </tr>
+                </thead>
+                <tbody id="paymentModesBody">
+                    <tr><td colspan="4" class="text-center">No collection data available</td></tr>
+                </tbody>
+                <tfoot>
+                    <tr class="total-row" id="paymentModesTotalRow">
+                        <td colspan="2">TOTAL COLLECTION</td>
+                        <td class="text-right" id="paymentTotalAmount">₹0.00</td>
+                        <td class="text-right" id="paymentTotalShare">100.0%</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+
+    <!-- Section 3: DSM Shift Totals Summary -->
+    <div class="section-header">3. DSM Shift Totals Summary (Combined per DSM)</div>
+    <table id="dsmShiftTable">
+        <thead>
+            <tr>
+                <th>DSM Name</th>
+                <th class="text-center">Shifts</th>
+                <th>Pumps</th>
+                <th class="text-right">Gross Sales (₹)</th>
+                <th class="text-right">Digital / QR</th>
+                <th class="text-right">Bank Cash</th>
+                <th class="text-right">Hand Cash</th>
+                <th class="text-right">Debtors</th>
+                <th class="text-right">Expenses</th>
+                <th class="text-right">Testing (L)</th>
+                <th class="text-right">Total Collection</th>
+                <th class="text-right">Mismatch (₹)</th>
+            </tr>
+        </thead>
+        <tbody id="dsmShiftBody">
+            <tr><td colspan="12" class="text-center">No DSM shift entries found</td></tr>
+        </tbody>
+        <tfoot>
+            <tr class="total-row" id="dsmShiftTotalRow">
+                <td>TOTAL</td>
+                <td class="text-center" id="dsmTotalShifts">0</td>
+                <td class="text-center">-</td>
+                <td class="text-right" id="dsmTotalGross">₹0.00</td>
+                <td class="text-right" id="dsmTotalDigital">₹0.00</td>
+                <td class="text-right" id="dsmTotalBankCash">₹0.00</td>
+                <td class="text-right" id="dsmTotalHandCash">₹0.00</td>
+                <td class="text-right" id="dsmTotalDebtors">₹0.00</td>
+                <td class="text-right" id="dsmTotalExpenses">₹0.00</td>
+                <td class="text-right" id="dsmTotalTesting">0.00 L</td>
+                <td class="text-right" id="dsmTotalCollection">₹0.00</td>
+                <td class="text-right" id="dsmTotalMismatch">₹0.00</td>
+            </tr>
+        </tfoot>
+    </table>
+
+    <!-- Signatures -->
+    <div class="signatures">
+        <div class="sig-box">Prepared By (DSM / Cashier)</div>
+        <div class="sig-box">Verified By (Manager)</div>
+        <div class="sig-box">Authorized Signatory / Owner</div>
+    </div>
+
+    <div class="footer">
+        <p>Report generated by FuelPro Automation Suite • Confidential &amp; Proprietary Management Record</p>
+    </div>
+</div>
+
+<script>
+    function formatCurrency(val) {
+        var num = parseFloat(val) || 0;
+        return '₹' + num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function formatNumber(val, decimals) {
+        var num = parseFloat(val) || 0;
+        return num.toLocaleString('en-IN', { minimumFractionDigits: decimals || 2, maximumFractionDigits: decimals || 2 });
+    }
+
+    function renderDashboard(data) {
+        if (!data) return;
+
+        // Station Header & Branding
+        if (data.stationName) document.getElementById('stationName').innerText = data.stationName;
+        if (data.stationTagline) document.getElementById('stationTagline').innerText = data.stationTagline;
+        if (data.logoBase64) {
+            var logo = document.getElementById('stationLogo');
+            logo.src = 'data:image/png;base64,' + data.logoBase64;
+            logo.style.display = 'block';
+        }
+
+        // Meta Info
+        document.getElementById('statementPeriod').innerText = data.statementPeriod || 'Today';
+        document.getElementById('presetLabel').innerText = data.presetLabel || 'Custom Date';
+        document.getElementById('generatedOn').innerText = data.generatedOn || new Date().toLocaleString('en-IN');
+
+        // KPIs
+        var k = data.kpis || {};
+        document.getElementById('kpiGrossSales').innerText = formatCurrency(k.grossSales);
+        document.getElementById('kpiTotalVolume').innerText = formatNumber(k.totalVolume, 2) + ' L';
+        document.getElementById('kpiNetCollection').innerText = formatCurrency(k.netCollection);
+        document.getElementById('kpiExpenses').innerText = formatCurrency(k.expenses);
+        
+        var mismatchEl = document.getElementById('kpiMismatch');
+        mismatchEl.innerText = formatCurrency(k.mismatch);
+        if (k.mismatch < 0) {
+            mismatchEl.style.color = '#dc2626';
+        } else if (k.mismatch > 0) {
+            mismatchEl.style.color = '#16a34a';
+        }
+
+        document.getElementById('kpiOilDefSales').innerText = formatCurrency(k.oilDefSales);
+        document.getElementById('kpiOilDefProfit').innerText = formatCurrency(k.oilDefProfit);
+        document.getElementById('kpiNetProfit').innerText = formatCurrency(k.netProfit);
+        document.getElementById('kpiDebtorsOutstanding').innerText = formatCurrency(k.debtorsOutstanding);
+        document.getElementById('kpiDsmEntries').innerText = (k.dsmEntries || 0) + ' Shifts';
+
+        // 1. Dynamic Fuel Sales Breakdown
+        var fuelSales = data.fuelSales || [];
+        var fuelBody = document.getElementById('fuelSalesBody');
+        if (fuelSales.length > 0) {
+            fuelBody.innerHTML = '';
+            var sumLitres = 0, sumAmount = 0, sumTesting = 0;
+            fuelSales.forEach(function(f) {
+                var l = parseFloat(f.litres) || 0;
+                var a = parseFloat(f.amount) || 0;
+                var t = parseFloat(f.testingLitres) || 0;
+                sumLitres += l;
+                sumAmount += a;
+                sumTesting += t;
+
+                var tr = document.createElement('tr');
+                tr.innerHTML = 
+                    '<td class="font-bold">' + (f.description || f.fuelType || '-') + '</td>' +
+                    '<td class="text-right">' + formatNumber(l, 2) + ' L</td>' +
+                    '<td class="text-right">₹' + formatNumber(f.rate, 2) + '</td>' +
+                    '<td class="text-right font-bold">' + formatCurrency(a) + '</td>' +
+                    '<td class="text-right">' + formatNumber(t, 2) + ' L</td>';
+                fuelBody.appendChild(tr);
+            });
+            document.getElementById('fuelTotalLitres').innerText = formatNumber(sumLitres, 2) + ' L';
+            document.getElementById('fuelTotalAmount').innerText = formatCurrency(sumAmount);
+            document.getElementById('fuelTotalTesting').innerText = formatNumber(sumTesting, 2) + ' L';
+        }
+
+        // 2. Dynamic Payment & Collection Modes
+        var payments = data.paymentBreakdown || [];
+        var payBody = document.getElementById('paymentModesBody');
+        if (payments.length > 0) {
+            payBody.innerHTML = '';
+            var sumPay = 0;
+            payments.forEach(function(p) { sumPay += (parseFloat(p.amount) || 0); });
+
+            payments.forEach(function(p) {
+                var amt = parseFloat(p.amount) || 0;
+                var share = sumPay > 0 ? ((amt / sumPay) * 100).toFixed(1) : '0.0';
+
+                var tr = document.createElement('tr');
+                tr.innerHTML = 
+                    '<td class="font-bold">' + (p.collectionMode || p.categoryName || '-') + '</td>' +
+                    '<td>' + (p.category || 'Digital / Cash') + '</td>' +
+                    '<td class="text-right font-bold">' + formatCurrency(amt) + '</td>' +
+                    '<td class="text-right">' + share + '%</td>';
+                payBody.appendChild(tr);
+            });
+            document.getElementById('paymentTotalAmount').innerText = formatCurrency(sumPay);
+        }
+
+        // 3. DSM Shift Totals Summary
+        var dsmList = data.dsmShiftTotals || [];
+        var dsmBody = document.getElementById('dsmShiftBody');
+        if (dsmList.length > 0) {
+            dsmBody.innerHTML = '';
+            var totShifts = 0, totGross = 0, totDig = 0, totBank = 0, totHand = 0, totDeb = 0, totExp = 0, totTest = 0, totColl = 0, totMis = 0;
+
+            dsmList.forEach(function(d) {
+                totShifts += (parseInt(d.shiftCount) || 1);
+                totGross += (parseFloat(d.grossSales) || 0);
+                totDig += (parseFloat(d.digitalAmount) || 0);
+                totBank += (parseFloat(d.bankCash) || 0);
+                totHand += (parseFloat(d.cashInHand) || 0);
+                totDeb += (parseFloat(d.debtors) || 0);
+                totExp += (parseFloat(d.expenses) || 0);
+                totTest += (parseFloat(d.testingLitres) || 0);
+                totColl += (parseFloat(d.totalCollection) || 0);
+                totMis += (parseFloat(d.mismatch) || 0);
+
+                var tr = document.createElement('tr');
+                var mis = parseFloat(d.mismatch) || 0;
+                var misColor = mis < 0 ? '#dc2626' : (mis > 0 ? '#16a34a' : '#1e293b');
+
+                tr.innerHTML = 
+                    '<td class="font-bold">' + (d.dsmName || '-') + '</td>' +
+                    '<td class="text-center">' + (d.shiftCount || 1) + '</td>' +
+                    '<td>' + (d.assignedPumps || '-') + '</td>' +
+                    '<td class="text-right">' + formatCurrency(d.grossSales) + '</td>' +
+                    '<td class="text-right">' + formatCurrency(d.digitalAmount) + '</td>' +
+                    '<td class="text-right">' + formatCurrency(d.bankCash) + '</td>' +
+                    '<td class="text-right">' + formatCurrency(d.cashInHand) + '</td>' +
+                    '<td class="text-right">' + formatCurrency(d.debtors) + '</td>' +
+                    '<td class="text-right">' + formatCurrency(d.expenses) + '</td>' +
+                    '<td class="text-right">' + formatNumber(d.testingLitres, 2) + ' L</td>' +
+                    '<td class="text-right font-bold">' + formatCurrency(d.totalCollection) + '</td>' +
+                    '<td class="text-right font-bold" style="color: ' + misColor + '">' + formatCurrency(mis) + '</td>';
+                dsmBody.appendChild(tr);
+            });
+
+            document.getElementById('dsmTotalShifts').innerText = totShifts;
+            document.getElementById('dsmTotalGross').innerText = formatCurrency(totGross);
+            document.getElementById('dsmTotalDigital').innerText = formatCurrency(totDig);
+            document.getElementById('dsmTotalBankCash').innerText = formatCurrency(totBank);
+            document.getElementById('dsmTotalHandCash').innerText = formatCurrency(totHand);
+            document.getElementById('dsmTotalDebtors').innerText = formatCurrency(totDeb);
+            document.getElementById('dsmTotalExpenses').innerText = formatCurrency(totExp);
+            document.getElementById('dsmTotalTesting').innerText = formatNumber(totTest, 2) + ' L';
+            document.getElementById('dsmTotalCollection').innerText = formatCurrency(totColl);
+            document.getElementById('dsmTotalMismatch').innerText = formatCurrency(totMis);
+        }
+    }
+
+    window.reportData = /* INJECT_JSON_HERE */{};
+
+    window.onload = function() {
+        if (window.reportData) {
+            renderDashboard(window.reportData);
+        }
+    };
+</script>
+
+</body>
+</html>

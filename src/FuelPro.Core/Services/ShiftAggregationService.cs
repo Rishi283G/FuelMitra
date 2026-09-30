@@ -21,62 +21,54 @@ public class ShiftAggregationService : IShiftAggregationService
         try
         {
             var rows = new List<DsmSummaryRowDto>();
-            var primaryEntries = entries.Where(e => !e.ReconciledToPumpId.HasValue).ToList();
+            var primaryEntries = entries.Where(e => !e.ReconciledToPumpId.HasValue).OrderBy(e => e.DsmEntryId).ToList();
+            var slaveEntries = entries.Where(e => e.ReconciledToPumpId.HasValue).ToList();
+            var usedSlaveIds = new HashSet<int>();
+
             foreach (var entry in primaryEntries)
             {
-                var connected = entries.FirstOrDefault(e => e.ReconciledToPumpId == entry.DsmEntryId || 
-                    (entry.ConnectedPumpId.HasValue && e.PumpId == entry.ConnectedPumpId.Value && e.ShiftId == entry.ShiftId && e.DsmEntryId != entry.DsmEntryId));
+                var primaryConnectedPumps = entry.GetEffectiveConnectedPumpIds();
+                var connectedSlaves = new List<DsmEntry>();
 
+                foreach (var slavePumpId in primaryConnectedPumps)
+                {
+                    var candidates = slaveEntries
+                        .Where(s => !usedSlaveIds.Contains(s.DsmEntryId)
+                            && s.PumpId == slavePumpId
+                            && (s.ShiftId == entry.ShiftId || entry.ShiftId == 0 || s.ShiftId == 0))
+                        .ToList();
+
+                    var bestSlave = candidates
+                        .OrderBy(s => {
+                            bool nameMatches = string.IsNullOrWhiteSpace(s.DsmName) || string.IsNullOrWhiteSpace(entry.DsmName)
+                                || string.Equals((s.DsmName ?? "").Trim(), (entry.DsmName ?? "").Trim(), StringComparison.OrdinalIgnoreCase);
+                            bool explicitRecon = s.ReconciledToPumpId == entry.DsmEntryId;
+                            bool notClaimed = !s.ReconciledToPumpId.HasValue || !primaryEntries.Any(p => p.DsmEntryId == s.ReconciledToPumpId.Value && p.DsmEntryId != entry.DsmEntryId);
+
+                            if (nameMatches && explicitRecon) return 0;
+                            if (nameMatches && notClaimed) return 1;
+                            if (nameMatches) return 2;
+                            if (explicitRecon) return 3;
+                            if (notClaimed) return 4;
+                            return 5;
+                        })
+                        .ThenBy(s => s.DsmEntryId >= entry.DsmEntryId ? (s.DsmEntryId - entry.DsmEntryId) : (100000 + Math.Abs(s.DsmEntryId - entry.DsmEntryId)))
+                        .FirstOrDefault();
+
+                    if (bestSlave != null)
+                    {
+                        usedSlaveIds.Add(bestSlave.DsmEntryId);
+                        connectedSlaves.Add(bestSlave);
+                    }
+                }
+
+                // Fuel/nozzle sales: aggregate primary + ALL connected slaves
                 var allNozzleReadings = new List<NozzleReading>();
                 if (entry.NozzleReadings != null) allNozzleReadings.AddRange(entry.NozzleReadings);
-                if (connected?.NozzleReadings != null) allNozzleReadings.AddRange(connected.NozzleReadings);
-
-                var allCashDenoms = new List<CashDenomination>();
-                if (entry.CashDenominations != null) allCashDenoms.AddRange(entry.CashDenominations);
-                if (connected?.CashDenominations != null) allCashDenoms.AddRange(connected.CashDenominations);
-
-                var cash1 = allCashDenoms.Where(c => c.CashType == "Cash1").Sum(c => c.TotalAmount);
-                var cash2 = allCashDenoms.Where(c => c.CashType == "Cash2").Sum(c => c.TotalAmount);
-
-                var debSum = entry.DebitEntries.Sum(d => d.Amount) + (connected?.DebitEntries.Sum(d => d.Amount) ?? 0);
-                var totalDebit = debSum > 0 ? debSum : (double)(entry.TotalCreditors + (connected?.TotalCreditors ?? 0));
-
-                var expSum = entry.Expenses.Sum(e => e.Amount) + (connected?.Expenses.Sum(e => e.Amount) ?? 0);
-                var kpSum = (entry.KhandharePetroleumEntries != null ? entry.KhandharePetroleumEntries.Sum(kp => kp.Amount) : 0)
-                    + (connected?.KhandharePetroleumEntries != null ? connected.KhandharePetroleumEntries.Sum(kp => kp.Amount) : 0);
-                var totalExpenses = expSum + kpSum;
-                var totalTesting = entry.TestingEntries.Sum(t => t.Amount) + (connected?.TestingEntries.Sum(t => t.Amount) ?? 0);
-
-                var p1 = entry.PaymentCollection;
-                var p2 = connected?.PaymentCollection;
-
-                bool isDay = string.Equals(entry.Shift?.ShiftType, "B", StringComparison.OrdinalIgnoreCase)
-                          || string.Equals(entry.Shift?.ShiftType, "II", StringComparison.OrdinalIgnoreCase);
-
-                double qrSum = (entry.QrPayments?.Sum(q => q.Amount) ?? 0) + (connected?.QrPayments?.Sum(q => q.Amount) ?? 0);
-                double qrM = (entry.QrPayments?.Where(q => q.Slot == "Morning" || (isDay && q.Slot == "Day") || string.IsNullOrEmpty(q.Slot)).Sum(q => q.Amount) ?? 0)
-                           + (connected?.QrPayments?.Where(q => q.Slot == "Morning" || (isDay && q.Slot == "Day") || string.IsNullOrEmpty(q.Slot)).Sum(q => q.Amount) ?? 0);
-                double qrN = (entry.QrPayments?.Where(q => q.Slot == "Night").Sum(q => q.Amount) ?? 0)
-                           + (connected?.QrPayments?.Where(q => q.Slot == "Night").Sum(q => q.Amount) ?? 0);
-
-                double phM = (p1?.PhonePeMorning ?? 0) + (p2?.PhonePeMorning ?? 0) + (isDay ? 0 : qrM);
-                double phD = (p1?.PhonePeDay ?? 0) + (p2?.PhonePeDay ?? 0) + (isDay ? qrSum : (entry.QrPayments?.Where(q => q.Slot == "Day").Sum(q => q.Amount) ?? 0));
-                double phN = (p1?.PhonePeNight ?? 0) + (p2?.PhonePeNight ?? 0) + (isDay ? 0 : qrN);
-                double ph = (p1?.PhonePe ?? 0) + (p2?.PhonePe ?? 0) + qrSum;
-
-                double ppcM = (p1?.PhonePeCardMorning ?? 0) + (p2?.PhonePeCardMorning ?? 0);
-                double ppcD = (p1?.PhonePeCardDay ?? 0) + (p2?.PhonePeCardDay ?? 0);
-                double ppcN = (p1?.PhonePeCardNight ?? 0) + (p2?.PhonePeCardNight ?? 0);
-                double ppc = (p1?.PhonePeCard ?? 0) + (p2?.PhonePeCard ?? 0);
-
-                double ccM = (p1?.CreditCardMorning ?? 0) + (p2?.CreditCardMorning ?? 0);
-                double ccD = (p1?.CreditCardDay ?? 0) + (p2?.CreditCardDay ?? 0);
-                double ccN = (p1?.CreditCardNight ?? 0) + (p2?.CreditCardNight ?? 0);
-
-                double petroM = (p1?.PetroCardMorning ?? 0) + (p2?.PetroCardMorning ?? 0);
-                double petroD = (p1?.PetroCardDay ?? 0) + (p2?.PetroCardDay ?? 0);
-                double petroN = (p1?.PetroCardNight ?? 0) + (p2?.PetroCardNight ?? 0);
-                double petro = (p1?.PetroCard ?? 0) + (p2?.PetroCard ?? 0);
+                foreach (var slave in connectedSlaves)
+                {
+                    if (slave.NozzleReadings != null) allNozzleReadings.AddRange(slave.NozzleReadings);
+                }
 
                 var distinctNozzles = allNozzleReadings
                     .GroupBy(n => n.NozzleNumber)
@@ -85,20 +77,100 @@ public class ShiftAggregationService : IShiftAggregationService
 
                 double grossSales = distinctNozzles.Count > 0
                     ? distinctNozzles.Sum(n => (double)n.Amount)
-                    : (double)entry.GrossSales;
+                    : (entry.GrossSales > 0 ? (double)entry.GrossSales : (double)(entry.GrossSales + connectedSlaves.Sum(s => s.GrossSales)));
 
-                double finalPhM = isDay ? (phD > 0 ? phD : ph) : (phM > 0 ? phM : (phD > 0 ? phD : ph));
-                double finalPhN = isDay ? 0 : phN;
-                double finalPpcM = isDay ? ppcD : (ppcM > 0 ? ppcM : ppcD);
+                // Financial collections: PRIMARY ONLY per Phase 3 rules, with graceful fallback to slave if primary is empty
+                var primaryCashDenoms = entry.CashDenominations ?? new List<CashDenomination>();
+                var cash1 = primaryCashDenoms.Where(c => c.CashType == "Cash1").Sum(c => c.TotalAmount);
+                var cash2 = primaryCashDenoms.Where(c => c.CashType == "Cash2").Sum(c => c.TotalAmount);
+                if (cash1 == 0 && cash2 == 0 && connectedSlaves.Any(s => s.CashDenominations != null && s.CashDenominations.Count > 0))
+                {
+                    var slaveCashDenoms = connectedSlaves.SelectMany(s => s.CashDenominations ?? new List<CashDenomination>()).ToList();
+                    cash1 = slaveCashDenoms.Where(c => c.CashType == "Cash1").Sum(c => c.TotalAmount);
+                    cash2 = slaveCashDenoms.Where(c => c.CashType == "Cash2").Sum(c => c.TotalAmount);
+                }
+
+                var debSum = entry.DebitEntries?.Sum(d => d.Amount) ?? 0;
+                if (debSum == 0 && connectedSlaves.Any(s => s.DebitEntries != null && s.DebitEntries.Count > 0))
+                {
+                    debSum = connectedSlaves.SelectMany(s => s.DebitEntries ?? new List<DebitEntry>()).Sum(d => d.Amount);
+                }
+                var totalDebit = debSum > 0 ? debSum : (double)entry.TotalCreditors;
+
+                var expSum = entry.Expenses?.Sum(e => e.Amount) ?? 0;
+                if (expSum == 0 && connectedSlaves.Any(s => s.Expenses != null && s.Expenses.Count > 0))
+                {
+                    expSum = connectedSlaves.SelectMany(s => s.Expenses ?? new List<Expense>()).Sum(e => e.Amount);
+                }
+                var kpSum = entry.KhandharePetroleumEntries != null ? entry.KhandharePetroleumEntries.Sum(kp => kp.Amount) : 0;
+                if (kpSum == 0 && connectedSlaves.Any(s => s.KhandharePetroleumEntries != null && s.KhandharePetroleumEntries.Count > 0))
+                {
+                    kpSum = connectedSlaves.SelectMany(s => s.KhandharePetroleumEntries ?? new List<KhandharePetroleumEntry>()).Sum(kp => kp.Amount);
+                }
+                var totalExpenses = expSum + kpSum;
+
+                var allTestingList = new List<TestingEntry>();
+                if (entry.TestingEntries != null) allTestingList.AddRange(entry.TestingEntries);
+                foreach (var slave in connectedSlaves)
+                {
+                    if (slave.TestingEntries != null) allTestingList.AddRange(slave.TestingEntries);
+                }
+                var distinctTesting = allTestingList
+                    .GroupBy(t => t.TestingId > 0 ? t.TestingId.ToString() : $"{t.DsmEntryId}_{t.FuelType}_{t.Litres}_{t.Amount}")
+                    .Select(g => g.First())
+                    .ToList();
+                var totalTesting = distinctTesting.Sum(t => t.Amount);
+
+                var p1 = entry.PaymentCollection ?? connectedSlaves.FirstOrDefault(s => s.PaymentCollection != null)?.PaymentCollection;
+
+                bool isDay = string.Equals(entry.Shift?.ShiftType, "B", StringComparison.OrdinalIgnoreCase)
+                          || string.Equals(entry.Shift?.ShiftType, "II", StringComparison.OrdinalIgnoreCase);
+
+                double qrSum = entry.QrPayments?.Sum(q => q.Amount) ?? 0;
+                double qrM = entry.QrPayments?.Where(q => q.Slot == "Morning" || (isDay && q.Slot == "Day") || string.IsNullOrEmpty(q.Slot)).Sum(q => q.Amount) ?? 0;
+                double qrN = entry.QrPayments?.Where(q => q.Slot == "Night").Sum(q => q.Amount) ?? 0;
+
+                double phM = p1?.PhonePeMorning ?? 0;
+                double phD = p1?.PhonePeDay ?? 0;
+                double phN = p1?.PhonePeNight ?? 0;
+                double ph = p1?.PhonePe ?? 0;
+
+                double ppcM = p1?.PhonePeCardMorning ?? 0;
+                double ppcD = p1?.PhonePeCardDay ?? 0;
+                double ppcN = p1?.PhonePeCardNight ?? 0;
+                double ppc = p1?.PhonePeCard ?? 0;
+
+                double ccM = p1?.CreditCardMorning ?? 0;
+                double ccD = p1?.CreditCardDay ?? 0;
+                double ccN = p1?.CreditCardNight ?? 0;
+                double cc = p1?.CreditCard ?? 0;
+
+                double petroM = p1?.PetroCardMorning ?? 0;
+                double petroD = p1?.PetroCardDay ?? 0;
+                double petroN = p1?.PetroCardNight ?? 0;
+                double petro = p1?.PetroCard ?? 0;
+
+                double finalPhM = isDay ? 0 : (phM > 0 ? phM + qrM : 0);
+                double finalPhD = isDay ? ((phD > 0 ? phD : ph) + qrSum) : phD;
+                double finalPhN = isDay ? 0 : (phN > 0 ? phN + qrN : 0);
+                double finalPh = isDay ? finalPhD : ((ph > 0 ? ph + qrSum : (finalPhM + finalPhN)));
+
+                double finalPpcM = isDay ? 0 : ppcM;
+                double finalPpcD = isDay ? (ppcD > 0 ? ppcD : ppc) : ppcD;
                 double finalPpcN = isDay ? 0 : ppcN;
-                double finalCcM = isDay ? ccD : (ccM > 0 ? ccM : ccD);
-                double finalCcN = isDay ? 0 : ccN;
-                double finalPetroM = isDay ? (petroD > 0 ? petroD : petro) : (petroM > 0 ? petroM : (petroD > 0 ? petroD : petro));
-                double finalPetroN = isDay ? 0 : petroN;
+                double finalPpc = isDay ? finalPpcD : (ppc > 0 ? ppc : (finalPpcM + finalPpcN));
 
-                var items1 = p1?.Items ?? Enumerable.Empty<PaymentCollectionItem>();
-                var items2 = p2?.Items ?? Enumerable.Empty<PaymentCollectionItem>();
-                var allItems = items1.Concat(items2).ToList();
+                double finalCcM = isDay ? 0 : ccM;
+                double finalCcD = isDay ? (ccD > 0 ? ccD : cc) : ccD;
+                double finalCcN = isDay ? 0 : ccN;
+                double finalCc = isDay ? finalCcD : (cc > 0 ? cc : (finalCcM + finalCcN));
+
+                double finalPetroM = isDay ? 0 : petroM;
+                double finalPetroD = isDay ? (petroD > 0 ? petroD : petro) : petroD;
+                double finalPetroN = isDay ? 0 : petroN;
+                double finalPetro = isDay ? finalPetroD : (petro > 0 ? petro : (finalPetroM + finalPetroN));
+
+                var allItems = p1?.Items?.ToList() ?? new List<PaymentCollectionItem>();
 
                 double sbiRedeem = allItems.Where(i => string.Equals(i.CollectionTypeCode?.Replace("_", "")?.Replace(" ", ""), "SBIREDEEM", StringComparison.OrdinalIgnoreCase)).Sum(i => i.Amount);
                 double paytm = allItems.Where(i => string.Equals(i.CollectionTypeCode, "PAYTM", StringComparison.OrdinalIgnoreCase)).Sum(i => i.Amount);
@@ -115,30 +187,32 @@ public class ShiftAggregationService : IShiftAggregationService
                     DsmName = entry.DsmName,
                     Shift = entry.Shift?.ShiftType ?? "",
                     PumpId = entry.PumpId,
-                    ConnectedPumpId = entry.ConnectedPumpId,
-                    PhonePeCard = ppc > 0 ? ppc : (finalPpcM + finalPpcN),
+                    ConnectedPumpId = entry.ConnectedPumpId ?? connectedSlaves.FirstOrDefault()?.PumpId,
+                    ConnectedPumpIdsJson = entry.ConnectedPumpIdsJson ?? (connectedSlaves.Count > 0 ? System.Text.Json.JsonSerializer.Serialize(connectedSlaves.Select(s => s.PumpId).Distinct()) : null),
+                    PhonePeCard = finalPpc,
                     PhonePeCardMorning = finalPpcM,
-                    PhonePeCardDay = ppcD,
+                    PhonePeCardDay = finalPpcD,
                     PhonePeCardNight = finalPpcN,
-                    PhonePe = ph > 0 ? ph : (finalPhM + finalPhN),
+                    PhonePe = finalPh,
                     PhonePeMorning = finalPhM,
-                    PhonePeDay = phD,
+                    PhonePeDay = finalPhD,
                     PhonePeNight = finalPhN,
+                    CreditCard = finalCc,
                     CreditCardMorning = finalCcM,
-                    CreditCardDay = ccD,
+                    CreditCardDay = finalCcD,
                     CreditCardNight = finalCcN,
-                    PetroCard = petro > 0 ? petro : (finalPetroM + finalPetroN),
+                    PetroCard = finalPetro,
                     PetroCardMorning = finalPetroM,
-                    PetroCardDay = petroD,
+                    PetroCardDay = finalPetroD,
                     PetroCardNight = finalPetroN,
-                    Others = (p1?.Others ?? 0) + (p2?.Others ?? 0),
+                    Others = p1?.Others ?? 0,
                     DynamicCollectionsTotal = dynTotal,
                     DynamicCollections = dynDict,
                     SbiRedeem = sbiRedeem,
                     Paytm = paytm,
                     QrPayment = qrPayment,
                     Mobikwik = mobikwik,
-                    CashDeposit = cash1 > 0 ? cash1 : ((p1?.CashDeposit ?? 0) + (p2?.CashDeposit ?? 0)),
+                    CashDeposit = cash1 > 0 ? cash1 : (p1?.CashDeposit ?? 0),
                     Debit = totalDebit,
                     Expenses = totalExpenses,
                     Testing = totalTesting,
@@ -176,7 +250,7 @@ public class ShiftAggregationService : IShiftAggregationService
         {
             DsmName = "TOTAL",
             PumpId = 0,
-            PhonePeCard = rows.Sum(r => r.PhonePeCard),
+            PhonePeCard = rows.Sum(r => r.PhonePeCardTotal),
             PhonePeCardMorning = rows.Sum(r => r.PhonePeCardMorning),
             PhonePeCardDay = rows.Sum(r => r.PhonePeCardDay),
             PhonePeCardNight = rows.Sum(r => r.PhonePeCardNight),
@@ -184,6 +258,7 @@ public class ShiftAggregationService : IShiftAggregationService
             PhonePeMorning = rows.Sum(r => r.PhonePeMorning),
             PhonePeDay = rows.Sum(r => r.PhonePeDay),
             PhonePeNight = rows.Sum(r => r.PhonePeNight),
+            CreditCard = rows.Sum(r => r.CreditCardPureTotal),
             CreditCardMorning = rows.Sum(r => r.CreditCardMorning),
             CreditCardDay = rows.Sum(r => r.CreditCardDay),
             CreditCardNight = rows.Sum(r => r.CreditCardNight),
@@ -228,7 +303,7 @@ public class ShiftAggregationService : IShiftAggregationService
                 double cashInHand = g.Sum(r => r.CashInHand);
                 double phonePe = g.Sum(r => r.PhonePeTotal);
                 double phonePeCard = g.Sum(r => r.PhonePeCardTotal);
-                double creditCard = g.Sum(r => r.CreditCardTotal);
+                double creditCard = g.Sum(r => r.CreditCardPureTotal);
                 double petroCard = g.Sum(r => r.PetroCardTotal);
                 double others = g.Sum(r => r.Others);
                 double debit = g.Sum(r => r.Debit);
@@ -248,8 +323,9 @@ public class ShiftAggregationService : IShiftAggregationService
                     }
                 }
 
-                double totalCollection = cashDeposit + cashInHand + phonePe + phonePeCard + creditCard + petroCard + dynamicTotal + debit + expenses + testing;
-                double mismatch = totalCollection - grossSales;
+                double netGrossSales = grossSales - testing;
+                double totalCollection = cashDeposit + cashInHand + phonePe + phonePeCard + creditCard + petroCard + dynamicTotal + debit + expenses;
+                double mismatch = totalCollection - netGrossSales;
 
                 return new DsmShiftTotalDto
                 {
@@ -260,6 +336,7 @@ public class ShiftAggregationService : IShiftAggregationService
                     TotalCollection = totalCollection,
                     CashDeposit = cashDeposit,
                     CashInHand = cashInHand,
+                    Others = others,
                     PhonePe = phonePe,
                     PhonePeCard = phonePeCard,
                     CreditCard = creditCard,
@@ -428,9 +505,21 @@ public class ShiftAggregationService : IShiftAggregationService
         try
         {
             var shiftDate = entries.FirstOrDefault()?.Shift?.ShiftDate;
+            var isCngTarget = string.Equals(fuelType, "CNG", StringComparison.OrdinalIgnoreCase) || fuelType.Contains("CNG", StringComparison.OrdinalIgnoreCase);
+
             var readings = entries
-                .SelectMany(e => (e.NozzleReadings ?? new List<NozzleReading>()).Select(r => new { ShiftId = e.ShiftId, e.PumpId, Reading = r }))
-                .Where(x => PumpConfiguration.GetFuelTypeDisplayName(x.PumpId, x.Reading.NozzleNumber, shiftDate) == fuelType)
+                .SelectMany(e => (e.NozzleReadings ?? new List<NozzleReading>()).Select(r => new { ShiftId = e.ShiftId, e.PumpId, Reading = r, ShiftDate = e.Shift?.ShiftDate ?? shiftDate }))
+                .Where(x => 
+                {
+                    var canon = PumpConfiguration.GetFuelTypeDisplayName(x.PumpId, x.Reading.NozzleNumber, x.ShiftDate);
+                    if (string.Equals(canon, fuelType, StringComparison.OrdinalIgnoreCase)) return true;
+                    if (isCngTarget)
+                    {
+                        if (canon.Contains("CNG", StringComparison.OrdinalIgnoreCase)) return true;
+                        if (x.Reading.FuelType != null && x.Reading.FuelType.Contains("CNG", StringComparison.OrdinalIgnoreCase)) return true;
+                    }
+                    return false;
+                })
                 .Select(x => x.Reading)
                 .ToList();
 
@@ -444,6 +533,10 @@ public class ShiftAggregationService : IShiftAggregationService
             else
             {
                 amount = readings.Sum(r => r.Amount);
+                if (amount == 0 && litres > 0 && overrideRate.HasValue)
+                {
+                    amount = litres * overrideRate.Value;
+                }
             }
 
             return (litres, amount);
@@ -460,6 +553,7 @@ public class ShiftAggregationService : IShiftAggregationService
     /// </summary>
     public double GetTotalLitresByFuelType(List<NozzleReading> allReadings, string fuelType)
     {
+        var isCngTarget = string.Equals(fuelType, "CNG", StringComparison.OrdinalIgnoreCase) || fuelType.Contains("CNG", StringComparison.OrdinalIgnoreCase);
         return allReadings
             .Where(r => 
             {
@@ -469,7 +563,14 @@ public class ShiftAggregationService : IShiftAggregationService
                     var match = PumpConfiguration.PumpNozzleMapping.FirstOrDefault(kv => kv.Value.Contains(r.NozzleNumber));
                     pumpId = match.Key;
                 }
-                return PumpConfiguration.GetFuelTypeDisplayName(pumpId, r.NozzleNumber, r.DsmEntry?.Shift?.ShiftDate) == fuelType;
+                var canon = PumpConfiguration.GetFuelTypeDisplayName(pumpId, r.NozzleNumber, r.DsmEntry?.Shift?.ShiftDate);
+                if (string.Equals(canon, fuelType, StringComparison.OrdinalIgnoreCase)) return true;
+                if (isCngTarget)
+                {
+                    if (canon.Contains("CNG", StringComparison.OrdinalIgnoreCase)) return true;
+                    if (r.FuelType != null && r.FuelType.Contains("CNG", StringComparison.OrdinalIgnoreCase)) return true;
+                }
+                return false;
             }).Sum(r => r.SaleLitres);
     }
 
@@ -479,7 +580,7 @@ public class ShiftAggregationService : IShiftAggregationService
     public List<ReconciliationRowDto> BuildReconciliationRows(
         double msTesting, double hsdTesting, double hsdTesting2, double cngTesting, double phonePeCardMorning, double phonePeCardNight, double phonePeMorning, double phonePeNight, double petroCard,
         double debit, double creditCardMorning, double creditCardNight, double bankCash, double cashInHand,
-        double expenses, Dictionary<string, double>? dynamicCollections = null)
+        double expenses, Dictionary<string, double>? dynamicCollections = null, double others = 0)
     {
         var rows = new List<ReconciliationRowDto>
         {
@@ -499,7 +600,12 @@ public class ShiftAggregationService : IShiftAggregationService
 
         if (dynamicCollections != null)
         {
-            foreach (var kvp in dynamicCollections.Where(k => k.Value > 0))
+            foreach (var kvp in dynamicCollections.Where(k => k.Value > 0 &&
+                !string.Equals(k.Key?.Replace("_", "").Replace(" ", ""), "CASHDEPOSIT", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(k.Key?.Replace("_", "").Replace(" ", ""), "BANKCASH", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(k.Key?.Replace("_", "").Replace(" ", ""), "CASHINHAND", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(k.Key?.Replace("_", "").Replace(" ", ""), "OTHERS", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(k.Key?.Replace("_", "").Replace(" ", ""), "OTHER", StringComparison.OrdinalIgnoreCase)))
             {
                 rows.Add(new ReconciliationRowDto
                 {
@@ -507,6 +613,15 @@ public class ShiftAggregationService : IShiftAggregationService
                     Amount = kvp.Value
                 });
             }
+        }
+
+        if (others > 0)
+        {
+            rows.Add(new ReconciliationRowDto
+            {
+                Description = "Others (Record)",
+                Amount = others
+            });
         }
 
         return rows;

@@ -4,107 +4,112 @@
     <meta charset="UTF-8">
     <title>Debtor Account Ledger / Statement</title>
     <style>
-        @media print {
-            @page {
-                margin: 0;
-            }
-            body {
-                margin: 1.6cm;
-            }
+        * {
+            box-sizing: border-box;
         }
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            margin: 25px;
-            color: #333;
-            font-size: 14px;
-            line-height: 1.5;
+            margin: 24px;
+            color: #0f172a;
+            font-size: 13.5px;
+            line-height: 1.4;
+            background: #fff;
         }
         .header {
             text-align: center;
-            border-bottom: 2px solid #005F73;
+            border-bottom: 2.5px solid #005F73;
             padding-bottom: 12px;
-            margin-bottom: 20px;
+            margin-bottom: 16px;
         }
         .header h1 {
             margin: 0;
             color: #005F73;
             font-size: 24px;
-            font-weight: 700;
+            font-weight: 800;
+            letter-spacing: 0.5px;
         }
         .header p {
             margin: 4px 0 0 0;
             font-size: 13px;
-            opacity: 0.8;
-            letter-spacing: 0.5px;
+            font-weight: 700;
+            color: #334155;
+            letter-spacing: 0.8px;
         }
         .meta-info-container {
             display: flex;
             justify-content: space-between;
-            background-color: #F8F9FA;
+            background-color: #f1f5f9;
             padding: 12px 18px;
             border-radius: 6px;
-            margin-bottom: 20px;
-            border: 1px solid #E9ECEF;
+            margin-bottom: 18px;
+            border: 1.5px solid #cbd5e1;
         }
         .meta-group h3 {
             margin: 0 0 4px 0;
-            font-size: 14px;
+            font-size: 13px;
+            font-weight: 800;
             color: #005F73;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
         .meta-group p {
             margin: 0;
-            font-size: 13px;
-            font-weight: 600;
+            font-size: 13.5px;
+            font-weight: 700;
+            color: #0f172a;
         }
         .kpi-container {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
-            gap: 15px;
-            margin-bottom: 24px;
+            gap: 12px;
+            margin-bottom: 20px;
         }
         .kpi-card {
-            background-color: #FFFFFF;
-            border: 1px solid #DEE2E6;
+            background-color: #ffffff;
+            border: 1.5px solid #cbd5e1;
             border-radius: 6px;
-            padding: 12px;
+            padding: 12px 10px;
             text-align: center;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
         }
         .kpi-card.highlight {
-            background-color: #E0F2F1;
-            border-color: #00897B;
+            background-color: #e0f2f1;
+            border: 2px solid #00796B;
         }
         .kpi-label {
             font-size: 11px;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
-            color: #6C757D;
+            letter-spacing: 0.6px;
+            color: #334155;
             margin-bottom: 4px;
-            font-weight: 600;
+            font-weight: 700;
         }
         .kpi-value {
             font-size: 18px;
-            font-weight: 700;
-            color: #212529;
+            font-weight: 800;
+            color: #0f172a;
         }
         .kpi-card.highlight .kpi-value {
-            color: #00796B;
+            color: #004d40;
         }
         table {
             width: 100%;
             border-collapse: collapse;
-            margin-bottom: 30px;
+            margin-bottom: 24px;
+            font-size: 12.5px;
         }
         th, td {
-            border: 1px solid #DEE2E6;
-            padding: 10px 12px;
+            border: 1px solid #cbd5e1;
+            padding: 8px 10px;
             text-align: left;
         }
         th {
             background-color: #005F73;
-            color: #FFFFFF;
-            font-weight: 600;
-            font-size: 13px;
+            color: #ffffff;
+            font-weight: 700;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
         }
         .text-right {
             text-align: right;
@@ -113,83 +118,135 @@
             text-align: center;
         }
         .text-bold {
-            font-weight: bold;
+            font-weight: 700;
+            color: #0f172a;
         }
         .text-debit {
-            color: #C1121F;
+            color: #b71c1c !important;
+            font-weight: 700;
         }
         .text-credit {
-            color: #38B000;
+            color: #1b5e20 !important;
+            font-weight: 700;
         }
-        .opening-row {
-            font-style: italic;
-            background-color: #F8F9FA;
+        .opening-row td {
+            font-weight: 600;
+            background-color: #f8fafc;
+            color: #334155;
         }
-        .closing-row {
-            font-weight: bold;
-            background-color: #E9ECEF;
+        .closing-row td {
+            font-weight: 800;
+            background-color: #e2e8f0;
             border-top: 2px solid #005F73;
+            color: #0f172a;
+            font-size: 13px;
         }
         .print-btn {
             display: block;
-            width: 140px;
-            margin: 10px auto 20px auto;
-            padding: 10px 16px;
+            width: 150px;
+            margin: 0 auto 16px auto;
+            padding: 9px 16px;
             text-align: center;
             background-color: #005F73;
             color: white;
-            font-weight: bold;
+            font-weight: 700;
             border: none;
             border-radius: 4px;
             cursor: pointer;
-            font-size: 14px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            transition: background-color 0.2s;
+            font-size: 13.5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.15);
         }
         .print-btn:hover {
             background-color: #003F4C;
         }
         .signatures {
-            margin-top: 60px;
+            margin-top: 48px;
             display: flex;
             justify-content: space-between;
             padding: 0 30px;
         }
         .signature-line {
             width: 200px;
-            border-top: 1px solid #333;
+            border-top: 1.5px solid #0f172a;
             text-align: center;
             padding-top: 6px;
             font-size: 12px;
-            font-weight: 600;
+            font-weight: 700;
+            color: #0f172a;
         }
         @media print {
             .print-btn {
-                display: none;
+                display: none !important;
+            }
+            @page {
+                size: A4 portrait;
+                margin: 8mm;
             }
             body {
-                margin: 10px;
-                font-size: 12px;
+                margin: 0;
+                font-size: 11px;
+                color: #000 !important;
             }
             .meta-info-container {
-                background-color: transparent !important;
-                border: 1px solid #CCC;
-            }
-            .kpi-card {
-                border: 1px solid #CCC !important;
-                box-shadow: none !important;
-            }
-            .kpi-card.highlight {
-                background-color: #F4FBFB !important;
-            }
-            th {
-                background-color: #005F73 !important;
-                color: #FFFFFF !important;
+                background-color: #f8fafc !important;
+                border: 1px solid #94a3b8 !important;
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
             }
-            .closing-row {
-                background-color: #EEE !important;
+            .kpi-card {
+                border: 1.5px solid #94a3b8 !important;
+                box-shadow: none !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            .kpi-card.highlight {
+                background-color: #e0f2f1 !important;
+                border: 2px solid #00796B !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            th {
+                background-color: #005F73 !important;
+                color: #ffffff !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+                font-weight: 700 !important;
+            }
+            td {
+                border: 1px solid #94a3b8 !important;
+                padding: 5px 8px !important;
+                font-size: 11px !important;
+            }
+            .opening-row td {
+                background-color: #f1f5f9 !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            .closing-row td {
+                background-color: #e2e8f0 !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+                font-weight: 800 !important;
+                color: #000 !important;
+            }
+            .text-debit {
+                color: #b71c1c !important;
+                font-weight: 700 !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            .text-credit {
+                color: #1b5e20 !important;
+                font-weight: 700 !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            .text-bold {
+                font-weight: 800 !important;
+                color: #000 !important;
+            }
+            tr {
+                page-break-inside: avoid;
             }
         }
     </style>
@@ -197,7 +254,7 @@
         const data = /* INJECT_JSON_HERE */{};
 
         function formatCurrency(val) {
-            if (val === 0) return "₹0.00";
+            if (val === undefined || val === null || isNaN(val) || val === 0) return "₹0.00";
             return "₹" + Number(val).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         }
 
@@ -224,8 +281,13 @@
                     let debitStr = tx.debit > 0 ? formatCurrency(tx.debit) : "—";
                     let creditStr = tx.credit > 0 ? formatCurrency(tx.credit) : "—";
                     
+                    let isOpening = tx.description && (
+                        tx.description === "Opening Balance" || 
+                        tx.description === "Historical Opening Balance" || 
+                        tx.description.toLowerCase().includes("opening balance")
+                    );
                     let rowClass = "";
-                    if (tx.description === "Opening Balance") {
+                    if (isOpening) {
                         rowClass = "opening-row";
                         debitStr = "—";
                         creditStr = "—";
@@ -233,8 +295,8 @@
 
                     html += `
                         <tr class="${rowClass}">
-                            <td class="text-center">${tx.date}</td>
-                            <td>${tx.description}</td>
+                            <td class="text-center" style="font-weight: 600;">${tx.date}</td>
+                            <td style="font-weight: 500;">${tx.description}</td>
                             <td class="text-right text-debit">${debitStr}</td>
                             <td class="text-right text-credit">${creditStr}</td>
                             <td class="text-right text-bold">${formatCurrency(tx.runningBalance)}</td>
@@ -245,13 +307,16 @@
                 html += `<tr><td colspan="5" class="text-center" style="opacity: 0.6; padding: 20px;">No transactions logged during this date range.</td></tr>`;
             }
 
-            // Append Closing Summary Row
+            // Append Closing Summary Row (excludes Opening Balance rows)
+            const totalDebits = data.transactions ? data.transactions.filter(t => !t.description || !t.description.toLowerCase().includes("opening balance")).reduce((acc, t) => acc + (t.debit || 0), 0) : 0;
+            const totalCredits = data.transactions ? data.transactions.filter(t => !t.description || !t.description.toLowerCase().includes("opening balance")).reduce((acc, t) => acc + (t.credit || 0), 0) : 0;
+
             html += `
                 <tr class="closing-row">
-                    <td colspan="2" class="text-right">Outstanding Balance / Net Outstanding:</td>
-                    <td class="text-right text-debit">${formatCurrency(data.transactions.filter(t => t.description !== "Opening Balance").reduce((acc, t) => acc + t.debit, 0))}</td>
-                    <td class="text-right text-credit">${formatCurrency(data.transactions.filter(t => t.description !== "Opening Balance").reduce((acc, t) => acc + t.credit, 0))}</td>
-                    <td class="text-right text-bold">${formatCurrency(data.closingBalance)}</td>
+                    <td colspan="2" class="text-right">Total Period Activity &amp; Closing Balance:</td>
+                    <td class="text-right text-debit">${formatCurrency(totalDebits)}</td>
+                    <td class="text-right text-credit">${formatCurrency(totalCredits)}</td>
+                    <td class="text-right text-bold" style="font-size: 13.5px;">${formatCurrency(data.closingBalance)}</td>
                 </tr>
             `;
 
@@ -276,7 +341,7 @@
     </script>
 </head>
 <body>
-    <button class="print-btn" onclick="printDoc()">Print Statement</button>
+    <button class="print-btn" onclick="printDoc()">&#128424; Print Statement</button>
     
     <div class="header">
         <div style="display: flex; align-items: center; justify-content: center; gap: 15px;">
@@ -288,14 +353,14 @@
 
     <div class="meta-info-container">
         <div class="meta-group">
-            <h3 style="color: #005F73;">Customer Profile</h3>
+            <h3>Customer Profile</h3>
             <p id="debtorName">John Doe</p>
-            <p id="debtorPhone" style="font-weight: normal; opacity: 0.85;">+91 98765 43210</p>
+            <p id="debtorPhone" style="font-weight: 600; color: #475569; margin-top: 2px;">+91 98765 43210</p>
         </div>
         <div class="meta-group" style="text-align: right;">
-            <h3 style="color: #005F73;">Statement Period</h3>
+            <h3>Statement Period</h3>
             <p id="dateRange">01-Jun-2026 to 21-Jun-2026</p>
-            <p style="font-weight: normal; opacity: 0.7; font-size: 11px; margin-top: 4px;">Generated: <span id="generatedDateTime">N/A</span></p>
+            <p style="font-weight: 600; color: #475569; font-size: 11.5px; margin-top: 4px;">Generated: <span id="generatedDateTime">N/A</span></p>
         </div>
     </div>
 

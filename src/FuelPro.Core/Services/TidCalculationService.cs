@@ -55,15 +55,46 @@ public class TidCalculationService : ITidCalculationService
 
         var dynamicDsmItems = new List<TidItemDto>();
         var dynamicDebtorItems = new List<TidItemDto>();
+        var tomorrowDate = date.Date.AddDays(1);
+
+        // Prefetch all shifts and repayments concurrently
+        var morningShiftTask = _shiftRepo.GetShiftAsync(date.Date, "A");
+        var dayShiftTask = _shiftRepo.GetShiftAsync(date.Date, "B");
+        var nightShiftTask = useMorningNight ? _shiftRepo.GetShiftAsync(tomorrowDate, "A") : Task.FromResult(Result<Shift>.Fail("Not needed"));
+        var repDateTask = _repaymentRepo.GetByDateAsync(date.Date);
+        var repNextTask = useMorningNight ? _repaymentRepo.GetByDateAsync(tomorrowDate) : Task.FromResult(Result<List<CreditorRepayment>>.Ok(new List<CreditorRepayment>()));
+
+        await Task.WhenAll(morningShiftTask, dayShiftTask, nightShiftTask, repDateTask, repNextTask);
+
+        var morningShiftRes = await morningShiftTask;
+        var dayShiftRes = await dayShiftTask;
+        var nightShiftRes = await nightShiftTask;
+        var repDateRes = await repDateTask;
+        var repNextRes = await repNextTask;
+
+        // Prefetch all shift DSM entries concurrently
+        var morningEntriesTask = morningShiftRes.Success && morningShiftRes.Data != null 
+            ? _dsmRepo.GetEntriesForShiftAsync(morningShiftRes.Data.ShiftId) 
+            : Task.FromResult(Result<List<DsmEntry>>.Ok(new List<DsmEntry>()));
+
+        var dayEntriesTask = dayShiftRes.Success && dayShiftRes.Data != null 
+            ? _dsmRepo.GetEntriesForShiftAsync(dayShiftRes.Data.ShiftId) 
+            : Task.FromResult(Result<List<DsmEntry>>.Ok(new List<DsmEntry>()));
+
+        var nightEntriesTask = nightShiftRes.Success && nightShiftRes.Data != null 
+            ? _dsmRepo.GetEntriesForShiftAsync(nightShiftRes.Data.ShiftId) 
+            : Task.FromResult(Result<List<DsmEntry>>.Ok(new List<DsmEntry>()));
+
+        await Task.WhenAll(morningEntriesTask, dayEntriesTask, nightEntriesTask);
+
+        var morningEntriesRes = await morningEntriesTask;
+        var dayEntriesRes = await dayEntriesTask;
+        var nightEntriesRes = await nightEntriesTask;
 
         // 1. Slot 1: Shift A of D (today)
-        var morningShiftRes = await _shiftRepo.GetShiftAsync(date.Date, "A");
-        if (morningShiftRes.Success && morningShiftRes.Data != null)
+        if (morningEntriesRes.Success && morningEntriesRes.Data != null)
         {
-            var entriesRes = await _dsmRepo.GetEntriesForShiftAsync(morningShiftRes.Data.ShiftId);
-            if (entriesRes.Success && entriesRes.Data != null)
-            {
-                foreach (var entry in entriesRes.Data.OrderBy(e => e.PumpId))
+            foreach (var entry in morningEntriesRes.Data.OrderBy(e => e.PumpId))
                 {
                     var pc = entry.PaymentCollection;
                     if (pc == null) continue;
@@ -208,16 +239,11 @@ public class TidCalculationService : ITidCalculationService
                     }
                 }
             }
-        }
 
         // 2. Day slot: Shift B of D (today)
-        var dayShiftRes = await _shiftRepo.GetShiftAsync(date.Date, "B");
-        if (dayShiftRes.Success && dayShiftRes.Data != null)
+        if (dayEntriesRes.Success && dayEntriesRes.Data != null)
         {
-            var entriesRes = await _dsmRepo.GetEntriesForShiftAsync(dayShiftRes.Data.ShiftId);
-            if (entriesRes.Success && entriesRes.Data != null)
-            {
-                foreach (var entry in entriesRes.Data.OrderBy(e => e.PumpId))
+            foreach (var entry in dayEntriesRes.Data.OrderBy(e => e.PumpId))
                 {
                     var pc = entry.PaymentCollection;
                     if (pc == null) continue;
@@ -370,19 +396,11 @@ public class TidCalculationService : ITidCalculationService
                     }
                 }
             }
-        }
 
         // 3. Night slot: Shift A of D+1 (tomorrow) - Only if 3-slot midnight split is enabled
-        var tomorrowDate = date.Date.AddDays(1);
-        if (useMorningNight)
+        if (useMorningNight && nightEntriesRes.Success && nightEntriesRes.Data != null)
         {
-            var nightShiftRes = await _shiftRepo.GetShiftAsync(tomorrowDate, "A");
-            if (nightShiftRes.Success && nightShiftRes.Data != null)
-            {
-                var entriesRes = await _dsmRepo.GetEntriesForShiftAsync(nightShiftRes.Data.ShiftId);
-                if (entriesRes.Success && entriesRes.Data != null)
-                {
-                    foreach (var entry in entriesRes.Data.OrderBy(e => e.PumpId))
+            foreach (var entry in nightEntriesRes.Data.OrderBy(e => e.PumpId))
                     {
                         var pc = entry.PaymentCollection;
                         if (pc == null) continue;
@@ -535,8 +553,6 @@ public class TidCalculationService : ITidCalculationService
                         }
                     }
                 }
-            }
-        }
 
         // Apply grouping and merging logic to legacy lists
         sheet.PhonePePayments = GroupAndMerge(sheet.PhonePePayments);
@@ -544,15 +560,9 @@ public class TidCalculationService : ITidCalculationService
         sheet.PetroCardPayments = GroupAndMerge(sheet.PetroCardPayments);
 
         // Populate debtor repayments
-        var repDateRes = await _repaymentRepo.GetByDateAsync(date.Date);
         var allRepayments = new List<CreditorRepayment>();
         if (repDateRes.Success && repDateRes.Data != null) allRepayments.AddRange(repDateRes.Data);
-
-        if (useMorningNight)
-        {
-            var repNextRes = await _repaymentRepo.GetByDateAsync(tomorrowDate);
-            if (repNextRes.Success && repNextRes.Data != null) allRepayments.AddRange(repNextRes.Data);
-        }
+        if (useMorningNight && repNextRes.Success && repNextRes.Data != null) allRepayments.AddRange(repNextRes.Data);
 
         foreach (var r in allRepayments)
         {

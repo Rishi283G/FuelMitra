@@ -10,6 +10,7 @@ namespace FuelPro.Core.Services;
 public interface ICollectionTypeService
 {
     event Action? CollectionTypesChanged;
+    void NotifyCollectionTypesChanged();
 
     /// <summary>
     /// Gets all active collection types in configured display order.

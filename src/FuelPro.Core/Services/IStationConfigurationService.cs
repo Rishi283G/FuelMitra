@@ -18,7 +18,9 @@ public interface IStationConfigurationService
 
     Task<List<TankDefinition>> GetAllTanksAsync();
     Task<bool> SaveTankAsync(TankDefinition tank);
+    Task<bool> SaveTanksAsync(IEnumerable<TankDefinition> tanks);
     Task<bool> DeleteTankAsync(int tankId);
+    void NotifyConfigurationChanged();
 
     Task<List<ProductMaster>> GetAllProductsAsync();
     Task<bool> SaveProductAsync(ProductMaster product);
@@ -27,4 +29,7 @@ public interface IStationConfigurationService
     Task<StationLayoutPreset?> GetPresetByCodeAsync(string presetCode);
     Task<bool> SavePresetAsync(StationLayoutPreset preset);
     Task<bool> DeletePresetAsync(int presetId);
+
+    Task<PumpConnectionConfiguration> GetPumpConnectionConfigurationAsync();
+    Task<bool> SavePumpConnectionConfigurationAsync(PumpConnectionConfiguration config);
 }

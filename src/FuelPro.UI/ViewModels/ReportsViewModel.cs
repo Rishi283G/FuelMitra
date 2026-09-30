@@ -114,7 +114,7 @@ public partial class ReportsViewModel : ObservableObject
                 double defaultMsI = settings.Success ? settings.Data!.MsIRate : 103.81;
                 double defaultMsII = settings.Success ? settings.Data!.MsIIRate : 103.81;
                 double defaultCng = settings.Success ? settings.Data!.CngRate : 85.0;
-                string stationName = settings.Success ? settings.Data!.PumpStationName : "PyroSync";
+                string stationName = settings.Success && !string.IsNullOrWhiteSpace(settings.Data?.PumpStationName) ? settings.Data.PumpStationName : "Mitali Service Station";
 
                 var report = _reportService.CalculateDayReport(
                     SelectedDate.Date,
@@ -185,9 +185,9 @@ public partial class ReportsViewModel : ObservableObject
                     .Select(kvp => new { category = kvp.Key, amount = kvp.Value })
                     .ToList();
 
-                var stationName = "PyroSync";
+                var stationName = "Mitali Service Station";
                 var s = await _settingsRepo.GetSettingsAsync();
-                if (s.Success && s.Data != null) stationName = s.Data.PumpStationName;
+                if (s.Success && s.Data != null && !string.IsNullOrWhiteSpace(s.Data.PumpStationName)) stationName = s.Data.PumpStationName;
 
                 var payload = new
                 {

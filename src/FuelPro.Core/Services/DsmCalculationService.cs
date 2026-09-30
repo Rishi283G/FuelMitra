@@ -12,20 +12,27 @@ public class DsmCalculationService : IDsmCalculationService
         try
         {
             var grossSales = dsm.NozzleReadings.Sum(x => x.Amount);
+            var totalTesting = dsm.TestingEntries.Sum(x => x.Amount);
+            var netGrossSales = grossSales - totalTesting;
+
             var totalInDirect = dsm.PaymentCollection.PhonePe + dsm.PaymentCollection.CreditCard
                 + dsm.PaymentCollection.CashDeposit + dsm.PaymentCollection.PhysicalCash
                 + dsm.PaymentCollection.PetroCard + dsm.PaymentCollection.DynamicPayments;
             var totalCreditors = dsm.DebitEntries.Sum(x => x.Amount);
-            var totalTesting = dsm.TestingEntries.Sum(x => x.Amount);
             var totalExpenses = dsm.Expenses.Sum(x => x.Amount);
-            var totalCollection = totalInDirect + totalCreditors + totalTesting + totalExpenses;
-            var mismatch = totalCollection - grossSales;
+
+            // Canonical Option B: Testing is excluded from TotalCollection
+            var totalCollection = totalInDirect + totalCreditors + totalExpenses;
+            var mismatch = totalCollection - netGrossSales;
 
             return new DsmCalculationResult
             {
                 GrossSales = grossSales,
+                TotalTesting = totalTesting,
+                NetGrossSales = netGrossSales,
                 TotalInDirect = totalInDirect,
                 TotalCreditors = totalCreditors,
+                TotalExpenses = totalExpenses,
                 TotalCollection = totalCollection,
                 Mismatch = mismatch,
                 IsBalanced = mismatch == 0m

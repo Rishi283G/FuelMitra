@@ -60,6 +60,7 @@ export interface DsmUserProfile {
   MobileNumber: string;
   AssignedPump: number | null;
   ConnectedPump: number | null;
+  ConnectedPumps?: number[];
   AssignedShift: 'A' | 'B' | 'C' | null;
   AssignedDate: string | null;
   StationId: string;

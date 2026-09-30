@@ -16,6 +16,7 @@ public class CollectionTypeService : ICollectionTypeService
     private readonly ILogger _logger = Log.ForContext<CollectionTypeService>();
 
     public event Action? CollectionTypesChanged;
+    public void NotifyCollectionTypesChanged() => CollectionTypesChanged?.Invoke();
 
     public CollectionTypeService(IServiceProvider serviceProvider)
     {
@@ -98,6 +99,25 @@ public class CollectionTypeService : ICollectionTypeService
             }
 
             await db.SaveChangesAsync();
+
+            // Sync updated collection types to Settings.CollectionTypesJson
+            try
+            {
+                var allActive = await db.CollectionTypes.ToListAsync();
+                var setting = await db.Settings.FirstOrDefaultAsync();
+                if (setting != null)
+                {
+                    setting.CollectionTypesJson = System.Text.Json.JsonSerializer.Serialize(allActive);
+                    setting.LastUpdated = DateTime.Now;
+                    db.Entry(setting).State = EntityState.Modified;
+                    await db.SaveChangesAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.Warning(ex, "Failed to update Settings.CollectionTypesJson");
+            }
+
             CollectionTypesChanged?.Invoke();
             return true;
         }
@@ -119,6 +139,25 @@ public class CollectionTypeService : ICollectionTypeService
 
             db.CollectionTypes.Remove(item);
             await db.SaveChangesAsync();
+
+            // Sync updated collection types to Settings.CollectionTypesJson
+            try
+            {
+                var allActive = await db.CollectionTypes.ToListAsync();
+                var setting = await db.Settings.FirstOrDefaultAsync();
+                if (setting != null)
+                {
+                    setting.CollectionTypesJson = System.Text.Json.JsonSerializer.Serialize(allActive);
+                    setting.LastUpdated = DateTime.Now;
+                    db.Entry(setting).State = EntityState.Modified;
+                    await db.SaveChangesAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.Warning(ex, "Failed to update Settings.CollectionTypesJson after deletion");
+            }
+
             CollectionTypesChanged?.Invoke();
             return true;
         }
@@ -148,6 +187,25 @@ public class CollectionTypeService : ICollectionTypeService
             }
 
             await db.SaveChangesAsync();
+
+            // Sync updated collection types to Settings.CollectionTypesJson
+            try
+            {
+                var allActive = await db.CollectionTypes.ToListAsync();
+                var setting = await db.Settings.FirstOrDefaultAsync();
+                if (setting != null)
+                {
+                    setting.CollectionTypesJson = System.Text.Json.JsonSerializer.Serialize(allActive);
+                    setting.LastUpdated = DateTime.Now;
+                    db.Entry(setting).State = EntityState.Modified;
+                    await db.SaveChangesAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.Warning(ex, "Failed to update Settings.CollectionTypesJson after order change");
+            }
+
             CollectionTypesChanged?.Invoke();
             return true;
         }

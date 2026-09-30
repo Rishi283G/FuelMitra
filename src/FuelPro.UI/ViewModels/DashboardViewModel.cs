@@ -260,8 +260,8 @@ public partial class DashboardViewModel : ObservableObject
             TodayCollection = 0;
             PendingMismatchCount = 0;
             TodayTotalMismatch = 0;
-            TotalCreditorsToday = 0;
             double totalDsmShort = 0;
+            double totalTestingToday = 0;
             
             TodayTotalPhonePe = 0;
             TodayTotalPhonePeCardMorning = 0;
@@ -353,6 +353,7 @@ public partial class DashboardViewModel : ObservableObject
                 
                 entryCalculations.Add((entry.ShiftId, entry.DsmName ?? "", entry.PumpId, entry.ReconciledToPumpId, mismatch));
                 TodayTotalSale += (double)calc.GrossSales;
+                totalTestingToday += (double)calc.TotalTesting;
                 TodayCollection += (double)calc.TotalCollection;
                 TotalCreditorsToday += (double)calc.TotalCreditors;
                 TodayTotalBankCash += cash1 > 0 ? cash1 : (entry.PaymentCollection?.CashDeposit ?? 0);
@@ -407,7 +408,7 @@ public partial class DashboardViewModel : ObservableObject
             }
 
             // Recompute TodayTotalMismatch ignoring DSM Shorts
-            TodayTotalMismatch = (TodayCollection + totalDsmShort) - TodayTotalSale;
+            TodayTotalMismatch = (TodayCollection + totalDsmShort) - (TodayTotalSale - totalTestingToday);
             
             // If the final mismatch is NOT balanced, we consider that a pending mismatch for the day
             if (Math.Abs(TodayTotalMismatch) > 0.01 && PendingMismatchCount == 0)

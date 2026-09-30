@@ -27,6 +27,103 @@ public class ForensicAudit
     );
 
     [Fact(Skip = "Diagnostic only")]
+    public async Task InspectDatabaseNow()
+    {
+        if (!File.Exists(_prodDbPath)) return;
+
+        var services = new ServiceCollection();
+        services.AddDbContext<FuelProDbContext>(options =>
+            options.UseSqlite($"Data Source={_prodDbPath}")
+        );
+
+        using var provider = services.BuildServiceProvider();
+        using var context = provider.GetRequiredService<FuelProDbContext>();
+
+        var sb = new StringBuilder();
+        sb.AppendLine("=== TANKS IN PROD DB ===");
+        var tanks = await context.TankDefinitions.ToListAsync();
+        foreach (var t in tanks)
+        {
+            sb.AppendLine($"Tank: Id={t.TankId}, Name='{t.TankName}', FuelType='{t.FuelType}', Active={t.IsActive}");
+        }
+
+        sb.AppendLine("\n=== PUMP MAPPINGS IN PROD DB ===");
+        var mappings = await context.PumpMappings.ToListAsync();
+        foreach (var m in mappings)
+        {
+            sb.AppendLine($"Mapping: Id={m.PumpMappingId}, Pump={m.PumpId}, Nozzle={m.NozzleNumber}, Fuel='{m.FuelType}', Tank='{m.TankName}', Active={m.IsActive}");
+        }
+
+        sb.AppendLine("\n=== SETTINGS ===");
+        var settings = await context.Settings.FirstOrDefaultAsync();
+        if (settings != null)
+        {
+            sb.AppendLine($"StationName='{settings.PumpStationName}'");
+            sb.AppendLine($"TankDefinitionsJson: {settings.TankDefinitionsJson}");
+            sb.AppendLine($"PumpMappingsJson: {settings.PumpMappingsJson}");
+        }
+
+        sb.AppendLine("\n=== RECENT SHIFTS & DSM ENTRIES ===");
+        var shifts = await context.Shifts
+            .Include(s => s.DsmEntries)
+                .ThenInclude(e => e.NozzleReadings)
+            .Include(s => s.DsmEntries)
+                .ThenInclude(e => e.PaymentCollection)
+                    .ThenInclude(p => p.Items)
+            .OrderByDescending(s => s.ShiftDate)
+            .Take(3)
+            .ToListAsync();
+
+        foreach (var s in shifts)
+        {
+            sb.AppendLine($"\nShift: Id={s.ShiftId}, Date={s.ShiftDate:yyyy-MM-dd}, Type={s.ShiftType}");
+            foreach (var e in s.DsmEntries)
+            {
+                sb.AppendLine($"  DSM Entry: Id={e.DsmEntryId}, Name='{e.DsmName}', PumpId={e.PumpId}, ConnectedPumpId={e.ConnectedPumpId}, ReconciledToPumpId={e.ReconciledToPumpId}, GrossSales={e.GrossSales}, TotalCollection={e.TotalCollection}, Mismatch={e.Mismatch}");
+                foreach (var nr in e.NozzleReadings)
+                {
+                    sb.AppendLine($"    Nozzle {nr.NozzleNumber}: {nr.OpeningReading} -> {nr.ClosingReading} = {nr.SaleLitres}L @ {nr.Rate} = Rs.{nr.Amount} (FuelType={nr.FuelType})");
+                }
+                var p = e.PaymentCollection;
+                if (p != null)
+                {
+                    sb.AppendLine($"    PaymentCollection: Ph={p.PhonePe}, PhM={p.PhonePeMorning}, PhD={p.PhonePeDay}, PhN={p.PhonePeNight}, CC={p.CreditCard}, CCM={p.CreditCardMorning}, CCD={p.CreditCardDay}, CCN={p.CreditCardNight}, Petro={p.PetroCard}, PetroM={p.PetroCardMorning}, PetroD={p.PetroCardDay}, PetroN={p.PetroCardNight}");
+                    if (p.Items != null)
+                    {
+                        foreach (var it in p.Items)
+                        {
+                            sb.AppendLine($"      Item: Code={it.CollectionTypeCode}, Amount={it.Amount}");
+                        }
+                    }
+                }
+                var denoms = await context.CashDenominations.Where(c => c.DsmEntryId == e.DsmEntryId).ToListAsync();
+                foreach (var cd in denoms)
+                {
+                    sb.AppendLine($"    CashDenom: Type={cd.CashType}, Amount={cd.TotalAmount}");
+                }
+                var debits = await context.DebitEntries.Where(d => d.DsmEntryId == e.DsmEntryId).ToListAsync();
+                foreach (var deb in debits)
+                {
+                    sb.AppendLine($"    Debit: Customer={deb.DebtorName}, Amount={deb.Amount}");
+                }
+                var expenses = await context.Expenses.Where(ex => ex.DsmEntryId == e.DsmEntryId).ToListAsync();
+                foreach (var ex in expenses)
+                {
+                    sb.AppendLine($"    Expense: Desc={ex.Description}, Amount={ex.Amount}");
+                }
+                var testings = await context.TestingEntries.Where(t => t.DsmEntryId == e.DsmEntryId).ToListAsync();
+                foreach (var t in testings)
+                {
+                    sb.AppendLine($"    Testing: Amount={t.Amount}");
+                }
+            }
+        }
+
+        var outPath = Path.Combine(Directory.GetCurrentDirectory(), "inspect_db_output.txt");
+        await File.WriteAllTextAsync(outPath, sb.ToString());
+    }
+
+    [Fact(Skip = "Diagnostic only")]
     public async Task RunForensicAudit()
     {
         if (!File.Exists(_prodDbPath))

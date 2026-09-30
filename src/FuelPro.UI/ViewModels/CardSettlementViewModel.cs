@@ -126,17 +126,20 @@ public partial class CardSettlementViewModel : ObservableObject, IDisposable
             bool useMorningNight = _featureToggleService?.IsFeatureEnabled("Collection_UseMorningNight", false) ?? false;
             var slotsToLoad = new List<(Shift shift, CardSettlementSlot slot, string label)>();
 
+            var tidSheetTask = _tidService.GetTidSheetAsync(SelectedDate);
+
             if (useMorningNight)
             {
-                // 1. Morning: yesterday Shift A
                 var prevDate = SelectedDate.Date.AddDays(-1);
-                var morningShiftRes = await _shiftRepo.GetShiftAsync(prevDate, "A");
-                
-                // 2. Day: today Shift B
-                var dayShiftRes = await _shiftRepo.GetShiftAsync(SelectedDate.Date, "B");
-                
-                // 3. Night: today Shift A
-                var nightShiftRes = await _shiftRepo.GetShiftAsync(SelectedDate.Date, "A");
+                var morningShiftTask = _shiftRepo.GetShiftAsync(prevDate, "A");
+                var dayShiftTask = _shiftRepo.GetShiftAsync(SelectedDate.Date, "B");
+                var nightShiftTask = _shiftRepo.GetShiftAsync(SelectedDate.Date, "A");
+
+                await Task.WhenAll(morningShiftTask, dayShiftTask, nightShiftTask, tidSheetTask);
+
+                var morningShiftRes = await morningShiftTask;
+                var dayShiftRes = await dayShiftTask;
+                var nightShiftRes = await nightShiftTask;
 
                 if (morningShiftRes.Success && morningShiftRes.Data != null)
                     slotsToLoad.Add((morningShiftRes.Data, CardSettlementSlot.Morning, "Morning (12am - 8am)"));
@@ -149,9 +152,13 @@ public partial class CardSettlementViewModel : ObservableObject, IDisposable
             }
             else
             {
-                // Standard 2-shift: Shift A & Shift B of SelectedDate
-                var shiftARes = await _shiftRepo.GetShiftAsync(SelectedDate.Date, "A");
-                var shiftBRes = await _shiftRepo.GetShiftAsync(SelectedDate.Date, "B");
+                var shiftATask = _shiftRepo.GetShiftAsync(SelectedDate.Date, "A");
+                var shiftBTask = _shiftRepo.GetShiftAsync(SelectedDate.Date, "B");
+
+                await Task.WhenAll(shiftATask, shiftBTask, tidSheetTask);
+
+                var shiftARes = await shiftATask;
+                var shiftBRes = await shiftBTask;
 
                 if (shiftARes.Success && shiftARes.Data != null)
                     slotsToLoad.Add((shiftARes.Data, CardSettlementSlot.Morning, "Shift A"));
@@ -169,7 +176,7 @@ public partial class CardSettlementViewModel : ObservableObject, IDisposable
 
             IsShiftLocked = slotsToLoad.Any(s => s.shift.IsLocked);
 
-            var tidSheet = await _tidService.GetTidSheetAsync(SelectedDate);
+            var tidSheet = await tidSheetTask;
             CurrentTidSheet = tidSheet;
 
             // 1. Credit Cards (legacy list)
@@ -362,7 +369,7 @@ public partial class CardSettlementViewModel : ObservableObject, IDisposable
             var exportService = App.Services.GetRequiredService<FuelPro.Core.Services.ExcelExportService>();
             var settingsRepo = App.Services.GetRequiredService<ISettingsRepository>();
             var sResult = await settingsRepo.GetSettingsAsync();
-            var stationName = sResult.Success && sResult.Data != null ? sResult.Data.PumpStationName : "PyroSync";
+            var stationName = sResult.Success && sResult.Data != null && !string.IsNullOrWhiteSpace(sResult.Data.PumpStationName) ? sResult.Data.PumpStationName : "Mitali Service Station";
 
             if (CurrentTidSheet == null) return;
             var path = await exportService.ExportTidSheetAsync(CurrentTidSheet, stationName);

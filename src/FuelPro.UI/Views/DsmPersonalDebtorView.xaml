@@ -35,6 +35,20 @@
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="HorizontalGridLinesBrush" Value="{DynamicResource MaterialDesign.Brush.Divider}" />
             <Setter Property="VerticalGridLinesBrush" Value="{DynamicResource MaterialDesign.Brush.Divider}" />
+            <Setter Property="GridLinesVisibility" Value="All" />
+            <Setter Property="CanUserResizeColumns" Value="True" />
+            <Setter Property="materialDesign:DataGridAssist.CellPadding" Value="8 6" />
+        </Style>
+
+        <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource MaterialDesignDataGridColumnHeader}">
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Background" Value="#F8F9FA" />
+            <Setter Property="Foreground" Value="{DynamicResource MaterialDesign.Brush.Foreground}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource MaterialDesign.Brush.Divider}" />
+            <Setter Property="BorderThickness" Value="0,0,1,1" />
+            <Setter Property="Padding" Value="8,8" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
         </Style>
     </UserControl.Resources>
 
@@ -67,30 +81,66 @@
             <TabItem Header="DSM Loss &amp; Ledger" Height="45">
                 <Grid Margin="0,16,0,0">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="4*"/>
-                        <ColumnDefinition Width="6*"/>
+                        <ColumnDefinition Width="3.2*" MinWidth="280" MaxWidth="450"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="6.8*"/>
                     </Grid.ColumnDefinitions>
 
                     <!-- LEFT: DSM Summaries Directory -->
-                    <materialDesign:Card Grid.Column="0" Style="{StaticResource SectionCard}" Margin="0,0,8,0">
+                    <materialDesign:Card Grid.Column="0" Style="{StaticResource SectionCard}" Margin="0,0,4,0">
                         <DockPanel LastChildFill="True">
                             <TextBlock DockPanel.Dock="Top" Text="DSM Accounts" Style="{StaticResource SectionTitle}"/>
                             
                             <ProgressBar DockPanel.Dock="Top" IsIndeterminate="{Binding IsLoading}" Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}" Style="{StaticResource MaterialDesignLinearProgressBar}" Margin="0,0,0,8"/>
 
-                            <DataGrid ItemsSource="{Binding DsmSummaries}" SelectedItem="{Binding SelectedSummary}" AutoGenerateColumns="False" IsReadOnly="True" VerticalScrollBarVisibility="Auto">
+                            <DataGrid ItemsSource="{Binding DsmSummaries}" SelectedItem="{Binding SelectedSummary}" AutoGenerateColumns="False" IsReadOnly="True"
+                                      VerticalScrollBarVisibility="Auto" AlternatingRowBackground="#FAFAFA" GridLinesVisibility="All">
                                 <DataGrid.Columns>
-                                    <DataGridTextColumn Header="DSM Name" Binding="{Binding DsmName}" Width="2*" FontWeight="SemiBold"/>
-                                    <DataGridTextColumn Header="Total Borrowed" Binding="{Binding TotalBorrowed, Converter={StaticResource CurrencyConverter}}" Width="2*"/>
-                                    <DataGridTextColumn Header="Total Repaid" Binding="{Binding TotalRepaid, Converter={StaticResource CurrencyConverter}}" Width="2*" Foreground="Green"/>
-                                    <DataGridTextColumn Header="Balance" Binding="{Binding Balance, Converter={StaticResource CurrencyConverter}}" Width="2*" FontWeight="Bold" Foreground="Red"/>
+                                    <DataGridTextColumn Header="DSM Name" Binding="{Binding DsmName}" Width="1.8*" FontWeight="SemiBold"/>
+                                    <DataGridTextColumn Header="Opening Loss" Binding="{Binding OpeningBalance, Converter={StaticResource CurrencyConverter}}" Width="1.3*">
+                                        <DataGridTextColumn.ElementStyle>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="HorizontalAlignment" Value="Right" />
+                                                <Setter Property="VerticalAlignment" Value="Center" />
+                                                <Setter Property="Foreground" Value="#5D4037" />
+                                            </Style>
+                                        </DataGridTextColumn.ElementStyle>
+                                    </DataGridTextColumn>
+                                    <DataGridTextColumn Header="Total Borrowed" Binding="{Binding TotalBorrowed, Converter={StaticResource CurrencyConverter}}" Width="1.4*">
+                                        <DataGridTextColumn.ElementStyle>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="HorizontalAlignment" Value="Right" />
+                                                <Setter Property="VerticalAlignment" Value="Center" />
+                                            </Style>
+                                        </DataGridTextColumn.ElementStyle>
+                                    </DataGridTextColumn>
+                                    <DataGridTextColumn Header="Total Repaid" Binding="{Binding TotalRepaid, Converter={StaticResource CurrencyConverter}}" Width="1.4*" Foreground="Green">
+                                        <DataGridTextColumn.ElementStyle>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="HorizontalAlignment" Value="Right" />
+                                                <Setter Property="VerticalAlignment" Value="Center" />
+                                            </Style>
+                                        </DataGridTextColumn.ElementStyle>
+                                    </DataGridTextColumn>
+                                    <DataGridTextColumn Header="Balance" Binding="{Binding Balance, Converter={StaticResource CurrencyConverter}}" Width="1.4*" FontWeight="Bold" Foreground="Red">
+                                        <DataGridTextColumn.ElementStyle>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="HorizontalAlignment" Value="Right" />
+                                                <Setter Property="VerticalAlignment" Value="Center" />
+                                            </Style>
+                                        </DataGridTextColumn.ElementStyle>
+                                    </DataGridTextColumn>
                                 </DataGrid.Columns>
                             </DataGrid>
                         </DockPanel>
                     </materialDesign:Card>
 
+                    <!-- Splitter between left and right panes -->
+                    <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Center" VerticalAlignment="Stretch"
+                                  Background="Transparent" ResizeBehavior="PreviousAndNext" Cursor="SizeWE"/>
+
                     <!-- RIGHT: Ledger & Action Panels -->
-                    <Grid Grid.Column="1" Margin="8,0,0,0">
+                    <Grid Grid.Column="2" Margin="4,0,0,0">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
@@ -188,6 +238,7 @@
                                 <Grid Grid.Row="1" Margin="0,0,0,8">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="1.2*"/>
+                                        <ColumnDefinition Width="1*"/>
                                         <ColumnDefinition Width="1.2*"/>
                                         <ColumnDefinition Width="2*"/>
                                         <ColumnDefinition Width="2*"/>
@@ -196,12 +247,14 @@
 
                                     <DatePicker Grid.Column="0" SelectedDate="{Binding RepaymentDate}" materialDesign:HintAssist.Hint="Date" Style="{StaticResource MaterialDesignOutlinedDatePicker}" Margin="0,0,8,0"/>
 
-                                    <ComboBox Grid.Column="1" ItemsSource="{Binding PaymentModes}" SelectedItem="{Binding SelectedPaymentMode}" materialDesign:HintAssist.Hint="Payment Mode" Style="{StaticResource MaterialDesignOutlinedComboBox}" Margin="0,0,8,0"/>
+                                    <ComboBox Grid.Column="1" ItemsSource="{Binding AvailableShifts}" SelectedItem="{Binding SelectedShift}" materialDesign:HintAssist.Hint="Shift" Style="{StaticResource MaterialDesignOutlinedComboBox}" Margin="0,0,8,0"/>
 
-                                    <TextBox Grid.Column="2" Text="{Binding RepaymentRemarks}" materialDesign:HintAssist.Hint="Remarks" Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,8,0"/>
+                                    <ComboBox Grid.Column="2" ItemsSource="{Binding PaymentModes}" SelectedItem="{Binding SelectedPaymentMode}" materialDesign:HintAssist.Hint="Payment Mode" Style="{StaticResource MaterialDesignOutlinedComboBox}" Margin="0,0,8,0"/>
+
+                                    <TextBox Grid.Column="3" Text="{Binding RepaymentRemarks}" materialDesign:HintAssist.Hint="Remarks" Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,8,0"/>
 
                                     <!-- Amount Received (Non-Cash Mode) -->
-                                    <TextBox Grid.Column="3" Margin="0,0,8,0">
+                                    <TextBox Grid.Column="4" Margin="0,0,8,0">
                                         <TextBox.Style>
                                             <Style TargetType="TextBox" BasedOn="{StaticResource MaterialDesignOutlinedTextBox}">
                                                 <Setter Property="Visibility" Value="Visible"/>
@@ -220,7 +273,7 @@
                                     </TextBox>
 
                                     <!-- Cash total auto-calculated from denominations -->
-                                    <Border Grid.Column="3" Margin="0,0,8,0" BorderBrush="{DynamicResource MaterialDesign.Brush.Primary}" BorderThickness="1" CornerRadius="4" Padding="12,0" VerticalAlignment="Stretch">
+                                    <Border Grid.Column="4" Margin="0,0,8,0" BorderBrush="{DynamicResource MaterialDesign.Brush.Primary}" BorderThickness="1" CornerRadius="4" Padding="12,0" VerticalAlignment="Stretch">
                                         <Border.Style>
                                             <Style TargetType="Border">
                                                 <Setter Property="Visibility" Value="Collapsed"/>
@@ -238,7 +291,7 @@
                                     </Border>
 
                                     <!-- Save Buttons -->
-                                    <Button Grid.Column="4" Content="Save Repayment" Command="{Binding SavePersonalRepaymentCommand}" Style="{StaticResource MaterialDesignRaisedButton}" Height="40" Padding="16,0"/>
+                                    <Button Grid.Column="5" Content="Save Repayment" Command="{Binding SavePersonalRepaymentCommand}" Style="{StaticResource MaterialDesignRaisedButton}" Height="40" Padding="16,0"/>
                                 </Grid>
 
                                 <!-- Cash Denominations Horizontal Strip -->
@@ -290,26 +343,82 @@
                                 
                                 <TextBlock DockPanel.Dock="Top" Text="{Binding LedgerStatus}" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" Margin="0,0,0,8" FontSize="12"/>
 
-                                <DataGrid ItemsSource="{Binding DsmLedger}" SelectedItem="{Binding SelectedLedgerRow}" AutoGenerateColumns="False" IsReadOnly="True" VerticalScrollBarVisibility="Auto">
+                                <DataGrid ItemsSource="{Binding DsmLedger}" SelectedItem="{Binding SelectedLedgerRow}" AutoGenerateColumns="False" IsReadOnly="True"
+                                          VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                                          AlternatingRowBackground="#FAFAFA" GridLinesVisibility="All">
                                     <DataGrid.Columns>
-                                        <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat={}{0:dd-MMM-yyyy}}" Width="1.5*"/>
-                                        <DataGridTextColumn Header="Particulars" Binding="{Binding Description}" Width="3*"/>
-                                        <DataGridTextColumn Header="Remarks / Debtor" Binding="{Binding Remarks}" Width="2*"/>
-                                        <DataGridTextColumn Header="Debit (+)" Binding="{Binding Debit, Converter={StaticResource CurrencyConverter}}" Width="1.8*" Foreground="Red" FontWeight="SemiBold"/>
-                                        <DataGridTextColumn Header="Credit (-)" Binding="{Binding Credit, Converter={StaticResource CurrencyConverter}}" Width="1.8*" Foreground="Green" FontWeight="SemiBold"/>
-                                        <DataGridTextColumn Header="Balance" Binding="{Binding RunningBalance, Converter={StaticResource CurrencyConverter}}" Width="2*" FontWeight="Bold"/>
-                                        
-                                        <DataGridTemplateColumn Width="Auto">
+                                        <!-- Date -->
+                                        <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat={}{0:dd-MMM-yyyy}}" Width="95" MinWidth="90">
+                                            <DataGridTextColumn.ElementStyle>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="HorizontalAlignment" Value="Center" />
+                                                    <Setter Property="VerticalAlignment" Value="Center" />
+                                                </Style>
+                                            </DataGridTextColumn.ElementStyle>
+                                        </DataGridTextColumn>
+
+                                        <!-- Particulars -->
+                                        <DataGridTemplateColumn Header="Particulars" Width="1.5*" MinWidth="150">
                                             <DataGridTemplateColumn.CellTemplate>
                                                 <DataTemplate>
-                                                    <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="{Binding Description}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Description}" VerticalAlignment="Center" Margin="2,0"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+
+                                        <!-- Remarks -->
+                                        <DataGridTemplateColumn Header="Remarks" Width="3*" MinWidth="270">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding Remarks}" TextTrimming="CharacterEllipsis" ToolTip="{Binding Remarks}" VerticalAlignment="Center" Margin="2,0"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+
+                                        <!-- Debit (+) -->
+                                        <DataGridTextColumn Header="Debit (+)" Binding="{Binding Debit, Converter={StaticResource CurrencyConverter}}" Width="95" MinWidth="85" Foreground="#D32F2F" FontWeight="SemiBold">
+                                            <DataGridTextColumn.ElementStyle>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="HorizontalAlignment" Value="Right" />
+                                                    <Setter Property="VerticalAlignment" Value="Center" />
+                                                </Style>
+                                            </DataGridTextColumn.ElementStyle>
+                                        </DataGridTextColumn>
+
+                                        <!-- Credit (-) -->
+                                        <DataGridTextColumn Header="Credit (-)" Binding="{Binding Credit, Converter={StaticResource CurrencyConverter}}" Width="95" MinWidth="85" Foreground="#2E7D32" FontWeight="SemiBold">
+                                            <DataGridTextColumn.ElementStyle>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="HorizontalAlignment" Value="Right" />
+                                                    <Setter Property="VerticalAlignment" Value="Center" />
+                                                </Style>
+                                            </DataGridTextColumn.ElementStyle>
+                                        </DataGridTextColumn>
+
+                                        <!-- Balance -->
+                                        <DataGridTextColumn Header="Balance" Binding="{Binding RunningBalance, Converter={StaticResource CurrencyConverter}}" Width="100" MinWidth="90" FontWeight="Bold">
+                                            <DataGridTextColumn.ElementStyle>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="HorizontalAlignment" Value="Right" />
+                                                    <Setter Property="VerticalAlignment" Value="Center" />
+                                                </Style>
+                                            </DataGridTextColumn.ElementStyle>
+                                        </DataGridTextColumn>
+                                        
+                                        <!-- Actions -->
+                                        <DataGridTemplateColumn Header="Actions" Width="65" CanUserResize="False">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
                                                         <Button Command="{Binding DataContext.StartEditTransactionCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
                                                                 CommandParameter="{Binding}"
+                                                                Visibility="{Binding CanEdit, Converter={StaticResource BoolToVis}}"
                                                                 Style="{StaticResource MaterialDesignIconForegroundButton}" ToolTip="Edit Entry" Height="24" Width="24" Padding="0">
                                                             <materialDesign:PackIcon Kind="Pencil" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" Width="16" Height="16"/>
                                                         </Button>
                                                         <Button Command="{Binding DataContext.DeleteTransactionCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}"
                                                                 CommandParameter="{Binding}"
+                                                                Visibility="{Binding CanEdit, Converter={StaticResource BoolToVis}}"
                                                                 Style="{StaticResource MaterialDesignIconForegroundButton}" ToolTip="Delete Entry" Height="24" Width="24" Padding="0" Margin="4,0,0,0">
                                                             <materialDesign:PackIcon Kind="Delete" Foreground="Red" Width="16" Height="16"/>
                                                         </Button>
@@ -351,7 +460,8 @@
                 </Grid>
             </TabItem>
             
-            <TabItem Header="Kandhare Petroleum Ledger" Height="45">
+            <TabItem Header="{Binding PersonalLedgerTabHeader}" Height="45"
+                     Visibility="{Binding IsPersonalLedgerEnabled, Converter={StaticResource BoolToVis}}">
                 <Grid Margin="0,16,0,0">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -376,7 +486,7 @@
                             
                             <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
                                 <Button Content="Export Excel" Command="{Binding ExportKpExcelCommand}" Style="{StaticResource MaterialDesignRaisedButton}" Margin="0,0,8,0"/>
-                                <Button Content="Print Kandhare Petroleum" Command="{Binding PrintKpLedgerCommand}" Style="{StaticResource MaterialDesignOutlinedButton}" IsEnabled="{Binding KpEntries.Count}"/>
+                                <Button Content="{Binding PrintPersonalLedgerText}" Command="{Binding PrintKpLedgerCommand}" Style="{StaticResource MaterialDesignOutlinedButton}" IsEnabled="{Binding KpEntries.Count}"/>
                             </StackPanel>
                         </Grid>
                     </materialDesign:Card>
@@ -384,15 +494,31 @@
                     <!-- Kandhare Petroleum DataGrid -->
                     <materialDesign:Card Grid.Row="1" Style="{StaticResource SectionCard}">
                         <DockPanel LastChildFill="True">
-                            <TextBlock DockPanel.Dock="Top" Text="Kandhare Petroleum Ledger" Style="{StaticResource SectionTitle}"/>
-                            <DataGrid ItemsSource="{Binding KpEntries}" AutoGenerateColumns="False" IsReadOnly="True" VerticalScrollBarVisibility="Auto">
+                            <TextBlock DockPanel.Dock="Top" Text="{Binding PersonalLedgerTabHeader}" Style="{StaticResource SectionTitle}"/>
+                            <DataGrid ItemsSource="{Binding KpEntries}" AutoGenerateColumns="False" IsReadOnly="True"
+                                      VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                                      AlternatingRowBackground="#FAFAFA" GridLinesVisibility="All">
                                 <DataGrid.Columns>
-                                    <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat={}{0:dd-MMM-yyyy}}" Width="1.5*"/>
-                                    <DataGridTextColumn Header="Logged By (DSM)" Binding="{Binding DsmName}" Width="2*"/>
-                                    <DataGridTextColumn Header="Person Name" Binding="{Binding Name}" Width="3*" FontWeight="SemiBold"/>
+                                    <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat={}{0:dd-MMM-yyyy}}" Width="110" MinWidth="100">
+                                        <DataGridTextColumn.ElementStyle>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="HorizontalAlignment" Value="Center" />
+                                                <Setter Property="VerticalAlignment" Value="Center" />
+                                            </Style>
+                                        </DataGridTextColumn.ElementStyle>
+                                    </DataGridTextColumn>
+                                    <DataGridTextColumn Header="Logged By (DSM)" Binding="{Binding DsmName}" Width="1.8*"/>
+                                    <DataGridTextColumn Header="Person Name" Binding="{Binding Name}" Width="2.5*" FontWeight="SemiBold"/>
                                     <DataGridTextColumn Header="Vehicle No" Binding="{Binding VehicleNumber}" Width="1.5*"/>
-                                    <DataGridTextColumn Header="Slip No" Binding="{Binding SlipNumber}" Width="1.5*"/>
-                                    <DataGridTextColumn Header="Amount" Binding="{Binding Amount, Converter={StaticResource CurrencyConverter}}" Width="2*" FontWeight="Bold" Foreground="Red"/>
+                                    <DataGridTextColumn Header="Slip No" Binding="{Binding SlipNumber}" Width="1.2*"/>
+                                    <DataGridTextColumn Header="Amount" Binding="{Binding Amount, Converter={StaticResource CurrencyConverter}}" Width="120" FontWeight="Bold" Foreground="Red">
+                                        <DataGridTextColumn.ElementStyle>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="HorizontalAlignment" Value="Right" />
+                                                <Setter Property="VerticalAlignment" Value="Center" />
+                                            </Style>
+                                        </DataGridTextColumn.ElementStyle>
+                                    </DataGridTextColumn>
                                 </DataGrid.Columns>
                             </DataGrid>
                         </DockPanel>
@@ -401,7 +527,7 @@
                     <!-- Bottom summary -->
                     <materialDesign:Card Grid.Row="2" Margin="0,8,0,0" Padding="12" UniformCornerRadius="6" Background="{DynamicResource MaterialDesign.Brush.Primary.Light}">
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                            <TextBlock Text="Total Kandhare Petroleum: " Foreground="White" FontSize="14" Opacity="0.8"/>
+                            <TextBlock Text="{Binding TotalPersonalLedgerLabel}" Foreground="White" FontSize="14" Opacity="0.8"/>
                             <TextBlock Text="{Binding KpTotalAmount, Converter={StaticResource CurrencyConverter}}" Foreground="White" FontSize="16" FontWeight="Bold"/>
                         </StackPanel>
                     </materialDesign:Card>

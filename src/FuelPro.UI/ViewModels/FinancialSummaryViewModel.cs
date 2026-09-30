@@ -135,6 +135,7 @@ public partial class FinancialSummaryViewModel : ObservableObject
                 : new List<DebitEntry>();
 
             var debitsGrouped = allDebits
+                .Where(d => !string.IsNullOrWhiteSpace(d.DebtorName))
                 .GroupBy(d => d.DebtorName.Trim().ToLower())
                 .ToDictionary(g => g.Key, g => g.Sum(d => d.Amount));
 
@@ -142,14 +143,24 @@ public partial class FinancialSummaryViewModel : ObservableObject
             var allRepayments = repaymentsResult.Success ? repaymentsResult.Data ?? new List<CreditorRepayment>() : new List<CreditorRepayment>();
 
             var repaymentsGrouped = allRepayments
+                .Where(r => !string.IsNullOrWhiteSpace(r.CreditorName))
                 .GroupBy(r => r.CreditorName.Trim().ToLower())
                 .ToDictionary(g => g.Key, g => g.Sum(r => r.Amount));
 
+            var allDebtorKeys = debitsGrouped.Keys
+                .Concat(repaymentsGrouped.Keys)
+                .Concat(creditors.Select(c => c.Name.Trim().ToLower()))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var creditorsDict = creditors.ToDictionary(c => c.Name.Trim().ToLower(), c => c);
+
             double overallOutstanding = 0;
             int activeCount = 0;
-            foreach (var c in creditors)
+            var rows = new List<DebtorDisplayRow>();
+
+            foreach (var key in allDebtorKeys)
             {
-                var key = c.Name.Trim().ToLower();
                 debitsGrouped.TryGetValue(key, out var totalDebt);
                 repaymentsGrouped.TryGetValue(key, out var totalRepayment);
                 var balance = totalDebt - totalRepayment;
@@ -158,27 +169,22 @@ public partial class FinancialSummaryViewModel : ObservableObject
                     overallOutstanding += balance;
                     activeCount++;
                 }
-            }
 
-            OverallOutstandingBalance = overallOutstanding;
-            ActiveDebtorsCount = activeCount;
-
-            var rows = new List<DebtorDisplayRow>();
-            foreach (var c in creditors)
-            {
-                var key = c.Name.Trim().ToLower();
-                debitsGrouped.TryGetValue(key, out var totalDebt);
-                repaymentsGrouped.TryGetValue(key, out var totalRepayment);
+                creditorsDict.TryGetValue(key, out var c);
+                string displayName = c != null ? c.Name.Trim() : (allDebits.FirstOrDefault(d => d.DebtorName.Trim().ToLower() == key)?.DebtorName.Trim() ?? allRepayments.FirstOrDefault(r => r.CreditorName.Trim().ToLower() == key)?.CreditorName.Trim() ?? key);
 
                 rows.Add(new DebtorDisplayRow
                 {
-                    CreditorId = c.CreditorId,
-                    Name = c.Name,
-                    Phone = c.Phone ?? string.Empty,
+                    CreditorId = c?.CreditorId ?? 0,
+                    Name = displayName,
+                    Phone = c?.Phone ?? string.Empty,
                     TotalDebt = totalDebt,
                     TotalRepayment = totalRepayment
                 });
             }
+
+            OverallOutstandingBalance = overallOutstanding;
+            ActiveDebtorsCount = activeCount;
             Debtors = new ObservableCollection<DebtorDisplayRow>(rows.OrderBy(r => r.Name));
         }
         finally { IsLoading = false; }

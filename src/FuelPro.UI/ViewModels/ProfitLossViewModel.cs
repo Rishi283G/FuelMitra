@@ -201,6 +201,7 @@ public partial class ProfitLossViewModel : ObservableObject, IDisposable
         DsmEntryService.PayrollChanged += OnDataChanged;
         DsmEntryService.InventoryChanged += OnDataChanged;
         DsmEntryService.SettingsChanged += OnDataChanged;
+        DsmEntryService.StationConfigurationChanged += OnDataChanged;
 
         _ = LoadCurrentMarginsAsync();
         _ = LoadAsync();
@@ -208,14 +209,7 @@ public partial class ProfitLossViewModel : ObservableObject, IDisposable
 
     private void OnSyncStatusChanged(FuelPro.Sync.SyncStatusInfo status)
     {
-        System.Windows.Application.Current.Dispatcher.Invoke(async () =>
-        {
-            if (status.StatusMessage == "Synced")
-            {
-                await LoadCurrentMarginsAsync();
-                await LoadAsync();
-            }
-        });
+        // Status bar only, actual data reload is handled by OnDataChanged when records arrive
     }
 
     private void OnDataChanged()
@@ -236,6 +230,7 @@ public partial class ProfitLossViewModel : ObservableObject, IDisposable
         DsmEntryService.PayrollChanged -= OnDataChanged;
         DsmEntryService.InventoryChanged -= OnDataChanged;
         DsmEntryService.SettingsChanged -= OnDataChanged;
+        DsmEntryService.StationConfigurationChanged -= OnDataChanged;
         GC.SuppressFinalize(this);
     }
 
@@ -270,8 +265,6 @@ public partial class ProfitLossViewModel : ObservableObject, IDisposable
         IsLoading = true;
         try
         {
-            try { await _syncEngine.ForceSyncAsync(); } catch { }
-
             var result = await _financialCalcService.CalculateFinancialsAsync(StartDate, EndDate);
 
             HsdLitres = result.FuelProfit.HsdLitres;
@@ -526,9 +519,9 @@ public partial class ProfitLossViewModel : ObservableObject, IDisposable
         try
         {
             var settingsRepo = App.Services.GetRequiredService<ISettingsRepository>();
-            var stationName = "PyroSync";
+            var stationName = "Mitali Service Station";
             var s = await settingsRepo.GetSettingsAsync();
-            if (s.Success && s.Data != null) stationName = s.Data.PumpStationName;
+            if (s.Success && s.Data != null && !string.IsNullOrWhiteSpace(s.Data.PumpStationName)) stationName = s.Data.PumpStationName;
 
             var financials = await _financialCalcService.CalculateFinancialsAsync(StartDate, EndDate);
             var expenses = ExpenseBreakdown.Select(e => (e.Category, e.Amount)).ToList();

@@ -8,7 +8,7 @@ public class DsmSheetPrintData
 {
     // Header
     public string StationName   { get; set; } = string.Empty;
-    public string CompanyName   { get; set; } = "VKD Petroleum";
+    public string CompanyName   { get; set; } = "Mitali Service Station";
     public string Date          { get; set; } = string.Empty; // "10/06/2026"
     public string Shift         { get; set; } = string.Empty; // "A", "B", "C"
     public string DsmName       { get; set; } = string.Empty;

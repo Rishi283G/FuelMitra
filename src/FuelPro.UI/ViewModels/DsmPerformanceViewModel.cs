@@ -372,13 +372,15 @@ public partial class DsmPerformanceViewModel : ObservableObject
             var summaryList = new List<DsmPersonalDebtorSummaryRow>();
             foreach (var dsm in allDsms)
             {
-                double totalBorrowed = 0;
+                double operationalBorrowed = 0;
+                double openingBalance = 0;
                 double totalRepaid = 0;
 
                 if (debtorsGrouped.TryGetValue(dsm, out var debits))
                 {
-                    totalBorrowed = debits.Sum(d => d.Amount);
-                    var personalDebtorIds = debits.Select(d => d.Id).ToList();
+                    operationalBorrowed = debits.Where(d => d.EntryType == "Operational").Sum(d => d.Amount);
+                    openingBalance = debits.Where(d => d.EntryType == "OpeningBalance").Sum(d => d.Amount);
+                    var personalDebtorIds = debits.Where(d => d.EntryType != "DeactivatedOpening").Select(d => d.Id).ToList();
                     totalRepaid = repaymentsList
                         .Where(r => personalDebtorIds.Contains(r.DsmPersonalDebtorId))
                         .Sum(r => r.Amount);
@@ -387,7 +389,8 @@ public partial class DsmPerformanceViewModel : ObservableObject
                 summaryList.Add(new DsmPersonalDebtorSummaryRow
                 {
                     DsmName = dsm,
-                    TotalBorrowed = totalBorrowed,
+                    OpeningBalance = openingBalance,
+                    TotalBorrowed = operationalBorrowed,
                     TotalRepaid = totalRepaid
                 });
             }
@@ -398,8 +401,9 @@ public partial class DsmPerformanceViewModel : ObservableObject
                 if (!summaryList.Any(s => string.Equals(s.DsmName, dsm, StringComparison.OrdinalIgnoreCase)))
                 {
                     var debits = debtorsGrouped[dsm];
-                    var totalBorrowed = debits.Sum(d => d.Amount);
-                    var personalDebtorIds = debits.Select(d => d.Id).ToList();
+                    var operationalBorrowed = debits.Where(d => d.EntryType == "Operational").Sum(d => d.Amount);
+                    var openingBalance = debits.Where(d => d.EntryType == "OpeningBalance").Sum(d => d.Amount);
+                    var personalDebtorIds = debits.Where(d => d.EntryType != "DeactivatedOpening").Select(d => d.Id).ToList();
                     var totalRepaid = repaymentsList
                         .Where(r => personalDebtorIds.Contains(r.DsmPersonalDebtorId))
                         .Sum(r => r.Amount);
@@ -407,7 +411,8 @@ public partial class DsmPerformanceViewModel : ObservableObject
                     summaryList.Add(new DsmPersonalDebtorSummaryRow
                     {
                         DsmName = dsm,
-                        TotalBorrowed = totalBorrowed,
+                        OpeningBalance = openingBalance,
+                        TotalBorrowed = operationalBorrowed,
                         TotalRepaid = totalRepaid
                     });
                 }
@@ -447,16 +452,47 @@ public partial class DsmPerformanceViewModel : ObservableObject
                 .Where(r => r.DsmPersonalDebtor != null && r.DsmPersonalDebtor.DsmName == dsmName && r.Date.Date >= PersonalLedgerStartDate.Date && r.Date.Date <= PersonalLedgerEndDate.Date)
                 .ToListAsync();
 
+            var priorDebits = await context.DsmPersonalDebtors
+                .Where(d => d.DsmName == dsmName && d.Date.Date < PersonalLedgerStartDate.Date && d.EntryType != "DeactivatedOpening")
+                .SumAsync(d => (double?)d.Amount) ?? 0;
+
+            var priorRepayments = await context.DsmPersonalDebtorRepayments
+                .Include(r => r.DsmPersonalDebtor)
+                .Where(r => r.DsmPersonalDebtor != null && r.DsmPersonalDebtor.DsmName == dsmName && r.Date.Date < PersonalLedgerStartDate.Date)
+                .SumAsync(r => (double?)r.Amount) ?? 0;
+
+            double periodOpeningBalance = priorDebits - priorRepayments;
+
             var list = new List<DsmPersonalDebtorLedgerRow>();
 
             foreach (var d in debits)
             {
+                if (d.EntryType == "DeactivatedOpening") continue;
+
+                string description;
+                if (d.EntryType == "OpeningBalance")
+                {
+                    description = "Historical Opening Balance";
+                }
+                else if (!string.IsNullOrWhiteSpace(d.FuelProduct))
+                {
+                    description = $"Advance ({d.FuelProduct})";
+                }
+                else if (!string.IsNullOrWhiteSpace(d.Remarks) && d.Remarks.Contains("Shortage", StringComparison.OrdinalIgnoreCase))
+                {
+                    description = "Shift Shortage (DSM Loss)";
+                }
+                else
+                {
+                    description = "Borrowed / Advance";
+                }
+
                 list.Add(new DsmPersonalDebtorLedgerRow
                 {
                     TransactionId = d.Id,
-                    TransactionType = "Borrow",
+                    TransactionType = d.EntryType == "OpeningBalance" ? "OpeningBalance" : "Borrow",
                     Date = d.Date,
-                    Description = $"Borrowed: {d.FuelProduct} ({(string.IsNullOrEmpty(d.Remarks) ? "No remarks" : d.Remarks)})",
+                    Description = description,
                     Debit = d.Amount,
                     Credit = 0,
                     FuelProduct = d.FuelProduct,
@@ -497,22 +533,33 @@ public partial class DsmPerformanceViewModel : ObservableObject
                 });
             }
 
-            var sorted = list.OrderBy(x => x.Date).ThenBy(x => x.TransactionType == "Borrow" ? 0 : 1).ToList();
+            var sorted = list.OrderBy(x => x.Date).ThenBy(x => x.TransactionType == "OpeningBalance" ? 0 : (x.TransactionType == "Borrow" ? 1 : 2)).ToList();
 
-            double running = 0;
+            double running = periodOpeningBalance;
+            if (periodOpeningBalance != 0 || priorDebits > 0 || priorRepayments > 0)
+            {
+                PersonalLedger.Add(new DsmPersonalDebtorLedgerRow
+                {
+                    TransactionId = 0,
+                    TransactionType = "OpeningBalance",
+                    Date = PersonalLedgerStartDate.Date,
+                    Description = "Opening Balance",
+                    Debit = 0,
+                    Credit = 0,
+                    RunningBalance = periodOpeningBalance,
+                    CanEdit = false
+                });
+            }
+
             foreach (var item in sorted)
             {
                 running += (item.Debit - item.Credit);
                 item.RunningBalance = running;
-            }
-
-            foreach (var item in sorted)
-            {
                 PersonalLedger.Add(item);
             }
 
-            PersonalLedgerTotalDebt = sorted.Sum(x => x.Debit);
-            PersonalLedgerTotalRepayments = sorted.Sum(x => x.Credit);
+            PersonalLedgerTotalDebt = sorted.Where(x => x.TransactionType == "Borrow").Sum(x => x.Debit);
+            PersonalLedgerTotalRepayments = sorted.Where(x => x.TransactionType == "Repayment").Sum(x => x.Credit);
             PersonalLedgerOutstandingBalance = running;
 
             PersonalLedgerStatus = sorted.Count > 0 ? $"Loaded {sorted.Count} transactions." : "No transactions found in date range.";
@@ -547,7 +594,7 @@ public partial class DsmPerformanceViewModel : ObservableObject
                 DebtorPhone = "N/A",
                 StartDate = PersonalLedgerStartDate.ToString("dd-MMM-yyyy"),
                 EndDate = PersonalLedgerEndDate.ToString("dd-MMM-yyyy"),
-                OpeningBalance = PersonalLedger.FirstOrDefault()?.RunningBalance ?? 0,
+                OpeningBalance = PersonalLedger.FirstOrDefault()?.TransactionType == "OpeningBalance" ? PersonalLedger.FirstOrDefault()!.RunningBalance : 0,
                 TotalDebt = PersonalLedgerTotalDebt,
                 TotalRepayments = PersonalLedgerTotalRepayments,
                 ClosingBalance = PersonalLedgerOutstandingBalance,

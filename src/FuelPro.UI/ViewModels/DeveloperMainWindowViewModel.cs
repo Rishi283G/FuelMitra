@@ -1,4 +1,4 @@
-using CommunityToolkit.Mvvm.ComponentModel;
+        using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FuelPro.Core.Common;
 using FuelPro.Core.Models;
@@ -33,6 +33,7 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
     private readonly IFeatureToggleService _featureToggleService;
     private readonly ICollectionTypeService _collectionTypeService;
     private readonly IStationConfigurationService _stationConfigService;
+    private bool _isSavingLayout;
 
     [ObservableProperty] private object? _currentView;
 
@@ -75,6 +76,20 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
     [ObservableProperty] private string _searchPresetCode = "";
     [ObservableProperty] private string _presetStatusMessage = "";
     public string[] AvailableCollectionCategories { get; } = { "Online", "Card", "Cash", "Other" };
+
+    private bool _isLoadingPresetInternal;
+
+    partial void OnSelectedPresetChanged(StationLayoutPreset? value)
+    {
+        if (value != null && !_isLoadingPresetInternal)
+        {
+            SearchPresetCode = value.PresetCode;
+            PresetCode = value.PresetCode;
+            PresetName = value.PresetName;
+            PresetDescription = value.Description;
+            PresetStatusMessage = $"Selected preset '{value.PresetName}' ({value.PresetCode}). Click '⚡ Load Code' to load onto canvas.";
+        }
+    }
 
 
 
@@ -248,6 +263,22 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
         _isUpdatingSelection = false;
     }
 
+    public DeveloperMainWindowViewModel(IFeatureToggleService featureToggleService)
+    {
+        _featureToggleService = featureToggleService;
+        _serviceProvider = null!;
+        _authService = null!;
+        _userRepo = null!;
+        _syncConfigService = null!;
+        _syncEngine = null!;
+        _licenseManager = null!;
+        _inspectionService = null!;
+        _resolutionService = null!;
+        _collectionTypeService = null!;
+        _stationConfigService = null!;
+    }
+
+    [ActivatorUtilitiesConstructor]
     public DeveloperMainWindowViewModel()
     {
         _serviceProvider = App.Services;
@@ -262,6 +293,16 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
         _featureToggleService = _serviceProvider.GetRequiredService<IFeatureToggleService>();
         _collectionTypeService = _serviceProvider.GetRequiredService<ICollectionTypeService>();
         _stationConfigService = _serviceProvider.GetRequiredService<IStationConfigurationService>();
+
+        _stationConfigService.StationConfigurationChanged += () =>
+        {
+            if (_isSavingLayout) return;
+            System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+            {
+                if (_isSavingLayout) return;
+                _ = LoadStationAndCollectionsAsync();
+            });
+        };
 
         CurrentUser = _authService.CurrentUser?.Username ?? "Developer";
 
@@ -302,16 +343,17 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
             {
                 _ = LoadDiagnosticsAsync();
             }
-            else if (idx == 5) // Features
+            else if (idx == 4) // Data Integrity
+            {
+                _ = LoadRecentDsmEntriesAsync();
+            }
+            else if (idx == 5) // Client Features
             {
                 _ = LoadFeaturesAsync();
             }
-            else if (idx == 6) // Station & Collections
-            {
-                _ = LoadStationAndCollectionsAsync();
-            }
         }
     }
+
 
 
     // User Management actions
@@ -771,22 +813,18 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
                     var primaryKey = entityType.FindPrimaryKey()?.Properties.FirstOrDefault();
                     if (primaryKey == null) continue;
 
-                    var dbSet = (System.Collections.IEnumerable)context.GetType()
-                        .GetMethod("Set", new[] { typeof(Type) })!
-                        .Invoke(context, new[] { entityType.ClrType })!;
+                    var clrType = entityType.ClrType;
+                    var dbSetMethod = typeof(DbContext).GetMethod(nameof(DbContext.Set), Type.EmptyTypes)!.MakeGenericMethod(clrType);
+                    var dbSet = (IQueryable)dbSetMethod.Invoke(context, null)!;
 
-                    var records = new List<object>();
-                    foreach (var rec in dbSet)
+                    foreach (var rec in dbSet.Cast<object>())
                     {
-                        records.Add(rec);
-                    }
-                    
-                    foreach (var rec in records)
-                    {
-                        var propInfo = entityType.FindProperty(primaryKey.Name)!.PropertyInfo;
+                        var propInfo = entityType.FindProperty(primaryKey.Name)?.PropertyInfo;
                         if (propInfo == null) continue;
                         
                         var id = Convert.ToInt32(propInfo.GetValue(rec));
+                        if (id <= 0) continue;
+
                         context.SyncChangeLogs.Add(new SyncChangeLog
                         {
                             TableName = tableName,
@@ -1037,6 +1075,37 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
         else
         {
             MessageBox.Show(result.Error, "Delete Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    [RelayCommand]
+    private async Task DeleteAllRecentDsmEntriesAsync()
+    {
+        if (RecentDsmEntries.Count == 0)
+        {
+            MessageBox.Show("No DSM entries found to delete.", "Information", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var confirm = MessageBox.Show(
+            $"Are you sure you want to PURGE ALL {RecentDsmEntries.Count} DSM entry records and all associated readings, collections, debits, and expenses from the database?\n\n" +
+            "⚠️ WARNING: This will permanently wipe all current DSM entries in the local database. Use this after testing or when changing station setups.",
+            "Confirm Purge All DSM Entries",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (confirm != MessageBoxResult.Yes) return;
+
+        var result = await _resolutionService.DeleteAllDsmEntriesAsync();
+        if (result.Success)
+        {
+            MessageBox.Show(result.Data, "All Entries Purged", MessageBoxButton.OK, MessageBoxImage.Information);
+            await LoadRecentDsmEntriesAsync();
+            await RunIntegrityScanAsync();
+        }
+        else
+        {
+            MessageBox.Show(result.Error, "Purge Failed", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -1522,6 +1591,48 @@ public partial class PumpCardVm : ObservableObject
     public ObservableCollection<NozzleItemVm> Nozzles { get; } = new();
 }
 
+public partial class PumpCandidateVm : ObservableObject
+{
+    [ObservableProperty] private int _pumpId;
+    [ObservableProperty] private bool _isSelected;
+    [ObservableProperty] private bool _isEnabled = true;
+    [ObservableProperty] private string _disabledReason = string.Empty;
+
+    public Action? OnSelectionChangedCallback { get; set; }
+
+    partial void OnIsSelectedChanged(bool value)
+    {
+        OnSelectionChangedCallback?.Invoke();
+    }
+}
+
+public partial class PumpConnectionGroupVm : ObservableObject
+{
+    [ObservableProperty] private int _groupId = 1;
+    [ObservableProperty] private string _groupName = "Group 1";
+    [ObservableProperty] private int _primaryPumpId = 1;
+    [ObservableProperty] private string _validationMessage = string.Empty;
+    [ObservableProperty] private bool _hasError;
+
+    public ObservableCollection<int> AvailablePrimaryPumps { get; } = new();
+    public ObservableCollection<PumpCandidateVm> CandidateSlaves { get; } = new();
+
+    public Action? OnGroupChangedCallback { get; set; }
+
+    partial void OnPrimaryPumpIdChanged(int value)
+    {
+        OnGroupChangedCallback?.Invoke();
+    }
+
+    public List<int> GetSelectedConnectedPumpIds()
+    {
+        return CandidateSlaves
+            .Where(c => c.IsSelected && c.PumpId != PrimaryPumpId)
+            .Select(c => c.PumpId)
+            .ToList();
+    }
+}
+
 public partial class DeveloperMainWindowViewModel
 {
     // ───────────────────────────────────────────────
@@ -1540,13 +1651,32 @@ public partial class DeveloperMainWindowViewModel
         try
         {
             var features = await _featureToggleService.GetAllFeaturesAsync();
-            FeatureSettings.Clear();
-            foreach (var f in features)
+            void UpdateUi()
             {
-                FeatureSettings.Add(f);
+                FeatureSettings.Clear();
+                foreach (var f in features)
+                {
+                    FeatureSettings.Add(f);
+                }
+                FilterFeatures();
+                if (features.Count > 0)
+                {
+                    FeatureStatusMessage = $"✅ Loaded {features.Count} feature settings.";
+                }
+                else
+                {
+                    FeatureStatusMessage = "⚠️ No feature settings found in database.";
+                }
             }
-            FilterFeatures();
-            FeatureStatusMessage = $"✅ Loaded {features.Count} feature settings.";
+
+            if (System.Windows.Application.Current?.Dispatcher != null && !System.Windows.Application.Current.Dispatcher.CheckAccess())
+            {
+                System.Windows.Application.Current.Dispatcher.Invoke(UpdateUi);
+            }
+            else
+            {
+                UpdateUi();
+            }
         }
         catch (Exception ex)
         {
@@ -1556,18 +1686,30 @@ public partial class DeveloperMainWindowViewModel
 
     private void FilterFeatures()
     {
-        FilteredFeatureSettings.Clear();
-        var filter = SelectedFeatureRoleFilter;
-        var query = FeatureSettings.AsEnumerable();
-
-        if (!string.Equals(filter, "All", StringComparison.OrdinalIgnoreCase))
+        void UpdateFilter()
         {
-            query = query.Where(f => string.Equals(f.TargetRole, filter, StringComparison.OrdinalIgnoreCase));
+            FilteredFeatureSettings.Clear();
+            var filter = SelectedFeatureRoleFilter;
+            var query = FeatureSettings.AsEnumerable();
+
+            if (!string.Equals(filter, "All", StringComparison.OrdinalIgnoreCase))
+            {
+                query = query.Where(f => string.Equals(f.TargetRole, filter, StringComparison.OrdinalIgnoreCase));
+            }
+
+            foreach (var item in query)
+            {
+                FilteredFeatureSettings.Add(item);
+            }
         }
 
-        foreach (var item in query)
+        if (System.Windows.Application.Current?.Dispatcher != null && !System.Windows.Application.Current.Dispatcher.CheckAccess())
         {
-            FilteredFeatureSettings.Add(item);
+            System.Windows.Application.Current.Dispatcher.Invoke(UpdateFilter);
+        }
+        else
+        {
+            UpdateFilter();
         }
     }
 
@@ -1596,6 +1738,14 @@ public partial class DeveloperMainWindowViewModel
             if (success)
             {
                 FeatureStatusMessage = "✅ Feature matrix saved successfully!";
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await _syncEngine.ForceSyncAsync();
+                    }
+                    catch { }
+                });
                 System.Windows.MessageBox.Show("Client feature configuration saved successfully!\nAdmin and Owner interfaces will now reflect these settings.", 
                     "Features Saved", MessageBoxButton.OK, MessageBoxImage.Information);
             }
@@ -1613,6 +1763,12 @@ public partial class DeveloperMainWindowViewModel
     [RelayCommand]
     public void ApplyClientPreset(string presetName)
     {
+        if (FeatureSettings.Count == 0)
+        {
+            FeatureStatusMessage = "⚠️ No feature settings loaded to apply preset.";
+            return;
+        }
+
         if (presetName == "CurrentClient")
         {
             // Current client requirements:
@@ -1710,7 +1866,15 @@ public partial class DeveloperMainWindowViewModel
             }
 
             // Load Saved Presets
-            await LoadAllPresetsAsync();
+            _isLoadingPresetInternal = true;
+            try
+            {
+                await LoadAllPresetsAsync();
+            }
+            finally
+            {
+                _isLoadingPresetInternal = false;
+            }
 
             // Load Shift Cycle Setting
             bool useMorningNight = _featureToggleService.IsFeatureEnabled("Collection_UseMorningNight", false);
@@ -1720,9 +1884,16 @@ public partial class DeveloperMainWindowViewModel
 
             RefreshAvailableFuelTypes();
 
+            _isLoadingPresetInternal = true;
+            SelectedPreset = null;
+            _isLoadingPresetInternal = false;
+
             StationStatusMessage = $"✅ Loaded {ConfiguredPumps.Count} pumps, {ConfiguredTanks.Count} tanks.";
             CollectionStatusMessage = $"✅ Loaded {ConfiguredCollectionTypes.Count} collection types.";
             ShiftCycleStatusMessage = $"Current cycle: {(useMorningNight ? "3-Slot Split" : "Standard 2-Shift")}";
+
+            // Load Dynamic Pump Connection Rules
+            await LoadPumpConnectionConfigurationAsync();
         }
         catch (Exception ex)
         {
@@ -1902,11 +2073,55 @@ public partial class DeveloperMainWindowViewModel
     }
 
     [RelayCommand]
+    public void AutoSequenceNozzles()
+    {
+        int num = 1;
+        foreach (var pump in ConfiguredPumps.OrderBy(p => p.PumpId))
+        {
+            foreach (var nozzle in pump.Nozzles)
+            {
+                nozzle.NozzleNumber = num++;
+            }
+        }
+        StationStatusMessage = $"✅ Auto-sequenced all nozzles from 1 to {num - 1}. Click 'Save Station Layout' to persist.";
+    }
+
+    [RelayCommand]
     public async Task SaveStationLayoutAsync()
     {
         StationStatusMessage = "⏳ Saving station layout...";
         try
         {
+            _isSavingLayout = true;
+
+            // Check for duplicate nozzle numbers
+            var duplicateNumbers = ConfiguredPumps
+                .SelectMany(p => p.Nozzles)
+                .GroupBy(n => n.NozzleNumber)
+                .Where(g => g.Count() > 1)
+                .Select(g => g.Key)
+                .ToList();
+
+            if (duplicateNumbers.Count > 0)
+            {
+                var dupStr = string.Join(", ", duplicateNumbers);
+                var result = MessageBox.Show(
+                    $"Duplicate Nozzle Number(s) detected: [{dupStr}].\n\nEvery nozzle must have a unique number across all pumps.\n\nWould you like to automatically re-sequence all nozzles (1, 2, 3...) and proceed with saving?",
+                    "Duplicate Nozzle Numbers Detected",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Question);
+
+                if (result == MessageBoxResult.Yes)
+                {
+                    AutoSequenceNozzles();
+                }
+                else
+                {
+                    StationStatusMessage = $"❌ Save cancelled due to duplicate nozzle numbers: [{dupStr}].";
+                    return;
+                }
+            }
+
             var flatMappings = new List<PumpMapping>();
             var allNozzleNumbers = new HashSet<int>();
 
@@ -1935,12 +2150,78 @@ public partial class DeveloperMainWindowViewModel
                 }
             }
 
+            // 1. Batch Save Tanks to DB
+            await _stationConfigService.SaveTanksAsync(ConfiguredTanks);
+
+            // 2. Save Pump Mappings to DB
             var success = await _stationConfigService.SavePumpMappingsAsync(flatMappings);
             if (success)
             {
-                StationStatusMessage = $"✅ Station layout successfully saved! ({flatMappings.Count} nozzles configured)";
-                MessageBox.Show("Station layout successfully updated in database and runtime cache.", "Station Saved", MessageBoxButton.OK, MessageBoxImage.Information);
-                await LoadStationAndCollectionsAsync();
+                // 3. Automatically persist this configuration as an active layout preset
+                if (string.IsNullOrWhiteSpace(PresetCode))
+                {
+                    GeneratePresetCode();
+                }
+                if (string.IsNullOrWhiteSpace(PresetName))
+                {
+                    PresetName = $"{ConfiguredPumps.Count}-Pump Layout";
+                }
+
+                var presetData = new StationPresetData
+                {
+                    PresetCode = PresetCode.Trim().ToUpperInvariant(),
+                    PresetName = PresetName.Trim(),
+                    Description = PresetDescription?.Trim() ?? "Active Station Layout",
+                    Tanks = ConfiguredTanks.Select(t => new TankPresetItem
+                    {
+                        TankName = t.TankName,
+                        CapacityKL = t.CapacityKL,
+                        FuelType = t.FuelType,
+                        IsActive = t.IsActive,
+                        HasTesting = t.HasTesting
+                    }).ToList(),
+                    Pumps = ConfiguredPumps.Select(p => new PumpPresetItem
+                    {
+                        PumpId = p.PumpId,
+                        Nozzles = p.Nozzles.Select(n => new NozzlePresetItem
+                        {
+                            NozzleNumber = n.NozzleNumber,
+                            FuelType = n.FuelType,
+                            TankName = n.TankName
+                        }).ToList()
+                    }).ToList()
+                };
+
+                var json = System.Text.Json.JsonSerializer.Serialize(presetData, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+                var entity = new StationLayoutPreset
+                {
+                    PresetCode = PresetCode.Trim().ToUpperInvariant(),
+                    PresetName = PresetName.Trim(),
+                    Description = PresetDescription?.Trim() ?? "Active Station Layout",
+                    LayoutJson = json,
+                    PumpCount = ConfiguredPumps.Count,
+                    NozzleCount = ConfiguredPumps.SelectMany(p => p.Nozzles).Count(),
+                    TankCount = ConfiguredTanks.Count,
+                    IsActive = true
+                };
+                await _stationConfigService.SavePresetAsync(entity);
+                await LoadAllPresetsAsync();
+
+                RefreshAvailableTankNames();
+                RefreshAvailableFuelTypes();
+
+                StationStatusMessage = $"✅ Station layout and tanks successfully saved! ({flatMappings.Count} nozzles, {ConfiguredTanks.Count} tanks configured)";
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await _syncEngine.ForceSyncAsync();
+                    }
+                    catch
+                    {
+                    }
+                });
+                MessageBox.Show("Station layout and storage tanks successfully saved to active database and runtime cache.", "Station Saved", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             else
             {
@@ -1951,36 +2232,68 @@ public partial class DeveloperMainWindowViewModel
         {
             StationStatusMessage = $"❌ Save error: {ex.Message}";
         }
+        finally
+        {
+            _isSavingLayout = false;
+        }
     }
 
     // ── Tanks ──
     [RelayCommand]
-    public void AddTank()
+    public async Task AddTankAsync()
     {
         var nextNum = ConfiguredTanks.Count + 1;
-        ConfiguredTanks.Add(new TankDefinition
+        var defaultFuel = AvailableFuelTypes.FirstOrDefault() ?? "HSD";
+        var newTank = new TankDefinition
         {
             TankName = $"Tank {nextNum} - 20KL",
             CapacityKL = 20.0,
-            FuelType = "HSD",
+            FuelType = defaultFuel,
             IsActive = true,
             CreatedAt = DateTime.Now
-        });
+        };
+        ConfiguredTanks.Add(newTank);
         RefreshAvailableTankNames();
-        StationStatusMessage = "Added new Tank. Click 'Save Tanks' to commit.";
+
+        try
+        {
+            _isSavingLayout = true;
+            await _stationConfigService.SaveTankAsync(newTank);
+            StationStatusMessage = $"✅ Added and saved {newTank.TankName}.";
+        }
+        catch (Exception ex)
+        {
+            StationStatusMessage = $"Added tank, save note: {ex.Message}";
+        }
+        finally
+        {
+            _isSavingLayout = false;
+        }
     }
 
     [RelayCommand]
     public async Task DeleteTankAsync(TankDefinition? tank)
     {
         if (tank == null) return;
-        if (tank.TankId > 0)
+        try
         {
-            await _stationConfigService.DeleteTankAsync(tank.TankId);
+            _isSavingLayout = true;
+            if (tank.TankId > 0)
+            {
+                await _stationConfigService.DeleteTankAsync(tank.TankId);
+            }
+            ConfiguredTanks.Remove(tank);
+            RefreshAvailableTankNames();
+            StationStatusMessage = $"Deleted tank: {tank.TankName}";
         }
-        ConfiguredTanks.Remove(tank);
-        RefreshAvailableTankNames();
-        StationStatusMessage = $"Deleted tank: {tank.TankName}";
+        catch (Exception ex)
+        {
+            StationStatusMessage = $"Error deleting tank: {ex.Message}";
+        }
+        finally
+        {
+            _isSavingLayout = false;
+        }
     }
 
     [RelayCommand]
@@ -1989,17 +2302,30 @@ public partial class DeveloperMainWindowViewModel
         StationStatusMessage = "⏳ Saving tanks...";
         try
         {
-            foreach (var t in ConfiguredTanks)
+            _isSavingLayout = true;
+            var success = await _stationConfigService.SaveTanksAsync(ConfiguredTanks);
+            if (success)
             {
-                await _stationConfigService.SaveTankAsync(t);
+                RefreshAvailableTankNames();
+                StationStatusMessage = "✅ Tanks saved successfully! Nozzles can now be attached to these tanks.";
+                _ = Task.Run(async () =>
+                {
+                    try { await _syncEngine.ForceSyncAsync(); } catch { }
+                });
+                MessageBox.Show("Storage tanks successfully saved to database and runtime cache.", "Tanks Saved", MessageBoxButton.OK, MessageBoxImage.Information);
             }
-            RefreshAvailableTankNames();
-            StationStatusMessage = "✅ Tanks saved successfully! Nozzles can now be attached to these tanks.";
-            MessageBox.Show("Storage tanks successfully saved to database.", "Tanks Saved", MessageBoxButton.OK, MessageBoxImage.Information);
+            else
+            {
+                StationStatusMessage = "❌ Failed to save storage tanks.";
+            }
         }
         catch (Exception ex)
         {
             StationStatusMessage = $"❌ Save error: {ex.Message}";
+        }
+        finally
+        {
+            _isSavingLayout = false;
         }
     }
 
@@ -2020,6 +2346,7 @@ public partial class DeveloperMainWindowViewModel
     {
         try
         {
+            _isLoadingPresetInternal = true;
             var presets = await _stationConfigService.GetAllPresetsAsync();
             SavedPresets.Clear();
             foreach (var p in presets)
@@ -2030,6 +2357,10 @@ public partial class DeveloperMainWindowViewModel
         catch (Exception ex)
         {
             Log.Error(ex, "Failed to load presets");
+        }
+        finally
+        {
+            _isLoadingPresetInternal = false;
         }
     }
 
@@ -2130,6 +2461,21 @@ public partial class DeveloperMainWindowViewModel
                 return;
             }
 
+            await LoadPresetDirectAsync(preset);
+            MessageBox.Show($"Preset '{preset.PresetName}' ({preset.PresetCode}) loaded onto canvas.\n\nClick 'Save Station Layout' when ready to apply to active station database.",
+                "Preset Loaded", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            PresetStatusMessage = $"❌ Error loading preset: {ex.Message}";
+        }
+    }
+
+    private async Task LoadPresetDirectAsync(StationLayoutPreset preset)
+    {
+        if (preset == null) return;
+        try
+        {
             var presetData = System.Text.Json.JsonSerializer.Deserialize<StationPresetData>(preset.LayoutJson);
             if (presetData == null)
             {
@@ -2165,7 +2511,8 @@ public partial class DeveloperMainWindowViewModel
                         NozzleNumber = n.NozzleNumber,
                         FuelType = n.FuelType,
                         TankName = n.TankName,
-                        OnTankNameChangedCallback = HandleNozzleTankChanged
+                        OnTankNameChangedCallback = HandleNozzleTankChanged,
+                        OnFuelTypeChangedCallback = HandleNozzleFuelTypeChanged
                     };
                     pumpVm.Nozzles.Add(nozzleVm);
                 }
@@ -2174,15 +2521,16 @@ public partial class DeveloperMainWindowViewModel
 
             RefreshAvailableFuelTypes();
 
+            _isLoadingPresetInternal = true;
             PresetCode = preset.PresetCode;
             PresetName = preset.PresetName;
             PresetDescription = preset.Description;
+            SearchPresetCode = preset.PresetCode;
             SelectedPreset = SavedPresets.FirstOrDefault(p => p.PresetCode.Equals(preset.PresetCode, StringComparison.OrdinalIgnoreCase));
+            _isLoadingPresetInternal = false;
 
-            StationStatusMessage = $"✅ Loaded preset '{preset.PresetName}' ({preset.PresetCode}). Click 'Save Station Layout' & 'Save Tanks' to commit.";
-            PresetStatusMessage = $"✅ Preset '{preset.PresetCode}' loaded successfully ({ConfiguredPumps.Count} pumps, {ConfiguredTanks.Count} tanks).";
-            MessageBox.Show($"Preset '{preset.PresetName}' ({preset.PresetCode}) loaded onto canvas.\n\nClick 'Save Station Layout' and 'Save Tanks' when ready to apply to active station database.",
-                "Preset Loaded", MessageBoxButton.OK, MessageBoxImage.Information);
+            StationStatusMessage = $"✅ Loaded preset '{preset.PresetName}' ({preset.PresetCode}). Click 'Save Station Layout' to commit.";
+            PresetStatusMessage = $"✅ Preset '{preset.PresetCode}' loaded ({ConfiguredPumps.Count} pumps, {ConfiguredTanks.Count} tanks).";
         }
         catch (Exception ex)
         {
@@ -2209,6 +2557,329 @@ public partial class DeveloperMainWindowViewModel
         catch (Exception ex)
         {
             PresetStatusMessage = $"❌ Error deleting preset: {ex.Message}";
+        }
+    }
+
+    private async Task EnsureCloudSettingsPersistedAsync()
+    {
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(SupabaseUrl) && !string.IsNullOrWhiteSpace(SupabaseApiKey))
+            {
+                var normalizedStationId = string.IsNullOrWhiteSpace(StationId) ? "" : System.Text.RegularExpressions.Regex.Replace(StationId.Trim(), @"\s+", "_").ToUpperInvariant();
+                var current = await _syncConfigService.GetSettingsAsync();
+                current.SupabaseUrl = SupabaseUrl.Trim();
+                current.SupabaseApiKey = SupabaseApiKey.Trim();
+                if (!string.IsNullOrWhiteSpace(SupabaseServiceRoleKey))
+                    current.SupabaseServiceRoleKey = SupabaseServiceRoleKey.Trim();
+                if (!string.IsNullOrWhiteSpace(normalizedStationId))
+                    current.StationId = normalizedStationId;
+                if (!string.IsNullOrWhiteSpace(MachineId))
+                    current.MachineId = MachineId.Trim();
+                await _syncConfigService.SaveSettingsAsync(current);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Failed to auto-persist cloud settings before cloud operation");
+        }
+    }
+
+    private async Task SaveAllTabsLocallyAsync()
+    {
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(PresetCode))
+            {
+                await SavePresetAsync();
+            }
+
+            await SaveStationLayoutAsync();
+
+            for (int i = 0; i < ConfiguredCollectionTypes.Count; i++)
+            {
+                ConfiguredCollectionTypes[i].DisplayOrder = i + 1;
+                await _collectionTypeService.SaveCollectionTypeAsync(ConfiguredCollectionTypes[i]);
+            }
+
+            await SaveFeaturesAsync();
+            await SaveShiftCycleConfigurationAsync();
+            await SavePumpConnectionInternalAsync(showDialogs: false);
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Failed to auto-save all tabs locally before cloud snapshot");
+        }
+    }
+
+    [RelayCommand]
+    public async Task SavePresetToCloudAsync()
+    {
+        PresetStatusMessage = "☁️ Saving preset & layout to Supabase Cloud...";
+        try
+        {
+            await EnsureCloudSettingsPersistedAsync();
+            await SaveAllTabsLocallyAsync();
+
+            var (success, message) = await _syncEngine.PushStationSnapshotToCloudAsync(StationId);
+            if (success)
+            {
+                PresetStatusMessage = $"☁️ Preset & station layout saved to Cloud for station '{StationId}'!";
+                MessageBox.Show($"Station layout and preset have been successfully pushed to Supabase Cloud for Station ID:\n\n{StationId}\n\nAny remote machine can now click 'Load from Cloud' to restore this exact configuration.",
+                    "Cloud Preset Saved", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            else
+            {
+                PresetStatusMessage = $"❌ {message}";
+                MessageBox.Show($"Failed to push layout to cloud:\n\n{message}",
+                    "Cloud Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            PresetStatusMessage = $"❌ Cloud save error: {ex.Message}";
+            MessageBox.Show($"Exception saving preset to cloud:\n\n{ex.Message}", "Cloud Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    [RelayCommand]
+    public async Task LoadPresetFromCloudAsync()
+    {
+        PresetStatusMessage = "☁️ Fetching preset & layout from Supabase Cloud...";
+        try
+        {
+            await EnsureCloudSettingsPersistedAsync();
+
+            var (success, message) = await _syncEngine.PullStationSnapshotFromCloudAsync(StationId);
+            if (success)
+            {
+                await LoadStationAndCollectionsAsync();
+                PresetStatusMessage = $"☁️ Successfully loaded preset & layout from Cloud for station '{StationId}'!";
+                MessageBox.Show($"Station layout (pumps, nozzles, tanks, and fuel mapping) successfully loaded and applied from Supabase Cloud for Station ID:\n\n{StationId}",
+                    "Cloud Preset Loaded", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            else
+            {
+                PresetStatusMessage = $"❌ {message}";
+                MessageBox.Show($"Could not load preset from cloud:\n\n{message}",
+                    "Cloud Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+        catch (Exception ex)
+        {
+            PresetStatusMessage = $"❌ Cloud fetch error: {ex.Message}";
+            MessageBox.Show($"Exception loading preset from cloud:\n\n{ex.Message}", "Cloud Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    [RelayCommand]
+    public async Task SaveStationLayoutToCloudAsync()
+    {
+        StationStatusMessage = "☁️ Pushing station layout to Supabase Cloud...";
+        try
+        {
+            await EnsureCloudSettingsPersistedAsync();
+            await SaveAllTabsLocallyAsync();
+
+            var (success, message) = await _syncEngine.PushStationSnapshotToCloudAsync(StationId);
+            if (success)
+            {
+                StationStatusMessage = $"☁️ Station layout saved to Cloud for station '{StationId}'!";
+                MessageBox.Show($"Station layout (pumps, nozzles, tanks) successfully pushed to Supabase Cloud for Station ID:\n\n{StationId}",
+                    "Layout Pushed to Cloud", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            else
+            {
+                StationStatusMessage = $"❌ {message}";
+                MessageBox.Show($"Failed to push layout to cloud:\n\n{message}",
+                    "Cloud Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            StationStatusMessage = $"❌ Cloud push error: {ex.Message}";
+            MessageBox.Show($"Exception pushing layout to cloud:\n\n{ex.Message}", "Cloud Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    [RelayCommand]
+    public async Task LoadStationLayoutFromCloudAsync()
+    {
+        StationStatusMessage = "☁️ Pulling station layout from Supabase Cloud...";
+        try
+        {
+            await EnsureCloudSettingsPersistedAsync();
+
+            var (success, message) = await _syncEngine.PullStationSnapshotFromCloudAsync(StationId);
+            if (success)
+            {
+                await LoadStationAndCollectionsAsync();
+                StationStatusMessage = $"☁️ Station layout loaded from Cloud for station '{StationId}'!";
+                MessageBox.Show($"Station layout successfully loaded from Supabase Cloud for Station ID:\n\n{StationId}",
+                    "Layout Pulled from Cloud", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            else
+            {
+                StationStatusMessage = $"❌ {message}";
+                MessageBox.Show($"Failed to pull layout from cloud:\n\n{message}",
+                    "Cloud Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+        catch (Exception ex)
+        {
+            StationStatusMessage = $"❌ Cloud pull error: {ex.Message}";
+            MessageBox.Show($"Exception pulling layout from cloud:\n\n{ex.Message}", "Cloud Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    [RelayCommand]
+    public async Task SaveFeaturesToCloudAsync()
+    {
+        FeatureStatusMessage = "☁️ Saving client features to Supabase Cloud...";
+        try
+        {
+            await EnsureCloudSettingsPersistedAsync();
+            await SaveAllTabsLocallyAsync();
+
+            var (success, message) = await _syncEngine.PushStationSnapshotToCloudAsync(StationId);
+            if (success)
+            {
+                FeatureStatusMessage = $"☁️ Client feature toggles saved to Cloud for station '{StationId}'!";
+                MessageBox.Show($"Client feature toggles and page access settings successfully pushed to Supabase Cloud for Station ID:\n\n{StationId}",
+                    "Features Pushed to Cloud", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            else
+            {
+                FeatureStatusMessage = $"❌ {message}";
+                MessageBox.Show($"Failed to push features to cloud:\n\n{message}",
+                    "Cloud Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            FeatureStatusMessage = $"❌ Cloud push error: {ex.Message}";
+            MessageBox.Show($"Exception saving features to cloud:\n\n{ex.Message}", "Cloud Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    [RelayCommand]
+    public async Task LoadFeaturesFromCloudAsync()
+    {
+        FeatureStatusMessage = "☁️ Fetching client features from Supabase Cloud...";
+        try
+        {
+            await EnsureCloudSettingsPersistedAsync();
+
+            var (success, message) = await _syncEngine.PullStationSnapshotFromCloudAsync(StationId);
+            if (success)
+            {
+                await LoadFeaturesAsync();
+                FeatureStatusMessage = $"☁️ Client feature toggles loaded from Cloud for station '{StationId}'!";
+                MessageBox.Show($"Client feature toggles successfully loaded from Supabase Cloud for Station ID:\n\n{StationId}",
+                    "Features Loaded from Cloud", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            else
+            {
+                FeatureStatusMessage = $"❌ {message}";
+                MessageBox.Show($"Failed to fetch feature toggles from cloud:\n\n{message}",
+                    "Cloud Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+        catch (Exception ex)
+        {
+            FeatureStatusMessage = $"❌ Cloud fetch error: {ex.Message}";
+            MessageBox.Show($"Exception loading features from cloud:\n\n{ex.Message}", "Cloud Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    [RelayCommand]
+    public async Task SaveCollectionsToCloudAsync()
+    {
+        CollectionStatusMessage = "☁️ Saving collection types to Supabase Cloud...";
+        try
+        {
+            await EnsureCloudSettingsPersistedAsync();
+            await SaveAllTabsLocallyAsync();
+
+            var (success, message) = await _syncEngine.PushStationSnapshotToCloudAsync(StationId);
+            if (success)
+            {
+                CollectionStatusMessage = $"☁️ Dynamic collection types saved to Cloud for station '{StationId}'!";
+                MessageBox.Show($"Payment collection types successfully pushed to Supabase Cloud for Station ID:\n\n{StationId}",
+                    "Collections Pushed to Cloud", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            else
+            {
+                CollectionStatusMessage = $"❌ {message}";
+                MessageBox.Show($"Failed to push collections to cloud:\n\n{message}",
+                    "Cloud Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            CollectionStatusMessage = $"❌ Cloud push error: {ex.Message}";
+            MessageBox.Show($"Exception saving collections to cloud:\n\n{ex.Message}", "Cloud Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    [RelayCommand]
+    public async Task LoadCollectionsFromCloudAsync()
+    {
+        CollectionStatusMessage = "☁️ Fetching collection types from Supabase Cloud...";
+        try
+        {
+            await EnsureCloudSettingsPersistedAsync();
+
+            var (success, message) = await _syncEngine.PullStationSnapshotFromCloudAsync(StationId);
+            if (success)
+            {
+                await LoadStationAndCollectionsAsync();
+                CollectionStatusMessage = $"☁️ Dynamic collection types loaded from Cloud for station '{StationId}'!";
+                MessageBox.Show($"Payment collection types successfully loaded from Supabase Cloud for Station ID:\n\n{StationId}",
+                    "Collections Loaded from Cloud", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            else
+            {
+                CollectionStatusMessage = $"❌ {message}";
+                MessageBox.Show($"Failed to fetch collection types from cloud:\n\n{message}",
+                    "Cloud Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+        catch (Exception ex)
+        {
+            CollectionStatusMessage = $"❌ Cloud fetch error: {ex.Message}";
+            MessageBox.Show($"Exception loading collections from cloud:\n\n{ex.Message}", "Cloud Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    [RelayCommand]
+    public async Task PullCompleteStationSnapshotAsync()
+    {
+        DiagnosticsMessage = "☁️ Downloading complete Station Image from Cloud...";
+        try
+        {
+            await EnsureCloudSettingsPersistedAsync();
+
+            var (success, message) = await _syncEngine.PullStationSnapshotFromCloudAsync(StationId);
+            if (success)
+            {
+                await LoadStationAndCollectionsAsync();
+                await LoadFeaturesAsync();
+                DiagnosticsMessage = $"☁️ Station Image loaded from Cloud for '{StationId}'!";
+                MessageBox.Show($"Complete Station Snapshot (Pumps, Nozzles, Tanks, Presets, Client Features, and Payment Collections) has been successfully downloaded and applied for Station ID:\n\n{StationId}",
+                    "Station Image Synchronized", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            else
+            {
+                DiagnosticsMessage = $"❌ {message}";
+                MessageBox.Show($"Failed to download station snapshot from cloud:\n\n{message}",
+                    "Cloud Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+        catch (Exception ex)
+        {
+            DiagnosticsMessage = $"❌ Error: {ex.Message}";
+            MessageBox.Show($"Exception downloading complete station image:\n\n{ex.Message}", "Cloud Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -2293,6 +2964,10 @@ public partial class DeveloperMainWindowViewModel
                 await _collectionTypeService.SaveCollectionTypeAsync(ConfiguredCollectionTypes[i]);
             }
             CollectionStatusMessage = "✅ Collection types saved successfully!";
+            _ = Task.Run(async () =>
+            {
+                try { await _syncEngine.ForceSyncAsync(); } catch { }
+            });
             MessageBox.Show("Collection types successfully saved! DSM Entry and TID sheets will now use these types.", "Collections Saved", MessageBoxButton.OK, MessageBoxImage.Information);
             await LoadStationAndCollectionsAsync();
         }
@@ -2354,6 +3029,10 @@ public partial class DeveloperMainWindowViewModel
             await _featureToggleService.RefreshCacheAsync();
 
             ShiftCycleStatusMessage = $"✅ Shift cycle set to {(useMorningNight ? "3-Slot Split (Morning/Day/Night)" : "Standard 2-Shift (Shift A & Shift B)")}!";
+            _ = Task.Run(async () =>
+            {
+                try { await _syncEngine.ForceSyncAsync(); } catch { }
+            });
             MessageBox.Show($"Shift cycle schedule successfully configured as: {(useMorningNight ? "3-Slot Split (Morning/Day/Night)" : "Standard 2-Shift (Shift A & Shift B)")}.\n\nTID sheets, reports, and Debtor Repayments will now align accordingly.", "Shift Cycle Updated", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)
@@ -2362,37 +3041,445 @@ public partial class DeveloperMainWindowViewModel
             MessageBox.Show($"Failed to save shift cycle configuration: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
+
+    // ───────────────────────────────────────────────
+    // TAB 6: PUMP CONNECTION CONFIGURATION (MULTI-PUMP GROUPS)
+    // ───────────────────────────────────────────────
+
+    [ObservableProperty] private bool _isPumpConnectionEnabled;
+    [ObservableProperty] private string _selectedPumpConnectionMode = PumpConnectionModes.Off;
+    public ObservableCollection<PumpConnectionGroupVm> PumpConnectionGroups { get; } = new();
+    [ObservableProperty] private string _pumpConnectionStatusMessage = string.Empty;
+    [ObservableProperty] private string _pumpConnectionValidationSummary = string.Empty;
+    [ObservableProperty] private bool _hasPumpConnectionValidationError;
+
+    public bool IsModeOff
+    {
+        get => SelectedPumpConnectionMode == PumpConnectionModes.Off;
+        set { if (value) SetPumpConnectionMode(PumpConnectionModes.Off); }
+    }
+
+    public bool IsMode2Pumps
+    {
+        get => SelectedPumpConnectionMode == PumpConnectionModes.TwoPumps;
+        set { if (value) SetPumpConnectionMode(PumpConnectionModes.TwoPumps); }
+    }
+
+    public bool IsMode3Pumps
+    {
+        get => SelectedPumpConnectionMode == PumpConnectionModes.ThreePumps;
+        set { if (value) SetPumpConnectionMode(PumpConnectionModes.ThreePumps); }
+    }
+
+    public bool IsMode4Pumps
+    {
+        get => SelectedPumpConnectionMode == PumpConnectionModes.FourPumps;
+        set { if (value) SetPumpConnectionMode(PumpConnectionModes.FourPumps); }
+    }
+
+    partial void OnIsPumpConnectionEnabledChanged(bool value)
+    {
+        if (!value)
+        {
+            SelectedPumpConnectionMode = PumpConnectionModes.Off;
+        }
+        else if (SelectedPumpConnectionMode == PumpConnectionModes.Off)
+        {
+            SelectedPumpConnectionMode = PumpConnectionModes.TwoPumps;
+        }
+
+        NotifyModeProperties();
+        ReevaluatePumpConnectionConstraints();
+    }
+
+    [RelayCommand]
+    public void SetPumpConnectionMode(string mode)
+    {
+        if (string.IsNullOrWhiteSpace(mode)) mode = PumpConnectionModes.Off;
+        SelectedPumpConnectionMode = mode;
+        IsPumpConnectionEnabled = mode != PumpConnectionModes.Off;
+        NotifyModeProperties();
+        ReevaluatePumpConnectionConstraints();
+    }
+
+    private void NotifyModeProperties()
+    {
+        OnPropertyChanged(nameof(IsModeOff));
+        OnPropertyChanged(nameof(IsMode2Pumps));
+        OnPropertyChanged(nameof(IsMode3Pumps));
+        OnPropertyChanged(nameof(IsMode4Pumps));
+    }
+
+    public void ReevaluatePumpConnectionConstraints()
+    {
+        var physicalPumps = ConfiguredPumps.Select(p => p.PumpId).Distinct().OrderBy(id => id).ToList();
+        if (physicalPumps.Count == 0) physicalPumps = new List<int> { 1, 2, 3, 4 };
+
+        // Ensure available pumps and candidates are present in all groups
+        foreach (var group in PumpConnectionGroups)
+        {
+            // Sync available primary pumps
+            for (int i = group.AvailablePrimaryPumps.Count - 1; i >= 0; i--)
+            {
+                if (!physicalPumps.Contains(group.AvailablePrimaryPumps[i]))
+                    group.AvailablePrimaryPumps.RemoveAt(i);
+            }
+            foreach (var pid in physicalPumps)
+            {
+                if (!group.AvailablePrimaryPumps.Contains(pid))
+                    group.AvailablePrimaryPumps.Add(pid);
+            }
+
+            // Sync candidate slaves
+            for (int i = group.CandidateSlaves.Count - 1; i >= 0; i--)
+            {
+                if (!physicalPumps.Contains(group.CandidateSlaves[i].PumpId))
+                    group.CandidateSlaves.RemoveAt(i);
+            }
+            foreach (var pid in physicalPumps)
+            {
+                if (!group.CandidateSlaves.Any(c => c.PumpId == pid))
+                {
+                    group.CandidateSlaves.Add(new PumpCandidateVm
+                    {
+                        PumpId = pid,
+                        IsSelected = false,
+                        OnSelectionChangedCallback = ReevaluatePumpConnectionConstraints
+                    });
+                }
+            }
+        }
+
+        if (!IsPumpConnectionEnabled || SelectedPumpConnectionMode == PumpConnectionModes.Off)
+        {
+            foreach (var g in PumpConnectionGroups)
+            {
+                g.HasError = false;
+                g.ValidationMessage = string.Empty;
+                foreach (var c in g.CandidateSlaves)
+                {
+                    c.IsEnabled = false;
+                    c.DisabledReason = "Pump connections are disabled (OFF).";
+                }
+            }
+            HasPumpConnectionValidationError = false;
+            PumpConnectionValidationSummary = "Connection mode is OFF. Standalone single-pump operation is active.";
+            return;
+        }
+
+        int maxConnected = PumpConnectionModes.GetMaxConnectedPumps(SelectedPumpConnectionMode);
+        var summaryErrors = new List<string>();
+
+        // Map each pump ID to group names it is assigned to (either as Primary or as selected Slave)
+        var pumpUsage = new Dictionary<int, List<string>>();
+
+        foreach (var group in PumpConnectionGroups)
+        {
+            var groupLabel = string.IsNullOrWhiteSpace(group.GroupName) ? $"Group {group.GroupId}" : group.GroupName;
+
+            if (group.PrimaryPumpId > 0)
+            {
+                if (!pumpUsage.TryGetValue(group.PrimaryPumpId, out var list))
+                {
+                    list = new List<string>();
+                    pumpUsage[group.PrimaryPumpId] = list;
+                }
+                list.Add($"{groupLabel} (Primary)");
+            }
+
+            var selectedSlaves = group.CandidateSlaves
+                .Where(c => c.IsSelected && c.PumpId != group.PrimaryPumpId)
+                .Select(c => c.PumpId)
+                .ToList();
+
+            foreach (var slaveId in selectedSlaves)
+            {
+                if (!pumpUsage.TryGetValue(slaveId, out var list))
+                {
+                    list = new List<string>();
+                    pumpUsage[slaveId] = list;
+                }
+                list.Add($"{groupLabel} (Connected)");
+            }
+        }
+
+        // Evaluate each group and configure candidate controls
+        foreach (var group in PumpConnectionGroups)
+        {
+            var groupLabel = string.IsNullOrWhiteSpace(group.GroupName) ? $"Group {group.GroupId}" : group.GroupName;
+            var groupErrors = new List<string>();
+
+            if (group.PrimaryPumpId <= 0)
+            {
+                groupErrors.Add("Please select a Primary Pump.");
+            }
+
+            int expectedTotal = PumpConnectionModes.GetMaxGroupSize(SelectedPumpConnectionMode);
+            int expectedConnected = expectedTotal - 1;
+            int selectedSlavesCount = group.CandidateSlaves.Count(c => c.IsSelected && c.PumpId != group.PrimaryPumpId);
+            if (selectedSlavesCount != expectedConnected)
+            {
+                groupErrors.Add($"Mode {SelectedPumpConnectionMode} requires {expectedTotal} pumps (1 Primary + {expectedConnected} Connected). Currently selected: {selectedSlavesCount}.");
+            }
+
+            // Check if primary pump is used elsewhere
+            if (group.PrimaryPumpId > 0 && pumpUsage.TryGetValue(group.PrimaryPumpId, out var pUsages) && pUsages.Count > 1)
+            {
+                groupErrors.Add($"Primary Pump #{group.PrimaryPumpId} is assigned in multiple locations: {string.Join(", ", pUsages)}.");
+            }
+
+            // Check if any selected slave is used elsewhere
+            var selectedSlaves = group.CandidateSlaves.Where(c => c.IsSelected && c.PumpId != group.PrimaryPumpId).ToList();
+            foreach (var slave in selectedSlaves)
+            {
+                if (pumpUsage.TryGetValue(slave.PumpId, out var sUsages) && sUsages.Count > 1)
+                {
+                    groupErrors.Add($"Connected Pump #{slave.PumpId} is assigned in multiple locations: {string.Join(", ", sUsages)}.");
+                }
+            }
+
+            group.HasError = groupErrors.Count > 0;
+            group.ValidationMessage = string.Join(" ", groupErrors);
+            if (group.HasError)
+            {
+                summaryErrors.Add($"{groupLabel}: {group.ValidationMessage}");
+            }
+
+            // Set enablements on candidates
+            foreach (var candidate in group.CandidateSlaves)
+            {
+                if (candidate.PumpId == group.PrimaryPumpId)
+                {
+                    candidate.IsEnabled = false;
+                    candidate.IsSelected = false;
+                    candidate.DisabledReason = "Configured as Primary for this group.";
+                }
+                else
+                {
+                    // Check if candidate pump is used in another group
+                    bool usedInOtherGroup = false;
+                    string usedInLabel = "";
+                    foreach (var otherGroup in PumpConnectionGroups)
+                    {
+                        if (otherGroup == group) continue;
+                        if (otherGroup.PrimaryPumpId == candidate.PumpId)
+                        {
+                            usedInOtherGroup = true;
+                            usedInLabel = $"{otherGroup.GroupName} (Primary)";
+                            break;
+                        }
+                        if (otherGroup.CandidateSlaves.Any(c => c.IsSelected && c.PumpId == candidate.PumpId))
+                        {
+                            usedInOtherGroup = true;
+                            usedInLabel = $"{otherGroup.GroupName} (Connected)";
+                            break;
+                        }
+                    }
+
+                    if (usedInOtherGroup)
+                    {
+                        candidate.IsEnabled = false;
+                        candidate.DisabledReason = $"Pump #{candidate.PumpId} is assigned in {usedInLabel}.";
+                    }
+                    else if (!candidate.IsSelected && selectedSlavesCount >= maxConnected)
+                    {
+                        candidate.IsEnabled = false;
+                        candidate.DisabledReason = $"Mode {SelectedPumpConnectionMode} permits maximum {maxConnected} connected pump(s).";
+                    }
+                    else
+                    {
+                        candidate.IsEnabled = true;
+                        candidate.DisabledReason = string.Empty;
+                    }
+                }
+            }
+        }
+
+        HasPumpConnectionValidationError = summaryErrors.Count > 0;
+        PumpConnectionValidationSummary = HasPumpConnectionValidationError
+            ? string.Join(" | ", summaryErrors)
+            : $"✅ Topology valid: Mode '{SelectedPumpConnectionMode}' active. Each group allows 1 Primary + up to {maxConnected} connected pump(s).";
+    }
+
+    [RelayCommand]
+    public void AddPumpConnectionGroup()
+    {
+        var physicalPumps = ConfiguredPumps.Select(p => p.PumpId).Distinct().OrderBy(id => id).ToList();
+        if (physicalPumps.Count == 0) physicalPumps = new List<int> { 1, 2, 3, 4 };
+
+        var usedPumps = new HashSet<int>();
+        foreach (var g in PumpConnectionGroups)
+        {
+            if (g.PrimaryPumpId > 0) usedPumps.Add(g.PrimaryPumpId);
+            foreach (var s in g.CandidateSlaves.Where(c => c.IsSelected))
+                usedPumps.Add(s.PumpId);
+        }
+
+        var defaultPrimary = physicalPumps.FirstOrDefault(id => !usedPumps.Contains(id));
+        if (defaultPrimary == 0) defaultPrimary = physicalPumps.FirstOrDefault();
+
+        int newGroupId = PumpConnectionGroups.Select(g => g.GroupId).DefaultIfEmpty(0).Max() + 1;
+        var newGroup = new PumpConnectionGroupVm
+        {
+            GroupId = newGroupId,
+            GroupName = $"Group {newGroupId}",
+            PrimaryPumpId = defaultPrimary,
+            OnGroupChangedCallback = ReevaluatePumpConnectionConstraints
+        };
+
+        foreach (var pumpId in physicalPumps)
+        {
+            newGroup.AvailablePrimaryPumps.Add(pumpId);
+            newGroup.CandidateSlaves.Add(new PumpCandidateVm
+            {
+                PumpId = pumpId,
+                IsSelected = false,
+                OnSelectionChangedCallback = ReevaluatePumpConnectionConstraints
+            });
+        }
+
+        PumpConnectionGroups.Add(newGroup);
+        ReevaluatePumpConnectionConstraints();
+        PumpConnectionStatusMessage = $"Added {newGroup.GroupName}. Select Primary and connected pumps, then save.";
+    }
+
+    [RelayCommand]
+    public void RemovePumpConnectionGroup(PumpConnectionGroupVm? group)
+    {
+        if (group == null) return;
+        PumpConnectionGroups.Remove(group);
+        ReevaluatePumpConnectionConstraints();
+        PumpConnectionStatusMessage = $"Removed {group.GroupName}.";
+    }
+
+    [RelayCommand]
+    public async Task SavePumpConnectionConfigurationAsync()
+    {
+        await SavePumpConnectionInternalAsync(showDialogs: true);
+    }
+
+    public async Task<bool> SavePumpConnectionInternalAsync(bool showDialogs)
+    {
+        PumpConnectionStatusMessage = "⏳ Saving pump connection rules...";
+        try
+        {
+            ReevaluatePumpConnectionConstraints();
+            if (HasPumpConnectionValidationError)
+            {
+                if (showDialogs)
+                {
+                    MessageBox.Show(
+                        $"Cannot save pump connection configuration due to validation errors:\n\n{PumpConnectionValidationSummary}",
+                        "Validation Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+                PumpConnectionStatusMessage = "❌ Save aborted: Fix topology errors.";
+                return false;
+            }
+
+            var connectionSize = PumpConnectionModes.ModeToConnectionSize(SelectedPumpConnectionMode);
+            var config = new PumpConnectionConfiguration
+            {
+                IsEnabled = IsPumpConnectionEnabled && SelectedPumpConnectionMode != PumpConnectionModes.Off,
+                ConnectionSize = connectionSize,
+                Mode = SelectedPumpConnectionMode,
+                Groups = PumpConnectionGroups.Select(g => new PumpConnectionGroup
+                {
+                    GroupId = g.GroupId,
+                    GroupName = g.GroupName,
+                    PrimaryPumpId = g.PrimaryPumpId,
+                    ConnectedPumpIds = g.GetSelectedConnectedPumpIds()
+                }).ToList()
+            };
+
+            if (!config.Validate(out var validationErrors))
+            {
+                var errorText = string.Join("\n", validationErrors);
+                if (showDialogs)
+                {
+                    MessageBox.Show($"Topology Validation Failed:\n\n{errorText}", "Validation Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+                PumpConnectionStatusMessage = "❌ Validation failed.";
+                return false;
+            }
+
+            bool success = await _stationConfigService.SavePumpConnectionConfigurationAsync(config);
+            if (success)
+            {
+                PumpConnectionStatusMessage = $"✅ Connection configuration saved! Mode: {config.Mode}, {config.Groups.Count} group(s).";
+                if (showDialogs)
+                {
+                    MessageBox.Show(
+                        $"Pump Connection Configuration successfully saved!\n\nMode: {config.Mode}\nActive Groups: {config.Groups.Count}",
+                        "Configuration Saved", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+                return true;
+            }
+            else
+            {
+                PumpConnectionStatusMessage = "❌ Failed to persist configuration.";
+                return false;
+            }
+        }
+        catch (Exception ex)
+        {
+            PumpConnectionStatusMessage = $"❌ Error: {ex.Message}";
+            Log.Error(ex, "Failed to save pump connection configuration");
+            return false;
+        }
+    }
+
+    public async Task LoadPumpConnectionConfigurationAsync()
+    {
+        try
+        {
+            var config = await _stationConfigService.GetPumpConnectionConfigurationAsync();
+            IsPumpConnectionEnabled = config.IsEnabled;
+            SelectedPumpConnectionMode = string.IsNullOrWhiteSpace(config.Mode) ? PumpConnectionModes.Off : config.Mode;
+
+            NotifyModeProperties();
+
+            var physicalPumps = ConfiguredPumps.Select(p => p.PumpId).Distinct().OrderBy(id => id).ToList();
+            if (physicalPumps.Count == 0) physicalPumps = new List<int> { 1, 2, 3, 4 };
+
+            PumpConnectionGroups.Clear();
+
+            foreach (var groupConfig in config.Groups)
+            {
+                var groupVm = new PumpConnectionGroupVm
+                {
+                    GroupId = groupConfig.GroupId,
+                    GroupName = string.IsNullOrWhiteSpace(groupConfig.GroupName) ? $"Group {groupConfig.GroupId}" : groupConfig.GroupName,
+                    PrimaryPumpId = groupConfig.PrimaryPumpId,
+                    OnGroupChangedCallback = ReevaluatePumpConnectionConstraints
+                };
+
+                foreach (var pid in physicalPumps)
+                {
+                    groupVm.AvailablePrimaryPumps.Add(pid);
+                    var isSelected = groupConfig.ConnectedPumpIds.Contains(pid) && pid != groupConfig.PrimaryPumpId;
+                    groupVm.CandidateSlaves.Add(new PumpCandidateVm
+                    {
+                        PumpId = pid,
+                        IsSelected = isSelected,
+                        OnSelectionChangedCallback = ReevaluatePumpConnectionConstraints
+                    });
+                }
+
+                PumpConnectionGroups.Add(groupVm);
+            }
+
+            ReevaluatePumpConnectionConstraints();
+            PumpConnectionStatusMessage = config.IsEnabled 
+                ? $"✅ Loaded configuration: Mode {config.Mode}, {PumpConnectionGroups.Count} group(s)."
+                : "Pump connections are currently OFF.";
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Failed to load pump connection configuration");
+            PumpConnectionStatusMessage = $"❌ Error loading connections: {ex.Message}";
+        }
+    }
 }
 
-public class StationPresetData
-{
-    public string PresetCode { get; set; } = "";
-    public string PresetName { get; set; } = "";
-    public string Description { get; set; } = "";
-    public List<TankPresetItem> Tanks { get; set; } = new();
-    public List<PumpPresetItem> Pumps { get; set; } = new();
-}
-
-public class TankPresetItem
-{
-    public string TankName { get; set; } = "";
-    public double CapacityKL { get; set; }
-    public string FuelType { get; set; } = "";
-    public bool IsActive { get; set; } = true;
-    public bool HasTesting { get; set; } = true;
-}
-
-public class PumpPresetItem
-{
-    public int PumpId { get; set; }
-    public List<NozzlePresetItem> Nozzles { get; set; } = new();
-}
-
-public class NozzlePresetItem
-{
-    public int NozzleNumber { get; set; }
-    public string FuelType { get; set; } = "";
-    public string TankName { get; set; } = "";
-}
 
 

@@ -3,9 +3,9 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
-    <Version>1.3.20</Version>
-    <AssemblyVersion>1.3.20.0</AssemblyVersion>
-    <FileVersion>1.3.20.0</FileVersion>
+    <Version>1.3.33</Version>
+    <AssemblyVersion>1.3.33.0</AssemblyVersion>
+    <FileVersion>1.3.33.0</FileVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
@@ -96,6 +96,12 @@
     </Content>
     <EmbeddedResource Include="Printing\GenericGridPrintTemplate.html">
       <LogicalName>FuelPro.UI.Printing.GenericGridPrintTemplate.html</LogicalName>
+    </EmbeddedResource>
+    <Content Include="Printing\OwnerDashboardPrintTemplate.html">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <EmbeddedResource Include="Printing\OwnerDashboardPrintTemplate.html">
+      <LogicalName>FuelPro.UI.Printing.OwnerDashboardPrintTemplate.html</LogicalName>
     </EmbeddedResource>
   </ItemGroup>
 

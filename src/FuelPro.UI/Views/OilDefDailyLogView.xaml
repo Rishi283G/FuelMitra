@@ -72,31 +72,42 @@
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <Border Background="White" CornerRadius="8" Padding="10,6" Margin="0,0,10,4"
-                                    BorderBrush="#C8E6C9" BorderThickness="1">
+                            <Border Background="White" CornerRadius="8" Padding="12,6" Margin="0,0,12,6"
+                                    BorderBrush="#A5D6A7" BorderThickness="1.5">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" MinWidth="140"/>
                                         <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="110"/>
+                                        <ColumnDefinition Width="105"/>
                                     </Grid.ColumnDefinitions>
-                                    <StackPanel Grid.Column="0" Margin="0,0,10,0" VerticalAlignment="Center" MinWidth="100">
-                                        <TextBlock Text="{Binding ProductName}" FontSize="12" FontWeight="SemiBold"
-                                                   Foreground="#1B5E20" TextWrapping="NoWrap"/>
-                                        <TextBlock Text="{Binding Unit, StringFormat='per {0}'}" FontSize="10" Opacity="0.55"/>
+                                    
+                                    <!-- Product Label -->
+                                    <StackPanel Grid.Column="0" Margin="0,0,8,0" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding ProductName}" FontSize="12.5" FontWeight="Bold"
+                                                   Foreground="#1B5E20" TextWrapping="Wrap" MaxWidth="200"/>
+                                        <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                            <TextBlock Text="{Binding CurrentStock, StringFormat='Stock: {0:N2}'}" FontSize="11" FontWeight="Bold" Foreground="#1565C0"/>
+                                            <TextBlock Text="{Binding Unit, StringFormat=' {0}'}" FontSize="10.5" FontWeight="Medium" Foreground="#388E3C" Opacity="0.8"/>
+                                        </StackPanel>
                                     </StackPanel>
-                                     <!-- Style=null bypasses MaterialDesign theme which overrides Foreground via its internal template -->
-                                    <TextBox Grid.Column="1"
+
+                                    <!-- Vertical Divider Line -->
+                                    <Border Grid.Column="1" Width="1.5" Background="#81C784" Margin="4,2,10,2" VerticalAlignment="Stretch"/>
+
+                                    <!-- Style=null bypasses MaterialDesign theme which overrides Foreground via its internal template -->
+                                    <TextBox Grid.Column="2"
                                              Text="{Binding DefaultSaleRate, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}"
                                              Style="{x:Null}"
-                                             Width="110" Height="36"
-                                             Background="White"
+                                             Width="105" Height="36"
+                                             Background="#F1F8E9"
                                              Foreground="#1B5E20"
                                              FontSize="14" FontWeight="Bold"
                                              FontFamily="Segoe UI"
                                              BorderBrush="#43A047"
                                              BorderThickness="1.5"
-                                             Padding="6,4"
-                                             VerticalContentAlignment="Center"/>
+                                             Padding="8,4"
+                                             VerticalContentAlignment="Center"
+                                             HorizontalContentAlignment="Right"/>
                                 </Grid>
                             </Border>
                         </DataTemplate>
@@ -112,8 +123,8 @@
             <TabItem Header="Add Stock Purchase">
                 <Grid Margin="0,16,0,0">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="5*"/>
-                        <ColumnDefinition Width="5*"/>
+                        <ColumnDefinition Width="3.2*" MinWidth="280" MaxWidth="380"/>
+                        <ColumnDefinition Width="6.8*"/>
                     </Grid.ColumnDefinitions>
 
                     <!-- Left: Purchase Entry Form -->
@@ -124,7 +135,7 @@
                             <StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,18">
                                     <materialDesign:PackIcon Kind="PackageVariant" Width="22" Height="22" Foreground="#00796B" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                    <TextBlock Text="Record Stock Purchase Invoice" FontSize="16" FontWeight="Bold" Foreground="#00796B" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Record Stock Purchase" FontSize="16" FontWeight="Bold" Foreground="#00796B" VerticalAlignment="Center"/>
                                 </StackPanel>
 
                                 <DatePicker SelectedDate="{Binding PurchaseDate}" materialDesign:HintAssist.Hint="Purchase Date"
@@ -184,21 +195,33 @@
                                    Margin="0,0,0,10" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
                         <DataGrid Grid.Row="1" ItemsSource="{Binding HistoryPurchases}" AutoGenerateColumns="False"
                                   IsReadOnly="True" materialDesign:DataGridAssist.CellPadding="8 6"
+                                  GridLinesVisibility="All"
+                                  VerticalGridLinesBrush="#CFD8DC"
+                                  HorizontalGridLinesBrush="#ECEFF1"
                                   VerticalScrollBarVisibility="Auto">
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="Date" Binding="{Binding PurchaseDate, StringFormat='{}{0:dd-MMM}'}" Width="90"/>
-                                <DataGridTextColumn Header="Product" Binding="{Binding Product.ProductName}" Width="1.5*"/>
-                                <DataGridTextColumn Header="Supplier" Binding="{Binding SupplierName}" Width="1.5*"/>
-                                <DataGridTextColumn Header="Invoice #" Binding="{Binding InvoiceNumber}" Width="*"/>
-                                <DataGridTextColumn Header="Qty" Binding="{Binding Quantity, StringFormat='{}{0:N2}'}" Width="70"/>
-                                <DataGridTemplateColumn Header="Action" Width="80">
+                                <DataGridTextColumn Header="Date" Binding="{Binding PurchaseDate, StringFormat='{}{0:dd-MMM-yyyy}'}" Width="105"/>
+                                <DataGridTextColumn Header="Product Name" Binding="{Binding ProductNameDisplay}" Width="2*" MinWidth="170" FontWeight="SemiBold"/>
+                                <DataGridTextColumn Header="Supplier" Binding="{Binding SupplierName}" Width="1.2*" MinWidth="110"/>
+                                <DataGridTextColumn Header="Invoice #" Binding="{Binding InvoiceNumber}" Width="95"/>
+                                <DataGridTextColumn Header="Qty" Binding="{Binding Quantity, StringFormat='{}{0:N2}'}" Width="75"/>
+                                <DataGridTextColumn Header="Price/Unit (₹)" Binding="{Binding UnitPrice, StringFormat='₹{0:N2}'}" Width="105"/>
+                                <DataGridTextColumn Header="Total Cost (₹)" Binding="{Binding TotalCost, StringFormat='₹{0:N2}'}" Width="110" FontWeight="Bold" Foreground="#2E7D32"/>
+                                <DataGridTemplateColumn Header="Action" Width="140">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
-                                            <Button Content="Edit" Style="{StaticResource MaterialDesignFlatButton}"
-                                                    Command="{Binding DataContext.EditPurchaseCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                    CommandParameter="{Binding}"
-                                                    IsEnabled="{Binding IsEditable}"
-                                                    Height="26" Padding="6,0"/>
+                                            <StackPanel Orientation="Horizontal">
+                                                <Button Content="Edit" Style="{StaticResource MaterialDesignFlatButton}"
+                                                        Command="{Binding DataContext.EditPurchaseCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}"
+                                                        IsEnabled="{Binding IsEditable}"
+                                                        Height="26" Padding="6,0" Margin="0,0,4,0"/>
+                                                <Button Content="Delete" Style="{StaticResource MaterialDesignFlatButton}" Foreground="#D32F2F"
+                                                        Command="{Binding DataContext.DeletePurchaseCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}"
+                                                        IsEnabled="{Binding IsEditable}"
+                                                        Height="26" Padding="6,0"/>
+                                            </StackPanel>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>
@@ -212,8 +235,8 @@
             <TabItem Header="Record Units Sold">
                 <Grid Margin="0,16,0,0">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="5*"/>
-                        <ColumnDefinition Width="5*"/>
+                        <ColumnDefinition Width="3.2*" MinWidth="280" MaxWidth="380"/>
+                        <ColumnDefinition Width="6.8*"/>
                     </Grid.ColumnDefinitions>
 
                     <!-- Left: Sales Entry Form -->
@@ -233,7 +256,9 @@
                                 <ComboBox ItemsSource="{Binding ActiveProducts}" SelectedItem="{Binding SelectedProduct}"
                                           DisplayMemberPath="ProductName"
                                           materialDesign:HintAssist.Hint="Select Product"
-                                          Margin="0,0,0,14" Height="48"/>
+                                          Margin="0,0,0,6" Height="48"/>
+
+                                <TextBlock Text="{Binding SelectedProduct.CurrentStock, StringFormat='Available Active Stock: {0:N2}'}" FontSize="12" FontWeight="SemiBold" Foreground="#1565C0" Margin="4,0,0,14"/>
 
                                 <TextBox Text="{Binding SaleQty, UpdateSourceTrigger=PropertyChanged}"
                                          materialDesign:HintAssist.Hint="Quantity Sold"
@@ -271,16 +296,19 @@
                         <TextBlock Grid.Row="0" Text="Recent Sales Log" FontSize="15" FontWeight="Bold"
                                    Margin="0,0,0,10" Foreground="#1565C0"/>
                         <DataGrid Grid.Row="1" ItemsSource="{Binding HistoryLogs}" AutoGenerateColumns="False"
-                                  IsReadOnly="True" materialDesign:DataGridAssist.CellPadding="10 7"
+                                  IsReadOnly="True" materialDesign:DataGridAssist.CellPadding="8 6"
+                                  GridLinesVisibility="All"
+                                  VerticalGridLinesBrush="#CFD8DC"
+                                  HorizontalGridLinesBrush="#ECEFF1"
                                   VerticalScrollBarVisibility="Auto">
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="Date" Binding="{Binding LogDate, StringFormat='{}{0:dd-MMM}'}" Width="80"/>
-                                <DataGridTextColumn Header="Product" Binding="{Binding Product.ProductName}" Width="2*"/>
-                                <DataGridTextColumn Header="Qty Sold" Binding="{Binding SoldQuantity, StringFormat='{}{0:N2}'}" Width="90"/>
-                                <DataGridTextColumn Header="Rate Used (₹)" Binding="{Binding EffectiveRate, StringFormat='₹{0:N2}'}" Width="120"/>
-                                <DataGridTextColumn Header="Sales Value (₹)" Binding="{Binding SalesValue, StringFormat='₹{0:N2}'}" Width="130"/>
-                                <DataGridTextColumn Header="Stock" Binding="{Binding RemainingStock, StringFormat='{}{0:N2}'}" Width="85"/>
-                                <DataGridTextColumn Header="Adj." Binding="{Binding AdjustmentQuantity, StringFormat='{}{0:N2}'}" Width="65"/>
+                                <DataGridTextColumn Header="Date &amp; Time" Binding="{Binding LogDate, StringFormat='{}{0:dd-MMM-yyyy hh:mm tt}'}" Width="150"/>
+                                <DataGridTextColumn Header="Product Name" Binding="{Binding ProductNameDisplay}" Width="2.2*" MinWidth="170" FontWeight="SemiBold"/>
+                                <DataGridTextColumn Header="Qty Sold" Binding="{Binding SoldQuantity, StringFormat='{}{0:N2}'}" Width="85"/>
+                                <DataGridTextColumn Header="Rate Used (₹)" Binding="{Binding EffectiveRate, StringFormat='₹{0:N2}'}" Width="105"/>
+                                <DataGridTextColumn Header="Sales Value (₹)" Binding="{Binding SalesValue, StringFormat='₹{0:N2}'}" Width="115" FontWeight="Bold" Foreground="#1565C0"/>
+                                <DataGridTextColumn Header="Stock After" Binding="{Binding EffectiveStockAfter, StringFormat='{}{0:N2}'}" Width="90"/>
+                                <DataGridTextColumn Header="Adj." Binding="{Binding DayAdjustments, StringFormat='{}{0:N2}'}" Width="70"/>
                                 <DataGridTemplateColumn Header="Action" Width="140">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
@@ -309,8 +337,8 @@
             <TabItem Header="Stock Adjustments">
                 <Grid Margin="0,16,0,0">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="5*"/>
-                        <ColumnDefinition Width="5*"/>
+                        <ColumnDefinition Width="3.2*" MinWidth="280" MaxWidth="380"/>
+                        <ColumnDefinition Width="6.8*"/>
                     </Grid.ColumnDefinitions>
 
                     <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto" MaxHeight="600" Margin="0,0,16,0">
@@ -329,7 +357,9 @@
                                 <ComboBox ItemsSource="{Binding ActiveProducts}" SelectedItem="{Binding SelectedProduct}"
                                           DisplayMemberPath="ProductName"
                                           materialDesign:HintAssist.Hint="Select Product"
-                                          Margin="0,0,0,14" Height="48"/>
+                                          Margin="0,0,0,6" Height="48"/>
+
+                                <TextBlock Text="{Binding SelectedProduct.CurrentStock, StringFormat='Current Active Stock: {0:N2}'}" FontSize="12" FontWeight="SemiBold" Foreground="#E65100" Margin="4,0,0,14"/>
 
                                 <TextBox Text="{Binding AdjustmentQty, UpdateSourceTrigger=PropertyChanged}"
                                          materialDesign:HintAssist.Hint="Adjustment Qty (+/-, use negative to reduce)"
@@ -366,14 +396,17 @@
                                    Margin="0,0,0,10" Foreground="#E65100"/>
                         <DataGrid Grid.Row="1" ItemsSource="{Binding HistoryAdjustments}" AutoGenerateColumns="False"
                                   IsReadOnly="True" materialDesign:DataGridAssist.CellPadding="8 6"
+                                  GridLinesVisibility="All"
+                                  VerticalGridLinesBrush="#CFD8DC"
+                                  HorizontalGridLinesBrush="#ECEFF1"
                                   VerticalScrollBarVisibility="Auto">
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="Date &amp; Time" Binding="{Binding LogDate, StringFormat='{}{0:dd-MMM-yyyy hh:mm tt}'}" Width="140"/>
-                                <DataGridTextColumn Header="Product" Binding="{Binding Product.ProductName}" Width="2*"/>
-                                <DataGridTextColumn Header="Adj. Qty" Binding="{Binding AdjustmentQuantity, StringFormat='{}{0:N2}'}" Width="90"/>
-                                <DataGridTextColumn Header="Type / Reason" Binding="{Binding AdjustmentType}" Width="1.5*"/>
-                                <DataGridTextColumn Header="Remarks" Binding="{Binding Remarks}" Width="2*"/>
-                                <DataGridTextColumn Header="Stock After" Binding="{Binding RemainingStock, StringFormat='{}{0:N2}'}" Width="90"/>
+                                <DataGridTextColumn Header="Date &amp; Time" Binding="{Binding LogDate, StringFormat='{}{0:dd-MMM-yyyy hh:mm tt}'}" Width="145"/>
+                                <DataGridTextColumn Header="Product Name" Binding="{Binding ProductNameDisplay}" Width="2*" MinWidth="170" FontWeight="SemiBold"/>
+                                <DataGridTextColumn Header="Adj. Qty" Binding="{Binding AdjustmentQuantity, StringFormat='{}{0:N2}'}" Width="85" FontWeight="Bold"/>
+                                <DataGridTextColumn Header="Type / Reason" Binding="{Binding AdjustmentType}" Width="1.4*"/>
+                                <DataGridTextColumn Header="Remarks" Binding="{Binding Remarks}" Width="1.6*"/>
+                                <DataGridTextColumn Header="Stock After" Binding="{Binding EffectiveStockAfter, StringFormat='{}{0:N2}'}" Width="90"/>
                                 <DataGridTemplateColumn Header="Action" Width="140">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
@@ -402,8 +435,8 @@
             <TabItem Header="Product Catalog">
                 <Grid Margin="0,16,0,0">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="4*"/>
-                        <ColumnDefinition Width="6*"/>
+                        <ColumnDefinition Width="3.2*" MinWidth="280" MaxWidth="380"/>
+                        <ColumnDefinition Width="6.8*"/>
                     </Grid.ColumnDefinitions>
 
                     <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto" MaxHeight="600" Margin="0,0,16,0">
@@ -453,12 +486,16 @@
                                    Margin="0,0,0,10" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
                         <DataGrid Grid.Row="1" ItemsSource="{Binding ActiveProducts}" AutoGenerateColumns="False"
                                   IsReadOnly="True" materialDesign:DataGridAssist.CellPadding="10 8"
+                                  GridLinesVisibility="All"
+                                  VerticalGridLinesBrush="#CFD8DC"
+                                  HorizontalGridLinesBrush="#ECEFF1"
                                   VerticalScrollBarVisibility="Auto">
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="Product Name" Binding="{Binding ProductName}" Width="2*"/>
-                                <DataGridTextColumn Header="Category" Binding="{Binding Category}" Width="*"/>
-                                <DataGridTextColumn Header="Unit" Binding="{Binding Unit}" Width="*"/>
-                                <DataGridTextColumn Header="Default Rate (₹)" Binding="{Binding DefaultSaleRate, StringFormat='{}{0:N2}'}" Width="*"/>
+                                <DataGridTextColumn Header="Product Name" Binding="{Binding ProductName}" Width="2.5*" MinWidth="190" FontWeight="Bold" Foreground="#4A148C"/>
+                                <DataGridTextColumn Header="Category" Binding="{Binding Category}" Width="1.1*"/>
+                                <DataGridTextColumn Header="Unit" Binding="{Binding Unit}" Width="1.1*"/>
+                                <DataGridTextColumn Header="Current Stock" Binding="{Binding CurrentStock, StringFormat='{}{0:N2}'}" Width="1.2*" FontWeight="Bold" Foreground="#1565C0"/>
+                                <DataGridTextColumn Header="Default Rate (₹)" Binding="{Binding DefaultSaleRate, StringFormat='₹{0:N2}'}" Width="1.2*" FontWeight="SemiBold" Foreground="#2E7D32"/>
                                 <DataGridTemplateColumn Header="Actions" Width="140">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>

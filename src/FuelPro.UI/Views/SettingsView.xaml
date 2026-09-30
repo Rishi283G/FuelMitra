@@ -1,7 +1,8 @@
 <UserControl x:Class="FuelPro.UI.Views.SettingsView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes">
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             xmlns:views="clr-namespace:FuelPro.UI.Views">
 
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
@@ -27,26 +28,24 @@
                              materialDesign:HintAssist.Hint="Station Display Name" materialDesign:HintAssist.IsFloating="True"
                              Style="{StaticResource MaterialDesignOutlinedTextBox}" FontSize="16"/>
 
-                    <Grid Margin="0,0,0,16">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBox Grid.Column="0" Text="{Binding HsdRate, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0"
-                                 materialDesign:HintAssist.Hint="HSD - 20KL Rate (₹/L)" materialDesign:HintAssist.IsFloating="True"
-                                 Style="{StaticResource MaterialDesignOutlinedTextBox}" FontSize="16"/>
-                        <TextBox Grid.Column="1" Text="{Binding MsIRate, UpdateSourceTrigger=PropertyChanged}" Margin="8,0,8,0"
-                                 materialDesign:HintAssist.Hint="MS - 20KL Rate (₹/L)" materialDesign:HintAssist.IsFloating="True"
-                                 Style="{StaticResource MaterialDesignOutlinedTextBox}" FontSize="16"/>
-                        <TextBox Grid.Column="2" Text="{Binding MsIIRate, UpdateSourceTrigger=PropertyChanged}" Margin="8,0,8,0"
-                                 materialDesign:HintAssist.Hint="HSD - 20KL II Rate (₹/L)" materialDesign:HintAssist.IsFloating="True"
-                                 Style="{StaticResource MaterialDesignOutlinedTextBox}" FontSize="16"/>
-                        <TextBox Grid.Column="3" Text="{Binding CngRate, UpdateSourceTrigger=PropertyChanged}" Margin="8,0,0,0"
-                                 materialDesign:HintAssist.Hint="CNG Rate (₹/Kg)" materialDesign:HintAssist.IsFloating="True"
-                                 Style="{StaticResource MaterialDesignOutlinedTextBox}" FontSize="16"/>
-                    </Grid>
+                    <!-- Dynamic Fuel Rates configured from Dev Side -->
+                    <ItemsControl ItemsSource="{Binding FuelRateItems}" Margin="0,0,0,12">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBox Text="{Binding RateText, UpdateSourceTrigger=PropertyChanged}"
+                                         Width="210" Margin="0,0,16,12"
+                                         materialDesign:HintAssist.Hint="{Binding HintText}"
+                                         materialDesign:HintAssist.IsFloating="True"
+                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                         FontSize="15"/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
 
                     <!-- Shift Managers Assignment -->
                     <TextBlock Text="Shift Managers Assignment" FontSize="14" FontWeight="SemiBold" Margin="0,4,0,8" Opacity="0.8"/>
@@ -252,6 +251,11 @@
                         </StackPanel>
                     </StackPanel>
                 </StackPanel>
+            </materialDesign:Card>
+
+            <!-- Historical Opening Balances Card -->
+            <materialDesign:Card Margin="0,0,0,24" Padding="24" UniformCornerRadius="16" Background="White" materialDesign:ElevationAssist.Elevation="Dp2">
+                <views:OpeningBalanceManagementView DataContext="{Binding OpeningBalanceVm}" />
             </materialDesign:Card>
 
             <!-- DSM Short Report Card -->

@@ -196,8 +196,6 @@ public partial class DailyPerformanceViewModel : ObservableObject, IDisposable
         IsLoading = true;
         try
         {
-            try { var syncEngine = App.Services.GetRequiredService<FuelPro.Sync.SyncEngine>(); await syncEngine.ForceSyncAsync(); } catch { }
-
             var entriesResult = await _dsmEntryRepo.GetEntriesForDateRangeAsync(SelectedDate, SelectedDate);
             var entries = entriesResult.Success && entriesResult.Data != null ? entriesResult.Data : new List<DsmEntry>();
 
@@ -270,7 +268,7 @@ public partial class DailyPerformanceViewModel : ObservableObject, IDisposable
                 double dieselLitres = dsmNozzles.Where(n => string.Equals(n.FuelType, "HSD", StringComparison.OrdinalIgnoreCase) || string.Equals(n.FuelType, "Diesel", StringComparison.OrdinalIgnoreCase)).Sum(n => n.SaleLitres);
                 double petrolLitres = dsmNozzles.Where(n => string.Equals(n.FuelType, "MS-I", StringComparison.OrdinalIgnoreCase) || string.Equals(n.FuelType, "MS", StringComparison.OrdinalIgnoreCase) || string.Equals(n.FuelType, "Petrol", StringComparison.OrdinalIgnoreCase)).Sum(n => n.SaleLitres);
                 double speedLitres = dsmNozzles.Where(n => string.Equals(n.FuelType, "MS-II", StringComparison.OrdinalIgnoreCase) || string.Equals(n.FuelType, "Speed", StringComparison.OrdinalIgnoreCase)).Sum(n => n.SaleLitres);
-                double cngKg = dsmNozzles.Where(n => string.Equals(n.FuelType, "CNG", StringComparison.OrdinalIgnoreCase)).Sum(n => n.SaleLitres);
+                double cngKg = dsmNozzles.Where(n => string.Equals(n.FuelType, "CNG", StringComparison.OrdinalIgnoreCase) || (n.FuelType != null && n.FuelType.Contains("CNG", StringComparison.OrdinalIgnoreCase))).Sum(n => n.SaleLitres);
                 double dsmLitres = dieselLitres + petrolLitres + speedLitres + cngKg;
                 if (dsmLitres <= 0) dsmLitres = dsmNozzles.Sum(n => n.SaleLitres);
 

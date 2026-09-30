@@ -70,3 +70,34 @@ public class StationLayoutPreset
     /// </summary>
     public DateTime? UpdatedAt { get; set; }
 }
+
+public class StationPresetData
+{
+    public string PresetCode { get; set; } = "";
+    public string PresetName { get; set; } = "";
+    public string Description { get; set; } = "";
+    public List<TankPresetItem> Tanks { get; set; } = new();
+    public List<PumpPresetItem> Pumps { get; set; } = new();
+}
+
+public class TankPresetItem
+{
+    public string TankName { get; set; } = "";
+    public double CapacityKL { get; set; }
+    public string FuelType { get; set; } = "";
+    public bool IsActive { get; set; } = true;
+    public bool HasTesting { get; set; } = true;
+}
+
+public class PumpPresetItem
+{
+    public int PumpId { get; set; }
+    public List<NozzlePresetItem> Nozzles { get; set; } = new();
+}
+
+public class NozzlePresetItem
+{
+    public int NozzleNumber { get; set; }
+    public string FuelType { get; set; } = "";
+    public string TankName { get; set; } = "";
+}

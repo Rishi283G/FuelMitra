@@ -11,12 +11,20 @@ public class DsmEntrySummaryDto
     public string DsmName { get; set; } = string.Empty;
     public int PumpId { get; set; }
     public int? ConnectedPumpId { get; set; }
+    public string? ConnectedPumpIdsJson { get; set; }
     public int? ReconciledToPumpId { get; set; }
     public double GrossSales { get; set; }
+    public double TestingAmount { get; set; }
+    public double NetSales { get; set; }
     public double TotalPaymentIn { get; set; }
     public double TotalCollection { get => TotalPaymentIn; set => TotalPaymentIn = value; }
     public double Difference { get; set; }
     public DateTime CreatedAt { get; set; }
+
+    public List<int> GetEffectiveConnectedPumpIds() =>
+        Models.PumpConnectionConfiguration.ResolveEffectiveConnectedPumpIds(ConnectedPumpId, ConnectedPumpIdsJson)
+            .Where(id => id != PumpId)
+            .ToList();
 
     public string PumpDisplay
     {
@@ -26,9 +34,10 @@ public class DsmEntrySummaryDto
             {
                 return $"Pump {PumpId} (Connected to {ReconciledToPumpId.Value})";
             }
-            if (ConnectedPumpId.HasValue)
+            var effectiveSlaves = GetEffectiveConnectedPumpIds();
+            if (effectiveSlaves.Count > 0)
             {
-                return $"Pump {PumpId} + Pump {ConnectedPumpId.Value}";
+                return $"Pump {PumpId} + Pump {string.Join(" + Pump ", effectiveSlaves)}";
             }
             return $"Pump {PumpId}";
         }
@@ -154,15 +163,22 @@ public class DsmSummaryRowDto
     public string ShiftLabel => Shift;
     public int PumpId { get; set; }
     public int? ConnectedPumpId { get; set; }
+    public string? ConnectedPumpIdsJson { get; set; }
+
+    public List<int> GetEffectiveConnectedPumpIds() =>
+        Models.PumpConnectionConfiguration.ResolveEffectiveConnectedPumpIds(ConnectedPumpId, ConnectedPumpIdsJson)
+            .Where(id => id != PumpId)
+            .ToList();
 
     public string PumpLabel
     {
         get
         {
             if (PumpId <= 0) return "";
-            if (ConnectedPumpId.HasValue && ConnectedPumpId.Value > 0)
+            var effectiveSlaves = GetEffectiveConnectedPumpIds();
+            if (effectiveSlaves.Count > 0)
             {
-                return $"Pump {PumpId} & {ConnectedPumpId.Value}";
+                return $"Pump {PumpId} & {string.Join(" & ", effectiveSlaves)}";
             }
             return $"Pump {PumpId}";
         }
@@ -173,9 +189,10 @@ public class DsmSummaryRowDto
         get
         {
             if (PumpId <= 0) return "";
-            if (ConnectedPumpId.HasValue && ConnectedPumpId.Value > 0)
+            var effectiveSlaves = GetEffectiveConnectedPumpIds();
+            if (effectiveSlaves.Count > 0)
             {
-                return $"{PumpId} & {ConnectedPumpId.Value}";
+                return $"{PumpId} & {string.Join(" & ", effectiveSlaves)}";
             }
             return $"{PumpId}";
         }
@@ -189,6 +206,7 @@ public class DsmSummaryRowDto
     public double PhonePeMorning { get; set; }
     public double PhonePeDay { get; set; }
     public double PhonePeNight { get; set; }
+    public double CreditCard { get; set; }
     public double CreditCardMorning { get; set; }
     public double CreditCardDay { get; set; }
     public double CreditCardNight { get; set; }
@@ -213,12 +231,16 @@ public class DsmSummaryRowDto
 
     public double PhonePeTotal => (PhonePeMorning + PhonePeNight + PhonePeDay) > 0 ? (PhonePeMorning + PhonePeNight + PhonePeDay) : PhonePe;
     public double PhonePeCardTotal => (PhonePeCardMorning + PhonePeCardNight + PhonePeCardDay) > 0 ? (PhonePeCardMorning + PhonePeCardNight + PhonePeCardDay) : PhonePeCard;
-    public double CreditCardTotal => ((CreditCardMorning + CreditCardNight + CreditCardDay) > 0 ? (CreditCardMorning + CreditCardNight + CreditCardDay) : 0) + PhonePeCardTotal;
+    public double CreditCardPureTotal => (CreditCardMorning + CreditCardNight + CreditCardDay) > 0 ? (CreditCardMorning + CreditCardNight + CreditCardDay) : CreditCard;
+    public double CreditCardTotal => CreditCardPureTotal + PhonePeCardTotal;
     public double PetroCardTotal => (PetroCardMorning + PetroCardNight + PetroCardDay) > 0 ? (PetroCardMorning + PetroCardNight + PetroCardDay) : PetroCard;
     public double BankCash => CashDeposit;
     public double DebtorSales => Debit;
     public double GrossSale => GrossSales;
-    public double Difference => (CashDeposit + CashInHand + PhonePeTotal + CreditCardTotal + PetroCardTotal + DynamicCollectionsTotal + Debit + Expenses + Testing) - GrossSales;
+    public double MeterGrossSales => GrossSales;
+    public double NetGrossSales => GrossSales - Testing;
+    public double TotalCollection => CashDeposit + CashInHand + PhonePeTotal + CreditCardTotal + PetroCardTotal + DynamicCollectionsTotal + Debit + Expenses;
+    public double Difference => TotalCollection - NetGrossSales;
     public double Mismatch => Difference;
     public double ShortAmount => Difference;
 
@@ -247,10 +269,12 @@ public class DsmSummaryRowDto
             return CreditCardTotal;
         if (clean.Equals("PETROCARD", StringComparison.OrdinalIgnoreCase) || clean.Equals("PETRO", StringComparison.OrdinalIgnoreCase))
             return PetroCardTotal;
-        if (clean.Equals("CASHDEPOSIT", StringComparison.OrdinalIgnoreCase) || clean.Equals("BANKCASH", StringComparison.OrdinalIgnoreCase))
+        if (clean.Equals("CASHDEPOSIT", StringComparison.OrdinalIgnoreCase) || clean.Equals("BANKCASH", StringComparison.OrdinalIgnoreCase) || clean.Equals("CASH1", StringComparison.OrdinalIgnoreCase))
             return CashDeposit;
-        if (clean.Equals("CASHINHAND", StringComparison.OrdinalIgnoreCase) || clean.Equals("HANDCASH", StringComparison.OrdinalIgnoreCase))
+        if (clean.Equals("CASHINHAND", StringComparison.OrdinalIgnoreCase) || clean.Equals("HANDCASH", StringComparison.OrdinalIgnoreCase) || clean.Equals("CASH2", StringComparison.OrdinalIgnoreCase))
             return CashInHand;
+        if (clean.Equals("OTHERS", StringComparison.OrdinalIgnoreCase) || clean.Equals("OTHER", StringComparison.OrdinalIgnoreCase))
+            return Others;
         if (clean.Equals("DEBIT", StringComparison.OrdinalIgnoreCase) || clean.Equals("DEBTORS", StringComparison.OrdinalIgnoreCase))
             return Debit;
         if (clean.Equals("EXPENSES", StringComparison.OrdinalIgnoreCase))
@@ -446,9 +470,11 @@ public class DsmShiftTotalDto
     public int SessionsCount { get; set; }
     public string AssignedPumpsDisplay { get; set; } = string.Empty;
     public double GrossSales { get; set; }
+    public double NetGrossSales => GrossSales - Testing;
     public double TotalCollection { get; set; }
     public double CashDeposit { get; set; } // Cash1
     public double CashInHand { get; set; }  // Cash2
+    public double Others { get; set; }      // DSM Others (record only)
     public double PhonePe { get; set; }
     public double PhonePeCard { get; set; }
     public double CreditCard { get; set; }
@@ -485,10 +511,12 @@ public class DsmShiftTotalDto
             return CreditCard + PhonePeCard;
         if (clean.Equals("PETROCARD", StringComparison.OrdinalIgnoreCase) || clean.Equals("PETRO", StringComparison.OrdinalIgnoreCase))
             return PetroCard;
-        if (clean.Equals("CASHDEPOSIT", StringComparison.OrdinalIgnoreCase) || clean.Equals("BANKCASH", StringComparison.OrdinalIgnoreCase))
+        if (clean.Equals("CASHDEPOSIT", StringComparison.OrdinalIgnoreCase) || clean.Equals("BANKCASH", StringComparison.OrdinalIgnoreCase) || clean.Equals("CASH1", StringComparison.OrdinalIgnoreCase))
             return CashDeposit;
-        if (clean.Equals("CASHINHAND", StringComparison.OrdinalIgnoreCase) || clean.Equals("HANDCASH", StringComparison.OrdinalIgnoreCase))
+        if (clean.Equals("CASHINHAND", StringComparison.OrdinalIgnoreCase) || clean.Equals("HANDCASH", StringComparison.OrdinalIgnoreCase) || clean.Equals("CASH2", StringComparison.OrdinalIgnoreCase))
             return CashInHand;
+        if (clean.Equals("OTHERS", StringComparison.OrdinalIgnoreCase) || clean.Equals("OTHER", StringComparison.OrdinalIgnoreCase))
+            return Others;
         if (clean.Equals("DEBIT", StringComparison.OrdinalIgnoreCase) || clean.Equals("DEBTORS", StringComparison.OrdinalIgnoreCase))
             return Debit;
         if (clean.Equals("EXPENSES", StringComparison.OrdinalIgnoreCase))

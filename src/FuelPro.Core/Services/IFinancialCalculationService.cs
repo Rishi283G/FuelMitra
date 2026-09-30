@@ -51,6 +51,8 @@ public class ProductProfitDetail
     public double SalePrice { get; set; }
     public double SalesRevenue { get; set; }
     public double CostOfGoodsSold { get; set; }
+    public double AdjustedQuantity { get; set; }
+    public double AdjustmentLoss { get; set; }
     public double TotalProfit { get; set; }
 }
 

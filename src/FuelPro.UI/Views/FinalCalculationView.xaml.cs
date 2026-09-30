@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using FuelPro.Core.DTOs;
+using FuelPro.Core.Models;
 using FuelPro.Core.Services;
 using FuelPro.UI.Printing;
 using FuelPro.UI.ViewModels;
@@ -42,6 +43,17 @@ public partial class FinalCalculationView : UserControl
         {
             var currencyConverter = TryFindResource("CurrencyConverter") as IValueConverter;
 
+            bool IsDigitalMode(CollectionTypeMaster c) =>
+                !string.Equals(c.Code?.Replace("_", ""), "CASHDEPOSIT", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(c.Code?.Replace("_", ""), "CASHINHAND", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(c.Code?.Replace("_", ""), "BANKCASH", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(c.Code?.Replace("_", ""), "OTHERS", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(c.Code?.Replace("_", ""), "OTHER", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(c.Category, "Cash", StringComparison.OrdinalIgnoreCase) &&
+                !c.DisplayName.Contains("Cash", StringComparison.OrdinalIgnoreCase);
+
+            var activeDigitalTypes = _vm.ActiveCollectionTypes?.Where(IsDigitalMode).ToList() ?? new List<CollectionTypeMaster>();
+
             // 1. Rebuild DsmSummaryDataGrid columns
             DsmSummaryDataGrid.Columns.Clear();
 
@@ -58,9 +70,9 @@ public partial class FinalCalculationView : UserControl
                 Binding = new Binding("PumpLabel")
             });
 
-            if (_vm.ActiveCollectionTypes.Count > 0)
+            if (activeDigitalTypes.Count > 0)
             {
-                foreach (var colType in _vm.ActiveCollectionTypes)
+                foreach (var colType in activeDigitalTypes)
                 {
                     DsmSummaryDataGrid.Columns.Add(new DataGridTextColumn
                     {
@@ -88,6 +100,7 @@ public partial class FinalCalculationView : UserControl
                 });
             }
 
+            // Single unified Bank Cash column
             DsmSummaryDataGrid.Columns.Add(new DataGridTextColumn
             {
                 Header = "Bank Cash",
@@ -124,6 +137,13 @@ public partial class FinalCalculationView : UserControl
             {
                 Header = "Hand Cash",
                 Binding = new Binding("CashInHand") { Converter = currencyConverter }
+            });
+
+            // Others column (record only)
+            DsmSummaryDataGrid.Columns.Add(new DataGridTextColumn
+            {
+                Header = "Others",
+                Binding = new Binding("Others") { Converter = currencyConverter }
             });
 
             var grossCol = new DataGridTextColumn
@@ -180,9 +200,9 @@ public partial class FinalCalculationView : UserControl
                 stGrossCol.ElementStyle = stGrossStyle;
                 DsmShiftTotalsDataGrid.Columns.Add(stGrossCol);
 
-                if (_vm.ActiveCollectionTypes.Count > 0)
+                if (activeDigitalTypes.Count > 0)
                 {
-                    foreach (var colType in _vm.ActiveCollectionTypes)
+                    foreach (var colType in activeDigitalTypes)
                     {
                         DsmShiftTotalsDataGrid.Columns.Add(new DataGridTextColumn
                         {
@@ -200,6 +220,7 @@ public partial class FinalCalculationView : UserControl
                     });
                 }
 
+                // Single unified Bank Cash column
                 DsmShiftTotalsDataGrid.Columns.Add(new DataGridTextColumn
                 {
                     Header = "Bank Cash",
@@ -236,6 +257,13 @@ public partial class FinalCalculationView : UserControl
                 {
                     Header = "Testing",
                     Binding = new Binding("Testing") { Converter = currencyConverter }
+                });
+
+                // Others column (record only)
+                DsmShiftTotalsDataGrid.Columns.Add(new DataGridTextColumn
+                {
+                    Header = "Others",
+                    Binding = new Binding("Others") { Converter = currencyConverter }
                 });
 
                 DsmShiftTotalsDataGrid.Columns.Add(new DataGridTextColumn
@@ -276,9 +304,9 @@ public partial class FinalCalculationView : UserControl
                     Margin = new Thickness(0, 0, 12, 0)
                 });
 
-                if (_vm.ActiveCollectionTypes.Count > 0)
+                if (activeDigitalTypes.Count > 0)
                 {
-                    foreach (var colType in _vm.ActiveCollectionTypes)
+                    foreach (var colType in activeDigitalTypes)
                     {
                         double amt = _vm.DsmSummaryTotals.GetAmount(colType.Code);
                         DsmSummaryTotalsPanel.Children.Add(new TextBlock
@@ -351,6 +379,24 @@ public partial class FinalCalculationView : UserControl
                 {
                     Text = $"Testing: ₹{_vm.DsmSummaryTotals.Testing:N2}",
                     Foreground = System.Windows.Media.Brushes.White,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(0, 0, 12, 0)
+                });
+
+                DsmSummaryTotalsPanel.Children.Add(new TextBlock
+                {
+                    Text = $"Others: ₹{_vm.DsmSummaryTotals.Others:N2}",
+                    Foreground = System.Windows.Media.Brushes.White,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(0, 0, 12, 0)
+                });
+
+                var shortVal = _vm.DsmSummaryTotals.Mismatch;
+                DsmSummaryTotalsPanel.Children.Add(new TextBlock
+                {
+                    Text = $"Short: {(shortVal < 0 ? "-" : (shortVal > 0 ? "+" : ""))}₹{Math.Abs(shortVal):N2}",
+                    FontWeight = FontWeights.Bold,
+                    Foreground = Math.Abs(shortVal) < 0.01 ? System.Windows.Media.Brushes.LightGreen : (shortVal < 0 ? System.Windows.Media.Brushes.OrangeRed : System.Windows.Media.Brushes.LightGreen),
                     VerticalAlignment = VerticalAlignment.Center,
                     Margin = new Thickness(0, 0, 12, 0)
                 });

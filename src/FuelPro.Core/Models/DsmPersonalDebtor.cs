@@ -59,6 +59,14 @@ public class DsmPersonalDebtor
 
     public bool DeductFromSalary { get; set; } = true;
 
+    /// <summary>
+    /// Conceptual values: "Operational", "OpeningBalance", "DeactivatedOpening".
+    /// Defaults to "Operational" so all existing records remain valid.
+    /// </summary>
+    [Required]
+    [MaxLength(50)]
+    public string EntryType { get; set; } = "Operational";
+
     public DateTime CreatedAt { get; set; } = DateTime.Now;
 
     [ForeignKey(nameof(DsmEntryId))]

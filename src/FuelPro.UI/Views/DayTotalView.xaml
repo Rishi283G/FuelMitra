@@ -124,24 +124,44 @@
                     <materialDesign:Card Style="{StaticResource SectionCard}">
                         <StackPanel>
                             <Grid Margin="0,0,0,12">
-                                <TextBlock Text="2. Total Digital &amp; Cash Collections" Style="{StaticResource SectionTitle}" Margin="0" />
-                                <TextBlock Text="{Binding TotalDigitalAndCash, Converter={StaticResource CurrencyConverter}, StringFormat='Total: {0}'}" HorizontalAlignment="Right" FontWeight="Bold" FontSize="16" Foreground="#2E7D32" />
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <materialDesign:PackIcon Kind="CashMultiple" Width="22" Height="22" Foreground="#2E7D32" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <TextBlock Text="2. Total Digital &amp; Cash Collections" Style="{StaticResource SectionTitle}" Margin="0" VerticalAlignment="Center"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                    <Border Background="#E8F5E9" CornerRadius="6" Padding="10,4" Margin="0,0,8,0">
+                                        <TextBlock Text="{Binding TotalCash, Converter={StaticResource CurrencyConverter}, StringFormat='Cash: {0}'}" FontWeight="Bold" FontSize="13" Foreground="#2E7D32" />
+                                    </Border>
+                                    <Border Background="#E3F2FD" CornerRadius="6" Padding="10,4" Margin="0,0,8,0">
+                                        <TextBlock Text="{Binding TotalDigital, Converter={StaticResource CurrencyConverter}, StringFormat='Digital: {0}'}" FontWeight="Bold" FontSize="13" Foreground="#1565C0" />
+                                    </Border>
+                                    <Border Background="#C8E6C9" CornerRadius="6" Padding="12,4">
+                                        <TextBlock Text="{Binding TotalDigitalAndCash, Converter={StaticResource CurrencyConverter}, StringFormat='Grand Total: {0}'}" FontWeight="Bold" FontSize="14" Foreground="#1B5E20" />
+                                    </Border>
+                                </StackPanel>
                             </Grid>
                             
-                            <DataGrid ItemsSource="{Binding CollectionRows}" AutoGenerateColumns="False" IsReadOnly="True" MaxHeight="280" HeadersVisibility="Column">
-                                <DataGrid.Columns>
-                                    <DataGridTextColumn Header="Collection Mode" Binding="{Binding CollectionMode}" Width="*" FontWeight="SemiBold" />
-                                    <DataGridTemplateColumn Header="Total Amount" Width="Auto">
-                                        <DataGridTemplateColumn.CellTemplate>
-                                            <DataTemplate>
+                            <!-- Responsive Vertical Column Tiles for Collection Modes -->
+                            <ItemsControl ItemsSource="{Binding CollectionRows}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel Orientation="Horizontal" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="White" BorderBrush="{DynamicResource MaterialDesign.Brush.Divider}" BorderThickness="1.5"
+                                                CornerRadius="8" Padding="12,10" Margin="0,0,10,10" MinWidth="135" MaxWidth="180">
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding CollectionMode}" FontSize="12" FontWeight="SemiBold"
+                                                           Opacity="0.75" TextTrimming="CharacterEllipsis" Margin="0,0,0,4"/>
                                                 <TextBlock Text="{Binding Amount, Converter={StaticResource CurrencyConverter}}"
-                                                           Foreground="{Binding DisplayColor}"
-                                                           FontWeight="Bold" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="8,4"/>
-                                            </DataTemplate>
-                                        </DataGridTemplateColumn.CellTemplate>
-                                    </DataGridTemplateColumn>
-                                </DataGrid.Columns>
-                            </DataGrid>
+                                                           FontSize="16" FontWeight="Bold" Foreground="{Binding DisplayColor}" />
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
                         </StackPanel>
                     </materialDesign:Card>
                     
@@ -344,31 +364,31 @@
                                                  <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="4,2" VerticalAlignment="Center">
                                                      <TextBlock Text="Stock: " FontWeight="Bold" FontSize="13" Foreground="Green" VerticalAlignment="Center"/>
                                                      <TextBox Text="{Binding Stock, UpdateSourceTrigger=LostFocus, StringFormat={}{0:N2}}" FontWeight="Bold" FontSize="13" Foreground="Green" Width="70"/>
-                                                     <TextBlock Text=" Ltr" FontWeight="Bold" FontSize="13" Foreground="Green" VerticalAlignment="Center"/>
+                                                     <TextBlock Text="{Binding FullUnit, StringFormat=' {0}'}" FontWeight="Bold" FontSize="13" Foreground="Green" VerticalAlignment="Center"/>
                                                  </StackPanel>
 
                                                  <!-- Row 1: Opening Stock and Sales -->
                                                  <StackPanel Grid.Row="1" Grid.Column="0" Orientation="Horizontal" Margin="4,2" VerticalAlignment="Center">
                                                      <TextBlock Text="Opening: " Opacity="0.6" FontSize="11" VerticalAlignment="Center"/>
                                                      <TextBlock Text="{Binding OpeningStock, StringFormat={}{0:N2}}" FontWeight="SemiBold" Opacity="0.8" FontSize="11" VerticalAlignment="Center"/>
-                                                     <TextBlock Text=" L" Opacity="0.6" FontSize="11" VerticalAlignment="Center"/>
+                                                     <TextBlock Text="{Binding Unit, StringFormat=' {0}'}" Opacity="0.6" FontSize="11" VerticalAlignment="Center"/>
                                                  </StackPanel>
                                                  <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="4,2" VerticalAlignment="Center">
                                                      <TextBlock Text="Sales: " Opacity="0.6" FontSize="11" VerticalAlignment="Center"/>
                                                      <TextBlock Text="{Binding FuelDispensed, StringFormat={}{0:N2}}" FontWeight="SemiBold" Opacity="0.8" FontSize="11" VerticalAlignment="Center"/>
-                                                     <TextBlock Text=" L" Opacity="0.6" FontSize="11" VerticalAlignment="Center"/>
+                                                     <TextBlock Text="{Binding Unit, StringFormat=' {0}'}" Opacity="0.6" FontSize="11" VerticalAlignment="Center"/>
                                                  </StackPanel>
 
                                                  <!-- Row 2: Testing and Receipts -->
                                                  <StackPanel Grid.Row="2" Grid.Column="0" Orientation="Horizontal" Margin="4,2" VerticalAlignment="Center">
                                                      <TextBlock Text="Testing: " Opacity="0.6" FontSize="11" VerticalAlignment="Center"/>
                                                      <TextBlock Text="{Binding TestingLitres, StringFormat={}{0:N2}}" FontWeight="SemiBold" Opacity="0.8" FontSize="11" VerticalAlignment="Center"/>
-                                                     <TextBlock Text=" L" Opacity="0.6" FontSize="11" VerticalAlignment="Center"/>
+                                                     <TextBlock Text="{Binding Unit, StringFormat=' {0}'}" Opacity="0.6" FontSize="11" VerticalAlignment="Center"/>
                                                  </StackPanel>
                                                  <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="4,2" VerticalAlignment="Center">
                                                      <TextBlock Text="Receipts: " Opacity="0.6" FontSize="11" VerticalAlignment="Center"/>
                                                      <TextBlock Text="{Binding Receipts, StringFormat={}{0:N2}}" FontWeight="SemiBold" Opacity="0.8" FontSize="11" VerticalAlignment="Center"/>
-                                                     <TextBlock Text=" L" Opacity="0.6" FontSize="11" VerticalAlignment="Center"/>
+                                                     <TextBlock Text="{Binding Unit, StringFormat=' {0}'}" Opacity="0.6" FontSize="11" VerticalAlignment="Center"/>
                                                  </StackPanel>
 
                                                  <!-- Row 3: Calculated Stock -->
@@ -376,7 +396,7 @@
                                                      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="4,2">
                                                          <TextBlock Text="Calculated: " Opacity="0.7" FontWeight="SemiBold" FontSize="11" VerticalAlignment="Center"/>
                                                          <TextBlock Text="{Binding CalculatedStock, StringFormat={}{0:N2}}" FontWeight="Bold" Opacity="0.9" FontSize="11" VerticalAlignment="Center"/>
-                                                         <TextBlock Text=" L" Opacity="0.7" FontSize="11" VerticalAlignment="Center"/>
+                                                         <TextBlock Text="{Binding Unit, StringFormat=' {0}'}" Opacity="0.7" FontSize="11" VerticalAlignment="Center"/>
                                                      </StackPanel>
                                                  </Border>
                                              </Grid>

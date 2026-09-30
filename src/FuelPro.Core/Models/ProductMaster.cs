@@ -24,4 +24,10 @@ public class ProductMaster
     public double DefaultSaleRate { get; set; }
 
     public bool IsActive { get; set; } = true;
+
+    /// <summary>
+    /// Dynamic runtime property: current remaining inventory for this product.
+    /// </summary>
+    [NotMapped]
+    public double CurrentStock { get; set; }
 }

@@ -40,5 +40,16 @@ public class OilDefDailyLog
     public double SalesValue => SoldQuantity * EffectiveRate;
 
     [NotMapped]
+    public string ProductNameDisplay => !string.IsNullOrWhiteSpace(Product?.ProductName) ? Product.ProductName : ProductType;
+
+    [NotMapped]
     public bool IsEditable => LogDate.Date == DateTime.Today;
+
+    /// <summary>Dynamic display property: effective remaining stock after all transactions on this date / current active stock.</summary>
+    [NotMapped]
+    public double EffectiveStockAfter { get; set; }
+
+    /// <summary>Dynamic display property: total adjustments on this date for this product.</summary>
+    [NotMapped]
+    public double DayAdjustments { get; set; }
 }

@@ -89,8 +89,6 @@ public partial class MonthlyPerformanceViewModel : ObservableObject, IDisposable
         IsLoading = true;
         try
         {
-            try { var syncEngine = App.Services.GetRequiredService<FuelPro.Sync.SyncEngine>(); await syncEngine.ForceSyncAsync(); } catch { }
-
             var year = SelectedMonth.Year;
             var month = SelectedMonth.Month;
             var startDate = new DateTime(year, month, 1);
@@ -145,10 +143,36 @@ public partial class MonthlyPerformanceViewModel : ObservableObject, IDisposable
                 double dayNetSale = dayReport.TotalFuelAmount + dayReport.OtherCashTotal + dayReport.OilDefSalesTotal;
                 double dayCollection = dayReport.ActualCollection;
 
-                double dayDiesel = dayReport.FuelSales.FirstOrDefault(f => f.FuelType == "HSD")?.Litres ?? 0;
-                double dayPetrol = dayReport.FuelSales.FirstOrDefault(f => f.FuelType == "MS-I" || f.FuelType == "MS" || f.FuelType == "Petrol")?.Litres ?? 0;
-                double daySpeed = dayReport.FuelSales.FirstOrDefault(f => f.FuelType == "MS-II" || f.FuelType == "Speed")?.Litres ?? 0;
-                double dayCng = dayReport.FuelSales.FirstOrDefault(f => f.FuelType == "CNG")?.Litres ?? 0;
+                double dayDiesel = dayReport.FuelSales
+                    .Where(f => string.Equals(f.FuelType, "HSD", StringComparison.OrdinalIgnoreCase) ||
+                                string.Equals(f.FuelType, "Diesel", StringComparison.OrdinalIgnoreCase) ||
+                                (f.Description != null && f.Description.Contains("HSD", StringComparison.OrdinalIgnoreCase)))
+                    .Sum(f => f.Litres);
+
+                double daySpeed = dayReport.FuelSales
+                    .Where(f => string.Equals(f.FuelType, "SPEED", StringComparison.OrdinalIgnoreCase) ||
+                                string.Equals(f.FuelType, "MS-II", StringComparison.OrdinalIgnoreCase) ||
+                                string.Equals(f.FuelType, "Power", StringComparison.OrdinalIgnoreCase) ||
+                                string.Equals(f.FuelType, "XP", StringComparison.OrdinalIgnoreCase) ||
+                                (f.Description != null && (f.Description.Contains("SPEED", StringComparison.OrdinalIgnoreCase) ||
+                                                           f.Description.Contains("XP", StringComparison.OrdinalIgnoreCase) ||
+                                                           f.Description.Contains("Power", StringComparison.OrdinalIgnoreCase) ||
+                                                           f.Description.Contains("20KL II", StringComparison.OrdinalIgnoreCase))))
+                    .Sum(f => f.Litres);
+
+                double dayPetrol = dayReport.FuelSales
+                    .Where(f => (string.Equals(f.FuelType, "MS-I", StringComparison.OrdinalIgnoreCase) ||
+                                 string.Equals(f.FuelType, "MS", StringComparison.OrdinalIgnoreCase) ||
+                                 string.Equals(f.FuelType, "Petrol", StringComparison.OrdinalIgnoreCase) ||
+                                 (f.Description != null && (f.Description.Contains("MS", StringComparison.OrdinalIgnoreCase) || f.Description.Contains("Petrol", StringComparison.OrdinalIgnoreCase))))
+                                && !string.Equals(f.FuelType, "SPEED", StringComparison.OrdinalIgnoreCase)
+                                && !(f.Description != null && (f.Description.Contains("SPEED", StringComparison.OrdinalIgnoreCase) || f.Description.Contains("20KL II", StringComparison.OrdinalIgnoreCase) || f.Description.Contains("XP", StringComparison.OrdinalIgnoreCase) || f.Description.Contains("Power", StringComparison.OrdinalIgnoreCase))))
+                    .Sum(f => f.Litres);
+
+                double dayCng = dayReport.FuelSales
+                    .Where(f => string.Equals(f.FuelType, "CNG", StringComparison.OrdinalIgnoreCase) ||
+                                (f.Description != null && f.Description.Contains("CNG", StringComparison.OrdinalIgnoreCase)))
+                    .Sum(f => f.Litres);
 
                 DayRows.Add(new MonthDayRow
                 {

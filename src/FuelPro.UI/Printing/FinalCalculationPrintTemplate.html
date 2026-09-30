@@ -401,7 +401,10 @@ function renderData(){
   (d.dsmSummaryRows||d.dsmEntries||[]).forEach(function(r){
     var tr=document.createElement('tr');
     var ph = getVal(r, 'phonePeTotal') || (getVal(r, 'phonePeMorning')||0) + (getVal(r, 'phonePeNight')||0) + (getVal(r, 'phonePeDay')||0) + (getVal(r, 'phonePe')||0);
-    var cc = getVal(r, 'creditCardTotal') || (getVal(r, 'creditCardMorning')||0) + (getVal(r, 'creditCardNight')||0) + (getVal(r, 'creditCardDay')||0) + (getVal(r, 'phonePeCardMorning')||0) + (getVal(r, 'phonePeCardNight')||0) + (getVal(r, 'phonePeCardDay')||0) + (getVal(r, 'phonePeCard')||0);
+    var cc = getVal(r, 'creditCardTotal');
+    if (cc === undefined || cc === null || isNaN(cc)) {
+      cc = (getVal(r, 'creditCard')||0) + (getVal(r, 'creditCardMorning')||0) + (getVal(r, 'creditCardNight')||0) + (getVal(r, 'creditCardDay')||0) + (getVal(r, 'phonePeCard')||0) + (getVal(r, 'phonePeCardMorning')||0) + (getVal(r, 'phonePeCardNight')||0) + (getVal(r, 'phonePeCardDay')||0);
+    }
     var pc = getVal(r, 'petroCardTotal') || (getVal(r, 'petroCardMorning')||0) + (getVal(r, 'petroCardNight')||0) + (getVal(r, 'petroCardDay')||0) + (getVal(r, 'petroCard')||0);
 
     var deb = getVal(r, 'debit') || 0;
@@ -425,10 +428,12 @@ function renderData(){
       dynTotalRow += amt;
     });
 
-    var rDiff = getVal(r, 'difference');
-    var mismatch = (rDiff !== undefined && !isNaN(rDiff) && rDiff !== null)
-        ? rDiff
-        : ((isPhActive ? ph : 0) + (isCcActive ? cc : 0) + (isPcActive ? pc : 0) + dynTotalRow + deb + exp + test + c1 + c2) - sale;
+    var rMis = getVal(r, 'mismatch');
+    if (rMis === undefined || rMis === null || isNaN(rMis)) rMis = getVal(r, 'difference');
+    if (rMis === undefined || rMis === null || isNaN(rMis)) rMis = getVal(r, 'shortAmount');
+    var mismatch = (rMis !== undefined && rMis !== null && !isNaN(rMis))
+        ? rMis
+        : (((isPhActive ? ph : 0) + (isCcActive ? cc : 0) + (isPcActive ? pc : 0) + dynTotalRow + deb + exp + test + c1 + c2) - sale);
     var pVal = getVal(r, 'pumpNoDisplay') || getVal(r, 'pumpId') || getVal(r, 'pumpNo') || '';
     var pDisp = pVal ? (pVal.toString().startsWith('P-') ? pVal : 'P-' + pVal) : '\u2013';
 
@@ -503,8 +508,10 @@ function renderData(){
 
   var ft=document.getElementById('tFuel');ft.innerHTML='';
   var badges={'HSD':'<span class="b-hsd">HSD</span>','MS-II':'<span class="b-ms1">SPEED</span>','MS-I':'<span class="b-ms1">MS</span>','CNG':'<span class="b-cng">CNG</span>'};
-  var ftTotL=d.totalFuelLitres||0,ftTotA=d.totalFuelAmount||0;
-  (d.fuelSales||d.fuelSale||[]).forEach(function(f,i){
+  var ftTotL=(d.dsrTotalFuelLitres !== undefined && d.dsrTotalFuelLitres !== null)?d.dsrTotalFuelLitres:(d.totalFuelLitres||0);
+  var ftTotA=(d.dsrTotalFuelAmount !== undefined && d.dsrTotalFuelAmount !== null)?d.dsrTotalFuelAmount:(d.totalFuelAmount||0);
+  var fuelList=(d.dsrFuelSales != null)?d.dsrFuelSales:(d.fuelSales||d.fuelSale||[]);
+  fuelList.forEach(function(f,i){
     var tr=document.createElement('tr');
     var badge=badges[f.fuelType]||('<span class="b-ms1">'+(f.fuelType||'Fuel')+'</span>');
     var desc = f.description || f.tankLabel || '';
@@ -551,7 +558,23 @@ function renderData(){
     var repTot = d.debtorRepaymentsTotal || 0;
     sameDayRepayments.forEach(function(r) {
       var mode = getVal(r, 'paymentMode') || '';
-      var refNo = getVal(r, 'refNo') || '';
+      var refNo = getVal(r, 'refNo') || getVal(r, 'referenceDisplay') || '';
+      if (!refNo || refNo === '—' || refNo === '-') {
+        var tid = getVal(r, 'cardTid') || getVal(r, 'tid') || '';
+        var batch = getVal(r, 'cardBatch') || getVal(r, 'batch') || '';
+        var chq = getVal(r, 'chequeNo') || '';
+        if (tid && batch) {
+          refNo = 'TID: ' + tid + ', Batch: ' + batch;
+        } else if (tid) {
+          refNo = 'TID: ' + tid;
+        } else if (batch) {
+          refNo = 'Batch: ' + batch;
+        } else if (chq) {
+          refNo = 'Chq: ' + chq;
+        } else {
+          refNo = '';
+        }
+      }
       var tr = document.createElement('tr');
       tr.innerHTML = '<td style="text-align:left;">' + (getVal(r, 'debtorName') || getVal(r, 'creditorName') || '') + '</td>' +
                      '<td>' + mode + '</td>' +
@@ -740,10 +763,13 @@ function renderData(){
       var stock = getVal(g, 'stock') || 0;
       var rows = getVal(g, 'rows') || [];
       
-      var isMs1 = groupName.indexOf('Petrol') !== -1 || groupName.indexOf('MS') !== -1 || groupName.indexOf('Tank 1') !== -1;
-      var borderColor = isMs1 ? '#00C853' : '#0288D1';
-      var headerBg = isMs1 ? '#00C853' : '#0288D1';
-      var cardBg = isMs1 ? '#E8F5E9' : '#E3F2FD';
+      var isCng = groupName.indexOf('CNG') !== -1;
+      var isMs1 = !isCng && (groupName.indexOf('Petrol') !== -1 || groupName.indexOf('MS') !== -1 || groupName.indexOf('Tank 1') !== -1);
+      var borderColor = isCng ? '#7B1FA2' : (isMs1 ? '#00C853' : '#0288D1');
+      var headerBg = isCng ? '#7B1FA2' : (isMs1 ? '#00C853' : '#0288D1');
+      var cardBg = isCng ? '#F3E5F5' : (isMs1 ? '#E8F5E9' : '#E3F2FD');
+      var unit = isCng ? ' Kg' : ' L';
+      var unitFull = isCng ? ' Kg' : ' Ltr';
 
       var card = document.createElement('div');
       card.style.cssText = 'flex: 1; border: 1.5px solid ' + borderColor + '; border-radius: 6px; padding: 10px; background: ' + cardBg + '; box-shadow: 0 1px 3px rgba(0,0,0,0.05);';
@@ -766,15 +792,15 @@ function renderData(){
       tankInfo.innerHTML = 
         '<div style="display:flex; justify-content:space-between; align-items:center; background:#fff; padding:4px 6px; margin:4px 0 6px 0; border-radius:4px; border:1px solid #ddd;">' +
         '  <span style="font-weight:bold; font-size:11px; color:#222;">Dip: ' + dip + ' mm</span>' +
-        '  <span style="font-weight:bold; font-size:11px; color:#0B6E4F;">Stock: ' + parseFloat(stock).toFixed(2) + ' Ltr</span>' +
+        '  <span style="font-weight:bold; font-size:11px; color:#0B6E4F;">Stock: ' + parseFloat(stock).toFixed(2) + unitFull + '</span>' +
         '</div>' +
         '<table style="width:100%; border-collapse:collapse; font-size:9.5px; line-height:1.2; margin-bottom: 4px;">' +
-        '<tr><td style="color:#555; padding:1px 0;">Opening Stock:</td><td style="text-align:right; font-weight:500; padding:1px 0;">' + parseFloat(opening).toFixed(2) + ' L</td></tr>' +
-        '<tr><td style="color:#555; padding:1px 0;">Receipts:</td><td style="text-align:right; font-weight:500; padding:1px 0;">+' + parseFloat(receipts).toFixed(2) + ' L</td></tr>' +
-        '<tr><td style="color:#555; padding:1px 0;">Sales:</td><td style="text-align:right; font-weight:500; padding:1px 0;">-' + parseFloat(sales).toFixed(2) + ' L</td></tr>' +
-        '<tr><td style="color:#555; padding:1px 0;">Testing:</td><td style="text-align:right; font-weight:500; padding:1px 0;">+' + parseFloat(testing).toFixed(2) + ' L</td></tr>' +
-        '<tr style="border-top:1px dashed #ccc; font-weight:bold; color:#16211C;"><td style="padding:2px 0 1px 0;">Calculated Stock:</td><td style="text-align:right; padding:2px 0 1px 0;">' + parseFloat(calculated).toFixed(2) + ' L</td></tr>' +
-        '<tr style="font-weight:bold; border-top:1px solid #ddd; border-bottom:1px solid #ddd; padding:2px 0;"><td style="padding:2px 0;">Variance:</td><td style="text-align:right; padding:2px 0; color:' + (variance >= 0 ? '#0B6E4F' : '#D32F2F') + ';">' + (variance >= 0 ? '+' : '') + parseFloat(variance).toFixed(2) + ' L</td></tr>' +
+        '<tr><td style="color:#555; padding:1px 0;">Opening Stock:</td><td style="text-align:right; font-weight:500; padding:1px 0;">' + parseFloat(opening).toFixed(2) + unit + '</td></tr>' +
+        '<tr><td style="color:#555; padding:1px 0;">Receipts:</td><td style="text-align:right; font-weight:500; padding:1px 0;">+' + parseFloat(receipts).toFixed(2) + unit + '</td></tr>' +
+        '<tr><td style="color:#555; padding:1px 0;">Sales:</td><td style="text-align:right; font-weight:500; padding:1px 0;">-' + parseFloat(sales).toFixed(2) + unit + '</td></tr>' +
+        '<tr><td style="color:#555; padding:1px 0;">Testing:</td><td style="text-align:right; font-weight:500; padding:1px 0;">+' + parseFloat(testing).toFixed(2) + unit + '</td></tr>' +
+        '<tr style="border-top:1px dashed #ccc; font-weight:bold; color:#16211C;"><td style="padding:2px 0 1px 0;">Calculated Stock:</td><td style="text-align:right; padding:2px 0 1px 0;">' + parseFloat(calculated).toFixed(2) + unit + '</td></tr>' +
+        '<tr style="font-weight:bold; border-top:1px solid #ddd; border-bottom:1px solid #ddd; padding:2px 0;"><td style="padding:2px 0;">Variance:</td><td style="text-align:right; padding:2px 0; color:' + (variance >= 0 ? '#0B6E4F' : '#D32F2F') + ';">' + (variance >= 0 ? '+' : '') + parseFloat(variance).toFixed(2) + unit + '</td></tr>' +
         '</table>';
       card.appendChild(tankInfo);
       

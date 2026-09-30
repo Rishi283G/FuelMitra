@@ -279,4 +279,168 @@ public class ShiftAggregationServiceTests
         Assert.Equal(35, hsdLitres);
         Assert.Equal(3150, hsdAmount);
     }
+
+    [Fact]
+    public void BuildDsmSummaryRows_ShouldPopulateOthersAndBankCashCorrectly()
+    {
+        // Arrange
+        var entries = new List<DsmEntry>
+        {
+            new DsmEntry
+            {
+                DsmName = "Ramesh",
+                PumpId = 1,
+                GrossSales = 10000,
+                PaymentCollection = new PaymentCollection
+                {
+                    PhonePeMorning = 2000,
+                    CreditCardMorning = 1500,
+                    Others = 450 // Informational record
+                },
+                CashDenominations = new List<CashDenomination>
+                {
+                    new CashDenomination { CashType = "Cash1", TotalAmount = 3000 }, // Bank Cash
+                    new CashDenomination { CashType = "Cash2", TotalAmount = 2500 }  // Hand Cash
+                },
+                DebitEntries = new List<DebitEntry> { new DebitEntry { Amount = 500 } },
+                Expenses = new List<Expense> { new Expense { Amount = 500 } }
+            }
+        };
+
+        // Act
+        var rows = _sut.BuildDsmSummaryRows(entries);
+
+        // Assert
+        Assert.Single(rows);
+        var r = rows[0];
+        Assert.Equal(450, r.Others);
+        Assert.Equal(3000, r.CashDeposit);
+        Assert.Equal(450, r.GetAmount("OTHERS"));
+        Assert.Equal(3000, r.GetAmount("BANKCASH"));
+        Assert.Equal(3000, r.GetAmount("CASHDEPOSIT"));
+    }
+
+    [Fact]
+    public void BuildDsmShiftTotals_ShouldAggregateOthersAndBankCashPerDsm()
+    {
+        // Arrange
+        var entries = new List<DsmEntry>
+        {
+            new DsmEntry
+            {
+                DsmName = "Suresh",
+                PumpId = 1,
+                GrossSales = 5000,
+                PaymentCollection = new PaymentCollection { PhonePeMorning = 1000, Others = 200 },
+                CashDenominations = new List<CashDenomination>
+                {
+                    new CashDenomination { CashType = "Cash1", TotalAmount = 1500 },
+                    new CashDenomination { CashType = "Cash2", TotalAmount = 2000 }
+                },
+                DebitEntries = new List<DebitEntry> { new DebitEntry { Amount = 300 } },
+                Expenses = new List<Expense> { new Expense { Amount = 200 } }
+            },
+            new DsmEntry
+            {
+                DsmName = "Suresh",
+                PumpId = 2,
+                GrossSales = 6000,
+                PaymentCollection = new PaymentCollection { PhonePeMorning = 1500, Others = 300 },
+                CashDenominations = new List<CashDenomination>
+                {
+                    new CashDenomination { CashType = "Cash1", TotalAmount = 2000 },
+                    new CashDenomination { CashType = "Cash2", TotalAmount = 2000 }
+                },
+                DebitEntries = new List<DebitEntry> { new DebitEntry { Amount = 200 } },
+                Expenses = new List<Expense> { new Expense { Amount = 300 } }
+            }
+        };
+
+        // Act
+        var summaryRows = _sut.BuildDsmSummaryRows(entries);
+        var totals = _sut.BuildDsmShiftTotals(summaryRows);
+
+        // Assert
+        Assert.Single(totals);
+        var st = totals[0];
+        Assert.Equal("Suresh", st.DsmName);
+        Assert.Equal(2, st.SessionsCount);
+        Assert.Equal(500, st.Others); // 200 + 300
+        Assert.Equal(3500, st.CashDeposit); // 1500 + 2000
+        Assert.Equal(500, st.GetAmount("OTHERS"));
+        Assert.Equal(3500, st.GetAmount("BANKCASH"));
+    }
+
+    [Fact]
+    public void BuildReconciliationRows_ShouldIncludeOthersAsInformational()
+    {
+        // Act
+        var rows = _sut.BuildReconciliationRows(
+            msTesting: 0, hsdTesting: 0, hsdTesting2: 0, cngTesting: 0,
+            phonePeCardMorning: 0, phonePeCardNight: 0, phonePeMorning: 1000, phonePeNight: 0,
+            petroCard: 0, debit: 0, creditCardMorning: 0, creditCardNight: 0,
+            bankCash: 2000, cashInHand: 1000, expenses: 0,
+            dynamicCollections: null, others: 750
+        );
+
+        // Assert
+        var othersRow = rows.FirstOrDefault(r => r.Description == "Others (Record)");
+        Assert.NotNull(othersRow);
+        Assert.Equal(750, othersRow.Amount);
+    }
+
+    [Fact]
+    public void BuildDsmSummaryRows_ShouldCalculateShortAccuratelyWithoutDuplication()
+    {
+        // Arrange: Shift B (Day Shift) entry where Gross = 10000, Collection = 9800 (Short of 200)
+        var entries = new List<DsmEntry>
+        {
+            new DsmEntry
+            {
+                DsmName = "Dinesh",
+                PumpId = 1,
+                GrossSales = 10000,
+                Shift = new Shift { ShiftType = "B" },
+                PaymentCollection = new PaymentCollection
+                {
+                    PhonePeDay = 3000,
+                    PhonePeCardDay = 1500,
+                    CreditCardDay = 2000,
+                    PetroCardDay = 500,
+                    CashDeposit = 1000,
+                    Others = 250 // Not included in calculation
+                },
+                CashDenominations = new List<CashDenomination>
+                {
+                    new CashDenomination { CashType = "Cash2", TotalAmount = 800 }
+                },
+                DebitEntries = new List<DebitEntry> { new DebitEntry { Amount = 500 } },
+                Expenses = new List<Expense> { new Expense { Amount = 500 } }
+            }
+        };
+
+        // Act
+        var rows = _sut.BuildDsmSummaryRows(entries);
+        var totalRow = _sut.BuildDsmSummaryTotalRow(rows);
+        var shiftTotals = _sut.BuildDsmShiftTotals(rows);
+
+        // Assert
+        Assert.Single(rows);
+        var r = rows[0];
+        // Total collection: 3000 (PhonePe) + 1500 (PPC) + 2000 (CC) + 500 (Petro) + 1000 (BankCash) + 800 (HandCash) + 500 (Debit) + 500 (Exp) = 9800
+        Assert.Equal(9800, r.TotalCollection);
+        Assert.Equal(10000, r.GrossSales);
+        Assert.Equal(-200, r.Mismatch);
+        Assert.Equal(-200, r.Difference);
+
+        // Total row
+        Assert.Equal(9800, totalRow.TotalCollection);
+        Assert.Equal(-200, totalRow.Mismatch);
+
+        // Shift total
+        Assert.Single(shiftTotals);
+        var st = shiftTotals[0];
+        Assert.Equal(9800, st.TotalCollection);
+        Assert.Equal(-200, st.Mismatch);
+    }
 }

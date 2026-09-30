@@ -120,25 +120,28 @@
             <TabItem Header="Supplier Invoices Registry">
                 <Grid Margin="0,16,0,0">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="2*"/>
-                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="6.8*"/>
+                        <ColumnDefinition Width="3.2*" MinWidth="280"/>
                     </Grid.ColumnDefinitions>
 
                     <!-- Left: Invoices Grid -->
                     <StackPanel Grid.Column="0" Margin="0,0,16,0">
                         <TextBlock Text="Monthly Invoices Log" FontSize="16" FontWeight="Bold" Margin="0,0,0,12" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
                         <DataGrid ItemsSource="{Binding Purchases}" AutoGenerateColumns="False" IsReadOnly="True"
-                                  materialDesign:DataGridAssist.CellPadding="10 8" Height="480">
+                                  materialDesign:DataGridAssist.CellPadding="10 8" Height="480"
+                                  GridLinesVisibility="All"
+                                  VerticalGridLinesBrush="#CFD8DC"
+                                  HorizontalGridLinesBrush="#ECEFF1">
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="Date" Binding="{Binding PurchaseDate, StringFormat='{}{0:dd-MMM-yyyy}'}" Width="*"/>
-                                <DataGridTextColumn Header="Product" Binding="{Binding ProductType}" Width="80"/>
-                                <DataGridTextColumn Header="Supplier Name" Binding="{Binding SupplierName}" Width="1.5*"/>
-                                <DataGridTextColumn Header="Invoice No." Binding="{Binding InvoiceNumber}" Width="*"/>
-                                <DataGridTextColumn Header="Quantity" Binding="{Binding Quantity, StringFormat='{}{0:N2}'}" Width="80" ElementStyle="{StaticResource MaterialDesignTextBlockRight}"/>
-                                <DataGridTextColumn Header="Unit Price" Binding="{Binding UnitPrice, Converter={StaticResource CurrencyConverter}}" Width="100" ElementStyle="{StaticResource MaterialDesignTextBlockRight}"/>
-                                <DataGridTextColumn Header="Total Cost" Binding="{Binding TotalCost, Converter={StaticResource CurrencyConverter}}" Width="120" ElementStyle="{StaticResource MaterialDesignTextBlockRight}"/>
+                                <DataGridTextColumn Header="Date" Binding="{Binding PurchaseDate, StringFormat='{}{0:dd-MMM-yyyy}'}" Width="110"/>
+                                <DataGridTextColumn Header="Product" Binding="{Binding ProductType}" Width="85" FontWeight="SemiBold"/>
+                                <DataGridTextColumn Header="Supplier Name" Binding="{Binding SupplierName}" Width="2*" MinWidth="140"/>
+                                <DataGridTextColumn Header="Invoice No." Binding="{Binding InvoiceNumber}" Width="100"/>
+                                <DataGridTextColumn Header="Quantity" Binding="{Binding Quantity, StringFormat='{}{0:N2}'}" Width="85" ElementStyle="{StaticResource MaterialDesignTextBlockRight}"/>
+                                <DataGridTextColumn Header="Unit Price" Binding="{Binding UnitPrice, Converter={StaticResource CurrencyConverter}}" Width="110" ElementStyle="{StaticResource MaterialDesignTextBlockRight}"/>
+                                <DataGridTextColumn Header="Total Cost" Binding="{Binding TotalCost, Converter={StaticResource CurrencyConverter}}" Width="120" FontWeight="Bold" Foreground="#2E7D32" ElementStyle="{StaticResource MaterialDesignTextBlockRight}"/>
                                 
-                                <DataGridTemplateColumn Header="Action" Width="70">
+                                <DataGridTemplateColumn Header="Action" Width="75">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <Button Style="{StaticResource MaterialDesignIconButton}" 

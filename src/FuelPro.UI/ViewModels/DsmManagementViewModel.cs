@@ -25,6 +25,13 @@ public partial class EditableNozzleRow : CommunityToolkit.Mvvm.ComponentModel.Ob
     public int SortOrder { get; set; }
 }
 
+public partial class ConnectedPumpOption : ObservableObject
+{
+    [ObservableProperty] private int _pumpId;
+    [ObservableProperty] private bool _isSelected;
+    public string DisplayName => $"Pump {PumpId}";
+}
+
 public partial class DsmManagementViewModel : ObservableObject
 {
     private readonly IServiceProvider _serviceProvider;
@@ -45,6 +52,7 @@ public partial class DsmManagementViewModel : ObservableObject
     public ObservableCollection<DsmPumpAssignment> PumpAssignments { get; } = new();
     public ObservableCollection<DsmUser> ActiveDsmOptions { get; } = new();
     public ObservableCollection<int> PumpOptions { get; } = new();
+    public ObservableCollection<ConnectedPumpOption> ConnectedPumpOptions { get; } = new();
     public string[] ShiftOptions { get; } = { "A", "B" };
 
     [ObservableProperty] private DsmUser? _selectedDsmUser;
@@ -104,6 +112,33 @@ public partial class DsmManagementViewModel : ObservableObject
         foreach (var f in fuelSet.OrderBy(x => x))
         {
             FuelTypeOptions.Add(f);
+        }
+
+        UpdateConnectedPumpOptions();
+    }
+
+    partial void OnSelectedPumpIdChanged(int? value)
+    {
+        UpdateConnectedPumpOptions();
+    }
+
+    public void UpdateConnectedPumpOptions()
+    {
+        var previouslySelected = ConnectedPumpOptions.Where(c => c.IsSelected).Select(c => c.PumpId).ToHashSet();
+        ConnectedPumpOptions.Clear();
+        if (SelectedPumpId.HasValue)
+        {
+            foreach (var p in PumpOptions)
+            {
+                if (p != SelectedPumpId.Value)
+                {
+                    ConnectedPumpOptions.Add(new ConnectedPumpOption
+                    {
+                        PumpId = p,
+                        IsSelected = previouslySelected.Contains(p)
+                    });
+                }
+            }
         }
     }
 
@@ -356,11 +391,28 @@ public partial class DsmManagementViewModel : ObservableObject
                     activeAssignment.DsmUser?.FullName, activeAssignment.PumpId, activeAssignment.ShiftType);
             }
 
+            var selectedConnected = ConnectedPumpOptions
+                .Where(c => c.IsSelected && c.PumpId != SelectedPumpId.Value)
+                .Select(c => c.PumpId)
+                .Distinct()
+                .Take(3)
+                .ToList();
+
+            // Backward compatibility fallback if user had selected legacy dropdown
+            if (selectedConnected.Count == 0 && SelectedConnectedPumpId.HasValue && SelectedConnectedPumpId.Value != SelectedPumpId.Value)
+            {
+                selectedConnected.Add(SelectedConnectedPumpId.Value);
+            }
+
+            int? firstConnected = selectedConnected.Count > 0 ? selectedConnected[0] : null;
+            string? connectedJson = selectedConnected.Count > 0 ? System.Text.Json.JsonSerializer.Serialize(selectedConnected) : null;
+
             var assignment = new DsmPumpAssignment
             {
                 DsmUserId = SelectedDsmUser.DsmUserId,
                 PumpId = SelectedPumpId.Value,
-                ConnectedPumpId = SelectedConnectedPumpId,
+                ConnectedPumpId = firstConnected,
+                ConnectedPumpIdsJson = connectedJson,
                 ShiftType = SelectedShift,
                 IsActive = true,
                 AssignedDate = AssignmentDate.Date + DateTime.Now.TimeOfDay
@@ -381,6 +433,7 @@ public partial class DsmManagementViewModel : ObservableObject
             catch { }
 
             // Reset selection fields
+            foreach (var opt in ConnectedPumpOptions) opt.IsSelected = false;
             SelectedConnectedPumpId = null;
 
             AssignmentStatusMessage = "✅ Assignment saved successfully.";

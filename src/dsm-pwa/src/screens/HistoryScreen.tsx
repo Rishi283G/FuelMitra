@@ -156,7 +156,14 @@ export default function HistoryScreen({ onBack }: HistoryProps) {
             <div className="history-card-top">
               <div>
                 <p className="history-card-title">
-                  Pump {entry.PumpId}{entry.Metadata?.connectedPumpId ? ` + Pump ${entry.Metadata.connectedPumpId} (Connected)` : ''} · Shift {entry.ShiftType}
+                  Pump {entry.PumpId}
+                  {(() => {
+                    const meta = entry.Metadata;
+                    const cPumps: number[] = Array.isArray(meta?.connectedPumpIds)
+                      ? meta.connectedPumpIds
+                      : (meta?.connectedPumpId ? [meta.connectedPumpId] : []);
+                    return cPumps.length > 0 ? ` + ${cPumps.map((p: number) => `Pump ${p}`).join(' + ')} (Connected)` : '';
+                  })()} · Shift {entry.ShiftType}
                 </p>
 
                 <p className="history-card-date">

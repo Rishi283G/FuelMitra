@@ -228,10 +228,17 @@ public class PrintDataBuilder
                 SameDayRepayments  = (sameDayRepayments ?? new List<CreditorRepayment>()).Select(r =>
                 {
                     string refNo = "";
-                    if (r.PaymentMode == "PhonePe" || r.PaymentMode == "Credit Card" ||
-                        r.PaymentMode == "PineLabs Card" || r.PaymentMode == "PetroCard")
+                    if (!string.IsNullOrWhiteSpace(r.ReferenceDisplay) && r.ReferenceDisplay != "—")
                     {
-                        refNo = !string.IsNullOrWhiteSpace(r.CardTid) ? $"TID: {r.CardTid}, Batch: {r.CardBatch}" : "";
+                        refNo = r.ReferenceDisplay;
+                    }
+                    else if (r.PaymentMode == "PhonePe" || r.PaymentMode == "Credit Card" ||
+                        r.PaymentMode == "PineLabs Card" || r.PaymentMode == "PetroCard" || r.PaymentMode == "Petro Card")
+                    {
+                        var parts = new System.Collections.Generic.List<string>();
+                        if (!string.IsNullOrWhiteSpace(r.CardTid)) parts.Add($"TID: {r.CardTid}");
+                        if (!string.IsNullOrWhiteSpace(r.CardBatch)) parts.Add($"Batch: {r.CardBatch}");
+                        refNo = parts.Count > 0 ? string.Join(", ", parts) : "";
                     }
                     else if (r.PaymentMode == "Bank Transfer")
                     {
@@ -256,8 +263,15 @@ public class PrintDataBuilder
                     return new CreditorRepaymentPrintDto
                     {
                         DebtorName  = r.CreditorName,
+                        CreditorName = r.CreditorName,
                         PaymentMode = r.PaymentMode,
                         RefNo       = refNo,
+                        ReferenceDisplay = refNo,
+                        CardTid     = r.CardTid ?? "",
+                        CardBatch   = r.CardBatch ?? "",
+                        Tid         = r.CardTid ?? "",
+                        Batch       = r.CardBatch ?? "",
+                        ChequeNo    = r.ChequeNo ?? "",
                         Amount      = (decimal)r.Amount
                     };
                 }).ToList()

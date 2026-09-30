@@ -32,27 +32,50 @@ public class DsmPendingSubmission : ObservableObject
     public string? AttachmentUrl { get; set; }
     public string MetadataJson { get; set; } = string.Empty;
 
-    public int? ConnectedPumpId
+    public List<int> ConnectedPumpIds
     {
         get
         {
-            if (string.IsNullOrEmpty(MetadataJson)) return null;
+            if (string.IsNullOrEmpty(MetadataJson)) return new List<int>();
             try
             {
-                var metaObj = JsonConvert.DeserializeObject<dynamic>(MetadataJson);
-                if (metaObj != null && metaObj.connectedPumpId != null)
+                var metaObj = JsonConvert.DeserializeObject<Newtonsoft.Json.Linq.JObject>(MetadataJson);
+                if (metaObj != null)
                 {
-                    return (int?)metaObj.connectedPumpId;
+                    var list = new List<int>();
+                    if (metaObj["connectedPumpIds"] != null)
+                    {
+                        var arr = metaObj["connectedPumpIds"]!.ToObject<List<int>>();
+                        if (arr != null) list.AddRange(arr);
+                    }
+                    if (list.Count == 0 && metaObj["connectedPumpId"] != null)
+                    {
+                        var scalar = (int?)metaObj["connectedPumpId"];
+                        if (scalar.HasValue && scalar.Value > 0) list.Add(scalar.Value);
+                    }
+                    return list.Where(id => id != PumpId && id > 0).Distinct().ToList();
                 }
             }
             catch {}
-            return null;
+            return new List<int>();
         }
     }
 
-    public string TitleDisplay => ConnectedPumpId.HasValue 
-        ? $"{DsmName} - Pump {PumpId} + Pump {ConnectedPumpId.Value} (Connected) - Shift {ShiftType}"
-        : $"{DsmName} - Pump {PumpId} - Shift {ShiftType}";
+    public int? ConnectedPumpId => ConnectedPumpIds.Count > 0 ? ConnectedPumpIds[0] : null;
+
+    public string TitleDisplay
+    {
+        get
+        {
+            var connected = ConnectedPumpIds;
+            if (connected.Count > 0)
+            {
+                var connectedStr = string.Join(" + ", connected.Select(id => $"Pump {id}"));
+                return $"{DsmName} - Pump {PumpId} + {connectedStr} (Connected) - Shift {ShiftType}";
+            }
+            return $"{DsmName} - Pump {PumpId} - Shift {ShiftType}";
+        }
+    }
     public string ShiftDateDisplay => ShiftDate.ToString("dd MMM yyyy");
     public string SubmittedTimeDisplay => SubmittedAt.ToLocalTime().ToString("hh:mm tt");
 }
@@ -509,7 +532,21 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
             var prevResult = await _nozzleRepo.GetPreviousShiftClosingsAsync(submission.ShiftDate, submission.ShiftType, submission.PumpId);
             var prevClosings = prevResult.Success ? prevResult.Data! : new Dictionary<int, double>();
 
-            if (submission.ConnectedPumpId.HasValue)
+            if (submission.ConnectedPumpIds != null && submission.ConnectedPumpIds.Count > 0)
+            {
+                foreach (var connPumpId in submission.ConnectedPumpIds)
+                {
+                    var connPrevResult = await _nozzleRepo.GetPreviousShiftClosingsAsync(submission.ShiftDate, submission.ShiftType, connPumpId);
+                    if (connPrevResult.Success && connPrevResult.Data != null)
+                    {
+                        foreach (var kvp in connPrevResult.Data)
+                        {
+                            prevClosings[kvp.Key] = kvp.Value;
+                        }
+                    }
+                }
+            }
+            else if (submission.ConnectedPumpId.HasValue)
             {
                 var connPrevResult = await _nozzleRepo.GetPreviousShiftClosingsAsync(submission.ShiftDate, submission.ShiftType, submission.ConnectedPumpId.Value);
                 if (connPrevResult.Success && connPrevResult.Data != null)
@@ -834,18 +871,11 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
         MismatchAmount = TotalCollections - GrossSales;
 
         double rawShortage = MismatchAmount < 0 ? Math.Abs(MismatchAmount) : 0;
-        double dsmLossAmount = rawShortage > 10.0 ? (rawShortage - 10.0) : 0.0;
-        if (rawShortage > 10.0)
-        {
-            ShortAmount = 10.0; // Max ₹10 kept as shift shortage
-        }
-        else
-        {
-            ShortAmount = rawShortage; // Shift Short (<= 10)
-        }
+        double dsmLossAmount = rawShortage; // No tolerance: full shortage is DSM loss
+        ShortAmount = rawShortage;          // Shift Short matches full shortage
         ExcessAmount = MismatchAmount > 0 ? MismatchAmount : 0;
 
-        // Auto update PersonalDebtors grid for shortage > ₹10
+        // Auto update PersonalDebtors grid for shortage
         var autoLossItem = PersonalDebtors.FirstOrDefault(pd => pd.Remarks != null && pd.Remarks.Contains("Auto Shift Shortage"));
         if (dsmLossAmount > 0)
         {
@@ -1426,9 +1456,9 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                 });
             }
 
-            // Save personal debtors (including auto DSM loss shortage)
+            // Save personal debtors (including auto DSM loss shortage - no tolerance)
             double totalShortage = MismatchAmount < 0 ? Math.Abs(MismatchAmount) : 0;
-            double dsmLossAmount = totalShortage > 10.0 ? (totalShortage - 10.0) : 0.0;
+            double dsmLossAmount = totalShortage;
             var personalDebtors = PersonalDebtors.ToList();
             if (personalDebtors.Count == 0 && dsmLossAmount > 0)
             {
@@ -1446,7 +1476,12 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
             // Parse cash denominations, connected pump, and testing entries
             int denom500 = 0, denom200 = 0, denom100 = 0, denom50 = 0, denom20 = 0, denom10 = 0, coins = 0;
             int cash1denom500 = 0, cash1denom200 = 0, cash1denom100 = 0, cash1denom50 = 0, cash1denom20 = 0, cash1denom10 = 0, cash1coins = 0;
-            int? connectedPumpId = null;
+            var connectedPumpIds = new List<int>();
+            if (SelectedSubmission?.ConnectedPumpIds != null)
+            {
+                connectedPumpIds.AddRange(SelectedSubmission.ConnectedPumpIds);
+            }
+            int? connectedPumpId = connectedPumpIds.Count > 0 ? connectedPumpIds[0] : null;
             var testingModels = new List<TestingEntry>();
 
             if (!string.IsNullOrEmpty(SelectedSubmission.MetadataJson))
@@ -1476,20 +1511,37 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                             cash1denom10 = (int)(metadata.cash1Denominations.denom10 ?? 0);
                             cash1coins = (int)(metadata.cash1Denominations.coins ?? 0);
                         }
+                        if (metadata.connectedPumpIds != null)
+                        {
+                            try
+                            {
+                                var ids = ((Newtonsoft.Json.Linq.JArray)metadata.connectedPumpIds).ToObject<List<int>>();
+                                if (ids != null)
+                                {
+                                    foreach (var id in ids)
+                                    {
+                                        if (id > 0 && id != SelectedSubmission.PumpId && !connectedPumpIds.Contains(id))
+                                            connectedPumpIds.Add(id);
+                                    }
+                                }
+                            }
+                            catch {}
+                        }
                         if (metadata.connectedPumpId != null)
                         {
-                            connectedPumpId = (int?)metadata.connectedPumpId;
+                            int scalarId = (int)metadata.connectedPumpId;
+                            if (scalarId > 0 && scalarId != SelectedSubmission.PumpId && !connectedPumpIds.Contains(scalarId))
+                                connectedPumpIds.Add(scalarId);
                         }
 
-                        if (connectedPumpId == null && nozzleModels != null)
+                        if (nozzleModels != null)
                         {
                             foreach (var n in nozzleModels)
                             {
                                 var nozzlePumpId = PumpConfiguration.GetPumpIdForNozzle(n.NozzleNumber, SelectedSubmission.ShiftDate);
-                                if (nozzlePumpId != 0 && nozzlePumpId != SelectedSubmission.PumpId)
+                                if (nozzlePumpId != 0 && nozzlePumpId != SelectedSubmission.PumpId && !connectedPumpIds.Contains(nozzlePumpId))
                                 {
-                                    connectedPumpId = nozzlePumpId;
-                                    break;
+                                    connectedPumpIds.Add(nozzlePumpId);
                                 }
                             }
                         }
@@ -1518,18 +1570,18 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                 }
             }
 
-            if (connectedPumpId == null && nozzleModels != null)
+            if (nozzleModels != null)
             {
                 foreach (var n in nozzleModels)
                 {
                     var nozzlePumpId = PumpConfiguration.GetPumpIdForNozzle(n.NozzleNumber, SelectedSubmission.ShiftDate);
-                    if (nozzlePumpId != 0 && nozzlePumpId != SelectedSubmission.PumpId)
+                    if (nozzlePumpId != 0 && nozzlePumpId != SelectedSubmission.PumpId && !connectedPumpIds.Contains(nozzlePumpId))
                     {
-                        connectedPumpId = nozzlePumpId;
-                        break;
+                        connectedPumpIds.Add(nozzlePumpId);
                     }
                 }
             }
+            connectedPumpId = connectedPumpIds.Count > 0 ? connectedPumpIds[0] : null;
 
             var expenseModels = SubmissionExpenses.Count > 0
                 ? SubmissionExpenses.ToList()
@@ -1611,7 +1663,8 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                     connectedPumpId: connectedPumpId,
                     personalDebtors: personalDebtors,
                     khandharePetroleumEntries: KhandhareEntries.ToList(),
-                    qrPayments: QrPayments.ToList()
+                    qrPayments: QrPayments.ToList(),
+                    connectedPumpIds: connectedPumpIds
                 );
 
                 if (!localSaveResult.Success)
@@ -1924,15 +1977,29 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
     {
         try
         {
-            var prevRemaining = await context.OilDefDailyLogs
+            var prevLog = await context.OilDefDailyLogs
                 .Where(l => l.ProductId == productId && l.LogDate < fromDate)
                 .OrderByDescending(l => l.LogDate)
-                .Select(l => l.RemainingStock)
+                .ThenByDescending(l => l.Id)
                 .FirstOrDefaultAsync();
+
+            double prevRemaining = 0.0;
+            if (prevLog != null)
+            {
+                prevRemaining = prevLog.RemainingStock;
+            }
+            else
+            {
+                var monthInv = await context.OilDefInventories
+                    .Where(i => i.ProductId == productId && i.Year == fromDate.Year && i.Month == fromDate.Month)
+                    .FirstOrDefaultAsync();
+                prevRemaining = monthInv?.OpeningStock ?? 0.0;
+            }
 
             var subsequentLogs = await context.OilDefDailyLogs
                 .Where(l => l.ProductId == productId && l.LogDate >= fromDate)
                 .OrderBy(l => l.LogDate)
+                .ThenBy(l => l.Id)
                 .ToListAsync();
 
             double running = prevRemaining;
@@ -2362,19 +2429,33 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                 .Include(e => e.KhandharePetroleumEntries)
                 .FirstOrDefaultAsync(e => e.DsmEntryId == approvedSub.DsmEntryId);
 
-            DsmEntry? connectedEntry = null;
-            if (entry != null && entry.ConnectedPumpId.HasValue)
+            var connectedEntries = new List<DsmEntry>();
+            if (entry != null)
             {
-                var connCandidates = await context.DsmEntries
-                    .Include(e => e.NozzleReadings)
-                    .Where(e => e.ShiftId == entry.ShiftId
-                        && e.PumpId == entry.ConnectedPumpId.Value
-                        && (e.ReconciledToPumpId == entry.DsmEntryId || e.ReconciledToPumpId == entry.PumpId || (e.DsmName != null && entry.DsmName != null && e.DsmName.ToLower() == entry.DsmName.ToLower())))
-                    .ToListAsync();
-                connectedEntry = connCandidates
-                    .OrderBy(e => e.ReconciledToPumpId == entry.DsmEntryId ? 0 : 1)
-                    .ThenBy(e => e.DsmEntryId >= entry.DsmEntryId ? (e.DsmEntryId - entry.DsmEntryId) : (100000 + Math.Abs(e.DsmEntryId - entry.DsmEntryId)))
-                    .FirstOrDefault();
+                var effectiveConnectedPumps = entry.GetEffectiveConnectedPumpIds();
+                if (effectiveConnectedPumps.Count > 0)
+                {
+                    var connCandidates = await context.DsmEntries
+                        .Include(e => e.NozzleReadings)
+                        .Where(e => e.ShiftId == entry.ShiftId
+                            && (e.ReconciledToPumpId == entry.DsmEntryId 
+                                || (effectiveConnectedPumps.Contains(e.PumpId) && (e.ReconciledToPumpId == entry.PumpId || (e.DsmName != null && entry.DsmName != null && e.DsmName.ToLower() == entry.DsmName.ToLower())))))
+                        .ToListAsync();
+
+                    foreach (var connPumpId in effectiveConnectedPumps)
+                    {
+                        var matchedSlave = connCandidates
+                            .Where(e => e.PumpId == connPumpId)
+                            .OrderBy(e => e.ReconciledToPumpId == entry.DsmEntryId ? 0 : 1)
+                            .ThenBy(e => e.DsmEntryId >= entry.DsmEntryId ? (e.DsmEntryId - entry.DsmEntryId) : (100000 + Math.Abs(e.DsmEntryId - entry.DsmEntryId)))
+                            .FirstOrDefault();
+
+                        if (matchedSlave != null)
+                        {
+                            connectedEntries.Add(matchedSlave);
+                        }
+                    }
+                }
             }
 
             NozzleReadings.Clear();
@@ -2407,26 +2488,29 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                 }
             }
 
-            if (connectedEntry != null && connectedEntry.NozzleReadings != null)
+            foreach (var connectedEntry in connectedEntries)
             {
-                var uniqueConnectedReadings = connectedEntry.NozzleReadings
-                    .GroupBy(r => r.NozzleNumber)
-                    .Select(g => g.OrderByDescending(r => r.NozzleReadingId).First())
-                    .ToList();
-
-                foreach (var r in uniqueConnectedReadings)
+                if (connectedEntry.NozzleReadings != null)
                 {
-                    var row = new DsmNozzleRow
+                    var uniqueConnectedReadings = connectedEntry.NozzleReadings
+                        .GroupBy(r => r.NozzleNumber)
+                        .Select(g => g.OrderByDescending(r => r.NozzleReadingId).First())
+                        .ToList();
+
+                    foreach (var r in uniqueConnectedReadings)
                     {
-                        NozzleId = r.NozzleNumber,
-                        FuelType = GetFuelTypeName(connectedEntry.PumpId, r.NozzleNumber, approvedSub.ShiftDate),
-                        OpeningReading = r.OpeningReading,
-                        ClosingReading = r.ClosingReading,
-                        Rate = r.Rate,
-                        SaleLitres = r.SaleLitres,
-                        Amount = r.Amount
-                    };
-                    NozzleReadings.Add(row);
+                        var row = new DsmNozzleRow
+                        {
+                            NozzleId = r.NozzleNumber,
+                            FuelType = GetFuelTypeName(connectedEntry.PumpId, r.NozzleNumber, approvedSub.ShiftDate),
+                            OpeningReading = r.OpeningReading,
+                            ClosingReading = r.ClosingReading,
+                            Rate = r.Rate,
+                            SaleLitres = r.SaleLitres,
+                            Amount = r.Amount
+                        };
+                        NozzleReadings.Add(row);
+                    }
                 }
             }
 
@@ -2596,27 +2680,50 @@ public class DsmApprovedSubmissionDto : ObservableObject
     public string Notes { get; set; } = string.Empty;
     public string? AttachmentUrl { get; set; }
 
-    public int? ConnectedPumpId
+    public List<int> ConnectedPumpIds
     {
         get
         {
-            if (string.IsNullOrEmpty(MetadataJson)) return null;
+            if (string.IsNullOrEmpty(MetadataJson)) return new List<int>();
             try
             {
-                var metaObj = JsonConvert.DeserializeObject<dynamic>(MetadataJson);
-                if (metaObj != null && metaObj.connectedPumpId != null)
+                var metaObj = JsonConvert.DeserializeObject<Newtonsoft.Json.Linq.JObject>(MetadataJson);
+                if (metaObj != null)
                 {
-                    return (int?)metaObj.connectedPumpId;
+                    var list = new List<int>();
+                    if (metaObj["connectedPumpIds"] != null)
+                    {
+                        var arr = metaObj["connectedPumpIds"]!.ToObject<List<int>>();
+                        if (arr != null) list.AddRange(arr);
+                    }
+                    if (list.Count == 0 && metaObj["connectedPumpId"] != null)
+                    {
+                        var scalar = (int?)metaObj["connectedPumpId"];
+                        if (scalar.HasValue && scalar.Value > 0) list.Add(scalar.Value);
+                    }
+                    return list.Where(id => id != PumpId && id > 0).Distinct().ToList();
                 }
             }
             catch {}
-            return null;
+            return new List<int>();
         }
     }
 
-    public string TitleDisplay => ConnectedPumpId.HasValue 
-        ? $"{DsmName} - Pump {PumpId} + Pump {ConnectedPumpId.Value} (Connected) - Shift {ShiftType}"
-        : $"{DsmName} - Pump {PumpId} - Shift {ShiftType}";
+    public int? ConnectedPumpId => ConnectedPumpIds.Count > 0 ? ConnectedPumpIds[0] : null;
+
+    public string TitleDisplay
+    {
+        get
+        {
+            var connected = ConnectedPumpIds;
+            if (connected.Count > 0)
+            {
+                var connectedStr = string.Join(" + ", connected.Select(id => $"Pump {id}"));
+                return $"{DsmName} - Pump {PumpId} + {connectedStr} (Connected) - Shift {ShiftType}";
+            }
+            return $"{DsmName} - Pump {PumpId} - Shift {ShiftType}";
+        }
+    }
     public string ShiftDateDisplay => ShiftDate.ToString("dd MMM yyyy");
     public string SubmittedTimeDisplay => SubmittedAt.ToLocalTime().ToString("hh:mm tt");
     public string ApprovedTimeDisplay => ApprovedAt.ToLocalTime().ToString("hh:mm tt");
