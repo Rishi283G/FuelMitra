@@ -16,12 +16,14 @@ public class ReportService : IReportService
 {
     private readonly IShiftAggregationService _aggregation;
     private readonly IServiceProvider? _serviceProvider;
+    private readonly IShiftCycleService _shiftCycleService;
     private readonly ILogger _logger = Log.ForContext<ReportService>();
 
     public ReportService(IShiftAggregationService aggregation, IServiceProvider? serviceProvider = null)
     {
         _aggregation = aggregation;
         _serviceProvider = serviceProvider;
+        _shiftCycleService = serviceProvider?.GetService<IShiftCycleService>() ?? new ShiftCycleService();
     }
 
     public ShiftReportDto CalculateShiftReport(
@@ -39,7 +41,7 @@ public class ReportService : IReportService
         {
             Date = date,
             DateString = date.ToString("dd/MM/yyyy"),
-            ShiftLabel = shiftType == "A" ? "I" : shiftType == "B" ? "II" : shiftType == "C" ? "III" : shiftType,
+            ShiftLabel = _shiftCycleService.NormalizeShiftType(shiftType) == "A" ? "I" : _shiftCycleService.NormalizeShiftType(shiftType) == "B" ? "II" : "III",
             StationName = stationName
         };
 
@@ -72,6 +74,7 @@ public class ReportService : IReportService
 
         // 6. Debtor Repayments
         var repaymentsList = new List<CreditorRepayment>();
+        var normShift = _shiftCycleService.NormalizeShiftType(shiftType);
         if (repayments != null)
         {
             foreach (var r in repayments)
@@ -81,15 +84,20 @@ public class ReportService : IReportService
                 if (repDate == date.Date)
                 {
                     bool match = false;
-                    if (!string.IsNullOrWhiteSpace(r.ShiftNumber) && string.Equals(r.ShiftNumber.Trim(), shiftType.Trim(), StringComparison.OrdinalIgnoreCase))
+                    var rShiftNorm = !string.IsNullOrWhiteSpace(r.ShiftNumber) ? _shiftCycleService.NormalizeShiftType(r.ShiftNumber) : null;
+                    if (rShiftNorm != null)
+                    {
+                        match = string.Equals(rShiftNorm, normShift, StringComparison.OrdinalIgnoreCase);
+                    }
+                    else if (normShift == "B" && classified.SettlementWindow == "Day")
                     {
                         match = true;
                     }
-                    else if (shiftType == "B" && classified.SettlementWindow == "Day")
+                    else if (normShift == "C" && classified.SettlementWindow == "Night")
                     {
                         match = true;
                     }
-                    else if (shiftType == "A" && (classified.SettlementWindow == "Morning" || classified.SettlementWindow == "Night"))
+                    else if (normShift == "A" && classified.SettlementWindow == "Morning")
                     {
                         match = true;
                     }
@@ -192,15 +200,23 @@ public class ReportService : IReportService
             var pc = entry.PaymentCollection;
             double qrSum = entry.QrPayments?.Sum(q => q.Amount) ?? 0;
             double qrM = entry.QrPayments?.Where(q => q.Slot == "Morning" || q.Slot == "Day" || string.IsNullOrEmpty(q.Slot)).Sum(q => q.Amount) ?? 0;
-            double qrN = entry.QrPayments?.Where(q => q.Slot == "Night").Sum(q => q.Amount) ?? 0;
+            double qrN = entry.QrPayments?.Where(q => q.Slot == "Night" || (normShift == "C" && string.IsNullOrEmpty(q.Slot))).Sum(q => q.Amount) ?? 0;
 
-            if (shiftType == "B")
+            if (normShift == "B")
             {
                 phonePeMorning += (pc?.PhonePeDay ?? 0) + qrSum;
                 phonePeCardMorning += pc?.PhonePeCardDay ?? 0;
                 creditCardMorning += pc?.CreditCardDay ?? 0;
                 petroCardMorning += (pc?.PetroCardDay ?? 0) > 0 ? pc.PetroCardDay : (pc?.PetroCardMorning ?? 0);
                 petroCard += (pc?.PetroCardDay ?? 0) > 0 ? pc.PetroCardDay : (pc?.PetroCardMorning ?? 0);
+            }
+            else if (normShift == "C")
+            {
+                phonePeNight += (pc?.PhonePeNight ?? 0) + qrSum;
+                phonePeCardNight += pc?.PhonePeCardNight ?? 0;
+                creditCardNight += pc?.CreditCardNight ?? 0;
+                petroCardNight += (pc?.PetroCardNight ?? 0) > 0 ? pc.PetroCardNight : (pc?.PetroCardMorning ?? 0);
+                petroCard += (pc?.PetroCardNight ?? 0) > 0 ? pc.PetroCardNight : (pc?.PetroCardMorning ?? 0);
             }
             else
             {
@@ -216,17 +232,17 @@ public class ReportService : IReportService
             }
         }
 
-        dto.PetroCardMorning = petroCardMorning + (shiftType == "B" ? dto.PetroCardRepayments : 0);
-        dto.PetroCardNight = petroCardNight + (shiftType != "B" ? dto.PetroCardRepayments : 0);
+        dto.PetroCardMorning = petroCardMorning + (normShift == "B" ? dto.PetroCardRepayments : 0);
+        dto.PetroCardNight = petroCardNight + (normShift != "B" ? dto.PetroCardRepayments : 0);
 
 
         // Apply debtor repayments adjustments (silent additions per logic rules)
         double finalCashDeposit = dto.Cash1.GrandTotal;
         double finalCashInHand = dto.Cash2.GrandTotal + dto.CashRepayments;
-        double finalPhonePeMorning = phonePeMorning + (shiftType == "B" ? dto.PhonePeRepayments : 0);
-        double finalPhonePeNight = phonePeNight + (shiftType != "B" ? dto.PhonePeRepayments : 0);
-        double finalCreditCardMorning = creditCardMorning + (shiftType == "B" ? dto.CreditCardRepayments : 0);
-        double finalCreditCardNight = creditCardNight + (shiftType != "B" ? dto.CreditCardRepayments : 0);
+        double finalPhonePeMorning = phonePeMorning + (normShift == "B" ? dto.PhonePeRepayments : 0);
+        double finalPhonePeNight = phonePeNight + (normShift != "B" ? dto.PhonePeRepayments : 0);
+        double finalCreditCardMorning = creditCardMorning + (normShift == "B" ? dto.CreditCardRepayments : 0);
+        double finalCreditCardNight = creditCardNight + (normShift != "B" ? dto.CreditCardRepayments : 0);
         double finalPetroCard = petroCard + dto.PetroCardRepayments;
         double finalPhonePeCardMorning = phonePeCardMorning;
         double finalPhonePeCardNight = phonePeCardNight;
@@ -548,8 +564,9 @@ public class ReportService : IReportService
         // 1. Fuel Sales (Table E / DSR)
         var entriesList = MergeConnectedPumpEntries(entries ?? new List<DsmEntry>());
         var todayEntries = entriesList.Where(e => {
-            var d = e.Shift != null ? e.Shift.ShiftDate.Date : (e.CreatedAt != default ? e.CreatedAt.Date : startDate.Date);
-            return d >= startDate.Date && d <= endDate.Date;
+            if (e.Shift != null)
+                return e.Shift.ShiftDate.Date >= startDate.Date && e.Shift.ShiftDate.Date <= endDate.Date;
+            return true;
         }).ToList();
 
         dto.FuelSales = BuildDynamicFuelSales(todayEntries, hsdRate, msIRate, msIIRate, cngRate, startDate);
@@ -685,12 +702,15 @@ public class ReportService : IReportService
             double qrM = entry.QrPayments?.Where(q => q.Slot == "Morning" || q.Slot == "Day" || string.IsNullOrEmpty(q.Slot)).Sum(q => q.Amount) ?? 0;
             double qrN = entry.QrPayments?.Where(q => q.Slot == "Night").Sum(q => q.Amount) ?? 0;
 
-            var rawType = entry.Shift?.ShiftType ?? "";
-            var sType = (rawType == "I" || rawType == "Shift I") ? "A" : (rawType == "II" || rawType == "Shift II") ? "B" : (rawType == "III" || rawType == "Shift III") ? "C" : rawType;
+            var sType = _shiftCycleService.NormalizeShiftType(entry.Shift?.ShiftType ?? "");
 
             if (sType == "B")
             {
                 phonePeDirectDay += (pc?.PhonePeDay ?? 0) + qrSum;
+            }
+            else if (sType == "C")
+            {
+                phonePeDirectNight += (pc?.PhonePeNight ?? 0) + qrSum;
             }
             else
             {

@@ -1224,7 +1224,7 @@ public class ExcelExportService
                 r++;
 
                 worksheet.Cell(r, 1).Value = "Gross Sale (B)";
-                worksheet.Cell(r, 2).Value = report.ExpectedCollection; worksheet.Cell(r, 2).Style.NumberFormat.Format = "₹#,##0.00";
+                worksheet.Cell(r, 2).Value = report.TotalFuelAmount; worksheet.Cell(r, 2).Style.NumberFormat.Format = "₹#,##0.00";
                 ApplyTotalRowBorders(worksheet, r, 2);
                 r++;
 
@@ -1285,7 +1285,7 @@ public class ExcelExportService
             worksheet.Range(r, 1, r, maxCols).Merge();
             r++;
 
-            var managersText = $"Shift 1 Manager: {report.Shift1Manager ?? "—"} | Shift 2 Manager: {report.Shift2Manager ?? "—"}";
+            var managersText = $"Shift A Manager: {report.Shift1Manager ?? "—"} | Shift B Manager: {report.Shift2Manager ?? "—"} | Shift C Manager: {report.Shift3Manager ?? "—"}";
             worksheet.Cell(r, 1).Value = managersText;
             worksheet.Cell(r, 1).Style.Font.Italic = true;
             worksheet.Cell(r, 1).Style.Font.FontSize = 10;
@@ -1509,7 +1509,7 @@ public class ExcelExportService
                 r++;
 
                 worksheet.Cell(r, 1).Value = "Total Day Sale (B)";
-                worksheet.Cell(r, 2).Value = report.ExpectedCollection; worksheet.Cell(r, 2).Style.NumberFormat.Format = "₹#,##0.00";
+                worksheet.Cell(r, 2).Value = report.TotalFuelAmount; worksheet.Cell(r, 2).Style.NumberFormat.Format = "₹#,##0.00";
                 ApplyTotalRowBorders(worksheet, r, 2);
                 r++;
 

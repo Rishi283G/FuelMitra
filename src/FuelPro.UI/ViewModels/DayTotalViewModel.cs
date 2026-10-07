@@ -25,6 +25,7 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
     private readonly ITidCalculationService _tidService;
     private readonly IAgsInventoryService _inventoryService;
     private readonly IReportService _reportService;
+    private readonly IShiftCycleService _shiftCycleService;
     private readonly ILogger _logger = Log.ForContext<DayTotalViewModel>();
     private List<DsmEntry> _allEntries = new();
 
@@ -36,6 +37,7 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
     public string[] Presets { get; } = { "Today", "Yesterday", "This Week", "This Month", "Last 7 Days", "Last 30 Days", "Custom" };
     [ObservableProperty] private string _selectedShift1Manager = "";
     [ObservableProperty] private string _selectedShift2Manager = "";
+    [ObservableProperty] private string _selectedShift3Manager = "";
     public ObservableCollection<string> ManagerOptions { get; } = new();
     [ObservableProperty] private bool _isLoading;
     [ObservableProperty] private bool _hasData;
@@ -140,6 +142,7 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
         _tidService = App.Services.GetRequiredService<ITidCalculationService>();
         _inventoryService = App.Services.GetRequiredService<IAgsInventoryService>();
         _reportService = App.Services.GetRequiredService<IReportService>();
+        _shiftCycleService = App.Services?.GetService<IShiftCycleService>() ?? new ShiftCycleService();
         _featureService = App.Services.GetRequiredService<IFeatureToggleService>();
         _collectionTypeService = App.Services?.GetService<ICollectionTypeService>();
 
@@ -299,6 +302,11 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
         if (CurrentReport != null) CurrentReport.Shift2Manager = value;
     }
 
+    partial void OnSelectedShift3ManagerChanged(string value)
+    {
+        if (CurrentReport != null) CurrentReport.Shift3Manager = value;
+    }
+
     [RelayCommand]
     private async Task LoadDayDataAsync()
     {
@@ -421,11 +429,14 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
                     SelectedShift1Manager = settings.Shift1Manager ?? "";
                 if (string.IsNullOrWhiteSpace(SelectedShift2Manager))
                     SelectedShift2Manager = settings.Shift2Manager ?? "";
+                if (string.IsNullOrWhiteSpace(SelectedShift3Manager))
+                    SelectedShift3Manager = settings.Shift3Manager ?? "";
             }
             if (CurrentReport != null)
             {
                 CurrentReport.Shift1Manager = SelectedShift1Manager;
                 CurrentReport.Shift2Manager = SelectedShift2Manager;
+                CurrentReport.Shift3Manager = SelectedShift3Manager;
             }
 
             // 1. Calculate Nozzle-wise Sale
@@ -554,7 +565,7 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
             TotalTesting = TestingSummaryRows.Sum(t => t.Amount);
 
             ReconciliationTotalAmount = report.ActualCollection;
-            GrossDaySaleTotal = report.ExpectedCollection;
+            GrossDaySaleTotal = report.TotalFuelAmount;
             TotalDsmShort = report.TotalDsmShort;
             PersonalDebtorRows = new ObservableCollection<DsmPersonalDebtorPrintDto>(report.PersonalDebtors ?? new());
             TotalDsmLoss = PersonalDebtorRows.Sum(p => p.Amount);
@@ -702,10 +713,11 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
     {
         try
         {
-            var saveResult = await _inventoryService.SaveAndPersistInventoryAsync(EndDate, "B", NozzleGroups.ToList());
+            var closingShift = _shiftCycleService?.GetClosingShiftForDate(EndDate) ?? "C";
+            var saveResult = await _inventoryService.SaveAndPersistInventoryAsync(EndDate, closingShift, NozzleGroups.ToList());
             if (saveResult.Success)
             {
-                var propResult = await _inventoryService.PropagateInventoryCalculationsAsync(EndDate, "B");
+                var propResult = await _inventoryService.PropagateInventoryCalculationsAsync(EndDate, closingShift);
                 if (propResult.Success)
                 {
                     StatusMessage = "✅ Tank stocks saved and propagated successfully!";

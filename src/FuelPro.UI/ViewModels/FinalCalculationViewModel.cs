@@ -130,7 +130,7 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
 
     public string[] PaymentModes { get; } = { "Cash", "PhonePe", "PineLabs Card", "PetroCard", "Bank Transfer", "Cheque" };
 
-    public string[] ShiftOptions { get; } = { "A", "B" };
+    public string[] ShiftOptions { get; } = { "A", "B", "C" };
 
     private List<DsmEntry> _loadedEntries = new();
     public IReadOnlyList<DsmEntry> LoadedEntries => _loadedEntries;
@@ -517,7 +517,7 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
             }
             ReconciliationRows = new ObservableCollection<ReconciliationRowDto>(reconRows);
             ReconciliationTotal = report.ActualCollection;
-            GrossSaleTotal = report.ExpectedCollection;
+            GrossSaleTotal = report.TotalFuelAmount;
             TotalDsmShort = report.TotalDsmShort;
             PersonalDebtorRows = new ObservableCollection<DsmPersonalDebtorPrintDto>(report.PersonalDebtors ?? new());
             TotalDsmLoss = PersonalDebtorRows.Sum(p => p.Amount);
@@ -628,7 +628,7 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
         }
         ReconciliationRows = new ObservableCollection<ReconciliationRowDto>(reconRows);
         ReconciliationTotal = report.ActualCollection;
-        GrossSaleTotal = report.ExpectedCollection;
+        GrossSaleTotal = report.TotalFuelAmount;
         TotalDsmShort = report.TotalDsmShort;
         PersonalDebtorRows = new ObservableCollection<DsmPersonalDebtorPrintDto>(report.PersonalDebtors ?? new());
         TotalDsmLoss = PersonalDebtorRows.Sum(p => p.Amount);

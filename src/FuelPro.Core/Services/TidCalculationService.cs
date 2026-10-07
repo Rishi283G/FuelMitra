@@ -60,14 +60,16 @@ public class TidCalculationService : ITidCalculationService
         // Prefetch all shifts and repayments concurrently
         var morningShiftTask = _shiftRepo.GetShiftAsync(date.Date, "A");
         var dayShiftTask = _shiftRepo.GetShiftAsync(date.Date, "B");
+        var shiftCTask = _shiftRepo.GetShiftAsync(date.Date, "C");
         var nightShiftTask = useMorningNight ? _shiftRepo.GetShiftAsync(tomorrowDate, "A") : Task.FromResult(Result<Shift>.Fail("Not needed"));
         var repDateTask = _repaymentRepo.GetByDateAsync(date.Date);
         var repNextTask = useMorningNight ? _repaymentRepo.GetByDateAsync(tomorrowDate) : Task.FromResult(Result<List<CreditorRepayment>>.Ok(new List<CreditorRepayment>()));
 
-        await Task.WhenAll(morningShiftTask, dayShiftTask, nightShiftTask, repDateTask, repNextTask);
+        await Task.WhenAll(morningShiftTask, dayShiftTask, shiftCTask, nightShiftTask, repDateTask, repNextTask);
 
         var morningShiftRes = await morningShiftTask;
         var dayShiftRes = await dayShiftTask;
+        var shiftCRes = await shiftCTask;
         var nightShiftRes = await nightShiftTask;
         var repDateRes = await repDateTask;
         var repNextRes = await repNextTask;
@@ -81,14 +83,19 @@ public class TidCalculationService : ITidCalculationService
             ? _dsmRepo.GetEntriesForShiftAsync(dayShiftRes.Data.ShiftId) 
             : Task.FromResult(Result<List<DsmEntry>>.Ok(new List<DsmEntry>()));
 
+        var shiftCEntriesTask = shiftCRes.Success && shiftCRes.Data != null 
+            ? _dsmRepo.GetEntriesForShiftAsync(shiftCRes.Data.ShiftId) 
+            : Task.FromResult(Result<List<DsmEntry>>.Ok(new List<DsmEntry>()));
+
         var nightEntriesTask = nightShiftRes.Success && nightShiftRes.Data != null 
             ? _dsmRepo.GetEntriesForShiftAsync(nightShiftRes.Data.ShiftId) 
             : Task.FromResult(Result<List<DsmEntry>>.Ok(new List<DsmEntry>()));
 
-        await Task.WhenAll(morningEntriesTask, dayEntriesTask, nightEntriesTask);
+        await Task.WhenAll(morningEntriesTask, dayEntriesTask, shiftCEntriesTask, nightEntriesTask);
 
         var morningEntriesRes = await morningEntriesTask;
         var dayEntriesRes = await dayEntriesTask;
+        var shiftCEntriesRes = await shiftCEntriesTask;
         var nightEntriesRes = await nightEntriesTask;
 
         // 1. Slot 1: Shift A of D (today)
@@ -397,8 +404,116 @@ public class TidCalculationService : ITidCalculationService
                 }
             }
 
-        // 3. Night slot: Shift A of D+1 (tomorrow) - Only if 3-slot midnight split is enabled
-        if (useMorningNight && nightEntriesRes.Success && nightEntriesRes.Data != null)
+        // 2b. Shift C of D (today)
+        if (shiftCEntriesRes.Success && shiftCEntriesRes.Data != null)
+        {
+            foreach (var entry in shiftCEntriesRes.Data.OrderBy(e => e.PumpId))
+            {
+                var pc = entry.PaymentCollection;
+                if (pc == null) continue;
+                pc.DsmEntry = entry;
+
+                // PhonePe Direct Shift C
+                double ppVal = pc.PhonePeNight > 0 ? pc.PhonePeNight : (pc.PhonePe > 0 ? pc.PhonePe : pc.PhonePeMorning);
+                if (ppVal > 0)
+                {
+                    sheet.PhonePePayments.Add(new TidItemDto
+                    {
+                        DsmName = entry.DsmName,
+                        PumpId = entry.PumpId,
+                        RomanIndex = ToRoman(entry.PumpId),
+                        Amount = ppVal,
+                        Tid = pc.PhonePeTidNight ?? pc.PhonePeTid ?? pc.PhonePeTidMorning,
+                        Batch = pc.PhonePeBatchNight ?? pc.PhonePeBatch ?? pc.PhonePeBatchMorning,
+                        Slot = "Night",
+                        PaymentCollection = pc,
+                        ShiftLabel = "Shift C",
+                        SlotDate = date.Date.ToString("dd-MMM-yyyy"),
+                        TimeWindow = "Shift C",
+                        SlotDisplaySubtitle = $"({date.Date:dd MMM} | Shift C)",
+                        CollectionTypeCode = "PHONEPE",
+                        CollectionTypeName = "PhonePe"
+                    });
+                    sheet.PhonePeDirectNight += ppVal;
+                }
+
+                // Credit Card Shift C
+                double ccVal = pc.CreditCardNight > 0 ? pc.CreditCardNight : (pc.CreditCard > 0 ? pc.CreditCard : pc.CreditCardMorning);
+                if (ccVal > 0)
+                {
+                    sheet.CardPayments.Add(new TidItemDto
+                    {
+                        DsmName = entry.DsmName,
+                        PumpId = entry.PumpId,
+                        RomanIndex = ToRoman(entry.PumpId),
+                        Amount = ccVal,
+                        Tid = pc.CreditCardTidNight ?? pc.CardTid ?? pc.CreditCardTidMorning,
+                        Batch = pc.CreditCardBatchNight ?? pc.CardBatch ?? pc.CreditCardBatchMorning,
+                        Slot = "Night",
+                        PaymentCollection = pc,
+                        ShiftLabel = "Shift C",
+                        SlotDate = date.Date.ToString("dd-MMM-yyyy"),
+                        TimeWindow = "Shift C",
+                        SlotDisplaySubtitle = $"({date.Date:dd MMM} | Shift C)",
+                        CollectionTypeCode = "PINELAB_CARD",
+                        CollectionTypeName = "PINELAB CARD"
+                    });
+                    sheet.PineLabsCardNight += ccVal;
+                }
+
+                // Petro Card Shift C
+                double petroVal = pc.PetroCardNight > 0 ? pc.PetroCardNight : (pc.PetroCard > 0 ? pc.PetroCard : pc.PetroCardMorning);
+                if (petroVal > 0)
+                {
+                    sheet.PetroCardPayments.Add(new TidItemDto
+                    {
+                        DsmName = entry.DsmName,
+                        PumpId = entry.PumpId,
+                        RomanIndex = ToRoman(entry.PumpId),
+                        Amount = petroVal,
+                        Tid = pc.PetroCardTidNight ?? pc.PetroCardTid ?? pc.PetroCardTidMorning,
+                        Batch = pc.PetroCardBatchNight ?? pc.PetroCardBatch ?? pc.PetroCardBatchMorning,
+                        Slot = "Night",
+                        PaymentCollection = pc,
+                        ShiftLabel = "Shift C",
+                        SlotDate = date.Date.ToString("dd-MMM-yyyy"),
+                        TimeWindow = "Shift C",
+                        SlotDisplaySubtitle = $"({date.Date:dd MMM} | Shift C)",
+                        CollectionTypeCode = "PETROCARD",
+                        CollectionTypeName = "Petro Card"
+                    });
+                    sheet.PetroCardNight += petroVal;
+                }
+
+                // Dynamic collection items Shift C
+                if (pc.Items != null)
+                {
+                    foreach (var item in pc.Items.Where(i => i.Amount > 0 || !string.IsNullOrWhiteSpace(i.Tid)))
+                    {
+                        dynamicDsmItems.Add(new TidItemDto
+                        {
+                            DsmName = entry.DsmName,
+                            PumpId = entry.PumpId,
+                            RomanIndex = ToRoman(entry.PumpId),
+                            Amount = item.Amount,
+                            Tid = !string.IsNullOrWhiteSpace(item.Tid) ? item.Tid : "—",
+                            Batch = !string.IsNullOrWhiteSpace(item.Batch) ? item.Batch : "—",
+                            Slot = "Night",
+                            PaymentCollection = pc,
+                            ShiftLabel = "Shift C",
+                            SlotDate = date.Date.ToString("dd-MMM-yyyy"),
+                            TimeWindow = "Shift C",
+                            SlotDisplaySubtitle = $"({date.Date:dd MMM} | Shift C)",
+                            CollectionTypeCode = item.CollectionTypeCode
+                        });
+                    }
+                }
+            }
+        }
+
+        // 3. Night slot: Shift A of D+1 (tomorrow) - Only if 3-slot midnight split is enabled AND today does not have Shift C
+        bool hasShiftCEntries = shiftCEntriesRes.Success && shiftCEntriesRes.Data != null && shiftCEntriesRes.Data.Count > 0;
+        if (useMorningNight && !hasShiftCEntries && nightEntriesRes.Success && nightEntriesRes.Data != null)
         {
             foreach (var entry in nightEntriesRes.Data.OrderBy(e => e.PumpId))
                     {
@@ -562,7 +677,8 @@ public class TidCalculationService : ITidCalculationService
         // Populate debtor repayments
         var allRepayments = new List<CreditorRepayment>();
         if (repDateRes.Success && repDateRes.Data != null) allRepayments.AddRange(repDateRes.Data);
-        if (useMorningNight && repNextRes.Success && repNextRes.Data != null) allRepayments.AddRange(repNextRes.Data);
+        bool hasShiftC = shiftCRes.Success && shiftCRes.Data != null;
+        if (useMorningNight && !hasShiftC && repNextRes.Success && repNextRes.Data != null) allRepayments.AddRange(repNextRes.Data);
 
         foreach (var r in allRepayments)
         {
@@ -580,6 +696,13 @@ public class TidCalculationService : ITidCalculationService
                     shiftLabel = labelSlot2;
                     timeWindow = timeWindowSlot2;
                     slotSubtitle = subtitleSlot2;
+                }
+                else if (string.Equals(r.ShiftNumber, "C", StringComparison.OrdinalIgnoreCase))
+                {
+                    slot = "Night";
+                    shiftLabel = "Shift C";
+                    timeWindow = "Shift C";
+                    slotSubtitle = $"({date.Date:dd MMM} | Shift C)";
                 }
                 else
                 {

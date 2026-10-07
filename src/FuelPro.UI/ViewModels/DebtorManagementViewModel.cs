@@ -58,6 +58,7 @@ public partial class DebtorManagementViewModel : ObservableObject
     private readonly FuelProDbContext _dbContext;
     private readonly ICollectionTypeService? _collectionTypeService;
     private readonly IFeatureToggleService? _featureService;
+    private readonly IShiftCycleService _shiftCycleService;
     private readonly Dictionary<string, bool> _paymentModeTidMap = new(StringComparer.OrdinalIgnoreCase);
     private readonly ILogger _logger = Log.ForContext<DebtorManagementViewModel>();
 
@@ -355,6 +356,7 @@ public partial class DebtorManagementViewModel : ObservableObject
         _dbContext = App.Services.GetRequiredService<FuelProDbContext>();
         _collectionTypeService = App.Services.GetService<ICollectionTypeService>();
         _featureService = App.Services.GetService<IFeatureToggleService>();
+        _shiftCycleService = App.Services.GetService<IShiftCycleService>() ?? new ShiftCycleService();
         _selectedRepaymentShift = "Shift A";
 
         if (_collectionTypeService != null)
@@ -427,27 +429,14 @@ public partial class DebtorManagementViewModel : ObservableObject
             }
             IsTidBatchRequired = _paymentModeTidMap.TryGetValue(SelectedPaymentMode, out bool req) && req;
 
-            // Load shifts dynamically based on feature toggle / shift cycle mode
-            bool useMorningNight = _featureService?.IsFeatureEnabled("Collection_UseMorningNight", false) ?? false;
+            // Load shifts dynamically for repayment: Shift A, Shift B, Shift C
             RepaymentShifts.Clear();
-            if (useMorningNight)
+            RepaymentShifts.Add("Shift A");
+            RepaymentShifts.Add("Shift B");
+            RepaymentShifts.Add("Shift C");
+            if (!RepaymentShifts.Contains(SelectedRepaymentShift))
             {
-                RepaymentShifts.Add("Shift B (Day)");
-                RepaymentShifts.Add("Shift A (Morning)");
-                RepaymentShifts.Add("Shift A (Night)");
-                if (!RepaymentShifts.Contains(SelectedRepaymentShift))
-                {
-                    SelectedRepaymentShift = DateTime.Now.Hour < 20 ? "Shift B (Day)" : "Shift A (Night)";
-                }
-            }
-            else
-            {
-                RepaymentShifts.Add("Shift A");
-                RepaymentShifts.Add("Shift B");
-                if (!RepaymentShifts.Contains(SelectedRepaymentShift))
-                {
-                    SelectedRepaymentShift = "Shift A";
-                }
+                SelectedRepaymentShift = "Shift A";
             }
         }
         catch (Exception ex)
@@ -816,24 +805,8 @@ public partial class DebtorManagementViewModel : ObservableObject
                 await context.SaveChangesAsync();
             }
 
-            string shiftNumber;
-            DateTime finalRepaymentDate;
-
-            if (SelectedRepaymentShift == "Shift B (Day)" || SelectedRepaymentShift == "Shift B" || SelectedRepaymentShift == "B")
-            {
-                shiftNumber = "B";
-                finalRepaymentDate = RepaymentDate.Date.AddHours(12);
-            }
-            else if (SelectedRepaymentShift == "Shift A (Night)")
-            {
-                shiftNumber = "A";
-                finalRepaymentDate = RepaymentDate.Date.AddHours(22);
-            }
-            else
-            {
-                shiftNumber = "A";
-                finalRepaymentDate = RepaymentDate.Date.AddHours(4);
-            }
+            string shiftNumber = _shiftCycleService.NormalizeShiftType(SelectedRepaymentShift);
+            DateTime finalRepaymentDate = SettlementWindowResolver.GetRepaymentDateTime(RepaymentDate, shiftNumber);
 
             var repayment = new CreditorRepayment
             {

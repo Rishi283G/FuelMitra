@@ -53,7 +53,7 @@ public partial class DsmManagementViewModel : ObservableObject
     public ObservableCollection<DsmUser> ActiveDsmOptions { get; } = new();
     public ObservableCollection<int> PumpOptions { get; } = new();
     public ObservableCollection<ConnectedPumpOption> ConnectedPumpOptions { get; } = new();
-    public string[] ShiftOptions { get; } = { "A", "B" };
+    public string[] ShiftOptions { get; } = { "A", "B", "C" };
 
     [ObservableProperty] private DsmUser? _selectedDsmUser;
     [ObservableProperty] private int? _selectedPumpId;

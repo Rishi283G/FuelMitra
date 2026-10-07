@@ -56,3 +56,6 @@ scratch_*
 *.jpeg
 *.png
 *.jpg
+
+# Forensic and local database copies
+forensic_investigation/

@@ -62,6 +62,17 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
 .dsm-summary-table th.col-short, .dsm-summary-table td.col-short{white-space:nowrap;font-weight:700}
 .dsm-summary-table th.col-gross, .dsm-summary-table td.col-gross{white-space:nowrap;font-weight:700;color:#2e7d32}
 .dsm-summary-table tr.tr-total td.col-gross{color:#fff!important}
+.tank-columns-container{display:flex;gap:10px;align-items:flex-start;margin-bottom:15px}
+.tank-col{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:10px}
+.tank-card-print{border-radius:6px;padding:8px;box-shadow:0 1px 3px rgba(0,0,0,0.05);align-self:stretch;break-inside:avoid;page-break-inside:avoid;box-sizing:border-box}
+.tank-hdr-print{color:#fff;text-align:center;padding:3.5px;font-weight:700;border-radius:4px;font-size:11px;letter-spacing:.03em}
+.tank-info-print{margin-top:4px;font-size:9.5px;border-bottom:1px solid #ddd;padding-bottom:3px}
+.tank-badge-row{display:flex;justify-content:space-between;align-items:center;background:#fff;padding:2.5px 5px;margin:2px 0 3px 0;border-radius:4px;border:1px solid #ddd;font-size:10px}
+.tank-summary-table{width:100%;border-collapse:collapse;font-size:9px;line-height:1.2;margin-bottom:2px}
+.tank-summary-table td{padding:0.5px 0;font-size:9px}
+.tank-nozzle-table{width:100%;margin-top:4px;font-size:9.5px;border-collapse:collapse}
+.tank-nozzle-table th{background:none;color:#333;font-weight:700;padding:2px 2px;font-size:8.5px;border-bottom:1px solid #ddd;text-transform:uppercase}
+.tank-nozzle-table td{padding:2px 2px;border-bottom:1px solid #f0f0f0;font-size:9.5px;font-variant-numeric:tabular-nums}
 @media print{
   @page{size:A4 portrait;margin:0}
   body{background:#fff;font-size:10px;margin:4mm}
@@ -83,10 +94,17 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
   .dsm-summary-table th{white-space:normal!important;line-height:1.1!important}
   .dsm-summary-table th.col-others, .dsm-summary-table td.col-others{width:25px!important;max-width:28px!important;padding:2px 0.5px!important}
   .dsm-summary-table th.col-short, .dsm-summary-table td.col-short{min-width:48px!important}
-  #nozzleGroupsContainer{gap:6px!important;margin-bottom:4px!important}
-  #nozzleGroupsContainer > div{padding:3px 5px!important}
-  #nozzleGroupsContainer table{font-size:7.5px!important;line-height:1.1!important;margin-top:1px!important;margin-bottom:2px!important}
-  #nozzleGroupsContainer th,#nozzleGroupsContainer td{padding:1px 1.5px!important;font-size:7.5px!important}
+  #nozzleGroupsContainer{display:flex!important;gap:6px!important;align-items:flex-start!important;margin-bottom:5px!important}
+  .tank-col{flex:1 1 0!important;min-width:0!important;display:flex!important;flex-direction:column!important;gap:6px!important}
+  .tank-card-print{padding:4px 6px!important;border-width:1px!important;align-self:stretch!important;break-inside:avoid!important;page-break-inside:avoid!important}
+  .tank-hdr-print{font-size:10px!important;padding:2px 4px!important}
+  .tank-info-print{margin-top:2px!important;padding-bottom:2px!important}
+  .tank-badge-row{padding:2px 4px!important;margin:2px 0 2px 0!important;font-size:9.5px!important}
+  .tank-summary-table{font-size:9px!important;line-height:1.15!important;margin-bottom:2px!important}
+  .tank-summary-table td{padding:0.5px 0!important;font-size:9px!important}
+  .tank-nozzle-table{margin-top:2px!important;font-size:9px!important}
+  .tank-nozzle-table th{padding:1.5px 2px!important;font-size:8.5px!important}
+  .tank-nozzle-table td{padding:1.5px 2px!important;font-size:9px!important}
   .g2{gap:6px;padding:0 8px 2px;page-break-inside:auto;break-inside:auto}
   .col{gap:3px;page-break-inside:auto;break-inside:auto}
   tr{page-break-inside:avoid;break-inside:avoid}
@@ -113,12 +131,12 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
         <div>
           <div class="rpt-title" id="rptTitle">MITALI SERVICE STATION</div>
           <div class="rpt-tagline" style="font-size: 11px; font-weight: bold; letter-spacing: 0.08em; margin-top: 2px; color: #ffffff; opacity: 0.95;">KANDHARE NANGADE SURVE GROUP</div>
-          <div class="rpt-sub">Day Total Reconciliation &mdash; Full Day (Shift A + B)</div>
+          <div class="rpt-sub">Day Total Reconciliation &mdash; Full Day (Shift A + B + C)</div>
         </div>
       </div>
       <div>
         <div class="day-pill">&#128197; DAY TOTAL</div>
-        <div style="font-size:11px;font-weight:600;text-align:right;margin-top:4px;opacity:0.95;" id="hManager">Shift 1: &ndash; / Shift 2: &ndash;</div>
+        <div style="font-size:11px;font-weight:600;text-align:right;margin-top:4px;opacity:0.95;" id="hManager">Shift A: &ndash; / Shift B: &ndash; / Shift C: &ndash;</div>
       </div>
     </div>
     <div class="rpt-meta">
@@ -132,7 +150,7 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
   <!-- SECTION 1: NOZZLE READINGS & TANK STATUS -->
   <div class="sec">
     <div class="sec-title">1. Nozzle Readings &amp; Tank Status</div>
-    <div style="display: flex; gap: 15px; margin-bottom: 15px;" id="nozzleGroupsContainer"></div>
+    <div class="tank-columns-container" id="nozzleGroupsContainer"></div>
   </div>
   <hr class="div">
 
@@ -330,13 +348,14 @@ function renderData(){
 
   document.getElementById('hDate').textContent=d.dateString||d.date||'\u2013';
   document.getElementById('hStation').textContent=station;
-  document.getElementById('hShifts').textContent='Shift A + Shift B';
+  document.getElementById('hShifts').textContent='Shift A + Shift B + Shift C';
   document.getElementById('hPrinted').textContent=new Date().toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
   var mgrEl = document.getElementById('hManager');
   if(mgrEl){
     var m1 = d.shift1Manager || d.Shift1Manager || '\u2013';
     var m2 = d.shift2Manager || d.Shift2Manager || '\u2013';
-    mgrEl.textContent = 'Shift 1: ' + m1 + ' / Shift 2: ' + m2;
+    var m3 = d.shift3Manager || d.Shift3Manager;
+    mgrEl.textContent = 'Shift A: ' + m1 + ' / Shift B: ' + m2 + (m3 ? ' / Shift C: ' + m3 : '');
   }
 
   function normColCode(code) {
@@ -493,18 +512,49 @@ function renderData(){
     return undefined;
   }
 
-  // Render nozzle groups (Tank-wise layout)
+  // Render nozzle groups (3-Column Intentional Layout)
   var container = document.getElementById('nozzleGroupsContainer');
   if (container) {
     container.innerHTML = '';
+    container.className = 'tank-columns-container';
+    
+    // Create 3 independent vertical column containers
+    var col0 = document.createElement('div'); col0.className = 'tank-col'; col0.id = 'tankCol0';
+    var col1 = document.createElement('div'); col1.className = 'tank-col'; col1.id = 'tankCol1';
+    var col2 = document.createElement('div'); col2.className = 'tank-col'; col2.id = 'tankCol2';
+    container.appendChild(col0);
+    container.appendChild(col1);
+    container.appendChild(col2);
+
     var groups = getVal(d, 'tankSummary') || getVal(d, 'nozzleGroups') || [];
-    groups.forEach(function(g) {
+
+    // Helper to identify Mitali designated product slot:
+    // Slot 0 = CNG (Col 0, Top)
+    // Slot 1 = HSD (Col 1, Top)
+    // Slot 2 = SPEED (Col 2, Top, extends downward)
+    // Slot 3 = MS-I (Col 0, Bottom)
+    // Slot 4 = MS-II (Col 1, Bottom)
+    function getProductSlot(groupName, fuelType, idx) {
+      var text = ((groupName || '') + ' ' + (fuelType || '')).toUpperCase();
+      if (text.indexOf('CNG') !== -1) return 0;
+      if (text.indexOf('HSD') !== -1 && text.indexOf('HSD-II') === -1 && text.indexOf('HSD 2') === -1 && text.indexOf('HSD II') === -1) return 1;
+      if (text.indexOf('SPEED') !== -1 || text.indexOf('POWER') !== -1 || text.indexOf('XP') !== -1) return 2;
+      if (text.indexOf('MS-II') !== -1 || text.indexOf('MS 2') !== -1 || text.indexOf('MSII') !== -1 || text.indexOf('HSD-II') !== -1 || text.indexOf('HSD 2') !== -1) return 4;
+      if (text.indexOf('MS-I') !== -1 || text.indexOf('MS 1') !== -1 || text.indexOf('MSI') !== -1 || text.indexOf('MS') !== -1 || text.indexOf('PETROL') !== -1) return 3;
+      return 100 + idx;
+    }
+
+    var cardElements = [];
+    groups.forEach(function(g, idx) {
       var groupName = getVal(g, 'groupName') || '';
+      var fuelType = getVal(g, 'fuelType') || '';
       var dip = getVal(g, 'dip') || 0;
       var stock = getVal(g, 'stock') || 0;
       var rows = getVal(g, 'rows') || [];
       
-      var isCng = groupName.indexOf('CNG') !== -1;
+      var slot = getProductSlot(groupName, fuelType, idx);
+      
+      var isCng = slot === 0 || groupName.indexOf('CNG') !== -1;
       var isMs1 = !isCng && (groupName.indexOf('Petrol') !== -1 || groupName.indexOf('MS') !== -1 || groupName.indexOf('Tank 1') !== -1);
       var borderColor = isCng ? '#7B1FA2' : (isMs1 ? '#00C853' : '#0288D1');
       var headerBg = isCng ? '#7B1FA2' : (isMs1 ? '#00C853' : '#0288D1');
@@ -513,15 +563,18 @@ function renderData(){
       var unitFull = isCng ? ' Kg' : ' Ltr';
 
       var card = document.createElement('div');
-      card.style.cssText = 'flex: 1; border: 1.5px solid ' + borderColor + '; border-radius: 6px; padding: 10px; background: ' + cardBg + '; box-shadow: 0 1px 3px rgba(0,0,0,0.05);';
+      card.className = 'tank-card-print';
+      card.style.border = '1.5px solid ' + borderColor;
+      card.style.background = cardBg;
       
       var header = document.createElement('div');
-      header.style.cssText = 'background: ' + headerBg + '; color: #fff; text-align: center; padding: 4px; font-weight: bold; border-radius: 4px; font-size: 11px;';
+      header.className = 'tank-hdr-print';
+      header.style.background = headerBg;
       header.textContent = groupName;
       card.appendChild(header);
       
       var tankInfo = document.createElement('div');
-      tankInfo.style.cssText = 'margin-top: 6px; font-size: 9px; border-bottom: 1px solid #ddd; padding-bottom: 4px;';
+      tankInfo.className = 'tank-info-print';
       
       var opening = getVal(g, 'openingStock') || 0;
       var sales = getVal(g, 'fuelDispensed') || 0;
@@ -531,27 +584,24 @@ function renderData(){
       var variance = stock - calculated;
 
       tankInfo.innerHTML = 
-        '<div style="display:flex; justify-content:space-between; align-items:center; background:#fff; padding:4px 6px; margin:4px 0 6px 0; border-radius:4px; border:1px solid #ddd;">' +
-        '  <span style="font-weight:bold; font-size:11px; color:#222;">Dip: ' + dip + ' mm</span>' +
-        '  <span style="font-weight:bold; font-size:11px; color:#0B6E4F;">Stock: ' + parseFloat(stock).toFixed(2) + unitFull + '</span>' +
+        '<div class="tank-badge-row">' +
+        '  <span style="font-weight:bold; color:#222;">Dip: ' + parseFloat(dip).toFixed(2) + ' mm</span>' +
+        '  <span style="font-weight:bold; color:#0B6E4F;">Stock: ' + parseFloat(stock).toFixed(2) + unitFull + '</span>' +
         '</div>' +
-        '<table style="width:100%; border-collapse:collapse; font-size:9.5px; line-height:1.2; margin-bottom: 4px;">' +
-        '<tr><td style="color:#555; padding:1px 0;">Opening Stock:</td><td style="text-align:right; font-weight:500; padding:1px 0;">' + parseFloat(opening).toFixed(2) + unit + '</td></tr>' +
-        '<tr><td style="color:#555; padding:1px 0;">Receipts:</td><td style="text-align:right; font-weight:500; padding:1px 0;">+' + parseFloat(receipts).toFixed(2) + unit + '</td></tr>' +
-        '<tr><td style="color:#555; padding:1px 0;">Sales:</td><td style="text-align:right; font-weight:500; padding:1px 0;">-' + parseFloat(sales).toFixed(2) + unit + '</td></tr>' +
-        '<tr><td style="color:#555; padding:1px 0;">Testing:</td><td style="text-align:right; font-weight:500; padding:1px 0;">+' + parseFloat(testing).toFixed(2) + unit + '</td></tr>' +
-        '<tr style="border-top:1px dashed #ccc; font-weight:bold; color:#16211C;"><td style="padding:2px 0 1px 0;">Calculated Stock:</td><td style="text-align:right; padding:2px 0 1px 0;">' + parseFloat(calculated).toFixed(2) + unit + '</td></tr>' +
-        '<tr style="font-weight:bold; border-top:1px solid #ddd; border-bottom:1px solid #ddd; padding:2px 0;"><td style="padding:2px 0;">Variance:</td><td style="text-align:right; padding:2px 0; color:' + (variance >= 0 ? '#0B6E4F' : '#D32F2F') + ';">' + (variance >= 0 ? '+' : '') + parseFloat(variance).toFixed(2) + unit + '</td></tr>' +
+        '<table class="tank-summary-table">' +
+        '<tr><td style="color:#555; width:22%;">Opening:</td><td style="text-align:right; font-weight:500; width:28%;">' + parseFloat(opening).toFixed(2) + unit + '</td><td style="color:#555; width:22%; padding-left:4px;">Sales:</td><td style="text-align:right; font-weight:500; width:28%;">-' + parseFloat(sales).toFixed(2) + unit + '</td></tr>' +
+        '<tr><td style="color:#555;">Testing:</td><td style="text-align:right; font-weight:500;">+' + parseFloat(testing).toFixed(2) + unit + '</td><td style="color:#555; padding-left:4px;">Receipts:</td><td style="text-align:right; font-weight:500;">+' + parseFloat(receipts).toFixed(2) + unit + '</td></tr>' +
+        '<tr style="border-top:1px dashed #ccc; font-weight:bold; color:#16211C;"><td colspan="2">Calculated: <span style="font-weight:bold;">' + parseFloat(calculated).toFixed(2) + unit + '</span></td><td colspan="2" style="text-align:right; padding-left:4px;">Variance: <span style="color:' + (variance >= 0 ? '#0B6E4F' : '#D32F2F') + ';">' + (variance >= 0 ? '+' : '') + parseFloat(variance).toFixed(2) + unit + '</span></td></tr>' +
         '</table>';
       card.appendChild(tankInfo);
       
       var table = document.createElement('table');
-      table.style.cssText = 'width: 100%; margin-top: 8px; font-size: 10px; border-collapse: collapse;';
+      table.className = 'tank-nozzle-table';
       table.innerHTML = '<thead><tr>' +
-        '<th style="text-align: left; background: none; color: #333; font-weight: bold; padding: 2px; font-size: 9px; border-bottom: 1px solid #eee;">Noz</th>' +
-        '<th style="background: none; color: #333; font-weight: bold; padding: 2px; font-size: 9px; border-bottom: 1px solid #eee; text-align: right;">Opening</th>' +
-        '<th style="background: none; color: #333; font-weight: bold; padding: 2px; font-size: 9px; border-bottom: 1px solid #eee; text-align: right;">Closing</th>' +
-        '<th style="background: none; color: #333; font-weight: bold; padding: 2px; font-size: 9px; border-bottom: 1px solid #eee; text-align: right;">Sale</th>' +
+        '<th style="text-align: left; width: 40px;">Noz</th>' +
+        '<th style="text-align: right;">Opening</th>' +
+        '<th style="text-align: right;">Closing</th>' +
+        '<th style="text-align: right;">Sale</th>' +
         '</tr></thead>';
         
       var tbody = document.createElement('tbody');
@@ -567,16 +617,40 @@ function renderData(){
           
           var tr = document.createElement('tr');
           tr.style.opacity = opacity;
-          tr.innerHTML = '<td style="text-align: left; padding: 3px 2px; border-bottom: 1px solid #f5f5f5;">N' + nozNum + '</td>' +
-            '<td style="text-align: right; padding: 3px 2px; border-bottom: 1px solid #f5f5f5;">' + parseFloat(opening).toFixed(2) + '</td>' +
-            '<td style="text-align: right; padding: 3px 2px; border-bottom: 1px solid #f5f5f5;">' + parseFloat(closing).toFixed(2) + '</td>' +
-            '<td style="text-align: right; padding: 3px 2px; border-bottom: 1px solid #f5f5f5; font-weight: bold; color: #00663a;">' + parseFloat(sale).toFixed(2) + '</td>';
+          tr.innerHTML = '<td style="text-align: left; font-weight: 700;">N' + nozNum + '</td>' +
+            '<td style="text-align: right;">' + parseFloat(opening).toFixed(2) + '</td>' +
+            '<td style="text-align: right;">' + parseFloat(closing).toFixed(2) + '</td>' +
+            '<td style="text-align: right; font-weight: bold; color: #00663a;">' + parseFloat(sale).toFixed(2) + '</td>';
           tbody.appendChild(tr);
         });
       });
       table.appendChild(tbody);
       card.appendChild(table);
-      container.appendChild(card);
+      
+      cardElements.push({ card: card, slot: slot });
+    });
+
+    // Populate columns according to intentional composition:
+    // Col 0: Slot 0 (CNG) then Slot 3 (MS-I)
+    // Col 1: Slot 1 (HSD) then Slot 4 (MS-II)
+    // Col 2: Slot 2 (SPEED)
+    cardElements.sort(function(a, b) { return a.slot - b.slot; });
+    cardElements.forEach(function(item) {
+      if (item.slot === 0 || item.slot === 3) {
+        col0.appendChild(item.card);
+      } else if (item.slot === 1 || item.slot === 4) {
+        col1.appendChild(item.card);
+      } else if (item.slot === 2) {
+        col2.appendChild(item.card);
+      } else {
+        // Extra fallback: append to shortest column
+        var h0 = col0.children.length;
+        var h1 = col1.children.length;
+        var h2 = col2.children.length;
+        if (h2 <= h0 && h2 <= h1) col2.appendChild(item.card);
+        else if (h1 <= h0) col1.appendChild(item.card);
+        else col0.appendChild(item.card);
+      }
     });
   }
 

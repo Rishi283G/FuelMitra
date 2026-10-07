@@ -3,6 +3,7 @@ using FuelPro.Core.Common;
 using FuelPro.Core.Models;
 using FuelPro.Core.Models.AGS;
 using FuelPro.Core.Repositories;
+using FuelPro.Core.Services;
 using Serilog;
 
 namespace FuelPro.Data.Repositories;
@@ -600,9 +601,14 @@ public class DsmEntryRepository : IDsmEntryRepository
 public class NozzleReadingRepository : INozzleReadingRepository
 {
     private readonly FuelProDbContext _context;
+    private readonly IShiftCycleService _shiftCycleService;
     private readonly ILogger _logger = Log.ForContext<NozzleReadingRepository>();
 
-    public NozzleReadingRepository(FuelProDbContext context) => _context = context;
+    public NozzleReadingRepository(FuelProDbContext context, IShiftCycleService? shiftCycleService = null)
+    {
+        _context = context;
+        _shiftCycleService = shiftCycleService ?? new ShiftCycleService();
+    }
 
     public async Task<Result<List<NozzleReading>>> GetByDsmEntryIdAsync(int dsmEntryId)
     {
@@ -625,43 +631,85 @@ public class NozzleReadingRepository : INozzleReadingRepository
     {
         try
         {
-            var targetDate = date.Date;
-            var altShift = shiftType == "A" ? "I" : (shiftType == "B" ? "II" : (shiftType == "C" ? "III" : (shiftType == "I" ? "A" : (shiftType == "II" ? "B" : (shiftType == "III" ? "C" : shiftType)))));
-            var isDayShift = shiftType == "B" || shiftType == "II";
-            var pumpNozzles = PumpConfiguration.GetNozzlesForPump(pumpId, targetDate);
-            var query = _context.NozzleReadings
-                .Include(r => r.DsmEntry)
-                .ThenInclude(e => e!.Shift)
-                .Where(r => r.DsmEntry != null
-                    && r.DsmEntry.Shift != null
-                    && r.ClosingReading > 0
-                    && (pumpNozzles == null || pumpNozzles.Length == 0 || pumpNozzles.Contains(r.NozzleNumber)));
-
-            if (currentDsmEntryId.HasValue)
+            var normShift = _shiftCycleService.NormalizeShiftType(shiftType);
+            var pumpNozzles = PumpConfiguration.GetNozzlesForPump(pumpId, date.Date);
+            if (pumpNozzles == null || pumpNozzles.Length == 0)
             {
-                int cId = currentDsmEntryId.Value;
-                query = query.Where(r => 
-                    (r.DsmEntry!.ReconciledToPumpId.HasValue ? r.DsmEntry.ReconciledToPumpId.Value : r.DsmEntry.DsmEntryId) < cId);
+                return Result<Dictionary<int, double>>.Ok(new Dictionary<int, double>());
             }
 
-            var closings = await query
-                .Where(r => r.DsmEntry!.Shift!.ShiftDate < targetDate || 
-                       (r.DsmEntry.Shift.ShiftDate == targetDate && isDayShift && (r.DsmEntry.Shift.ShiftType == "A" || r.DsmEntry.Shift.ShiftType == "I")) ||
-                       (r.DsmEntry.Shift.ShiftDate == targetDate && (r.DsmEntry.Shift.ShiftType == shiftType || r.DsmEntry.Shift.ShiftType == altShift)))
-                .GroupBy(r => r.NozzleNumber)
-                .Select(g => new { 
-                    NozzleNumber = g.Key, 
-                    Closing = g.OrderByDescending(x => x.DsmEntry!.Shift!.ShiftDate)
-                               .ThenByDescending(x => (x.DsmEntry!.Shift!.ShiftType == "B" || x.DsmEntry.Shift.ShiftType == "II") ? 2 : 1)
-                               .ThenByDescending(x => x.ClosingReading)
-                               .ThenByDescending(x => x.DsmEntry!.ReconciledToPumpId.HasValue ? x.DsmEntry.ReconciledToPumpId.Value : x.DsmEntry.DsmEntryId)
-                               .ThenByDescending(x => x.NozzleReadingId)
-                               .Select(x => x.ClosingReading)
-                               .FirstOrDefault() 
-                })
-                .ToDictionaryAsync(x => x.NozzleNumber, x => x.Closing);
+            var resolvedClosings = new Dictionary<int, double>();
+            var remainingNozzles = new HashSet<int>(pumpNozzles);
 
-            return Result<Dictionary<int, double>>.Ok(closings);
+            var (currDate, currShift) = _shiftCycleService.GetPreviousShift(date.Date, normShift);
+            var immediatePredDate = currDate;
+            var immediatePredShift = currShift;
+
+            // Bounded operational shift horizon: 15 operational shifts (5 operational days @ 3 shifts/day).
+            // Safe and bounded because retail stations operate continuously, and unoperated pumps
+            // in night shifts resume within 1-2 shifts.
+            const int maxHops = 15;
+            int hops = 0;
+
+            while (remainingNozzles.Count > 0 && hops < maxHops)
+            {
+                hops++;
+                var altShift = currShift == "A" ? "I" : (currShift == "B" ? "II" : (currShift == "C" ? "III" : currShift));
+                var remList = remainingNozzles.ToList();
+
+                var query = _context.NozzleReadings
+                    .Include(r => r.DsmEntry)
+                    .ThenInclude(e => e!.Shift)
+                    .Where(r => r.DsmEntry != null
+                        && r.DsmEntry.Shift != null
+                        && r.ClosingReading > 0
+                        && remList.Contains(r.NozzleNumber)
+                        && r.DsmEntry.Shift.ShiftDate.Date == currDate.Date
+                        && (r.DsmEntry.Shift.ShiftType == currShift || r.DsmEntry.Shift.ShiftType == altShift));
+
+                if (currentDsmEntryId.HasValue && currDate.Date == date.Date && (currShift == normShift || altShift == normShift))
+                {
+                    int cId = currentDsmEntryId.Value;
+                    query = query.Where(r => 
+                        (r.DsmEntry!.ReconciledToPumpId.HasValue ? r.DsmEntry.ReconciledToPumpId.Value : r.DsmEntry.DsmEntryId) < cId);
+                }
+
+                // Determine latest record per nozzle strictly by persisted record chronology (NOT ClosingReading value)
+                var shiftClosings = await query
+                    .GroupBy(r => r.NozzleNumber)
+                    .Select(g => new { 
+                        NozzleNumber = g.Key, 
+                        Closing = g.OrderByDescending(x => x.DsmEntry!.UpdatedAt)
+                                   .ThenByDescending(x => x.DsmEntry!.CreatedAt)
+                                   .ThenByDescending(x => x.DsmEntry!.ReconciledToPumpId.HasValue ? x.DsmEntry.ReconciledToPumpId.Value : x.DsmEntry.DsmEntryId)
+                                   .ThenByDescending(x => x.NozzleReadingId)
+                                   .Select(x => x.ClosingReading)
+                                   .FirstOrDefault() 
+                    })
+                    .ToListAsync();
+
+                foreach (var item in shiftClosings)
+                {
+                    if (!resolvedClosings.ContainsKey(item.NozzleNumber))
+                    {
+                        resolvedClosings[item.NozzleNumber] = item.Closing;
+                        remainingNozzles.Remove(item.NozzleNumber);
+                    }
+                }
+
+                if (remainingNozzles.Count == 0)
+                    break;
+
+                // Move backward to previous operational shift in the sequence
+                (currDate, currShift) = _shiftCycleService.GetPreviousShift(currDate, currShift);
+            }
+
+            if (resolvedClosings.Count == 0)
+            {
+                return Result<Dictionary<int, double>>.Fail($"Predecessor shift chain starting at {immediatePredShift} on {immediatePredDate:dd-MMM-yyyy} has no recorded closing readings.");
+            }
+
+            return Result<Dictionary<int, double>>.Ok(resolvedClosings);
         }
         catch (Exception ex)
         {

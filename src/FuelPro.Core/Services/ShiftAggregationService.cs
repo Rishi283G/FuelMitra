@@ -12,6 +12,12 @@ namespace FuelPro.Core.Services;
 public class ShiftAggregationService : IShiftAggregationService
 {
     private readonly ILogger _logger = Log.ForContext<ShiftAggregationService>();
+    private readonly IShiftCycleService _shiftCycleService;
+
+    public ShiftAggregationService(IShiftCycleService? shiftCycleService = null)
+    {
+        _shiftCycleService = shiftCycleService ?? new ShiftCycleService();
+    }
 
     /// <summary>
     /// TABLE A — One row per DSM entry with all payment/cash/expense columns.
@@ -123,12 +129,14 @@ public class ShiftAggregationService : IShiftAggregationService
 
                 var p1 = entry.PaymentCollection ?? connectedSlaves.FirstOrDefault(s => s.PaymentCollection != null)?.PaymentCollection;
 
-                bool isDay = string.Equals(entry.Shift?.ShiftType, "B", StringComparison.OrdinalIgnoreCase)
-                          || string.Equals(entry.Shift?.ShiftType, "II", StringComparison.OrdinalIgnoreCase);
+                var shiftType = _shiftCycleService.NormalizeShiftType(entry.Shift?.ShiftType ?? "");
+                bool isDay = shiftType == "B";
+                bool isShiftC = shiftType == "C";
+                bool isShiftA = shiftType == "A";
 
                 double qrSum = entry.QrPayments?.Sum(q => q.Amount) ?? 0;
                 double qrM = entry.QrPayments?.Where(q => q.Slot == "Morning" || (isDay && q.Slot == "Day") || string.IsNullOrEmpty(q.Slot)).Sum(q => q.Amount) ?? 0;
-                double qrN = entry.QrPayments?.Where(q => q.Slot == "Night").Sum(q => q.Amount) ?? 0;
+                double qrN = entry.QrPayments?.Where(q => q.Slot == "Night" || (isShiftC && string.IsNullOrEmpty(q.Slot))).Sum(q => q.Amount) ?? 0;
 
                 double phM = p1?.PhonePeMorning ?? 0;
                 double phD = p1?.PhonePeDay ?? 0;
@@ -150,25 +158,58 @@ public class ShiftAggregationService : IShiftAggregationService
                 double petroN = p1?.PetroCardNight ?? 0;
                 double petro = p1?.PetroCard ?? 0;
 
-                double finalPhM = isDay ? 0 : (phM > 0 ? phM + qrM : 0);
-                double finalPhD = isDay ? ((phD > 0 ? phD : ph) + qrSum) : phD;
-                double finalPhN = isDay ? 0 : (phN > 0 ? phN + qrN : 0);
-                double finalPh = isDay ? finalPhD : ((ph > 0 ? ph + qrSum : (finalPhM + finalPhN)));
+                double finalPhM, finalPhD, finalPhN, finalPh;
+                double finalPpcM, finalPpcD, finalPpcN, finalPpc;
+                double finalCcM, finalCcD, finalCcN, finalCc;
+                double finalPetroM, finalPetroD, finalPetroN, finalPetro;
 
-                double finalPpcM = isDay ? 0 : ppcM;
-                double finalPpcD = isDay ? (ppcD > 0 ? ppcD : ppc) : ppcD;
-                double finalPpcN = isDay ? 0 : ppcN;
-                double finalPpc = isDay ? finalPpcD : (ppc > 0 ? ppc : (finalPpcM + finalPpcN));
+                if (isDay)
+                {
+                    finalPhD = (phD > 0 ? phD : ph) + qrSum;
+                    finalPhM = 0; finalPhN = 0; finalPh = finalPhD;
 
-                double finalCcM = isDay ? 0 : ccM;
-                double finalCcD = isDay ? (ccD > 0 ? ccD : cc) : ccD;
-                double finalCcN = isDay ? 0 : ccN;
-                double finalCc = isDay ? finalCcD : (cc > 0 ? cc : (finalCcM + finalCcN));
+                    finalPpcD = ppcD > 0 ? ppcD : ppc;
+                    finalPpcM = 0; finalPpcN = 0; finalPpc = finalPpcD;
 
-                double finalPetroM = isDay ? 0 : petroM;
-                double finalPetroD = isDay ? (petroD > 0 ? petroD : petro) : petroD;
-                double finalPetroN = isDay ? 0 : petroN;
-                double finalPetro = isDay ? finalPetroD : (petro > 0 ? petro : (finalPetroM + finalPetroN));
+                    finalCcD = ccD > 0 ? ccD : cc;
+                    finalCcM = 0; finalCcN = 0; finalCc = finalCcD;
+
+                    finalPetroD = petroD > 0 ? petroD : petro;
+                    finalPetroM = 0; finalPetroN = 0; finalPetro = finalPetroD;
+                }
+                else if (isShiftC)
+                {
+                    finalPhN = (phN > 0 ? phN : ph) + qrSum;
+                    finalPhM = 0; finalPhD = 0; finalPh = finalPhN;
+
+                    finalPpcN = ppcN > 0 ? ppcN : ppc;
+                    finalPpcM = 0; finalPpcD = 0; finalPpc = finalPpcN;
+
+                    finalCcN = ccN > 0 ? ccN : cc;
+                    finalCcM = 0; finalCcD = 0; finalCc = finalCcN;
+
+                    finalPetroN = petroN > 0 ? petroN : petro;
+                    finalPetroM = 0; finalPetroD = 0; finalPetro = finalPetroN;
+                }
+                else
+                {
+                    // Shift A
+                    finalPhM = (phM > 0 ? phM : (phN == 0 ? ph : 0)) + qrM;
+                    finalPhN = (phN > 0 ? phN : 0) + qrN;
+                    finalPhD = 0; finalPh = (ph > 0 ? ph + qrSum : (finalPhM + finalPhN));
+
+                    finalPpcM = ppcM > 0 ? ppcM : (ppcN == 0 ? ppc : 0);
+                    finalPpcN = ppcN;
+                    finalPpcD = 0; finalPpc = (ppc > 0 ? ppc : (finalPpcM + finalPpcN));
+
+                    finalCcM = ccM > 0 ? ccM : (ccN == 0 ? cc : 0);
+                    finalCcN = ccN;
+                    finalCcD = 0; finalCc = (cc > 0 ? cc : (finalCcM + finalCcN));
+
+                    finalPetroM = petroM > 0 ? petroM : (petroN == 0 ? petro : 0);
+                    finalPetroN = petroN;
+                    finalPetroD = 0; finalPetro = (petro > 0 ? petro : (finalPetroM + finalPetroN));
+                }
 
                 var allItems = p1?.Items?.ToList() ?? new List<PaymentCollectionItem>();
 

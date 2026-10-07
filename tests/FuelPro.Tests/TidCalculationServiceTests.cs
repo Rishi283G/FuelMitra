@@ -191,7 +191,7 @@ public class TidCalculationServiceTests
         Assert.Equal(1000, sheet.PetroCardTotal);
     }
 
-    private class MockFeatureToggleService : IFeatureToggleService
+    internal class MockFeatureToggleService : IFeatureToggleService
     {
         private readonly Dictionary<string, bool> _flags;
 
@@ -213,7 +213,7 @@ public class TidCalculationServiceTests
         public Task RefreshCacheAsync() => Task.CompletedTask;
     }
 
-    private class MockShiftRepository : IShiftRepository
+    internal class MockShiftRepository : IShiftRepository
     {
         private readonly List<Shift> _shifts;
 
@@ -242,7 +242,7 @@ public class TidCalculationServiceTests
         public Task<Result> UpdateShiftAsync(Shift shift) => throw new NotImplementedException();
     }
 
-    private class MockDsmEntryRepository : IDsmEntryRepository
+    internal class MockDsmEntryRepository : IDsmEntryRepository
     {
         private readonly List<DsmEntry> _entries;
 
@@ -273,7 +273,7 @@ public class TidCalculationServiceTests
         public Task<Result<List<DsmEntry>>> GetEntriesForMonthAsync(int year, int month) => throw new NotImplementedException();
     }
 
-    private class MockCreditorRepaymentRepository : ICreditorRepaymentRepository
+    internal class MockCreditorRepaymentRepository : ICreditorRepaymentRepository
     {
         public Task<Result<List<CreditorRepayment>>> GetByDateAsync(DateTime date) => 
             Task.FromResult(Result<List<CreditorRepayment>>.Ok(new List<CreditorRepayment>()));
@@ -285,7 +285,7 @@ public class TidCalculationServiceTests
             Task.FromResult(Result<List<CreditorRepayment>>.Ok(new List<CreditorRepayment>()));
     }
 
-    private class MockDsmPersonalDebtorRepository : IDsmPersonalDebtorRepository
+    internal class MockDsmPersonalDebtorRepository : IDsmPersonalDebtorRepository
     {
         public Task<Result<List<DsmPersonalDebtor>>> GetByDateAsync(DateTime date) =>
             Task.FromResult(Result<List<DsmPersonalDebtor>>.Ok(new List<DsmPersonalDebtor>()));

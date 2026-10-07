@@ -5,6 +5,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
              xmlns:converters="clr-namespace:FuelPro.UI.Converters"
+             xmlns:views="clr-namespace:FuelPro.UI.Views"
              xmlns:viewmodels="clr-namespace:FuelPro.UI.ViewModels"
              mc:Ignorable="d" 
              d:DataContext="{d:DesignInstance Type=viewmodels:DayTotalViewModel}"
@@ -89,10 +90,13 @@
                 <StackPanel Grid.Column="3" Orientation="Horizontal">
                     <Button Content="Load Day Data" Command="{Binding RefreshCommand}" Style="{StaticResource MaterialDesignOutlinedButton}" Margin="0,0,8,0" />
                     <ComboBox ItemsSource="{Binding ManagerOptions}" SelectedItem="{Binding SelectedShift1Manager}" IsEditable="True"
-                              materialDesign:HintAssist.Hint="Shift 1 Manager" Style="{StaticResource MaterialDesignFloatingHintComboBox}"
+                              materialDesign:HintAssist.Hint="Shift A Manager" Style="{StaticResource MaterialDesignFloatingHintComboBox}"
                               Width="130" Margin="0,0,8,0" VerticalAlignment="Center" IsEnabled="{Binding HasData}"/>
                     <ComboBox ItemsSource="{Binding ManagerOptions}" SelectedItem="{Binding SelectedShift2Manager}" IsEditable="True"
-                              materialDesign:HintAssist.Hint="Shift 2 Manager" Style="{StaticResource MaterialDesignFloatingHintComboBox}"
+                              materialDesign:HintAssist.Hint="Shift B Manager" Style="{StaticResource MaterialDesignFloatingHintComboBox}"
+                              Width="130" Margin="0,0,8,0" VerticalAlignment="Center" IsEnabled="{Binding HasData}"/>
+                    <ComboBox ItemsSource="{Binding ManagerOptions}" SelectedItem="{Binding SelectedShift3Manager}" IsEditable="True"
+                              materialDesign:HintAssist.Hint="Shift C Manager" Style="{StaticResource MaterialDesignFloatingHintComboBox}"
                               Width="130" Margin="0,0,8,0" VerticalAlignment="Center" IsEnabled="{Binding HasData}"/>
                     <Button Command="{Binding ExportExcelCommand}" Style="{StaticResource MaterialDesignFlatMidBgButton}" Height="36" Padding="12,0" Margin="0,0,8,0" Background="#1B5E20" BorderBrush="#1B5E20" ToolTip="Export Day Total to Excel" IsEnabled="{Binding HasData}">
                         <StackPanel Orientation="Horizontal">
@@ -324,137 +328,148 @@
                         <ItemsControl ItemsSource="{Binding NozzleGroups}">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
-                                    <UniformGrid Columns="3" />
+                                    <views:ResponsiveCardPanel MinColumnWidth="360" MaxColumns="3" LayoutMode="MitaliTankLayout" />
                                 </ItemsPanelTemplate>
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <materialDesign:Card Margin="8" Padding="12" materialDesign:ElevationAssist.Elevation="Dp1" Background="{Binding GroupName, Converter={StaticResource FuelTypeToLightBgBrushConverter}}">
+                                    <materialDesign:Card Margin="6" Padding="8,10" VerticalAlignment="Top" materialDesign:ElevationAssist.Elevation="Dp1" Background="{Binding GroupName, Converter={StaticResource FuelTypeToLightBgBrushConverter}}">
                                         <Grid>
-                                            <Grid.RowDefinitions>
-                                                <RowDefinition Height="Auto" />
-                                                <RowDefinition Height="Auto" />
-                                                <RowDefinition Height="*" />
-                                            </Grid.RowDefinitions>
-                                            
-                                            <!-- Group Header -->
-                                            <Border Grid.Row="0" Background="{Binding GroupName, Converter={StaticResource FuelTypeToBrushConverter}}" CornerRadius="4" Padding="8" Margin="0,0,0,12">
-                                                <TextBlock Text="{Binding GroupName}" FontWeight="Bold" Foreground="White" FontSize="15" HorizontalAlignment="Center"/>
-                                            </Border>
-                                            
-                                             <!-- Tank Info (Grid Layout) -->
-                                             <Grid Grid.Row="1" Margin="0,0,0,12">
-                                                 <Grid.RowDefinitions>
-                                                     <RowDefinition Height="Auto" />
-                                                     <RowDefinition Height="Auto" />
-                                                     <RowDefinition Height="Auto" />
-                                                     <RowDefinition Height="Auto" />
-                                                 </Grid.RowDefinitions>
-                                                 <Grid.ColumnDefinitions>
-                                                     <ColumnDefinition Width="*" />
-                                                     <ColumnDefinition Width="*" />
-                                                 </Grid.ColumnDefinitions>
+                                             <Grid.RowDefinitions>
+                                                 <RowDefinition Height="Auto" />
+                                                 <RowDefinition Height="Auto" />
+                                                 <RowDefinition Height="Auto" />
+                                             </Grid.RowDefinitions>
+                                             
+                                             <!-- Group Header (Height 32-34px) -->
+                                             <Border Grid.Row="0" Height="34" Background="{Binding GroupName, Converter={StaticResource FuelTypeToBrushConverter}}" CornerRadius="4" Padding="6,4" Margin="0,0,0,8">
+                                                 <TextBlock Text="{Binding GroupName}" FontWeight="Bold" Foreground="White" FontSize="14" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                             </Border>
+                                             
+                                              <!-- Tank Info (Compact 4-Row Balanced Grid) -->
+                                              <Grid Grid.Row="1" Margin="0,0,0,8">
+                                                  <Grid.RowDefinitions>
+                                                      <RowDefinition Height="Auto" />
+                                                      <RowDefinition Height="Auto" />
+                                                      <RowDefinition Height="Auto" />
+                                                      <RowDefinition Height="Auto" />
+                                                  </Grid.RowDefinitions>
+                                                  <Grid.ColumnDefinitions>
+                                                      <ColumnDefinition Width="*" />
+                                                      <ColumnDefinition Width="*" />
+                                                  </Grid.ColumnDefinitions>
 
-                                                 <!-- Row 0: Dip (Top Left) and Stock (Top Right) editable inputs -->
-                                                 <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" Margin="4,2" VerticalAlignment="Center">
-                                                     <TextBlock Text="Dip: " FontWeight="Bold" FontSize="13" Opacity="0.85" VerticalAlignment="Center"/>
-                                                     <TextBox Text="{Binding Dip, UpdateSourceTrigger=LostFocus, StringFormat={}{0:N2}}" FontWeight="Bold" FontSize="13" Width="60"/>
-                                                     <TextBlock Text=" mm" Opacity="0.75" FontSize="13" VerticalAlignment="Center"/>
-                                                 </StackPanel>
-                                                 <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="4,2" VerticalAlignment="Center">
-                                                     <TextBlock Text="Stock: " FontWeight="Bold" FontSize="13" Foreground="Green" VerticalAlignment="Center"/>
-                                                     <TextBox Text="{Binding Stock, UpdateSourceTrigger=LostFocus, StringFormat={}{0:N2}}" FontWeight="Bold" FontSize="13" Foreground="Green" Width="70"/>
-                                                     <TextBlock Text="{Binding FullUnit, StringFormat=' {0}'}" FontWeight="Bold" FontSize="13" Foreground="Green" VerticalAlignment="Center"/>
-                                                 </StackPanel>
+                                                  <!-- Row 0: Dip (Top Left) and Stock (Top Right) editable inputs -->
+                                                  <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" Margin="2,1" VerticalAlignment="Center">
+                                                      <TextBlock Text="Dip: " FontWeight="Bold" FontSize="12.5" Opacity="0.85" VerticalAlignment="Center"/>
+                                                      <TextBox Text="{Binding Dip, UpdateSourceTrigger=LostFocus, StringFormat={}{0:N2}}" FontWeight="Bold" FontSize="12.5" Width="55"/>
+                                                      <TextBlock Text=" mm" Opacity="0.75" FontSize="12.5" VerticalAlignment="Center"/>
+                                                  </StackPanel>
+                                                  <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="2,1" VerticalAlignment="Center">
+                                                      <TextBlock Text="Stock: " FontWeight="Bold" FontSize="12.5" Foreground="Green" VerticalAlignment="Center"/>
+                                                      <TextBox Text="{Binding Stock, UpdateSourceTrigger=LostFocus, StringFormat={}{0:N2}}" FontWeight="Bold" FontSize="12.5" Foreground="Green" Width="68"/>
+                                                      <TextBlock Text="{Binding FullUnit, StringFormat=' {0}'}" FontWeight="Bold" FontSize="12.5" Foreground="Green" VerticalAlignment="Center"/>
+                                                  </StackPanel>
 
-                                                 <!-- Row 1: Opening Stock and Sales -->
-                                                 <StackPanel Grid.Row="1" Grid.Column="0" Orientation="Horizontal" Margin="4,2" VerticalAlignment="Center">
-                                                     <TextBlock Text="Opening: " Opacity="0.6" FontSize="11" VerticalAlignment="Center"/>
-                                                     <TextBlock Text="{Binding OpeningStock, StringFormat={}{0:N2}}" FontWeight="SemiBold" Opacity="0.8" FontSize="11" VerticalAlignment="Center"/>
-                                                     <TextBlock Text="{Binding Unit, StringFormat=' {0}'}" Opacity="0.6" FontSize="11" VerticalAlignment="Center"/>
-                                                 </StackPanel>
-                                                 <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="4,2" VerticalAlignment="Center">
-                                                     <TextBlock Text="Sales: " Opacity="0.6" FontSize="11" VerticalAlignment="Center"/>
-                                                     <TextBlock Text="{Binding FuelDispensed, StringFormat={}{0:N2}}" FontWeight="SemiBold" Opacity="0.8" FontSize="11" VerticalAlignment="Center"/>
-                                                     <TextBlock Text="{Binding Unit, StringFormat=' {0}'}" Opacity="0.6" FontSize="11" VerticalAlignment="Center"/>
-                                                 </StackPanel>
+                                                  <!-- Row 1: Opening Stock and Sales -->
+                                                  <StackPanel Grid.Row="1" Grid.Column="0" Orientation="Horizontal" Margin="2,1" VerticalAlignment="Center">
+                                                      <TextBlock Text="Opening: " Opacity="0.65" FontSize="11" VerticalAlignment="Center"/>
+                                                      <TextBlock Text="{Binding OpeningStock, StringFormat={}{0:N2}}" FontWeight="SemiBold" Opacity="0.85" FontSize="11" VerticalAlignment="Center"/>
+                                                      <TextBlock Text="{Binding Unit, StringFormat=' {0}'}" Opacity="0.65" FontSize="11" VerticalAlignment="Center"/>
+                                                  </StackPanel>
+                                                  <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="2,1" VerticalAlignment="Center">
+                                                      <TextBlock Text="Sales: " Opacity="0.65" FontSize="11" VerticalAlignment="Center"/>
+                                                      <TextBlock Text="{Binding FuelDispensed, StringFormat={}{0:N2}}" FontWeight="SemiBold" Opacity="0.85" FontSize="11" VerticalAlignment="Center"/>
+                                                      <TextBlock Text="{Binding Unit, StringFormat=' {0}'}" Opacity="0.65" FontSize="11" VerticalAlignment="Center"/>
+                                                  </StackPanel>
 
-                                                 <!-- Row 2: Testing and Receipts -->
-                                                 <StackPanel Grid.Row="2" Grid.Column="0" Orientation="Horizontal" Margin="4,2" VerticalAlignment="Center">
-                                                     <TextBlock Text="Testing: " Opacity="0.6" FontSize="11" VerticalAlignment="Center"/>
-                                                     <TextBlock Text="{Binding TestingLitres, StringFormat={}{0:N2}}" FontWeight="SemiBold" Opacity="0.8" FontSize="11" VerticalAlignment="Center"/>
-                                                     <TextBlock Text="{Binding Unit, StringFormat=' {0}'}" Opacity="0.6" FontSize="11" VerticalAlignment="Center"/>
-                                                 </StackPanel>
-                                                 <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="4,2" VerticalAlignment="Center">
-                                                     <TextBlock Text="Receipts: " Opacity="0.6" FontSize="11" VerticalAlignment="Center"/>
-                                                     <TextBlock Text="{Binding Receipts, StringFormat={}{0:N2}}" FontWeight="SemiBold" Opacity="0.8" FontSize="11" VerticalAlignment="Center"/>
-                                                     <TextBlock Text="{Binding Unit, StringFormat=' {0}'}" Opacity="0.6" FontSize="11" VerticalAlignment="Center"/>
-                                                 </StackPanel>
+                                                  <!-- Row 2: Testing and Receipts -->
+                                                  <StackPanel Grid.Row="2" Grid.Column="0" Orientation="Horizontal" Margin="2,1" VerticalAlignment="Center">
+                                                      <TextBlock Text="Testing: " Opacity="0.65" FontSize="11" VerticalAlignment="Center"/>
+                                                      <TextBlock Text="{Binding TestingLitres, StringFormat={}{0:N2}}" FontWeight="SemiBold" Opacity="0.85" FontSize="11" VerticalAlignment="Center"/>
+                                                      <TextBlock Text="{Binding Unit, StringFormat=' {0}'}" Opacity="0.65" FontSize="11" VerticalAlignment="Center"/>
+                                                  </StackPanel>
+                                                  <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="2,1" VerticalAlignment="Center">
+                                                      <TextBlock Text="Receipts: " Opacity="0.65" FontSize="11" VerticalAlignment="Center"/>
+                                                      <TextBlock Text="{Binding Receipts, StringFormat={}{0:N2}}" FontWeight="SemiBold" Opacity="0.85" FontSize="11" VerticalAlignment="Center"/>
+                                                      <TextBlock Text="{Binding Unit, StringFormat=' {0}'}" Opacity="0.65" FontSize="11" VerticalAlignment="Center"/>
+                                                  </StackPanel>
 
-                                                 <!-- Row 3: Calculated Stock -->
-                                                 <Border Grid.Row="3" Grid.ColumnSpan="2" BorderBrush="{DynamicResource MaterialDesign.Brush.Divider}" BorderThickness="0,1,0,0" Margin="0,4,0,0" Padding="0,4,0,0">
-                                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="4,2">
-                                                         <TextBlock Text="Calculated: " Opacity="0.7" FontWeight="SemiBold" FontSize="11" VerticalAlignment="Center"/>
-                                                         <TextBlock Text="{Binding CalculatedStock, StringFormat={}{0:N2}}" FontWeight="Bold" Opacity="0.9" FontSize="11" VerticalAlignment="Center"/>
-                                                         <TextBlock Text="{Binding Unit, StringFormat=' {0}'}" Opacity="0.7" FontSize="11" VerticalAlignment="Center"/>
-                                                     </StackPanel>
+                                                  <!-- Row 3: Calculated Stock and Variance -->
+                                                  <Border Grid.Row="3" Grid.ColumnSpan="2" BorderBrush="{DynamicResource MaterialDesign.Brush.Divider}" BorderThickness="0,1,0,0" Margin="0,3,0,0" Padding="0,2,0,0">
+                                                      <Grid>
+                                                          <Grid.ColumnDefinitions>
+                                                              <ColumnDefinition Width="*" />
+                                                              <ColumnDefinition Width="*" />
+                                                          </Grid.ColumnDefinitions>
+                                                          <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="2,1" VerticalAlignment="Center">
+                                                              <TextBlock Text="Calculated: " Opacity="0.7" FontWeight="SemiBold" FontSize="11" VerticalAlignment="Center"/>
+                                                              <TextBlock Text="{Binding CalculatedStock, StringFormat={}{0:N2}}" FontWeight="Bold" Opacity="0.9" FontSize="11" VerticalAlignment="Center"/>
+                                                              <TextBlock Text="{Binding Unit, StringFormat=' {0}'}" Opacity="0.7" FontSize="11" VerticalAlignment="Center"/>
+                                                          </StackPanel>
+                                                          <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="2,1" VerticalAlignment="Center">
+                                                              <TextBlock Text="Variance: " Opacity="0.7" FontWeight="SemiBold" FontSize="11" VerticalAlignment="Center"/>
+                                                              <TextBlock Text="{Binding StockVariance, StringFormat={}{0:+0.00;-0.00;0.00}}" FontWeight="Bold" Opacity="0.9" FontSize="11" VerticalAlignment="Center"/>
+                                                              <TextBlock Text="{Binding Unit, StringFormat=' {0}'}" Opacity="0.7" FontSize="11" VerticalAlignment="Center"/>
+                                                          </StackPanel>
+                                                      </Grid>
+                                                  </Border>
+                                              </Grid>
+                                             
+                                             <!-- Nozzles Table -->
+                                             <StackPanel Grid.Row="2">
+                                                 <!-- Table Header (Height 21px) -->
+                                                 <Border BorderBrush="{DynamicResource MaterialDesign.Brush.Divider}" BorderThickness="0,0,0,1" Padding="0,2,0,3" Margin="0,0,0,2">
+                                                     <Grid Height="21">
+                                                         <Grid.ColumnDefinitions>
+                                                             <ColumnDefinition Width="48" />
+                                                             <ColumnDefinition Width="*" />
+                                                             <ColumnDefinition Width="*" />
+                                                             <ColumnDefinition Width="*" />
+                                                         </Grid.ColumnDefinitions>
+                                                         <TextBlock Grid.Column="0" Text="NOZ" FontWeight="Bold" FontSize="10.5" Opacity="0.7" VerticalAlignment="Center" Margin="2,0,0,0"/>
+                                                         <TextBlock Grid.Column="1" Text="OPENING" FontWeight="Bold" FontSize="10.5" Opacity="0.7" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                                         <TextBlock Grid.Column="2" Text="CLOSING" FontWeight="Bold" FontSize="10.5" Opacity="0.7" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                                         <TextBlock Grid.Column="3" Text="SALE" FontWeight="Bold" FontSize="10.5" Opacity="0.7" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,2,0"/>
+                                                     </Grid>
                                                  </Border>
-                                             </Grid>
-                                            
-                                            <!-- Nozzles Table -->
-                                            <StackPanel Grid.Row="2">
-                                                <!-- Table Header -->
-                                                <Border BorderBrush="{DynamicResource MaterialDesign.Brush.Divider}" BorderThickness="0,0,0,1" Padding="0,4,0,4" Margin="0,0,0,4">
-                                                    <Grid>
-                                                        <Grid.ColumnDefinitions>
-                                                            <ColumnDefinition Width="60" />
-                                                            <ColumnDefinition Width="*" />
-                                                            <ColumnDefinition Width="*" />
-                                                            <ColumnDefinition Width="*" />
-                                                        </Grid.ColumnDefinitions>
-                                                        <TextBlock Grid.Column="0" Text="NOZ" FontWeight="Bold" FontSize="11" Opacity="0.7" Margin="4,0,0,0"/>
-                                                        <TextBlock Grid.Column="1" Text="OPENING" FontWeight="Bold" FontSize="11" Opacity="0.7" HorizontalAlignment="Right"/>
-                                                        <TextBlock Grid.Column="2" Text="CLOSING" FontWeight="Bold" FontSize="11" Opacity="0.7" HorizontalAlignment="Right"/>
-                                                        <TextBlock Grid.Column="3" Text="SALE" FontWeight="Bold" FontSize="11" Opacity="0.7" HorizontalAlignment="Right" Margin="0,0,4,0"/>
-                                                    </Grid>
-                                                </Border>
 
-                                                <!-- Table Rows -->
-                                                <ItemsControl ItemsSource="{Binding FlatNozzles}">
-                                                    <ItemsControl.ItemTemplate>
-                                                        <DataTemplate>
-                                                            <Border BorderBrush="{DynamicResource MaterialDesign.Brush.Divider}" BorderThickness="0,0,0,1" Padding="0,6,0,6">
-                                                                <Border.Style>
-                                                                    <Style TargetType="Border">
-                                                                        <Style.Triggers>
-                                                                            <DataTrigger Binding="{Binding HasReading}" Value="False">
-                                                                                <Setter Property="Opacity" Value="0.4" />
-                                                                            </DataTrigger>
-                                                                        </Style.Triggers>
-                                                                    </Style>
-                                                                </Border.Style>
-                                                                <Grid>
-                                                                    <Grid.ColumnDefinitions>
-                                                                        <ColumnDefinition Width="60" />
-                                                                        <ColumnDefinition Width="*" />
-                                                                        <ColumnDefinition Width="*" />
-                                                                        <ColumnDefinition Width="*" />
-                                                                    </Grid.ColumnDefinitions>
-                                                                    <TextBlock Grid.Column="0" Text="{Binding NozzleNumber, StringFormat='N{0}'}" FontWeight="Bold" VerticalAlignment="Center" Margin="4,0,0,0"/>
-                                                                    <TextBlock Grid.Column="1" Text="{Binding OpeningReading, StringFormat='{}{0:F2}'}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
-                                                                    <TextBlock Grid.Column="2" Text="{Binding ClosingReading, StringFormat='{}{0:F2}'}" HorizontalAlignment="Right" VerticalAlignment="Center"/>
-                                                                    <TextBlock Grid.Column="3" Text="{Binding SaleLitres, Converter={StaticResource LitreConverter}}" FontWeight="Bold" Foreground="Green" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                                                                </Grid>
-                                                            </Border>
-                                                        </DataTemplate>
-                                                    </ItemsControl.ItemTemplate>
-                                                </ItemsControl>
-                                            </StackPanel>
-                                        </Grid>
-                                    </materialDesign:Card>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                                                 <!-- Table Rows (Height 21-22px) -->
+                                                 <ItemsControl ItemsSource="{Binding FlatNozzles}">
+                                                     <ItemsControl.ItemTemplate>
+                                                         <DataTemplate>
+                                                             <Border BorderBrush="{DynamicResource MaterialDesign.Brush.Divider}" BorderThickness="0,0,0,1" Padding="0,2.5,0,2.5">
+                                                                 <Border.Style>
+                                                                     <Style TargetType="Border">
+                                                                         <Style.Triggers>
+                                                                             <DataTrigger Binding="{Binding HasReading}" Value="False">
+                                                                                 <Setter Property="Opacity" Value="0.4" />
+                                                                             </DataTrigger>
+                                                                         </Style.Triggers>
+                                                                     </Style>
+                                                                 </Border.Style>
+                                                                 <Grid Height="21">
+                                                                     <Grid.ColumnDefinitions>
+                                                                         <ColumnDefinition Width="48" />
+                                                                         <ColumnDefinition Width="*" />
+                                                                         <ColumnDefinition Width="*" />
+                                                                         <ColumnDefinition Width="*" />
+                                                                     </Grid.ColumnDefinitions>
+                                                                     <TextBlock Grid.Column="0" Text="{Binding NozzleNumber, StringFormat='N{0}'}" FontWeight="Bold" FontSize="11" VerticalAlignment="Center" Margin="2,0,0,0"/>
+                                                                     <TextBlock Grid.Column="1" Text="{Binding OpeningReading, StringFormat='{}{0:F2}'}" FontSize="11" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                                                     <TextBlock Grid.Column="2" Text="{Binding ClosingReading, StringFormat='{}{0:F2}'}" FontSize="11" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                                                     <TextBlock Grid.Column="3" Text="{Binding SaleLitres, Converter={StaticResource LitreConverter}}" FontSize="11" FontWeight="Bold" Foreground="Green" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,2,0"/>
+                                                                 </Grid>
+                                                             </Border>
+                                                         </DataTemplate>
+                                                     </ItemsControl.ItemTemplate>
+                                                 </ItemsControl>
+                                             </StackPanel>
+                                         </Grid>
+                                     </materialDesign:Card>
+                                 </DataTemplate>
+                             </ItemsControl.ItemTemplate>
+                         </ItemsControl>
                         
                         <!-- Totals Bar -->
                         <Border Background="{DynamicResource MaterialDesign.Brush.Primary.Light}" Padding="12" Margin="8,16,8,8" CornerRadius="4">

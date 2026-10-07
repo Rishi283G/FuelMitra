@@ -68,7 +68,7 @@ public partial class CardSettlementViewModel : ObservableObject, IDisposable
     [ObservableProperty] private TidTabViewModel? _selectedTab;
     public ObservableCollection<TidTabViewModel> Tabs { get; } = new();
 
-    public string[] ShiftOptions { get; } = { "A", "B" };
+    public string[] ShiftOptions { get; } = { "A", "B", "C" };
 
     public ObservableCollection<CardSettlementItem> CardPayments { get; } = new();
     public ObservableCollection<CardSettlementItem> PhonePePayments { get; } = new();
@@ -154,18 +154,22 @@ public partial class CardSettlementViewModel : ObservableObject, IDisposable
             {
                 var shiftATask = _shiftRepo.GetShiftAsync(SelectedDate.Date, "A");
                 var shiftBTask = _shiftRepo.GetShiftAsync(SelectedDate.Date, "B");
+                var shiftCTask = _shiftRepo.GetShiftAsync(SelectedDate.Date, "C");
 
-                await Task.WhenAll(shiftATask, shiftBTask, tidSheetTask);
+                await Task.WhenAll(shiftATask, shiftBTask, shiftCTask, tidSheetTask);
 
                 var shiftARes = await shiftATask;
                 var shiftBRes = await shiftBTask;
+                var shiftCRes = await shiftCTask;
 
                 if (shiftARes.Success && shiftARes.Data != null)
                     slotsToLoad.Add((shiftARes.Data, CardSettlementSlot.Morning, "Shift A"));
                 if (shiftBRes.Success && shiftBRes.Data != null)
                     slotsToLoad.Add((shiftBRes.Data, CardSettlementSlot.Day, "Shift B"));
+                if (shiftCRes.Success && shiftCRes.Data != null)
+                    slotsToLoad.Add((shiftCRes.Data, CardSettlementSlot.Night, "Shift C"));
 
-                _currentShift = shiftARes.Data ?? shiftBRes.Data;
+                _currentShift = shiftARes.Data ?? shiftBRes.Data ?? shiftCRes.Data;
             }
 
             if (slotsToLoad.Count == 0)

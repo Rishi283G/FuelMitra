@@ -404,11 +404,12 @@ public class MultiPumpDsmEntryEngineTests : IDisposable
     public async Task Test_06_FourPreviousOpenings_LoadedAcrossAllPumpsInGroup()
     {
         // 1. Setup previous shift in database with closing readings for all 4 pumps
+        // In the operational chain (A -> B -> C -> next A), the exact predecessor of Shift A on 2026-09-08 is Shift C on 2026-09-07 (D-1)
         var prevDate = new DateTime(2026, 9, 7);
         using (var scope = _serviceProvider.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<FuelProDbContext>();
-            var prevShift = new Shift { ShiftDate = prevDate, ShiftType = "B" };
+            var prevShift = new Shift { ShiftDate = prevDate, ShiftType = "C" };
             db.Shifts.Add(prevShift);
             await db.SaveChangesAsync();
 

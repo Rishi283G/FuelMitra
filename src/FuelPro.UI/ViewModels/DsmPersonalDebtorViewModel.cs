@@ -47,11 +47,12 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
     private readonly FuelProDbContext _dbContext;
     private readonly PrintService _printService;
     private readonly IShiftRepository _shiftRepo;
+    private readonly IShiftCycleService _shiftCycleService;
     private readonly IFeatureToggleService _featureService;
     private readonly ILogger _logger = Log.ForContext<DsmPersonalDebtorViewModel>();
 
     // Shift selection
-    public ObservableCollection<string> AvailableShifts { get; } = new() { "Shift A", "Shift B" };
+    public ObservableCollection<string> AvailableShifts { get; } = new() { "Shift A", "Shift B", "Shift C" };
     [ObservableProperty] private string _selectedShift = "Shift A";
 
     // Dynamic Personal Ledger
@@ -137,6 +138,7 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
         _excelExportService = App.Services.GetRequiredService<ExcelExportService>();
         _collectionTypeService = App.Services.GetService<ICollectionTypeService>();
         _shiftRepo = App.Services.GetRequiredService<IShiftRepository>();
+        _shiftCycleService = App.Services.GetService<IShiftCycleService>() ?? new ShiftCycleService();
         _featureService = App.Services.GetRequiredService<IFeatureToggleService>();
 
         _featureService.FeatureConfigurationChanged += () =>
@@ -373,7 +375,7 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
         catch (Exception ex)
         {
             _logger.Error(ex, "Failed to load DSM personal debtors summary");
-            MessageBox.Show($"Error loading summaries: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            ShowMessage($"Error loading summaries: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally
         {
@@ -665,11 +667,14 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
     {
         if (row == null || !row.CanEdit) return;
 
-        var confirm = MessageBox.Show(
-            $"Are you sure you want to delete this {row.TransactionType} transaction of amount ₹{row.Amount:F2}?\nThis action cannot be undone.",
-            "Confirm Delete", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-        
-        if (confirm != MessageBoxResult.Yes) return;
+        if (Environment.GetEnvironmentVariable("FUELPRO_ENV") != "TEST")
+        {
+            var confirm = MessageBox.Show(
+                $"Are you sure you want to delete this {row.TransactionType} transaction of amount ₹{row.Amount:F2}?\nThis action cannot be undone.",
+                "Confirm Delete", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            
+            if (confirm != MessageBoxResult.Yes) return;
+        }
 
         try
         {
@@ -735,13 +740,16 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
             await LoadLedgerAsync();
             await LoadDataAsync();
 
-            var syncEngine = App.Services.GetRequiredService<FuelPro.Sync.SyncEngine>();
-            _ = syncEngine.ForceSyncAsync();
+            var syncEngine = App.Services?.GetService<FuelPro.Sync.SyncEngine>();
+            if (syncEngine != null)
+            {
+                _ = syncEngine.ForceSyncAsync();
+            }
         }
         catch (Exception ex)
         {
             _logger.Error(ex, "Failed to delete transaction");
-            MessageBox.Show($"❌ Delete failed: {ex.Message}", "Delete Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            ShowMessage($"❌ Delete failed: {ex.Message}", "Delete Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -783,13 +791,13 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
     {
         if (SelectedSummary == null)
         {
-            MessageBox.Show("Please select a DSM account to record a repayment.", "Selection Required", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ShowMessage("Please select a DSM account to record a repayment.", "Selection Required", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
         if (RepaymentAmount <= 0)
         {
-            MessageBox.Show("Please enter a valid repayment amount.", "Invalid Amount", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ShowMessage("Please enter a valid repayment amount.", "Invalid Amount", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
@@ -829,7 +837,7 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
                 await _dbContext.SaveChangesAsync();
             }
 
-            string shiftType = SelectedShift.Contains("B", StringComparison.OrdinalIgnoreCase) ? "B" : "A";
+            string shiftType = _shiftCycleService.NormalizeShiftType(SelectedShift);
             var shiftResult = await _shiftRepo.GetOrCreateShiftAsync(RepaymentDate.Date, shiftType);
             int? resolvedShiftId = shiftResult.Success && shiftResult.Data != null ? shiftResult.Data.ShiftId : null;
 
@@ -857,7 +865,7 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
 
             await RecalculateRepaidAmountsAsync(dsmName);
 
-            MessageBox.Show("Repayment recorded successfully.", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+            ShowMessage("Repayment recorded successfully.", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
 
             // Reset inputs
             RepaymentAmount = 0;
@@ -877,13 +885,16 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
             DsmEntryService.RaiseDebtorChanged();
             DsmEntryService.RaiseDsmEntryChanged();
 
-            var syncEngine = App.Services.GetRequiredService<FuelPro.Sync.SyncEngine>();
-            _ = syncEngine.ForceSyncAsync();
+            var syncEngine = App.Services?.GetService<FuelPro.Sync.SyncEngine>();
+            if (syncEngine != null)
+            {
+                _ = syncEngine.ForceSyncAsync();
+            }
         }
         catch (Exception ex)
         {
             _logger.Error(ex, "Failed to save personal debtor repayment");
-            MessageBox.Show($"Error saving repayment: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            ShowMessage($"Error saving repayment: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -892,13 +903,13 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
     {
         if (SelectedSummary == null)
         {
-            MessageBox.Show("Please select a DSM account to record an advance.", "Selection Required", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ShowMessage("Please select a DSM account to record an advance.", "Selection Required", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
         if (RepaymentAmount <= 0)
         {
-            MessageBox.Show("Please enter a valid advance amount.", "Invalid Amount", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ShowMessage("Please enter a valid advance amount.", "Invalid Amount", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
@@ -929,7 +940,7 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
             _dbContext.DsmPersonalDebtors.Add(entry);
             await _dbContext.SaveChangesAsync();
 
-            MessageBox.Show($"Advance of ₹{RepaymentAmount:N2} recorded successfully for {dsmName}.", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+            ShowMessage($"Advance of ₹{RepaymentAmount:N2} recorded successfully for {dsmName}.", "Success", MessageBoxButton.OK, MessageBoxImage.Information);
 
             // Reset inputs
             RepaymentAmount = 0;
@@ -948,13 +959,16 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
             await LoadLedgerAsync();
             await LoadDataAsync();
 
-            var syncEngine = App.Services.GetRequiredService<FuelPro.Sync.SyncEngine>();
-            _ = syncEngine.ForceSyncAsync();
+            var syncEngine = App.Services?.GetService<FuelPro.Sync.SyncEngine>();
+            if (syncEngine != null)
+            {
+                _ = syncEngine.ForceSyncAsync();
+            }
         }
         catch (Exception ex)
         {
             _logger.Error(ex, "Failed to save personal debtor advance");
-            MessageBox.Show($"Error saving advance: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            ShowMessage($"Error saving advance: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -963,13 +977,13 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
     {
         if (SelectedSummary == null)
         {
-            MessageBox.Show("Please select a DSM account first.", "Print Ledger", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ShowMessage("Please select a DSM account first.", "Print Ledger", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
         if (DsmLedger == null || DsmLedger.Count == 0)
         {
-            MessageBox.Show("No transactions to print. Please generate the ledger first.", "Print Ledger", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ShowMessage("No transactions to print. Please generate the ledger first.", "Print Ledger", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
@@ -1002,7 +1016,7 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
         catch (Exception ex)
         {
             _logger.Error(ex, "Failed to print DSM personal debtor ledger");
-            MessageBox.Show($"Failed to print ledger: {ex.Message}", "Print Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            ShowMessage($"Failed to print ledger: {ex.Message}", "Print Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -1102,7 +1116,7 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
         catch (Exception ex)
         {
             _logger.Error(ex, "Failed to print Kandhare Petroleum report");
-            MessageBox.Show($"Print failed: {ex.Message}", "Print Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            ShowMessage($"Print failed: {ex.Message}", "Print Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -1143,12 +1157,18 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
             };
 
             var path = await _excelExportService.ExportGenericGridAsync(printData, "KandharePetroleum");
-            MessageBox.Show($"Report exported successfully to:\n{path}", "Export Success", MessageBoxButton.OK, MessageBoxImage.Information);
+            ShowMessage($"Report exported successfully to:\n{path}", "Export Success", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)
         {
             _logger.Error(ex, "Failed to export Kandhare Petroleum to Excel");
-            MessageBox.Show($"Export failed: {ex.Message}", "Export Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            ShowMessage($"Export failed: {ex.Message}", "Export Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
+    }
+
+    private static void ShowMessage(string message, string caption, MessageBoxButton button, MessageBoxImage image)
+    {
+        if (Environment.GetEnvironmentVariable("FUELPRO_ENV") == "TEST") return;
+        MessageBox.Show(message, caption, button, image);
     }
 }

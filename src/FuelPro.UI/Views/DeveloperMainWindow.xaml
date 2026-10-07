@@ -676,7 +676,7 @@
                             </materialDesign:Card>
 
                             <!-- Summary cards -->
-                            <UniformGrid Columns="5" Margin="0,0,0,20">
+                            <UniformGrid Columns="6" Margin="0,0,0,20">
                                 <!-- DSM Duplicates -->
                                 <materialDesign:Card Margin="0,0,8,0" Padding="16,12" UniformCornerRadius="10" materialDesign:ElevationAssist.Elevation="Dp2">
                                     <StackPanel>
@@ -691,6 +691,14 @@
                                         <TextBlock Text="Debit Duplicates" FontSize="11" Foreground="#78909C" Margin="0,0,0,4"/>
                                         <TextBlock Text="{Binding IntegrityDebitDuplicates}" FontSize="28" FontWeight="Bold"
                                                    Foreground="{Binding IntegrityDebitDuplicates, Converter={StaticResource IntToColorConverter}, ConverterParameter=orange}"/>
+                                    </StackPanel>
+                                </materialDesign:Card>
+                                <!-- Expense Duplicates -->
+                                <materialDesign:Card Margin="0,0,8,0" Padding="16,12" UniformCornerRadius="10" materialDesign:ElevationAssist.Elevation="Dp2">
+                                    <StackPanel>
+                                        <TextBlock Text="Expense Dupes" FontSize="11" Foreground="#78909C" Margin="0,0,0,4"/>
+                                        <TextBlock Text="{Binding IntegrityExpenseDuplicates}" FontSize="28" FontWeight="Bold"
+                                                   Foreground="{Binding IntegrityExpenseDuplicates, Converter={StaticResource IntToColorConverter}, ConverterParameter=orange}"/>
                                     </StackPanel>
                                 </materialDesign:Card>
                                 <!-- Repayment Duplicates -->
@@ -964,6 +972,78 @@
                                                                 Foreground="#F57C00" BorderBrush="#F57C00"
                                                                 Height="26" Padding="8,0" FontSize="11"
                                                                 Command="{Binding DataContext.DeleteDuplicateDebitGroupCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                CommandParameter="{Binding}"/>
+                                                    </DataTemplate>
+                                                </DataGridTemplateColumn.CellTemplate>
+                                            </DataGridTemplateColumn>
+                                        </DataGrid.Columns>
+                                    </DataGrid>
+                                </StackPanel>
+                            </materialDesign:Card>
+
+                            <!-- Expense Duplicates -->
+                            <materialDesign:Card Padding="16" UniformCornerRadius="12" Margin="0,0,0,16"
+                                                 materialDesign:ElevationAssist.Elevation="Dp2"
+                                                 Visibility="{Binding IntegrityExpenseDuplicates, Converter={StaticResource IntToVisibilityConverter}}">
+                                <StackPanel>
+                                    <Grid Margin="0,0,0,10">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <materialDesign:PackIcon Kind="ContentDuplicate" Width="18" Height="18" Margin="0,0,8,0"
+                                                                      Foreground="#F57C00" VerticalAlignment="Center"/>
+                                            <TextBlock Text="Duplicate Expense Entries" FontSize="15" FontWeight="SemiBold"
+                                                       Foreground="#F57C00" VerticalAlignment="Center"/>
+                                        </StackPanel>
+
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                            <CheckBox Content="Select All"
+                                                      IsChecked="{Binding IsAllExpenseSelected, Mode=TwoWay}"
+                                                      VerticalAlignment="Center" Margin="0,0,16,0"
+                                                      FontSize="12" Foreground="#37474F"/>
+                                            <Button Style="{StaticResource MaterialDesignRaisedButton}"
+                                                    Background="#F57C00" BorderBrush="#F57C00" Foreground="White"
+                                                    Height="28" Padding="10,0" FontSize="11" Margin="0,0,8,0"
+                                                    Command="{Binding DeleteSelectedExpenseGroupsCommand}">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <materialDesign:PackIcon Kind="DeleteSweep" Width="14" Height="14" Margin="0,0,4,0"/>
+                                                    <TextBlock Text="{Binding SelectedExpenseCount, StringFormat='Delete Selected ({0})'}"/>
+                                                </StackPanel>
+                                            </Button>
+                                            <Button Content="Delete ALL Duplicates"
+                                                    Style="{StaticResource MaterialDesignOutlinedButton}"
+                                                    Foreground="#F57C00" BorderBrush="#F57C00"
+                                                    Height="28" Padding="10,0" FontSize="11"
+                                                    Command="{Binding DeleteAllExpenseGroupsCommand}"/>
+                                        </StackPanel>
+                                    </Grid>
+                                    <DataGrid ItemsSource="{Binding DuplicateExpenseGroups}" AutoGenerateColumns="False"
+                                              IsReadOnly="True" MaxHeight="200"
+                                              materialDesign:DataGridAssist.CellPadding="10 6">
+                                        <DataGrid.Columns>
+                                            <DataGridTemplateColumn Width="45">
+                                                <DataGridTemplateColumn.Header>
+                                                    <CheckBox IsChecked="{Binding DataContext.IsAllExpenseSelected, RelativeSource={RelativeSource AncestorType=DataGrid}, Mode=TwoWay}"
+                                                              HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </DataGridTemplateColumn.Header>
+                                                <DataGridTemplateColumn.CellTemplate>
+                                                    <DataTemplate>
+                                                        <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                                  HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    </DataTemplate>
+                                                </DataGridTemplateColumn.CellTemplate>
+                                            </DataGridTemplateColumn>
+                                            <DataGridTextColumn Header="DsmEntry ID" Binding="{Binding DsmEntryId}" Width="90"/>
+                                            <DataGridTextColumn Header="Description" Binding="{Binding Description}" Width="*"/>
+                                            <DataGridTextColumn Header="Amount" Binding="{Binding Amount, StringFormat='₹#,##0.00'}" Width="110"/>
+                                            <DataGridTextColumn Header="Dupe Count" Binding="{Binding DuplicateCount}" Width="80"/>
+                                            <DataGridTextColumn Header="Reason" Binding="{Binding Reason}" Width="180"/>
+                                            <DataGridTemplateColumn Header="Action" Width="120">
+                                                <DataGridTemplateColumn.CellTemplate>
+                                                    <DataTemplate>
+                                                        <Button Content="Delete Dupes"
+                                                                Style="{StaticResource MaterialDesignOutlinedButton}"
+                                                                Foreground="#F57C00" BorderBrush="#F57C00"
+                                                                Height="26" Padding="8,0" FontSize="11"
+                                                                Command="{Binding DataContext.DeleteDuplicateExpenseGroupCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                                 CommandParameter="{Binding}"/>
                                                     </DataTemplate>
                                                 </DataGridTemplateColumn.CellTemplate>

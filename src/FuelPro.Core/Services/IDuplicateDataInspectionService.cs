@@ -21,6 +21,14 @@ public class DebitEntryDuplicateGroup
     public string Reason { get; set; } = string.Empty;
 }
 
+public class ExpenseDuplicateGroup
+{
+    public Expense OriginalRecord { get; set; } = null!;
+    public List<Expense> DuplicateRecords { get; set; } = new();
+    public int DuplicateCount => DuplicateRecords.Count;
+    public string Reason { get; set; } = string.Empty;
+}
+
 public class RepaymentDuplicateGroup
 {
     public CreditorRepayment OriginalRecord { get; set; } = null!;
@@ -40,18 +48,21 @@ public class DataIntegrityReport
 {
     public int DuplicateDsmEntries { get; set; }
     public int DuplicateDebitEntries { get; set; }
+    public int DuplicateExpenses { get; set; }
     public int DuplicateRepayments { get; set; }
     public int OrphanRecords { get; set; }
     public int BrokenForeignKeys { get; set; }
     public bool HasIssues =>
         DuplicateDsmEntries > 0 ||
         DuplicateDebitEntries > 0 ||
+        DuplicateExpenses > 0 ||
         DuplicateRepayments > 0 ||
         OrphanRecords > 0 ||
         BrokenForeignKeys > 0;
     public DateTime ScannedAt { get; set; }
     public List<DsmEntryDuplicateGroup> DsmEntryGroups { get; set; } = new();
     public List<DebitEntryDuplicateGroup> DebitEntryGroups { get; set; } = new();
+    public List<ExpenseDuplicateGroup> ExpenseGroups { get; set; } = new();
     public List<RepaymentDuplicateGroup> RepaymentGroups { get; set; } = new();
     public List<OrphanRecord> Orphans { get; set; } = new();
 }
@@ -74,6 +85,11 @@ public interface IDuplicateDataInspectionService
     /// Returns duplicate DebitEntry groups within the same DsmEntry.
     /// </summary>
     Task<List<DebitEntryDuplicateGroup>> FindDuplicateDebitEntriesAsync();
+
+    /// <summary>
+    /// Returns duplicate Expense groups within the same DsmEntry.
+    /// </summary>
+    Task<List<ExpenseDuplicateGroup>> FindDuplicateExpensesAsync();
 
     /// <summary>
     /// Returns duplicate CreditorRepayment groups (same creditor, date, amount, mode).

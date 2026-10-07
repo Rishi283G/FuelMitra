@@ -58,6 +58,8 @@ public partial class DashboardViewModel : ObservableObject
     [ObservableProperty] private string _newRepaymentMode = "Cash";
     [ObservableProperty] private string _newChequeNumber = "";
     [ObservableProperty] private double _newRepaymentAmount;
+    [ObservableProperty] private string _newRepaymentShift = "Shift A";
+    public string[] RepaymentShiftOptions { get; } = { "Shift A", "Shift B", "Shift C" };
     [ObservableProperty] private string _repaymentStatusMessage = "";
 
     public string[] PaymentModes { get; } = { "Cash", "PhonePe", "PineLabs Card", "PetroCard", "Bank Transfer", "Cheque" };
@@ -593,12 +595,13 @@ public partial class DashboardViewModel : ObservableObject
             return;
         }
 
-        var shiftNumber = DateTime.Now.Hour < 20 ? "B" : "A";
+        var shiftNumber = (NewRepaymentShift ?? "Shift A").Contains("C") ? "C" : ((NewRepaymentShift ?? "Shift A").Contains("B") ? "B" : "A");
+        var repaymentDate = SettlementWindowResolver.GetRepaymentDateTime(SelectedDate, shiftNumber);
 
         var repayment = new FuelPro.Core.Models.CreditorRepayment
         {
             CreditorName = NewCreditorName.Trim(),
-            RepaymentDate = SelectedDate.Date,
+            RepaymentDate = repaymentDate,
             PaymentMode = NewRepaymentMode,
             ChequeNo = NewRepaymentMode == "Cheque" ? NewChequeNumber?.Trim() : null,
             Amount = NewRepaymentAmount,

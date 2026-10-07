@@ -56,13 +56,13 @@
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
                         <TextBox Grid.Column="0" Text="{Binding Shift1Manager, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0"
-                                 materialDesign:HintAssist.Hint="Shift 1 Manager Name" materialDesign:HintAssist.IsFloating="True"
+                                 materialDesign:HintAssist.Hint="Shift A Manager Name" materialDesign:HintAssist.IsFloating="True"
                                  Style="{StaticResource MaterialDesignOutlinedTextBox}" FontSize="15"/>
                         <TextBox Grid.Column="1" Text="{Binding Shift2Manager, UpdateSourceTrigger=PropertyChanged}" Margin="4,0,4,0"
-                                 materialDesign:HintAssist.Hint="Shift 2 Manager Name" materialDesign:HintAssist.IsFloating="True"
+                                 materialDesign:HintAssist.Hint="Shift B Manager Name" materialDesign:HintAssist.IsFloating="True"
                                  Style="{StaticResource MaterialDesignOutlinedTextBox}" FontSize="15"/>
                         <TextBox Grid.Column="2" Text="{Binding Shift3Manager, UpdateSourceTrigger=PropertyChanged}" Margin="8,0,0,0"
-                                 materialDesign:HintAssist.Hint="Shift 3 Manager Name (Optional)" materialDesign:HintAssist.IsFloating="True"
+                                 materialDesign:HintAssist.Hint="Shift C Manager Name (Optional)" materialDesign:HintAssist.IsFloating="True"
                                  Style="{StaticResource MaterialDesignOutlinedTextBox}" FontSize="15"/>
                     </Grid>
 

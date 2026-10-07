@@ -36,7 +36,7 @@ public class ReleasePackageSmokeTests : IDisposable
     public void SmokeTest_Step1_InstallerPackageIntegrityAndMetadata()
     {
         var repoRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
-        var installerPath = Path.Combine(repoRoot, "installer_output", "PyroSync_Setup_v1.3.33.exe");
+        var installerPath = Path.Combine(repoRoot, "installer_output", "PyroSync_Setup_v1.3.35.exe");
         var publishDir = Path.Combine(repoRoot, "publish_output");
 
         Assert.True(File.Exists(installerPath), $"Installer missing at {installerPath}");
@@ -55,8 +55,8 @@ public class ReleasePackageSmokeTests : IDisposable
         Assert.True(File.Exists(dataDll), "FuelPro.Data.dll missing from publish_output");
 
         var verInfo = FileVersionInfo.GetVersionInfo(uiDll);
-        Assert.Equal("1.3.33.0", verInfo.FileVersion);
-        Assert.StartsWith("1.3.33", verInfo.ProductVersion);
+        Assert.Equal("1.3.35.0", verInfo.FileVersion);
+        Assert.StartsWith("1.3.35", verInfo.ProductVersion);
 
         // Confirm no test databases or source files exist in publish_output
         var dbFiles = Directory.GetFiles(publishDir, "*.db*", SearchOption.AllDirectories);

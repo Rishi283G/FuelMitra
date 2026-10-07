@@ -18,6 +18,7 @@ public class AgsInventoryService : IAgsInventoryService
     private readonly IServiceProvider _serviceProvider;
     private readonly IAgsImportRepository _agsRepo;
     private readonly IDsmEntryRepository _dsmRepo;
+    private readonly IShiftCycleService _shiftCycleService;
     private readonly ILogger _logger = Log.ForContext<AgsInventoryService>();
 
     public AgsInventoryService(IServiceProvider serviceProvider)
@@ -25,6 +26,7 @@ public class AgsInventoryService : IAgsInventoryService
         _serviceProvider = serviceProvider;
         _agsRepo = serviceProvider.GetRequiredService<IAgsImportRepository>();
         _dsmRepo = serviceProvider.GetRequiredService<IDsmEntryRepository>();
+        _shiftCycleService = serviceProvider.GetService<IShiftCycleService>() ?? new ShiftCycleService();
     }
 
     /// <summary>Normalises Roman-numeral shift types (I/II/III) back to A/B/C so all
@@ -39,8 +41,7 @@ public class AgsInventoryService : IAgsInventoryService
 
     public (DateTime Date, string Shift) GetPreviousShift(DateTime date, string shift)
     {
-        var norm = NormalizeShiftType(shift);
-        return norm == "A" ? (date.Date, "B") : (date.Date.AddDays(-1), "A");
+        return _shiftCycleService.GetPreviousShift(date, shift);
     }
 
     public async Task<List<NozzleGroupDto>> BuildNozzleGroupsAsync(DateTime date, string shiftType, List<DsmEntry>? loadedEntries = null)
@@ -478,10 +479,10 @@ public class AgsInventoryService : IAgsInventoryService
 
             startShiftType = NormalizeShiftType(startShiftType);
 
-            // Sort chronologically: OrderBy Date, then Shift B (Day) before Shift A (Night/Morning)
+            // Sort chronologically within date: Shift A (1) -> Shift B (2) -> Shift C (3)
             var sortedImports = allImports
                 .OrderBy(x => x.ImportDate)
-                .ThenBy(x => NormalizeShiftType(x.ShiftType) == "A")
+                .ThenBy(x => _shiftCycleService.NormalizeShiftType(x.ShiftType) switch { "A" => 1, "B" => 2, "C" => 3, _ => 4 })
                 .ToList();
 
             var startIdx = sortedImports.FindIndex(x =>
@@ -578,7 +579,10 @@ public class AgsInventoryService : IAgsInventoryService
             }
         }
 
-        var sortedShifts = activeImports.OrderBy(s => s.ImportDate).ThenBy(s => NormalizeShiftType(s.ShiftType) == "A").ToList();
+        var sortedShifts = activeImports
+            .OrderBy(s => s.ImportDate)
+            .ThenBy(s => _shiftCycleService.NormalizeShiftType(s.ShiftType) switch { "A" => 1, "B" => 2, "C" => 3, _ => 4 })
+            .ToList();
         var lastShift = sortedShifts.LastOrDefault();
 
         var hsdTank = lastShift?.TankStocks?.FirstOrDefault(t => t.FuelType == "HSD");
@@ -586,8 +590,7 @@ public class AgsInventoryService : IAgsInventoryService
         var msIITank = lastShift?.TankStocks?.FirstOrDefault(t => t.FuelType == "MS-II");
 
         // Fetch previous shift closings/dips before startDate
-        var prevDate = startDate.Date.AddDays(-1);
-        var prevShift = "A";
+        var (prevDate, prevShift) = GetPreviousShift(startDate.Date, _shiftCycleService.GetOpeningShiftForDate(startDate.Date));
         var prevImportRes = await _agsRepo.GetActiveShiftImportAsync(prevDate, prevShift);
         var prevImport = (prevImportRes.Success && prevImportRes.Data != null) ? prevImportRes.Data : null;
 

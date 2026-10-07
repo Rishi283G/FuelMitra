@@ -12,8 +12,8 @@ using FuelPro.Core.Services;
 using FuelPro.Data;
 using FuelPro.Data.Repositories;
 using FuelPro.Data.Services;
+using FuelPro.Core.DTOs;
 using FuelPro.UI;
-
 using Xunit;
 
 namespace FuelPro.Tests;
@@ -408,5 +408,511 @@ public class DuplicatePreventionTests : IDisposable
             Assert.False(await db.Set<DsmEntry>().AnyAsync(e => e.DsmEntryId == dup2Id));
             Assert.True(await db.Set<DsmEntry>().AnyAsync(e => e.DsmEntryId == entry1.DsmEntryId));
         }
+    }
+
+    [Fact]
+    public async Task TestA_DetectExactSyncedDuplicateDebitEntry()
+    {
+        var date = new DateTime(2026, 8, 1);
+        var entry = await SaveTestEntryAsync(date, "A", "Operator 1", 1, 1000);
+
+        int origId, dupeId;
+        using (var scope = _serviceProvider.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FuelProDbContext>();
+            var origDebit = new DebitEntry
+            {
+                DsmEntryId = entry.DsmEntryId,
+                DebtorName = "SUJATA MASTANE",
+                Amount = 3100,
+                SlipNumber = "2843",
+                CreatedAt = entry.CreatedAt
+            };
+            var dupeDebit = new DebitEntry
+            {
+                DsmEntryId = entry.DsmEntryId,
+                DebtorName = "SUJATA MASTANE",
+                Amount = 3100,
+                SlipNumber = "2843",
+                CreatedAt = entry.CreatedAt.AddHours(5)
+            };
+            db.Set<DebitEntry>().AddRange(origDebit, dupeDebit);
+            await db.SaveChangesAsync();
+            origId = origDebit.DebitId;
+            dupeId = dupeDebit.DebitId;
+        }
+
+        using (var scope = _serviceProvider.CreateScope())
+        {
+            var inspector = scope.ServiceProvider.GetRequiredService<IDuplicateDataInspectionService>();
+            var dupes = await inspector.FindDuplicateDebitEntriesAsync();
+
+            var match = dupes.FirstOrDefault(g => g.OriginalRecord.DebtorName == "SUJATA MASTANE");
+            Assert.NotNull(match);
+            Assert.Equal(origId, match.OriginalRecord.DebitId);
+            Assert.Single(match.DuplicateRecords);
+            Assert.Equal(dupeId, match.DuplicateRecords[0].DebitId);
+        }
+    }
+
+    [Fact]
+    public async Task TestB_DetectExactSyncedDuplicateExpense()
+    {
+        var date = new DateTime(2026, 8, 2);
+        var entry = await SaveTestEntryAsync(date, "A", "Operator 2", 1, 1000);
+
+        int origId, dupeId;
+        using (var scope = _serviceProvider.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FuelProDbContext>();
+            var origExp = new Expense { DsmEntryId = entry.DsmEntryId, Description = "BANGLOW D G", Amount = 7852 };
+            db.Set<Expense>().Add(origExp);
+            await db.SaveChangesAsync();
+            origId = origExp.ExpenseId;
+
+            var origLog = await db.Set<SyncChangeLog>().FirstAsync(l => l.TableName == "Expenses" && l.RecordId == origId);
+            origLog.CreatedAt = entry.CreatedAt;
+
+            var dupeExp = new Expense { DsmEntryId = entry.DsmEntryId, Description = "BANGLOW D G", Amount = 7852 };
+            db.Set<Expense>().Add(dupeExp);
+            await db.SaveChangesAsync();
+            dupeId = dupeExp.ExpenseId;
+
+            var dupeLog = await db.Set<SyncChangeLog>().FirstAsync(l => l.TableName == "Expenses" && l.RecordId == dupeId);
+            dupeLog.CreatedAt = entry.CreatedAt.AddMinutes(2);
+            await db.SaveChangesAsync();
+        }
+
+        using (var scope = _serviceProvider.CreateScope())
+        {
+            var inspector = scope.ServiceProvider.GetRequiredService<IDuplicateDataInspectionService>();
+            var dupes = await inspector.FindDuplicateExpensesAsync();
+
+            var match = dupes.FirstOrDefault(g => g.OriginalRecord.Description == "BANGLOW D G");
+            Assert.NotNull(match);
+            Assert.Equal(origId, match.OriginalRecord.ExpenseId);
+            Assert.Single(match.DuplicateRecords);
+            Assert.Equal(dupeId, match.DuplicateRecords[0].ExpenseId);
+        }
+    }
+
+    [Fact]
+    public async Task TestC_PreserveSameAmountLegitimateDebtorTransactions()
+    {
+        var date = new DateTime(2026, 8, 3);
+        var entry = await SaveTestEntryAsync(date, "A", "Operator 3", 1, 1000);
+
+        using (var scope = _serviceProvider.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FuelProDbContext>();
+            var debit1 = new DebitEntry { DsmEntryId = entry.DsmEntryId, DebtorName = "Milenium School", Amount = 5200, SlipNumber = null, VehicleNumber = null, CreatedAt = entry.CreatedAt };
+            var debit2 = new DebitEntry { DsmEntryId = entry.DsmEntryId, DebtorName = "Milenium School", Amount = 5200, SlipNumber = null, VehicleNumber = null, CreatedAt = entry.CreatedAt };
+            db.Set<DebitEntry>().AddRange(debit1, debit2);
+            await db.SaveChangesAsync();
+        }
+
+        using (var scope = _serviceProvider.CreateScope())
+        {
+            var inspector = scope.ServiceProvider.GetRequiredService<IDuplicateDataInspectionService>();
+            var dupes = await inspector.FindDuplicateDebitEntriesAsync();
+
+            var match = dupes.FirstOrDefault(g => g.OriginalRecord.DebtorName == "Milenium School");
+            Assert.Null(match); // Preserved as legitimate
+        }
+    }
+
+    [Fact]
+    public async Task TestD_PreserveSameDescriptionSameAmountLegitimateExpenses()
+    {
+        var date = new DateTime(2026, 8, 4);
+        var entry = await SaveTestEntryAsync(date, "A", "Operator 4", 1, 1000);
+
+        using (var scope = _serviceProvider.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FuelProDbContext>();
+            var exp1 = new Expense { DsmEntryId = entry.DsmEntryId, Description = "Chai", Amount = 50 };
+            var exp2 = new Expense { DsmEntryId = entry.DsmEntryId, Description = "Chai", Amount = 50 };
+            db.Set<Expense>().AddRange(exp1, exp2);
+            await db.SaveChangesAsync();
+        }
+
+        using (var scope = _serviceProvider.CreateScope())
+        {
+            var inspector = scope.ServiceProvider.GetRequiredService<IDuplicateDataInspectionService>();
+            var dupes = await inspector.FindDuplicateExpensesAsync();
+
+            var match = dupes.FirstOrDefault(g => g.OriginalRecord.Description == "Chai");
+            Assert.Null(match); // Preserved as legitimate
+        }
+    }
+
+    [Fact]
+    public async Task TestE_PreserveTransactionsAcrossDifferentDsmEntries()
+    {
+        var date = new DateTime(2026, 8, 5);
+        var entry1 = await SaveTestEntryAsync(date, "A", "Operator 5A", 1, 1000);
+        var entry2 = await SaveTestEntryAsync(date, "A", "Operator 5B", 2, 1000);
+
+        using (var scope = _serviceProvider.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FuelProDbContext>();
+            var debit1 = new DebitEntry { DsmEntryId = entry1.DsmEntryId, DebtorName = "OM BITCON", Amount = 7430, SlipNumber = "101", CreatedAt = entry1.CreatedAt };
+            var debit2 = new DebitEntry { DsmEntryId = entry2.DsmEntryId, DebtorName = "OM BITCON", Amount = 7430, SlipNumber = "101", CreatedAt = entry2.CreatedAt };
+            db.Set<DebitEntry>().AddRange(debit1, debit2);
+
+            var exp1 = new Expense { DsmEntryId = entry1.DsmEntryId, Description = "Office Stationery", Amount = 500 };
+            var exp2 = new Expense { DsmEntryId = entry2.DsmEntryId, Description = "Office Stationery", Amount = 500 };
+            db.Set<Expense>().AddRange(exp1, exp2);
+            await db.SaveChangesAsync();
+        }
+
+        using (var scope = _serviceProvider.CreateScope())
+        {
+            var inspector = scope.ServiceProvider.GetRequiredService<IDuplicateDataInspectionService>();
+            var debitDupes = await inspector.FindDuplicateDebitEntriesAsync();
+            var expDupes = await inspector.FindDuplicateExpensesAsync();
+
+            Assert.DoesNotContain(debitDupes, g => g.OriginalRecord.DebtorName == "OM BITCON");
+            Assert.DoesNotContain(expDupes, g => g.OriginalRecord.Description == "Office Stationery");
+        }
+    }
+
+    [Fact]
+    public async Task TestF_PreserveTransactionsAcrossDifferentShifts()
+    {
+        var date1 = new DateTime(2026, 8, 6);
+        var date2 = new DateTime(2026, 8, 7);
+        var entry1 = await SaveTestEntryAsync(date1, "A", "Operator 6A", 1, 1000);
+        var entry2 = await SaveTestEntryAsync(date2, "B", "Operator 6B", 1, 1000);
+
+        using (var scope = _serviceProvider.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FuelProDbContext>();
+            var debit1 = new DebitEntry { DsmEntryId = entry1.DsmEntryId, DebtorName = "MONTEROSA", Amount = 39260, SlipNumber = "000096", CreatedAt = entry1.CreatedAt };
+            var debit2 = new DebitEntry { DsmEntryId = entry2.DsmEntryId, DebtorName = "MONTEROSA", Amount = 39260, SlipNumber = "000096", CreatedAt = entry2.CreatedAt };
+            db.Set<DebitEntry>().AddRange(debit1, debit2);
+            await db.SaveChangesAsync();
+        }
+
+        using (var scope = _serviceProvider.CreateScope())
+        {
+            var inspector = scope.ServiceProvider.GetRequiredService<IDuplicateDataInspectionService>();
+            var debitDupes = await inspector.FindDuplicateDebitEntriesAsync();
+
+            Assert.DoesNotContain(debitDupes, g => g.OriginalRecord.DebtorName == "MONTEROSA");
+        }
+    }
+
+    [Fact]
+    public async Task TestGH_DeletionIsTransactional_AndCanonicalRecordRemains()
+    {
+        var date = new DateTime(2026, 8, 8);
+        var entry = await SaveTestEntryAsync(date, "A", "Operator 7", 1, 1000);
+
+        int origId, dupeId;
+        using (var scope = _serviceProvider.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FuelProDbContext>();
+            var orig = new DebitEntry { DsmEntryId = entry.DsmEntryId, DebtorName = "TEST DEBTOR", Amount = 1200, CreatedAt = entry.CreatedAt };
+            var dupe = new DebitEntry { DsmEntryId = entry.DsmEntryId, DebtorName = "TEST DEBTOR", Amount = 1200, CreatedAt = entry.CreatedAt.AddHours(2) };
+            db.Set<DebitEntry>().AddRange(orig, dupe);
+            await db.SaveChangesAsync();
+            origId = orig.DebitId;
+            dupeId = dupe.DebitId;
+        }
+
+        using (var scope = _serviceProvider.CreateScope())
+        {
+            var resolver = scope.ServiceProvider.GetRequiredService<DuplicateResolutionService>();
+            var failResult = await resolver.DeleteDuplicateDebitEntriesAsync(new List<int> { 999999 });
+            Assert.False(failResult.Success);
+
+            var result = await resolver.DeleteDuplicateDebitEntriesAsync(new List<int> { dupeId });
+            Assert.True(result.Success);
+        }
+
+        using (var scope = _serviceProvider.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FuelProDbContext>();
+            Assert.False(await db.Set<DebitEntry>().AnyAsync(d => d.DebitId == dupeId));
+            var canonical = await db.Set<DebitEntry>().FirstOrDefaultAsync(d => d.DebitId == origId);
+            Assert.NotNull(canonical);
+            Assert.Equal(1200, canonical.Amount);
+            Assert.Equal("TEST DEBTOR", canonical.DebtorName);
+        }
+    }
+
+    [Fact]
+    public async Task TestIJ_SyncChangeLogDeleteGeneratedWithRecordGuid_AndSyncIdMappingsCleaned()
+    {
+        var date = new DateTime(2026, 8, 9);
+        var entry = await SaveTestEntryAsync(date, "A", "Operator 8", 1, 1000);
+
+        int dupeDebitId, dupeExpId;
+        string remoteDebitGuid = Guid.NewGuid().ToString();
+        string remoteExpGuid = Guid.NewGuid().ToString();
+
+        using (var scope = _serviceProvider.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FuelProDbContext>();
+            var dupeDebit = new DebitEntry { DsmEntryId = entry.DsmEntryId, DebtorName = "SYNC DEBTOR", Amount = 2500, CreatedAt = DateTime.Now };
+            var dupeExp = new Expense { DsmEntryId = entry.DsmEntryId, Description = "SYNC EXPENSE", Amount = 400 };
+            db.Set<DebitEntry>().Add(dupeDebit);
+            db.Set<Expense>().Add(dupeExp);
+            await db.SaveChangesAsync();
+
+            dupeDebitId = dupeDebit.DebitId;
+            dupeExpId = dupeExp.ExpenseId;
+
+            db.Set<SyncIdMapping>().Add(new SyncIdMapping { TableName = "DebitEntries", LocalId = dupeDebitId, RemoteGuid = remoteDebitGuid });
+            db.Set<SyncIdMapping>().Add(new SyncIdMapping { TableName = "Expenses", LocalId = dupeExpId, RemoteGuid = remoteExpGuid });
+            await db.SaveChangesAsync();
+        }
+
+        using (var scope = _serviceProvider.CreateScope())
+        {
+            var resolver = scope.ServiceProvider.GetRequiredService<DuplicateResolutionService>();
+            var resDebit = await resolver.DeleteDuplicateDebitEntriesAsync(new List<int> { dupeDebitId });
+            var resExp = await resolver.DeleteDuplicateExpensesAsync(new List<int> { dupeExpId });
+            Assert.True(resDebit.Success);
+            Assert.True(resExp.Success);
+        }
+
+        using (var scope = _serviceProvider.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FuelProDbContext>();
+
+            // Test I: Verify SyncChangeLog DELETE contains correct RemoteGuid
+            var debitDeleteLog = await db.Set<SyncChangeLog>()
+                .FirstOrDefaultAsync(l => l.TableName == "DebitEntries" && l.RecordId == dupeDebitId && l.Operation == "DELETE");
+            Assert.NotNull(debitDeleteLog);
+            Assert.Equal(remoteDebitGuid, debitDeleteLog.RecordGuid);
+
+            var expDeleteLog = await db.Set<SyncChangeLog>()
+                .FirstOrDefaultAsync(l => l.TableName == "Expenses" && l.RecordId == dupeExpId && l.Operation == "DELETE");
+            Assert.NotNull(expDeleteLog);
+            Assert.Equal(remoteExpGuid, expDeleteLog.RecordGuid);
+
+            // Test J: Verify SyncIdMappings for deleted duplicates are completely removed
+            var debitMappingExists = await db.Set<SyncIdMapping>().AnyAsync(m => m.TableName == "DebitEntries" && m.LocalId == dupeDebitId);
+            Assert.False(debitMappingExists);
+
+            var expMappingExists = await db.Set<SyncIdMapping>().AnyAsync(m => m.TableName == "Expenses" && m.LocalId == dupeExpId);
+            Assert.False(expMappingExists);
+        }
+    }
+
+    [Fact]
+    public async Task TestK_DeletedDuplicateDoesNotResurrectDuringSyncPullSimulation()
+    {
+        var date = new DateTime(2026, 8, 10);
+        var entry = await SaveTestEntryAsync(date, "A", "Operator 9", 1, 1000);
+
+        int canonicalId, dupeId;
+        string remoteGuid = Guid.NewGuid().ToString();
+
+        using (var scope = _serviceProvider.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FuelProDbContext>();
+            var canonical = new DebitEntry { DsmEntryId = entry.DsmEntryId, DebtorName = "NO RESURRECT", Amount = 1500, CreatedAt = entry.CreatedAt };
+            var dupe = new DebitEntry { DsmEntryId = entry.DsmEntryId, DebtorName = "NO RESURRECT", Amount = 1500, CreatedAt = entry.CreatedAt.AddHours(1) };
+            db.Set<DebitEntry>().AddRange(canonical, dupe);
+            await db.SaveChangesAsync();
+
+            canonicalId = canonical.DebitId;
+            dupeId = dupe.DebitId;
+
+            db.Set<SyncIdMapping>().Add(new SyncIdMapping { TableName = "DebitEntries", LocalId = dupeId, RemoteGuid = remoteGuid });
+            await db.SaveChangesAsync();
+        }
+
+        // Delete the duplicate
+        using (var scope = _serviceProvider.CreateScope())
+        {
+            var resolver = scope.ServiceProvider.GetRequiredService<DuplicateResolutionService>();
+            await resolver.DeleteDuplicateDebitEntriesAsync(new List<int> { dupeId });
+        }
+
+        // Simulate SyncEngine incoming pull for this remote record
+        using (var scope = _serviceProvider.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FuelProDbContext>();
+
+            // 1. Check if mapping exists: it was deleted!
+            var existingMapping = await db.Set<SyncIdMapping>().FirstOrDefaultAsync(m => m.TableName == "DebitEntries" && m.RemoteGuid == remoteGuid);
+            Assert.Null(existingMapping);
+
+            // 2. Business key fallback lookup in SyncEngine:
+            var matchedLocal = await db.Set<DebitEntry>()
+                .FirstOrDefaultAsync(d => d.DsmEntryId == entry.DsmEntryId && d.DebtorName.ToLower() == "no resurrect" && Math.Abs(d.Amount - 1500) < 0.01);
+
+            Assert.NotNull(matchedLocal);
+            Assert.Equal(canonicalId, matchedLocal.DebitId);
+
+            var totalDebits = await db.Set<DebitEntry>().CountAsync(d => d.DsmEntryId == entry.DsmEntryId && d.DebtorName == "NO RESURRECT");
+            Assert.Equal(1, totalDebits); // Exactly 1, no duplicate resurrected!
+        }
+    }
+
+    [Fact]
+    public async Task TestLM_RealVaijunathReconciliationReachesExactTarget_BothViewsAgree()
+    {
+        string cloneDbPath = @"d:\Projects\Pump_Automation\Clients\Mitali_Service_Station\forensic_investigation\DISPOSABLE_WORKING_CLONE\fuelPro.db";
+        if (!File.Exists(cloneDbPath)) return;
+
+        string tempTestDb = Path.Combine(_tempDir, "vaijunath_test_" + Guid.NewGuid().ToString("N") + ".db");
+        File.Copy(cloneDbPath, tempTestDb);
+
+        var services = new ServiceCollection();
+        services.AddDbContext<FuelProDbContext>(options => options.UseSqlite($"Data Source={tempTestDb}"), ServiceLifetime.Transient);
+        services.AddTransient<DbContext>(sp => sp.GetRequiredService<FuelProDbContext>());
+        services.AddTransient<IDuplicateDataInspectionService, DuplicateDataInspectionService>();
+        services.AddTransient<DuplicateResolutionService>();
+        services.AddTransient<IShiftRepository, ShiftRepository>();
+        services.AddTransient<IDsmEntryRepository, DsmEntryRepository>();
+        services.AddTransient<INozzleReadingRepository, NozzleReadingRepository>();
+        services.AddTransient<IPaymentRepository, PaymentRepository>();
+        services.AddTransient<IDebitEntryRepository, DebitEntryRepository>();
+        services.AddTransient<ITestingEntryRepository, TestingEntryRepository>();
+        services.AddTransient<IExpenseRepository, ExpenseRepository>();
+        services.AddTransient<ICashDenominationRepository, CashDenominationRepository>();
+        services.AddTransient<IDsmProfileRepository, DsmProfileRepository>();
+        services.AddTransient<ICreditorRepaymentRepository, CreditorRepaymentRepository>();
+        services.AddTransient<IAgsImportRepository, AgsImportRepository>();
+        services.AddTransient<ICreditorRepository, CreditorRepository>();
+        services.AddTransient<IPumpExpenseRepository, PumpExpenseRepository>();
+        services.AddTransient<IDebtorVehicleRepository, DebtorVehicleRepository>();
+        services.AddTransient<IDsmPersonalDebtorRepository, DsmPersonalDebtorRepository>();
+        services.AddScoped<IShiftOtherCashRepository, ShiftOtherCashRepository>();
+        services.AddScoped<IShiftFuelRateRepository, ShiftFuelRateRepository>();
+        services.AddTransient<ISettingsRepository, SettingsRepository>();
+        services.AddTransient<IUserRepository, UserRepository>();
+        services.AddSingleton<AuthService>();
+        services.AddTransient<DsmEntryService>();
+        services.AddTransient<ShiftCalculationService>();
+        services.AddSingleton<IDsmCalculationService, DsmCalculationService>();
+        services.AddSingleton<IOwnerCalculationService, OwnerCalculationService>();
+        services.AddSingleton<ITidCalculationService, TidCalculationService>();
+        services.AddScoped<IShiftAggregationService, ShiftAggregationService>();
+        services.AddScoped<IReportService, ReportService>();
+        services.AddTransient<IFeatureToggleService, FeatureToggleService>();
+        services.AddTransient<ICollectionTypeService, CollectionTypeService>();
+        services.AddTransient<IStationConfigurationService, StationConfigurationService>();
+
+        var sp = services.BuildServiceProvider();
+
+        // 1. Run inspection on DsmEntry 78
+        using (var scope = sp.CreateScope())
+        {
+            var inspector = scope.ServiceProvider.GetRequiredService<IDuplicateDataInspectionService>();
+            var debitDupes = await inspector.FindDuplicateDebitEntriesAsync();
+            var expDupes = await inspector.FindDuplicateExpensesAsync();
+
+            var debit78Groups = debitDupes.Where(g => g.OriginalRecord.DsmEntryId == 78).ToList();
+            var exp78Groups = expDupes.Where(g => g.OriginalRecord.DsmEntryId == 78).ToList();
+
+            Assert.Equal(4, debit78Groups.Count);
+            Assert.Equal(2, exp78Groups.Count);
+
+            var debitIdsToDelete = debit78Groups.SelectMany(g => g.DuplicateRecords.Select(d => d.DebitId)).OrderBy(id => id).ToList();
+            var expIdsToDelete = exp78Groups.SelectMany(g => g.DuplicateRecords.Select(e => e.ExpenseId)).OrderBy(id => id).ToList();
+
+            Assert.Equal(new List<int> { 50, 51, 52, 53 }, debitIdsToDelete);
+            Assert.Equal(new List<int> { 42, 43 }, expIdsToDelete);
+
+            // 2. Perform transactional resolution
+            var resolver = scope.ServiceProvider.GetRequiredService<DuplicateResolutionService>();
+            var resDeb = await resolver.DeleteDuplicateDebitEntriesAsync(debitIdsToDelete);
+            var resExp = await resolver.DeleteDuplicateExpensesAsync(expIdsToDelete);
+
+            Assert.True(resDeb.Success);
+            Assert.True(resExp.Success);
+        }
+
+        // 3. Verify totals and both calculation views
+        using (var scope = sp.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FuelProDbContext>();
+            var remainingDebits = await db.Set<DebitEntry>().Where(d => d.DsmEntryId == 78).ToListAsync();
+            var remainingExpenses = await db.Set<Expense>().Where(e => e.DsmEntryId == 78).ToListAsync();
+
+            var debitTotal = remainingDebits.Sum(d => d.Amount);
+            var expTotal = remainingExpenses.Sum(e => e.Amount);
+
+            Assert.Equal(54990.0, debitTotal, 2);
+            Assert.Equal(8022.0, expTotal, 2);
+
+            // View 1: Shift Entries list calculation (GetShiftEntrySummariesAsync as displayed on UI)
+            var dsmEntryService = scope.ServiceProvider.GetRequiredService<DsmEntryService>();
+            var shiftRepo = scope.ServiceProvider.GetRequiredService<IShiftRepository>();
+            var shiftDbResult = await shiftRepo.GetShiftAsync(new DateTime(2026, 10, 1), "B");
+            Assert.True(shiftDbResult.Success);
+            int shiftId = shiftDbResult.Data!.ShiftId;
+
+            var summariesResult = await dsmEntryService.GetShiftEntrySummariesAsync(shiftId);
+            Assert.True(summariesResult.Success);
+            var vaijunathSummary = summariesResult.Data!.First(s => s.DsmName.Contains("VAIJUNATH"));
+
+            Assert.Equal(154037.0, vaijunathSummary.TotalPaymentIn, 2);
+            Assert.Equal(154037.71, (double)vaijunathSummary.NetSales, 2);
+            Assert.Equal(-0.71, vaijunathSummary.Difference, 2);
+
+            // View 2: DSM Edit Mode calculation (IDsmCalculationService with loaded DsmEntry)
+            var dsmCalcService = scope.ServiceProvider.GetRequiredService<IDsmCalculationService>();
+            var dsmRepo = scope.ServiceProvider.GetRequiredService<IDsmEntryRepository>();
+            var entry78Result = await dsmRepo.GetFullEntryAsync(78);
+            Assert.True(entry78Result.Success);
+            var entry78 = entry78Result.Data!;
+
+            var entry79Result = await dsmRepo.GetFullEntryAsync(79);
+            Assert.True(entry79Result.Success);
+            var entry79 = entry79Result.Data!;
+
+            var allNozzles = entry78.NozzleReadings.Concat(entry79.NozzleReadings).ToList();
+
+            var cash1 = entry78.CashDenominations.Where(c => c.CashType == "Cash1").Sum(c => c.TotalAmount);
+            var cash2 = entry78.CashDenominations.Where(c => c.CashType == "Cash2").Sum(c => c.TotalAmount);
+            var dsmDto = new DsmEntryDto
+            {
+                DSMEntryId = entry78.DsmEntryId,
+                NozzleReadings = allNozzles.Select(n => new NozzleReadingDto { Amount = (decimal)n.Amount }).ToList(),
+                PaymentCollection = new PaymentCollectionDto
+                {
+                    PhonePe = (decimal)((entry78.PaymentCollection?.PhonePeMorning ?? 0)
+                              + (entry78.PaymentCollection?.PhonePeDay ?? 0)
+                              + (entry78.PaymentCollection?.PhonePeNight ?? 0)
+                              + (entry78.PaymentCollection?.PhonePeCardMorning ?? 0)
+                              + (entry78.PaymentCollection?.PhonePeCardDay ?? 0)
+                              + (entry78.PaymentCollection?.PhonePeCardNight ?? 0)
+                              + (entry78.QrPayments?.Sum(q => q.Amount) ?? 0)),
+                    CreditCard = (decimal)((entry78.PaymentCollection?.CreditCardMorning ?? 0)
+                                 + (entry78.PaymentCollection?.CreditCardDay ?? 0)
+                                 + (entry78.PaymentCollection?.CreditCardNight ?? 0)),
+                    PetroCard = (decimal)((entry78.PaymentCollection?.PetroCardMorning ?? 0)
+                                + (entry78.PaymentCollection?.PetroCardDay ?? 0)
+                                + (entry78.PaymentCollection?.PetroCardNight ?? 0)),
+                    CashDeposit = (decimal)(cash1 > 0 ? cash1 : (entry78.PaymentCollection?.CashDeposit ?? 0)),
+                    PhysicalCash = (decimal)cash2,
+                    DynamicPayments = (decimal)(entry78.PaymentCollection?.Items?.Sum(i => i.Amount) ?? 0),
+                    Others = (decimal)(entry78.PaymentCollection?.Others ?? 0)
+                },
+                DebitEntries = entry78.DebitEntries.Select(d => new DebitEntryDto { Amount = (decimal)d.Amount }).ToList(),
+                Expenses = entry78.Expenses.Select(e => new ExpenseDto { Amount = (decimal)e.Amount }).ToList(),
+                TestingEntries = entry78.TestingEntries.Select(t => new TestingEntryDto { Amount = (decimal)t.Amount }).ToList()
+            };
+
+            var dsmCalc = dsmCalcService.Calculate(dsmDto);
+            Assert.Equal(91025.00m, dsmCalc.TotalInDirect);
+            Assert.Equal(54990.00m, dsmCalc.TotalCreditors);
+            Assert.Equal(8022.00m, dsmCalc.TotalExpenses);
+            Assert.Equal(154037.00m, dsmCalc.TotalCollection);
+            Assert.Equal(154037.71m, Math.Round(dsmCalc.NetGrossSales, 2));
+            Assert.Equal(-0.71m, Math.Round(dsmCalc.Mismatch, 2));
+
+            // Both views agree on exactly -0.71!
+            Assert.Equal(vaijunathSummary.Difference, (double)Math.Round(dsmCalc.Mismatch, 2), 2);
+        }
+
+        try { File.Delete(tempTestDb); } catch { }
     }
 }

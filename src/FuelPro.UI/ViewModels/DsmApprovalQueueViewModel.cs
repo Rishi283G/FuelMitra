@@ -1186,8 +1186,11 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
             string? petroCardTidNight = null;
             string? petroCardBatchNight = null;
 
-            bool isNight = string.Equals(SelectedSubmission.ShiftType, "A", StringComparison.OrdinalIgnoreCase);
-            bool isDay = string.Equals(SelectedSubmission.ShiftType, "B", StringComparison.OrdinalIgnoreCase);
+            var cycleService = _serviceProvider.GetService<IShiftCycleService>() ?? new ShiftCycleService();
+            string shiftNorm = cycleService.NormalizeShiftType(SelectedSubmission.ShiftType ?? "B");
+            bool isShiftA = shiftNorm == "A";
+            bool isShiftB = shiftNorm == "B";
+            bool isShiftC = shiftNorm == "C";
 
             // Try structured settlements array first (new PWA format)
             bool hasStructuredSettlements = false;
@@ -1280,9 +1283,14 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                 string batch = swipe.Batch ?? "";
 
                 bool isSwipeNight = mode.Contains("Night", StringComparison.OrdinalIgnoreCase) || 
+                                    isShiftC ||
                                     (!mode.Contains("Morning", StringComparison.OrdinalIgnoreCase) && 
                                      !mode.Contains("Day", StringComparison.OrdinalIgnoreCase) && 
-                                     isNight);
+                                     isShiftA && mode.Contains("Night"));
+                bool isSwipeDay = mode.Contains("Day", StringComparison.OrdinalIgnoreCase) ||
+                                  (!mode.Contains("Morning", StringComparison.OrdinalIgnoreCase) &&
+                                   !mode.Contains("Night", StringComparison.OrdinalIgnoreCase) &&
+                                   isShiftB);
 
                 if (mode.Contains("PhonePe Card", StringComparison.OrdinalIgnoreCase) || 
                     mode.Contains("PhonePe UPI", StringComparison.OrdinalIgnoreCase) || 
@@ -1298,6 +1306,12 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                             phonePeTidNight = tid;
                             phonePeBatchNight = batch;
                         }
+                        else if (isSwipeDay)
+                        {
+                            upiCardDay += amount;
+                            phonePeTidDay = tid;
+                            phonePeBatchDay = batch;
+                        }
                         else
                         {
                             upiCardMorning += amount;
@@ -1312,6 +1326,12 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                             upiNight += amount;
                             phonePeTidNight = tid;
                             phonePeBatchNight = batch;
+                        }
+                        else if (isSwipeDay)
+                        {
+                            upiDay += amount;
+                            phonePeTidDay = tid;
+                            phonePeBatchDay = batch;
                         }
                         else
                         {
@@ -1331,7 +1351,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                         petroCardTidNight = tid;
                         petroCardBatchNight = batch;
                     }
-                    else if (isDay || mode.Contains("Day", StringComparison.OrdinalIgnoreCase))
+                    else if (isSwipeDay)
                     {
                         petroCardDay += amount;
                         petroCardTidDay = tid;
@@ -1355,6 +1375,12 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                         creditCardTidNight = tid;
                         creditCardBatchNight = batch;
                     }
+                    else if (isSwipeDay)
+                    {
+                        creditCardDay += amount;
+                        creditCardTidDay = tid;
+                        creditCardBatchDay = batch;
+                    }
                     else
                     {
                         creditCardMorning += amount;
@@ -1369,20 +1395,22 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
             // Fallbacks for backward compatibility / plain amount inputs (only when NO card swipe details AND no structured settlements exist)
             if (CardSwipeDetails.Count == 0 && !hasStructuredSettlements)
             {
-                if (upiMorning == 0 && upiNight == 0 && UpiAmount > 0)
+                if (upiMorning == 0 && upiDay == 0 && upiNight == 0 && UpiAmount > 0)
                 {
-                    if (isNight) upiNight = UpiAmount;
+                    if (isShiftC) upiNight = UpiAmount;
+                    else if (isShiftB) upiDay = UpiAmount;
                     else upiMorning = UpiAmount;
                 }
-                if (creditCardMorning == 0 && creditCardNight == 0 && CardAmount > 0)
+                if (creditCardMorning == 0 && creditCardDay == 0 && creditCardNight == 0 && CardAmount > 0)
                 {
-                    if (isNight) creditCardNight = CardAmount;
+                    if (isShiftC) creditCardNight = CardAmount;
+                    else if (isShiftB) creditCardDay = CardAmount;
                     else creditCardMorning = CardAmount;
                 }
                 if (petroCardMorning == 0 && petroCardDay == 0 && petroCardNight == 0 && PetroCardAmount > 0)
                 {
-                    if (isNight) petroCardNight = PetroCardAmount;
-                    else if (isDay) petroCardDay = PetroCardAmount;
+                    if (isShiftC) petroCardNight = PetroCardAmount;
+                    else if (isShiftB) petroCardDay = PetroCardAmount;
                     else petroCardMorning = PetroCardAmount;
                 }
             }
@@ -1403,12 +1431,12 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                 PetroCardDay = petroCardDay,
                 PetroCardNight = petroCardNight,
                 Others = others,
-                CardTid = cardTid ?? (isNight ? creditCardTidNight : creditCardTidMorning),
-                CardBatch = cardBatch ?? (isNight ? creditCardBatchNight : creditCardBatchMorning),
-                PhonePeTid = phonePeTid ?? (isNight ? phonePeTidNight : phonePeTidMorning),
-                PhonePeBatch = phonePeBatch ?? (isNight ? phonePeBatchNight : phonePeBatchMorning),
-                PetroCardTid = petroCardTid ?? (isNight ? petroCardTidNight : petroCardTidMorning),
-                PetroCardBatch = petroCardBatch ?? (isNight ? petroCardBatchNight : petroCardBatchMorning),
+                CardTid = cardTid ?? (isShiftC ? creditCardTidNight : (isShiftB ? creditCardTidDay : creditCardTidMorning)),
+                CardBatch = cardBatch ?? (isShiftC ? creditCardBatchNight : (isShiftB ? creditCardBatchDay : creditCardBatchMorning)),
+                PhonePeTid = phonePeTid ?? (isShiftC ? phonePeTidNight : (isShiftB ? phonePeTidDay : phonePeTidMorning)),
+                PhonePeBatch = phonePeBatch ?? (isShiftC ? phonePeBatchNight : (isShiftB ? phonePeBatchDay : phonePeBatchMorning)),
+                PetroCardTid = petroCardTid ?? (isShiftC ? petroCardTidNight : (isShiftB ? petroCardTidDay : petroCardTidMorning)),
+                PetroCardBatch = petroCardBatch ?? (isShiftC ? petroCardBatchNight : (isShiftB ? petroCardBatchDay : petroCardBatchMorning)),
                 PhonePeTidMorning = phonePeTidMorning,
                 PhonePeBatchMorning = phonePeBatchMorning,
                 PhonePeTidDay = phonePeTidDay,

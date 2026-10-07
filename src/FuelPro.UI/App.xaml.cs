@@ -1478,6 +1478,7 @@ public partial class App : Application
         services.AddSingleton<IFeatureToggleService, FeatureToggleService>();
         services.AddSingleton<ICollectionTypeService, CollectionTypeService>();
         services.AddSingleton<IStationConfigurationService, StationConfigurationService>();
+        services.AddSingleton<IShiftCycleService, ShiftCycleService>();
 
         // Sync Services
         services.AddSingleton<FuelPro.Sync.SyncConfigService>();

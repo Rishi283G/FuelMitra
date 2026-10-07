@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using FuelPro.Core.Common;
 using FuelPro.Core.DTOs;
 using FuelPro.Core.Models;
 using FuelPro.Core.Services;
@@ -15,6 +16,7 @@ public class DsrIsolatedRepresentationTests
 
     public DsrIsolatedRepresentationTests()
     {
+        PumpConfiguration.ResetToDefaults();
         _aggregation = new ShiftAggregationService();
         _reportService = new ReportService(_aggregation);
     }

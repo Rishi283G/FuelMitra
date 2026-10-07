@@ -144,11 +144,13 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
     [ObservableProperty] private bool _integrityHasIssues;
     [ObservableProperty] private int _integrityDsmDuplicates;
     [ObservableProperty] private int _integrityDebitDuplicates;
+    [ObservableProperty] private int _integrityExpenseDuplicates;
     [ObservableProperty] private int _integrityRepaymentDuplicates;
     [ObservableProperty] private int _integrityOrphans;
     [ObservableProperty] private int _integrityBrokenFks;
     public ObservableCollection<DsmEntryDuplicateGroupVm> DuplicateDsmGroups { get; } = new();
     public ObservableCollection<DebitEntryDuplicateGroupVm> DuplicateDebitGroups { get; } = new();
+    public ObservableCollection<ExpenseDuplicateGroupVm> DuplicateExpenseGroups { get; } = new();
     public ObservableCollection<RepaymentDuplicateGroupVm> DuplicateRepaymentGroups { get; } = new();
     public ObservableCollection<OrphanRecord> OrphanRecords { get; } = new();
 
@@ -158,6 +160,9 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
 
     [ObservableProperty] private bool _isAllDebitSelected;
     [ObservableProperty] private int _selectedDebitCount;
+
+    [ObservableProperty] private bool _isAllExpenseSelected;
+    [ObservableProperty] private int _selectedExpenseCount;
 
     [ObservableProperty] private bool _isAllRepaymentSelected;
     [ObservableProperty] private int _selectedRepaymentCount;
@@ -226,6 +231,16 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
         SelectedDebitCount = value ? DuplicateDebitGroups.Count : 0;
     }
 
+    partial void OnIsAllExpenseSelectedChanged(bool value)
+    {
+        if (_isUpdatingSelection) return;
+        _isUpdatingSelection = true;
+        foreach (var group in DuplicateExpenseGroups)
+            group.IsSelected = value;
+        _isUpdatingSelection = false;
+        SelectedExpenseCount = value ? DuplicateExpenseGroups.Count : 0;
+    }
+
     partial void OnIsAllRepaymentSelectedChanged(bool value)
     {
         if (_isUpdatingSelection) return;
@@ -251,6 +266,15 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
         _isUpdatingSelection = true;
         SelectedDebitCount = DuplicateDebitGroups.Count(g => g.IsSelected);
         IsAllDebitSelected = DuplicateDebitGroups.Count > 0 && SelectedDebitCount == DuplicateDebitGroups.Count;
+        _isUpdatingSelection = false;
+    }
+
+    private void UpdateExpenseSelectionState()
+    {
+        if (_isUpdatingSelection) return;
+        _isUpdatingSelection = true;
+        SelectedExpenseCount = DuplicateExpenseGroups.Count(g => g.IsSelected);
+        IsAllExpenseSelected = DuplicateExpenseGroups.Count > 0 && SelectedExpenseCount == DuplicateExpenseGroups.Count;
         _isUpdatingSelection = false;
     }
 
@@ -946,6 +970,7 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
         IntegrityScanMessage = "⏳ Scanning database for integrity issues...";
         DuplicateDsmGroups.Clear();
         DuplicateDebitGroups.Clear();
+        DuplicateExpenseGroups.Clear();
         DuplicateRepaymentGroups.Clear();
         OrphanRecords.Clear();
 
@@ -956,6 +981,7 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
 
             IntegrityDsmDuplicates = report.DuplicateDsmEntries;
             IntegrityDebitDuplicates = report.DuplicateDebitEntries;
+            IntegrityExpenseDuplicates = report.DuplicateExpenses;
             IntegrityRepaymentDuplicates = report.DuplicateRepayments;
             IntegrityOrphans = report.OrphanRecords;
             IntegrityBrokenFks = report.BrokenForeignKeys;
@@ -978,6 +1004,14 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
             }
             UpdateDebitSelectionState();
 
+            foreach (var g in report.ExpenseGroups)
+            {
+                var vm = ExpenseDuplicateGroupVm.FromModel(g);
+                vm.SelectionChangedAction = UpdateExpenseSelectionState;
+                DuplicateExpenseGroups.Add(vm);
+            }
+            UpdateExpenseSelectionState();
+
             foreach (var g in report.RepaymentGroups)
             {
                 var vm = RepaymentDuplicateGroupVm.FromModel(g);
@@ -991,7 +1025,7 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
 
             IntegrityScanMessage = report.HasIssues
                 ? $"⚠️  Issues found — {report.DuplicateDsmEntries} duplicate DSM entries, " +
-                  $"{report.DuplicateDebitEntries} duplicate debits, {report.OrphanRecords} orphans."
+                  $"{report.DuplicateDebitEntries} duplicate debits, {report.DuplicateExpenses} duplicate expenses, {report.OrphanRecords} orphans."
                 : "✅ No integrity issues found. Database is clean.";
         }
         catch (Exception ex)
@@ -1150,10 +1184,18 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
 
         var ids = group.DuplicateIds;
         var confirm = MessageBox.Show(
-            $"Delete {ids.Count} duplicate DebitEntry row(s)?\n" +
-            $"IDs: [{string.Join(", ", ids)}]\n\n" +
-            $"The original entry (ID {group.OriginalEntryId}) will be kept.",
-            "Confirm Delete Duplicates",
+            "CONFIRM DUPLICATE DEBIT DELETION:\n\n" +
+            $"• Affected DSM Entry: #{group.DsmEntryId}\n" +
+            $"• Debtor: {group.DebtorName}\n" +
+            $"• Amount: ₹{group.Amount:N2}\n\n" +
+            $"CANONICAL RECORD PRESERVED:\n" +
+            $"• Debit ID: #{group.OriginalEntryId} (Slip: {group.OriginalSlip ?? "None"}, Created: {group.OriginalCreatedAt})\n\n" +
+            $"DUPLICATE RECORDS TO PERMANENTLY DELETE:\n" +
+            $"• Duplicate IDs: [{string.Join(", #", ids)}]\n" +
+            $"• Duplicate Count: {ids.Count}\n" +
+            $"• Duplicate Inflation Removed: ₹{group.DuplicateInflationAmount:N2}\n\n" +
+            "Do you want to proceed with permanent deletion?",
+            "Confirm Delete Duplicate Debits",
             MessageBoxButton.YesNo,
             MessageBoxImage.Warning);
 
@@ -1165,6 +1207,50 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
         {
             DuplicateDebitGroups.Remove(group);
             IntegrityDebitDuplicates = DuplicateDebitGroups.Sum(g => g.DuplicateCount);
+            UpdateDebitSelectionState();
+            IntegrityHasIssues = IntegrityDsmDuplicates > 0 || IntegrityDebitDuplicates > 0
+                || IntegrityExpenseDuplicates > 0 || IntegrityRepaymentDuplicates > 0 || IntegrityOrphans > 0;
+            IntegrityScanMessage = $"✅ {result.Data}";
+        }
+        else
+        {
+            MessageBox.Show(result.Error, "Delete Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    [RelayCommand]
+    private async Task DeleteDuplicateExpenseGroupAsync(ExpenseDuplicateGroupVm group)
+    {
+        if (group == null) return;
+
+        var ids = group.DuplicateIds;
+        var confirm = MessageBox.Show(
+            "CONFIRM DUPLICATE EXPENSE DELETION:\n\n" +
+            $"• Affected DSM Entry: #{group.DsmEntryId}\n" +
+            $"• Description: {group.Description}\n" +
+            $"• Amount: ₹{group.Amount:N2}\n\n" +
+            $"CANONICAL RECORD PRESERVED:\n" +
+            $"• Expense ID: #{group.OriginalExpenseId} (Original Lineage)\n\n" +
+            $"DUPLICATE RECORDS TO PERMANENTLY DELETE:\n" +
+            $"• Duplicate IDs: [{string.Join(", #", ids)}]\n" +
+            $"• Duplicate Count: {ids.Count}\n" +
+            $"• Duplicate Inflation Removed: ₹{group.DuplicateInflationAmount:N2}\n\n" +
+            "Do you want to proceed with permanent deletion?",
+            "Confirm Delete Duplicate Expenses",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (confirm != MessageBoxResult.Yes) return;
+
+        var result = await _resolutionService.DeleteDuplicateExpensesAsync(ids);
+
+        if (result.Success)
+        {
+            DuplicateExpenseGroups.Remove(group);
+            IntegrityExpenseDuplicates = DuplicateExpenseGroups.Sum(g => g.DuplicateCount);
+            UpdateExpenseSelectionState();
+            IntegrityHasIssues = IntegrityDsmDuplicates > 0 || IntegrityDebitDuplicates > 0
+                || IntegrityExpenseDuplicates > 0 || IntegrityRepaymentDuplicates > 0 || IntegrityOrphans > 0;
             IntegrityScanMessage = $"✅ {result.Data}";
         }
         else
@@ -1280,9 +1366,17 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
         if (selected.Count == 0) return;
 
         var allSelectedIds = selected.SelectMany(g => g.DuplicateIds).ToList();
+        double totalInflation = selected.Sum(g => g.DuplicateInflationAmount);
+        var affectedDsm = string.Join(", ", selected.Select(g => $"#{g.DsmEntryId}").Distinct());
+
         var confirm = MessageBox.Show(
-            $"Delete {allSelectedIds.Count} duplicate DebitEntry row(s) across {selected.Count} selected group(s)?\n\n" +
-            "The original debit entry records will be preserved.",
+            "CONFIRM BATCH DUPLICATE DEBIT DELETION:\n\n" +
+            $"• Affected DSM Entries: {affectedDsm}\n" +
+            $"• Selected Groups: {selected.Count}\n" +
+            $"• Duplicate Records to Delete: {allSelectedIds.Count} (IDs: [{string.Join(", ", allSelectedIds)}])\n" +
+            $"• Total Duplicate Inflation Removed: ₹{totalInflation:N2}\n\n" +
+            "The original canonical debit records will be preserved.\n" +
+            "Do you want to proceed with permanent deletion?",
             "Confirm Delete Selected Duplicate Debits",
             MessageBoxButton.YesNo,
             MessageBoxImage.Warning);
@@ -1299,7 +1393,7 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
             IntegrityDebitDuplicates = DuplicateDebitGroups.Sum(g => g.DuplicateCount);
             UpdateDebitSelectionState();
             IntegrityHasIssues = IntegrityDsmDuplicates > 0 || IntegrityDebitDuplicates > 0
-                || IntegrityRepaymentDuplicates > 0 || IntegrityOrphans > 0;
+                || IntegrityExpenseDuplicates > 0 || IntegrityRepaymentDuplicates > 0 || IntegrityOrphans > 0;
             IntegrityScanMessage = $"✅ {result.Data}";
         }
         else
@@ -1314,9 +1408,17 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
         if (DuplicateDebitGroups.Count == 0) return;
 
         var allIds = DuplicateDebitGroups.SelectMany(g => g.DuplicateIds).ToList();
+        double totalInflation = DuplicateDebitGroups.Sum(g => g.DuplicateInflationAmount);
+        var affectedDsm = string.Join(", ", DuplicateDebitGroups.Select(g => $"#{g.DsmEntryId}").Distinct());
+
         var confirm = MessageBox.Show(
-            $"Delete ALL {allIds.Count} duplicate DebitEntry row(s) across all {DuplicateDebitGroups.Count} group(s)?\n\n" +
-            "The original debit entry records will be preserved.",
+            "CONFIRM ALL DUPLICATE DEBIT DELETION:\n\n" +
+            $"• Affected DSM Entries: {affectedDsm}\n" +
+            $"• Total Groups: {DuplicateDebitGroups.Count}\n" +
+            $"• Duplicate Records to Delete: {allIds.Count} (IDs: [{string.Join(", ", allIds)}])\n" +
+            $"• Total Duplicate Inflation Removed: ₹{totalInflation:N2}\n\n" +
+            "The original canonical debit records will be preserved.\n" +
+            "Do you want to proceed with permanent deletion?",
             "Confirm Delete ALL Duplicate Debits",
             MessageBoxButton.YesNo,
             MessageBoxImage.Warning);
@@ -1331,7 +1433,90 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
             IntegrityDebitDuplicates = 0;
             UpdateDebitSelectionState();
             IntegrityHasIssues = IntegrityDsmDuplicates > 0 || IntegrityDebitDuplicates > 0
-                || IntegrityRepaymentDuplicates > 0 || IntegrityOrphans > 0;
+                || IntegrityExpenseDuplicates > 0 || IntegrityRepaymentDuplicates > 0 || IntegrityOrphans > 0;
+            IntegrityScanMessage = $"✅ {result.Data}";
+        }
+        else
+        {
+            MessageBox.Show(result.Error, "Delete Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    [RelayCommand]
+    private async Task DeleteSelectedExpenseGroupsAsync()
+    {
+        var selected = DuplicateExpenseGroups.Where(g => g.IsSelected).ToList();
+        if (selected.Count == 0) return;
+
+        var allSelectedIds = selected.SelectMany(g => g.DuplicateIds).ToList();
+        double totalInflation = selected.Sum(g => g.DuplicateInflationAmount);
+        var affectedDsm = string.Join(", ", selected.Select(g => $"#{g.DsmEntryId}").Distinct());
+
+        var confirm = MessageBox.Show(
+            "CONFIRM BATCH DUPLICATE EXPENSE DELETION:\n\n" +
+            $"• Affected DSM Entries: {affectedDsm}\n" +
+            $"• Selected Groups: {selected.Count}\n" +
+            $"• Duplicate Records to Delete: {allSelectedIds.Count} (IDs: [{string.Join(", ", allSelectedIds)}])\n" +
+            $"• Total Duplicate Inflation Removed: ₹{totalInflation:N2}\n\n" +
+            "The original canonical expense records will be preserved.\n" +
+            "Do you want to proceed with permanent deletion?",
+            "Confirm Delete Selected Duplicate Expenses",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (confirm != MessageBoxResult.Yes) return;
+
+        var result = await _resolutionService.DeleteDuplicateExpensesAsync(allSelectedIds);
+
+        if (result.Success)
+        {
+            foreach (var item in selected)
+                DuplicateExpenseGroups.Remove(item);
+
+            IntegrityExpenseDuplicates = DuplicateExpenseGroups.Sum(g => g.DuplicateCount);
+            UpdateExpenseSelectionState();
+            IntegrityHasIssues = IntegrityDsmDuplicates > 0 || IntegrityDebitDuplicates > 0
+                || IntegrityExpenseDuplicates > 0 || IntegrityRepaymentDuplicates > 0 || IntegrityOrphans > 0;
+            IntegrityScanMessage = $"✅ {result.Data}";
+        }
+        else
+        {
+            MessageBox.Show(result.Error, "Delete Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    [RelayCommand]
+    private async Task DeleteAllExpenseGroupsAsync()
+    {
+        if (DuplicateExpenseGroups.Count == 0) return;
+
+        var allIds = DuplicateExpenseGroups.SelectMany(g => g.DuplicateIds).ToList();
+        double totalInflation = DuplicateExpenseGroups.Sum(g => g.DuplicateInflationAmount);
+        var affectedDsm = string.Join(", ", DuplicateExpenseGroups.Select(g => $"#{g.DsmEntryId}").Distinct());
+
+        var confirm = MessageBox.Show(
+            "CONFIRM ALL DUPLICATE EXPENSE DELETION:\n\n" +
+            $"• Affected DSM Entries: {affectedDsm}\n" +
+            $"• Total Groups: {DuplicateExpenseGroups.Count}\n" +
+            $"• Duplicate Records to Delete: {allIds.Count} (IDs: [{string.Join(", ", allIds)}])\n" +
+            $"• Total Duplicate Inflation Removed: ₹{totalInflation:N2}\n\n" +
+            "The original canonical expense records will be preserved.\n" +
+            "Do you want to proceed with permanent deletion?",
+            "Confirm Delete ALL Duplicate Expenses",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (confirm != MessageBoxResult.Yes) return;
+
+        var result = await _resolutionService.DeleteDuplicateExpensesAsync(allIds);
+
+        if (result.Success)
+        {
+            DuplicateExpenseGroups.Clear();
+            IntegrityExpenseDuplicates = 0;
+            UpdateExpenseSelectionState();
+            IntegrityHasIssues = IntegrityDsmDuplicates > 0 || IntegrityDebitDuplicates > 0
+                || IntegrityExpenseDuplicates > 0 || IntegrityRepaymentDuplicates > 0 || IntegrityOrphans > 0;
             IntegrityScanMessage = $"✅ {result.Data}";
         }
         else
@@ -1496,6 +1681,10 @@ public partial class DebitEntryDuplicateGroupVm : ObservableObject
     public string DebtorName { get; set; } = string.Empty;
     public double Amount { get; set; }
     public int DsmEntryId { get; set; }
+    public string? OriginalSlip { get; set; }
+    public string OriginalCreatedAt { get; set; } = string.Empty;
+    public string Reason { get; set; } = string.Empty;
+    public double DuplicateInflationAmount => Amount * DuplicateCount;
 
     public static DebitEntryDuplicateGroupVm FromModel(DebitEntryDuplicateGroup g)
     {
@@ -1505,7 +1694,43 @@ public partial class DebitEntryDuplicateGroupVm : ObservableObject
             DuplicateIds = g.DuplicateRecords.Select(d => d.DebitId).ToList(),
             DebtorName = g.OriginalRecord.DebtorName ?? string.Empty,
             Amount = g.OriginalRecord.Amount,
-            DsmEntryId = g.OriginalRecord.DsmEntryId
+            DsmEntryId = g.OriginalRecord.DsmEntryId,
+            OriginalSlip = g.OriginalRecord.SlipNumber,
+            OriginalCreatedAt = g.OriginalRecord.CreatedAt.ToString("dd-MM-yyyy HH:mm:ss"),
+            Reason = g.Reason
+        };
+    }
+}
+
+public partial class ExpenseDuplicateGroupVm : ObservableObject
+{
+    [ObservableProperty] private bool _isSelected;
+    public Action? SelectionChangedAction { get; set; }
+
+    partial void OnIsSelectedChanged(bool value)
+    {
+        SelectionChangedAction?.Invoke();
+    }
+
+    public int OriginalExpenseId { get; set; }
+    public List<int> DuplicateIds { get; set; } = new();
+    public int DuplicateCount => DuplicateIds.Count;
+    public string Description { get; set; } = string.Empty;
+    public double Amount { get; set; }
+    public int DsmEntryId { get; set; }
+    public string Reason { get; set; } = string.Empty;
+    public double DuplicateInflationAmount => Amount * DuplicateCount;
+
+    public static ExpenseDuplicateGroupVm FromModel(ExpenseDuplicateGroup g)
+    {
+        return new ExpenseDuplicateGroupVm
+        {
+            OriginalExpenseId = g.OriginalRecord.ExpenseId,
+            DuplicateIds = g.DuplicateRecords.Select(e => e.ExpenseId).ToList(),
+            Description = g.OriginalRecord.Description ?? string.Empty,
+            Amount = g.OriginalRecord.Amount,
+            DsmEntryId = g.OriginalRecord.DsmEntryId ?? 0,
+            Reason = g.Reason
         };
     }
 }

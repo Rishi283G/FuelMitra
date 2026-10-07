@@ -34,6 +34,9 @@ public class DuplicateDataInspectionService : IDuplicateDataInspectionService
         report.DebitEntryGroups = await FindDuplicateDebitEntriesAsync();
         report.DuplicateDebitEntries = report.DebitEntryGroups.Sum(g => g.DuplicateCount);
 
+        report.ExpenseGroups = await FindDuplicateExpensesAsync();
+        report.DuplicateExpenses = report.ExpenseGroups.Sum(g => g.DuplicateCount);
+
         report.RepaymentGroups = await FindDuplicateRepaymentsAsync();
         report.DuplicateRepayments = report.RepaymentGroups.Sum(g => g.DuplicateCount);
 
@@ -45,8 +48,8 @@ public class DuplicateDataInspectionService : IDuplicateDataInspectionService
         _cachedReport = report;
 
         _logger.Information(
-            "Integrity scan complete. DsmDuplicates={D} DebitDuplicates={De} RepaymentDuplicates={R} Orphans={O} BrokenFKs={B}",
-            report.DuplicateDsmEntries, report.DuplicateDebitEntries,
+            "Integrity scan complete. DsmDuplicates={D} DebitDuplicates={De} ExpenseDuplicates={Ex} RepaymentDuplicates={R} Orphans={O} BrokenFKs={B}",
+            report.DuplicateDsmEntries, report.DuplicateDebitEntries, report.DuplicateExpenses,
             report.DuplicateRepayments, report.OrphanRecords, report.BrokenForeignKeys);
 
         return report;
@@ -117,15 +120,17 @@ public class DuplicateDataInspectionService : IDuplicateDataInspectionService
 
             var entries = await db.Set<DebitEntry>()
                 .Include(d => d.DsmEntry)
+                .Where(d => d.DsmEntryId > 0 && d.DsmEntry != null)
                 .OrderBy(d => d.DebitId)
                 .ToListAsync();
 
+            // Group by parent DsmEntryId + normalized DebtorName + rounded Amount
             var groups = entries
                 .GroupBy(d => new
                 {
-                    ShiftId = d.DsmEntry?.ShiftId ?? 0,
+                    d.DsmEntryId,
                     DebtorName = (d.DebtorName ?? string.Empty).Trim().ToLowerInvariant(),
-                    d.Amount
+                    Amount = Math.Round(d.Amount, 2)
                 })
                 .Where(g => g.Count() > 1)
                 .ToList();
@@ -133,13 +138,81 @@ public class DuplicateDataInspectionService : IDuplicateDataInspectionService
             var result = new List<DebitEntryDuplicateGroup>();
             foreach (var group in groups)
             {
-                var ordered = group.OrderBy(d => d.DebitId).ToList();
-                result.Add(new DebitEntryDuplicateGroup
+                var candidateList = group.ToList();
+                var dsmEntry = candidateList.First().DsmEntry;
+
+                // Lineage ordering for canonical record:
+                // 1. Closest CreatedAt to parent DsmEntry.CreatedAt (original save batch)
+                // 2. Earlier CreatedAt
+                // 3. Lowest DebitId as deterministic tie-breaker
+                var ordered = candidateList
+                    .OrderBy(d => dsmEntry != null ? Math.Abs((d.CreatedAt - dsmEntry.CreatedAt).TotalSeconds) : double.MaxValue)
+                    .ThenBy(d => d.CreatedAt)
+                    .ThenBy(d => d.DebitId)
+                    .ToList();
+
+                var canonical = ordered.First();
+                var confirmedDuplicates = new List<DebitEntry>();
+                string matchReason = string.Empty;
+
+                foreach (var candidate in ordered.Skip(1))
                 {
-                    OriginalRecord = ordered.First(),
-                    DuplicateRecords = ordered.Skip(1).ToList(),
-                    Reason = "Same ShiftId + DebtorName + Amount"
-                });
+                    bool isDuplicate = false;
+                    string reason = string.Empty;
+
+                    var slip1 = (canonical.SlipNumber ?? string.Empty).Trim();
+                    var slip2 = (candidate.SlipNumber ?? string.Empty).Trim();
+
+                    var veh1 = (canonical.VehicleNumber ?? string.Empty).Trim();
+                    var veh2 = (candidate.VehicleNumber ?? string.Empty).Trim();
+
+                    // If non-empty SlipNumbers exist on both, they must match
+                    if (!string.IsNullOrEmpty(slip1) && !string.IsNullOrEmpty(slip2))
+                    {
+                        if (string.Equals(slip1, slip2, StringComparison.OrdinalIgnoreCase))
+                        {
+                            isDuplicate = true;
+                            reason = $"Matching SlipNumber '{slip1}'";
+                        }
+                    }
+                    // If non-empty VehicleNumbers exist on both, they must match
+                    else if (!string.IsNullOrEmpty(veh1) && !string.IsNullOrEmpty(veh2))
+                    {
+                        if (string.Equals(veh1, veh2, StringComparison.OrdinalIgnoreCase))
+                        {
+                            isDuplicate = true;
+                            reason = $"Matching VehicleNumber '{veh1}'";
+                        }
+                    }
+                    // If both SlipNumber and VehicleNumber are NULL/empty:
+                    // NULL must NOT be treated as equality. Require lineage evidence (e.g. distinct timestamps / sync cycle)
+                    else if (string.IsNullOrEmpty(slip1) && string.IsNullOrEmpty(slip2) &&
+                             string.IsNullOrEmpty(veh1) && string.IsNullOrEmpty(veh2))
+                    {
+                        double timeDiff = Math.Abs((candidate.CreatedAt - canonical.CreatedAt).TotalSeconds);
+                        if (timeDiff > 5.0)
+                        {
+                            isDuplicate = true;
+                            reason = $"Lineage proof: creation timestamp differs by {timeDiff:F1}s from canonical DSM save";
+                        }
+                    }
+
+                    if (isDuplicate)
+                    {
+                        confirmedDuplicates.Add(candidate);
+                        if (string.IsNullOrEmpty(matchReason)) matchReason = reason;
+                    }
+                }
+
+                if (confirmedDuplicates.Count > 0)
+                {
+                    result.Add(new DebitEntryDuplicateGroup
+                    {
+                        OriginalRecord = canonical,
+                        DuplicateRecords = confirmedDuplicates,
+                        Reason = matchReason
+                    });
+                }
             }
 
             _logger.Information("Found {Count} DebitEntry duplicate groups", result.Count);
@@ -149,6 +222,111 @@ public class DuplicateDataInspectionService : IDuplicateDataInspectionService
         {
             _logger.Error(ex, "Failed to find duplicate DebitEntries");
             return new List<DebitEntryDuplicateGroup>();
+        }
+    }
+
+    public async Task<List<ExpenseDuplicateGroup>> FindDuplicateExpensesAsync()
+    {
+        try
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var db = GetDbContext(scope);
+
+            var expenses = await db.Set<Expense>()
+                .Include(e => e.DsmEntry)
+                .Where(e => e.DsmEntryId.HasValue && e.DsmEntryId.Value > 0 && e.DsmEntry != null)
+                .OrderBy(e => e.ExpenseId)
+                .ToListAsync();
+
+            // Group by parent DsmEntryId + normalized Description + rounded Amount
+            var groups = expenses
+                .GroupBy(e => new
+                {
+                    DsmEntryId = e.DsmEntryId!.Value,
+                    Description = (e.Description ?? string.Empty).Trim().ToLowerInvariant(),
+                    Amount = Math.Round(e.Amount, 2)
+                })
+                .Where(g => g.Count() > 1)
+                .ToList();
+
+            if (groups.Count == 0) return new List<ExpenseDuplicateGroup>();
+
+            // Query SyncChangeLogs for lineage evidence
+            var candidateExpenseIds = groups.SelectMany(g => g.Select(e => e.ExpenseId)).ToList();
+            var logs = await db.Set<SyncChangeLog>()
+                .Where(l => l.TableName == "Expenses" && candidateExpenseIds.Contains(l.RecordId) && l.Operation == "INSERT")
+                .OrderBy(l => l.Id)
+                .ToListAsync();
+            var logsByExpenseId = logs.GroupBy(l => l.RecordId).ToDictionary(g => g.Key, g => g.First());
+
+            var result = new List<ExpenseDuplicateGroup>();
+            foreach (var group in groups)
+            {
+                var candidateList = group.ToList();
+                var dsmEntry = candidateList.First().DsmEntry;
+
+                // Lineage ordering for canonical record:
+                // 1. Closest SyncChangeLog.CreatedAt to parent DsmEntry.CreatedAt
+                // 2. Earlier SyncChangeLog.CreatedAt
+                // 3. Lowest ExpenseId as deterministic tie-breaker
+                var ordered = candidateList
+                    .OrderBy(e =>
+                    {
+                        var log = logsByExpenseId.GetValueOrDefault(e.ExpenseId);
+                        return (log != null && dsmEntry != null)
+                            ? Math.Abs((log.CreatedAt - dsmEntry.CreatedAt).TotalSeconds)
+                            : double.MaxValue;
+                    })
+                    .ThenBy(e => logsByExpenseId.GetValueOrDefault(e.ExpenseId)?.CreatedAt ?? DateTime.MaxValue)
+                    .ThenBy(e => e.ExpenseId)
+                    .ToList();
+
+                var canonical = ordered.First();
+                var canonicalLog = logsByExpenseId.GetValueOrDefault(canonical.ExpenseId);
+                var confirmedDuplicates = new List<Expense>();
+                string matchReason = string.Empty;
+
+                foreach (var candidate in ordered.Skip(1))
+                {
+                    var candidateLog = logsByExpenseId.GetValueOrDefault(candidate.ExpenseId);
+                    bool isDuplicate = false;
+                    string reason = string.Empty;
+
+                    if (canonicalLog != null && candidateLog != null)
+                    {
+                        double diff = Math.Abs((candidateLog.CreatedAt - canonicalLog.CreatedAt).TotalSeconds);
+                        if (diff > 5.0)
+                        {
+                            isDuplicate = true;
+                            reason = $"Proven synced duplicate: SyncChangeLogs differ by {diff:F1}s (Log #{canonicalLog.Id} vs #{candidateLog.Id})";
+                        }
+                    }
+
+                    if (isDuplicate)
+                    {
+                        confirmedDuplicates.Add(candidate);
+                        if (string.IsNullOrEmpty(matchReason)) matchReason = reason;
+                    }
+                }
+
+                if (confirmedDuplicates.Count > 0)
+                {
+                    result.Add(new ExpenseDuplicateGroup
+                    {
+                        OriginalRecord = canonical,
+                        DuplicateRecords = confirmedDuplicates,
+                        Reason = matchReason
+                    });
+                }
+            }
+
+            _logger.Information("Found {Count} Expense duplicate groups", result.Count);
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to find duplicate Expenses");
+            return new List<ExpenseDuplicateGroup>();
         }
     }
 

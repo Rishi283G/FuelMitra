@@ -85,6 +85,7 @@ public class DayReportDto
     public string StationName { get; set; } = string.Empty;
     public string? Shift1Manager { get; set; }
     public string? Shift2Manager { get; set; }
+    public string? Shift3Manager { get; set; }
     
     // Fuel Summary
     public List<FuelSaleRowDto> FuelSales { get; set; } = new();

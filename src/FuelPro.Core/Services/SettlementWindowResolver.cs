@@ -101,6 +101,11 @@ public static class SettlementWindowResolver
             // Shift B: 12:00 PM
             return shiftDate.Date.AddHours(12);
         }
+        else if (string.Equals(shiftType, "C", StringComparison.OrdinalIgnoreCase))
+        {
+            // Shift C: 6:00 PM
+            return shiftDate.Date.AddHours(18);
+        }
         else
         {
             // Shift A: spans 8:00 PM (D-1) to 8:00 AM (D)

@@ -52,17 +52,17 @@ public class AgsDailyAggregationService : IAgsDailyAggregationService
             .Where(r => GetFuelTypeSafe(r.PumpNumber, r.NozzleNumber, date) == "MS-II")
             .Sum(r => r.NetSaleLitres);
 
-        // Tank stock: Shift B opening (starts 8:00 AM) → Shift A closing (ends 8:00 AM next day)
+        // Tank stock: Shift A opening (day opening) → Shift C closing (day closing)
         var shiftA = active.FirstOrDefault(s => s.ShiftType == "A" || s.ShiftType == "I");
-        var shiftB = active.FirstOrDefault(s => s.ShiftType == "B" || s.ShiftType == "II");
+        var shiftC = active.FirstOrDefault(s => s.ShiftType == "C" || s.ShiftType == "III");
 
-        summary.HsdDayOpeningStock  = shiftB?.HsdOpeningStock ?? shiftA?.HsdOpeningStock ?? 0;
-        summary.MsIDayOpeningStock  = shiftB?.MsIOpeningStock ?? shiftA?.MsIOpeningStock ?? 0;
-        summary.MsIIDayOpeningStock = shiftB?.MsIIOpeningStock ?? shiftA?.MsIIOpeningStock ?? 0;
+        summary.HsdDayOpeningStock  = shiftA?.HsdOpeningStock ?? 0;
+        summary.MsIDayOpeningStock  = shiftA?.MsIOpeningStock ?? 0;
+        summary.MsIIDayOpeningStock = shiftA?.MsIIOpeningStock ?? 0;
 
-        summary.HsdDayClosingStock  = shiftA?.HsdClosingStock ?? shiftB?.HsdClosingStock ?? 0;
-        summary.MsIDayClosingStock  = shiftA?.MsIClosingStock ?? shiftB?.MsIClosingStock ?? 0;
-        summary.MsIIDayClosingStock = shiftA?.MsIIClosingStock ?? shiftB?.MsIIClosingStock ?? 0;
+        summary.HsdDayClosingStock  = shiftC?.HsdClosingStock ?? 0;
+        summary.MsIDayClosingStock  = shiftC?.MsIClosingStock ?? 0;
+        summary.MsIIDayClosingStock = shiftC?.MsIIClosingStock ?? 0;
 
         // Per-shift breakdown JSON
         var breakdown = new Dictionary<string, object>();

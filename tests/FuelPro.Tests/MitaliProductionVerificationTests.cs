@@ -657,6 +657,8 @@ public class MitaliProductionVerificationTests : IDisposable
         await db.SaveChangesAsync();
 
         var vm = sp.GetRequiredService<DsmPersonalDebtorViewModel>();
+        vm.LedgerStartDate = new DateTime(2026, 9, 1);
+        vm.LedgerEndDate = new DateTime(2026, 9, 30);
 
         // Step 1: Open DSM Loss
         await vm.LoadDataAsync();

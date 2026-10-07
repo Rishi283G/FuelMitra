@@ -246,7 +246,7 @@ public class DuplicateResolutionService
 
     /// <summary>
     /// Permanently deletes the specified duplicate DebitEntry rows.
-    /// The original (lowest ID) record is preserved.
+    /// The surviving canonical record is preserved.
     /// </summary>
     public async Task<Result<string>> DeleteDuplicateDebitEntriesAsync(List<int> duplicateDebitEntryIds)
     {
@@ -270,10 +270,22 @@ public class DuplicateResolutionService
             {
                 db.Set<DebitEntry>().RemoveRange(toDelete);
                 await db.SaveChangesAsync();
+
+                // Clean up SyncIdMappings in the same transaction
+                var mappingsToDelete = await db.Set<SyncIdMapping>()
+                    .Where(m => m.TableName == "DebitEntries" && duplicateDebitEntryIds.Contains(m.LocalId))
+                    .ToListAsync();
+                if (mappingsToDelete.Count > 0)
+                {
+                    db.Set<SyncIdMapping>().RemoveRange(mappingsToDelete);
+                    await db.SaveChangesAsync();
+                }
+
                 await transaction.CommitAsync();
 
                 var msg = $"Deleted {toDelete.Count} duplicate DebitEntry row(s): IDs [{string.Join(", ", toDelete.Select(d => d.DebitId))}].";
                 _logger.Information(msg);
+                DsmEntryService.RaiseDsmEntryChanged();
                 return Result<string>.Ok(msg);
             }
             catch (Exception)
@@ -285,6 +297,65 @@ public class DuplicateResolutionService
         catch (Exception ex)
         {
             _logger.Error(ex, "Failed to delete duplicate DebitEntries");
+            return Result<string>.Fail($"Delete failed: {ex.Message}");
+        }
+    }
+
+    // ── Expense resolution ───────────────────────────────────────────────────
+
+    /// <summary>
+    /// Permanently deletes the specified duplicate Expense rows and cleans up SyncIdMappings.
+    /// The surviving canonical expense record is preserved.
+    /// </summary>
+    public async Task<Result<string>> DeleteDuplicateExpensesAsync(List<int> duplicateExpenseIds)
+    {
+        if (duplicateExpenseIds == null || duplicateExpenseIds.Count == 0)
+            return Result<string>.Fail("No Expense IDs provided.");
+
+        try
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<DbContext>();
+
+            var toDelete = await db.Set<Expense>()
+                .Where(e => duplicateExpenseIds.Contains(e.ExpenseId))
+                .ToListAsync();
+
+            if (toDelete.Count == 0)
+                return Result<string>.Fail("None of the specified Expense IDs were found.");
+
+            await using var transaction = await db.Database.BeginTransactionAsync();
+            try
+            {
+                db.Set<Expense>().RemoveRange(toDelete);
+                await db.SaveChangesAsync();
+
+                // Clean up SyncIdMappings in the same transaction
+                var mappingsToDelete = await db.Set<SyncIdMapping>()
+                    .Where(m => m.TableName == "Expenses" && duplicateExpenseIds.Contains(m.LocalId))
+                    .ToListAsync();
+                if (mappingsToDelete.Count > 0)
+                {
+                    db.Set<SyncIdMapping>().RemoveRange(mappingsToDelete);
+                    await db.SaveChangesAsync();
+                }
+
+                await transaction.CommitAsync();
+
+                var msg = $"Deleted {toDelete.Count} duplicate Expense row(s): IDs [{string.Join(", ", toDelete.Select(e => e.ExpenseId))}].";
+                _logger.Information(msg);
+                DsmEntryService.RaiseDsmEntryChanged();
+                return Result<string>.Ok(msg);
+            }
+            catch (Exception)
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to delete duplicate Expenses");
             return Result<string>.Fail($"Delete failed: {ex.Message}");
         }
     }

@@ -427,7 +427,7 @@ public partial class DsmEntryViewModel : ObservableObject
     public ObservableCollection<Creditor> Creditors { get; } = new();
 
     private bool _isEditing;
-    public string[] ShiftOptions { get; } = { "A", "B" };
+    public string[] ShiftOptions { get; } = { "A", "B", "C" };
     public ObservableCollection<PumpDisplayItem> PumpOptions { get; } = new();
     public ObservableCollection<PumpDisplayItem> ConnectablePumpOptions { get; } = new();
 
@@ -437,6 +437,7 @@ public partial class DsmEntryViewModel : ObservableObject
     private readonly IDsmProfileRepository _dsmProfileRepo;
     private readonly ICreditorRepository _creditorRepo;
     private readonly IStationConfigurationService _stationConfigService;
+    private readonly IShiftCycleService _shiftCycleService;
 
     public bool IsCrossDsmQrEnabled => _featureToggleService?.IsFeatureEnabled("Operations_CrossDsmQr", true) ?? true;
     public bool IsPersonalLedgerEnabled => _featureToggleService?.IsFeatureEnabled("Operations_PersonalLedger", true) ?? true;
@@ -454,6 +455,7 @@ public partial class DsmEntryViewModel : ObservableObject
         _collectionTypeService = App.Services.GetService<ICollectionTypeService>()!;
         _featureToggleService = App.Services.GetService<IFeatureToggleService>()!;
         _stationConfigService = App.Services.GetService<IStationConfigurationService>()!;
+        _shiftCycleService = App.Services.GetService<IShiftCycleService>() ?? new ShiftCycleService();
         _printService = App.Services.GetRequiredService<PrintService>();
 
         Cash1 = new CashDenomRow { CashType = "Cash1", OnTotalChanged = RecalculateAll };
@@ -784,23 +786,34 @@ public partial class DsmEntryViewModel : ObservableObject
 
     partial void OnSelectedDateChanged(DateTime value)
     {
+        OnPropertyChanged(nameof(IsThreeShiftMode));
+        OnPropertyChanged(nameof(IsMorningNightSplitEnabled));
+        OnPropertyChanged(nameof(MorningLabel));
+        OnPropertyChanged(nameof(MorningTidLabel));
+        OnPropertyChanged(nameof(MorningBatchLabel));
         ReloadPumpOptions();
         if (!_isEditing) LoadNozzlesForPump();
     }
 
-    public bool IsNightShift => SelectedShift == "A";
-    public bool IsDayShift => SelectedShift == "B";
+    public bool IsNightShift => IsThreeShiftMode 
+        ? string.Equals(_shiftCycleService?.NormalizeShiftType(SelectedShift), "C", StringComparison.OrdinalIgnoreCase)
+        : string.Equals(_shiftCycleService?.NormalizeShiftType(SelectedShift), "A", StringComparison.OrdinalIgnoreCase);
+    public bool IsDayShift => string.Equals(_shiftCycleService?.NormalizeShiftType(SelectedShift), "B", StringComparison.OrdinalIgnoreCase);
+    public bool IsShiftC => string.Equals(_shiftCycleService?.NormalizeShiftType(SelectedShift), "C", StringComparison.OrdinalIgnoreCase);
 
-    public bool IsMorningNightSplitEnabled => _featureToggleService?.IsFeatureEnabled("Collection_UseMorningNight", false) ?? false;
+    public bool IsThreeShiftMode => (_shiftCycleService?.GetShiftsForDate(SelectedDate).Count ?? 0) >= 3;
+    public bool IsMorningNightSplitEnabled => !IsThreeShiftMode && (_featureToggleService?.IsFeatureEnabled("Collection_UseMorningNight", false) ?? false) && IsNightShift;
 
-    public string MorningLabel => !IsMorningNightSplitEnabled ? "Amount (₹)" : (IsDayShift ? "Day (8am - 8pm) (₹)" : "Morning (12am - 8am) (₹)");
-    public string MorningTidLabel => !IsMorningNightSplitEnabled ? "TID" : (IsDayShift ? "Day TID" : "Morning TID");
-    public string MorningBatchLabel => !IsMorningNightSplitEnabled ? "Batch" : (IsDayShift ? "Day Batch" : "Morning Batch");
+    public string MorningLabel => (!(_featureToggleService?.IsFeatureEnabled("Collection_UseMorningNight", false) ?? false) || IsThreeShiftMode) ? "Amount (₹)" : (IsDayShift ? "Day (8am - 8pm) (₹)" : "Morning (12am - 8am) (₹)");
+    public string MorningTidLabel => (!(_featureToggleService?.IsFeatureEnabled("Collection_UseMorningNight", false) ?? false) || IsThreeShiftMode) ? "TID" : (IsDayShift ? "Day TID" : "Morning TID");
+    public string MorningBatchLabel => (!(_featureToggleService?.IsFeatureEnabled("Collection_UseMorningNight", false) ?? false) || IsThreeShiftMode) ? "Batch" : (IsDayShift ? "Day Batch" : "Morning Batch");
 
     partial void OnSelectedShiftChanged(string value)
     {
         OnPropertyChanged(nameof(IsNightShift));
         OnPropertyChanged(nameof(IsDayShift));
+        OnPropertyChanged(nameof(IsShiftC));
+        OnPropertyChanged(nameof(IsThreeShiftMode));
         OnPropertyChanged(nameof(IsMorningNightSplitEnabled));
         OnPropertyChanged(nameof(MorningLabel));
         OnPropertyChanged(nameof(MorningTidLabel));
@@ -894,10 +907,7 @@ public partial class DsmEntryViewModel : ObservableObject
         var currentAgsReadings = currentShiftImport?.NozzleReadings
             .ToDictionary(r => r.NozzleNumber, r => r);
 
-        var previousShiftType = GetPreviousShiftType(SelectedShift);
-        // Operationally: Shift A (Night/Morning) predecessor is yesterday's Shift B (Day)
-        //                Shift B (Day) predecessor is same day's Shift A (Night/Morning)
-        DateTime previousShiftDate = SelectedShift == "A" ? SelectedDate.AddDays(-1) : SelectedDate;
+        var (previousShiftDate, previousShiftType) = _shiftCycleService.GetPreviousShift(SelectedDate, SelectedShift);
         var previousShiftImport = previousShiftType != null
             ? await GetShiftImportAsync(previousShiftDate, previousShiftType)
             : null;
@@ -1162,16 +1172,9 @@ public partial class DsmEntryViewModel : ObservableObject
         return null;
     }
 
-    private static string? GetPreviousShiftType(string shiftType)
+    private string? GetPreviousShiftType(string shiftType)
     {
-        var normalized = (shiftType ?? string.Empty).Trim().ToUpperInvariant();
-        return normalized switch
-        {
-            "A" => "B",   // Night/Morning predecessor is Day shift (same calendar date)
-            "B" => "A",   // Day predecessor is Night/Morning shift (previous calendar date, handled by caller)
-            "C" => "B",
-            _ => null
-        };
+        return _shiftCycleService.GetPreviousShift(SelectedDate, shiftType).ShiftType;
     }
 
     private void UpdateTestingVisibility()
@@ -1380,47 +1383,49 @@ public partial class DsmEntryViewModel : ObservableObject
                 IsManualOpeningOverride = n.IsManualOpeningOverride
             }).ToList();
 
-            var isDay = SelectedShift == "B";
+            var shiftNorm = _shiftCycleService.NormalizeShiftType(SelectedShift);
+            var isDay = shiftNorm == "B";
+            var isC = shiftNorm == "C";
             var payment = new PaymentCollection
             {
-                PhonePeCardMorning = isDay ? 0 : (PhonePeCardMorning ?? 0),
+                PhonePeCardMorning = (!isDay && !isC) ? (PhonePeCardMorning ?? 0) : 0,
                 PhonePeCardDay = isDay ? (PhonePeCardMorning ?? 0) : 0,
-                PhonePeCardNight = PhonePeCardNight ?? 0,
-                PhonePeMorning = isDay ? 0 : (PhonePeMorning ?? 0),
+                PhonePeCardNight = isC ? (PhonePeCardMorning ?? 0) : (PhonePeCardNight ?? 0),
+                PhonePeMorning = (!isDay && !isC) ? (PhonePeMorning ?? 0) : 0,
                 PhonePeDay = isDay ? (PhonePeMorning ?? 0) : 0,
-                PhonePeNight = PhonePeNight ?? 0,
-                CreditCardMorning = isDay ? 0 : (CreditCardMorning ?? 0),
+                PhonePeNight = isC ? (PhonePeMorning ?? 0) : (PhonePeNight ?? 0),
+                CreditCardMorning = (!isDay && !isC) ? (CreditCardMorning ?? 0) : 0,
                 CreditCardDay = isDay ? (CreditCardMorning ?? 0) : 0,
-                CreditCardNight = CreditCardNight ?? 0,
-                PetroCardMorning = isDay ? 0 : (PetroCardMorning ?? 0),
+                CreditCardNight = isC ? (CreditCardMorning ?? 0) : (CreditCardNight ?? 0),
+                PetroCardMorning = (!isDay && !isC) ? (PetroCardMorning ?? 0) : 0,
                 PetroCardDay = isDay ? (PetroCardMorning ?? 0) : 0,
-                PetroCardNight = PetroCardNight ?? 0,
+                PetroCardNight = isC ? (PetroCardMorning ?? 0) : (PetroCardNight ?? 0),
                 Others = Others ?? 0,
                 CashDeposit = Cash1.TotalAmount,
-                CardTid = (CreditCardTidNight ?? CreditCardTidMorning),
-                CardBatch = (CreditCardBatchNight ?? CreditCardBatchMorning),
-                PhonePeTid = (PhonePeTidNight ?? PhonePeTidMorning),
-                PhonePeBatch = (PhonePeBatchNight ?? PhonePeBatchMorning),
-                PetroCardTid = (PetroCardTidNight ?? PetroCardTidMorning),
-                PetroCardBatch = (PetroCardBatchNight ?? PetroCardBatchMorning),
-                PhonePeTidMorning = PhonePeTidMorning,
-                PhonePeBatchMorning = PhonePeBatchMorning,
+                CardTid = isC ? (CreditCardTidNight ?? CreditCardTidMorning) : (isDay ? CreditCardTidMorning : (CreditCardTidNight ?? CreditCardTidMorning)),
+                CardBatch = isC ? (CreditCardBatchNight ?? CreditCardBatchMorning) : (isDay ? CreditCardBatchMorning : (CreditCardBatchNight ?? CreditCardBatchMorning)),
+                PhonePeTid = isC ? (PhonePeTidNight ?? PhonePeTidMorning) : (isDay ? PhonePeTidMorning : (PhonePeTidNight ?? PhonePeTidMorning)),
+                PhonePeBatch = isC ? (PhonePeBatchNight ?? PhonePeBatchMorning) : (isDay ? PhonePeBatchMorning : (PhonePeBatchNight ?? PhonePeBatchMorning)),
+                PetroCardTid = isC ? (PetroCardTidNight ?? PetroCardTidMorning) : (isDay ? PetroCardTidMorning : (PetroCardTidNight ?? PetroCardTidMorning)),
+                PetroCardBatch = isC ? (PetroCardBatchNight ?? PetroCardBatchMorning) : (isDay ? PetroCardBatchMorning : (PetroCardBatchNight ?? PetroCardBatchMorning)),
+                PhonePeTidMorning = (!isDay && !isC) ? PhonePeTidMorning : null,
+                PhonePeBatchMorning = (!isDay && !isC) ? PhonePeBatchMorning : null,
                 PhonePeTidDay = isDay ? PhonePeTidMorning : null,
                 PhonePeBatchDay = isDay ? PhonePeBatchMorning : null,
-                PhonePeTidNight = PhonePeTidNight,
-                PhonePeBatchNight = PhonePeBatchNight,
-                CreditCardTidMorning = CreditCardTidMorning,
-                CreditCardBatchMorning = CreditCardBatchMorning,
+                PhonePeTidNight = isC ? PhonePeTidMorning : PhonePeTidNight,
+                PhonePeBatchNight = isC ? PhonePeBatchMorning : PhonePeBatchNight,
+                CreditCardTidMorning = (!isDay && !isC) ? CreditCardTidMorning : null,
+                CreditCardBatchMorning = (!isDay && !isC) ? CreditCardBatchMorning : null,
                 CreditCardTidDay = isDay ? CreditCardTidMorning : null,
                 CreditCardBatchDay = isDay ? CreditCardBatchMorning : null,
-                CreditCardTidNight = CreditCardTidNight,
-                CreditCardBatchNight = CreditCardBatchNight,
-                PetroCardTidMorning = PetroCardTidMorning,
-                PetroCardBatchMorning = PetroCardBatchMorning,
+                CreditCardTidNight = isC ? CreditCardTidMorning : CreditCardTidNight,
+                CreditCardBatchNight = isC ? CreditCardBatchMorning : CreditCardBatchNight,
+                PetroCardTidMorning = (!isDay && !isC) ? PetroCardTidMorning : null,
+                PetroCardBatchMorning = (!isDay && !isC) ? PetroCardBatchMorning : null,
                 PetroCardTidDay = isDay ? PetroCardTidMorning : null,
                 PetroCardBatchDay = isDay ? PetroCardBatchMorning : null,
-                PetroCardTidNight = PetroCardTidNight,
-                PetroCardBatchNight = PetroCardBatchNight
+                PetroCardTidNight = isC ? PetroCardTidMorning : PetroCardTidNight,
+                PetroCardBatchNight = isC ? PetroCardBatchMorning : PetroCardBatchNight
             };
 
             foreach (var dyn in DynamicCollections)
@@ -1682,57 +1687,96 @@ public partial class DsmEntryViewModel : ObservableObject
 
             // Populate payment losslessly (preserve both Morning and Night slots for all shifts)
             var paymentSource = entry.PaymentCollection ?? (connectedEntry != null && connectedEntry.DsmEntryId != entry.DsmEntryId ? connectedEntry.PaymentCollection : null);
-            bool isShiftB = string.Equals(SelectedShift, "B", StringComparison.OrdinalIgnoreCase)
-                         || string.Equals(entry.Shift?.ShiftType, "B", StringComparison.OrdinalIgnoreCase)
-                         || string.Equals(entry.Shift?.ShiftType, "II", StringComparison.OrdinalIgnoreCase);
+            var shiftNormEdit = _shiftCycleService.NormalizeShiftType(SelectedShift ?? entry.Shift?.ShiftType ?? "B");
+            bool isShiftB = shiftNormEdit == "B";
+            bool isShiftC = shiftNormEdit == "C";
 
             if (isShiftB)
             {
                 PhonePeCardMorning = paymentSource?.PhonePeCardDay > 0 ? paymentSource.PhonePeCardDay : (paymentSource?.PhonePeCardMorning > 0 ? paymentSource.PhonePeCardMorning : (double?)null);
-                PhonePeCardNight = paymentSource?.PhonePeCardNight;
+                PhonePeCardNight = null;
                 PhonePeMorning = paymentSource?.PhonePeDay > 0 ? paymentSource.PhonePeDay : (paymentSource?.PhonePeMorning > 0 ? paymentSource.PhonePeMorning : (double?)null);
-                PhonePeNight = paymentSource?.PhonePeNight;
+                PhonePeNight = null;
                 CreditCardMorning = paymentSource?.CreditCardDay > 0 ? paymentSource.CreditCardDay : (paymentSource?.CreditCardMorning > 0 ? paymentSource.CreditCardMorning : (double?)null);
-                CreditCardNight = paymentSource?.CreditCardNight;
+                CreditCardNight = null;
                 PetroCardMorning = paymentSource?.PetroCardDay > 0 ? paymentSource.PetroCardDay : (paymentSource?.PetroCardMorning > 0 ? paymentSource.PetroCardMorning : (double?)null);
-                PetroCardNight = paymentSource?.PetroCardNight;
+                PetroCardNight = null;
+
+                PhonePeTidMorning = paymentSource?.PhonePeTidDay ?? paymentSource?.PhonePeTidMorning ?? paymentSource?.PhonePeTid;
+                PhonePeBatchMorning = paymentSource?.PhonePeBatchDay ?? paymentSource?.PhonePeBatchMorning ?? paymentSource?.PhonePeBatch;
+                CreditCardTidMorning = paymentSource?.CreditCardTidDay ?? paymentSource?.CreditCardTidMorning ?? paymentSource?.CardTid;
+                CreditCardBatchMorning = paymentSource?.CreditCardBatchDay ?? paymentSource?.CreditCardBatchMorning ?? paymentSource?.CardBatch;
+                PetroCardTidMorning = paymentSource?.PetroCardTidDay ?? paymentSource?.PetroCardTidMorning ?? paymentSource?.PetroCardTid;
+                PetroCardBatchMorning = paymentSource?.PetroCardBatchDay ?? paymentSource?.PetroCardBatchMorning ?? paymentSource?.PetroCardBatch;
+
+                PhonePeTidNight = null;
+                PhonePeBatchNight = null;
+                CreditCardTidNight = null;
+                CreditCardBatchNight = null;
+                PetroCardTidNight = null;
+                PetroCardBatchNight = null;
+            }
+            else if (isShiftC)
+            {
+                PhonePeCardMorning = paymentSource?.PhonePeCardNight > 0 ? paymentSource.PhonePeCardNight : (paymentSource?.PhonePeCardMorning > 0 ? paymentSource.PhonePeCardMorning : (double?)null);
+                PhonePeCardNight = null;
+                PhonePeMorning = paymentSource?.PhonePeNight > 0 ? paymentSource.PhonePeNight : (paymentSource?.PhonePeMorning > 0 ? paymentSource.PhonePeMorning : (double?)null);
+                PhonePeNight = null;
+                CreditCardMorning = paymentSource?.CreditCardNight > 0 ? paymentSource.CreditCardNight : (paymentSource?.CreditCardMorning > 0 ? paymentSource.CreditCardMorning : (double?)null);
+                CreditCardNight = null;
+                PetroCardMorning = paymentSource?.PetroCardNight > 0 ? paymentSource.PetroCardNight : (paymentSource?.PetroCardMorning > 0 ? paymentSource.PetroCardMorning : (double?)null);
+                PetroCardNight = null;
+
+                PhonePeTidMorning = paymentSource?.PhonePeTidNight ?? paymentSource?.PhonePeTidMorning ?? paymentSource?.PhonePeTid;
+                PhonePeBatchMorning = paymentSource?.PhonePeBatchNight ?? paymentSource?.PhonePeBatchMorning ?? paymentSource?.PhonePeBatch;
+                CreditCardTidMorning = paymentSource?.CreditCardTidNight ?? paymentSource?.CreditCardTidMorning ?? paymentSource?.CardTid;
+                CreditCardBatchMorning = paymentSource?.CreditCardBatchNight ?? paymentSource?.CreditCardBatchMorning ?? paymentSource?.CardBatch;
+                PetroCardTidMorning = paymentSource?.PetroCardTidNight ?? paymentSource?.PetroCardTidMorning ?? paymentSource?.PetroCardTid;
+                PetroCardBatchMorning = paymentSource?.PetroCardBatchNight ?? paymentSource?.PetroCardBatchMorning ?? paymentSource?.PetroCardBatch;
+
+                PhonePeTidNight = null;
+                PhonePeBatchNight = null;
+                CreditCardTidNight = null;
+                CreditCardBatchNight = null;
+                PetroCardTidNight = null;
+                PetroCardBatchNight = null;
             }
             else
             {
-                PhonePeCardMorning = paymentSource?.PhonePeCardMorning > 0 ? paymentSource.PhonePeCardMorning : (paymentSource?.PhonePeCardDay > 0 ? paymentSource.PhonePeCardDay : (double?)null);
+                PhonePeCardMorning = paymentSource?.PhonePeCardMorning > 0 ? paymentSource.PhonePeCardMorning : (double?)null;
                 PhonePeCardNight = paymentSource?.PhonePeCardNight;
-                PhonePeMorning = paymentSource?.PhonePeMorning > 0 ? paymentSource.PhonePeMorning : (paymentSource?.PhonePeDay > 0 ? paymentSource.PhonePeDay : (double?)null);
+                PhonePeMorning = paymentSource?.PhonePeMorning > 0 ? paymentSource.PhonePeMorning : (double?)null;
                 PhonePeNight = paymentSource?.PhonePeNight;
-                CreditCardMorning = paymentSource?.CreditCardMorning > 0 ? paymentSource.CreditCardMorning : (paymentSource?.CreditCardDay > 0 ? paymentSource.CreditCardDay : (double?)null);
+                CreditCardMorning = paymentSource?.CreditCardMorning > 0 ? paymentSource.CreditCardMorning : (double?)null;
                 CreditCardNight = paymentSource?.CreditCardNight;
-                PetroCardMorning = paymentSource?.PetroCardMorning > 0 ? paymentSource.PetroCardMorning : (paymentSource?.PetroCardDay > 0 ? paymentSource.PetroCardDay : (double?)null);
+                PetroCardMorning = paymentSource?.PetroCardMorning > 0 ? paymentSource.PetroCardMorning : (double?)null;
                 PetroCardNight = paymentSource?.PetroCardNight;
+
+                PhonePeTidMorning = paymentSource?.PhonePeTidMorning ?? paymentSource?.PhonePeTid;
+                PhonePeBatchMorning = paymentSource?.PhonePeBatchMorning ?? paymentSource?.PhonePeBatch;
+                PhonePeTidNight = paymentSource?.PhonePeTidNight;
+                PhonePeBatchNight = paymentSource?.PhonePeBatchNight;
+
+                CreditCardTidMorning = paymentSource?.CreditCardTidMorning ?? paymentSource?.CardTid;
+                CreditCardBatchMorning = paymentSource?.CreditCardBatchMorning ?? paymentSource?.CardBatch;
+                CreditCardTidNight = paymentSource?.CreditCardTidNight;
+                CreditCardBatchNight = paymentSource?.CreditCardBatchNight;
+
+                PetroCardTidMorning = paymentSource?.PetroCardTidMorning ?? paymentSource?.PetroCardTid;
+                PetroCardBatchMorning = paymentSource?.PetroCardBatchMorning ?? paymentSource?.PetroCardBatch;
+                PetroCardTidNight = paymentSource?.PetroCardTidNight;
+                PetroCardBatchNight = paymentSource?.PetroCardBatchNight;
             }
 
             Others = paymentSource?.Others;
             CashDeposit = paymentSource?.CashDeposit;
 
-            PhonePeTidMorning = paymentSource?.PhonePeTidMorning ?? paymentSource?.PhonePeTidDay ?? paymentSource?.PhonePeTid;
-            PhonePeBatchMorning = paymentSource?.PhonePeBatchMorning ?? paymentSource?.PhonePeBatchDay ?? paymentSource?.PhonePeBatch;
-            PhonePeTidNight = paymentSource?.PhonePeTidNight;
-            PhonePeBatchNight = paymentSource?.PhonePeBatchNight;
-
-            CreditCardTidMorning = paymentSource?.CreditCardTidMorning ?? paymentSource?.CreditCardTidDay ?? paymentSource?.CardTid;
-            CreditCardBatchMorning = paymentSource?.CreditCardBatchMorning ?? paymentSource?.CreditCardBatchDay ?? paymentSource?.CardBatch;
-            CreditCardTidNight = paymentSource?.CreditCardTidNight;
-            CreditCardBatchNight = paymentSource?.CreditCardBatchNight;
-
-            PetroCardTidMorning = paymentSource?.PetroCardTidMorning ?? paymentSource?.PetroCardTidDay ?? paymentSource?.PetroCardTid;
-            PetroCardBatchMorning = paymentSource?.PetroCardBatchMorning ?? paymentSource?.PetroCardBatchDay ?? paymentSource?.PetroCardBatch;
-            PetroCardTidNight = paymentSource?.PetroCardTidNight;
-            PetroCardBatchNight = paymentSource?.PetroCardBatchNight;
-
-            PhonePeTid = paymentSource?.PhonePeTidNight ?? paymentSource?.PhonePeTidMorning ?? paymentSource?.PhonePeTid;
-            PhonePeBatch = paymentSource?.PhonePeBatchNight ?? paymentSource?.PhonePeBatchMorning ?? paymentSource?.PhonePeBatch;
-            CardTid = paymentSource?.CreditCardTidNight ?? paymentSource?.CreditCardTidMorning ?? paymentSource?.CardTid;
-            CardBatch = paymentSource?.CreditCardBatchNight ?? paymentSource?.CreditCardBatchMorning ?? paymentSource?.CardBatch;
-            PetroCardTid = paymentSource?.PetroCardTidNight ?? paymentSource?.PetroCardTidMorning ?? paymentSource?.PetroCardTid;
-            PetroCardBatch = paymentSource?.PetroCardBatchNight ?? paymentSource?.PetroCardBatchMorning ?? paymentSource?.PetroCardBatch;
+            PhonePeTid = isShiftC ? (paymentSource?.PhonePeTidNight ?? paymentSource?.PhonePeTid) : (isShiftB ? (paymentSource?.PhonePeTidDay ?? paymentSource?.PhonePeTid) : (paymentSource?.PhonePeTidMorning ?? paymentSource?.PhonePeTidNight ?? paymentSource?.PhonePeTid));
+            PhonePeBatch = isShiftC ? (paymentSource?.PhonePeBatchNight ?? paymentSource?.PhonePeBatch) : (isShiftB ? (paymentSource?.PhonePeBatchDay ?? paymentSource?.PhonePeBatch) : (paymentSource?.PhonePeBatchMorning ?? paymentSource?.PhonePeBatchNight ?? paymentSource?.PhonePeBatch));
+            CardTid = isShiftC ? (paymentSource?.CreditCardTidNight ?? paymentSource?.CardTid) : (isShiftB ? (paymentSource?.CreditCardTidDay ?? paymentSource?.CardTid) : (paymentSource?.CreditCardTidMorning ?? paymentSource?.CreditCardTidNight ?? paymentSource?.CardTid));
+            CardBatch = isShiftC ? (paymentSource?.CreditCardBatchNight ?? paymentSource?.CardBatch) : (isShiftB ? (paymentSource?.CreditCardBatchDay ?? paymentSource?.CardBatch) : (paymentSource?.CreditCardBatchMorning ?? paymentSource?.CreditCardBatchNight ?? paymentSource?.CardBatch));
+            PetroCardTid = isShiftC ? (paymentSource?.PetroCardTidNight ?? paymentSource?.PetroCardTid) : (isShiftB ? (paymentSource?.PetroCardTidDay ?? paymentSource?.PetroCardTid) : (paymentSource?.PetroCardTidMorning ?? paymentSource?.PetroCardTidNight ?? paymentSource?.PetroCardTid));
+            PetroCardBatch = isShiftC ? (paymentSource?.PetroCardBatchNight ?? paymentSource?.PetroCardBatch) : (isShiftB ? (paymentSource?.PetroCardBatchDay ?? paymentSource?.PetroCardBatch) : (paymentSource?.PetroCardBatchMorning ?? paymentSource?.PetroCardBatchNight ?? paymentSource?.PetroCardBatch));
 
             await LoadDynamicCollectionTypesAsync(paymentSource);
 

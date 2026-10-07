@@ -128,7 +128,10 @@
                                                  Style="{StaticResource MaterialDesignRadioButton}"
                                                  Margin="0,0,12,0"
                                                  Checked="ShiftRadio_Checked"/>
-
+                                    <RadioButton Content="Shift C" GroupName="AgsShift" Tag="C"
+                                                 Style="{StaticResource MaterialDesignRadioButton}"
+                                                 Margin="0,0,12,0"
+                                                 Checked="ShiftRadio_Checked"/>
                                 </StackPanel>
                             </StackPanel>
 
