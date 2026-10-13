@@ -13,6 +13,7 @@ namespace Rashtra.Licensing
         public string LicenseType { get; set; } = "Lifetime"; // Lifetime, Annual, Trial, Demo
         public DateTime ActivationDate { get; set; }
         public DateTime? ExpiryDate { get; set; }
+        public DateTime? LastRunDate { get; set; }
         
         // Saved hardware components to support matching tolerance if a component changes
         public string SavedComputerName { get; set; } = string.Empty;

@@ -23,6 +23,7 @@ namespace FuelPro.UI.ViewModels;
 public class DsmPersonalDebtorLedgerRow
 {
     public DateTime Date { get; set; }
+    public string Shift { get; set; } = "—";
     public string Description { get; set; } = string.Empty;
     public double Debit { get; set; }
     public double Credit { get; set; }
@@ -42,7 +43,7 @@ public class DsmPersonalDebtorLedgerRow
     public string? CardBatch { get; set; }
 }
 
-public partial class DsmPersonalDebtorViewModel : ObservableObject
+public partial class DsmPersonalDebtorViewModel : ObservableObject, IDisposable
 {
     private readonly FuelProDbContext _dbContext;
     private readonly PrintService _printService;
@@ -50,6 +51,11 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
     private readonly IShiftCycleService _shiftCycleService;
     private readonly IFeatureToggleService _featureService;
     private readonly ILogger _logger = Log.ForContext<DsmPersonalDebtorViewModel>();
+
+    private readonly Action _featureChangedHandler;
+    private readonly Action _collectionTypesChangedHandler;
+    private readonly Action _profileChangedHandler;
+    private bool _disposed;
 
     // Shift selection
     public ObservableCollection<string> AvailableShifts { get; } = new() { "Shift A", "Shift B", "Shift C" };
@@ -141,7 +147,7 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
         _shiftCycleService = App.Services.GetService<IShiftCycleService>() ?? new ShiftCycleService();
         _featureService = App.Services.GetRequiredService<IFeatureToggleService>();
 
-        _featureService.FeatureConfigurationChanged += () =>
+        _featureChangedHandler = () =>
         {
             var dispatcher = System.Windows.Application.Current?.Dispatcher;
             if (dispatcher != null && !dispatcher.CheckAccess())
@@ -164,14 +170,33 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
                 OnPropertyChanged(nameof(TotalPersonalLedgerLabel));
             }
         };
+        if (_featureService != null)
+        {
+            _featureService.FeatureConfigurationChanged += _featureChangedHandler;
+        }
 
+        _collectionTypesChangedHandler = () =>
+        {
+            System.Windows.Application.Current?.Dispatcher?.InvokeAsync(async () => await LoadPaymentModesAsync());
+        };
         if (_collectionTypeService != null)
         {
-            _collectionTypeService.CollectionTypesChanged += () =>
-            {
-                System.Windows.Application.Current.Dispatcher.InvokeAsync(async () => await LoadPaymentModesAsync());
-            };
+            _collectionTypeService.CollectionTypesChanged += _collectionTypesChangedHandler;
         }
+
+        _profileChangedHandler = () =>
+        {
+            var dispatcher = System.Windows.Application.Current?.Dispatcher;
+            if (dispatcher != null && !dispatcher.CheckAccess())
+            {
+                dispatcher.BeginInvoke(async () => await LoadDataAsync());
+            }
+            else
+            {
+                _ = LoadDataAsync();
+            }
+        };
+        FuelPro.Core.Services.DsmEntryService.DsmProfileChanged += _profileChangedHandler;
 
         var auth = App.Services.GetRequiredService<AuthService>();
         IsOwner = auth.CurrentUser?.IsOwner ?? false;
@@ -294,9 +319,14 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
         var currentDsmName = SelectedSummary?.DsmName;
         try
         {
-            var allDsms = await _dbContext.DsmUsers.Select(u => u.FullName).Distinct().ToListAsync();
-            var debtorsList = await _dbContext.DsmPersonalDebtors.ToListAsync();
-            var repaymentsList = await _dbContext.DsmPersonalDebtorRepayments.ToListAsync();
+            var dsmUsers = await _dbContext.DsmUsers.AsNoTracking().Select(u => u.FullName).Distinct().ToListAsync();
+            var dsmProfiles = await _dbContext.DsmProfiles.AsNoTracking().Select(p => p.DsmName).Distinct().ToListAsync();
+            var allDsms = dsmUsers.Concat(dsmProfiles)
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            var debtorsList = await _dbContext.DsmPersonalDebtors.AsNoTracking().ToListAsync();
+            var repaymentsList = await _dbContext.DsmPersonalDebtorRepayments.AsNoTracking().ToListAsync();
 
             var debtorsGrouped = debtorsList.GroupBy(d => d.DsmName, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
             var repaymentsGrouped = repaymentsList.GroupBy(r => r.DsmPersonalDebtorId).ToDictionary(g => g.Key, g => g.ToList());
@@ -397,11 +427,14 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
             var dsmName = SelectedSummary.DsmName;
 
             var debits = await _dbContext.DsmPersonalDebtors
+                .Include(d => d.DsmEntry)
+                    .ThenInclude(e => e.Shift)
                 .Where(d => d.DsmName == dsmName && d.Date.Date >= LedgerStartDate.Date && d.Date.Date <= LedgerEndDate.Date)
                 .ToListAsync();
 
             var repayments = await _dbContext.DsmPersonalDebtorRepayments
                 .Include(r => r.DsmPersonalDebtor)
+                .Include(r => r.Shift)
                 .Where(r => r.DsmPersonalDebtor != null && r.DsmPersonalDebtor.DsmName == dsmName && r.Date.Date >= LedgerStartDate.Date && r.Date.Date <= LedgerEndDate.Date)
                 .ToListAsync();
 
@@ -447,6 +480,7 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
                     TransactionId = d.Id,
                     TransactionType = d.EntryType == "OpeningBalance" ? "OpeningBalance" : "Borrow",
                     Date = d.Date,
+                    Shift = d.DsmEntry?.Shift?.ShiftType ?? "—",
                     Description = description,
                     Debit = d.Amount,
                     Credit = 0,
@@ -484,6 +518,7 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
                     TransactionId = c.Id,
                     TransactionType = "Repayment",
                     Date = c.Date,
+                    Shift = c.Shift != null && !string.IsNullOrWhiteSpace(c.Shift.ShiftType) ? c.Shift.ShiftType : "—",
                     Description = $"Repayment via {c.PaymentMethod}{tidBatchInfo}",
                     Debit = 0,
                     Credit = c.Amount,
@@ -506,6 +541,7 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
                     TransactionId = 0,
                     TransactionType = "OpeningBalance",
                     Date = LedgerStartDate.Date,
+                    Shift = "—",
                     Description = "Opening Balance",
                     Debit = 0,
                     Credit = 0,
@@ -992,6 +1028,7 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
             var printRows = DsmLedger.Select(t => new DebtorLedgerPrintRow
             {
                 Date = t.Date.ToString("dd-MMM-yyyy"),
+                Shift = t.Shift,
                 Description = t.Description,
                 Debit = t.Debit,
                 Credit = t.Credit,
@@ -1170,5 +1207,20 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject
     {
         if (Environment.GetEnvironmentVariable("FUELPRO_ENV") == "TEST") return;
         MessageBox.Show(message, caption, button, image);
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        if (_featureService != null && _featureChangedHandler != null)
+            _featureService.FeatureConfigurationChanged -= _featureChangedHandler;
+
+        if (_collectionTypeService != null && _collectionTypesChangedHandler != null)
+            _collectionTypeService.CollectionTypesChanged -= _collectionTypesChangedHandler;
+
+        if (_profileChangedHandler != null)
+            FuelPro.Core.Services.DsmEntryService.DsmProfileChanged -= _profileChangedHandler;
     }
 }

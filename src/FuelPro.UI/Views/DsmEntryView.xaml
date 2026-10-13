@@ -363,11 +363,14 @@
                                                                  LostKeyboardFocus="DecimalTextBox_LostKeyboardFocus"/>
                                                         <StackPanel Grid.Column="1" Orientation="Horizontal"
                                                                     Visibility="{Binding HasTidBatch, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                            <TextBox Width="130" Text="{Binding Tid, UpdateSourceTrigger=PropertyChanged}" Margin="6,0,6,0"
+                                                            <TextBox Width="120" Text="{Binding Tid, UpdateSourceTrigger=PropertyChanged}" Margin="6,0,6,0"
                                                                      materialDesign:HintAssist.Hint="TID" materialDesign:HintAssist.IsFloating="True"
                                                                      Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
-                                                            <TextBox Width="130" Text="{Binding Batch, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,0"
+                                                            <TextBox Width="120" Text="{Binding Batch, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,6,0"
                                                                      materialDesign:HintAssist.Hint="Batch" materialDesign:HintAssist.IsFloating="True"
+                                                                     Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                                                            <TextBox Width="100" Text="{Binding Otp, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,0"
+                                                                     materialDesign:HintAssist.Hint="OTP" materialDesign:HintAssist.IsFloating="True"
                                                                      Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
                                                         </StackPanel>
                                                     </Grid>

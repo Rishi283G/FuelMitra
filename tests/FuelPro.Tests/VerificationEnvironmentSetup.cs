@@ -55,7 +55,7 @@ public class VerificationEnvironmentSetup
         }
     }
 
-    [Fact]
+    [Fact(Skip = "Manual diagnostic environment setup only")]
     public async Task SetupVerificationDatabase_PopulatesExactReproductionData()
     {
         var appDataFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FuelPro");

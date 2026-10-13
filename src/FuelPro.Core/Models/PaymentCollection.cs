@@ -93,11 +93,58 @@ public class PaymentCollection
     /// </summary>
     public string? DynamicItemsJson { get; set; }
 
+    public static bool IsStandardCollectionCode(string? code)
+    {
+        if (string.IsNullOrWhiteSpace(code)) return false;
+        var clean = code.Trim().Replace("_", "").Replace(" ", "");
+        return clean.Equals("PHONEPE", StringComparison.OrdinalIgnoreCase)
+            || clean.Equals("PHONEPECARD", StringComparison.OrdinalIgnoreCase)
+            || clean.Equals("CREDITCARD", StringComparison.OrdinalIgnoreCase)
+            || clean.Equals("PETROCARD", StringComparison.OrdinalIgnoreCase)
+            || clean.Equals("CASHDEPOSIT", StringComparison.OrdinalIgnoreCase)
+            || clean.Equals("CASH1", StringComparison.OrdinalIgnoreCase)
+            || clean.Equals("OTHERS", StringComparison.OrdinalIgnoreCase);
+    }
+
     /// <summary>
-    /// Computes total of all dynamic collection items.
+    /// Computes total of all dynamic collection items (excluding standard payment cards to prevent double counting).
     /// </summary>
     [NotMapped]
-    public double DynamicItemsTotal => Items?.Sum(i => i.Amount) ?? 0;
+    public double DynamicItemsTotal
+    {
+        get
+        {
+            var all = GetAllItems();
+            return all.Where(i => !IsStandardCollectionCode(i.CollectionTypeCode)).Sum(i => i.Amount);
+        }
+    }
+
+    /// <summary>
+    /// Returns Items if loaded, otherwise attempts to deserialize from DynamicItemsJson.
+    /// </summary>
+    public IEnumerable<PaymentCollectionItem> GetAllItems()
+    {
+        if (Items != null && Items.Count > 0)
+        {
+            return Items;
+        }
+
+        if (!string.IsNullOrWhiteSpace(DynamicItemsJson))
+        {
+            try
+            {
+                var options = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                var deserialized = System.Text.Json.JsonSerializer.Deserialize<List<PaymentCollectionItem>>(DynamicItemsJson, options);
+                if (deserialized != null && deserialized.Count > 0)
+                {
+                    return deserialized;
+                }
+            }
+            catch { }
+        }
+
+        return Enumerable.Empty<PaymentCollectionItem>();
+    }
 }
 
 

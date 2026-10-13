@@ -211,15 +211,16 @@ public class ShiftAggregationService : IShiftAggregationService
                     finalPetroD = 0; finalPetro = (petro > 0 ? petro : (finalPetroM + finalPetroN));
                 }
 
-                var allItems = p1?.Items?.ToList() ?? new List<PaymentCollectionItem>();
+                var allItems = p1?.GetAllItems()?.ToList() ?? new List<PaymentCollectionItem>();
 
                 double sbiRedeem = allItems.Where(i => string.Equals(i.CollectionTypeCode?.Replace("_", "")?.Replace(" ", ""), "SBIREDEEM", StringComparison.OrdinalIgnoreCase)).Sum(i => i.Amount);
                 double paytm = allItems.Where(i => string.Equals(i.CollectionTypeCode, "PAYTM", StringComparison.OrdinalIgnoreCase)).Sum(i => i.Amount);
                 double qrPayment = allItems.Where(i => string.Equals(i.CollectionTypeCode, "QR", StringComparison.OrdinalIgnoreCase) || string.Equals(i.CollectionTypeCode?.Replace("_", "")?.Replace(" ", ""), "QRONLINE", StringComparison.OrdinalIgnoreCase)).Sum(i => i.Amount);
                 double mobikwik = allItems.Where(i => string.Equals(i.CollectionTypeCode, "MOBIKWIK", StringComparison.OrdinalIgnoreCase) || string.Equals(i.CollectionTypeCode, "MOBIKWICK", StringComparison.OrdinalIgnoreCase)).Sum(i => i.Amount);
-                double dynTotal = allItems.Sum(i => i.Amount);
+                var dynamicOnlyItems = allItems.Where(i => !PaymentCollection.IsStandardCollectionCode(i.CollectionTypeCode)).ToList();
+                double dynTotal = dynamicOnlyItems.Sum(i => i.Amount);
 
-                var dynDict = allItems
+                var dynDict = dynamicOnlyItems
                     .GroupBy(i => i.CollectionTypeCode, StringComparer.OrdinalIgnoreCase)
                     .ToDictionary(g => g.Key, g => g.Sum(x => x.Amount), StringComparer.OrdinalIgnoreCase);
 

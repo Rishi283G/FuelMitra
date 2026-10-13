@@ -449,6 +449,7 @@ public partial class DsmPerformanceViewModel : ObservableObject
 
             var repayments = await context.DsmPersonalDebtorRepayments
                 .Include(r => r.DsmPersonalDebtor)
+                .Include(r => r.Shift)
                 .Where(r => r.DsmPersonalDebtor != null && r.DsmPersonalDebtor.DsmName == dsmName && r.Date.Date >= PersonalLedgerStartDate.Date && r.Date.Date <= PersonalLedgerEndDate.Date)
                 .ToListAsync();
 
@@ -521,6 +522,7 @@ public partial class DsmPerformanceViewModel : ObservableObject
                     TransactionId = c.Id,
                     TransactionType = "Repayment",
                     Date = c.Date,
+                    Shift = c.Shift != null && !string.IsNullOrWhiteSpace(c.Shift.ShiftType) ? c.Shift.ShiftType : "—",
                     Description = $"Repayment via {c.PaymentMethod}{tidBatchInfo}",
                     Debit = 0,
                     Credit = c.Amount,
@@ -543,6 +545,7 @@ public partial class DsmPerformanceViewModel : ObservableObject
                     TransactionId = 0,
                     TransactionType = "OpeningBalance",
                     Date = PersonalLedgerStartDate.Date,
+                    Shift = "—",
                     Description = "Opening Balance",
                     Debit = 0,
                     Credit = 0,
@@ -582,6 +585,7 @@ public partial class DsmPerformanceViewModel : ObservableObject
             var printRows = PersonalLedger.Select(t => new DebtorLedgerPrintRow
             {
                 Date = t.Date.ToString("dd-MMM-yyyy"),
+                Shift = t.Shift,
                 Description = t.Description,
                 Debit = t.Debit,
                 Credit = t.Credit,

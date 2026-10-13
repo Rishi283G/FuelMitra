@@ -114,6 +114,16 @@ public class FuelProDbContext : DbContext
             entity.Property(e => e.CardSettlementPosTotal).HasDefaultValue(0.0);
         });
 
+        modelBuilder.Entity<OilDefDailyLog>(entity =>
+        {
+            entity.HasOne(e => e.Shift)
+                  .WithMany()
+                  .HasForeignKey(e => e.ShiftId)
+                  .OnDelete(DeleteBehavior.SetNull);
+
+            entity.HasIndex(e => e.ShiftId);
+        });
+
         // DsmEntry
         modelBuilder.Entity<DsmEntry>(entity =>
         {

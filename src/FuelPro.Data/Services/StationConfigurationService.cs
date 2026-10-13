@@ -100,6 +100,23 @@ public class StationConfigurationService : IStationConfigurationService
             {
                 if (!processedIds.Contains(existing.PumpMappingId))
                 {
+                    var idMap = await db.SyncIdMappings.FirstOrDefaultAsync(m => m.TableName == "PumpMappings" && m.LocalId == existing.PumpMappingId);
+                    if (idMap == null)
+                    {
+                        var lastLog = await db.SyncChangeLogs
+                            .Where(l => l.TableName == "PumpMappings" && l.RecordId == existing.PumpMappingId && !string.IsNullOrEmpty(l.RecordGuid))
+                            .OrderByDescending(l => l.Id)
+                            .FirstOrDefaultAsync();
+                        if (lastLog != null)
+                        {
+                            db.SyncIdMappings.Add(new SyncIdMapping
+                            {
+                                TableName = "PumpMappings",
+                                RemoteGuid = lastLog.RecordGuid,
+                                LocalId = existing.PumpMappingId
+                            });
+                        }
+                    }
                     db.PumpMappings.Remove(existing);
                 }
             }

@@ -1451,7 +1451,38 @@
                                                 Style="{StaticResource MaterialDesignOutlinedButton}" Foreground="#FFD54F" BorderBrush="#FFD54F"
                                                 Height="32" Padding="10,0" Margin="0,0,8,0" FontSize="11" ToolTip="Push station layout directly to Supabase for this Station ID"/>
 
+                                        <!-- Save Status Indicator -->
+                                        <Border CornerRadius="4" Padding="8,4" Margin="0,0,8,0" VerticalAlignment="Center">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Background" Value="#37474F"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding LayoutSaveStatus}" Value="Saved Successfully">
+                                                            <Setter Property="Background" Value="#1B5E20"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding LayoutSaveStatus}" Value="Saving...">
+                                                            <Setter Property="Background" Value="#E65100"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding LayoutSaveStatus}" Value="Unsaved Changes">
+                                                            <Setter Property="Background" Value="#BF360C"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding LayoutSaveStatus}" Value="Save Failed">
+                                                            <Setter Property="Background" Value="#B71C1C"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                <materialDesign:PackIcon Kind="CheckCircleOutline" Width="16" Height="16" Foreground="White" Margin="0,0,4,0" VerticalAlignment="Center"
+                                                                         Visibility="{Binding IsLayoutDirty, Converter={StaticResource InverseBoolConverter}}"/>
+                                                <materialDesign:PackIcon Kind="AlertCircleOutline" Width="16" Height="16" Foreground="#FFD54F" Margin="0,0,4,0" VerticalAlignment="Center"
+                                                                         Visibility="{Binding IsLayoutDirty, Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                                                <TextBlock Text="{Binding LayoutSaveStatus}" FontSize="11" FontWeight="Bold" Foreground="White" VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                        </Border>
+
                                         <Button Content="Save Station Layout" Command="{Binding SaveStationLayoutCommand}"
+                                                IsEnabled="{Binding IsLayoutSaving, Converter={StaticResource InverseBoolConverter}}"
                                                 Style="{StaticResource MaterialDesignRaisedButton}" Background="#F57C00" BorderBrush="#F57C00" Foreground="White"
                                                 Height="34" Padding="16,0" FontSize="12" FontWeight="Bold"/>
                                     </StackPanel>
@@ -1937,6 +1968,33 @@
                                             <DataGridTemplateColumn.CellTemplate>
                                                 <DataTemplate>
                                                     <CheckBox IsChecked="{Binding IsActive, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                              HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                              Style="{StaticResource MaterialDesignCheckBox}"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                        <DataGridTemplateColumn Header="Morning" Width="70">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <CheckBox IsChecked="{Binding EnableMorning, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                              HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                              Style="{StaticResource MaterialDesignCheckBox}"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                        <DataGridTemplateColumn Header="Day" Width="60">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <CheckBox IsChecked="{Binding EnableDay, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                              HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                              Style="{StaticResource MaterialDesignCheckBox}"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                        <DataGridTemplateColumn Header="Night" Width="60">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <CheckBox IsChecked="{Binding EnableNight, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                               HorizontalAlignment="Center" VerticalAlignment="Center"
                                                               Style="{StaticResource MaterialDesignCheckBox}"/>
                                                 </DataTemplate>

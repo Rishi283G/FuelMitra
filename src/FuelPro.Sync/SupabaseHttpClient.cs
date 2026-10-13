@@ -68,8 +68,13 @@ public class SupabaseHttpClient
     }
 
     public SupabaseHttpClient()
+        : this(CreateHttpClient(TimeSpan.FromSeconds(30)))
     {
-        _client = CreateHttpClient(TimeSpan.FromSeconds(30));
+    }
+
+    public SupabaseHttpClient(HttpClient client)
+    {
+        _client = client ?? throw new ArgumentNullException(nameof(client));
     }
 
     public void Configure(string url, string apiKey)

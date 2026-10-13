@@ -223,6 +223,7 @@ public class OilDefSaleDisplayRow
 {
     public string ProductName { get; set; } = string.Empty;
     public string Category { get; set; } = string.Empty;
+    public string ShiftType { get; set; } = string.Empty;
     public double Quantity { get; set; }
     public double Rate { get; set; }
     public double Total { get; set; }

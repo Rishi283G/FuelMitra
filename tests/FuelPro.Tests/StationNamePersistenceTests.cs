@@ -330,11 +330,11 @@ public class StationNamePersistenceTests
         Assert.Equal(95.0, dsrMs.Litres, precision: 2);
         Assert.Equal(9500.0, dsrMs.Amount, precision: 2);
 
-        // 4. Expected Collection includes Gross Sales (10000)
-        Assert.Equal(10000.0, report.ExpectedCollection, precision: 2);
+        // 4. Expected Collection is Net Sales excluding testing (9500)
+        Assert.Equal(9500.0, report.ExpectedCollection, precision: 2);
 
-        // 5. Actual Collection = Cash (9500) + Testing (500) = 10000
-        Assert.Equal(10000.0, report.ActualCollection, precision: 2);
+        // 5. Actual Collection = Cash (9500) (testing excluded)
+        Assert.Equal(9500.0, report.ActualCollection, precision: 2);
 
         // 6. Balanced Difference = 0
         Assert.Equal(0.0, report.Difference, precision: 2);

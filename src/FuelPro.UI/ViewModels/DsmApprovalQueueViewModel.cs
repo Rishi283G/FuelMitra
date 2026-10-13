@@ -11,6 +11,7 @@ using FuelPro.Core.Models;
 using FuelPro.Core.Services;
 using FuelPro.Core.Repositories;
 using FuelPro.Data;
+using FuelPro.Data.Services;
 using FuelPro.Sync;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -143,9 +144,11 @@ public partial class DsmCardSwipeRow : ObservableObject
     [ObservableProperty] private double _amount;
     [ObservableProperty] private string _tid = "";
     [ObservableProperty] private string _batch = "";
+    [ObservableProperty] private string _otp = "";
 
     partial void OnAmountChanged(double value) => OnRowChanged?.Invoke();
     partial void OnModeChanged(string value) => OnRowChanged?.Invoke();
+    partial void OnOtpChanged(string value) => OnRowChanged?.Invoke();
 }
 
 public class DsmTestingRow
@@ -647,6 +650,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                                     Amount = (double)(swipe.amount ?? 0.0),
                                     Tid = swipe.tid ?? "",
                                     Batch = swipe.batch ?? "",
+                                    Otp = (string?)(swipe.otp ?? swipe.Otp ?? ""),
                                     OnRowChanged = RecalculateTotals
                                 });
                             }
@@ -1457,6 +1461,80 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                 PetroCardBatchNight = petroCardBatchNight
             };
 
+            string defaultSlot = isShiftC ? "Night" : (isShiftB ? "Day" : "Morning");
+            foreach (var swipe in CardSwipeDetails)
+            {
+                if (swipe.Amount <= 0 && string.IsNullOrWhiteSpace(swipe.Otp)) continue;
+                string mode = swipe.Mode ?? "";
+                string itemSlot = defaultSlot;
+                if (mode.Contains("Morning", StringComparison.OrdinalIgnoreCase)) itemSlot = "Morning";
+                else if (mode.Contains("Night", StringComparison.OrdinalIgnoreCase)) itemSlot = "Night";
+                else if (mode.Contains("Day", StringComparison.OrdinalIgnoreCase)) itemSlot = "Day";
+
+                string typeCode = mode;
+                if (mode.Contains("Petro", StringComparison.OrdinalIgnoreCase)) typeCode = "PETROCARD";
+                else if (mode.Contains("PhonePe Card", StringComparison.OrdinalIgnoreCase)) typeCode = "PHONEPE_CARD";
+                else if (mode.Contains("PhonePe", StringComparison.OrdinalIgnoreCase) || mode.Contains("UPI", StringComparison.OrdinalIgnoreCase)) typeCode = "PHONEPE";
+                else if (mode.Contains("Credit", StringComparison.OrdinalIgnoreCase) || mode.Contains("Card", StringComparison.OrdinalIgnoreCase)) typeCode = "CREDIT_CARD";
+
+                payment.Items.Add(new PaymentCollectionItem
+                {
+                    CollectionTypeCode = typeCode,
+                    Amount = swipe.Amount,
+                    Tid = swipe.Tid,
+                    Batch = swipe.Batch,
+                    Otp = swipe.Otp,
+                    Slot = itemSlot
+                });
+            }
+
+            // Also ingest any dynamicItems from metadata that might not be in CardSwipeDetails
+            if (!string.IsNullOrEmpty(SelectedSubmission.MetadataJson))
+            {
+                try
+                {
+                    var metadata = JsonConvert.DeserializeObject<dynamic>(SelectedSubmission.MetadataJson);
+                    if (metadata?.dynamicItems != null)
+                    {
+                        foreach (var d in metadata.dynamicItems)
+                        {
+                            string dCode = (string)(d.collectionTypeCode ?? d.code ?? "");
+                            if (string.IsNullOrWhiteSpace(dCode)) continue;
+                            double dAmt = Convert.ToDouble((object?)(d.amount ?? 0.0));
+                            string? dOtp = (string?)d.otp;
+                            if (dAmt <= 0 && string.IsNullOrWhiteSpace(dOtp)) continue;
+
+                            if (!payment.Items.Any(i => i.CollectionTypeCode.Equals(dCode, StringComparison.OrdinalIgnoreCase) && Math.Abs(i.Amount - dAmt) < 0.01))
+                            {
+                                payment.Items.Add(new PaymentCollectionItem
+                                {
+                                    CollectionTypeCode = dCode,
+                                    Amount = dAmt,
+                                    Tid = (string?)d.tid,
+                                    Batch = (string?)d.batch,
+                                    Otp = dOtp,
+                                    Slot = (string?)d.slot ?? defaultSlot
+                                });
+                            }
+                        }
+                    }
+                }
+                catch {}
+            }
+
+            if (payment.Items.Count > 0)
+            {
+                payment.DynamicItemsJson = JsonConvert.SerializeObject(payment.Items.Select(i => new
+                {
+                    i.CollectionTypeCode,
+                    i.Amount,
+                    i.Tid,
+                    i.Batch,
+                    i.Slot,
+                    i.Otp
+                }));
+            }
+
             // Build Debtor Entries
             var debitModels = new List<DebitEntry>();
             foreach (var dbEntry in DebtorEntries)
@@ -1724,36 +1802,11 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                             var productMaster = await context.ProductMasters.FindAsync(productId);
                             if (productMaster == null) continue;
 
-                            double defaultSaleRate = productMaster.DefaultSaleRate;
                             double price = sale.Price;
                             double quantity = sale.Quantity;
 
-                            var log = await context.OilDefDailyLogs
-                                .FirstOrDefaultAsync(l => l.ProductId == productId && l.LogDate == SelectedSubmission.ShiftDate.Date);
-
-                            if (log != null)
-                            {
-                                log.SoldQuantity += quantity;
-                                if (Math.Abs(price - defaultSaleRate) > 0.01)
-                                {
-                                    log.OverrideSaleRate = price;
-                                }
-                                context.Entry(log).State = EntityState.Modified;
-                            }
-                            else
-                            {
-                                log = new OilDefDailyLog
-                                {
-                                    LogDate = SelectedSubmission.ShiftDate.Date,
-                                    ProductId = productId,
-                                    ProductType = productMaster.Category,
-                                    SoldQuantity = quantity,
-                                    OverrideSaleRate = Math.Abs(price - defaultSaleRate) > 0.01 ? price : null
-                                };
-                                context.OilDefDailyLogs.Add(log);
-                            }
-
-                            await context.SaveChangesAsync();
+                            await DsmOilDefSalePersistence.AddOrAccumulateAsync(
+                                context, savedEntry.ShiftId, SelectedSubmission.ShiftDate, productMaster, quantity, price);
                             await RecalculateRunningBalancesAsync(context, productId, SelectedSubmission.ShiftDate.Date);
                         }
 

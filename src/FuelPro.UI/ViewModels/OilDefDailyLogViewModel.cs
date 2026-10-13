@@ -1,8 +1,10 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FuelPro.Core.Models;
+using FuelPro.Core.Repositories;
 using FuelPro.Core.Services;
 using FuelPro.Data;
+using FuelPro.Data.Services;
 using FuelPro.UI.Printing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -19,9 +21,12 @@ public partial class OilDefDailyLogViewModel : ObservableObject
 {
     private readonly FuelProDbContext _dbContext;
     private readonly IFinancialCalculationService _financialCalcService;
+    private readonly IShiftRepository _shiftRepository;
+    private readonly IShiftCycleService _shiftCycleService;
     private readonly PrintService _printService;
     private readonly System.Threading.SemaphoreSlim _dbLock = new(1, 1);
     private bool _isApplyingPreset;
+    private bool _isApplyingEdit;
 
     [ObservableProperty] private DateTime _startDate = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
     [ObservableProperty] private DateTime _endDate = DateTime.Today;
@@ -61,8 +66,11 @@ public partial class OilDefDailyLogViewModel : ObservableObject
 
     // Record Sales Form
     [ObservableProperty] private DateTime _saleDate = DateTime.Today;
+    [ObservableProperty] private Shift? _selectedSaleShift;
     [ObservableProperty] private double _saleQty;
     [ObservableProperty] private double _saleRate;
+
+    public ObservableCollection<Shift> SaleShifts { get; } = new();
 
     // Add Purchases Form
     [ObservableProperty] private DateTime _purchaseDate = DateTime.Today;
@@ -125,10 +133,16 @@ public partial class OilDefDailyLogViewModel : ObservableObject
     public string ProductFormTitle => IsEditingProduct ? "Edit Product" : "Add Product to Catalog";
     public string ProductButtonContent => IsEditingProduct ? "Update Product" : "Add to Catalog";
 
-    public OilDefDailyLogViewModel()
+    public OilDefDailyLogViewModel(
+        FuelProDbContext dbContext,
+        IFinancialCalculationService financialCalcService,
+        IShiftRepository shiftRepository,
+        IShiftCycleService shiftCycleService)
     {
-        _dbContext = App.Services.GetRequiredService<FuelProDbContext>();
-        _financialCalcService = App.Services.GetRequiredService<IFinancialCalculationService>();
+        _dbContext = dbContext;
+        _financialCalcService = financialCalcService;
+        _shiftRepository = shiftRepository;
+        _shiftCycleService = shiftCycleService;
         _printService = new PrintService();
 
         _ = InitAsync();
@@ -137,7 +151,119 @@ public partial class OilDefDailyLogViewModel : ObservableObject
     private async Task InitAsync()
     {
         await LoadProductsAsync();
+        await LoadSaleShiftsAsync();
         await SetPresetAsync(SelectedPreset);
+    }
+
+    partial void OnSaleDateChanged(DateTime value)
+    {
+        if (_isApplyingEdit) return;
+        _ = LoadSaleShiftsAsync();
+    }
+
+    [RelayCommand]
+    public async Task LoadSaleShiftsAsync()
+    {
+        await LoadSaleShiftsInternalAsync(SelectedSaleShift?.ShiftId);
+    }
+
+    public async Task LoadSaleShiftsInternalAsync(int? preferredShiftId)
+    {
+        try
+        {
+            var selectedShiftId = preferredShiftId ?? SelectedSaleShift?.ShiftId;
+            var targetDate = SaleDate.Date;
+            var shiftTypes = _shiftCycleService.GetShiftsForDate(targetDate);
+
+            // 1. Inspect physical records for target date in DB to detect any data integrity anomalies
+            var existingShiftsForDate = await _dbContext.Shifts
+                .Where(s => s.ShiftDate == targetDate)
+                .ToListAsync();
+
+            var duplicateGroups = existingShiftsForDate
+                .GroupBy(s => _shiftCycleService.NormalizeShiftType(s.ShiftType))
+                .Where(g => !string.IsNullOrEmpty(g.Key) && g.Count() > 1)
+                .ToList();
+
+            if (duplicateGroups.Any())
+            {
+                foreach (var group in duplicateGroups)
+                {
+                    var shiftIds = string.Join(", ", group.Select(s => s.ShiftId));
+                    Serilog.Log.Warning(
+                        "[Data Integrity Warning] Multiple physical Shift records detected for date {Date} and shift slot '{Slot}': ShiftIds [{ShiftIds}]. Preserving records in database without deletion/merging.",
+                        targetDate.ToString("yyyy-MM-dd"), group.Key, shiftIds);
+                }
+            }
+
+            // 2. Identify preferred shift if provided and belongs to target date
+            Shift? preferredShift = null;
+            if (selectedShiftId.HasValue)
+            {
+                preferredShift = existingShiftsForDate.FirstOrDefault(s => s.ShiftId == selectedShiftId.Value)
+                    ?? await _dbContext.Shifts.FindAsync(selectedShiftId.Value);
+
+                if (preferredShift != null && preferredShift.ShiftDate.Date != targetDate)
+                {
+                    // Preferred shift belongs to a different date; do not select or place it into today's slot
+                    preferredShift = null;
+                    selectedShiftId = null;
+                }
+            }
+
+            // 3. Guarantee exactly one valid option per operational shift slot (A, B, C)
+            var loadedShifts = new List<Shift>();
+            foreach (var shiftType in shiftTypes)
+            {
+                var normSlot = _shiftCycleService.NormalizeShiftType(shiftType);
+
+                // If editing an existing sale referencing an alternate record for this slot, preserve that record's identity
+                if (preferredShift != null && _shiftCycleService.NormalizeShiftType(preferredShift.ShiftType) == normSlot)
+                {
+                    loadedShifts.Add(preferredShift);
+                    continue;
+                }
+
+                // Otherwise, use existing matching record if already present in DB
+                var matchingExisting = existingShiftsForDate.FirstOrDefault(s => _shiftCycleService.NormalizeShiftType(s.ShiftType) == normSlot);
+                if (matchingExisting != null)
+                {
+                    loadedShifts.Add(matchingExisting);
+                    continue;
+                }
+
+                // If not present in DB, get or create canonical shift
+                var result = await _shiftRepository.GetOrCreateShiftAsync(targetDate, shiftType);
+                if (result.Success && result.Data != null)
+                {
+                    loadedShifts.Add(result.Data);
+                }
+            }
+
+            // Handle any non-standard preferred shift slot that is not in standard cycle shifts
+            if (preferredShift != null && !loadedShifts.Any(s => s.ShiftId == preferredShift.ShiftId))
+            {
+                var prefNorm = _shiftCycleService.NormalizeShiftType(preferredShift.ShiftType);
+                if (!loadedShifts.Any(s => _shiftCycleService.NormalizeShiftType(s.ShiftType) == prefNorm))
+                {
+                    loadedShifts.Add(preferredShift);
+                }
+            }
+
+            SaleShifts.Clear();
+            foreach (var shift in loadedShifts)
+                SaleShifts.Add(shift);
+
+            SelectedSaleShift = selectedShiftId.HasValue
+                ? SaleShifts.FirstOrDefault(s => s.ShiftId == selectedShiftId.Value)
+                : null;
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to load shifts for oil/DEF sale date {SaleDate}", SaleDate);
+            SaleShifts.Clear();
+            SelectedSaleShift = null;
+        }
     }
 
     [RelayCommand]
@@ -330,6 +456,7 @@ public partial class OilDefDailyLogViewModel : ObservableObject
             HistoryLogs.Clear();
             var logs = await _dbContext.OilDefDailyLogs
                 .Include(l => l.Product)
+                .Include(l => l.Shift)
                 .Where(l => l.SoldQuantity > 0)
                 .OrderByDescending(l => l.LogDate)
                 .ThenByDescending(l => l.Id)
@@ -339,6 +466,7 @@ public partial class OilDefDailyLogViewModel : ObservableObject
             HistoryAdjustments.Clear();
             var adjustments = await _dbContext.OilDefDailyLogs
                 .Include(l => l.Product)
+                .Include(l => l.Shift)
                 .Where(l => l.AdjustmentQuantity != 0)
                 .OrderByDescending(l => l.LogDate)
                 .ThenByDescending(l => l.Id)
@@ -548,14 +676,23 @@ public partial class OilDefDailyLogViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void EditSaleLog(OilDefDailyLog log)
+    private async Task EditSaleLogAsync(OilDefDailyLog log)
     {
         if (log == null) return;
-        EditingSaleLog = log;
-        SaleDate = log.LogDate;
-        SelectedProduct = ActiveProducts.FirstOrDefault(p => p.Id == log.ProductId);
-        SaleQty = log.SoldQuantity;
-        SaleRate = log.EffectiveRate;
+        _isApplyingEdit = true;
+        try
+        {
+            EditingSaleLog = log;
+            SaleDate = log.LogDate;
+            await LoadSaleShiftsInternalAsync(log.ShiftId);
+            SelectedProduct = ActiveProducts.FirstOrDefault(p => p.Id == log.ProductId);
+            SaleQty = log.SoldQuantity;
+            SaleRate = log.EffectiveRate;
+        }
+        finally
+        {
+            _isApplyingEdit = false;
+        }
     }
 
     [RelayCommand]
@@ -563,6 +700,7 @@ public partial class OilDefDailyLogViewModel : ObservableObject
     {
         EditingSaleLog = null;
         SaleDate = DateTime.Today;
+        SelectedSaleShift = null;
         SaleQty = 0;
         if (SelectedProduct != null)
         {
@@ -698,6 +836,18 @@ public partial class OilDefDailyLogViewModel : ObservableObject
             return;
         }
 
+        if (EditingSaleLog == null && SelectedSaleShift == null)
+        {
+            MessageBox.Show("Please select the originating shift for this sale.", "PyroSync — Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        if (SelectedSaleShift != null && SelectedSaleShift.ShiftDate.Date != SaleDate.Date)
+        {
+            MessageBox.Show("The selected shift must belong to the sale date.", "PyroSync — Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
         IsLoading = true;
         try
         {
@@ -716,14 +866,14 @@ public partial class OilDefDailyLogViewModel : ObservableObject
                     var oldProductId = entity.ProductId;
                     var oldDate = entity.LogDate.Date;
                     var newDate = SaleDate.Date;
-
-                    entity.ProductId = SelectedProduct.Id;
-                    entity.ProductType = SelectedProduct.Category;
-                    entity.LogDate = newDate == DateTime.Today ? DateTime.Now : newDate;
-                    entity.SoldQuantity = SaleQty;
-                    entity.OverrideSaleRate = Math.Abs(SaleRate - SelectedProduct.DefaultSaleRate) > 0.01 ? SaleRate : null;
-                    _dbContext.Entry(entity).State = EntityState.Modified;
-                    await _dbContext.SaveChangesAsync();
+                    await OilDefAdminSalePersistence.SaveAsync(
+                        _dbContext,
+                        newDate == DateTime.Today ? DateTime.Now : newDate,
+                        SelectedProduct,
+                        SaleQty,
+                        SaleRate,
+                        SelectedSaleShift?.ShiftId,
+                        entity);
 
                     if (oldProductId != SelectedProduct.Id || oldDate != newDate)
                     {
@@ -736,18 +886,13 @@ public partial class OilDefDailyLogViewModel : ObservableObject
             }
             else
             {
-                var newLog = new OilDefDailyLog
-                {
-                    LogDate = SaleDate.Date == DateTime.Today ? DateTime.Now : SaleDate.Date,
-                    ProductId = SelectedProduct.Id,
-                    ProductType = SelectedProduct.Category,
-                    SoldQuantity = SaleQty,
-                    OverrideSaleRate = Math.Abs(SaleRate - SelectedProduct.DefaultSaleRate) > 0.01 ? SaleRate : null,
-                    AddedQuantity = 0,
-                    AdjustmentQuantity = 0
-                };
-                _dbContext.OilDefDailyLogs.Add(newLog);
-                await _dbContext.SaveChangesAsync();
+                await OilDefAdminSalePersistence.SaveAsync(
+                    _dbContext,
+                    SaleDate.Date == DateTime.Today ? DateTime.Now : SaleDate.Date,
+                    SelectedProduct,
+                    SaleQty,
+                    SaleRate,
+                    SelectedSaleShift!.ShiftId);
                 await RecalculateRunningBalancesAsync(SelectedProduct.Id, SaleDate.Date);
 
                 MessageBox.Show("Sales logged and stock recalculated successfully!", "PyroSync — Success", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -755,6 +900,7 @@ public partial class OilDefDailyLogViewModel : ObservableObject
             
             // Reset
             SaleQty = 0;
+            SelectedSaleShift = null;
             SaleRate = SelectedProduct.DefaultSaleRate;
             EditingSaleLog = null; // Clear edit state
 

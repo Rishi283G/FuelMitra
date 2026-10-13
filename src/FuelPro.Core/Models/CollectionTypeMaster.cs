@@ -80,6 +80,36 @@ public class CollectionTypeMaster : ObservableObject
         set => SetProperty(ref _isActive, value);
     }
 
+    private bool _enableMorning = true;
+    /// <summary>
+    /// Whether Morning slot entry is enabled for this collection type.
+    /// </summary>
+    public bool EnableMorning
+    {
+        get => _enableMorning;
+        set => SetProperty(ref _enableMorning, value);
+    }
+
+    private bool _enableDay = true;
+    /// <summary>
+    /// Whether Day slot entry is enabled for this collection type.
+    /// </summary>
+    public bool EnableDay
+    {
+        get => _enableDay;
+        set => SetProperty(ref _enableDay, value);
+    }
+
+    private bool _enableNight = true;
+    /// <summary>
+    /// Whether Night slot entry is enabled for this collection type.
+    /// </summary>
+    public bool EnableNight
+    {
+        get => _enableNight;
+        set => SetProperty(ref _enableNight, value);
+    }
+
     /// <summary>
     /// Whether this is a core system type (prevents accidental deletion while still allowing enable/disable).
     /// </summary>

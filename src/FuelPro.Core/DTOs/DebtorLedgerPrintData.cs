@@ -19,6 +19,7 @@ public class DebtorLedgerPrintData
 public class DebtorLedgerPrintRow
 {
     public string Date { get; set; } = string.Empty;
+    public string Shift { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public double Debit { get; set; }
     public double Credit { get; set; }

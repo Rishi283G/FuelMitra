@@ -517,7 +517,7 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
             }
             ReconciliationRows = new ObservableCollection<ReconciliationRowDto>(reconRows);
             ReconciliationTotal = report.ActualCollection;
-            GrossSaleTotal = report.TotalFuelAmount;
+            GrossSaleTotal = report.GrandTotalSaleAmount;
             TotalDsmShort = report.TotalDsmShort;
             PersonalDebtorRows = new ObservableCollection<DsmPersonalDebtorPrintDto>(report.PersonalDebtors ?? new());
             TotalDsmLoss = PersonalDebtorRows.Sum(p => p.Amount);
@@ -628,7 +628,7 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
         }
         ReconciliationRows = new ObservableCollection<ReconciliationRowDto>(reconRows);
         ReconciliationTotal = report.ActualCollection;
-        GrossSaleTotal = report.TotalFuelAmount;
+        GrossSaleTotal = report.GrandTotalSaleAmount;
         TotalDsmShort = report.TotalDsmShort;
         PersonalDebtorRows = new ObservableCollection<DsmPersonalDebtorPrintDto>(report.PersonalDebtors ?? new());
         TotalDsmLoss = PersonalDebtorRows.Sum(p => p.Amount);
@@ -936,16 +936,24 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
                 DateTime repDate = classified.IsValid ? classified.BusinessDate : r.RepaymentDate.Date;
                 if (repDate == SelectedDate.Date)
                 {
+                    var cycleService = new ShiftCycleService();
+                    var normRShift = !string.IsNullOrWhiteSpace(r.ShiftNumber) ? cycleService.NormalizeShiftType(r.ShiftNumber) : null;
+                    var normSelShift = cycleService.NormalizeShiftType(SelectedShift);
+
                     bool match = false;
-                    if (!string.IsNullOrWhiteSpace(r.ShiftNumber) && string.Equals(r.ShiftNumber.Trim(), SelectedShift.Trim(), StringComparison.OrdinalIgnoreCase))
+                    if (normRShift != null)
+                    {
+                        match = string.Equals(normRShift, normSelShift, StringComparison.OrdinalIgnoreCase);
+                    }
+                    else if (normSelShift == "B" && classified.SettlementWindow == "Day")
                     {
                         match = true;
                     }
-                    else if (SelectedShift == "B" && classified.SettlementWindow == "Day")
+                    else if (normSelShift == "C" && classified.SettlementWindow == "Night")
                     {
                         match = true;
                     }
-                    else if (SelectedShift == "A" && (classified.SettlementWindow == "Morning" || classified.SettlementWindow == "Night"))
+                    else if (normSelShift == "A" && classified.SettlementWindow == "Morning")
                     {
                         match = true;
                     }

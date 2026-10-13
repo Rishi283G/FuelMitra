@@ -222,11 +222,9 @@ public class TidCalculationService : ITidCalculationService
                     }
 
                     // Dynamic collection items Slot 1 (e.g. SBI Redeem, Paytm, QR, Mobikwik)
-                    if (pc.Items != null)
+                    foreach (var item in pc.GetAllItems().Where(i => (i.Amount > 0 || !string.IsNullOrWhiteSpace(i.Tid)) && !PaymentCollection.IsStandardCollectionCode(i.CollectionTypeCode)))
                     {
-                        foreach (var item in pc.Items.Where(i => i.Amount > 0 || !string.IsNullOrWhiteSpace(i.Tid)))
-                        {
-                            dynamicDsmItems.Add(new TidItemDto
+                        dynamicDsmItems.Add(new TidItemDto
                             {
                                 DsmName = entry.DsmName,
                                 PumpId = entry.PumpId,
@@ -242,7 +240,6 @@ public class TidCalculationService : ITidCalculationService
                                 SlotDisplaySubtitle = subtitleSlot1,
                                 CollectionTypeCode = item.CollectionTypeCode
                             });
-                        }
                     }
                 }
             }
@@ -379,11 +376,9 @@ public class TidCalculationService : ITidCalculationService
                     }
 
                     // Dynamic collection items Day
-                    if (pc.Items != null)
+                    foreach (var item in pc.GetAllItems().Where(i => (i.Amount > 0 || !string.IsNullOrWhiteSpace(i.Tid)) && !PaymentCollection.IsStandardCollectionCode(i.CollectionTypeCode)))
                     {
-                        foreach (var item in pc.Items.Where(i => i.Amount > 0 || !string.IsNullOrWhiteSpace(i.Tid)))
-                        {
-                            dynamicDsmItems.Add(new TidItemDto
+                        dynamicDsmItems.Add(new TidItemDto
                             {
                                 DsmName = entry.DsmName,
                                 PumpId = entry.PumpId,
@@ -399,7 +394,6 @@ public class TidCalculationService : ITidCalculationService
                                 SlotDisplaySubtitle = subtitleSlot2,
                                 CollectionTypeCode = item.CollectionTypeCode
                             });
-                        }
                     }
                 }
             }
@@ -486,11 +480,9 @@ public class TidCalculationService : ITidCalculationService
                 }
 
                 // Dynamic collection items Shift C
-                if (pc.Items != null)
+                foreach (var item in pc.GetAllItems().Where(i => (i.Amount > 0 || !string.IsNullOrWhiteSpace(i.Tid)) && !PaymentCollection.IsStandardCollectionCode(i.CollectionTypeCode)))
                 {
-                    foreach (var item in pc.Items.Where(i => i.Amount > 0 || !string.IsNullOrWhiteSpace(i.Tid)))
-                    {
-                        dynamicDsmItems.Add(new TidItemDto
+                    dynamicDsmItems.Add(new TidItemDto
                         {
                             DsmName = entry.DsmName,
                             PumpId = entry.PumpId,
@@ -506,7 +498,6 @@ public class TidCalculationService : ITidCalculationService
                             SlotDisplaySubtitle = $"({date.Date:dd MMM} | Shift C)",
                             CollectionTypeCode = item.CollectionTypeCode
                         });
-                    }
                 }
             }
         }
@@ -644,11 +635,9 @@ public class TidCalculationService : ITidCalculationService
                         }
 
                         // Dynamic collection items Night
-                        if (pc.Items != null)
+                        foreach (var item in pc.GetAllItems().Where(i => (i.Amount > 0 || !string.IsNullOrWhiteSpace(i.Tid)) && !PaymentCollection.IsStandardCollectionCode(i.CollectionTypeCode)))
                         {
-                            foreach (var item in pc.Items.Where(i => i.Amount > 0 || !string.IsNullOrWhiteSpace(i.Tid)))
-                            {
-                                dynamicDsmItems.Add(new TidItemDto
+                            dynamicDsmItems.Add(new TidItemDto
                                 {
                                     DsmName = entry.DsmName,
                                     PumpId = entry.PumpId,
@@ -664,7 +653,6 @@ public class TidCalculationService : ITidCalculationService
                                     SlotDisplaySubtitle = $"({date.Date.ToString("dd MMM")} | 8:00 PM – 12:00 AM)",
                                     CollectionTypeCode = item.CollectionTypeCode
                                 });
-                            }
                         }
                     }
                 }

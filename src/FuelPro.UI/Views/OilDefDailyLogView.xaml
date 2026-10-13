@@ -253,6 +253,11 @@
                                 <DatePicker SelectedDate="{Binding SaleDate}" materialDesign:HintAssist.Hint="Sale Date"
                                             Margin="0,0,0,14" Height="48"/>
 
+                                <ComboBox ItemsSource="{Binding SaleShifts}" SelectedItem="{Binding SelectedSaleShift}"
+                                          DisplayMemberPath="ShiftType"
+                                          materialDesign:HintAssist.Hint="Originating Shift (A / B / C)"
+                                          Margin="0,0,0,14" Height="48"/>
+
                                 <ComboBox ItemsSource="{Binding ActiveProducts}" SelectedItem="{Binding SelectedProduct}"
                                           DisplayMemberPath="ProductName"
                                           materialDesign:HintAssist.Hint="Select Product"
@@ -304,6 +309,13 @@
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="Date &amp; Time" Binding="{Binding LogDate, StringFormat='{}{0:dd-MMM-yyyy hh:mm tt}'}" Width="150"/>
                                 <DataGridTextColumn Header="Product Name" Binding="{Binding ProductNameDisplay}" Width="2.2*" MinWidth="170" FontWeight="SemiBold"/>
+                                <DataGridTextColumn Header="Shift" Binding="{Binding ShiftDisplay}" Width="60">
+                                    <DataGridTextColumn.ElementStyle>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="HorizontalAlignment" Value="Center"/>
+                                        </Style>
+                                    </DataGridTextColumn.ElementStyle>
+                                </DataGridTextColumn>
                                 <DataGridTextColumn Header="Qty Sold" Binding="{Binding SoldQuantity, StringFormat='{}{0:N2}'}" Width="85"/>
                                 <DataGridTextColumn Header="Rate Used (₹)" Binding="{Binding EffectiveRate, StringFormat='₹{0:N2}'}" Width="105"/>
                                 <DataGridTextColumn Header="Sales Value (₹)" Binding="{Binding SalesValue, StringFormat='₹{0:N2}'}" Width="115" FontWeight="Bold" Foreground="#1565C0"/>

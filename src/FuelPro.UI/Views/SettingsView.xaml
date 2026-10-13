@@ -6,6 +6,7 @@
 
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+        <BooleanToVisibilityConverter x:Key="BoolToVisConverter" />
     </UserControl.Resources>
 
     <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="32,24">
@@ -114,6 +115,18 @@
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <Button Style="{StaticResource MaterialDesignIconButton}" Height="28" Width="28"
+                                                Command="{Binding DataContext.EditDsmCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}"
+                                                ToolTip="Edit DSM Name">
+                                            <materialDesign:PackIcon Kind="Pencil" Width="16" Height="16" Foreground="#1565C0"/>
+                                        </Button>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTemplateColumn Header="" Width="50">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Button Style="{StaticResource MaterialDesignIconButton}" Height="28" Width="28"
                                                 Command="{Binding DataContext.DeleteDsmCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                 CommandParameter="{Binding}"
                                                 ToolTip="Delete DSM Profile">
@@ -124,6 +137,27 @@
                             </DataGridTemplateColumn>
                         </DataGrid.Columns>
                     </DataGrid>
+
+                    <Border Visibility="{Binding IsEditingDsm, Converter={StaticResource BoolToVisConverter}}"
+                            Background="#F5F8FF" BorderBrush="#D6E3FF" BorderThickness="1"
+                            CornerRadius="8" Padding="12" Margin="0,0,0,16">
+                        <StackPanel>
+                            <TextBlock Text="Edit DSM Name" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBox Text="{Binding EditingDsmName, UpdateSourceTrigger=PropertyChanged}"
+                                         materialDesign:HintAssist.Hint="DSM Name (Required)"
+                                         materialDesign:HintAssist.IsFloating="True"
+                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                         Width="320" Margin="0,0,10,0"/>
+                                <Button Content="Save Name" Command="{Binding SaveDsmEditCommand}"
+                                        Style="{StaticResource MaterialDesignRaisedButton}"
+                                        Height="40" Padding="18,0"/>
+                                <Button Content="Cancel" Command="{Binding CancelDsmEditCommand}"
+                                        Style="{StaticResource MaterialDesignFlatButton}"
+                                        Height="40" Padding="18,0" Margin="6,0,0,0"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
 
                     <TextBlock Text="Add New DSM Profile" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,8" Opacity="0.7"/>
                     <Grid Margin="0,0,0,12">

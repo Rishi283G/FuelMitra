@@ -517,6 +517,7 @@
                                     <DataGridTextColumn Header="Card Mode (PhonePe / PhonePe Card / PineLabs Card / PetroCard)" Binding="{Binding Mode}" Width="2*"/>
                                     <DataGridTextColumn Header="TID" Binding="{Binding Tid}" Width="*"/>
                                     <DataGridTextColumn Header="Batch No." Binding="{Binding Batch}" Width="*"/>
+                                    <DataGridTextColumn Header="OTP" Binding="{Binding Otp}" Width="*"/>
                                     <DataGridTemplateColumn Header="Amount (₹)" Width="120">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>

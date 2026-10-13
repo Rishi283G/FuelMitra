@@ -71,7 +71,7 @@ public class LiveWorkflowVerificationTests
         return sp;
     }
 
-    [Fact]
+    [Fact(Skip = "Manual diagnostic only - requires desktop UI and live database")]
     public async Task Verify_LiveDb_RameshJadhav_StateAndLedger_ShiftA250_ShiftB2260_Total2510()
     {
         Assert.True(File.Exists(_liveDbPath), $"Live database missing at {_liveDbPath}");
@@ -104,7 +104,7 @@ public class LiveWorkflowVerificationTests
         Assert.Equal(22.60, shiftBRow.Amount, precision: 2);
     }
 
-    [Fact]
+    [Fact(Skip = "Manual diagnostic only - requires desktop UI and live database")]
     public async Task Verify_Below10Shortage_CreatesExactShortage_NotZero()
     {
         var sp = CreateLiveServices();

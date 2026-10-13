@@ -64,7 +64,14 @@ public partial class App : Application
 
         // Backup database
         var backupService = new BackupService(DbPath);
-        backupService.PerformBackup();
+        if (!backupService.PerformBackup())
+        {
+            Log.Fatal("Database backup failed. Startup is stopping before any database compatibility repairs or migrations.");
+            MessageBox.Show("The database could not be backed up. The application will close without changing the database.",
+                "FuelPro — Backup Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            Shutdown();
+            return;
+        }
 
         // Setup DI
         var serviceCollection = new ServiceCollection();
@@ -122,7 +129,21 @@ public partial class App : Application
                     {
                         // Use the stable GUID from SyncIdMappings so the Supabase upsert on SyncGuid
                         // updates the existing row rather than inserting a second one.
-                        var recordGuid = idMappings.TryGetValue(mapping.PumpMappingId, out var g) ? g : Guid.NewGuid().ToString();
+                        string recordGuid;
+                        if (idMappings.TryGetValue(mapping.PumpMappingId, out var g))
+                        {
+                            recordGuid = g;
+                        }
+                        else
+                        {
+                            recordGuid = Guid.NewGuid().ToString();
+                            context.SyncIdMappings.Add(new SyncIdMapping
+                            {
+                                TableName = "PumpMappings",
+                                RemoteGuid = recordGuid,
+                                LocalId = mapping.PumpMappingId
+                            });
+                        }
                         var log = new SyncChangeLog
                         {
                             TableName = "PumpMappings",
@@ -155,7 +176,21 @@ public partial class App : Application
                             .GroupBy(m => m.LocalId)
                             .ToDictionary(g => g.Key, g => g.First().RemoteGuid);
 
-                        var recordGuid = settingIdMappings.TryGetValue(settingEntity.SettingId, out var sg) ? sg : Guid.NewGuid().ToString();
+                        string recordGuid;
+                        if (settingIdMappings.TryGetValue(settingEntity.SettingId, out var sg))
+                        {
+                            recordGuid = sg;
+                        }
+                        else
+                        {
+                            recordGuid = Guid.NewGuid().ToString();
+                            context.SyncIdMappings.Add(new SyncIdMapping
+                            {
+                                TableName = "Settings",
+                                RemoteGuid = recordGuid,
+                                LocalId = settingEntity.SettingId
+                            });
+                        }
                         context.SyncChangeLogs.Add(new SyncChangeLog
                         {
                             TableName = "Settings",
@@ -284,6 +319,48 @@ public partial class App : Application
         {
             try
             {
+                // Oil logs gained a nullable shift reference in Phase 2. Preserve that
+                // relationship when the legacy duplicate-shift repair removes a parent.
+                if (TableExists(connection, "OilDefDailyLogs") && ColumnExists(connection, "OilDefDailyLogs", "ShiftId"))
+                {
+                    using var oilShiftCmd = connection.CreateCommand();
+                    oilShiftCmd.CommandText = @"
+                        UPDATE OilDefDailyLogs
+                        SET ShiftId = (
+                            SELECT MIN(s_min.ShiftId)
+                            FROM Shifts s_curr
+                            JOIN Shifts s_min ON s_curr.ShiftDate = s_min.ShiftDate AND s_curr.ShiftType = s_min.ShiftType
+                            WHERE s_curr.ShiftId = OilDefDailyLogs.ShiftId
+                        )
+                        WHERE ShiftId IS NOT NULL AND EXISTS (
+                            SELECT 1 FROM Shifts s1
+                            JOIN Shifts s2 ON s1.ShiftDate = s2.ShiftDate AND s1.ShiftType = s2.ShiftType AND s2.ShiftId < s1.ShiftId
+                            WHERE s1.ShiftId = OilDefDailyLogs.ShiftId
+                        );";
+                    oilShiftCmd.ExecuteNonQuery();
+                }
+
+                // DSM debtor repayments also retain a shift link. Re-point those
+                // rows before the same parent cleanup can apply ON DELETE SET NULL.
+                if (TableExists(connection, "DsmPersonalDebtorRepayments") && ColumnExists(connection, "DsmPersonalDebtorRepayments", "ShiftId"))
+                {
+                    using var repaymentShiftCmd = connection.CreateCommand();
+                    repaymentShiftCmd.CommandText = @"
+                        UPDATE DsmPersonalDebtorRepayments
+                        SET ShiftId = (
+                            SELECT MIN(s_min.ShiftId)
+                            FROM Shifts s_curr
+                            JOIN Shifts s_min ON s_curr.ShiftDate = s_min.ShiftDate AND s_curr.ShiftType = s_min.ShiftType
+                            WHERE s_curr.ShiftId = DsmPersonalDebtorRepayments.ShiftId
+                        )
+                        WHERE ShiftId IS NOT NULL AND EXISTS (
+                            SELECT 1 FROM Shifts s1
+                            JOIN Shifts s2 ON s1.ShiftDate = s2.ShiftDate AND s1.ShiftType = s2.ShiftType AND s2.ShiftId < s1.ShiftId
+                            WHERE s1.ShiftId = DsmPersonalDebtorRepayments.ShiftId
+                        );";
+                    repaymentShiftCmd.ExecuteNonQuery();
+                }
+
                 using var fixCmd = connection.CreateCommand();
                 fixCmd.CommandText = @"
                     UPDATE DsmEntries
@@ -416,6 +493,9 @@ public partial class App : Application
                     ""DisplayOrder"" INTEGER NOT NULL DEFAULT 0,
                     ""IsActive"" INTEGER NOT NULL DEFAULT 1,
                     ""IsSystem"" INTEGER NOT NULL DEFAULT 0,
+                    ""EnableMorning"" INTEGER NOT NULL DEFAULT 1,
+                    ""EnableDay"" INTEGER NOT NULL DEFAULT 1,
+                    ""EnableNight"" INTEGER NOT NULL DEFAULT 1,
                     ""CreatedAt"" TEXT NOT NULL
                 );
                 CREATE UNIQUE INDEX IF NOT EXISTS ""IX_CollectionTypes_Code"" ON ""CollectionTypes"" (""Code"");
@@ -428,6 +508,7 @@ public partial class App : Application
                     ""Tid"" TEXT NULL,
                     ""Batch"" TEXT NULL,
                     ""Slot"" TEXT NULL DEFAULT 'General',
+                    ""Otp"" TEXT NULL,
                     CONSTRAINT ""FK_PaymentCollectionItems_PaymentCollections_PaymentId"" FOREIGN KEY (""PaymentId"") REFERENCES ""PaymentCollections"" (""PaymentId"") ON DELETE CASCADE
                 );
                 CREATE INDEX IF NOT EXISTS ""IX_PaymentCollectionItems_PaymentId"" ON ""PaymentCollectionItems"" (""PaymentId"");
@@ -444,6 +525,18 @@ public partial class App : Application
                 CREATE UNIQUE INDEX IF NOT EXISTS ""IX_TankDefinitions_TankName"" ON ""TankDefinitions"" (""TankName"");
             ";
             cmdDyn.ExecuteNonQuery();
+        }
+
+        if (TableExists(connection, "CollectionTypes"))
+        {
+            EnsureColumnExists(connection, "CollectionTypes", "EnableMorning", "ALTER TABLE CollectionTypes ADD COLUMN EnableMorning INTEGER NOT NULL DEFAULT 1;");
+            EnsureColumnExists(connection, "CollectionTypes", "EnableDay", "ALTER TABLE CollectionTypes ADD COLUMN EnableDay INTEGER NOT NULL DEFAULT 1;");
+            EnsureColumnExists(connection, "CollectionTypes", "EnableNight", "ALTER TABLE CollectionTypes ADD COLUMN EnableNight INTEGER NOT NULL DEFAULT 1;");
+        }
+
+        if (TableExists(connection, "PaymentCollectionItems"))
+        {
+            EnsureColumnExists(connection, "PaymentCollectionItems", "Otp", "ALTER TABLE PaymentCollectionItems ADD COLUMN Otp TEXT NULL;");
         }
 
         if (TableExists(connection, "TankDefinitions"))
@@ -937,7 +1030,6 @@ public partial class App : Application
         // PettyCashTransactions
         cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='PettyCashTransactions'";
         var pettyCashExists = cmd.ExecuteScalar() != null;
-        var needsRecreate = false;
         if (pettyCashExists)
         {
             cmd.CommandText = "PRAGMA table_info(PettyCashTransactions);";
@@ -955,19 +1047,15 @@ public partial class App : Application
             }
             if (!hasShiftExpenseId)
             {
-                needsRecreate = true;
+                // This table can contain user-entered cash history. Its only
+                // compatibility gap is the nullable link, so add that column
+                // in place instead of discarding the table and its rows.
+                EnsureColumnExists(connection, "PettyCashTransactions", "ShiftExpenseId", "ALTER TABLE PettyCashTransactions ADD COLUMN ShiftExpenseId INTEGER NULL;");
             }
         }
 
-        if (!pettyCashExists || needsRecreate)
+        if (!pettyCashExists)
         {
-            if (needsRecreate)
-            {
-                cmd.CommandText = "DROP TABLE IF EXISTS \"PettyCashTransactions\";";
-                cmd.ExecuteNonQuery();
-                Log.Warning("Dropped legacy PettyCashTransactions table due to schema mismatch");
-            }
-
             cmd.CommandText = @"
                 CREATE TABLE ""PettyCashTransactions"" (
                     ""TransactionId"" INTEGER NOT NULL CONSTRAINT ""PK_PettyCashTransactions"" PRIMARY KEY AUTOINCREMENT,
@@ -1161,10 +1249,11 @@ public partial class App : Application
             // 3. DsmPersonalDebtorRepayments — dedup by (DsmPersonalDebtorId, Date, Amount, PaymentMethod)
             if (TableExists(connection, "DsmPersonalDebtorRepayments"))
             {
-                cleanupCmd.CommandText = @"
+                var dsmRepaymentShiftGroup = ColumnExists(connection, "DsmPersonalDebtorRepayments", "ShiftId") ? "ShiftId, " : string.Empty;
+                cleanupCmd.CommandText = $@"
                     DELETE FROM DsmPersonalDebtorRepayments WHERE Id NOT IN (
                         SELECT MIN(Id) FROM DsmPersonalDebtorRepayments
-                        GROUP BY DsmPersonalDebtorId, date(Date), 
+                        GROUP BY DsmPersonalDebtorId, {dsmRepaymentShiftGroup}date(Date),
                                CAST(ROUND(Amount * 100) AS INTEGER), LOWER(COALESCE(PaymentMethod,''))
                     );";
                 int delDsmRepayments = cleanupCmd.ExecuteNonQuery();
@@ -1213,12 +1302,17 @@ public partial class App : Application
             // 5. OilDefDailyLogs — dedup stock adjustments, sales logs, purchase logs
             if (TableExists(connection, "OilDefDailyLogs"))
             {
+                // On older databases this method runs before EF migrations add ShiftId.
+                // Retain the legacy grouping there; after migration, populated shifts
+                // are distinct and NULL legacy records still group together as before.
+                var shiftIdGroup = ColumnExists(connection, "OilDefDailyLogs", "ShiftId") ? "ShiftId, " : string.Empty;
+
                 // Stock adjustments: dedup by (ProductId, date(LogDate), strftime('%H:%M', LogDate), AdjustmentQuantity, AdjustmentType)
-                cleanupCmd.CommandText = @"
+                cleanupCmd.CommandText = $@"
                     DELETE FROM OilDefDailyLogs WHERE AdjustmentQuantity != 0 AND Id NOT IN (
                         SELECT MIN(Id) FROM OilDefDailyLogs
                         WHERE AdjustmentQuantity != 0
-                        GROUP BY ProductId, date(LogDate), strftime('%H:%M', LogDate), 
+                        GROUP BY ProductId, {shiftIdGroup}date(LogDate), strftime('%H:%M', LogDate),
                                CAST(ROUND(AdjustmentQuantity * 100) AS INTEGER), LOWER(COALESCE(AdjustmentType,''))
                     );";
                 int delAdj = cleanupCmd.ExecuteNonQuery();
@@ -1226,11 +1320,11 @@ public partial class App : Application
                     Log.Information("Duplicate cleanup: removed {Count} duplicate OilDefDailyLogs adjustment rows", delAdj);
 
                 // Sales logs: dedup by (ProductId, date(LogDate), SoldQuantity, OverrideSaleRate)
-                cleanupCmd.CommandText = @"
+                cleanupCmd.CommandText = $@"
                     DELETE FROM OilDefDailyLogs WHERE SoldQuantity > 0 AND AdjustmentQuantity = 0 AND AddedQuantity = 0 AND Id NOT IN (
                         SELECT MIN(Id) FROM OilDefDailyLogs
                         WHERE SoldQuantity > 0 AND AdjustmentQuantity = 0 AND AddedQuantity = 0
-                        GROUP BY ProductId, date(LogDate), 
+                        GROUP BY ProductId, {shiftIdGroup}date(LogDate),
                                CAST(ROUND(SoldQuantity * 100) AS INTEGER), CAST(ROUND(COALESCE(OverrideSaleRate, 0) * 100) AS INTEGER)
                     );";
                 int delSales = cleanupCmd.ExecuteNonQuery();
@@ -1238,11 +1332,11 @@ public partial class App : Application
                     Log.Information("Duplicate cleanup: removed {Count} duplicate OilDefDailyLogs sales rows", delSales);
 
                 // Purchase daily logs: dedup by (ProductId, date(LogDate), AddedQuantity)
-                cleanupCmd.CommandText = @"
+                cleanupCmd.CommandText = $@"
                     DELETE FROM OilDefDailyLogs WHERE AddedQuantity > 0 AND AdjustmentQuantity = 0 AND SoldQuantity = 0 AND Id NOT IN (
                         SELECT MIN(Id) FROM OilDefDailyLogs
                         WHERE AddedQuantity > 0 AND AdjustmentQuantity = 0 AND SoldQuantity = 0
-                        GROUP BY ProductId, date(LogDate), 
+                        GROUP BY ProductId, {shiftIdGroup}date(LogDate),
                                CAST(ROUND(AddedQuantity * 100) AS INTEGER)
                     );";
                 int delPurch = cleanupCmd.ExecuteNonQuery();
@@ -1335,50 +1429,9 @@ public partial class App : Application
                 cleanupCmd.ExecuteNonQuery();
             }
 
-            // 8. Recalculate RemainingStock running balances in OilDefDailyLogs
-            if (TableExists(connection, "OilDefDailyLogs"))
-            {
-                using var recalcCmd = connection.CreateCommand();
-                recalcCmd.CommandText = @"
-                    SELECT Id, ProductId, AddedQuantity, SoldQuantity, AdjustmentQuantity 
-                    FROM OilDefDailyLogs 
-                    ORDER BY ProductId, LogDate, Id;";
-                using var reader = recalcCmd.ExecuteReader();
-                var updates = new List<(int Id, double Remaining)>();
-                int currentProdId = -1;
-                double currentRunning = 0.0;
-
-                while (reader.Read())
-                {
-                    int id = reader.GetInt32(0);
-                    int prodId = reader.GetInt32(1);
-                    double added = reader.IsDBNull(2) ? 0.0 : reader.GetDouble(2);
-                    double sold = reader.IsDBNull(3) ? 0.0 : reader.GetDouble(3);
-                    double adj = reader.IsDBNull(4) ? 0.0 : reader.GetDouble(4);
-
-                    if (prodId != currentProdId)
-                    {
-                        currentProdId = prodId;
-                        currentRunning = 0.0;
-                    }
-
-                    currentRunning = currentRunning + added - sold + adj;
-                    updates.Add((id, currentRunning));
-                }
-                reader.Close();
-
-                if (updates.Count > 0)
-                {
-                    using var updateCmd = connection.CreateCommand();
-                    var sb = new System.Text.StringBuilder();
-                    foreach (var u in updates)
-                    {
-                        sb.AppendLine($"UPDATE OilDefDailyLogs SET RemainingStock = {u.Remaining:F4} WHERE Id = {u.Id};");
-                    }
-                    updateCmd.CommandText = sb.ToString();
-                    updateCmd.ExecuteNonQuery();
-                }
-            }
+            // RemainingStock is recorded by the inventory workflows using the
+            // prior stock balance, which may include an opening balance not present
+            // in this log table. Startup cannot safely reconstruct that baseline.
         }
         catch (Exception ex)
         {
@@ -1392,6 +1445,19 @@ public partial class App : Application
         cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name=@name";
         cmd.Parameters.AddWithValue("@name", tableName);
         return cmd.ExecuteScalar() != null;
+    }
+
+    private static bool ColumnExists(SqliteConnection connection, string tableName, string columnName)
+    {
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = $"PRAGMA table_info(\"{tableName}\");";
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            if (string.Equals(reader["name"]?.ToString(), columnName, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
     }
 
     private static void EnsureColumnExists(SqliteConnection connection, string tableName, string columnName, string alterSql)

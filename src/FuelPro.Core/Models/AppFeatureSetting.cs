@@ -65,7 +65,7 @@ public class AppFeatureSetting
 
     /// <summary>
     /// Returns the single canonical source of truth for all default application feature definitions.
-    /// Total: 34 features (16 Manager, 15 Owner, 3 Global).
+    /// Total: 36 features (16 Manager, 15 Owner, 5 Global).
     /// </summary>
     public static List<AppFeatureSetting> GetCanonicalDefaults(DateTime? timestamp = null)
     {
@@ -112,10 +112,12 @@ public class AppFeatureSetting
             new() { FeatureKey = "Owner_Reports", TargetRole = "Owner", DisplayName = "Reports & Analytics", Category = "Reports", DisplayOrder = 15, IsEnabled = true, Description = "Comprehensive print and PDF reporting suite.", UpdatedAt = now },
 
             // ───────────────────────────────────────────────
-            // GLOBAL & WORKFLOW FEATURES (3 items)
+            // GLOBAL & WORKFLOW FEATURES (5 items)
             // ───────────────────────────────────────────────
             new() { FeatureKey = "Integration_DsmPwa", TargetRole = "Global", DisplayName = "DSM PWA Mobile App Integration", Category = "Integrations", DisplayOrder = 1, IsEnabled = true, Description = "Enable mobile PWA nozzle entry and operator shift synchronization via cloud.", UpdatedAt = now },
             new() { FeatureKey = "Collection_UseMorningNight", TargetRole = "Global", DisplayName = "Split Collections into Morning / Night", Category = "Collections", DisplayOrder = 2, IsEnabled = false, Description = "Split collection entry fields into morning/day/night shifts vs combined daily amounts.", UpdatedAt = now },
+            new() { FeatureKey = "Operations_CashDenominations", TargetRole = "Global", DisplayName = "Cash Denomination Entry", Category = "Collections", DisplayOrder = 3, IsEnabled = false, Description = "Display cash denomination count inputs (₹500, ₹200, ₹100) for Cash 1 in DSM PWA and calculate totals dynamically.", UpdatedAt = now },
+            new() { FeatureKey = "Operations_OtpMachineTracking", TargetRole = "Global", DisplayName = "OTP Machine Transaction Tracking", Category = "Collections", DisplayOrder = 4, IsEnabled = false, Description = "Track multiple individual transactions with Amount and OTP per machine/TID in DSM PWA and Manual Entry.", UpdatedAt = now },
             new() { FeatureKey = "UI_DebtorManagement_AsNewPage", TargetRole = "Global", DisplayName = "Debtor Management on Dedicated Page (vs Shift Total)", Category = "Navigation", DisplayOrder = 5, IsEnabled = true, Description = "When enabled, Debtor Management appears as a dedicated page below Oil & DEF Log. When disabled, it embeds inside Shift Total (Final Calculation).", UpdatedAt = now }
         };
     }

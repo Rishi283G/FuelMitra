@@ -215,6 +215,7 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
           <thead>
             <tr>
               <th style="text-align:left;">Product</th>
+              <th style="text-align:center;">Shift</th>
               <th style="text-align:right;">Sold Units</th>
               <th style="text-align:right;">Amount (&#8377;)</th>
             </tr>
@@ -347,11 +348,43 @@ function renderData(){
   document.getElementById('hStation').textContent=station;
   document.getElementById('hDsms').textContent=(d.dsmSummaryRows||d.dsmEntries||[]).map(function(x){return x.dsmName;}).join(', ')||'\u2013';
   document.getElementById('hPrinted').textContent=new Date().toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
-  var grossFuel = (d.dsrTotalFuelAmount !== undefined && d.dsrTotalFuelAmount !== null) ? d.dsrTotalFuelAmount : (d.totalFuelAmount || 0);
+  var oilDefSales = d.oilDefSales || [];
+  var oilDefTot = 0;
+  if (oilDefSales && oilDefSales.length > 0) {
+    oilDefSales.forEach(function(s) {
+      var amt = getVal(s, 'total') || getVal(s, 'amount') || 0;
+      oilDefTot += amt;
+    });
+  } else if (d.oilDefSalesTotal) {
+    oilDefTot = parseFloat(d.oilDefSalesTotal) || 0;
+  }
+
+  var grossFuel = (d.grandTotalSaleAmount !== undefined && d.grandTotalSaleAmount !== null) ? d.grandTotalSaleAmount : ((d.dsrTotalFuelAmount !== undefined && d.dsrTotalFuelAmount !== null) ? d.dsrTotalFuelAmount : (d.totalFuelAmount || 0));
+  var pureFuel = (d.dsrTotalFuelAmount !== undefined && d.dsrTotalFuelAmount !== null) ? d.dsrTotalFuelAmount : (d.totalFuelAmount || 0);
+  if (oilDefTot > 0 && grossFuel < pureFuel + oilDefTot) {
+    grossFuel = pureFuel + oilDefTot;
+  }
   var expTarget = (d.expectedCollection !== undefined && d.expectedCollection !== null) ? d.expectedCollection : grossFuel;
+  if (oilDefTot > 0 && expTarget < pureFuel + oilDefTot) {
+    expTarget = pureFuel + oilDefTot;
+  }
   var recTotal = d.actualCollection || 0;
+  var hasOilInBreakdown = (d.collectionBreakdown || []).some(function(c) {
+    var cat = (c.category || '').toLowerCase();
+    return cat.indexOf('oil') !== -1 || cat.indexOf('def') !== -1;
+  });
+  if (oilDefTot > 0 && !hasOilInBreakdown) {
+    d.collectionBreakdown = d.collectionBreakdown || [];
+    d.collectionBreakdown.push({
+      category: 'Oil & DEF Sales',
+      descriptionWithBreakdown: 'Oil & DEF Sales',
+      amount: oilDefTot
+    });
+    recTotal += oilDefTot;
+  }
+
   var totalL = d.totalFuelLitres || 0;
-  var diff = (d.difference !== undefined && d.difference !== null) ? d.difference : (recTotal - expTarget);
+  var diff = (d.difference !== undefined && d.difference !== null && hasOilInBreakdown) ? d.difference : (recTotal - expTarget);
 
   document.getElementById('sGross').textContent=inrZ(grossFuel);
   document.getElementById('sCollect').textContent=inrZ(recTotal);
@@ -526,7 +559,7 @@ function renderData(){
   ctr.innerHTML='<td>TOTAL</td><td>\u2013</td><td>'+inrZ(credTot)+'</td>';ct.appendChild(ctr);
 
   var ft=document.getElementById('tFuel');ft.innerHTML='';
-  var badges={'HSD':'<span class="b-hsd">HSD</span>','MS-II':'<span class="b-ms1">SPEED</span>','MS-I':'<span class="b-ms1">MS</span>','CNG':'<span class="b-cng">CNG</span>'};
+  var badges={'HSD':'<span class="b-hsd">HSD</span>','MS-II':'<span class="b-ms2">MS-II</span>','MS2':'<span class="b-ms2">MS-II</span>','MS-I':'<span class="b-ms1">MS-I</span>','MS1':'<span class="b-ms1">MS-I</span>','MS':'<span class="b-ms1">MS</span>','SPEED':'<span class="b-ms1">SPEED</span>','CNG':'<span class="b-cng">CNG</span>'};
   var ftTotL=(d.dsrTotalFuelLitres !== undefined && d.dsrTotalFuelLitres !== null)?d.dsrTotalFuelLitres:(d.totalFuelLitres||0);
   var ftTotA=(d.dsrTotalFuelAmount !== undefined && d.dsrTotalFuelAmount !== null)?d.dsrTotalFuelAmount:(d.totalFuelAmount||0);
   var fuelList=(d.dsrFuelSales != null)?d.dsrFuelSales:(d.fuelSales||d.fuelSale||[]);
@@ -543,27 +576,33 @@ function renderData(){
   ftr2.innerHTML='<td colspan="2">TOTAL FUEL SALE</td><td>'+parseFloat(ftTotL).toFixed(4)+'</td><td>\u2013</td><td>'+inrZ(ftTotA)+'</td>';ft.appendChild(ftr2);
 
   // Render Oil & DEF Sales
-  var oilDefSales = d.oilDefSales || [];
   var secOilDef = document.getElementById('secOilDef');
   var tOilDef   = document.getElementById('tOilDef');
   if (tOilDef && oilDefSales.length > 0) {
     tOilDef.innerHTML = '';
     if (secOilDef) secOilDef.style.display = 'block';
-    var oilDefTot = 0;
+    oilDefTot = 0;
     oilDefSales.forEach(function(s) {
       var qty = getVal(s, 'quantity') || 0;
       var amt = getVal(s, 'total') || getVal(s, 'amount') || 0;
+      var shift = getVal(s, 'shiftType') || getVal(s, 'shift') || '—';
       oilDefTot += amt;
       var tr = document.createElement('tr');
       tr.innerHTML = '<td style="text-align:left;">' + (getVal(s, 'productName') || getVal(s, 'category') || 'Oil/DEF') + '</td>' +
+                     '<td style="text-align:center;">' + shift + '</td>' +
                      '<td style="text-align:right;">' + parseFloat(qty).toFixed(2) + '</td>' +
                      '<td style="text-align:right;">' + inrZ(amt) + '</td>';
       tOilDef.appendChild(tr);
     });
     var trTot = document.createElement('tr');
     trTot.className = 'tr-total';
-    trTot.innerHTML = '<td style="text-align:left;">Total Oil &amp; DEF Sales</td><td style="text-align:right;">\u2013</td><td style="text-align:right;">' + inrZ(oilDefTot) + '</td>';
+    trTot.innerHTML = '<td colspan="2" style="text-align:left;">Total Oil &amp; DEF Sales</td><td style="text-align:right;">\u2013</td><td style="text-align:right;">' + inrZ(oilDefTot) + '</td>';
     tOilDef.appendChild(trTot);
+    var trGrand = document.createElement('tr');
+    trGrand.className = 'tr-total';
+    trGrand.style.background = '#0a3257';
+    trGrand.innerHTML = '<td colspan="3" style="text-align:left; font-weight:800;">GRAND TOTAL SALE (Fuel + Oil)</td><td style="text-align:right; font-weight:800;">' + inrZ(ftTotA + oilDefTot) + '</td>';
+    tOilDef.appendChild(trGrand);
   } else {
     if (secOilDef) secOilDef.style.display = 'none';
   }
@@ -725,10 +764,8 @@ function renderData(){
         name = name + ' (' + parseFloat(vol).toFixed(2) + ' Ltr)';
       }
       var catLower = (c.category || '').toLowerCase();
-      // Skip Oil Sales and DEF Sales from Final Reconciliation
-      if (catLower.indexOf('oil sales') !== -1 || catLower.indexOf('def sales') !== -1) return;
       var colorStyle = "";
-      if (catLower.indexOf('cash') !== -1 || catLower.indexOf('phonepe') !== -1 || catLower.indexOf('card') !== -1) {
+      if (catLower.indexOf('cash') !== -1 || catLower.indexOf('phonepe') !== -1 || catLower.indexOf('card') !== -1 || catLower.indexOf('oil') !== -1 || catLower.indexOf('def') !== -1) {
         colorStyle = "color:#00C853; font-weight:bold;";
       } else if (catLower.indexOf('cheque') !== -1 || catLower.indexOf('bank') !== -1 || catLower.indexOf('transfer') !== -1) {
         colorStyle = "color:#E65100; font-weight:bold;";
@@ -741,8 +778,11 @@ function renderData(){
     });
   }
 
-  var expectedSale = d.expectedCollection !== undefined ? d.expectedCollection : grossFuel;
-  var diff = (d.difference !== undefined && d.difference !== null) ? d.difference : (recTotal - expectedSale);
+  var expectedSale = (d.expectedCollection !== undefined && d.expectedCollection !== null) ? d.expectedCollection : grossFuel;
+  if (oilDefTot > 0 && expectedSale < grossFuel) {
+    expectedSale = grossFuel;
+  }
+  var diff = (d.difference !== undefined && d.difference !== null && hasOilInBreakdown) ? d.difference : (recTotal - expectedSale);
   document.getElementById('rTotal').textContent=inrZ(recTotal);
   document.getElementById('rGross').textContent=inrZ(expectedSale);
   var dCell=document.getElementById('rDiff');

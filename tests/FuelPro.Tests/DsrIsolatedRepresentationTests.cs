@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using FuelPro.Core.Common;
 using FuelPro.Core.DTOs;
@@ -105,10 +106,10 @@ public class DsrIsolatedRepresentationTests
         Assert.Equal(9500.0, msRow.Amount, precision: 2);
         Assert.Equal(100.0, msRow.Rate, precision: 2);
 
-        // Canonical Accounting Invariance: Gross remains untouched
+        // Canonical Accounting Invariance: Gross meter remains untouched
         Assert.Equal(100.0, report.TotalFuelLitres, precision: 2);
         Assert.Equal(10000.0, report.TotalFuelAmount, precision: 2);
-        Assert.Equal(10000.0, report.ExpectedCollection, precision: 2);
+        Assert.Equal(9500.0, report.ExpectedCollection, precision: 2);
         Assert.Single(report.TestingSummaryItems);
         Assert.Equal(500.0, report.TestingSummaryItems[0].Amount, precision: 2);
         Assert.Equal(5.0, report.TestingSummaryItems[0].VolumeLitres, precision: 2);
@@ -160,7 +161,7 @@ public class DsrIsolatedRepresentationTests
         // Canonical FuelSales remains gross
         Assert.Equal(200.0, report.TotalFuelLitres, precision: 2);
         Assert.Equal(18000.0, report.TotalFuelAmount, precision: 2);
-        Assert.Equal(18000.0, report.ExpectedCollection, precision: 2);
+        Assert.Equal(17100.0, report.ExpectedCollection, precision: 2);
     }
 
     [Fact]
@@ -223,7 +224,7 @@ public class DsrIsolatedRepresentationTests
         // Canonical Totals: 300 L and 28,000
         Assert.Equal(300.0, report.TotalFuelLitres, precision: 2);
         Assert.Equal(28000.0, report.TotalFuelAmount, precision: 2);
-        Assert.Equal(28000.0, report.ExpectedCollection, precision: 2);
+        Assert.Equal(26600.0, report.ExpectedCollection, precision: 2);
     }
 
     [Fact]
@@ -269,12 +270,12 @@ public class DsrIsolatedRepresentationTests
         // Canonical Values remain gross
         Assert.Equal(5.0, report.TotalFuelLitres, precision: 2);
         Assert.Equal(500.0, report.TotalFuelAmount, precision: 2);
-        Assert.Equal(500.0, report.ExpectedCollection, precision: 2);
+        Assert.Equal(0.0, report.ExpectedCollection, precision: 2);
         Assert.Single(report.TestingSummaryItems);
         Assert.Equal(500.0, report.TestingSummaryItems[0].Amount, precision: 2);
 
-        // Balance Check: Testing 500 in collection, Expected 500 -> Balanced
-        Assert.Equal(500.0, report.ActualCollection, precision: 2);
+        // Balance Check: Testing excluded from collection, Expected 0 -> Balanced
+        Assert.Equal(0.0, report.ActualCollection, precision: 2);
         Assert.Equal(0.0, report.Difference, precision: 2);
         Assert.True(report.IsBalanced);
     }
@@ -333,8 +334,69 @@ public class DsrIsolatedRepresentationTests
         // Canonical Day Report: Gross
         Assert.Equal(300.0, dayReport.TotalFuelLitres, precision: 2);
         Assert.Equal(28000.0, dayReport.TotalFuelAmount, precision: 2);
-        Assert.Equal(28000.0, dayReport.ExpectedCollection, precision: 2);
+        Assert.Equal(26600.0, dayReport.ExpectedCollection, precision: 2);
         Assert.Equal(2, dayReport.TestingSummaryItems.Count);
         Assert.Equal(1400.0, dayReport.TestingSummaryItems.Sum(t => t.Amount), precision: 2);
     }
+
+    [Fact]
+    public void Test7_GrandTotalSaleAmount_ExcludesTestingFromGrossTotal()
+    {
+        var date = new DateTime(2026, 7, 11);
+        var entries = new List<DsmEntry>
+        {
+            new DsmEntry
+            {
+                DsmEntryId = 1,
+                PumpId = 1,
+                GrossSales = 10000m,
+                NozzleReadings = new List<NozzleReading>
+                {
+                    new NozzleReading { NozzleNumber = 1, FuelType = "MS-I", SaleLitres = 100.0, Amount = 10000.0, Rate = 100.0 }
+                },
+                PaymentCollection = new PaymentCollection { CashDeposit = 9500 },
+                TestingEntries = new List<TestingEntry>
+                {
+                    new TestingEntry { FuelType = "MS-I", Litres = 5.0, Rate = 100.0, Amount = 500.0 }
+                }
+            }
+        };
+
+        var report = _reportService.CalculateShiftReport(
+            date: date, shiftType: "A", entries: entries,
+            shiftExpenses: new List<Expense>(), otherCashList: new List<ShiftOtherCash>(), repayments: new List<CreditorRepayment>(),
+            hsdRate: 90, msIRate: 100, msIIRate: 100, cngRate: 85,
+            todayTid: new BusinessDayTidSheet(), tomorrowTid: new BusinessDayTidSheet(), stationName: "Mitali Service Station"
+        );
+
+        // Meter reading gross total: includes testing
+        Assert.Equal(10000.0, report.TotalFuelAmount, precision: 2);
+        // Client gross total: net of testing
+        Assert.Equal(9500.0, report.GrandTotalSaleAmount, precision: 2);
+        // Reconciliation invariance (testing excluded from both ExpectedCollection and ActualCollection)
+        Assert.Equal(9500.0, report.ExpectedCollection, precision: 2);
+        Assert.Equal(9500.0, report.ActualCollection, precision: 2);
+        Assert.True(report.IsBalanced);
+    }
+
+    [Fact]
+    public void Test8_DsrTemplateBadges_MS2IsNotSpeed()
+    {
+        var templatePath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../src/FuelPro.UI/Printing/FinalCalculationPrintTemplate.html"));
+        if (File.Exists(templatePath))
+        {
+            var content = File.ReadAllText(templatePath);
+            Assert.DoesNotContain("'MS-II':'<span class=\"b-ms1\">SPEED</span>'", content);
+            Assert.Contains("'MS-II':'<span class=\"b-ms2\">MS-II</span>'", content);
+        }
+
+        var dayTemplatePath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../src/FuelPro.UI/Printing/DayTotalPrintTemplate.html"));
+        if (File.Exists(dayTemplatePath))
+        {
+            var content = File.ReadAllText(dayTemplatePath);
+            Assert.DoesNotContain("'MS-II':'<span class=\"b-ms1\">SPEED</span>'", content);
+            Assert.Contains("'MS-II':'<span class=\"b-ms2\">MS-II</span>'", content);
+        }
+    }
 }
+

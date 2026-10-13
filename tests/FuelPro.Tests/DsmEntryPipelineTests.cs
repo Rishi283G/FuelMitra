@@ -132,6 +132,7 @@ public class DsmEntryPipelineTests : IDisposable
 
     public void Dispose()
     {
+        PumpConfiguration.ResetToDefaults();
         try
         {
             if (Directory.Exists(_tempDir))

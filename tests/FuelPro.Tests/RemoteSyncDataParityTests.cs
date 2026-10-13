@@ -16,8 +16,12 @@ using FuelPro.Data.Services;
 
 namespace FuelPro.Tests;
 
-public class RemoteSyncDataParityTests
+public class RemoteSyncDataParityTests : IDisposable
 {
+    public void Dispose()
+    {
+        PumpConfiguration.ResetToDefaults();
+    }
     private (IServiceProvider ServiceProvider, DbContextOptions<FuelProDbContext> Options) CreateTestServices()
     {
         var dbName = Guid.NewGuid().ToString();

@@ -128,6 +128,7 @@ public static class PumpConfiguration
 
     public static void ResetToDefaults()
     {
+        TankTestingMap.Clear();
         var defaultMappings = new List<PumpMapping>();
         var now = DateTime.Now;
 

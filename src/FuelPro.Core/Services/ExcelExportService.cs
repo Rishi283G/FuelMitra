@@ -1224,7 +1224,7 @@ public class ExcelExportService
                 r++;
 
                 worksheet.Cell(r, 1).Value = "Gross Sale (B)";
-                worksheet.Cell(r, 2).Value = report.TotalFuelAmount; worksheet.Cell(r, 2).Style.NumberFormat.Format = "₹#,##0.00";
+                worksheet.Cell(r, 2).Value = report.GrandTotalSaleAmount; worksheet.Cell(r, 2).Style.NumberFormat.Format = "₹#,##0.00";
                 ApplyTotalRowBorders(worksheet, r, 2);
                 r++;
 
@@ -1509,7 +1509,7 @@ public class ExcelExportService
                 r++;
 
                 worksheet.Cell(r, 1).Value = "Total Day Sale (B)";
-                worksheet.Cell(r, 2).Value = report.TotalFuelAmount; worksheet.Cell(r, 2).Style.NumberFormat.Format = "₹#,##0.00";
+                worksheet.Cell(r, 2).Value = report.GrandTotalSaleAmount; worksheet.Cell(r, 2).Style.NumberFormat.Format = "₹#,##0.00";
                 ApplyTotalRowBorders(worksheet, r, 2);
                 r++;
 

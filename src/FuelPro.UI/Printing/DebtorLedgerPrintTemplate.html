@@ -293,9 +293,11 @@
                         creditStr = "—";
                     }
 
+                    let shift = tx.shift || "—";
                     html += `
                         <tr class="${rowClass}">
                             <td class="text-center" style="font-weight: 600;">${tx.date}</td>
+                            <td class="text-center" style="font-weight: 600;">${shift}</td>
                             <td style="font-weight: 500;">${tx.description}</td>
                             <td class="text-right text-debit">${debitStr}</td>
                             <td class="text-right text-credit">${creditStr}</td>
@@ -304,7 +306,7 @@
                     `;
                 });
             } else {
-                html += `<tr><td colspan="5" class="text-center" style="opacity: 0.6; padding: 20px;">No transactions logged during this date range.</td></tr>`;
+                html += `<tr><td colspan="6" class="text-center" style="opacity: 0.6; padding: 20px;">No transactions logged during this date range.</td></tr>`;
             }
 
             // Append Closing Summary Row (excludes Opening Balance rows)
@@ -313,7 +315,7 @@
 
             html += `
                 <tr class="closing-row">
-                    <td colspan="2" class="text-right">Total Period Activity &amp; Closing Balance:</td>
+                    <td colspan="3" class="text-right">Total Period Activity &amp; Closing Balance:</td>
                     <td class="text-right text-debit">${formatCurrency(totalDebits)}</td>
                     <td class="text-right text-credit">${formatCurrency(totalCredits)}</td>
                     <td class="text-right text-bold" style="font-size: 13.5px;">${formatCurrency(data.closingBalance)}</td>
@@ -386,11 +388,12 @@
     <table>
         <thead>
             <tr>
-                <th style="width: 15%;" class="text-center">Date</th>
-                <th style="width: 45%;">Particulars / Transaction Details</th>
+                <th style="width: 13%;" class="text-center">Date</th>
+                <th style="width: 8%;" class="text-center">Shift</th>
+                <th style="width: 40%;">Particulars / Transaction Details</th>
                 <th style="width: 13%;" class="text-right">Debit (Debt)</th>
                 <th style="width: 13%;" class="text-right">Credit (Repaid)</th>
-                <th style="width: 14%;" class="text-right">Running Balance</th>
+                <th style="width: 13%;" class="text-right">Running Balance</th>
             </tr>
         </thead>
         <tbody id="ledgerBody">

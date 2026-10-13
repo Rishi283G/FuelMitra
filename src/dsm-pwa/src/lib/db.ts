@@ -47,7 +47,10 @@ export interface DraftSubmission {
   createdAt: string;
   status: 'draft' | 'queued' | 'submitted' | 'failed';
   errorMessage?: string;
-  cardSwipeDetails?: { mode: string; amount: number; tid: string; batch: string; }[];
+  cardSwipeDetails?: { mode: string; amount: number; tid: string; batch: string; otp?: string; }[];
+  machineTransactions?: { id?: string; collectionTypeCode: string; amount: number; otp: string; tid?: string; batch?: string; slot?: string; }[];
+  dynamicItems?: { collectionTypeCode: string; amount: number; tid?: string; batch?: string; slot?: string; otp?: string; }[];
+  dynamicCollectionValues?: Record<string, { amount: number; tid?: string; batch?: string; otp?: string; }>;
   settlements?: SettlementEntry[];
   debtorEntries?: { debtorName: string; amount: number; vehicleNumber?: string; slipNumber?: string; time: string; }[];
   phonePeMorning?: number;

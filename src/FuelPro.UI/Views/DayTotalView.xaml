@@ -265,6 +265,12 @@
                                         <TextBlock HorizontalAlignment="Right" Text="{Binding ExpensesTotal, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" />
                                     </Grid>
 
+                                    <!-- Oil & DEF Sales Row -->
+                                    <Grid Margin="0,4" Visibility="{Binding HasOilDefSales, Converter={StaticResource BoolToVis}}">
+                                        <TextBlock Text="Oil &amp; DEF Sales" />
+                                        <TextBlock HorizontalAlignment="Right" Text="{Binding OilDefSalesTotal, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" />
+                                    </Grid>
+
                                     <!-- Dynamic Tank-Wise Testing Rows -->
                                     <ItemsControl ItemsSource="{Binding TestingSummaryRows}">
                                         <ItemsControl.ItemTemplate>

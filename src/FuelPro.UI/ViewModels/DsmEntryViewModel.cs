@@ -262,14 +262,16 @@ public partial class DynamicCollectionEntryRow : ObservableObject
     [ObservableProperty] private double? _amount;
     [ObservableProperty] private string? _tid;
     [ObservableProperty] private string? _batch;
+    [ObservableProperty] private string? _otp;
     public Action? OnValueChangedAction { get; set; }
 
     partial void OnAmountChanged(double? value) => OnValueChangedAction?.Invoke();
     partial void OnTidChanged(string? value) => OnValueChangedAction?.Invoke();
     partial void OnBatchChanged(string? value) => OnValueChangedAction?.Invoke();
+    partial void OnOtpChanged(string? value) => OnValueChangedAction?.Invoke();
 }
 
-public partial class DsmEntryViewModel : ObservableObject
+public partial class DsmEntryViewModel : ObservableObject, IDisposable
 {
     private readonly DsmEntryService _dsmService;
     private readonly DraftService _draftService;
@@ -280,6 +282,15 @@ public partial class DsmEntryViewModel : ObservableObject
     private readonly IFeatureToggleService _featureToggleService;
     private readonly DispatcherTimer _autoSaveTimer;
     private readonly PrintService _printService;
+
+    private readonly Action _featureChangedHandler;
+    private readonly Action _stationConfigChangedHandler;
+    private readonly Action _collectionTypesChangedHandler;
+    private readonly Action _profileChangedHandler;
+    private readonly Action<string, string> _profileRenamedHandler;
+    private readonly Action<string> _profileDeletedHandler;
+    private readonly Action _debtorChangedHandler;
+    private bool _disposed;
 
 
     // Header fields
@@ -461,67 +472,70 @@ public partial class DsmEntryViewModel : ObservableObject
         Cash1 = new CashDenomRow { CashType = "Cash1", OnTotalChanged = RecalculateAll };
         Cash2 = new CashDenomRow { CashType = "Cash2", OnTotalChanged = RecalculateAll };
 
+        _featureChangedHandler = () =>
+        {
+            System.Windows.Application.Current?.Dispatcher?.Invoke(() =>
+            {
+                OnPropertyChanged(nameof(IsMorningNightSplitEnabled));
+                OnPropertyChanged(nameof(MorningLabel));
+                OnPropertyChanged(nameof(MorningTidLabel));
+                OnPropertyChanged(nameof(MorningBatchLabel));
+                OnPropertyChanged(nameof(IsCrossDsmQrEnabled));
+                OnPropertyChanged(nameof(IsPersonalLedgerEnabled));
+                OnPropertyChanged(nameof(PersonalLedgerTitle));
+                _ = LoadDynamicCollectionTypesAsync();
+            });
+        };
         if (_featureToggleService != null)
         {
-            _featureToggleService.FeatureConfigurationChanged += () =>
-            {
-                System.Windows.Application.Current?.Dispatcher?.Invoke(() =>
-                {
-                    OnPropertyChanged(nameof(IsMorningNightSplitEnabled));
-                    OnPropertyChanged(nameof(MorningLabel));
-                    OnPropertyChanged(nameof(MorningTidLabel));
-                    OnPropertyChanged(nameof(MorningBatchLabel));
-                    OnPropertyChanged(nameof(IsCrossDsmQrEnabled));
-                    OnPropertyChanged(nameof(IsPersonalLedgerEnabled));
-                    OnPropertyChanged(nameof(PersonalLedgerTitle));
-                    _ = LoadDynamicCollectionTypesAsync();
-                });
-            };
+            _featureToggleService.FeatureConfigurationChanged += _featureChangedHandler;
         }
 
-        if (_stationConfigService != null)
+        _stationConfigChangedHandler = () =>
         {
-            _stationConfigService.StationConfigurationChanged += () =>
+            var dispatcher = System.Windows.Application.Current?.Dispatcher;
+            if (dispatcher != null && !dispatcher.CheckAccess())
             {
-                var dispatcher = System.Windows.Application.Current?.Dispatcher;
-                if (dispatcher != null && !dispatcher.CheckAccess())
-                {
-                    dispatcher.BeginInvoke(() =>
-                    {
-                        ReloadPumpOptions();
-                        if (!_isEditing) LoadNozzlesForPump();
-                    });
-                }
-                else
+                dispatcher.BeginInvoke(() =>
                 {
                     ReloadPumpOptions();
                     if (!_isEditing) LoadNozzlesForPump();
-                }
-            };
+                });
+            }
+            else
+            {
+                ReloadPumpOptions();
+                if (!_isEditing) LoadNozzlesForPump();
+            }
+        };
+        if (_stationConfigService != null)
+        {
+            _stationConfigService.StationConfigurationChanged += _stationConfigChangedHandler;
         }
 
+        _collectionTypesChangedHandler = () =>
+        {
+            var dispatcher = System.Windows.Application.Current?.Dispatcher;
+            if (dispatcher != null && !dispatcher.CheckAccess())
+            {
+                dispatcher.BeginInvoke(async () =>
+                {
+                    await LoadDynamicCollectionTypesAsync();
+                    RecalculateAll();
+                });
+            }
+            else
+            {
+                _ = LoadDynamicCollectionTypesAsync();
+                RecalculateAll();
+            }
+        };
         if (_collectionTypeService != null)
         {
-            _collectionTypeService.CollectionTypesChanged += () =>
-            {
-                var dispatcher = System.Windows.Application.Current?.Dispatcher;
-                if (dispatcher != null && !dispatcher.CheckAccess())
-                {
-                    dispatcher.BeginInvoke(async () =>
-                    {
-                        await LoadDynamicCollectionTypesAsync();
-                        RecalculateAll();
-                    });
-                }
-                else
-                {
-                    _ = LoadDynamicCollectionTypesAsync();
-                    RecalculateAll();
-                }
-            };
+            _collectionTypeService.CollectionTypesChanged += _collectionTypesChangedHandler;
         }
 
-        FuelPro.Core.Services.DsmEntryService.DsmProfileChanged += () =>
+        _profileChangedHandler = () =>
         {
             var dispatcher = System.Windows.Application.Current?.Dispatcher;
             if (dispatcher != null && !dispatcher.CheckAccess())
@@ -533,8 +547,47 @@ public partial class DsmEntryViewModel : ObservableObject
                 _ = LoadSuggestionsAsync();
             }
         };
+        FuelPro.Core.Services.DsmEntryService.DsmProfileChanged += _profileChangedHandler;
 
-        FuelPro.Core.Services.DsmEntryService.DebtorChanged += () =>
+        _profileRenamedHandler = (oldName, newName) =>
+        {
+            var dispatcher = System.Windows.Application.Current?.Dispatcher;
+            if (dispatcher != null && !dispatcher.CheckAccess())
+            {
+                dispatcher.BeginInvoke(async () =>
+                {
+                    ApplyDsmProfileRenamed(oldName, newName);
+                    await LoadSuggestionsAsync();
+                });
+            }
+            else
+            {
+                ApplyDsmProfileRenamed(oldName, newName);
+                _ = LoadSuggestionsAsync();
+            }
+        };
+        FuelPro.Core.Services.DsmEntryService.DsmProfileRenamed += _profileRenamedHandler;
+
+        _profileDeletedHandler = (deletedName) =>
+        {
+            var dispatcher = System.Windows.Application.Current?.Dispatcher;
+            if (dispatcher != null && !dispatcher.CheckAccess())
+            {
+                dispatcher.BeginInvoke(async () =>
+                {
+                    ApplyDsmProfileDeleted(deletedName);
+                    await LoadSuggestionsAsync();
+                });
+            }
+            else
+            {
+                ApplyDsmProfileDeleted(deletedName);
+                _ = LoadSuggestionsAsync();
+            }
+        };
+        FuelPro.Core.Services.DsmEntryService.DsmProfileDeleted += _profileDeletedHandler;
+
+        _debtorChangedHandler = () =>
         {
             var dispatcher = System.Windows.Application.Current?.Dispatcher;
             if (dispatcher != null && !dispatcher.CheckAccess())
@@ -546,6 +599,7 @@ public partial class DsmEntryViewModel : ObservableObject
                 _ = LoadSuggestionsAsync();
             }
         };
+        FuelPro.Core.Services.DsmEntryService.DebtorChanged += _debtorChangedHandler;
 
         // Populate pump options for default selected date
         ReloadPumpOptions();
@@ -588,13 +642,21 @@ public partial class DsmEntryViewModel : ObservableObject
                 };
             }
 
+            bool IsEnabledForCurrentShift(CollectionTypeMaster type)
+            {
+                if (IsShiftC) return type.EnableNight;
+                if (IsDayShift) return type.EnableDay;
+                if (IsNightShift && !IsThreeShiftMode) return type.EnableNight;
+                return type.EnableMorning;
+            }
+
             // 1. Resolve built-in PhonePe
             var ph = allTypes.FirstOrDefault(c => string.Equals(c.Code, "PHONEPE", StringComparison.OrdinalIgnoreCase));
             if (ph != null)
             {
                 PhonePeDisplayName = ph.DisplayName;
                 PhonePeHasTidBatch = ph.HasTidBatch;
-                PhonePeIsActive = ph.IsActive;
+                PhonePeIsActive = ph.IsActive && IsEnabledForCurrentShift(ph);
             }
             else
             {
@@ -615,7 +677,7 @@ public partial class DsmEntryViewModel : ObservableObject
             {
                 CreditCardDisplayName = cc.DisplayName;
                 CreditCardHasTidBatch = cc.HasTidBatch;
-                CreditCardIsActive = cc.IsActive;
+                CreditCardIsActive = cc.IsActive && IsEnabledForCurrentShift(cc);
             }
             else
             {
@@ -632,7 +694,7 @@ public partial class DsmEntryViewModel : ObservableObject
             {
                 PetroCardDisplayName = pc.DisplayName;
                 PetroCardHasTidBatch = pc.HasTidBatch;
-                PetroCardIsActive = pc.IsActive;
+                PetroCardIsActive = pc.IsActive && IsEnabledForCurrentShift(pc);
             }
             else
             {
@@ -654,7 +716,7 @@ public partial class DsmEntryViewModel : ObservableObject
             OnPropertyChanged(nameof(IsCreditCardNightTidVisible));
             OnPropertyChanged(nameof(IsPetroCardNightTidVisible));
 
-            var existingItems = existingPayment?.Items?.ToList() ?? new List<PaymentCollectionItem>();
+            var existingItems = existingPayment?.GetAllItems()?.ToList() ?? new List<PaymentCollectionItem>();
             var matchedCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             if (ph != null) matchedCodes.Add(ph.Code);
             if (cc != null) matchedCodes.Add(cc.Code);
@@ -663,7 +725,7 @@ public partial class DsmEntryViewModel : ObservableObject
             matchedCodes.Add("OTHERS");
 
             var targetTypes = allTypes
-                .Where(x => x.IsActive && !matchedCodes.Contains(x.Code))
+                .Where(x => x.IsActive && IsEnabledForCurrentShift(x) && !matchedCodes.Contains(x.Code))
                 .OrderBy(x => x.DisplayOrder)
                 .ToList();
 
@@ -693,6 +755,7 @@ public partial class DsmEntryViewModel : ObservableObject
                         existingRow.Amount = (existingItem != null && existingItem.Amount > 0) ? existingItem.Amount : (double?)null;
                         existingRow.Tid = existingItem?.Tid;
                         existingRow.Batch = existingItem?.Batch;
+                        existingRow.Otp = existingItem?.Otp;
                     }
                 }
                 else
@@ -706,6 +769,7 @@ public partial class DsmEntryViewModel : ObservableObject
                         Amount = (existingItem != null && existingItem.Amount > 0) ? existingItem.Amount : (double?)null,
                         Tid = existingItem?.Tid,
                         Batch = existingItem?.Batch,
+                        Otp = existingItem?.Otp,
                         OnValueChangedAction = RecalculateAll
                     };
                     DynamicCollections.Insert(Math.Min(i, DynamicCollections.Count), newRow);
@@ -818,6 +882,7 @@ public partial class DsmEntryViewModel : ObservableObject
         OnPropertyChanged(nameof(MorningLabel));
         OnPropertyChanged(nameof(MorningTidLabel));
         OnPropertyChanged(nameof(MorningBatchLabel));
+        _ = LoadDynamicCollectionTypesAsync();
         if (!_isEditing) LoadNozzlesForPump();
     }
     partial void OnDsmNameChanged(string value)
@@ -1430,17 +1495,31 @@ public partial class DsmEntryViewModel : ObservableObject
 
             foreach (var dyn in DynamicCollections)
             {
-                if (dyn.Amount.HasValue && dyn.Amount.Value > 0)
+                if ((dyn.Amount.HasValue && dyn.Amount.Value > 0) || !string.IsNullOrWhiteSpace(dyn.Otp))
                 {
                     payment.Items.Add(new PaymentCollectionItem
                     {
                         CollectionTypeCode = dyn.Code,
-                        Amount = dyn.Amount.Value,
+                        Amount = dyn.Amount ?? 0,
                         Tid = dyn.Tid,
                         Batch = dyn.Batch,
-                        Slot = "General"
+                        Otp = dyn.Otp,
+                        Slot = isC ? "Night" : (isDay ? "Day" : "Morning")
                     });
                 }
+            }
+
+            if (payment.Items.Count > 0)
+            {
+                payment.DynamicItemsJson = Newtonsoft.Json.JsonConvert.SerializeObject(payment.Items.Select(i => new
+                {
+                    i.CollectionTypeCode,
+                    i.Amount,
+                    i.Tid,
+                    i.Batch,
+                    i.Slot,
+                    i.Otp
+                }));
             }
 
 
@@ -2301,8 +2380,47 @@ public partial class DsmEntryViewModel : ObservableObject
         }
     }
 
+    private void ApplyDsmProfileRenamed(string oldName, string newName)
+    {
+        if (!string.IsNullOrWhiteSpace(oldName) && string.Equals(DsmName, oldName, StringComparison.OrdinalIgnoreCase))
+        {
+            DsmName = newName ?? string.Empty;
+        }
+
+        if (!string.IsNullOrWhiteSpace(oldName) && QrPayments != null)
+        {
+            foreach (var qr in QrPayments)
+            {
+                if (string.Equals(qr.TargetDsmName, oldName, StringComparison.OrdinalIgnoreCase))
+                {
+                    qr.TargetDsmName = newName ?? string.Empty;
+                }
+            }
+        }
+    }
+
+    private void ApplyDsmProfileDeleted(string deletedName)
+    {
+        if (!string.IsNullOrWhiteSpace(deletedName) && string.Equals(DsmName, deletedName, StringComparison.OrdinalIgnoreCase))
+        {
+            DsmName = string.Empty;
+        }
+
+        if (!string.IsNullOrWhiteSpace(deletedName) && QrPayments != null)
+        {
+            foreach (var qr in QrPayments)
+            {
+                if (string.Equals(qr.TargetDsmName, deletedName, StringComparison.OrdinalIgnoreCase))
+                {
+                    qr.TargetDsmName = string.Empty;
+                }
+            }
+        }
+    }
+
     public async Task LoadSuggestionsAsync()
     {
+        var currentDsm = DsmName;
         var result = await _dsmProfileRepo.GetAllAsync();
         DsmOptions.Clear();
 
@@ -2322,7 +2440,8 @@ public partial class DsmEntryViewModel : ObservableObject
         try
         {
             using var dbContext = App.Services.GetRequiredService<FuelPro.Data.FuelProDbContext>();
-            var users = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.ToListAsync(dbContext.DsmUsers);
+            var users = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.ToListAsync(
+                Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.AsNoTracking(dbContext.DsmUsers));
             foreach (var user in users)
             {
                 if (!string.IsNullOrWhiteSpace(user.FullName))
@@ -2341,12 +2460,49 @@ public partial class DsmEntryViewModel : ObservableObject
             DsmOptions.Add(name);
         }
 
+        if (!string.IsNullOrEmpty(currentDsm))
+        {
+            DsmName = currentDsm;
+        }
+
         var creditorsResult = await _creditorRepo.GetAllActiveWithVehiclesAsync();
         Creditors.Clear();
         if (creditorsResult.Success)
         {
             foreach (var c in creditorsResult.Data!)
                 Creditors.Add(c);
+        }
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        if (_featureToggleService != null && _featureChangedHandler != null)
+            _featureToggleService.FeatureConfigurationChanged -= _featureChangedHandler;
+
+        if (_stationConfigService != null && _stationConfigChangedHandler != null)
+            _stationConfigService.StationConfigurationChanged -= _stationConfigChangedHandler;
+
+        if (_collectionTypeService != null && _collectionTypesChangedHandler != null)
+            _collectionTypeService.CollectionTypesChanged -= _collectionTypesChangedHandler;
+
+        if (_profileChangedHandler != null)
+            FuelPro.Core.Services.DsmEntryService.DsmProfileChanged -= _profileChangedHandler;
+
+        if (_profileRenamedHandler != null)
+            FuelPro.Core.Services.DsmEntryService.DsmProfileRenamed -= _profileRenamedHandler;
+
+        if (_profileDeletedHandler != null)
+            FuelPro.Core.Services.DsmEntryService.DsmProfileDeleted -= _profileDeletedHandler;
+
+        if (_debtorChangedHandler != null)
+            FuelPro.Core.Services.DsmEntryService.DebtorChanged -= _debtorChangedHandler;
+
+        if (_autoSaveTimer != null)
+        {
+            _autoSaveTimer.Stop();
         }
     }
 

@@ -65,6 +65,10 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
     public ObservableCollection<string> AvailableFuelTypes { get; } = new();
     public ObservableCollection<StationLayoutPreset> SavedPresets { get; } = new();
     [ObservableProperty] private string _stationStatusMessage = "";
+    [ObservableProperty] private bool _isLayoutDirty;
+    [ObservableProperty] private bool _isLayoutSaving;
+    [ObservableProperty] private string _layoutSaveStatus = "Saved";
+    [ObservableProperty] private string _layoutLastSavedTimestamp = "";
     [ObservableProperty] private string _collectionStatusMessage = "";
     [ObservableProperty] private string _shiftCycleStatusMessage = "";
     [ObservableProperty] private string _selectedShiftCycleOption = "2_SHIFT (Standard Date-to-Date: Shift A & Shift B)";
@@ -2314,7 +2318,10 @@ public partial class DeveloperMainWindowViewModel
     [RelayCommand]
     public async Task SaveStationLayoutAsync()
     {
+        if (IsLayoutSaving) return;
         StationStatusMessage = "⏳ Saving station layout...";
+        IsLayoutSaving = true;
+        LayoutSaveStatus = "Saving...";
         try
         {
             _isSavingLayout = true;
@@ -2343,6 +2350,7 @@ public partial class DeveloperMainWindowViewModel
                 else
                 {
                     StationStatusMessage = $"❌ Save cancelled due to duplicate nozzle numbers: [{dupStr}].";
+                    LayoutSaveStatus = "Save Cancelled";
                     return;
                 }
             }
@@ -2357,6 +2365,7 @@ public partial class DeveloperMainWindowViewModel
                     if (allNozzleNumbers.Contains(nozzle.NozzleNumber))
                     {
                         StationStatusMessage = $"❌ Duplicate Nozzle Number {nozzle.NozzleNumber} detected! Each nozzle must be unique.";
+                        LayoutSaveStatus = "Save Failed (Duplicate Nozzle)";
                         MessageBox.Show($"Duplicate Nozzle Number {nozzle.NozzleNumber} detected across pumps.\nEach nozzle number must be unique.", "Validation Error", MessageBoxButton.OK, MessageBoxImage.Warning);
                         return;
                     }
@@ -2435,7 +2444,10 @@ public partial class DeveloperMainWindowViewModel
                 RefreshAvailableTankNames();
                 RefreshAvailableFuelTypes();
 
-                StationStatusMessage = $"✅ Station layout and tanks successfully saved! ({flatMappings.Count} nozzles, {ConfiguredTanks.Count} tanks configured)";
+                IsLayoutDirty = false;
+                LayoutSaveStatus = "Saved Successfully";
+                LayoutLastSavedTimestamp = DateTime.Now.ToString("dd-MMM-yyyy hh:mm:ss tt");
+                StationStatusMessage = $"✅ Station layout and tanks successfully saved at {LayoutLastSavedTimestamp} ({flatMappings.Count} nozzles, {ConfiguredTanks.Count} tanks configured)";
                 _ = Task.Run(async () =>
                 {
                     try
@@ -2450,16 +2462,19 @@ public partial class DeveloperMainWindowViewModel
             }
             else
             {
+                LayoutSaveStatus = "Save Failed";
                 StationStatusMessage = "❌ Failed to save station layout.";
             }
         }
         catch (Exception ex)
         {
+            LayoutSaveStatus = "Save Failed";
             StationStatusMessage = $"❌ Save error: {ex.Message}";
         }
         finally
         {
             _isSavingLayout = false;
+            IsLayoutSaving = false;
         }
     }
 

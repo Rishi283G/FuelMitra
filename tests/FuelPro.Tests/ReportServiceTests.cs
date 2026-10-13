@@ -10,15 +10,21 @@ using Xunit;
 
 namespace FuelPro.Tests;
 
-public class ReportServiceTests
+public class ReportServiceTests : IDisposable
 {
     private readonly ReportService _sut;
     private readonly ShiftAggregationService _aggregation;
 
     public ReportServiceTests()
     {
+        PumpConfiguration.ResetToDefaults();
         _aggregation = new ShiftAggregationService();
         _sut = new ReportService(_aggregation);
+    }
+
+    public void Dispose()
+    {
+        PumpConfiguration.ResetToDefaults();
     }
 
     [Fact]
@@ -80,8 +86,8 @@ public class ReportServiceTests
         // Assert
         Assert.Equal("II", report.ShiftLabel);
         Assert.Equal("Mitali Service Station", report.StationName);
-        // ExpectedCollection = TotalFuelAmount(6095.85) + reconcilableRecoveries(1000 cash repayment)
-        Assert.Equal(7095.85, report.ExpectedCollection, precision: 2);
+        // ExpectedCollection = DsrTotalFuelAmount(6095.85 - 500 testing = 5595.85) + reconcilableRecoveries(1000 cash repayment)
+        Assert.Equal(6595.85, report.ExpectedCollection, precision: 2);
 
         // Verify the collection breakdown categories exist
         Assert.True(report.CollectionBreakdown.Count >= 5);
@@ -91,6 +97,91 @@ public class ReportServiceTests
         
         Assert.Equal(500, deposit);
         Assert.Equal(1150, cashInHand); // 150 + 1000 repayment
+    }
+
+    [Fact]
+    public void CalculateShiftReport_WithTestingAndOilDefSales_ShouldExcludeTestingAndIncludeOilSalesInReconciliation()
+    {
+        // Arrange
+        var date = new DateTime(2026, 7, 11);
+        var entries = new List<DsmEntry>
+        {
+            new DsmEntry
+            {
+                DsmEntryId = 1,
+                DsmName = "Peter Parker",
+                PumpId = 1,
+                GrossSales = 10000m,
+                NozzleReadings = new List<NozzleReading>
+                {
+                    new NozzleReading { NozzleNumber = 1, FuelType = "MS-I", SaleLitres = 100, Amount = 10000, Rate = 100 }
+                },
+                TestingEntries = new List<TestingEntry>
+                {
+                    new TestingEntry { FuelType = "MS-I", Litres = 5, Rate = 100, Amount = 500 }
+                },
+                PaymentCollection = new PaymentCollection 
+                { 
+                    PhonePeDay = 2500, 
+                    CashDeposit = 4000
+                },
+                CashDenominations = new List<CashDenomination>
+                {
+                    new CashDenomination { CashType = "Cash2", TotalAmount = 3000 }
+                },
+                DebitEntries = new List<DebitEntry>(),
+                Expenses = new List<Expense>(),
+                ConnectedPumpIdsJson = "{\"oilDefSales\": [{\"productName\": \"Servo 4T 1L\", \"quantity\": 2, \"price\": 500, \"total\": 1000}]}"
+            }
+        };
+
+        var repayments = new List<CreditorRepayment>
+        {
+            new CreditorRepayment { Amount = 500, PaymentMode = "Cash", ShiftNumber = "B", RepaymentDate = date }
+        };
+
+        // Act
+        var report = _sut.CalculateShiftReport(
+            date: date,
+            shiftType: "B",
+            entries: entries,
+            shiftExpenses: new List<Expense>(),
+            otherCashList: new List<ShiftOtherCash>(),
+            repayments: repayments,
+            hsdRate: 90, msIRate: 100, msIIRate: 100, cngRate: 85,
+            todayTid: new BusinessDayTidSheet(), tomorrowTid: new BusinessDayTidSheet(),
+            stationName: "Mitali Service Station"
+        );
+
+        // Assert
+        // Gross meter sales = 10000, Testing = 500 => DsrTotalFuelAmount = 9500
+        Assert.Equal(10000, report.TotalFuelAmount);
+        Assert.Equal(9500, report.DsrTotalFuelAmount);
+
+        // Oil & DEF Sales Total = 1000
+        Assert.Equal(1000, report.OilDefSalesTotal);
+
+        // GrandTotalSaleAmount = DsrTotalFuelAmount(9500) + OilDefSalesTotal(1000) = 10500
+        Assert.Equal(10500, report.GrandTotalSaleAmount);
+
+        // CollectionBreakdown: Must contain "Oil & DEF Sales" and informational "Testing"
+        var oilCat = report.CollectionBreakdown.FirstOrDefault(c => c.Category == "Oil & DEF Sales");
+        Assert.NotNull(oilCat);
+        Assert.Equal(1000, oilCat.Amount);
+        var testCat = report.CollectionBreakdown.FirstOrDefault(c => c.Category.Contains("Testing", StringComparison.OrdinalIgnoreCase));
+        Assert.NotNull(testCat);
+        Assert.True(testCat.IsInformational);
+        Assert.Equal(500, testCat.Amount);
+
+        // Actual Collections = 4000 (deposit) + (3000 + 500 repayment) + 2500 (phonepe) + 1000 (oil) = 11000
+        Assert.Equal(11000, report.ActualCollection, precision: 2);
+
+        // Expected Collections = DsrTotalFuelAmount(9500) + OilDefSalesTotal(1000) + Repayments(500) = 11000
+        Assert.Equal(11000, report.ExpectedCollection, precision: 2);
+
+        // Perfectly balanced with no difference
+        Assert.Equal(0, report.Difference, precision: 2);
+        Assert.True(report.IsBalanced);
     }
 
     [Fact]

@@ -793,6 +793,9 @@ public partial class SettingsViewModel : ObservableObject
     // ───────────────────────────────────────────────
     public ObservableCollection<DsmProfile> DsmProfiles { get; } = new();
     [ObservableProperty] private string _newDsmName = "";
+    [ObservableProperty] private DsmProfile? _editingDsmProfile;
+    [ObservableProperty] private string _editingDsmName = "";
+    [ObservableProperty] private bool _isEditingDsm;
     [ObservableProperty] private string _newDsmPhone = "";
     [ObservableProperty] private string _newDsmSalaryType = "FixedMonthly";
     [ObservableProperty] private double _newDsmBaseSalary = 12000;
@@ -867,6 +870,79 @@ public partial class SettingsViewModel : ObservableObject
     }
 
     [RelayCommand]
+    public void EditDsm(DsmProfile? profile)
+    {
+        if (profile == null) return;
+
+        EditingDsmProfile = profile;
+        EditingDsmName = profile.DsmName;
+        IsEditingDsm = true;
+        DsmStatusMessage = "";
+    }
+
+    [RelayCommand]
+    public void CancelDsmEdit()
+    {
+        EditingDsmProfile = null;
+        EditingDsmName = "";
+        IsEditingDsm = false;
+    }
+
+    [RelayCommand]
+    public async Task SaveDsmEditAsync()
+    {
+        var profile = EditingDsmProfile;
+        if (profile == null || _profileRepo == null) return;
+
+        if (string.IsNullOrWhiteSpace(EditingDsmName))
+        {
+            DsmStatusMessage = "❌ DSM name is required.";
+            return;
+        }
+
+        try
+        {
+            // Update only the selected master profile, retaining its stable ID and other profile fields.
+            var updatedProfile = new DsmProfile
+            {
+                DsmProfileId = profile.DsmProfileId,
+                DsmName = EditingDsmName.Trim(),
+                SalaryType = profile.SalaryType,
+                BaseSalary = profile.BaseSalary,
+                JoiningDate = profile.JoiningDate,
+                MobileNumber = profile.MobileNumber,
+                PendingAdvance = profile.PendingAdvance,
+                MonthlyAdvanceDeduction = profile.MonthlyAdvanceDeduction
+            };
+
+            var result = await _profileRepo.UpdateAsync(updatedProfile);
+            if (!result.Success)
+            {
+                DsmStatusMessage = $"❌ {result.Error}";
+                return;
+            }
+
+            var oldName = profile.DsmName;
+            var updatedName = updatedProfile.DsmName;
+            CancelDsmEdit();
+            DsmStatusMessage = $"✅ DSM name updated to {updatedName}.";
+            if (!string.Equals(oldName, updatedName, StringComparison.OrdinalIgnoreCase))
+            {
+                FuelPro.Core.Services.DsmEntryService.RaiseDsmProfileRenamed(oldName, updatedName);
+            }
+            else
+            {
+                FuelPro.Core.Services.DsmEntryService.RaiseDsmProfileChanged();
+            }
+            await LoadDsmsAsync();
+        }
+        catch (Exception ex)
+        {
+            DsmStatusMessage = $"❌ Error: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
     public async Task ToggleDsmActiveAsync(DsmProfile? profile)
     {
         if (profile == null || _profileRepo == null) return;
@@ -892,12 +968,13 @@ public partial class SettingsViewModel : ObservableObject
 
         try
         {
+            var deletedName = profile.DsmName;
             var res = await _profileRepo.DeleteAsync(profile.DsmProfileId);
             if (res.Success)
             {
                 DsmProfiles.Remove(profile);
-                DsmStatusMessage = $"✅ Deleted {profile.DsmName}.";
-                FuelPro.Core.Services.DsmEntryService.RaiseDsmProfileChanged();
+                DsmStatusMessage = $"✅ Deleted {deletedName}.";
+                FuelPro.Core.Services.DsmEntryService.RaiseDsmProfileDeleted(deletedName);
             }
             else
             {

@@ -26,7 +26,20 @@ public class DsmEntryService
     public static void RaiseDebtorChanged() => DebtorChanged?.Invoke();
 
     public static event Action? DsmProfileChanged;
+    public static event Action<string, string>? DsmProfileRenamed;
+    public static event Action<string>? DsmProfileDeleted;
+
     public static void RaiseDsmProfileChanged() => DsmProfileChanged?.Invoke();
+    public static void RaiseDsmProfileRenamed(string oldName, string newName)
+    {
+        DsmProfileRenamed?.Invoke(oldName, newName);
+        DsmProfileChanged?.Invoke();
+    }
+    public static void RaiseDsmProfileDeleted(string dsmName)
+    {
+        DsmProfileDeleted?.Invoke(dsmName);
+        DsmProfileChanged?.Invoke();
+    }
 
     public static event Action? PayrollChanged;
     public static void RaisePayrollChanged() => PayrollChanged?.Invoke();
@@ -620,7 +633,7 @@ public class DsmEntryService
                                        + (entry.PaymentCollection?.PetroCardNight ?? 0)),
                 CashDeposit  = (decimal)(cash1Total > 0 ? cash1Total : (entry.PaymentCollection?.CashDeposit ?? 0)),
                 PhysicalCash = (decimal)cash2Total,
-                DynamicPayments = (decimal)(entry.PaymentCollection?.Items?.Sum(i => i.Amount) ?? 0),
+                DynamicPayments = (decimal)(entry.PaymentCollection?.DynamicItemsTotal ?? 0),
                 Others       = (decimal)(entry.PaymentCollection?.Others ?? 0)
             },
             DebitEntries   = entry.DebitEntries.Select(d => new DebitEntryDto { Amount = (decimal)d.Amount }).ToList(),
@@ -854,6 +867,20 @@ public class DsmEntryService
                 existingPayment.PetroCardTidNight = payment.PetroCardTidNight;
                 existingPayment.PetroCardBatchNight = payment.PetroCardBatchNight;
                 existingPayment.DynamicItemsJson = payment.DynamicItemsJson;
+
+                var existingItems = await context.Set<PaymentCollectionItem>()
+                    .Where(i => i.PaymentId == existingPayment.PaymentId)
+                    .ToListAsync();
+                context.Set<PaymentCollectionItem>().RemoveRange(existingItems);
+                if (payment.Items != null && payment.Items.Count > 0)
+                {
+                    foreach (var item in payment.Items)
+                    {
+                        item.PaymentId = existingPayment.PaymentId;
+                        item.PaymentCollection = existingPayment;
+                        context.Set<PaymentCollectionItem>().Add(item);
+                    }
+                }
             }
             else
             {

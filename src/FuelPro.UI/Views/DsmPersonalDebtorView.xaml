@@ -357,6 +357,16 @@
                                             </DataGridTextColumn.ElementStyle>
                                         </DataGridTextColumn>
 
+                                        <!-- Shift -->
+                                        <DataGridTextColumn Header="Shift" Binding="{Binding Shift}" Width="55" MinWidth="50">
+                                            <DataGridTextColumn.ElementStyle>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="HorizontalAlignment" Value="Center" />
+                                                    <Setter Property="VerticalAlignment" Value="Center" />
+                                                </Style>
+                                            </DataGridTextColumn.ElementStyle>
+                                        </DataGridTextColumn>
+
                                         <!-- Particulars -->
                                         <DataGridTemplateColumn Header="Particulars" Width="1.5*" MinWidth="150">
                                             <DataGridTemplateColumn.CellTemplate>

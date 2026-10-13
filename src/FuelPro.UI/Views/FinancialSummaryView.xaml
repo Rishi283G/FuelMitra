@@ -118,6 +118,13 @@
                               materialDesign:DataGridAssist.CellPadding="12 8" CanUserSortColumns="True" MaxHeight="450">
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="Repayment Date" Binding="{Binding RepaymentDate, StringFormat='{}{0:dd MMM yyyy}'}" Width="110"/>
+                            <DataGridTextColumn Header="Shift" Binding="{Binding ShiftDisplay}" Width="60">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="HorizontalAlignment" Value="Center" />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
                             <DataGridTextColumn Header="Debtor Name" Binding="{Binding CreditorName}" Width="*"/>
                             <DataGridTextColumn Header="Payment Mode" Binding="{Binding PaymentMode}" Width="100"/>
                             <DataGridTextColumn Header="Cheque No" Binding="{Binding ChequeNo}" Width="100"/>

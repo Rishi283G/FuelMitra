@@ -180,7 +180,12 @@ public class ReportService : IReportService
             + dto.CreditCardRepayments + dto.PetroCardRepayments;
 
         // 7. Oil & DEF Sales (Phase 3/4 Product Sales)
-        var oilDefResult = ExtractOilDefSales(entriesList, date, _serviceProvider);
+        var oilDefResult = ExtractOilDefSales(
+            entriesList,
+            date,
+            _serviceProvider,
+            filterToEntryShifts: true,
+            reportShiftType: shiftType);
         dto.OilDefSales = oilDefResult.Rows;
         dto.OilDefSalesTotal = oilDefResult.Total;
 
@@ -350,7 +355,7 @@ public class ReportService : IReportService
                 Category = cdType?.DisplayName ?? "Cash Deposit",
                 Amount = finalCashDeposit,
                 BaseAmount = dto.Cash1.GrandTotal,
-                RecoveryAmount = dto.BankCashRepayments
+                RecoveryAmount = 0
             });
         }
         breakdownList.Add(new CollectionCategoryDto
@@ -402,7 +407,7 @@ public class ReportService : IReportService
             .ToList();
 
         var entryDynamicItems = entriesList
-            .SelectMany(e => e.PaymentCollection?.Items ?? Enumerable.Empty<PaymentCollectionItem>())
+            .SelectMany(e => e.PaymentCollection?.GetAllItems() ?? Enumerable.Empty<PaymentCollectionItem>())
             .ToList();
 
         foreach (var t in dynamicActiveTypes)
@@ -413,12 +418,30 @@ public class ReportService : IReportService
                             string.Equals(i.CollectionTypeCode?.Replace("_", "")?.Replace(" ", ""), cleanTCode, StringComparison.OrdinalIgnoreCase))
                 .Sum(x => x.Amount);
 
+            double dynamicRecovery = repaymentsList
+                .Where(r => string.Equals(r.PaymentMode, t.DisplayName, StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(r.PaymentMode, t.Code, StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(r.PaymentMode?.Replace("_", "")?.Replace(" ", ""), cleanTCode, StringComparison.OrdinalIgnoreCase))
+                .Sum(r => r.Amount);
+
             breakdownList.Add(new CollectionCategoryDto
             {
                 Category = t.DisplayName,
-                Amount = sum,
+                Amount = sum + dynamicRecovery,
                 BaseAmount = sum,
-                RecoveryAmount = 0
+                RecoveryAmount = dynamicRecovery
+            });
+        }
+
+        if (dto.BankCashRepayments > 0 && !breakdownList.Any(c => c.Category.IndexOf("Bank Transfer", StringComparison.OrdinalIgnoreCase) >= 0 || c.Category.IndexOf("Cheque", StringComparison.OrdinalIgnoreCase) >= 0 || c.Category.IndexOf("Bank Deposit", StringComparison.OrdinalIgnoreCase) >= 0))
+        {
+            breakdownList.Add(new CollectionCategoryDto
+            {
+                Category = "Bank / Cheque Recovery",
+                Amount = dto.BankCashRepayments,
+                BaseAmount = 0,
+                RecoveryAmount = dto.BankCashRepayments,
+                IsInformational = true
             });
         }
 
@@ -445,6 +468,17 @@ public class ReportService : IReportService
             breakdownList.Add(new() { Category = "Kandhare Petroleum", Amount = khandhareTotal, BaseAmount = khandhareTotal, RecoveryAmount = 0 });
         }
 
+        if (dto.OilDefSalesTotal > 0)
+        {
+            breakdownList.Add(new CollectionCategoryDto
+            {
+                Category = "Oil & DEF Sales",
+                Amount = dto.OilDefSalesTotal,
+                BaseAmount = dto.OilDefSalesTotal,
+                RecoveryAmount = 0
+            });
+        }
+
         foreach (var testItem in testingSummaryList.Where(t => t.Amount > 0 || t.VolumeLitres > 0))
         {
             breakdownList.Add(new CollectionCategoryDto
@@ -453,7 +487,8 @@ public class ReportService : IReportService
                 Amount = testItem.Amount,
                 BaseAmount = testItem.Amount,
                 RecoveryAmount = 0,
-                Volume = testItem.VolumeLitres
+                Volume = testItem.VolumeLitres,
+                IsInformational = true
             });
         }
 
@@ -462,8 +497,9 @@ public class ReportService : IReportService
         dto.CollectionBreakdown = breakdownList;
 
 
-        dto.ActualCollection = dto.CollectionBreakdown.Where(c => c.Category != "DSM Short" && !c.IsInformational && !string.Equals(c.Category, "Others", StringComparison.OrdinalIgnoreCase) && !string.Equals(c.Category, "Other", StringComparison.OrdinalIgnoreCase)).Sum(c => c.Amount);
-        dto.ExpectedCollection = dto.TotalFuelAmount + reconcilableRecoveriesTotal;
+        dto.GrandTotalSaleAmount = dto.DsrTotalFuelAmount + dto.OilDefSalesTotal;
+        dto.ActualCollection = dto.CollectionBreakdown.Where(c => c.Category != "DSM Short" && !c.IsInformational && !c.Category.EndsWith("Testing", StringComparison.OrdinalIgnoreCase) && !string.Equals(c.Category, "Others", StringComparison.OrdinalIgnoreCase) && !string.Equals(c.Category, "Other", StringComparison.OrdinalIgnoreCase)).Sum(c => c.Amount);
+        dto.ExpectedCollection = dto.DsrTotalFuelAmount + dto.OilDefSalesTotal + reconcilableRecoveriesTotal;
         double rawDiff = dto.ActualCollection - dto.ExpectedCollection;
         dto.Difference = rawDiff < -0.01 ? -dto.TotalDsmShort : (rawDiff > 0.01 ? rawDiff : 0);
         dto.IsBalanced = Math.Abs(dto.Difference) < 0.01;
@@ -800,7 +836,7 @@ public class ReportService : IReportService
         dto.TotalDsmShort = totalDsmShort;
 
         // 11. Oil & DEF Sales
-        var oilDefResult = ExtractOilDefSales(todayEntries, startDate, _serviceProvider);
+        var oilDefResult = ExtractOilDefSales(todayEntries, startDate, _serviceProvider, endDate: endDate);
         dto.OilDefSales = oilDefResult.Rows;
         dto.OilDefSalesTotal = oilDefResult.Total;
 
@@ -884,12 +920,30 @@ public class ReportService : IReportService
                             string.Equals(i.CollectionTypeCode?.Replace("_", "")?.Replace(" ", ""), cleanTCode, StringComparison.OrdinalIgnoreCase))
                 .Sum(x => x.Amount);
 
+            double dynamicRecovery = repaymentsList
+                .Where(r => string.Equals(r.PaymentMode, t.DisplayName, StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(r.PaymentMode, t.Code, StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(r.PaymentMode?.Replace("_", "")?.Replace(" ", ""), cleanTCode, StringComparison.OrdinalIgnoreCase))
+                .Sum(r => r.Amount);
+
             dayBreakdown.Add(new CollectionCategoryDto
             {
                 Category = t.DisplayName,
-                Amount = sum,
+                Amount = sum + dynamicRecovery,
                 BaseAmount = sum,
-                RecoveryAmount = 0
+                RecoveryAmount = dynamicRecovery
+            });
+        }
+
+        if (dto.BankCashRepayments > 0 && !dayBreakdown.Any(c => c.Category.IndexOf("Bank Transfer", StringComparison.OrdinalIgnoreCase) >= 0 || c.Category.IndexOf("Cheque", StringComparison.OrdinalIgnoreCase) >= 0 || c.Category.IndexOf("Bank Deposit", StringComparison.OrdinalIgnoreCase) >= 0))
+        {
+            dayBreakdown.Add(new CollectionCategoryDto
+            {
+                Category = "Bank / Cheque Recovery",
+                Amount = dto.BankCashRepayments,
+                BaseAmount = 0,
+                RecoveryAmount = dto.BankCashRepayments,
+                IsInformational = true
             });
         }
 
@@ -911,6 +965,17 @@ public class ReportService : IReportService
         dayBreakdown.Add(new() { Category = "Debtors", Amount = dto.CreditorsTotal, BaseAmount = dto.CreditorsTotal, RecoveryAmount = 0 });
         dayBreakdown.Add(new() { Category = "Expenses", Amount = dto.ExpensesTotal, BaseAmount = dto.ExpensesTotal, RecoveryAmount = 0 });
 
+        if (dto.OilDefSalesTotal > 0)
+        {
+            dayBreakdown.Add(new CollectionCategoryDto
+            {
+                Category = "Oil & DEF Sales",
+                Amount = dto.OilDefSalesTotal,
+                BaseAmount = dto.OilDefSalesTotal,
+                RecoveryAmount = 0
+            });
+        }
+
         foreach (var testItem in dayTestingSummaryList.Where(t => t.Amount > 0 || t.VolumeLitres > 0))
         {
             dayBreakdown.Add(new CollectionCategoryDto
@@ -919,7 +984,8 @@ public class ReportService : IReportService
                 Amount = testItem.Amount,
                 BaseAmount = testItem.Amount,
                 RecoveryAmount = 0,
-                Volume = testItem.VolumeLitres
+                Volume = testItem.VolumeLitres,
+                IsInformational = true
             });
         }
 
@@ -934,8 +1000,9 @@ public class ReportService : IReportService
         dto.CollectionBreakdown = dayBreakdown;
 
         // 12. Final Reconciliation
-        dto.ActualCollection = dto.CollectionBreakdown.Where(c => c.Category != "DSM Short" && !c.IsInformational && !string.Equals(c.Category, "Others", StringComparison.OrdinalIgnoreCase) && !string.Equals(c.Category, "Other", StringComparison.OrdinalIgnoreCase)).Sum(c => c.Amount);
-        dto.ExpectedCollection = dto.TotalFuelAmount + reconcilableRecoveriesTotal;
+        dto.GrandTotalSaleAmount = dto.DsrTotalFuelAmount + dto.OilDefSalesTotal;
+        dto.ActualCollection = dto.CollectionBreakdown.Where(c => c.Category != "DSM Short" && !c.IsInformational && !c.Category.EndsWith("Testing", StringComparison.OrdinalIgnoreCase) && !string.Equals(c.Category, "Others", StringComparison.OrdinalIgnoreCase) && !string.Equals(c.Category, "Other", StringComparison.OrdinalIgnoreCase)).Sum(c => c.Amount);
+        dto.ExpectedCollection = dto.DsrTotalFuelAmount + dto.OilDefSalesTotal + reconcilableRecoveriesTotal;
         double rawDiff = dto.ActualCollection - dto.ExpectedCollection;
         dto.Difference = rawDiff < -0.01 ? -dto.TotalDsmShort : (rawDiff > 0.01 ? rawDiff : 0);
         dto.IsBalanced = Math.Abs(dto.Difference) < 0.01;
@@ -1054,7 +1121,7 @@ public class ReportService : IReportService
         double petro = e.PaymentCollection?.PetroCard ?? 0;
         double petroTotal = (petroM + petroD + petroN) > 0 ? (petroM + petroD + petroN) : petro;
 
-        double dynamicColl = e.PaymentCollection?.Items?.Sum(i => i.Amount) ?? 0;
+        double dynamicColl = e.PaymentCollection?.DynamicItemsTotal ?? 0;
         double debits = e.DebitEntries?.Sum(d => d.Amount) ?? 0;
         double expenses = (e.Expenses?.Sum(x => x.Amount) ?? 0) + (e.KhandharePetroleumEntries?.Sum(kp => kp.Amount) ?? 0);
         double testing = e.TestingEntries?.Sum(t => t.Amount) ?? 0;
@@ -1228,7 +1295,13 @@ public class ReportService : IReportService
         return mergedEntries;
     }
 
-    public static (List<OilDefSaleDisplayRow> Rows, double Total) ExtractOilDefSales(IEnumerable<DsmEntry>? entries, DateTime? targetDate = null, IServiceProvider? sp = null)
+    public static (List<OilDefSaleDisplayRow> Rows, double Total) ExtractOilDefSales(
+        IEnumerable<DsmEntry>? entries,
+        DateTime? targetDate = null,
+        IServiceProvider? sp = null,
+        bool filterToEntryShifts = false,
+        string? reportShiftType = null,
+        DateTime? endDate = null)
     {
         var list = new List<OilDefSaleDisplayRow>();
 
@@ -1255,16 +1328,68 @@ public class ReportService : IReportService
                 if (dbContext != null)
                 {
                     var dates = new List<DateTime>();
-                    if (targetDate.HasValue) dates.Add(targetDate.Value.Date);
+                    if (targetDate.HasValue)
+                    {
+                        var start = targetDate.Value.Date;
+                        var end = endDate.HasValue && endDate.Value.Date >= start ? endDate.Value.Date : start;
+                        for (var dt = start; dt <= end; dt = dt.AddDays(1))
+                        {
+                            dates.Add(dt);
+                        }
+                    }
                     if (entries != null) dates.AddRange(entries.Select(e => e.Shift?.ShiftDate.Date ?? e.CreatedAt.Date).Distinct());
                     dates = dates.Distinct().ToList();
 
+                    var reportShiftIds = Array.Empty<int>();
+                    if (filterToEntryShifts)
+                    {
+                        if (targetDate.HasValue && !string.IsNullOrWhiteSpace(reportShiftType))
+                        {
+                            var cycleService = new ShiftCycleService();
+                            var normalizedType = cycleService.NormalizeShiftType(reportShiftType);
+                            reportShiftIds = dbContext.Set<Shift>()
+                                .Where(s => s.ShiftDate.Date == targetDate.Value.Date)
+                                .ToList()
+                                .Where(s => string.Equals(
+                                    cycleService.NormalizeShiftType(s.ShiftType),
+                                    normalizedType,
+                                    StringComparison.OrdinalIgnoreCase))
+                                .Select(s => s.ShiftId)
+                                .ToArray();
+                        }
+                        else
+                        {
+                            reportShiftIds = entries?.Select(e => e.ShiftId).Where(id => id > 0).Distinct().ToArray()
+                                ?? Array.Empty<int>();
+                        }
+                    }
+
                     if (dates.Any())
                     {
-                        var logs = dbContext.Set<OilDefDailyLog>()
+                        var logsQuery = dbContext.Set<OilDefDailyLog>()
                             .Include("Product")
-                            .Where(l => dates.Contains(l.LogDate.Date) && l.SoldQuantity > 0)
-                            .ToList();
+                            .Include("Shift")
+                            .Where(l => l.SoldQuantity > 0);
+
+                        List<OilDefDailyLog> logs;
+                        if (filterToEntryShifts && reportShiftIds.Length > 0)
+                        {
+                            // Shift report: strictly include logs assigned to the matching shift record(s)
+                            logs = logsQuery.Where(l => l.ShiftId.HasValue && reportShiftIds.Contains(l.ShiftId.Value)).ToList();
+                        }
+                        else
+                        {
+                            // Day / Date range report:
+                            // Include sales whose operational shift belongs to the report date(s),
+                            // or fallback to LogDate when Shift is null (preserving legacy null-shift policy without inferring historical shifts)
+                            logs = logsQuery
+                                .Where(l => (l.Shift != null && dates.Contains(l.Shift.ShiftDate.Date)) ||
+                                            (l.Shift == null && dates.Contains(l.LogDate.Date)))
+                                .ToList();
+
+                            if (filterToEntryShifts)
+                                logs = logs.Where(l => l.ShiftId.HasValue && reportShiftIds.Contains(l.ShiftId.Value)).ToList();
+                        }
 
                         if (logs.Any())
                         {
@@ -1276,6 +1401,7 @@ public class ReportService : IReportService
                                 {
                                     ProductName = log.Product?.ProductName ?? log.ProductType ?? "Oil/DEF",
                                     Category = log.ProductType ?? "Oil",
+                                    ShiftType = log.Shift != null && !string.IsNullOrWhiteSpace(log.Shift.ShiftType) ? log.Shift.ShiftType : "—",
                                     Quantity = log.SoldQuantity,
                                     Rate = rate,
                                     Total = total
@@ -1370,10 +1496,12 @@ public class ReportService : IReportService
 
             if (qty > 0 || total > 0 || !string.IsNullOrWhiteSpace(productName))
             {
+                string shiftType = sale.TryGetProperty("shiftType", out var st) ? st.GetString() ?? "—" : (sale.TryGetProperty("shift", out var s) ? s.GetString() ?? "—" : "—");
                 list.Add(new OilDefSaleDisplayRow
                 {
                     ProductName = string.IsNullOrWhiteSpace(productName) ? category : productName,
                     Category = category,
+                    ShiftType = string.IsNullOrWhiteSpace(shiftType) ? "—" : shiftType,
                     Quantity = qty,
                     Rate = price,
                     Total = total

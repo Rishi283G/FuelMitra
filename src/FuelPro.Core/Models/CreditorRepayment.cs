@@ -69,4 +69,8 @@ public class CreditorRepayment
             return "—";
         }
     }
+
+    /// <summary>Safe display string for the originating shift (displays '—' when null or empty).</summary>
+    [NotMapped]
+    public string ShiftDisplay => !string.IsNullOrWhiteSpace(ShiftNumber) ? ShiftNumber : "—";
 }

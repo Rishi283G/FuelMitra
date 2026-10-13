@@ -4,6 +4,12 @@ import { useSubmissionService } from "../hooks/useSubmissionService";
 import { db, type DraftNozzleReading } from "../lib/db";
 import { supabase } from "../lib/supabase";
 import {
+  fetchStationConfig,
+  getDefaultStationConfig,
+  type StationConfig,
+  type OtpTransactionItem,
+} from "../lib/stationConfig";
+import {
   ArrowLeft,
   Send,
   AlertTriangle,
@@ -11,6 +17,8 @@ import {
   Loader2,
   WifiOff,
   RefreshCw,
+  Plus,
+  KeyRound,
 } from "lucide-react";
 
 interface SubmitProps {
@@ -140,8 +148,6 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   const [cash1Denom500, setCash1Denom500] = useState<number>(0);
   const [cash1Denom200, setCash1Denom200] = useState<number>(0);
   const [cash1Denom100, setCash1Denom100] = useState<number>(0);
-  const cashDeposit =
-    cash1Amount || (cash1Denom500 * 500 + cash1Denom200 * 200 + cash1Denom100 * 100);
 
   const [others, setOthers] = useState(0);
   const [expenseEntries, setExpenseEntries] = useState<ExpenseRow[]>([]);
@@ -197,8 +203,70 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   >([]);
 
   const [cardSwipeDetails, setCardSwipeDetails] = useState<
-    { mode: string; amount: number; tid: string; batch: string }[]
+    { mode: string; amount: number; tid: string; batch: string; otp?: string }[]
   >([]);
+
+  // Dynamic Station Configuration
+  const [stationConfig, setStationConfig] = useState<StationConfig>(() =>
+    getDefaultStationConfig(profile?.StationId || ""),
+  );
+
+  useEffect(() => {
+    if (profile?.StationId) {
+      fetchStationConfig(profile.StationId).then((cfg) => {
+        setStationConfig(cfg);
+      });
+    }
+  }, [profile?.StationId]);
+
+  const cashDenominationsEnabled = stationConfig.features.cashDenominationsEnabled;
+  const otpMachineTrackingEnabled = stationConfig.features.otpMachineTrackingEnabled;
+  const splitMorningNightEnabled = stationConfig.features.splitMorningNightEnabled;
+
+  const cashDeposit = cashDenominationsEnabled
+    ? (cash1Denom500 * 500 + cash1Denom200 * 200 + cash1Denom100 * 100)
+    : cash1Amount;
+
+  // Machine OTP Transactions & Dynamic Collections
+  const [machineTransactions, setMachineTransactions] = useState<OtpTransactionItem[]>([]);
+  const [activeOtpModalType, setActiveOtpModalType] = useState<string | null>(null);
+  const [newTxAmount, setNewTxAmount] = useState("");
+  const [newTxOtp, setNewTxOtp] = useState("");
+  const [newTxTid, setNewTxTid] = useState("");
+  const [newTxBatch, setNewTxBatch] = useState("");
+  const [newTxSlot, setNewTxSlot] = useState("General");
+  const [dynamicValues, setDynamicValues] = useState<
+    Record<string, { amount: number; tid: string; batch: string; otp?: string }>
+  >({});
+
+  const getTransactionsForType = (code: string) =>
+    machineTransactions.filter(
+      (t) => t.collectionTypeCode.toUpperCase() === code.toUpperCase()
+    );
+
+  const getMachineTotalForType = (code: string) =>
+    getTransactionsForType(code).reduce((sum, t) => sum + (t.amount || 0), 0);
+
+  const addMachineTransaction = (typeCode: string) => {
+    const amt = parseFloat(newTxAmount);
+    if (!amt || amt <= 0) return;
+    const newTx: OtpTransactionItem = {
+      id: Math.random().toString(36).substring(2, 9),
+      collectionTypeCode: typeCode.toUpperCase(),
+      amount: amt,
+      otp: newTxOtp.trim(),
+      tid: newTxTid.trim(),
+      batch: newTxBatch.trim(),
+      slot: newTxSlot || (shiftType === "B" ? "Day" : "Morning"),
+    };
+    setMachineTransactions((prev) => [...prev, newTx]);
+    setNewTxAmount("");
+    setNewTxOtp("");
+  };
+
+  const removeMachineTransaction = (id: string) => {
+    setMachineTransactions((prev) => prev.filter((t) => t.id !== id));
+  };
 
   // Oil & DEF Product Sales State
   const [availableProducts, setAvailableProducts] = useState<any[]>([]);
@@ -329,6 +397,8 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       setSalesQuantities(parsed.salesQuantities ?? {});
       setKhandhareEntries(parsed.khandhareEntries ?? []);
       setQrPayments(parsed.qrPayments ?? []);
+      if (parsed.machineTransactions) setMachineTransactions(parsed.machineTransactions);
+      if (parsed.dynamicValues) setDynamicValues(parsed.dynamicValues);
       if (parsed.qrPayments && parsed.qrPayments.length > 0) {
         setShowCrossQrSection(true);
       }
@@ -413,6 +483,8 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       salesQuantities,
       khandhareEntries,
       qrPayments,
+      machineTransactions,
+      dynamicValues,
       step,
       nozzleRows,
     };
@@ -1115,6 +1187,33 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     shiftType === "B" ? creditCardDay : creditCardMorning + creditCardNight;
   const petroCardTotal =
     shiftType === "B" ? petroCardDay : petroCardMorning + petroCardNight;
+
+  const phonePeTxTotal = getMachineTotalForType("PHONEPE");
+  const cardTxTotal = getMachineTotalForType("CREDIT_CARD");
+  const petroTxTotal = getMachineTotalForType("PETROCARD");
+
+  const effectivePhonePeTotal =
+    otpMachineTrackingEnabled && phonePeTxTotal > 0
+      ? phonePeTxTotal
+      : upiTotal;
+
+  const effectiveCreditCardTotal =
+    otpMachineTrackingEnabled && cardTxTotal > 0
+      ? cardTxTotal
+      : cardTotal;
+
+  const effectivePetroCardTotal =
+    otpMachineTrackingEnabled && petroTxTotal > 0
+      ? petroTxTotal
+      : petroCardTotal;
+
+  const dynamicTotal = Object.entries(dynamicValues).reduce((sum, [code, val]) => {
+    const clean = code.toUpperCase().replace(/_/g, "");
+    if (clean === "PHONEPE" || clean === "CREDITCARD" || clean === "PETROCARD") return sum;
+    const txTotal = getMachineTotalForType(code);
+    return sum + (otpMachineTrackingEnabled && txTotal > 0 ? txTotal : (val.amount || 0));
+  }, 0);
+
   const creditTotal = debtorEntries.reduce((sum, d) => sum + d.amount, 0);
   const totalTesting = nozzleRows.reduce(
     (sum, r) => sum + (r.testing || 0) * r.rate,
@@ -1145,12 +1244,13 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   const totalCollections =
     cash +
     cashDeposit +
-    upiTotal +
-    cardTotal +
-    petroCardTotal +
+    effectivePhonePeTotal +
+    effectiveCreditCardTotal +
+    effectivePetroCardTotal +
     qrTotal +
     creditTotal +
-    totalExpenses;
+    totalExpenses +
+    dynamicTotal;
   const mismatch = totalCollections - totalSalesLiability;
 
   // ── Validation ───────────────────────────────────────────────
@@ -1288,10 +1388,14 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     submittingRef.current = true;
     setIsSubmitting(true);
 
+    const hasPhonePeMachineTxs = otpMachineTrackingEnabled && phonePeTxTotal > 0;
+    const hasCreditMachineTxs = otpMachineTrackingEnabled && cardTxTotal > 0;
+    const hasPetroMachineTxs = otpMachineTrackingEnabled && petroTxTotal > 0;
+
     const cardSwipes = [];
     const settlementsList = [];
     if (shiftType === "B") {
-      if (phonePeDay > 0) {
+      if (!hasPhonePeMachineTxs && phonePeDay > 0) {
         cardSwipes.push({
           mode: "PhonePe Day",
           amount: phonePeDay,
@@ -1308,7 +1412,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           operationalShift: "B",
         });
       }
-      if (creditCardDay > 0) {
+      if (!hasCreditMachineTxs && creditCardDay > 0) {
         cardSwipes.push({
           mode: "PineLabs Card Day",
           amount: creditCardDay,
@@ -1325,7 +1429,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           operationalShift: "B",
         });
       }
-      if (petroCardDay > 0) {
+      if (!hasPetroMachineTxs && petroCardDay > 0) {
         cardSwipes.push({
           mode: "PetroCard Day",
           amount: petroCardDay,
@@ -1343,7 +1447,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         });
       }
     } else {
-      if (phonePeMorning > 0) {
+      if (!hasPhonePeMachineTxs && phonePeMorning > 0) {
         cardSwipes.push({
           mode: "PhonePe Morning",
           amount: phonePeMorning,
@@ -1360,7 +1464,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           operationalShift: "A",
         });
       }
-      if (phonePeNight > 0) {
+      if (!hasPhonePeMachineTxs && phonePeNight > 0) {
         cardSwipes.push({
           mode: "PhonePe Night",
           amount: phonePeNight,
@@ -1377,7 +1481,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           operationalShift: "A",
         });
       }
-      if (creditCardMorning > 0) {
+      if (!hasCreditMachineTxs && creditCardMorning > 0) {
         cardSwipes.push({
           mode: "PineLabs Card Morning",
           amount: creditCardMorning,
@@ -1394,7 +1498,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           operationalShift: "A",
         });
       }
-      if (creditCardNight > 0) {
+      if (!hasCreditMachineTxs && creditCardNight > 0) {
         cardSwipes.push({
           mode: "PineLabs Card Night",
           amount: creditCardNight,
@@ -1411,7 +1515,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           operationalShift: "A",
         });
       }
-      if (petroCardMorning > 0) {
+      if (!hasPetroMachineTxs && petroCardMorning > 0) {
         cardSwipes.push({
           mode: "PetroCard Morning",
           amount: petroCardMorning,
@@ -1428,7 +1532,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           operationalShift: "A",
         });
       }
-      if (petroCardNight > 0) {
+      if (!hasPetroMachineTxs && petroCardNight > 0) {
         cardSwipes.push({
           mode: "PetroCard Night",
           amount: petroCardNight,
@@ -1447,9 +1551,32 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       }
     }
 
+    if (machineTransactions.length > 0) {
+      machineTransactions.forEach((tx) => {
+        cardSwipes.push({
+          mode: `${tx.collectionTypeCode} (${tx.slot})`,
+          amount: tx.amount,
+          tid: tx.tid,
+          batch: tx.batch,
+          otp: tx.otp,
+        });
+      });
+    }
+
     const connectedPumps = profile?.ConnectedPumps && profile.ConnectedPumps.length > 0
       ? profile.ConnectedPumps
       : (profile?.ConnectedPump ? [profile.ConnectedPump] : []);
+
+    const dynamicItemsPayload = Object.entries(dynamicValues)
+      .map(([code, val]) => ({
+        collectionTypeCode: code,
+        amount: getTransactionsForType(code).length > 0 ? getMachineTotalForType(code) : (val.amount || 0),
+        tid: val.tid,
+        batch: val.batch,
+        slot: shiftType === "B" ? "Day" : "Morning",
+        otp: val.otp || "",
+      }))
+      .filter((item) => item.amount > 0);
 
     const draftData = {
       pumpId,
@@ -1462,9 +1589,9 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         ({ rowId: _r, isOpeningReadOnly, ...rest }) => rest,
       ),
       cash,
-      upi: upiTotal,
-      card: cardTotal,
-      petroCard: petroCardTotal,
+      upi: effectivePhonePeTotal,
+      card: effectiveCreditCardTotal,
+      petroCard: effectivePetroCardTotal,
       cashDeposit,
       others,
       credit: creditTotal,
@@ -1477,6 +1604,9 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       short: 0,
       excess: 0,
       cardSwipeDetails: cardSwipes,
+      machineTransactions,
+      dynamicItems: dynamicItemsPayload,
+      dynamicCollectionValues: dynamicValues,
       settlements: settlementsList,
       debtorEntries,
       personalDebtors: [],
@@ -1610,6 +1740,165 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       </div>
     );
   }
+
+  const renderOtpTransactionManager = (typeCode: string) => {
+    if (!otpMachineTrackingEnabled) return null;
+    const txs = getTransactionsForType(typeCode);
+    const mTotal = getMachineTotalForType(typeCode);
+    const isOpen = activeOtpModalType === typeCode;
+
+    return (
+      <div style={{ marginTop: "12px", borderTop: "1px dashed #334155", paddingTop: "10px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <button
+            type="button"
+            onClick={() => {
+              setActiveOtpModalType(isOpen ? null : typeCode);
+              setNewTxSlot(shiftType === "B" ? "Day" : "Morning");
+            }}
+            style={{
+              background: "transparent",
+              border: "1px solid rgba(56, 189, 248, 0.4)",
+              borderRadius: "6px",
+              padding: "5px 10px",
+              color: "#38bdf8",
+              fontSize: "0.8rem",
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              fontWeight: "500",
+            }}
+          >
+            <KeyRound size={14} />
+            <span>{isOpen ? "Hide OTP Transactions" : `Track OTP Transactions (${txs.length})`}</span>
+          </button>
+          {txs.length > 0 && (
+            <span style={{ fontSize: "0.85rem", fontWeight: "bold", color: "#38bdf8" }}>
+              Machine Total: ₹{mTotal.toFixed(2)}
+            </span>
+          )}
+        </div>
+
+        {isOpen && (
+          <div style={{ marginTop: "10px", padding: "12px", backgroundColor: "rgba(56, 189, 248, 0.05)", borderRadius: "8px", border: "1px solid rgba(56, 189, 248, 0.2)" }}>
+            <div style={{ fontSize: "0.8rem", fontWeight: "600", color: "#94a3b8", marginBottom: "8px" }}>
+              Record Single Transaction (Amount + OTP)
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 1fr", gap: "8px", marginBottom: "8px" }}>
+              <div className="field-group">
+                <label className="field-label">Amount (₹) *</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className="field-input"
+                  placeholder="0.00"
+                  value={newTxAmount}
+                  onChange={(e) => setNewTxAmount(e.target.value)}
+                />
+              </div>
+              <div className="field-group">
+                <label className="field-label">OTP Code *</label>
+                <input
+                  type="text"
+                  className="field-input"
+                  placeholder="e.g. 4921"
+                  value={newTxOtp}
+                  onChange={(e) => setNewTxOtp(e.target.value)}
+                />
+              </div>
+              <div className="field-group">
+                <label className="field-label">Slot</label>
+                <select
+                  className="field-input"
+                  value={newTxSlot}
+                  onChange={(e) => setNewTxSlot(e.target.value)}
+                >
+                  {shiftType === "B" ? (
+                    <option value="Day">Day</option>
+                  ) : (
+                    <>
+                      <option value="Morning">Morning</option>
+                      <option value="Night">Night</option>
+                    </>
+                  )}
+                  <option value="General">General</option>
+                </select>
+              </div>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 90px", gap: "8px", marginBottom: "8px" }}>
+              <div className="field-group">
+                <label className="field-label">TID (Optional)</label>
+                <input
+                  type="text"
+                  className="field-input"
+                  placeholder="TID"
+                  value={newTxTid}
+                  onChange={(e) => setNewTxTid(e.target.value)}
+                />
+              </div>
+              <div className="field-group">
+                <label className="field-label">Batch (Optional)</label>
+                <input
+                  type="text"
+                  className="field-input"
+                  placeholder="Batch"
+                  value={newTxBatch}
+                  onChange={(e) => setNewTxBatch(e.target.value)}
+                />
+              </div>
+              <div style={{ display: "flex", alignItems: "flex-end" }}>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  style={{ height: "38px", width: "100%", padding: "0", fontSize: "0.85rem" }}
+                  onClick={() => addMachineTransaction(typeCode)}
+                >
+                  <Plus size={16} /> Add
+                </button>
+              </div>
+            </div>
+
+            {txs.length > 0 && (
+              <table style={{ width: "100%", fontSize: "0.8rem", borderCollapse: "collapse", marginTop: "8px" }}>
+                <thead>
+                  <tr style={{ borderBottom: "1px solid #334155", color: "#94a3b8", textAlign: "left" }}>
+                    <th style={{ padding: "4px" }}>Slot</th>
+                    <th style={{ padding: "4px" }}>Amount</th>
+                    <th style={{ padding: "4px" }}>OTP</th>
+                    <th style={{ padding: "4px" }}>TID / Batch</th>
+                    <th style={{ padding: "4px", width: "30px" }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {txs.map((tx) => (
+                    <tr key={tx.id} style={{ borderBottom: "1px solid #1e293b" }}>
+                      <td style={{ padding: "6px 4px" }}>{tx.slot}</td>
+                      <td style={{ padding: "6px 4px", color: "#38bdf8", fontWeight: "bold" }}>₹{tx.amount.toFixed(2)}</td>
+                      <td style={{ padding: "6px 4px", fontWeight: "600" }}>{tx.otp || "—"}</td>
+                      <td style={{ padding: "6px 4px", color: "#64748b" }}>
+                        {tx.tid ? `TID:${tx.tid}` : ""} {tx.batch ? `B:${tx.batch}` : ""}
+                      </td>
+                      <td style={{ padding: "6px 4px" }}>
+                        <button
+                          type="button"
+                          style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: "1rem" }}
+                          onClick={() => removeMachineTransaction(tx.id)}
+                        >
+                          ✕
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="screen submit-screen">
@@ -2105,6 +2394,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                 </div>
               </>
             )}
+            {renderOtpTransactionManager("PETROCARD")}
           </div>
 
           {/* 2. Credit Card (Card / PineLabs Credit Card) */}
@@ -2247,6 +2537,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                 </div>
               </>
             )}
+            {renderOtpTransactionManager("CREDIT_CARD")}
           </div>
 
           {/* 3. PhonePe */}
@@ -2661,7 +2952,160 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                 </div>
               )}
             </div>
+            {renderOtpTransactionManager("PHONEPE")}
           </div>
+
+          {/* Dynamic Collection Types (Configured by Station/Developer) */}
+          {stationConfig.collectionTypes
+            .filter(
+              (c) =>
+                ![
+                  "PETROCARD",
+                  "CREDIT_CARD",
+                  "PHONEPE",
+                  "CASH_DEPOSIT",
+                  "OTHERS",
+                ].includes(c.code.toUpperCase()),
+            )
+            .filter((c) => {
+              if (shiftType === "B") return c.enableDay !== false;
+              return c.enableMorning !== false || (splitMorningNightEnabled && c.enableNight !== false);
+            })
+            .map((type) => {
+              const val = dynamicValues[type.code] || {
+                amount: 0,
+                tid: "",
+                batch: "",
+                otp: "",
+              };
+              const txs = getTransactionsForType(type.code);
+              const mTotal = getMachineTotalForType(type.code);
+              const isDrivenByMachine =
+                otpMachineTrackingEnabled && txs.length > 0;
+              const displayAmt = isDrivenByMachine ? mTotal : val.amount;
+
+              return (
+                <div
+                  key={type.code}
+                  className="nozzle-card"
+                  style={{ marginBottom: "16px", padding: "16px" }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      marginBottom: "12px",
+                      borderBottom: "1px solid #334155",
+                      paddingBottom: "6px",
+                    }}
+                  >
+                    <h3
+                      style={{
+                        fontSize: "1rem",
+                        fontWeight: "bold",
+                        margin: 0,
+                      }}
+                    >
+                      {type.displayName}
+                    </h3>
+                    <span
+                      style={{
+                        fontSize: "0.75rem",
+                        backgroundColor: "#334155",
+                        color: "#94a3b8",
+                        padding: "2px 8px",
+                        borderRadius: "4px",
+                      }}
+                    >
+                      {type.category}
+                    </span>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: type.hasTidBatch
+                        ? "1.2fr 1fr 1fr"
+                        : "1fr",
+                      gap: "8px",
+                    }}
+                  >
+                    <div className="field-group">
+                      <label className="field-label">Amount (₹)</label>
+                      <input
+                        type="number"
+                        className="field-input"
+                        step="0.01"
+                        min="0"
+                        placeholder="0.00"
+                        value={displayAmt || ""}
+                        readOnly={isDrivenByMachine}
+                        style={
+                          isDrivenByMachine
+                            ? {
+                                backgroundColor: "rgba(56, 189, 248, 0.1)",
+                                color: "#38bdf8",
+                                fontWeight: "bold",
+                              }
+                            : {}
+                        }
+                        onChange={(e) => {
+                          const newAmt = parseFloat(e.target.value) || 0;
+                          setDynamicValues((prev) => ({
+                            ...prev,
+                            [type.code]: { ...val, amount: newAmt },
+                          }));
+                        }}
+                      />
+                    </div>
+                    {type.hasTidBatch && (
+                      <>
+                        <div className="field-group">
+                          <label className="field-label">TID</label>
+                          <input
+                            type="text"
+                            className="field-input"
+                            placeholder="TID"
+                            value={val.tid}
+                            onChange={(e) =>
+                              setDynamicValues((prev) => ({
+                                ...prev,
+                                [type.code]: {
+                                  ...val,
+                                  tid: e.target.value,
+                                },
+                              }))
+                            }
+                          />
+                        </div>
+                        <div className="field-group">
+                          <label className="field-label">Batch</label>
+                          <input
+                            type="text"
+                            className="field-input"
+                            placeholder="Batch"
+                            value={val.batch}
+                            onChange={(e) =>
+                              setDynamicValues((prev) => ({
+                                ...prev,
+                                [type.code]: {
+                                  ...val,
+                                  batch: e.target.value,
+                                },
+                              }))
+                            }
+                          />
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {type.hasTidBatch &&
+                    renderOtpTransactionManager(type.code)}
+                </div>
+              );
+            })}
 
           {/* 4. Cash Deposit (Cash 1) */}
           <div
@@ -2679,18 +3123,70 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
             >
               Cash Deposit (Cash 1)
             </h3>
-            <div className="field-group" style={{ marginBottom: "8px" }}>
-              <label className="field-label">Total Cash 1 Deposit Amount (₹)</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                className="field-input"
-                placeholder="Enter Cash 1 Amount (₹)"
-                value={cash1Amount || ""}
-                onChange={(e) => setCash1Amount(Math.max(0, parseFloat(e.target.value) || 0))}
-              />
-            </div>
+            {cashDenominationsEnabled ? (
+              <div style={{ marginBottom: "8px" }}>
+                <div style={{ fontSize: "0.85rem", color: "#94a3b8", marginBottom: "8px" }}>
+                  Enter note count for Cash 1 deposit (₹500, ₹200, ₹100):
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px" }}>
+                  <div className="field-group">
+                    <label className="field-label">₹500 Notes</label>
+                    <input
+                      type="number"
+                      min="0"
+                      className="field-input"
+                      placeholder="Count"
+                      value={cash1Denom500 || ""}
+                      onChange={(e) => setCash1Denom500(Math.max(0, parseInt(e.target.value) || 0))}
+                    />
+                    <span style={{ fontSize: "0.75rem", color: "#64748b", marginTop: "2px" }}>
+                      = ₹{(cash1Denom500 * 500).toLocaleString("en-IN")}
+                    </span>
+                  </div>
+                  <div className="field-group">
+                    <label className="field-label">₹200 Notes</label>
+                    <input
+                      type="number"
+                      min="0"
+                      className="field-input"
+                      placeholder="Count"
+                      value={cash1Denom200 || ""}
+                      onChange={(e) => setCash1Denom200(Math.max(0, parseInt(e.target.value) || 0))}
+                    />
+                    <span style={{ fontSize: "0.75rem", color: "#64748b", marginTop: "2px" }}>
+                      = ₹{(cash1Denom200 * 200).toLocaleString("en-IN")}
+                    </span>
+                  </div>
+                  <div className="field-group">
+                    <label className="field-label">₹100 Notes</label>
+                    <input
+                      type="number"
+                      min="0"
+                      className="field-input"
+                      placeholder="Count"
+                      value={cash1Denom100 || ""}
+                      onChange={(e) => setCash1Denom100(Math.max(0, parseInt(e.target.value) || 0))}
+                    />
+                    <span style={{ fontSize: "0.75rem", color: "#64748b", marginTop: "2px" }}>
+                      = ₹{(cash1Denom100 * 100).toLocaleString("en-IN")}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="field-group" style={{ marginBottom: "8px" }}>
+                <label className="field-label">Total Cash 1 Deposit Amount (₹)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className="field-input"
+                  placeholder="Enter Cash 1 Amount (₹)"
+                  value={cash1Amount || ""}
+                  onChange={(e) => setCash1Amount(Math.max(0, parseFloat(e.target.value) || 0))}
+                />
+              </div>
+            )}
             <div
               style={{
                 display: "flex",
@@ -3632,6 +4128,17 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                 <span>
                   ₹
                   {grandProductSales.toLocaleString("en-IN", {
+                    minimumFractionDigits: 2,
+                  })}
+                </span>
+              </div>
+            )}
+            {dynamicTotal > 0 && (
+              <div className="mismatch-row">
+                <span>Dynamic Collections</span>
+                <span style={{ color: "#38bdf8" }}>
+                  ₹
+                  {dynamicTotal.toLocaleString("en-IN", {
                     minimumFractionDigits: 2,
                   })}
                 </span>

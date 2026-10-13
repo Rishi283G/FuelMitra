@@ -19,6 +19,7 @@ interface HistoryEntry {
   ApprovedAt?: string;
   Metadata?: {
     connectedPumpId?: number | null;
+    connectedPumpIds?: number[] | null;
   } | null;
 }
 

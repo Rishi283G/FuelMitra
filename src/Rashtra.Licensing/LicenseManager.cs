@@ -15,7 +15,20 @@ namespace Rashtra.Licensing
 
     public class LicenseManager
     {
-        public static bool BypassActivation = true;
+        // Security Note: License keys are derived using SHA-256 with SecretSalt. Because this client is an
+        // offline desktop application, SecretSalt is embedded in the binary. This compact 16-20 character format
+        // is retained to maintain backward compatibility with all existing issued customer licenses and manual entry.
+        // It provides protection against accidental tampering and casual misuse; true cryptographic asymmetry would
+        // require distributing large signature files/tokens rather than compact alphanumeric keys.
+#if DEBUG
+        public static bool BypassActivation { get; set; } = false;
+#else
+        public static bool BypassActivation
+        {
+            get => false;
+            set { /* Enforce no-op in Release builds to prevent accidental bypass */ }
+        }
+#endif
 
         private const string SecretSalt = "RashtraTechnologiesLicensingSalt_2026";
         private const string AesSecretKey = "R4shtr4_T3chn0l0gi3s_K3y_3ncr1pt"; // 32 characters for AES-256
@@ -23,12 +36,29 @@ namespace Rashtra.Licensing
 
         private readonly string _productCode;
         private readonly string _licenseFilePath;
+        private readonly Func<DateTime> _clock;
+        private readonly Func<HardwareComponents> _hardwareProvider;
+        private readonly Func<string> _deviceIdProvider;
 
         public string ProductCode => _productCode;
 
         public LicenseManager(string productCode, string folderName)
+            : this(productCode, folderName, null, null, null)
+        {
+        }
+
+        public LicenseManager(
+            string productCode,
+            string folderName,
+            Func<DateTime>? clock = null,
+            Func<HardwareComponents>? hardwareProvider = null,
+            Func<string>? deviceIdProvider = null)
         {
             _productCode = productCode;
+            _clock = clock ?? (() => DateTime.Now);
+            _hardwareProvider = hardwareProvider ?? DeviceIdentifier.GetComponents;
+            _deviceIdProvider = deviceIdProvider ?? DeviceIdentifier.GetDeviceId;
+
             var directory = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "RashtraTechnologies",
@@ -120,13 +150,14 @@ namespace Rashtra.Licensing
         /// </summary>
         public bool ActivateLicense(string customerName, string businessName, string mobileNumber, string key)
         {
-            var deviceId = DeviceIdentifier.GetDeviceId();
+            var deviceId = _deviceIdProvider();
             if (!VerifyKey(customerName, deviceId, key))
             {
                 return false;
             }
 
-            var hw = DeviceIdentifier.GetComponents();
+            var hw = _hardwareProvider();
+            var now = _clock();
             var license = new LicenseData
             {
                 ProductName = _productCode,
@@ -136,7 +167,8 @@ namespace Rashtra.Licensing
                 DeviceId = deviceId,
                 LicenseKey = key.Trim().ToUpper(),
                 LicenseType = "Lifetime", // Default
-                ActivationDate = DateTime.Now,
+                ActivationDate = now,
+                LastRunDate = now,
                 SavedComputerName = hw.ComputerName,
                 SavedMoboSerial = hw.MoboSerial,
                 SavedCpuId = hw.CpuId,
@@ -144,7 +176,7 @@ namespace Rashtra.Licensing
                 SavedMachineGuid = hw.MachineGuid
             };
 
-            // Parse suffix if present (e.g. FPL-T-XXXX-XXXX-XXXX)
+            // Parse suffix if present (e.g. FPL-T-XXXX-XXXX-XXXX or PSC-D-20261017-XXXX-XXXX-XXXX)
             var parts = key.Trim().Split('-');
             string suffix = string.Empty;
             DateTime? expiryDate = null;
@@ -159,7 +191,8 @@ namespace Rashtra.Licensing
                     {
                         if (DateTime.TryParseExact(parts[2], "yyyyMMdd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var parsedDate))
                         {
-                            expiryDate = parsedDate;
+                            // Defined end-of-day boundary for the specified date (valid through 23:59:59.999)
+                            expiryDate = parsedDate.Date.AddDays(1).AddTicks(-1);
                         }
                     }
                 }
@@ -173,17 +206,18 @@ namespace Rashtra.Licensing
             if (suffix == "T")
             {
                 license.LicenseType = "Trial";
-                license.ExpiryDate = expiryDate ?? DateTime.Now.AddDays(15);
+                license.ExpiryDate = expiryDate ?? now.Date.AddDays(15).AddDays(1).AddTicks(-1);
             }
             else if (suffix == "A")
             {
                 license.LicenseType = "Annual";
-                license.ExpiryDate = expiryDate ?? DateTime.Now.AddYears(1);
+                license.ExpiryDate = expiryDate ?? now.Date.AddYears(1).AddDays(1).AddTicks(-1);
             }
             else if (suffix == "D")
             {
                 license.LicenseType = "Demo";
-                license.ExpiryDate = expiryDate ?? DateTime.Now.AddDays(7);
+                // 5-day demo fallback (Day 1 through Day 5 end-of-day)
+                license.ExpiryDate = expiryDate ?? now.Date.AddDays(4).AddDays(1).AddTicks(-1);
             }
 
             try
@@ -239,7 +273,7 @@ namespace Rashtra.Licensing
                 }
 
                 // 2. Verify Hardware Matching with Tolerance (at least 3 of 5 components must match)
-                var currentHw = DeviceIdentifier.GetComponents();
+                var currentHw = _hardwareProvider();
                 int matches = 0;
                 if (string.Equals(currentHw.ComputerName, license.SavedComputerName, StringComparison.OrdinalIgnoreCase)) matches++;
                 if (string.Equals(currentHw.MoboSerial, license.SavedMoboSerial, StringComparison.OrdinalIgnoreCase)) matches++;
@@ -255,13 +289,42 @@ namespace Rashtra.Licensing
                     return result;
                 }
 
-                // 3. Expiry Checks
-                if (license.ExpiryDate.HasValue && DateTime.Now > license.ExpiryDate.Value)
+                var now = _clock();
+
+                // 3. Best-effort clock rollback detection
+                // If LastRunDate is present and current time is rolled back by more than 24 hours, flag tampering.
+                // Tolerates minor clock corrections (up to 24h) and skips if LastRunDate was null (legacy license compatibility).
+                if (license.LastRunDate.HasValue && now < license.LastRunDate.Value.AddHours(-24))
+                {
+                    if (BypassActivation) return GetBypassResult();
+                    result.IsValid = false;
+                    result.ErrorMessage = "System clock rollback detected. Please restore the system clock or reactivate.";
+                    return result;
+                }
+
+                // 4. Expiry Checks
+                if (license.ExpiryDate.HasValue && now > license.ExpiryDate.Value)
                 {
                     if (BypassActivation) return GetBypassResult();
                     result.IsValid = false;
                     result.ErrorMessage = $"License Expired on {license.ExpiryDate.Value:dd-MMM-yyyy}. Please renew.";
                     return result;
+                }
+
+                // Update LastRunDate on successful validation if clock progressed
+                if (!license.LastRunDate.HasValue || now > license.LastRunDate.Value)
+                {
+                    try
+                    {
+                        license.LastRunDate = now;
+                        var updatedJson = JsonConvert.SerializeObject(license);
+                        var reEncrypted = Encrypt(updatedJson);
+                        File.WriteAllText(_licenseFilePath, reEncrypted);
+                    }
+                    catch
+                    {
+                        // Non-fatal: if persisting LastRunDate fails, validation still succeeds
+                    }
                 }
 
                 result.IsValid = true;
@@ -278,6 +341,7 @@ namespace Rashtra.Licensing
 
         private LicenseValidationResult GetBypassResult()
         {
+            var now = _clock();
             return new LicenseValidationResult
             {
                 IsValid = true,
@@ -287,10 +351,11 @@ namespace Rashtra.Licensing
                     CustomerName = "Testing Bypass",
                     BusinessName = "Testing/Development",
                     MobileNumber = "0000000000",
-                    DeviceId = DeviceIdentifier.GetDeviceId(),
+                    DeviceId = _deviceIdProvider(),
                     LicenseKey = _productCode + "-TEST-TEST-TEST",
                     LicenseType = "Lifetime",
-                    ActivationDate = DateTime.Now,
+                    ActivationDate = now,
+                    LastRunDate = now,
                     ExpiryDate = null
                 }
             };

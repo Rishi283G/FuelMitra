@@ -32,11 +32,13 @@ public partial class ConnectedPumpOption : ObservableObject
     public string DisplayName => $"Pump {PumpId}";
 }
 
-public partial class DsmManagementViewModel : ObservableObject
+public partial class DsmManagementViewModel : ObservableObject, IDisposable
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly DsmAuthAdminService _authAdminService;
     private readonly ILogger _logger = Log.ForContext<DsmManagementViewModel>();
+    private readonly Action _profileChangedHandler;
+    private bool _disposed;
 
     // DSM Accounts
     public ObservableCollection<DsmUser> DsmUsers { get; } = new();
@@ -81,6 +83,20 @@ public partial class DsmManagementViewModel : ObservableObject
         _supabaseDsmService = _serviceProvider.GetRequiredService<SupabaseDsmService>();
 
         RefreshPumpAndFuelOptions();
+
+        _profileChangedHandler = () =>
+        {
+            var dispatcher = Application.Current?.Dispatcher;
+            if (dispatcher != null && !dispatcher.CheckAccess())
+            {
+                dispatcher.BeginInvoke(async () => await LoadDataAsync());
+            }
+            else
+            {
+                _ = LoadDataAsync();
+            }
+        };
+        FuelPro.Core.Services.DsmEntryService.DsmProfileChanged += _profileChangedHandler;
 
         _ = LoadDataAsync();
         _ = LoadAllNozzleConfigsAsync();
@@ -156,7 +172,7 @@ public partial class DsmManagementViewModel : ObservableObject
             using var context = _serviceProvider.GetRequiredService<FuelProDbContext>();
 
             // Load DsmUsers
-            var users = await context.DsmUsers.OrderBy(u => u.FullName).ToListAsync();
+            var users = await context.DsmUsers.AsNoTracking().OrderBy(u => u.FullName).ToListAsync();
             DsmUsers.Clear();
             ActiveDsmOptions.Clear();
             foreach (var u in users)
@@ -167,6 +183,7 @@ public partial class DsmManagementViewModel : ObservableObject
 
             // Load Assignments
             var query = context.DsmPumpAssignments
+                .AsNoTracking()
                 .Include(a => a.DsmUser)
                 .AsQueryable();
 
@@ -715,6 +732,17 @@ public partial class DsmManagementViewModel : ObservableObject
         {
             _logger.Error(ex, "Failed to save nozzle config for Pump {PumpId}", NozzleConfigPumpId);
             NozzleConfigStatusMessage = $"❌ Error: {ex.Message}";
+        }
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        if (_profileChangedHandler != null)
+        {
+            FuelPro.Core.Services.DsmEntryService.DsmProfileChanged -= _profileChangedHandler;
         }
     }
 }

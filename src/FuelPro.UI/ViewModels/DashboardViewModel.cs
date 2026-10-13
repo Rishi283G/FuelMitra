@@ -340,7 +340,7 @@ public partial class DashboardViewModel : ObservableObject
                         Others = (decimal)(entry.PaymentCollection?.Others ?? 0),
                         CashDeposit = (decimal)(cash1 > 0 ? cash1 : (entry.PaymentCollection?.CashDeposit ?? 0)),
                         PhysicalCash = (decimal)cash2,
-                        DynamicPayments = (decimal)(entry.PaymentCollection?.Items?.Sum(i => i.Amount) ?? 0)
+                        DynamicPayments = (decimal)(entry.PaymentCollection?.DynamicItemsTotal ?? 0)
                     },
                     DebitEntries = entry.DebitEntries.Select(d => new DebitEntryDto { Amount = (decimal)d.Amount }).ToList(),
                     TestingEntries = entry.TestingEntries.Select(t => new TestingEntryDto
@@ -495,7 +495,7 @@ public partial class DashboardViewModel : ObservableObject
                                           + (entry.PaymentCollection?.PetroCardNight ?? 0)),
                     CashDeposit = (decimal)(cash1 + (entry.PaymentCollection?.CashDeposit ?? 0)),
                     PhysicalCash = (decimal)cash2,
-                    DynamicPayments = (decimal)(entry.PaymentCollection?.Items?.Sum(i => i.Amount) ?? 0)
+                    DynamicPayments = (decimal)(entry.PaymentCollection?.DynamicItemsTotal ?? 0)
                 },
                 DebitEntries = entry.DebitEntries.Select(d => new DebitEntryDto { Amount = (decimal)d.Amount }).ToList(),
                 TestingEntries = entry.TestingEntries.Select(t => new TestingEntryDto

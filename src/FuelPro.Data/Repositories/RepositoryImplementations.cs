@@ -838,7 +838,8 @@ public class PaymentRepository : IPaymentRepository
                         i.Amount,
                         i.Tid,
                         i.Batch,
-                        i.Slot
+                        i.Slot,
+                        i.Otp
                     }));
                     existing.DynamicItemsJson = json;
                     payment.DynamicItemsJson = json;
@@ -873,7 +874,8 @@ public class PaymentRepository : IPaymentRepository
                         i.Amount,
                         i.Tid,
                         i.Batch,
-                        i.Slot
+                        i.Slot,
+                        i.Otp
                     }));
                 }
                 _context.PaymentCollections.Add(payment);
@@ -1397,7 +1399,7 @@ public class DsmProfileRepository : IDsmProfileRepository
     {
         try
         {
-            var profiles = await _context.DsmProfiles.OrderBy(p => p.DsmName).ToListAsync();
+            var profiles = await _context.DsmProfiles.AsNoTracking().OrderBy(p => p.DsmName).ToListAsync();
             return Result<List<DsmProfile>>.Ok(profiles);
         }
         catch (Exception ex)
@@ -1430,12 +1432,21 @@ public class DsmProfileRepository : IDsmProfileRepository
     {
         try
         {
+            if (string.IsNullOrWhiteSpace(profile.DsmName))
+            {
+                return Result.Fail("DSM name is required.");
+            }
+
             var nameConflict = await _context.DsmProfiles
                 .AnyAsync(p => p.DsmProfileId != profile.DsmProfileId && p.DsmName.ToLower() == profile.DsmName.ToLower());
             if (nameConflict)
             {
                 return Result.Fail("A DSM profile with this name already exists.");
             }
+
+            var existing = await _context.DsmProfiles.AsNoTracking().FirstOrDefaultAsync(p => p.DsmProfileId == profile.DsmProfileId);
+            string? oldName = existing?.DsmName?.Trim();
+            string newName = profile.DsmName.Trim();
 
             var tracked = _context.DsmProfiles.Local.FirstOrDefault(p => p.DsmProfileId == profile.DsmProfileId);
             if (tracked != null)
@@ -1446,6 +1457,42 @@ public class DsmProfileRepository : IDsmProfileRepository
             {
                 _context.DsmProfiles.Update(profile);
             }
+
+            // Propagate name change everywhere across the software if name changed
+            if (!string.IsNullOrWhiteSpace(oldName) && !string.Equals(oldName, newName, StringComparison.OrdinalIgnoreCase))
+            {
+                var users = await _context.DsmUsers.Where(u => u.FullName.ToLower() == oldName.ToLower()).ToListAsync();
+                foreach (var u in users) u.FullName = newName;
+
+                var debtors = await _context.DsmPersonalDebtors.Where(d => d.DsmName.ToLower() == oldName.ToLower()).ToListAsync();
+                foreach (var d in debtors) d.DsmName = newName;
+
+                var balances = await _context.OpeningBalances
+                    .Where(b => (b.EntityType == "DsmLoss" || b.EntityType == "DSM") &&
+                                b.EntityIdentifier.ToLower() == oldName.ToLower())
+                    .ToListAsync();
+                foreach (var b in balances)
+                {
+                    b.EntityIdentifier = newName;
+                }
+
+                var entries = await _context.DsmEntries.Where(e => e.DsmName.ToLower() == oldName.ToLower()).ToListAsync();
+                foreach (var e in entries) e.DsmName = newName;
+
+                var adjustments = await _context.DsmSalaryAdjustments.Where(a => a.DsmName.ToLower() == oldName.ToLower()).ToListAsync();
+                foreach (var a in adjustments) a.DsmName = newName;
+
+                var qrEntries = await _context.DsmQrPayments.Where(q => q.DsmName.ToLower() == oldName.ToLower() || q.TargetDsmName.ToLower() == oldName.ToLower()).ToListAsync();
+                foreach (var q in qrEntries)
+                {
+                    if (string.Equals(q.DsmName, oldName, StringComparison.OrdinalIgnoreCase)) q.DsmName = newName;
+                    if (string.Equals(q.TargetDsmName, oldName, StringComparison.OrdinalIgnoreCase)) q.TargetDsmName = newName;
+                }
+
+                var kpEntries = await _context.KhandharePetroleumEntries.Where(k => k.DsmName.ToLower() == oldName.ToLower()).ToListAsync();
+                foreach (var k in kpEntries) k.DsmName = newName;
+            }
+
             await _context.SaveChangesAsync();
             return Result.Ok();
         }

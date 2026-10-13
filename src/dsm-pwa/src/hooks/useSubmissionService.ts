@@ -53,6 +53,8 @@ export function useSubmissionService() {
 
       const metadataPayload = {
         cardSwipeDetails: draft.cardSwipeDetails || [],
+        machineTransactions: (draft as any).machineTransactions || [],
+        dynamicItems: (draft as any).dynamicItems || [],
         settlements: draft.settlements || [],
         debtorEntries: draft.debtorEntries || [],
         personalDebtors: draft.personalDebtors || [],

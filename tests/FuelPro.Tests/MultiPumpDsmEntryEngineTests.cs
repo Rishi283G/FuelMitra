@@ -1014,7 +1014,9 @@ public class MultiPumpDsmEntryEngineTests : IDisposable
         Assert.NotNull(report);
         Assert.Single(report.DsmSummaryRows);
         Assert.Equal(30000, report.TotalFuelAmount);
-        Assert.Equal(30000, report.GrandTotalSaleAmount);
+        // Testing (2000) is excluded from final fuel sales totals per approved business rule:
+        // GrandTotalSaleAmount = TotalFuelAmount (30000) - TotalTestingAmount (2000) = 28000
+        Assert.Equal(28000, report.GrandTotalSaleAmount);
         Assert.Equal(10000, report.Cash1.GrandTotal);
         Assert.Equal(5000, report.CreditorsTotal);
         Assert.Equal(3000, report.ExpensesTotal);

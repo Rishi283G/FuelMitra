@@ -70,7 +70,7 @@ public class ClientFeatureSettingsSelfHealingTests : IDisposable
     }
 
     [Fact]
-    public async Task A_EmptyLocalTable_AutoSeedsCanonical34Features()
+    public async Task A_EmptyLocalTable_AutoSeedsCanonical36Features()
     {
         using var sp = CreateServiceProvider();
         using var scope = sp.CreateScope();
@@ -84,7 +84,7 @@ public class ClientFeatureSettingsSelfHealingTests : IDisposable
 
         // Assert
         Assert.NotNull(features);
-        Assert.Equal(34, features.Count);
+        Assert.Equal(36, features.Count);
 
         var managerCount = features.Count(f => f.TargetRole == "Manager");
         var ownerCount = features.Count(f => f.TargetRole == "Owner");
@@ -92,11 +92,11 @@ public class ClientFeatureSettingsSelfHealingTests : IDisposable
 
         Assert.Equal(16, managerCount);
         Assert.Equal(15, ownerCount);
-        Assert.Equal(3, globalCount);
+        Assert.Equal(5, globalCount);
 
         // Verify DB persisted
         var dbCount = await db.AppFeatureSettings.CountAsync();
-        Assert.Equal(34, dbCount);
+        Assert.Equal(36, dbCount);
 
         // Verify Settings.AppFeatureSettingsJson was populated
         var setting = await db.Settings.FirstOrDefaultAsync();
@@ -159,7 +159,7 @@ public class ClientFeatureSettingsSelfHealingTests : IDisposable
         var features = await service.GetAllFeaturesAsync();
 
         // Assert
-        Assert.Equal(34, features.Count);
+        Assert.Equal(36, features.Count);
         var dbCard = features.First(f => f.FeatureKey == "Admin_CardSettlement");
         Assert.False(dbCard.IsEnabled, "Customized disabled state for Admin_CardSettlement must be preserved");
 
@@ -175,7 +175,7 @@ public class ClientFeatureSettingsSelfHealingTests : IDisposable
         var db = scope.ServiceProvider.GetRequiredService<FuelProDbContext>();
         await EnsureBaseSchemaAsync(db);
 
-        // Create cloud snapshot with 34 features where Admin_PettyCash is disabled and Owner_SalaryCalculation has custom name
+        // Create cloud snapshot with 36 features where Admin_PettyCash is disabled and Owner_SalaryCalculation has custom name
         var canonical = AppFeatureSetting.GetCanonicalDefaults(DateTime.Now);
         canonical.First(f => f.FeatureKey == "Admin_PettyCash").IsEnabled = false;
         canonical.First(f => f.FeatureKey == "Owner_SalaryCalculation").DisplayName = "Custom Payroll Name";
@@ -190,7 +190,7 @@ public class ClientFeatureSettingsSelfHealingTests : IDisposable
         var features = await service.GetAllFeaturesAsync();
 
         // Assert
-        Assert.Equal(34, features.Count);
+        Assert.Equal(36, features.Count);
         var petty = features.First(f => f.FeatureKey == "Admin_PettyCash");
         Assert.False(petty.IsEnabled, "State from valid JSON snapshot must be restored");
 
@@ -199,16 +199,16 @@ public class ClientFeatureSettingsSelfHealingTests : IDisposable
     }
 
     [Fact]
-    public async Task E_Historical32FeatureJson_RestoresAndBackfillsTo34()
+    public async Task E_Historical32FeatureJson_RestoresAndBackfillsTo36()
     {
         using var sp = CreateServiceProvider();
         using var scope = sp.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<FuelProDbContext>();
         await EnsureBaseSchemaAsync(db);
 
-        // Historical 32 features (without Operations_CrossDsmQr and Operations_PersonalLedger)
+        // Historical 32 features (without Operations_CrossDsmQr, Operations_PersonalLedger, Operations_CashDenominations, Operations_OtpMachineTracking)
         var historical32 = AppFeatureSetting.GetCanonicalDefaults(DateTime.Now)
-            .Where(f => f.FeatureKey != "Operations_CrossDsmQr" && f.FeatureKey != "Operations_PersonalLedger")
+            .Where(f => f.FeatureKey != "Operations_CrossDsmQr" && f.FeatureKey != "Operations_PersonalLedger" && f.FeatureKey != "Operations_CashDenominations" && f.FeatureKey != "Operations_OtpMachineTracking")
             .ToList();
 
         Assert.Equal(32, historical32.Count);
@@ -226,7 +226,7 @@ public class ClientFeatureSettingsSelfHealingTests : IDisposable
         var features = await service.GetAllFeaturesAsync();
 
         // Assert
-        Assert.Equal(34, features.Count);
+        Assert.Equal(36, features.Count);
 
         // Preserved customized state
         Assert.False(features.First(f => f.FeatureKey == "Admin_DayTotal").IsEnabled);
@@ -237,7 +237,7 @@ public class ClientFeatureSettingsSelfHealingTests : IDisposable
     }
 
     [Fact]
-    public async Task F_InvalidJson_FallsBackToCanonical34Defaults()
+    public async Task F_InvalidJson_FallsBackToCanonical36Defaults()
     {
         using var sp = CreateServiceProvider();
         using var scope = sp.CreateScope();
@@ -253,8 +253,8 @@ public class ClientFeatureSettingsSelfHealingTests : IDisposable
         // Act
         var features = await service.GetAllFeaturesAsync();
 
-        // Assert: falls back to canonical 34 defaults
-        Assert.Equal(34, features.Count);
+        // Assert: falls back to canonical 36 defaults
+        Assert.Equal(36, features.Count);
         Assert.Contains(features, f => f.FeatureKey == "Admin_DsmEntry");
     }
 
@@ -280,8 +280,8 @@ public class ClientFeatureSettingsSelfHealingTests : IDisposable
         // Act
         var features = await service.GetAllFeaturesAsync();
 
-        // Assert: duplicate payload rejected, falls back to 34 canonical defaults
-        Assert.Equal(34, features.Count);
+        // Assert: duplicate payload rejected, falls back to 36 canonical defaults
+        Assert.Equal(36, features.Count);
         Assert.Equal(1, features.Count(f => f.FeatureKey == "Admin_DsmEntry"));
     }
 
@@ -351,12 +351,12 @@ public class ClientFeatureSettingsSelfHealingTests : IDisposable
         await vm.LoadFeaturesAsync();
 
         // Assert
-        Assert.Equal(34, vm.FeatureSettings.Count);
-        Assert.Contains("Loaded 34 feature settings", vm.FeatureStatusMessage);
+        Assert.Equal(36, vm.FeatureSettings.Count);
+        Assert.Contains("Loaded 36 feature settings", vm.FeatureStatusMessage);
 
         // Filter: All
         vm.SelectedFeatureRoleFilter = "All";
-        Assert.Equal(34, vm.FilteredFeatureSettings.Count);
+        Assert.Equal(36, vm.FilteredFeatureSettings.Count);
 
         // Filter: Manager
         vm.SelectedFeatureRoleFilter = "Manager";
@@ -368,7 +368,7 @@ public class ClientFeatureSettingsSelfHealingTests : IDisposable
 
         // Filter: Global
         vm.SelectedFeatureRoleFilter = "Global";
-        Assert.Equal(3, vm.FilteredFeatureSettings.Count);
+        Assert.Equal(5, vm.FilteredFeatureSettings.Count);
     }
 
     [Fact]
@@ -389,13 +389,13 @@ public class ClientFeatureSettingsSelfHealingTests : IDisposable
 
         // Load features
         await vm.LoadFeaturesAsync();
-        Assert.Equal(34, vm.FeatureSettings.Count);
+        Assert.Equal(36, vm.FeatureSettings.Count);
 
         // Apply CurrentClient preset
         vm.ApplyClientPreset("CurrentClient");
 
-        // Assert: Count remains exactly 34
-        Assert.Equal(34, vm.FeatureSettings.Count);
+        // Assert: Count remains exactly 36
+        Assert.Equal(36, vm.FeatureSettings.Count);
 
         // Verify specific preset flags
         var ags = vm.FeatureSettings.First(f => f.FeatureKey == "Admin_AgsImport");
@@ -457,9 +457,9 @@ public class ClientFeatureSettingsSelfHealingTests : IDisposable
         Assert.NotNull(afterSetting);
         Assert.Equal(beforeSetting?.PumpStationName, afterSetting.PumpStationName);
 
-        // AppFeatureSettings = 34
+        // AppFeatureSettings = 36
         var afterFeaturesCount = await db.AppFeatureSettings.CountAsync();
-        Assert.Equal(34, afterFeaturesCount);
+        Assert.Equal(36, afterFeaturesCount);
 
         // Settings.AppFeatureSettingsJson is populated
         Assert.False(string.IsNullOrWhiteSpace(afterSetting.AppFeatureSettingsJson));
@@ -467,7 +467,7 @@ public class ClientFeatureSettingsSelfHealingTests : IDisposable
 
         // __EFMigrationsHistory contains the expected applied migration baseline
         var afterMigrations = (await db.Database.GetAppliedMigrationsAsync()).ToList();
-        Assert.Equal(15, afterMigrations.Count);
+        Assert.Equal(17, afterMigrations.Count);
         Assert.Contains("20260421082012_InitialCreate", afterMigrations);
         Assert.Contains("20260721090022_AddKhandharePetroleumEntries", afterMigrations);
 
@@ -480,13 +480,13 @@ public class ClientFeatureSettingsSelfHealingTests : IDisposable
 
         await vm.LoadFeaturesAsync();
 
-        // 34 rows visible
-        Assert.Equal(34, vm.FeatureSettings.Count);
-        Assert.Contains("Loaded 34 feature settings", vm.FeatureStatusMessage);
+        // 36 rows visible
+        Assert.Equal(36, vm.FeatureSettings.Count);
+        Assert.Contains("Loaded 36 feature settings", vm.FeatureStatusMessage);
 
-        // All filter shows 34
+        // All filter shows 36
         vm.SelectedFeatureRoleFilter = "All";
-        Assert.Equal(34, vm.FilteredFeatureSettings.Count);
+        Assert.Equal(36, vm.FilteredFeatureSettings.Count);
 
         // Manager filter shows 16
         vm.SelectedFeatureRoleFilter = "Manager";
@@ -496,13 +496,13 @@ public class ClientFeatureSettingsSelfHealingTests : IDisposable
         vm.SelectedFeatureRoleFilter = "Owner";
         Assert.Equal(15, vm.FilteredFeatureSettings.Count);
 
-        // Global filter shows 3
+        // Global filter shows 5
         vm.SelectedFeatureRoleFilter = "Global";
-        Assert.Equal(3, vm.FilteredFeatureSettings.Count);
+        Assert.Equal(5, vm.FilteredFeatureSettings.Count);
 
         // Current Client Preset operates normally
         vm.ApplyClientPreset("CurrentClient");
-        Assert.Equal(34, vm.FeatureSettings.Count);
+        Assert.Equal(36, vm.FeatureSettings.Count);
         Assert.False(vm.FeatureSettings.First(f => f.FeatureKey == "Admin_AgsImport").IsEnabled);
         Assert.False(vm.FeatureSettings.First(f => f.FeatureKey == "Owner_ProfitLoss").IsEnabled);
         Assert.False(vm.FeatureSettings.First(f => f.FeatureKey == "Owner_MismatchLedger").IsEnabled);

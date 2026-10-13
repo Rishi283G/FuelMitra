@@ -402,25 +402,195 @@ public class DebtorReconciliationSeparationTests
         // 1. Verify FinalCalculationViewModel.cs
         var fcvmPath = Path.Combine(solutionDir, "src", "FuelPro.UI", "ViewModels", "FinalCalculationViewModel.cs");
         var fcvmContent = File.ReadAllText(fcvmPath);
-        Assert.Contains("GrossSaleTotal = report.TotalFuelAmount;", fcvmContent);
+        Assert.Contains("GrossSaleTotal = report.GrandTotalSaleAmount;", fcvmContent);
         Assert.DoesNotContain("GrossSaleTotal = report.ExpectedCollection;", fcvmContent);
 
         // 2. Verify DayTotalViewModel.cs
         var dtvmPath = Path.Combine(solutionDir, "src", "FuelPro.UI", "ViewModels", "DayTotalViewModel.cs");
         var dtvmContent = File.ReadAllText(dtvmPath);
-        Assert.Contains("GrossDaySaleTotal = report.TotalFuelAmount;", dtvmContent);
+        Assert.Contains("GrossDaySaleTotal = report.GrandTotalSaleAmount;", dtvmContent);
         Assert.DoesNotContain("GrossDaySaleTotal = report.ExpectedCollection;", dtvmContent);
 
         // 3. Verify FinalCalculationPrintTemplate.html
         var htmlPath = Path.Combine(solutionDir, "src", "FuelPro.UI", "Printing", "FinalCalculationPrintTemplate.html");
         var htmlContent = File.ReadAllText(htmlPath);
-        Assert.Contains("var grossFuel = (d.dsrTotalFuelAmount !== undefined && d.dsrTotalFuelAmount !== null) ? d.dsrTotalFuelAmount : (d.totalFuelAmount || 0);", htmlContent);
+        Assert.Contains("var grossFuel = (d.grandTotalSaleAmount !== undefined && d.grandTotalSaleAmount !== null) ? d.grandTotalSaleAmount : ((d.dsrTotalFuelAmount !== undefined && d.dsrTotalFuelAmount !== null) ? d.dsrTotalFuelAmount : (d.totalFuelAmount || 0));", htmlContent);
         Assert.DoesNotContain("var grossFuel = d.expectedCollection || 0;", htmlContent);
 
         // 4. Verify ExcelExportService.cs
         var excelPath = Path.Combine(solutionDir, "src", "FuelPro.Core", "Services", "ExcelExportService.cs");
         var excelContent = File.ReadAllText(excelPath).Replace("\r\n", "\n");
-        Assert.Contains("worksheet.Cell(r, 1).Value = \"Gross Sale (B)\";\n                worksheet.Cell(r, 2).Value = report.TotalFuelAmount;", excelContent);
-        Assert.Contains("worksheet.Cell(r, 1).Value = \"Total Day Sale (B)\";\n                worksheet.Cell(r, 2).Value = report.TotalFuelAmount;", excelContent);
+        Assert.Contains("worksheet.Cell(r, 1).Value = \"Gross Sale (B)\";\n                worksheet.Cell(r, 2).Value = report.GrandTotalSaleAmount;", excelContent);
+        Assert.Contains("worksheet.Cell(r, 1).Value = \"Total Day Sale (B)\";\n                worksheet.Cell(r, 2).Value = report.GrandTotalSaleAmount;", excelContent);
+    }
+
+    [Fact]
+    public void DebtorRepayments_MultiplePaymentMethods_IncrementRespectiveCategories_ExactlyOnce()
+    {
+        var date = new DateTime(2026, 10, 1);
+        var entries = new List<DsmEntry>
+        {
+            new DsmEntry
+            {
+                DsmEntryId = 201,
+                DsmName = "Shift DSM",
+                PumpId = 1,
+                GrossSales = 20000m,
+                NozzleReadings = new List<NozzleReading>
+                {
+                    new NozzleReading { NozzleNumber = 1, FuelType = "HSD", SaleLitres = 200.0, Amount = 20000.0, Rate = 100 }
+                },
+                PaymentCollection = new PaymentCollection
+                {
+                    CashDeposit = 5000,
+                    PhonePeDay = 2000,
+                    CreditCardDay = 3000,
+                    PetroCardDay = 1000
+                },
+                CashDenominations = new List<CashDenomination>
+                {
+                    new CashDenomination { CashType = "Cash1", TotalAmount = 5000 },
+                    new CashDenomination { CashType = "Cash2", TotalAmount = 6000 }
+                },
+                DebitEntries = new List<DebitEntry>
+                {
+                    new DebitEntry { Amount = 3000, DebtorName = "Account Customer XYZ" }
+                },
+                Expenses = new List<Expense>(),
+                TestingEntries = new List<TestingEntry>()
+            }
+        };
+
+        var repayments = new List<CreditorRepayment>
+        {
+            new CreditorRepayment { Amount = 500, PaymentMode = "Cash", ShiftNumber = "B", RepaymentDate = date },
+            new CreditorRepayment { Amount = 1000, PaymentMode = "PhonePe", ShiftNumber = "B", RepaymentDate = date },
+            new CreditorRepayment { Amount = 2000, PaymentMode = "PineLabs Card", ShiftNumber = "B", RepaymentDate = date },
+            new CreditorRepayment { Amount = 1500, PaymentMode = "PetroCard", ShiftNumber = "B", RepaymentDate = date },
+            new CreditorRepayment { Amount = 4000, PaymentMode = "Bank Transfer", ShiftNumber = "B", RepaymentDate = date }
+        };
+
+        var report = _sut.CalculateShiftReport(
+            date: date,
+            shiftType: "B",
+            entries: entries,
+            shiftExpenses: new List<Expense>(),
+            otherCashList: new List<ShiftOtherCash>(),
+            repayments: repayments,
+            hsdRate: 100, msIRate: 100, msIIRate: 100, cngRate: 85,
+            todayTid: new BusinessDayTidSheet(), tomorrowTid: new BusinessDayTidSheet(),
+            stationName: "Mitali Service Station"
+        );
+
+        // 1. Pure nozzle fuel sale remains exactly 20,000 (never polluted by recoveries)
+        Assert.Equal(20000.0, report.TotalFuelAmount, precision: 2);
+
+        // 2. Original debtor credit sale (3,000) remains an uncollected receivable in Debtors
+        Assert.Equal(3000.0, report.CreditorsTotal, precision: 2);
+        var debtorsCat = report.CollectionBreakdown.First(c => c.Category == "Debtors");
+        Assert.Equal(3000.0, debtorsCat.Amount);
+
+        // 3. Cash In Hand increments by Cash repayment (6000 base + 500 recovery = 6500)
+        var cashInHand = report.CollectionBreakdown.First(c => c.Category == "Cash In Hand");
+        Assert.Equal(6500.0, cashInHand.Amount);
+        Assert.Equal(6000.0, cashInHand.BaseAmount);
+        Assert.Equal(500.0, cashInHand.RecoveryAmount);
+
+        // 4. PhonePe Direct increments by PhonePe repayment (2000 base + 1000 recovery = 3000)
+        var phonePe = report.CollectionBreakdown.First(c => c.Category.Contains("PhonePe"));
+        Assert.Equal(3000.0, phonePe.Amount);
+        Assert.Equal(2000.0, phonePe.BaseAmount);
+        Assert.Equal(1000.0, phonePe.RecoveryAmount);
+
+        // 5. PineLabs Card increments by Card repayment (3000 base + 2000 recovery = 5000)
+        var card = report.CollectionBreakdown.First(c => c.Category.Contains("PineLab") || c.Category.Contains("Card"));
+        Assert.Equal(5000.0, card.Amount);
+        Assert.Equal(3000.0, card.BaseAmount);
+        Assert.Equal(2000.0, card.RecoveryAmount);
+
+        // 6. PetroCard increments by PetroCard repayment (1000 base + 1500 recovery = 2500)
+        var petroCard = report.CollectionBreakdown.First(c => c.Category.Contains("PetroCard"));
+        Assert.Equal(2500.0, petroCard.Amount);
+        Assert.Equal(1000.0, petroCard.BaseAmount);
+        Assert.Equal(1500.0, petroCard.RecoveryAmount);
+
+        // 7. Cash Deposit MUST NOT have Bank Transfer added to it (BaseAmount 5000, RecoveryAmount 0)
+        var cashDeposit = report.CollectionBreakdown.First(c => c.Category.Contains("Cash Deposit"));
+        Assert.Equal(5000.0, cashDeposit.Amount);
+        Assert.Equal(5000.0, cashDeposit.BaseAmount);
+        Assert.Equal(0.0, cashDeposit.RecoveryAmount);
+
+        // 8. Bank Transfer recovery is distinctly represented as Informational row
+        var bankRecovery = report.CollectionBreakdown.First(c => c.Category.Contains("Bank / Cheque Recovery"));
+        Assert.Equal(4000.0, bankRecovery.Amount);
+        Assert.True(bankRecovery.IsInformational);
+
+        // 9. Total debtor repayments tracked in DTO
+        Assert.Equal(9000.0, report.DebtorRepaymentsTotal, precision: 2);
+    }
+
+    [Fact]
+    public void ShiftCRepayment_NightWindowClassification_MatchesShiftC_AndNeverShiftA()
+    {
+        var date = new DateTime(2026, 10, 1);
+        var entries = new List<DsmEntry>();
+
+        var nightRepaymentExplicit = new CreditorRepayment
+        {
+            Amount = 1200,
+            PaymentMode = "Cash",
+            ShiftNumber = "C",
+            RepaymentDate = date
+        };
+
+        var nightRepaymentString = new CreditorRepayment
+        {
+            Amount = 800,
+            PaymentMode = "Cash",
+            ShiftNumber = "Shift C",
+            RepaymentDate = date
+        };
+
+        var morningRepaymentExplicit = new CreditorRepayment
+        {
+            Amount = 500,
+            PaymentMode = "Cash",
+            ShiftNumber = "A",
+            RepaymentDate = date
+        };
+
+        var repayments = new List<CreditorRepayment> { nightRepaymentExplicit, nightRepaymentString, morningRepaymentExplicit };
+
+        // Calculate Shift C report
+        var shiftCReport = _sut.CalculateShiftReport(
+            date: date,
+            shiftType: "C",
+            entries: entries,
+            shiftExpenses: new List<Expense>(),
+            otherCashList: new List<ShiftOtherCash>(),
+            repayments: repayments,
+            hsdRate: 90, msIRate: 100, msIIRate: 100, cngRate: 85,
+            todayTid: new BusinessDayTidSheet(), tomorrowTid: new BusinessDayTidSheet(),
+            stationName: "Mitali Service Station"
+        );
+
+        // Both Shift C repayments belong to Shift C (1200 + 800 = 2000)
+        Assert.Equal(2000.0, shiftCReport.DebtorRepaymentsTotal, precision: 2);
+
+        // Calculate Shift A report with same repayments -> must only capture morningRepaymentExplicit (500), never Shift C!
+        var shiftAReport = _sut.CalculateShiftReport(
+            date: date,
+            shiftType: "A",
+            entries: entries,
+            shiftExpenses: new List<Expense>(),
+            otherCashList: new List<ShiftOtherCash>(),
+            repayments: repayments,
+            hsdRate: 90, msIRate: 100, msIIRate: 100, cngRate: 85,
+            todayTid: new BusinessDayTidSheet(), tomorrowTid: new BusinessDayTidSheet(),
+            stationName: "Mitali Service Station"
+        );
+
+        Assert.Equal(500.0, shiftAReport.DebtorRepaymentsTotal, precision: 2);
     }
 }
+

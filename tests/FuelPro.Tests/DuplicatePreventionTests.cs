@@ -762,6 +762,7 @@ public class DuplicatePreventionTests : IDisposable
 
         string tempTestDb = Path.Combine(_tempDir, "vaijunath_test_" + Guid.NewGuid().ToString("N") + ".db");
         File.Copy(cloneDbPath, tempTestDb);
+        App.EnsureLegacyDatabaseCompatibility(tempTestDb);
 
         var services = new ServiceCollection();
         services.AddDbContext<FuelProDbContext>(options => options.UseSqlite($"Data Source={tempTestDb}"), ServiceLifetime.Transient);
@@ -850,7 +851,7 @@ public class DuplicatePreventionTests : IDisposable
             int shiftId = shiftDbResult.Data!.ShiftId;
 
             var summariesResult = await dsmEntryService.GetShiftEntrySummariesAsync(shiftId);
-            Assert.True(summariesResult.Success);
+            Assert.True(summariesResult.Success, summariesResult.Error ?? "Summaries failed");
             var vaijunathSummary = summariesResult.Data!.First(s => s.DsmName.Contains("VAIJUNATH"));
 
             Assert.Equal(154037.0, vaijunathSummary.TotalPaymentIn, 2);

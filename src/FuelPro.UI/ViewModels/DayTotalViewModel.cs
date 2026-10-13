@@ -100,6 +100,8 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
     [ObservableProperty] private double _difference;
     [ObservableProperty] private bool _isBalanced;
     [ObservableProperty] private double _totalDsmShort;
+    [ObservableProperty] private double _oilDefSalesTotal;
+    public bool HasOilDefSales => OilDefSalesTotal > 0.005;
     [ObservableProperty] private ObservableCollection<DsmPersonalDebtorPrintDto> _personalDebtorRows = new();
     [ObservableProperty] private double _totalDsmLoss;
     [ObservableProperty] private ObservableCollection<CreditorRepayment> _debtorRepayments = new();
@@ -565,7 +567,9 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
             TotalTesting = TestingSummaryRows.Sum(t => t.Amount);
 
             ReconciliationTotalAmount = report.ActualCollection;
-            GrossDaySaleTotal = report.TotalFuelAmount;
+            GrossDaySaleTotal = report.GrandTotalSaleAmount;
+            OilDefSalesTotal = report.OilDefSalesTotal;
+            OnPropertyChanged(nameof(HasOilDefSales));
             TotalDsmShort = report.TotalDsmShort;
             PersonalDebtorRows = new ObservableCollection<DsmPersonalDebtorPrintDto>(report.PersonalDebtors ?? new());
             TotalDsmLoss = PersonalDebtorRows.Sum(p => p.Amount);
@@ -666,7 +670,8 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
         CreditorRows.Clear(); CreditorsTotal = 0;
         ExpenseRows.Clear(); ExpensesTotal = 0;
         
-        ReconciliationTotalAmount = GrossDaySaleTotal = Difference = TotalDsmShort = 0;
+        ReconciliationTotalAmount = GrossDaySaleTotal = Difference = TotalDsmShort = OilDefSalesTotal = 0;
+        OnPropertyChanged(nameof(HasOilDefSales));
         PersonalDebtorRows.Clear(); TotalDsmLoss = 0;
         IsBalanced = false;
         DebtorRepayments.Clear();

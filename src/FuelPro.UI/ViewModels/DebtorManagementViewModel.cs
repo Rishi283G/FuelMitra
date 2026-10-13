@@ -33,6 +33,7 @@ public class DebtorDisplayRow
 public class LedgerTransactionRow
 {
     public DateTime Date { get; set; }
+    public string Shift { get; set; } = "—";
     public string Description { get; set; } = string.Empty;
     public double Debit { get; set; }
     public double Credit { get; set; }
@@ -977,6 +978,7 @@ public partial class DebtorManagementViewModel : ObservableObject
                     return new LedgerTransactionRow
                     {
                         Date = x.Date.Date,
+                        Shift = x.Debit.DsmEntry?.Shift?.ShiftType ?? "—",
                         Description = $"Debt{detailsStr}",
                         Debit = x.Debit.Amount,
                         Credit = 0,
@@ -999,6 +1001,7 @@ public partial class DebtorManagementViewModel : ObservableObject
                     return new LedgerTransactionRow
                     {
                         Date = r.RepaymentDate.Date,
+                        Shift = !string.IsNullOrWhiteSpace(r.ShiftNumber) ? r.ShiftNumber : "—",
                         Description = $"Repayment ({r.PaymentMode}){(string.IsNullOrEmpty(r.ChequeNo) ? "" : $" [Ref: {r.ChequeNo}]")}",
                         Debit = 0,
                         Credit = r.Amount,
@@ -1026,6 +1029,7 @@ public partial class DebtorManagementViewModel : ObservableObject
             finalRows.Add(new LedgerTransactionRow
             {
                 Date = start,
+                Shift = "—",
                 Description = (historicalOpening > 0 && openingDebits == 0 && openingCredits == 0)
                     ? "Historical Opening Balance"
                     : "Opening Balance",
@@ -1093,6 +1097,7 @@ public partial class DebtorManagementViewModel : ObservableObject
             var printRows = LedgerTransactions.Select(t => new DebtorLedgerPrintRow
             {
                 Date = t.Date.ToString("dd-MMM-yyyy"),
+                Shift = t.Shift,
                 Description = t.Description,
                 Debit = t.Debit,
                 Credit = t.Credit,
@@ -1465,6 +1470,7 @@ public partial class DebtorManagementViewModel : ObservableObject
             var printRows = LedgerTransactions.Select(t => new DebtorLedgerPrintRow
             {
                 Date = t.Date.ToString("dd-MMM-yyyy"),
+                Shift = t.Shift,
                 Description = t.Description,
                 Debit = t.Debit,
                 Credit = t.Credit,
@@ -1530,6 +1536,7 @@ public partial class DebtorManagementViewModel : ObservableObject
             var printRows = LedgerTransactions.Select(t => new DebtorLedgerPrintRow
             {
                 Date = t.Date.ToString("dd-MMM-yyyy"),
+                Shift = t.Shift,
                 Description = t.Description,
                 Debit = t.Debit,
                 Credit = t.Credit,

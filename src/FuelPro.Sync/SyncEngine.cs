@@ -116,7 +116,10 @@ public class SyncEngine
         new TableSyncConfig("CreditorRepayments", Array.Empty<FkMapping>()),
         new TableSyncConfig("OilDefInventories", new[] { new FkMapping("ProductId", "ProductMasters") }),
         new TableSyncConfig("OilDefPurchases", new[] { new FkMapping("ProductId", "ProductMasters") }),
-        new TableSyncConfig("OilDefDailyLogs", new[] { new FkMapping("ProductId", "ProductMasters") }),
+        new TableSyncConfig("OilDefDailyLogs", new[] {
+            new FkMapping("ProductId", "ProductMasters"),
+            new FkMapping("ShiftId", "Shifts")
+        }),
         new TableSyncConfig("ShiftOtherCash", new[] { new FkMapping("ShiftId", "Shifts") }),
         new TableSyncConfig("ShiftFuelRates", new[] { new FkMapping("ShiftId", "Shifts") }),
         new TableSyncConfig("DsmEntries", new[] { new FkMapping("ShiftId", "Shifts") }),
@@ -165,10 +168,15 @@ public class SyncEngine
         PullTableOrder.ToDictionary(t => t.TableName, t => t.ForeignKeys);
 
     public SyncEngine(IServiceProvider serviceProvider)
+        : this(serviceProvider, new SupabaseHttpClient())
+    {
+    }
+
+    public SyncEngine(IServiceProvider serviceProvider, SupabaseHttpClient httpClient)
     {
         _serviceProvider = serviceProvider;
         _configService = serviceProvider.GetRequiredService<SyncConfigService>();
-        _httpClient = new SupabaseHttpClient();
+        _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
     }
 
     public void Start()
@@ -720,7 +728,8 @@ public class SyncEngine
                                         i.Amount,
                                         i.Tid,
                                         i.Batch,
-                                        i.Slot
+                                        i.Slot,
+                                        i.Otp
                                     }));
                                 }
                             }
@@ -1056,7 +1065,23 @@ public class SyncEngine
                             {
                                 continue;
                             }
-                            // If it doesn't exist locally, we proceed to import it (e.g. fresh database install or tests)
+
+                            // Check if this record was intentionally deleted locally on this machine
+                            bool isDeletedLocally = await context.SyncChangeLogs
+                                .AnyAsync(l => l.TableName == tableDef.TableName && l.RecordGuid == remoteGuid && l.Operation == "DELETE");
+
+                            if (isDeletedLocally)
+                            {
+                                continue; // Never resurrect records deleted on this machine
+                            }
+
+                            // For PumpMappings: if we already have local pump mappings configured, do not re-import obsolete cloud mappings from this machine
+                            if (tableDef.TableName == "PumpMappings" && await context.PumpMappings.AnyAsync())
+                            {
+                                _logger.Information("Pull: Skipping re-import of missing PumpMapping {SyncGuid} from this machine to prevent overwriting active layout.", remoteGuid);
+                                continue;
+                            }
+                            // If it doesn't exist locally and was not deleted, we proceed to import it (e.g. fresh database install or tests)
                         }
                     }
 
@@ -1067,6 +1092,36 @@ public class SyncEngine
                         if (!TryGetDictValue(dict, fk.FkProperty, out var fkVal) || fkVal == null) continue;
 
                         var parentGuid = fkVal.ToString()!;
+                        var isOilLogShiftReference = tableDef.TableName == "OilDefDailyLogs"
+                            && fk.FkProperty == "ShiftId"
+                            && fk.ReferencedTable == "Shifts";
+
+                        // Oil-log shift references must be verified against this station remotely,
+                        // even when an old local SyncIdMapping exists.
+                        if (isOilLogShiftReference)
+                        {
+                            if (!Guid.TryParse(parentGuid, out _))
+                            {
+                                _logger.Warning("Pull: OilDefDailyLogs ShiftId is not a remote GUID; skipping record {Guid}.", remoteGuid);
+                                fkFailed = true;
+                                break;
+                            }
+
+                            var resolvedShiftId = await FetchAndImportMissingParentAsync(
+                                context, guidToLocal, fk.ReferencedTable, parentGuid, settings);
+                            if (!resolvedShiftId.HasValue)
+                            {
+                                _logger.Warning(
+                                    "Pull: OilDefDailyLogs ShiftId {ShiftGuid} is missing or not associated with station {StationId}; skipping record {Guid}.",
+                                    parentGuid, settings.StationId, remoteGuid);
+                                fkFailed = true;
+                                break;
+                            }
+
+                            dict[fk.FkProperty] = resolvedShiftId.Value;
+                            continue;
+                        }
+
                         // Check if it looks like a GUID (not a plain integer — backward compat)
                         if (Guid.TryParse(parentGuid, out _))
                         {
@@ -1557,6 +1612,7 @@ public class SyncEngine
                         else if (tableDef.TableName == "OilDefDailyLogs")
                         {
                             dict.TryGetValue("ProductId", out var prodIdObj);
+                            dict.TryGetValue("ShiftId", out var shiftIdObj);
                             dict.TryGetValue("LogDate", out var logDateObj);
                             dict.TryGetValue("AdjustmentQuantity", out var adjQtyObj);
                             dict.TryGetValue("AdjustmentType", out var adjTypeObj);
@@ -1564,6 +1620,7 @@ public class SyncEngine
                             dict.TryGetValue("AddedQuantity", out var addedQtyObj);
                             dict.TryGetValue("Remarks", out var remObj);
                             int? productId = prodIdObj != null ? Convert.ToInt32(prodIdObj) : null;
+                            int? shiftId = shiftIdObj != null ? Convert.ToInt32(shiftIdObj) : null;
                             DateTime? logDate = logDateObj != null ? Convert.ToDateTime(logDateObj) : null;
                             double adjQty = adjQtyObj != null ? Convert.ToDouble(adjQtyObj) : 0;
                             string adjType = adjTypeObj?.ToString()?.Trim() ?? "";
@@ -1577,7 +1634,7 @@ public class SyncEngine
                                 if (Math.Abs(adjQty) > 0.001)
                                 {
                                     // Stock adjustment: match by ProductId, date, AdjustmentQuantity, and AdjustmentType
-                                    matchedLocalEntity = context.Set<OilDefDailyLog>().Local
+                                    matchedLocalEntity = OilDefLogSyncMatcher.ForShift(context.Set<OilDefDailyLog>().Local.AsQueryable(), shiftId)
                                         .FirstOrDefault(l => l.ProductId == productId.Value && l.LogDate.Date == ld.Date
                                             && Math.Abs(l.AdjustmentQuantity - adjQty) < 0.01
                                             && string.Equals(l.AdjustmentType ?? "", adjType, StringComparison.OrdinalIgnoreCase)
@@ -1585,7 +1642,7 @@ public class SyncEngine
 
                                     if (matchedLocalEntity == null)
                                     {
-                                        matchedLocalEntity = await context.Set<OilDefDailyLog>()
+                                        matchedLocalEntity = await OilDefLogSyncMatcher.ForShift(context.Set<OilDefDailyLog>(), shiftId)
                                             .FirstOrDefaultAsync(l => l.ProductId == productId.Value && l.LogDate.Date == ld.Date
                                                 && Math.Abs(l.AdjustmentQuantity - adjQty) < 0.01
                                                 && ((l.AdjustmentType == null && adjType == "") || (l.AdjustmentType != null && l.AdjustmentType.ToLower() == adjType.ToLower())));
@@ -1594,13 +1651,13 @@ public class SyncEngine
                                 else if (soldQty > 0.001)
                                 {
                                     // Sales log: match by ProductId, date, SoldQuantity
-                                    matchedLocalEntity = context.Set<OilDefDailyLog>().Local
+                                    matchedLocalEntity = OilDefLogSyncMatcher.ForShift(context.Set<OilDefDailyLog>().Local.AsQueryable(), shiftId)
                                         .FirstOrDefault(l => l.ProductId == productId.Value && l.LogDate.Date == ld.Date
                                             && Math.Abs(l.SoldQuantity - soldQty) < 0.01 && Math.Abs(l.AdjustmentQuantity) < 0.001);
 
                                     if (matchedLocalEntity == null)
                                     {
-                                        matchedLocalEntity = await context.Set<OilDefDailyLog>()
+                                        matchedLocalEntity = await OilDefLogSyncMatcher.ForShift(context.Set<OilDefDailyLog>(), shiftId)
                                             .FirstOrDefaultAsync(l => l.ProductId == productId.Value && l.LogDate.Date == ld.Date
                                                 && Math.Abs(l.SoldQuantity - soldQty) < 0.01 && Math.Abs(l.AdjustmentQuantity) < 0.001);
                                     }
@@ -1608,13 +1665,13 @@ public class SyncEngine
                                 else if (addedQty > 0.001)
                                 {
                                     // Purchase log: match by ProductId, date, AddedQuantity
-                                    matchedLocalEntity = context.Set<OilDefDailyLog>().Local
+                                    matchedLocalEntity = OilDefLogSyncMatcher.ForShift(context.Set<OilDefDailyLog>().Local.AsQueryable(), shiftId)
                                         .FirstOrDefault(l => l.ProductId == productId.Value && l.LogDate.Date == ld.Date
                                             && Math.Abs(l.AddedQuantity - addedQty) < 0.01 && Math.Abs(l.AdjustmentQuantity) < 0.001);
 
                                     if (matchedLocalEntity == null)
                                     {
-                                        matchedLocalEntity = await context.Set<OilDefDailyLog>()
+                                        matchedLocalEntity = await OilDefLogSyncMatcher.ForShift(context.Set<OilDefDailyLog>(), shiftId)
                                             .FirstOrDefaultAsync(l => l.ProductId == productId.Value && l.LogDate.Date == ld.Date
                                                 && Math.Abs(l.AddedQuantity - addedQty) < 0.01 && Math.Abs(l.AdjustmentQuantity) < 0.001);
                                     }
@@ -1837,7 +1894,8 @@ public class SyncEngine
                                                 Amount = itm.Amount,
                                                 Tid = itm.Tid,
                                                 Batch = itm.Batch,
-                                                Slot = itm.Slot ?? "General"
+                                                Slot = itm.Slot ?? "General",
+                                                Otp = itm.Otp
                                             });
                                         }
                                     }
@@ -2107,6 +2165,25 @@ public class SyncEngine
                             {
                                 var existingTanks = await context.TankDefinitions.ToListAsync();
                                 var validNames = new HashSet<string>(distinctTanksFromMappings.Select(g => g.Key), StringComparer.OrdinalIgnoreCase);
+
+                                // Load tanks from Settings.TankDefinitionsJson to ensure custom tanks are not deleted
+                                var currentSettings = await context.Settings.FirstOrDefaultAsync();
+                                if (!string.IsNullOrWhiteSpace(currentSettings?.TankDefinitionsJson))
+                                {
+                                    try
+                                    {
+                                        var jsonTanks = JsonConvert.DeserializeObject<List<TankDefinition>>(currentSettings.TankDefinitionsJson);
+                                        if (jsonTanks != null)
+                                        {
+                                            foreach (var jt in jsonTanks)
+                                            {
+                                                if (!string.IsNullOrWhiteSpace(jt.TankName))
+                                                    validNames.Add(jt.TankName.Trim());
+                                            }
+                                        }
+                                    }
+                                    catch { }
+                                }
 
                                 foreach (var et in existingTanks)
                                 {
@@ -2798,17 +2875,82 @@ public class SyncEngine
             if (pkProp == null) return null;
 
             _logger.Information("On-demand pulling missing parent {ParentTable} with SyncGuid={Guid}...", parentTableName, parentGuid);
-            var response = await _httpClient.SendRequestAsync(HttpMethod.Get, $"{parentTableName}?SyncGuid=eq.{parentGuid}");
-            if (!response.IsSuccessStatusCode)
+            Dictionary<string, object?>? pDict;
+            if (parentTableName == "Shifts")
             {
-                return null;
+                pDict = await ShiftParentStationScope.FetchAsync(
+                    parentGuid,
+                    settings.StationId,
+                    async endpoint => await _httpClient.SendRequestAsync(HttpMethod.Get, endpoint));
+                if (pDict == null)
+                {
+                    _logger.Warning("Refusing to import Shift {Guid}: no unique remote row is confirmed for station {StationId}.", parentGuid, settings.StationId);
+                    return null;
+                }
+
+                var existingShiftMapping = await context.SyncIdMappings
+                    .FirstOrDefaultAsync(m => m.TableName == "Shifts" && m.RemoteGuid == parentGuid);
+                if (existingShiftMapping != null)
+                {
+                    var mappedShift = await context.Shifts.FindAsync(existingShiftMapping.LocalId);
+                    if (mappedShift == null ||
+                        !TryGetDictValue(pDict, "ShiftDate", out var mappedDateValue) || mappedDateValue == null ||
+                        !TryGetDictValue(pDict, "ShiftType", out var mappedTypeValue) || mappedTypeValue == null)
+                    {
+                        return null;
+                    }
+
+                    var remoteDate = Convert.ToDateTime(mappedDateValue).Date;
+                    var cycleService = new ShiftCycleService();
+                    var remoteType = cycleService.NormalizeShiftType(mappedTypeValue.ToString()!);
+                    var localType = cycleService.NormalizeShiftType(mappedShift.ShiftType);
+                    if (mappedShift.ShiftDate.Date != remoteDate ||
+                        !string.Equals(localType, remoteType, StringComparison.OrdinalIgnoreCase))
+                    {
+                        _logger.Warning("Refusing Shift mapping {Guid}: local shift does not match the station-scoped remote shift.", parentGuid);
+                        return null;
+                    }
+
+                    if (!guidToLocal.ContainsKey(parentTableName))
+                        guidToLocal[parentTableName] = new Dictionary<string, int>();
+                    guidToLocal[parentTableName][parentGuid] = existingShiftMapping.LocalId;
+                    return existingShiftMapping.LocalId;
+                }
+
+                if (guidToLocal.TryGetValue(parentTableName, out var knownShiftMap) &&
+                    knownShiftMap.TryGetValue(parentGuid, out var knownLocalShiftId))
+                {
+                    var mappedShift = await context.Shifts.FindAsync(knownLocalShiftId);
+                    if (mappedShift != null &&
+                        TryGetDictValue(pDict, "ShiftDate", out var knownDateValue) && knownDateValue != null &&
+                        TryGetDictValue(pDict, "ShiftType", out var knownTypeValue) && knownTypeValue != null)
+                    {
+                        var cycleService = new ShiftCycleService();
+                        if (mappedShift.ShiftDate.Date == Convert.ToDateTime(knownDateValue).Date &&
+                            string.Equals(
+                                cycleService.NormalizeShiftType(mappedShift.ShiftType),
+                                cycleService.NormalizeShiftType(knownTypeValue.ToString()!),
+                                StringComparison.OrdinalIgnoreCase))
+                        {
+                            return knownLocalShiftId;
+                        }
+                    }
+
+                    _logger.Warning("Refusing Shift mapping {Guid}: station-scoped remote row does not match the local shift.", parentGuid);
+                    return null;
+                }
             }
+            else
+            {
+                var response = await _httpClient.SendRequestAsync(HttpMethod.Get, $"{parentTableName}?SyncGuid=eq.{parentGuid}");
+                if (!response.IsSuccessStatusCode)
+                    return null;
 
-            var json = await response.Content.ReadAsStringAsync();
-            var records = JsonConvert.DeserializeObject<List<Dictionary<string, object>>>(json);
-            if (records == null || records.Count == 0) return null;
-
-            var pDict = records[0];
+                var json = await response.Content.ReadAsStringAsync();
+                var records = JsonConvert.DeserializeObject<List<Dictionary<string, object?>>>(json);
+                if (records == null || records.Count == 0) return null;
+                pDict = records[0];
+            }
 
             // Resolve grandparent FKs on the parent if needed
             if (FkConfigByTable.TryGetValue(parentTableName, out var grandParentFks))
@@ -2845,7 +2987,7 @@ public class SyncEngine
             {
                 if (prop.IsPrimaryKey()) continue;
 
-                if (pDict.TryGetValue(prop.Name, out var val))
+                if (TryGetDictValue(pDict, prop.Name, out var val))
                 {
                     if (val == null)
                     {

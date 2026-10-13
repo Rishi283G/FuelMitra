@@ -1606,12 +1606,17 @@ namespace FuelPro.Data.Migrations
                     b.Property<string>("Remarks")
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("ShiftId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<double>("SoldQuantity")
                         .HasColumnType("REAL");
 
                     b.HasKey("Id");
 
                     b.HasIndex("ProductId");
+
+                    b.HasIndex("ShiftId");
 
                     b.ToTable("OilDefDailyLogs");
                 });
@@ -2858,7 +2863,14 @@ namespace FuelPro.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("FuelPro.Core.Models.Shift", "Shift")
+                        .WithMany()
+                        .HasForeignKey("ShiftId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.Navigation("Product");
+
+                    b.Navigation("Shift");
                 });
 
             modelBuilder.Entity("FuelPro.Core.Models.OilDefInventory", b =>

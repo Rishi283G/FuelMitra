@@ -202,6 +202,7 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
           <thead>
             <tr>
               <th style="text-align:left;">Product</th>
+              <th style="text-align:center;">Shift</th>
               <th style="text-align:right;">Sold Units</th>
               <th style="text-align:right;">Amount (&#8377;)</th>
             </tr>
@@ -848,7 +849,7 @@ function renderData(){
     var totalL = (d.dsrTotalFuelLitres !== undefined && d.dsrTotalFuelLitres !== null) ? d.dsrTotalFuelLitres : (d.totalFuelLitres || 0);
     var totalA = (d.dsrTotalFuelAmount !== undefined && d.dsrTotalFuelAmount !== null) ? d.dsrTotalFuelAmount : (d.totalFuelAmount || 0);
     var fuelSales = (d.dsrFuelSales != null) ? d.dsrFuelSales : (d.fuelSales || d.nozzleRows || []);
-    var badges={'HSD':'<span class="b-hsd">HSD</span>','MS-II':'<span class="b-ms1">SPEED</span>','MS-I':'<span class="b-ms1">MS</span>','CNG':'<span class="b-cng">CNG</span>'};
+    var badges={'HSD':'<span class="b-hsd">HSD</span>','MS-II':'<span class="b-ms2">MS-II</span>','MS2':'<span class="b-ms2">MS-II</span>','MS-I':'<span class="b-ms1">MS-I</span>','MS1':'<span class="b-ms1">MS-I</span>','MS':'<span class="b-ms1">MS</span>','SPEED':'<span class="b-ms1">SPEED</span>','CNG':'<span class="b-cng">CNG</span>'};
 
     fuelSales.forEach(function(f) {
       var badge = badges[f.fuelType] || ('<span class="b-ms1">' + (f.fuelType||'Fuel') + '</span>');
@@ -875,27 +876,41 @@ function renderData(){
   }
 
   // Render Oil & DEF Sales
-  var oilDefSales = d.oilDefSales || [];
   var secOilDef = document.getElementById('secOilDef');
   var tOilDef   = document.getElementById('tOilDef');
+  var oilDefSales = d.oilDefSales || [];
+  var oilDefTot = 0;
+  if (oilDefSales && oilDefSales.length > 0) {
+    oilDefSales.forEach(function(s) {
+      oilDefTot += (getVal(s, 'total') || getVal(s, 'amount') || 0);
+    });
+  } else if (d.oilDefSalesTotal) {
+    oilDefTot = parseFloat(d.oilDefSalesTotal) || 0;
+  }
+
   if (tOilDef && oilDefSales.length > 0) {
     tOilDef.innerHTML = '';
     if (secOilDef) secOilDef.style.display = 'block';
-    var oilDefTot = 0;
     oilDefSales.forEach(function(s) {
       var qty = getVal(s, 'quantity') || 0;
       var amt = getVal(s, 'total') || getVal(s, 'amount') || 0;
-      oilDefTot += amt;
+      var shift = getVal(s, 'shiftType') || getVal(s, 'shift') || '—';
       var tr = document.createElement('tr');
       tr.innerHTML = '<td style="text-align:left;">' + (getVal(s, 'productName') || getVal(s, 'category') || 'Oil/DEF') + '</td>' +
+                     '<td style="text-align:center;">' + shift + '</td>' +
                      '<td style="text-align:right;">' + parseFloat(qty).toFixed(2) + '</td>' +
                      '<td style="text-align:right;">' + inrZ(amt) + '</td>';
       tOilDef.appendChild(tr);
     });
     var trTot = document.createElement('tr');
     trTot.className = 'tr-total';
-    trTot.innerHTML = '<td style="text-align:left;">Total Oil &amp; DEF Sales</td><td style="text-align:right;">\u2013</td><td style="text-align:right;">' + inrZ(oilDefTot) + '</td>';
+    trTot.innerHTML = '<td colspan="2" style="text-align:left;">Total Oil &amp; DEF Sales</td><td style="text-align:right;">\u2013</td><td style="text-align:right;">' + inrZ(oilDefTot) + '</td>';
     tOilDef.appendChild(trTot);
+    var trGrand = document.createElement('tr');
+    trGrand.className = 'tr-total';
+    trGrand.style.background = '#0a3257';
+    trGrand.innerHTML = '<td colspan="3" style="text-align:left; font-weight:800;">GRAND TOTAL SALE (Fuel + Oil)</td><td style="text-align:right; font-weight:800;">' + inrZ(totalA + oilDefTot) + '</td>';
+    tOilDef.appendChild(trGrand);
   } else {
     if (secOilDef) secOilDef.style.display = 'none';
   }
@@ -911,6 +926,19 @@ function renderData(){
   etr.innerHTML='<td colspan="2">TOTAL EXPENSES</td><td>'+inrZ(expTot)+'</td>';et.appendChild(etr);
 
   // Reconciliation
+  var hasOilInBreakdown = (d.collectionBreakdown || []).some(function(c) {
+    var cat = (c.category || '').toLowerCase();
+    return cat.indexOf('oil') !== -1 || cat.indexOf('def') !== -1;
+  });
+  if (oilDefTot > 0 && !hasOilInBreakdown) {
+    d.collectionBreakdown = d.collectionBreakdown || [];
+    d.collectionBreakdown.push({
+      category: 'Oil & DEF Sales',
+      descriptionWithBreakdown: 'Oil & DEF Sales',
+      amount: oilDefTot
+    });
+  }
+
   var tRecon = document.getElementById('tRecon');
   if (tRecon) {
     tRecon.innerHTML = '';
@@ -921,10 +949,8 @@ function renderData(){
         name = name + ' (' + parseFloat(vol).toFixed(2) + ' Ltr)';
       }
       var catLower = (c.category || '').toLowerCase();
-      // Skip Oil Sales and DEF Sales from Final Reconciliation
-      if (catLower.indexOf('oil sales') !== -1 || catLower.indexOf('def sales') !== -1) return;
       var colorStyle = "";
-      if (catLower.indexOf('cash') !== -1 || catLower.indexOf('phonepe') !== -1 || catLower.indexOf('card') !== -1) {
+      if (catLower.indexOf('cash') !== -1 || catLower.indexOf('phonepe') !== -1 || catLower.indexOf('card') !== -1 || catLower.indexOf('oil') !== -1 || catLower.indexOf('def') !== -1) {
         colorStyle = "color:#00C853; font-weight:bold;";
       } else if (catLower.indexOf('cheque') !== -1 || catLower.indexOf('bank') !== -1 || catLower.indexOf('transfer') !== -1) {
         colorStyle = "color:#E65100; font-weight:bold;";
@@ -938,10 +964,18 @@ function renderData(){
   }
 
   var actCol = d.actualCollection !== undefined ? d.actualCollection : 0;
-  var expCol = d.expectedCollection !== undefined ? d.expectedCollection : 0;
+  var expCol = (d.expectedCollection !== undefined && d.expectedCollection !== null) ? d.expectedCollection : (d.grandTotalSaleAmount || (totalA + oilDefTot));
+  if (oilDefTot > 0) {
+    if (!hasOilInBreakdown) {
+      actCol += oilDefTot;
+    }
+    if (expCol < (totalA + oilDefTot)) {
+      expCol = totalA + oilDefTot;
+    }
+  }
   document.getElementById('rTotal').textContent=inrZ(actCol);
   document.getElementById('rSale').textContent=inrZ(expCol);
-  var diff = (d.difference !== undefined && d.difference !== null) ? d.difference : (actCol - expCol);
+  var diff = (d.difference !== undefined && d.difference !== null && hasOilInBreakdown) ? d.difference : (actCol - expCol);
   var dCell=document.getElementById('rDiff');
   if(Math.abs(diff)<0.01){dCell.textContent='\u2713  BALANCED \u2014 Difference: \u20B90.00';dCell.className='diff-ok';}
   else if(diff<0){

@@ -45,7 +45,7 @@ namespace Rashtra.LicenseGenerator
             { "Lifetime", "Lifetime License" },
             { "Annual", "Annual License (1 Year)" },
             { "Trial", "Trial License (15 Days)" },
-            { "Demo", "Demo License (7 Days)" }
+            { "Demo", "Demo License (5 Days)" }
         };
 
         public MainWindowViewModel()
@@ -78,7 +78,7 @@ namespace Rashtra.LicenseGenerator
                 }
                 else if (SelectedLicenseType == "Demo")
                 {
-                    ExpiryDate = DateTime.Today.AddDays(7);
+                    ExpiryDate = DateTime.Today.AddDays(4);
                 }
             }
         }

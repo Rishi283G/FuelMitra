@@ -21,6 +21,12 @@ public class OilDefDailyLog
     [ForeignKey(nameof(ProductId))]
     public ProductMaster? Product { get; set; }
 
+    /// <summary>The originating shift, when this log was recorded for a specific shift.</summary>
+    public int? ShiftId { get; set; }
+
+    [ForeignKey(nameof(ShiftId))]
+    public Shift? Shift { get; set; }
+
     public double? OverrideSaleRate { get; set; }
 
     public double AddedQuantity { get; set; }
@@ -52,4 +58,8 @@ public class OilDefDailyLog
     /// <summary>Dynamic display property: total adjustments on this date for this product.</summary>
     [NotMapped]
     public double DayAdjustments { get; set; }
+
+    /// <summary>Safe display string for the originating shift (displays '—' when null or empty).</summary>
+    [NotMapped]
+    public string ShiftDisplay => Shift != null && !string.IsNullOrWhiteSpace(Shift.ShiftType) ? Shift.ShiftType : "—";
 }

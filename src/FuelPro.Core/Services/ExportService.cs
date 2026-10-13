@@ -116,7 +116,7 @@ public class ExportService
                             CreditCard = (decimal)((entry.PaymentCollection?.CreditCard ?? 0) + (entry.PaymentCollection?.PetroCard ?? 0)),
                             CashDeposit = (decimal)(cash1 + cash2 + (entry.PaymentCollection?.CashDeposit ?? 0)),
                             PhysicalCash = 0,
-                            DynamicPayments = (decimal)(entry.PaymentCollection?.Items?.Sum(i => i.Amount) ?? 0)
+                            DynamicPayments = (decimal)(entry.PaymentCollection?.DynamicItemsTotal ?? 0)
                         },
                         DebitEntries = entry.DebitEntries.Select(d => new DebitEntryDto { Amount = (decimal)d.Amount }).ToList(),
                         TestingEntries = entry.TestingEntries.Select(t => new TestingEntryDto { FuelType = t.FuelType, Amount = (decimal)t.Amount }).ToList(),

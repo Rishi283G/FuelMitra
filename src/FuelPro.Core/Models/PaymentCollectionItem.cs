@@ -37,6 +37,12 @@ public class PaymentCollectionItem
     [MaxLength(20)]
     public string? Slot { get; set; } = "General";
 
+    /// <summary>
+    /// Optional OTP associated with machine transaction tracking.
+    /// </summary>
+    [MaxLength(50)]
+    public string? Otp { get; set; }
+
     [ForeignKey(nameof(PaymentId))]
     public PaymentCollection? PaymentCollection { get; set; }
 }

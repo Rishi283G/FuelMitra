@@ -56,6 +56,10 @@ public static class SeedData
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE Settings ADD COLUMN PumpMappingsJson TEXT NULL;"); } catch { }
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE Settings ADD COLUMN PumpConnectionRulesJson TEXT NULL;"); } catch { }
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE PaymentCollections ADD COLUMN DynamicItemsJson TEXT NULL;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE PaymentCollectionItems ADD COLUMN Otp TEXT NULL;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE CollectionTypes ADD COLUMN EnableMorning INTEGER NOT NULL DEFAULT 1;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE CollectionTypes ADD COLUMN EnableDay INTEGER NOT NULL DEFAULT 1;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE CollectionTypes ADD COLUMN EnableNight INTEGER NOT NULL DEFAULT 1;"); } catch { }
 
 
         // Legacy dynamic columns added for database compatibility
@@ -1102,7 +1106,7 @@ public static class SeedData
             "20260422161230_AddDsmProfilesAndCreditorRepayments" => TableExists(connection, "DsmProfiles") && TableExists(connection, "CreditorRepayments"),
             "20260424052601_AddAgsImport" => TableExists(connection, "AgsDailySummaries"),
             "20260424053749_AddChequeNoToDebitEntry" => ColumnExists(connection, "DebitEntries", "ChequeNo"),
-            "20260509193233_SplitPineLabCard" => ColumnExists(connection, "PaymentCollections", "PhonePe") && ColumnExists(connection, "PaymentCollections", "PhonePeCard"),
+            "20260509193233_SplitPineLabCard" => ColumnExists(connection, "PaymentCollections", "CreditCardMorning"),
             "20260619105954_AddDsmPhase1Tables" => TableExists(connection, "DsmUsers") && TableExists(connection, "DsmPumpAssignments"),
             "20260619130135_AddEmailToDsmUser" => ColumnExists(connection, "DsmUsers", "Email"),
             "20260626182136_AddP3ShinNvlAndCardSettlement" => ColumnExists(connection, "PaymentCollections", "CardTid") || ColumnExists(connection, "DebitEntries", "VehicleNumber"),
@@ -1110,6 +1114,7 @@ public static class SeedData
             "20260711123112_AddDsmPumpAssignmentCompletedDate" => ColumnExists(connection, "DsmPumpAssignments", "CompletedDate"),
             "20260721090022_AddKhandharePetroleumEntries" => TableExists(connection, "KhandharePetroleumEntries"),
             var m when m.EndsWith("_AddOpeningBalancesTable") => TableExists(connection, "OpeningBalances") && ColumnExists(connection, "DsmPersonalDebtors", "EntryType"),
+            var m when m.EndsWith("_AddOilDefDailyLogShift") => ColumnExists(connection, "OilDefDailyLogs", "ShiftId"),
             _ => false // For any new/unrecognized future migration, return false so MigrateAsync() executes it!
         };
     }
