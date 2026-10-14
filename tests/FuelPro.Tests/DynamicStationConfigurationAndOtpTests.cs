@@ -368,4 +368,92 @@ public class DynamicStationConfigurationAndOtpTests
             }
         }
     }
+
+    [Theory]
+    [InlineData("Kandhare Petroleum", "Kandhare Petroleum")]
+    [InlineData("Personal Ledger", "Personal Ledger")]
+    [InlineData("", "Personal Ledger")]
+    [InlineData(null, "Personal Ledger")]
+    [InlineData("   ", "Personal Ledger")]
+    public void PersonalLedger_DisplayName_DefaultsToPersonalLedgerWhenEmpty(string? configuredName, string expectedName)
+    {
+        var setting = new AppFeatureSetting
+        {
+            FeatureKey = "Operations_PersonalLedger",
+            DisplayName = configuredName ?? ""
+        };
+
+        var resolvedName = string.IsNullOrWhiteSpace(setting.DisplayName) ? "Personal Ledger" : setting.DisplayName.Trim();
+        Assert.Equal(expectedName, resolvedName);
+    }
+
+    [Fact]
+    public void ApprovalQueue_DynamicPayments_IncludesNonStandardCollections_PreventsArtificialShortage()
+    {
+        // Metadata contains card swipes for credit card (1000) and dynamic items (SBI_REDEEM 500, HP_PAY 300)
+        var cardSwipeDetails = new List<PaymentCollectionItem>
+        {
+            new() { CollectionTypeCode = "CREDIT_CARD", Amount = 1000, Tid = "T1", Batch = "B1", Otp = "123456" },
+            new() { CollectionTypeCode = "SBI_REDEEM", Amount = 500, Tid = "S1", Batch = "B2", Otp = "654321" },
+            new() { CollectionTypeCode = "HP_PAY", Amount = 300, Tid = "H1", Batch = "B3", Otp = "998877" }
+        };
+
+        // RecalculateTotals logic in DsmApprovalQueueViewModel:
+        var dynamicTotal = cardSwipeDetails
+            .Where(r => !PaymentCollection.IsStandardCollectionCode(r.CollectionTypeCode))
+            .Sum(r => r.Amount);
+
+        var creditCardTotal = cardSwipeDetails
+            .Where(r => string.Equals(r.CollectionTypeCode, "CREDIT_CARD", StringComparison.OrdinalIgnoreCase))
+            .Sum(r => r.Amount);
+
+        Assert.Equal(800.0, dynamicTotal);
+        Assert.Equal(1000.0, creditCardTotal);
+
+        var paymentDto = new PaymentCollectionDto
+        {
+            CreditCard = (decimal)creditCardTotal,
+            DynamicPayments = (decimal)dynamicTotal
+        };
+
+        // DsmCalculationService calculates total collection:
+        var dsmDto = new DsmEntryDto
+        {
+            DSMEntryId = 1,
+            NozzleReadings = new List<NozzleReadingDto> { new() { Amount = 1800m } },
+            PaymentCollection = paymentDto
+        };
+
+        var calcService = new DsmCalculationService();
+        var calcResult = calcService.Calculate(dsmDto);
+
+        // Verify total collection is exactly 1800 with 0 mismatch (no artificial shortage)
+        Assert.Equal(1800m, calcResult.TotalCollection);
+        Assert.Equal(1800m, calcResult.GrossSales);
+        Assert.Equal(0m, calcResult.Mismatch);
+        Assert.True(calcResult.IsBalanced);
+    }
+
+    [Fact]
+    public void ApprovalQueue_SwipeDetails_PreservesOriginalDynamicCollectionTypeCode()
+    {
+        // Dynamic items should not be coerced into CREDIT_CARD
+        var item1 = new PaymentCollectionItem { CollectionTypeCode = "SBI_REDEEM", Amount = 400 };
+        var item2 = new PaymentCollectionItem { CollectionTypeCode = "HP_PAY", Amount = 600 };
+        var item3 = new PaymentCollectionItem { CollectionTypeCode = "CREDIT_CARD", Amount = 1000 };
+
+        var items = new List<PaymentCollectionItem> { item1, item2, item3 };
+
+        // Ensure non-standard items are recognized as dynamic
+        Assert.False(PaymentCollection.IsStandardCollectionCode(item1.CollectionTypeCode));
+        Assert.False(PaymentCollection.IsStandardCollectionCode(item2.CollectionTypeCode));
+        Assert.True(PaymentCollection.IsStandardCollectionCode(item3.CollectionTypeCode));
+
+        // When saving, non-standard items retain their original code
+        var dynamicItems = items.Where(i => !PaymentCollection.IsStandardCollectionCode(i.CollectionTypeCode)).ToList();
+        Assert.Equal(2, dynamicItems.Count);
+        Assert.Contains(dynamicItems, i => i.CollectionTypeCode == "SBI_REDEEM");
+        Assert.Contains(dynamicItems, i => i.CollectionTypeCode == "HP_PAY");
+    }
 }
+

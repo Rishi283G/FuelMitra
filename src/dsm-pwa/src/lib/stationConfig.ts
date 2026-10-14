@@ -4,6 +4,8 @@ export interface StationFeatureSettings {
   cashDenominationsEnabled: boolean;
   otpMachineTrackingEnabled: boolean;
   splitMorningNightEnabled: boolean;
+  personalLedgerEnabled: boolean;
+  personalLedgerName: string;
 }
 
 export interface DynamicCollectionType {
@@ -80,6 +82,8 @@ export function getDefaultStationConfig(stationId: string): StationConfig {
       cashDenominationsEnabled: false,
       otpMachineTrackingEnabled: false,
       splitMorningNightEnabled: false,
+      personalLedgerEnabled: true,
+      personalLedgerName: 'Personal Ledger',
     },
     collectionTypes: getDefaultCollectionTypes(),
     isDynamic: false,
@@ -168,6 +172,8 @@ async function fetchAndCacheStationConfig(cleanId: string, cacheKey: string): Pr
     let cashDenominationsEnabled = false;
     let otpMachineTrackingEnabled = false;
     let splitMorningNightEnabled = false;
+    let personalLedgerEnabled = true;
+    let personalLedgerName = 'Personal Ledger';
 
     if (data.AppFeatureSettingsJson) {
       try {
@@ -176,9 +182,16 @@ async function fetchAndCacheStationConfig(cleanId: string, cacheKey: string): Pr
           for (const f of feats) {
             const key = f.FeatureKey || f.featureKey;
             const enabled = f.IsEnabled ?? f.isEnabled;
+            const displayName = (f.DisplayName || f.displayName || '').trim();
             if (key === 'Operations_CashDenominations') cashDenominationsEnabled = Boolean(enabled);
             if (key === 'Operations_OtpMachineTracking') otpMachineTrackingEnabled = Boolean(enabled);
             if (key === 'Collection_UseMorningNight') splitMorningNightEnabled = Boolean(enabled);
+            if (key === 'Operations_PersonalLedger') {
+              personalLedgerEnabled = enabled !== false;
+              if (displayName) {
+                personalLedgerName = displayName;
+              }
+            }
           }
         }
       } catch (err) {
@@ -192,6 +205,8 @@ async function fetchAndCacheStationConfig(cleanId: string, cacheKey: string): Pr
         cashDenominationsEnabled,
         otpMachineTrackingEnabled,
         splitMorningNightEnabled,
+        personalLedgerEnabled,
+        personalLedgerName,
       },
       collectionTypes: collectionTypes.length > 0 ? collectionTypes : getDefaultCollectionTypes(),
       isDynamic: collectionTypes.length > 0,

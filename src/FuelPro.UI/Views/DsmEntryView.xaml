@@ -380,6 +380,69 @@
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
 
+                                <!-- Machine OTP Transactions (Itemized card swipes / OTP tracking) -->
+                                <Border Background="#0D1565C0" BorderBrush="#261565C0" BorderThickness="1" CornerRadius="6" Padding="12,8" Margin="0,0,0,8"
+                                        Visibility="{Binding IsOtpMachineTrackingEnabled, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                    <StackPanel>
+                                        <DockPanel LastChildFill="False" Margin="0,0,0,6">
+                                            <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                                                <materialDesign:PackIcon Kind="CreditCardCheckOutline" Width="16" Height="16" Foreground="#1565C0" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                                <TextBlock Text="Machine OTP Transactions (Itemized Swipes)" FontWeight="SemiBold" FontSize="12" Foreground="#1565C0" VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                            <Button DockPanel.Dock="Right" Style="{StaticResource MaterialDesignOutlinedButton}" Height="28" Padding="10,0" FontSize="11"
+                                                    Command="{Binding AddOtpTransactionCommand}" BorderBrush="#1565C0" Foreground="#1565C0">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <materialDesign:PackIcon Kind="Plus" Width="14" Height="14" Margin="0,0,4,0" VerticalAlignment="Center"/>
+                                                    <TextBlock Text="Add OTP Tx"/>
+                                                </StackPanel>
+                                            </Button>
+                                        </DockPanel>
+
+                                        <ItemsControl ItemsSource="{Binding OtpTransactions}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid Margin="0,3,0,3">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="1.5*"/>
+                                                            <ColumnDefinition Width="1.1*"/>
+                                                            <ColumnDefinition Width="1.1*"/>
+                                                            <ColumnDefinition Width="1.1*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+
+                                                        <ComboBox Grid.Column="0" ItemsSource="{Binding DataContext.AvailableOtpCollectionTypes, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                  SelectedItem="{Binding CollectionTypeCode, UpdateSourceTrigger=PropertyChanged}"
+                                                                  materialDesign:HintAssist.Hint="Collection Type" materialDesign:HintAssist.IsFloating="True"
+                                                                  Style="{StaticResource MaterialDesignOutlinedComboBox}" Margin="0,0,6,0"/>
+
+                                                        <ComboBox Grid.Column="1" ItemsSource="{Binding DataContext.AvailableOtpSlots, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                  SelectedItem="{Binding Slot, UpdateSourceTrigger=PropertyChanged}"
+                                                                  materialDesign:HintAssist.Hint="Slot" materialDesign:HintAssist.IsFloating="True"
+                                                                  Style="{StaticResource MaterialDesignOutlinedComboBox}" Margin="0,0,6,0"/>
+
+                                                        <TextBox Grid.Column="2" Text="{Binding Amount, UpdateSourceTrigger=LostFocus, StringFormat=F2}"
+                                                                 materialDesign:HintAssist.Hint="Amount (₹)" materialDesign:HintAssist.IsFloating="True"
+                                                                 Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,6,0"
+                                                                 PreviewTextInput="DecimalTextBox_PreviewTextInput"
+                                                                 GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"
+                                                                 LostKeyboardFocus="DecimalTextBox_LostKeyboardFocus"/>
+
+                                                        <TextBox Grid.Column="3" Text="{Binding Otp, UpdateSourceTrigger=PropertyChanged}"
+                                                                 materialDesign:HintAssist.Hint="OTP" materialDesign:HintAssist.IsFloating="True"
+                                                                 Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,6,0"/>
+
+                                                        <Button Grid.Column="4" Style="{StaticResource MaterialDesignIconButton}" Height="28" Width="28"
+                                                                Command="{Binding DataContext.RemoveOtpTransactionCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                CommandParameter="{Binding}" Foreground="{DynamicResource MaterialDesign.Brush.Error}">
+                                                            <materialDesign:PackIcon Kind="TrashCanOutline" Width="16" Height="16"/>
+                                                        </Button>
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </Border>
+
                                 <!-- Cross-DSM QR Payments (Customer paid on another DSM's QR) -->
                                 <Border Background="#0D00796B" BorderBrush="#2600796B" BorderThickness="1" CornerRadius="6" Padding="12,8" Margin="0,0,0,8"
                                         Visibility="{Binding IsCrossDsmQrEnabled, Converter={StaticResource BooleanToVisibilityConverter}}">

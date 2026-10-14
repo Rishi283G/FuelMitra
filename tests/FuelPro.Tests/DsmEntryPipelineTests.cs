@@ -548,4 +548,82 @@ public class DsmEntryPipelineTests : IDisposable
         Assert.Null(paytmAfterClear.Tid);
         Assert.Null(paytmAfterClear.Batch);
     }
+
+    [Fact]
+    public async Task Verify_Desktop_OtpTransactions_SaveAndReopen_Losslessly()
+    {
+        var date = new DateTime(2026, 7, 15);
+        using var scope = _serviceProvider.CreateScope();
+        var dsmService = scope.ServiceProvider.GetRequiredService<DsmEntryService>();
+        var repo = scope.ServiceProvider.GetRequiredService<IDsmEntryRepository>();
+
+        var nozzleReadings = new List<NozzleReading>
+        {
+            new() { NozzleNumber = 1, FuelType = "MS-I", OpeningReading = 1000, ClosingReading = 1050, Rate = 100 }
+        };
+
+        var otpItems = new List<PaymentCollectionItem>
+        {
+            new() { CollectionTypeCode = "CREDIT_CARD", Amount = 1200, Tid = "TID_CC", Batch = "B_CC", Otp = "123456", Slot = "Morning" },
+            new() { CollectionTypeCode = "CREDIT_CARD", Amount = 1800, Tid = "TID_CC", Batch = "B_CC", Otp = "654321", Slot = "Morning" },
+            new() { CollectionTypeCode = "PETROCARD", Amount = 1000, Tid = "TID_PC", Batch = "B_PC", Otp = "998877", Slot = "Morning" }
+        };
+
+        var payment = new PaymentCollection
+        {
+            CreditCardMorning = 3000,
+            CreditCardTidMorning = "TID_CC",
+            CreditCardBatchMorning = "B_CC",
+            PetroCardMorning = 1000,
+            PetroCardTidMorning = "TID_PC",
+            PetroCardBatchMorning = "B_PC",
+            CashDeposit = 1000,
+            Items = otpItems,
+            DynamicItemsJson = JsonConvert.SerializeObject(otpItems)
+        };
+
+        var cashDenoms = new List<CashDenomination>
+        {
+            new() { CashType = "Cash1", TotalAmount = 1000 },
+            new() { CashType = "Cash2", TotalAmount = 0 }
+        };
+
+        var res = await dsmService.SaveCompleteEntryAsync(
+            date, "A", "Operator Steve", 1,
+            nozzleReadings, payment, new List<DebitEntry>(), new List<TestingEntry>(),
+            new List<Expense>(), cashDenoms);
+
+        Assert.True(res.Success, $"Save failed: {res.Error}");
+        var savedEntryId = res.Data!.DsmEntryId;
+
+        // Now reopen the entry using DsmEntryViewModel.HydrateFromEntryAsync
+        var vm = _serviceProvider.GetRequiredService<DsmEntryViewModel>();
+        var fullEntry = await repo.GetFullEntryAsync(savedEntryId);
+        Assert.NotNull(fullEntry.Data);
+
+        await vm.HydrateFromEntryAsync(fullEntry.Data!);
+
+        // Verify OTP transactions were restored into vm.OtpTransactions
+        Assert.Equal(3, vm.OtpTransactions.Count);
+        var ccRow1 = vm.OtpTransactions.FirstOrDefault(r => r.Otp == "123456");
+        Assert.NotNull(ccRow1);
+        Assert.Equal("CREDIT_CARD", ccRow1!.CollectionTypeCode);
+        Assert.Equal(1200.0, ccRow1.Amount);
+        Assert.Equal("TID_CC", ccRow1.Tid);
+        Assert.Equal("B_CC", ccRow1.Batch);
+
+        var ccRow2 = vm.OtpTransactions.FirstOrDefault(r => r.Otp == "654321");
+        Assert.NotNull(ccRow2);
+        Assert.Equal("CREDIT_CARD", ccRow2!.CollectionTypeCode);
+        Assert.Equal(1800.0, ccRow2.Amount);
+
+        var pcRow = vm.OtpTransactions.FirstOrDefault(r => r.Otp == "998877");
+        Assert.NotNull(pcRow);
+        Assert.Equal("PETROCARD", pcRow!.CollectionTypeCode);
+        Assert.Equal(1000.0, pcRow.Amount);
+
+        // Verify parent totals
+        Assert.Equal(3000.0, vm.CreditCardMorning);
+        Assert.Equal(1000.0, vm.PetroCardMorning);
+    }
 }

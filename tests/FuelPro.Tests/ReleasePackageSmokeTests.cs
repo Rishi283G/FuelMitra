@@ -36,9 +36,11 @@ public class ReleasePackageSmokeTests : IDisposable
     public void SmokeTest_Step1_InstallerPackageIntegrityAndMetadata()
     {
         var repoRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
-        var installerPath = File.Exists(Path.Combine(repoRoot, "installer_output", "PyroSync_Setup_v1.3.42.exe"))
-            ? Path.Combine(repoRoot, "installer_output", "PyroSync_Setup_v1.3.42.exe")
-            : Path.Combine(repoRoot, "installer_output", "PyroSync_Setup_v1.3.41.exe");
+        var installerPath = File.Exists(Path.Combine(repoRoot, "installer_output", "PyroSync_Setup_v1.3.43.exe"))
+            ? Path.Combine(repoRoot, "installer_output", "PyroSync_Setup_v1.3.43.exe")
+            : (File.Exists(Path.Combine(repoRoot, "installer_output", "PyroSync_Setup_v1.3.42.exe"))
+                ? Path.Combine(repoRoot, "installer_output", "PyroSync_Setup_v1.3.42.exe")
+                : Path.Combine(repoRoot, "installer_output", "PyroSync_Setup_v1.3.41.exe"));
         var publishDir = Path.Combine(repoRoot, "publish_output");
 
         Assert.True(File.Exists(installerPath), $"Installer missing at {installerPath}");
@@ -57,8 +59,8 @@ public class ReleasePackageSmokeTests : IDisposable
         Assert.True(File.Exists(dataDll), "FuelPro.Data.dll missing from publish_output");
 
         var verInfo = FileVersionInfo.GetVersionInfo(uiDll);
-        Assert.True(verInfo.FileVersion == "1.3.42.0" || verInfo.FileVersion == "1.3.41.0", $"Unexpected FileVersion: {verInfo.FileVersion}");
-        Assert.True(verInfo.ProductVersion.StartsWith("1.3.42") || verInfo.ProductVersion.StartsWith("1.3.41"), $"Unexpected ProductVersion: {verInfo.ProductVersion}");
+        Assert.True(verInfo.FileVersion == "1.3.43.0" || verInfo.FileVersion == "1.3.42.0" || verInfo.FileVersion == "1.3.41.0", $"Unexpected FileVersion: {verInfo.FileVersion}");
+        Assert.True(verInfo.ProductVersion.StartsWith("1.3.43") || verInfo.ProductVersion.StartsWith("1.3.42") || verInfo.ProductVersion.StartsWith("1.3.41"), $"Unexpected ProductVersion: {verInfo.ProductVersion}");
 
         // Confirm no test databases or source files exist in publish_output
         var dbFiles = Directory.GetFiles(publishDir, "*.db*", SearchOption.AllDirectories);

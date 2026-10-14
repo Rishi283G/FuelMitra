@@ -232,12 +232,12 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   const [activeOtpModalType, setActiveOtpModalType] = useState<string | null>(null);
   const [newTxAmount, setNewTxAmount] = useState("");
   const [newTxOtp, setNewTxOtp] = useState("");
-  const [newTxTid, setNewTxTid] = useState("");
-  const [newTxBatch, setNewTxBatch] = useState("");
   const [newTxSlot, setNewTxSlot] = useState("General");
   const [dynamicValues, setDynamicValues] = useState<
     Record<string, { amount: number; tid: string; batch: string; otp?: string }>
   >({});
+
+  const personalLedgerName = stationConfig.features.personalLedgerName || "Personal Ledger";
 
   const getTransactionsForType = (code: string) =>
     machineTransactions.filter(
@@ -247,25 +247,91 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   const getMachineTotalForType = (code: string) =>
     getTransactionsForType(code).reduce((sum, t) => sum + (t.amount || 0), 0);
 
+  const getSharedTidBatch = (typeCode: string, slot: string) => {
+    const code = typeCode.toUpperCase();
+    if (code === "PHONEPE") {
+      if (shiftType === "B" || slot === "Day") return { tid: phonePeTidDay, batch: phonePeBatchDay };
+      if (slot === "Night") return { tid: phonePeTidNight, batch: phonePeBatchNight };
+      return { tid: phonePeTidMorning, batch: phonePeBatchMorning };
+    }
+    if (code === "CREDIT_CARD") {
+      if (shiftType === "B" || slot === "Day") return { tid: creditCardTidDay, batch: creditCardBatchDay };
+      if (slot === "Night") return { tid: creditCardTidNight, batch: creditCardBatchNight };
+      return { tid: creditCardTidMorning, batch: creditCardBatchMorning };
+    }
+    if (code === "PETROCARD") {
+      if (shiftType === "B" || slot === "Day") return { tid: petroCardTidDay, batch: petroCardBatchDay };
+      if (slot === "Night") return { tid: petroCardTidNight, batch: petroCardBatchNight };
+      return { tid: petroCardTidMorning, batch: petroCardBatchMorning };
+    }
+    const dyn = dynamicValues[typeCode] || { tid: "", batch: "" };
+    return { tid: dyn.tid || "", batch: dyn.batch || "" };
+  };
+
+  const syncParentCollectionTotal = (typeCode: string, txs: OtpTransactionItem[]) => {
+    const code = typeCode.toUpperCase();
+    const typeTxs = txs.filter((t) => t.collectionTypeCode.toUpperCase() === code);
+    if (code === "PHONEPE") {
+      if (shiftType === "B") {
+        setPhonePeDay(typeTxs.reduce((sum, t) => sum + (t.amount || 0), 0));
+      } else {
+        setPhonePeMorning(typeTxs.filter((t) => t.slot !== "Night").reduce((sum, t) => sum + (t.amount || 0), 0));
+        setPhonePeNight(typeTxs.filter((t) => t.slot === "Night").reduce((sum, t) => sum + (t.amount || 0), 0));
+      }
+    } else if (code === "CREDIT_CARD") {
+      if (shiftType === "B") {
+        setCreditCardDay(typeTxs.reduce((sum, t) => sum + (t.amount || 0), 0));
+      } else {
+        setCreditCardMorning(typeTxs.filter((t) => t.slot !== "Night").reduce((sum, t) => sum + (t.amount || 0), 0));
+        setCreditCardNight(typeTxs.filter((t) => t.slot === "Night").reduce((sum, t) => sum + (t.amount || 0), 0));
+      }
+    } else if (code === "PETROCARD") {
+      if (shiftType === "B") {
+        setPetroCardDay(typeTxs.reduce((sum, t) => sum + (t.amount || 0), 0));
+      } else {
+        setPetroCardMorning(typeTxs.filter((t) => t.slot !== "Night").reduce((sum, t) => sum + (t.amount || 0), 0));
+        setPetroCardNight(typeTxs.filter((t) => t.slot === "Night").reduce((sum, t) => sum + (t.amount || 0), 0));
+      }
+    } else {
+      const sum = typeTxs.reduce((acc, t) => acc + (t.amount || 0), 0);
+      setDynamicValues((prev) => ({
+        ...prev,
+        [typeCode]: {
+          ...(prev[typeCode] || { tid: "", batch: "", otp: "" }),
+          amount: sum,
+        },
+      }));
+    }
+  };
+
   const addMachineTransaction = (typeCode: string) => {
     const amt = parseFloat(newTxAmount);
     if (!amt || amt <= 0) return;
+    const effectiveSlot = newTxSlot || (shiftType === "B" ? "Day" : "Morning");
+    const { tid, batch } = getSharedTidBatch(typeCode, effectiveSlot);
     const newTx: OtpTransactionItem = {
       id: Math.random().toString(36).substring(2, 9),
       collectionTypeCode: typeCode.toUpperCase(),
       amount: amt,
       otp: newTxOtp.trim(),
-      tid: newTxTid.trim(),
-      batch: newTxBatch.trim(),
-      slot: newTxSlot || (shiftType === "B" ? "Day" : "Morning"),
+      tid: tid || "",
+      batch: batch || "",
+      slot: effectiveSlot,
     };
-    setMachineTransactions((prev) => [...prev, newTx]);
+    const updated = [...machineTransactions, newTx];
+    setMachineTransactions(updated);
+    syncParentCollectionTotal(typeCode, updated);
     setNewTxAmount("");
     setNewTxOtp("");
   };
 
   const removeMachineTransaction = (id: string) => {
-    setMachineTransactions((prev) => prev.filter((t) => t.id !== id));
+    const tx = machineTransactions.find((t) => t.id === id);
+    const updated = machineTransactions.filter((t) => t.id !== id);
+    setMachineTransactions(updated);
+    if (tx) {
+      syncParentCollectionTotal(tx.collectionTypeCode, updated);
+    }
   };
 
   // Oil & DEF Product Sales State
@@ -756,7 +822,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       try {
         let settingsQuery = supabase
           .from("Settings")
-          .select("HsdRate, MsIRate, MsIIRate, CngRate, LastUpdated");
+          .select("HsdRate, MsIRate, MsIIRate, CngRate, FuelRatesJson, LastUpdated");
 
         if (station) {
           settingsQuery = settingsQuery.eq("station_id", station);
@@ -767,10 +833,25 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           .limit(1);
 
         if (settingsData && settingsData.length > 0) {
-          if (settingsData[0].HsdRate) hsdRate = Number(settingsData[0].HsdRate);
-          if (settingsData[0].MsIRate) msIRate = Number(settingsData[0].MsIRate);
-          if (settingsData[0].MsIIRate) msIIRate = Number(settingsData[0].MsIIRate);
-          if (settingsData[0].CngRate) cngRate = Number(settingsData[0].CngRate);
+          const s = settingsData[0];
+          if (s.HsdRate) hsdRate = Number(s.HsdRate);
+          if (s.MsIRate) msIRate = Number(s.MsIRate);
+          if (s.MsIIRate) msIIRate = Number(s.MsIIRate);
+          if (s.CngRate) cngRate = Number(s.CngRate);
+
+          if (s.FuelRatesJson) {
+            try {
+              const ratesMap = typeof s.FuelRatesJson === "string" ? JSON.parse(s.FuelRatesJson) : s.FuelRatesJson;
+              if (ratesMap && typeof ratesMap === "object") {
+                if (ratesMap["HSD"] || ratesMap["HSD - 20KL"]) hsdRate = Number(ratesMap["HSD"] || ratesMap["HSD - 20KL"]);
+                if (ratesMap["MS"] || ratesMap["MS-I"] || ratesMap["MS - 20KL"]) msIRate = Number(ratesMap["MS"] || ratesMap["MS-I"] || ratesMap["MS - 20KL"]);
+                if (ratesMap["MS-II"] || ratesMap["HSD - 20KL II"]) msIIRate = Number(ratesMap["MS-II"] || ratesMap["HSD - 20KL II"]);
+                if (ratesMap["CNG"]) cngRate = Number(ratesMap["CNG"]);
+              }
+            } catch (jsonErr) {
+              console.warn("Could not parse FuelRatesJson:", jsonErr);
+            }
+          }
         }
       } catch (e) {
         console.error("Failed to fetch rates from Settings:", e);
@@ -935,7 +1016,6 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                 const val = Number(bestEntry.ClosingReading);
                 if (val > 0) {
                   prevClosings[nId] = Math.max(val, prevClosings[nId] || 0);
-                  if (bestEntry.Rate) nozzleRates[nId] = Number(bestEntry.Rate);
                   if (bestEntry.FuelType) nozzleFuelTypes[nId] = bestEntry.FuelType;
                 }
               }
@@ -976,9 +1056,6 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                   if (cVal > 0) {
                     if (prevClosings[nId] === undefined || cVal > prevClosings[nId]) {
                       prevClosings[nId] = cVal;
-                    }
-                    if (r.Rate && !nozzleRates[nId]) {
-                      nozzleRates[nId] = Number(r.Rate);
                     }
                   }
                 });
@@ -1046,21 +1123,6 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         );
       } catch {}
 
-      // Auto-update general fuel rates if retrieved from recent entries
-      for (const nId of nozzleIds) {
-        const rRate = nozzleRates[nId];
-        const rType = (nozzleFuelTypes[nId] || "").toUpperCase();
-        if (rRate && rRate > 0) {
-          if (rType.startsWith("HSD") || rType.includes("DIESEL")) {
-            hsdRate = rRate;
-          } else if (rType.startsWith("MS-II") || rType.startsWith("MS_II")) {
-            msIIRate = rRate;
-          } else if (rType.startsWith("MS") || rType.includes("PETROL")) {
-            msIRate = rRate;
-          }
-        }
-      }
-
       // Read existing draft readings from localStorage to avoid overwriting typed values on refresh or app minimize
       const draftMap: Record<number, { closingReading: number; testing: number; openingReading?: number }> = {};
       if (draftStorageKey) {
@@ -1091,21 +1153,22 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         currentRows.forEach((r) => currentMap.set(r.nozzleId, r));
 
         return configRows.map((n, index) => {
-          let rate = msIRate;
+          let rate = 0;
           const effectiveFuelType = (nozzleFuelTypes[n.nozzleId] || n.fuelType || "").trim().toUpperCase();
           if (effectiveFuelType) {
             if (effectiveFuelType.startsWith("HSD") || effectiveFuelType.includes("DIESEL")) {
               rate = hsdRate;
             } else if (effectiveFuelType.startsWith("MS-II") || effectiveFuelType.startsWith("MS_II") || effectiveFuelType.startsWith("MS2")) {
-              rate = msIIRate;
+              rate = msIIRate > 0 ? msIIRate : msIRate;
             } else if (effectiveFuelType.startsWith("MS") || effectiveFuelType.includes("PETROL")) {
               rate = msIRate;
             } else if (effectiveFuelType.startsWith("CNG")) {
               rate = cngRate;
             }
           }
-          if (nozzleRates[n.nozzleId] && nozzleRates[n.nozzleId] > 0) {
-            rate = nozzleRates[n.nozzleId];
+          if (rate <= 0) {
+            // Fall back to any configured positive station rate
+            rate = msIRate > 0 ? msIRate : (hsdRate > 0 ? hsdRate : 0);
           }
 
           const prevClosing = prevClosings[n.nozzleId] || 0;
@@ -1167,10 +1230,23 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     field: keyof DraftNozzleReading,
     value: string | number,
   ) {
+    let parsedValue: number | string = value;
+    if (field === "openingReading" || field === "closingReading" || field === "rate" || field === "testing") {
+      if (typeof value === "string") {
+        if (value.trim() === "") {
+          parsedValue = 0;
+        } else {
+          const num = parseFloat(value);
+          parsedValue = isNaN(num) ? 0 : num;
+        }
+      } else {
+        parsedValue = typeof value === "number" && !isNaN(value) ? value : 0;
+      }
+    }
     setNozzleRows((prev) =>
       prev.map((r) =>
         r.rowId === rowId
-          ? { ...r, [field]: typeof value === "string" ? value : Number(value) }
+          ? { ...r, [field]: parsedValue }
           : r,
       ),
     );
@@ -1178,7 +1254,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
 
   // ── Computed totals ──────────────────────────────────────────
   const grossSales = nozzleRows.reduce(
-    (sum, r) => sum + Math.max(0, r.closingReading - r.openingReading) * r.rate,
+    (sum, r) => sum + Math.max(0, (Number(r.closingReading) || 0) - (Number(r.openingReading) || 0)) * (Number(r.rate) || 0),
     0,
   );
   const upiTotal =
@@ -1216,7 +1292,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
 
   const creditTotal = debtorEntries.reduce((sum, d) => sum + d.amount, 0);
   const totalTesting = nozzleRows.reduce(
-    (sum, r) => sum + (r.testing || 0) * r.rate,
+    (sum, r) => sum + (Number(r.testing) || 0) * (Number(r.rate) || 0),
     0,
   );
 
@@ -1263,18 +1339,24 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       return errs;
     }
     nozzleRows.forEach((r) => {
-      const salesLtrs = r.closingReading - r.openingReading;
-      if (r.closingReading < r.openingReading)
+      const open = Number(r.openingReading) || 0;
+      const close = Number(r.closingReading) || 0;
+      const test = Number(r.testing) || 0;
+      const rate = Number(r.rate) || 0;
+      const salesLtrs = Math.max(0, close - open);
+
+      if (close < open)
         errs.push(
-          `Nozzle ${r.nozzleId} (${r.fuelType}): Closing (${r.closingReading}) < Opening (${r.openingReading})`,
+          `Nozzle ${r.nozzleId} (${r.fuelType}): Closing reading (${close}) cannot be less than opening reading (${open})`,
         );
-      if (r.testing && r.testing > salesLtrs)
+      if (test > 0 && test > salesLtrs)
         errs.push(
-          `Nozzle ${r.nozzleId} (${r.fuelType}): Testing (${r.testing} Ltr) cannot exceed dispensed fuel (${salesLtrs.toFixed(2)} Ltr)`,
+          `Nozzle ${r.nozzleId} (${r.fuelType}): Testing (${test} Ltr) cannot exceed dispensed fuel (${salesLtrs.toFixed(2)} Ltr)`,
         );
-      if (r.openingReading < 0 || r.closingReading < 0 || (r.testing || 0) < 0)
+      if (open < 0 || close < 0 || test < 0)
         errs.push(`Nozzle ${r.nozzleId}: Negative values are not allowed`);
-      if (r.rate <= 0) errs.push(`Nozzle ${r.nozzleId}: Rate must be positive`);
+      if (rate <= 0)
+        errs.push(`Nozzle ${r.nozzleId} (${r.fuelType}): Valid fuel rate is required. Please verify station settings.`);
     });
     return errs;
   }
@@ -1785,7 +1867,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
             <div style={{ fontSize: "0.8rem", fontWeight: "600", color: "#94a3b8", marginBottom: "8px" }}>
               Record Single Transaction (Amount + OTP)
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 1fr", gap: "8px", marginBottom: "8px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 1fr 90px", gap: "8px", marginBottom: "8px" }}>
               <div className="field-group">
                 <label className="field-label">Amount (₹) *</label>
                 <input
@@ -1826,28 +1908,6 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                   <option value="General">General</option>
                 </select>
               </div>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 90px", gap: "8px", marginBottom: "8px" }}>
-              <div className="field-group">
-                <label className="field-label">TID (Optional)</label>
-                <input
-                  type="text"
-                  className="field-input"
-                  placeholder="TID"
-                  value={newTxTid}
-                  onChange={(e) => setNewTxTid(e.target.value)}
-                />
-              </div>
-              <div className="field-group">
-                <label className="field-label">Batch (Optional)</label>
-                <input
-                  type="text"
-                  className="field-input"
-                  placeholder="Batch"
-                  value={newTxBatch}
-                  onChange={(e) => setNewTxBatch(e.target.value)}
-                />
-              </div>
               <div style={{ display: "flex", alignItems: "flex-end" }}>
                 <button
                   type="button"
@@ -1858,6 +1918,9 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                   <Plus size={16} /> Add
                 </button>
               </div>
+            </div>
+            <div style={{ fontSize: "0.75rem", color: "#64748b", marginBottom: "8px" }}>
+              Transactions automatically link to the shared TID and Batch of this collection type.
             </div>
 
             {txs.length > 0 && (
@@ -1876,9 +1939,13 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                     <tr key={tx.id} style={{ borderBottom: "1px solid #1e293b" }}>
                       <td style={{ padding: "6px 4px" }}>{tx.slot}</td>
                       <td style={{ padding: "6px 4px", color: "#38bdf8", fontWeight: "bold" }}>₹{tx.amount.toFixed(2)}</td>
-                      <td style={{ padding: "6px 4px", fontWeight: "600" }}>{tx.otp || "—"}</td>
                       <td style={{ padding: "6px 4px", color: "#64748b" }}>
-                        {tx.tid ? `TID:${tx.tid}` : ""} {tx.batch ? `B:${tx.batch}` : ""}
+                        {(() => {
+                          const shared = getSharedTidBatch(typeCode, tx.slot);
+                          const t = tx.tid || shared.tid;
+                          const b = tx.batch || shared.batch;
+                          return `${t ? `TID:${t}` : ""} ${b ? `B:${b}` : ""}`.trim() || "—";
+                        })()}
                       </td>
                       <td style={{ padding: "6px 4px" }}>
                         <button
@@ -2157,7 +2224,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                     </label>
                     <input
                       type="number"
-                      className={`field-input ${row.closingReading < row.openingReading && row.closingReading > 0 ? "input-error" : ""}`}
+                      className={`field-input ${Number(row.closingReading) < Number(row.openingReading) && Number(row.closingReading) > 0 ? "input-error" : ""}`}
                       value={row.closingReading || ""}
                       step="0.01"
                       min="0"
@@ -2194,6 +2261,21 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                     />
                   </div>
                 </div>
+                {Number(row.closingReading) < Number(row.openingReading) && Number(row.closingReading) > 0 && (
+                  <div style={{ color: "#ef4444", fontSize: "0.75rem", marginTop: "-4px", marginBottom: "6px" }}>
+                    Closing reading cannot be less than opening reading
+                  </div>
+                )}
+                {Number(row.testing) > (Number(row.closingReading) - Number(row.openingReading)) && Number(row.testing) > 0 && (
+                  <div style={{ color: "#ef4444", fontSize: "0.75rem", marginTop: "-4px", marginBottom: "6px" }}>
+                    Testing cannot exceed dispensed fuel
+                  </div>
+                )}
+                {Number(row.rate) <= 0 && (
+                  <div style={{ color: "#ef4444", fontSize: "0.75rem", marginTop: "-4px", marginBottom: "6px" }}>
+                    No valid fuel rate configured. Please contact manager.
+                  </div>
+                )}
                 <div
                   className="nozzle-sale-summary"
                   style={{
@@ -2208,22 +2290,22 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                     Net Sale:{" "}
                     {Math.max(
                       0,
-                      row.closingReading -
-                        row.openingReading -
-                        (row.testing || 0),
+                      (Number(row.closingReading) || 0) -
+                        (Number(row.openingReading) || 0) -
+                        (Number(row.testing) || 0),
                     ).toFixed(2)}{" "}
                     L (Dispensed:{" "}
                     {Math.max(
                       0,
-                      row.closingReading - row.openingReading,
+                      (Number(row.closingReading) || 0) - (Number(row.openingReading) || 0),
                     ).toFixed(2)}{" "}
                     L)
                   </span>
                   <span style={{ fontWeight: "bold" }}>
                     = ₹
                     {(
-                      Math.max(0, row.closingReading - row.openingReading) *
-                      row.rate
+                      Math.max(0, (Number(row.closingReading) || 0) - (Number(row.openingReading) || 0)) *
+                      (Number(row.rate) || 0)
                     ).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
                   </span>
                 </div>
@@ -3576,146 +3658,150 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           </div>
 
           {/* 8. Cash 2 (Cash in Hand / Denominations) - AT THE END OF COLLECTIONS */}
-          {/* ── SECTION 3: KANDHARE PETROLEUM LEDGER ── */}
-          <h2 className="section-heading" style={{ marginTop: "2rem" }}>
-            Kandhare Petroleum Ledger
-          </h2>
+          {/* ── SECTION 3: PERSONAL LEDGER ── */}
+          {stationConfig.features.personalLedgerEnabled !== false && (
+            <>
+              <h2 className="section-heading" style={{ marginTop: "2rem" }}>
+                {personalLedgerName} Ledger
+              </h2>
 
-          <div
-            className="nozzle-card"
-            style={{ marginBottom: "16px", padding: "16px" }}
-          >
-            <h3
-              style={{
-                fontSize: "1rem",
-                fontWeight: "bold",
-                marginBottom: "12px",
-                borderBottom: "1px solid #334155",
-                paddingBottom: "6px",
-              }}
-            >
-              Kandhare Petroleum
-            </h3>
-            <div className="field-row-2">
-              <div className="field-group">
-                <label className="field-label">Person Name</label>
-                <input
-                  type="text"
-                  className="field-input"
-                  placeholder="Enter name"
-                  value={newKpName}
-                  onChange={(e) => setNewKpName(e.target.value)}
-                />
-              </div>
-              <div className="field-group">
-                <label className="field-label">Vehicle Number</label>
-                <input
-                  type="text"
-                  className="field-input"
-                  placeholder="Enter vehicle no"
-                  value={newKpVehicleNumber}
-                  onChange={(e) => setNewKpVehicleNumber(e.target.value)}
-                />
-              </div>
-            </div>
-            <div className="field-row-2" style={{ marginTop: "12px" }}>
-              <div className="field-group">
-                <label className="field-label">Slip Number</label>
-                <input
-                  type="text"
-                  className="field-input"
-                  placeholder="Enter slip no"
-                  value={newKpSlipNumber}
-                  onChange={(e) => setNewKpSlipNumber(e.target.value)}
-                />
-              </div>
-              <div className="field-group">
-                <label className="field-label">Amount (₹)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  className="field-input"
-                  placeholder="0.00"
-                  value={newKpAmount}
-                  onChange={(e) => setNewKpAmount(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <button
-              type="button"
-              className="btn-outline"
-              style={{ marginTop: "12px", width: "100%", padding: "8px" }}
-              onClick={() => {
-                if (!newKpName.trim() || !newKpAmount || Number(newKpAmount) <= 0)
-                  return;
-                setKhandhareEntries((prev) => [
-                  ...prev,
-                  {
-                    name: newKpName,
-                    vehicleNumber: newKpVehicleNumber,
-                    slipNumber: newKpSlipNumber,
-                    amount: Number(newKpAmount),
-                  },
-                ]);
-                setNewKpName("");
-                setNewKpVehicleNumber("");
-                setNewKpSlipNumber("");
-                setNewKpAmount("");
-              }}
-            >
-              + Add Kandhare Petroleum Entry
-            </button>
-
-            {khandhareEntries.length > 0 && (
               <div
-                className="debtor-entry-list"
-                style={{ marginTop: "16px" }}
+                className="nozzle-card"
+                style={{ marginBottom: "16px", padding: "16px" }}
               >
-                {khandhareEntries.map((item, idx) => (
-                  <div
-                    key={idx}
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      background: "#0f172a",
-                      padding: "8px 12px",
-                      borderRadius: "4px",
-                      marginBottom: "4px",
-                      fontSize: "0.85rem",
-                    }}
-                  >
-                    <div>
-                      <strong>₹{item.amount.toFixed(2)}</strong>{" "}
-                      <span>{item.name}</span>
-                      <div style={{ color: "#94a3b8" }}>
-                        {item.vehicleNumber && <span>Vehicle: {item.vehicleNumber} | </span>}
-                        {item.slipNumber ? `Slip: ${item.slipNumber}` : "No slip number"}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      style={{
-                        color: "#ef4444",
-                        background: "none",
-                        border: "none",
-                        cursor: "pointer",
-                        fontWeight: "bold",
-                      }}
-                      onClick={() => {
-                        setKhandhareEntries((prev) =>
-                          prev.filter((_, i) => i !== idx),
-                        );
-                      }}
-                    >
-                      Delete
-                    </button>
+                <h3
+                  style={{
+                    fontSize: "1rem",
+                    fontWeight: "bold",
+                    marginBottom: "12px",
+                    borderBottom: "1px solid #334155",
+                    paddingBottom: "6px",
+                  }}
+                >
+                  {personalLedgerName}
+                </h3>
+                <div className="field-row-2">
+                  <div className="field-group">
+                    <label className="field-label">Person Name</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      placeholder="Enter name"
+                      value={newKpName}
+                      onChange={(e) => setNewKpName(e.target.value)}
+                    />
                   </div>
-                ))}
+                  <div className="field-group">
+                    <label className="field-label">Vehicle Number</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      placeholder="Enter vehicle no"
+                      value={newKpVehicleNumber}
+                      onChange={(e) => setNewKpVehicleNumber(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="field-row-2" style={{ marginTop: "12px" }}>
+                  <div className="field-group">
+                    <label className="field-label">Slip Number</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      placeholder="Enter slip no"
+                      value={newKpSlipNumber}
+                      onChange={(e) => setNewKpSlipNumber(e.target.value)}
+                    />
+                  </div>
+                  <div className="field-group">
+                    <label className="field-label">Amount (₹)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      className="field-input"
+                      placeholder="0.00"
+                      value={newKpAmount}
+                      onChange={(e) => setNewKpAmount(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  className="btn-outline"
+                  style={{ marginTop: "12px", width: "100%", padding: "8px" }}
+                  onClick={() => {
+                    if (!newKpName.trim() || !newKpAmount || Number(newKpAmount) <= 0)
+                      return;
+                    setKhandhareEntries((prev) => [
+                      ...prev,
+                      {
+                        name: newKpName,
+                        vehicleNumber: newKpVehicleNumber,
+                        slipNumber: newKpSlipNumber,
+                        amount: Number(newKpAmount),
+                      },
+                    ]);
+                    setNewKpName("");
+                    setNewKpVehicleNumber("");
+                    setNewKpSlipNumber("");
+                    setNewKpAmount("");
+                  }}
+                >
+                  + Add {personalLedgerName} Entry
+                </button>
+
+                {khandhareEntries.length > 0 && (
+                  <div
+                    className="debtor-entry-list"
+                    style={{ marginTop: "16px" }}
+                  >
+                    {khandhareEntries.map((item, idx) => (
+                      <div
+                        key={idx}
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          background: "#0f172a",
+                          padding: "8px 12px",
+                          borderRadius: "4px",
+                          marginBottom: "4px",
+                          fontSize: "0.85rem",
+                        }}
+                      >
+                        <div>
+                          <strong>₹{item.amount.toFixed(2)}</strong>{" "}
+                          <span>{item.name}</span>
+                          <div style={{ color: "#94a3b8" }}>
+                            {item.vehicleNumber && <span>Vehicle: {item.vehicleNumber} | </span>}
+                            {item.slipNumber ? `Slip: ${item.slipNumber}` : "No slip number"}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          style={{
+                            color: "#ef4444",
+                            background: "none",
+                            border: "none",
+                            cursor: "pointer",
+                            fontWeight: "bold",
+                          }}
+                          onClick={() => {
+                            setKhandhareEntries((prev) =>
+                              prev.filter((_, i) => i !== idx),
+                            );
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </>
+          )}
 
           <div
             className="nozzle-card"
