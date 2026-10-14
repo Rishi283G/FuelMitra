@@ -881,11 +881,21 @@ public class FakeSupabaseDsmService : SupabaseDsmService
 
     public override Task<Result<List<dynamic>>> FetchSubmissionReadingsAsync(Guid submissionId)
     {
-        var readings = new List<dynamic>
-        {
-            new { NozzleId = 1, OpeningReading = 100.0, ClosingReading = 110.0, Rate = 103.81, PumpId = 1 },
-            new { NozzleId = 3, OpeningReading = 100.0, ClosingReading = 120.0, Rate = 90.35, PumpId = 1 }
-        };
+        dynamic r1 = new System.Dynamic.ExpandoObject();
+        r1.NozzleId = 1;
+        r1.OpeningReading = 100.0;
+        r1.ClosingReading = 110.0;
+        r1.Rate = 103.81;
+        r1.PumpId = 1;
+
+        dynamic r2 = new System.Dynamic.ExpandoObject();
+        r2.NozzleId = 3;
+        r2.OpeningReading = 100.0;
+        r2.ClosingReading = 120.0;
+        r2.Rate = 90.35;
+        r2.PumpId = 1;
+
+        var readings = new List<dynamic> { r1, r2 };
         return Task.FromResult(Result<List<dynamic>>.Ok(readings));
     }
 
@@ -901,6 +911,8 @@ public class FakeSupabaseDsmService : SupabaseDsmService
         coll.Credit = 300.0;
         coll.Expense = 50.0;
         coll.ExpenseNotes = "Snacks";
+        coll.Short = 0.0;
+        coll.Excess = 0.0;
         
         return Task.FromResult(Result<dynamic>.Ok(coll));
     }

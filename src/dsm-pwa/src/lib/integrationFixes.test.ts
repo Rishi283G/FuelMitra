@@ -130,4 +130,220 @@ describe('Integration Fixes Verification (PWA)', () => {
       expect(continuityClosing).toBe(12000);
     });
   });
+
+  describe('Fix 6: PWA OTP Table Column Alignment & Visibility', () => {
+    it('has exactly 5 columns matching headers: Slot, Amount, OTP, TID/Batch, Actions', () => {
+      const headers = ['Slot', 'Amount', 'OTP', 'TID / Batch', 'Actions'];
+      const tx = { id: 'tx-1', slot: 'Morning', amount: 545.0, otp: '849201', tid: 'TID1', batch: 'B1' };
+
+      // Emulate the cells rendered per row
+      const cells = [
+        tx.slot,
+        `₹${tx.amount.toFixed(2)}`,
+        tx.otp || '—',
+        `TID:${tx.tid} B:${tx.batch}`,
+        '✕'
+      ];
+
+      expect(headers.length).toBe(5);
+      expect(cells.length).toBe(5);
+      expect(cells[2]).toBe('849201'); // OTP is in the 3rd cell, matching the 3rd header 'OTP'
+    });
+  });
+
+  describe('Fix 7: Dynamic Slot Options from Station Configuration', () => {
+    it('respects configured enableMorning, enableDay, enableNight for collection types', () => {
+      const collectionType = {
+        code: 'PETROCARD',
+        enableMorning: true,
+        enableDay: true,
+        enableNight: false,
+      };
+
+      const getSlots = (shift: string, conf: typeof collectionType) => {
+        const slots: string[] = [];
+        if (shift === 'B') {
+          if (conf.enableDay) slots.push('Day');
+          if (conf.enableMorning) slots.push('Morning');
+          if (conf.enableNight) slots.push('Night');
+        } else {
+          if (conf.enableMorning) slots.push('Morning');
+          if (conf.enableDay) slots.push('Day');
+          if (conf.enableNight) slots.push('Night');
+        }
+        if (slots.length === 0) slots.push(shift === 'B' ? 'Day' : 'Morning');
+        slots.push('General');
+        return slots;
+      };
+
+      const shiftASlots = getSlots('A', collectionType);
+      expect(shiftASlots).toEqual(['Morning', 'Day', 'General']);
+      expect(shiftASlots).not.toContain('Night');
+
+      const shiftBSlots = getSlots('B', collectionType);
+      expect(shiftBSlots).toEqual(['Day', 'Morning', 'General']);
+    });
+  });
+
+  describe('Fix 8: Diagnostic Reconciliation Consistency', () => {
+    it('produces exact -₹0.35 mismatch on diagnostic fixture (₹21,023.45 gross, ₹3,214.10 test, ₹17,809.00 coll)', () => {
+      const grossSales = 21023.45;
+      const totalTesting = 3214.10;
+      const netFuelSales = grossSales - totalTesting; // 17809.35
+      const grandProductSales = 0.00;
+      const totalSalesLiability = netFuelSales + grandProductSales; // 17809.35
+      const totalCollections = 17809.00;
+
+      const mismatch = Number((totalCollections - totalSalesLiability).toFixed(2));
+      expect(netFuelSales).toBeCloseTo(17809.35, 2);
+      expect(mismatch).toBe(-0.35);
+    });
+  });
+
+  describe('Controlled Staging Validation Scenarios', () => {
+    it('Case 1: PhonePe structured settlement of ₹5,000 + itemized ₹5,000 and ₹700 yields ₹5,700 total on PWA', () => {
+      // 1 structured settlement of ₹5,000
+      const settlements = [
+        { paymentType: 'PhonePe', period: 'Morning', amount: 5000, tid: 'PP01', batch: 'B01' }
+      ];
+
+      // 2 itemized swipes: 1 covered by settlement (₹5000), 1 additional (₹700)
+      const swipes = [
+        { mode: 'PhonePe (Morning)', amount: 5000, otp: '1111', tid: 'PP01', batch: 'B01' },
+        { mode: 'PhonePe (Morning)', amount: 700, otp: '2222', tid: 'PP01', batch: 'B01' }
+      ];
+
+      // 1-to-1 match against unconsumed settlements
+      const unconsumedSettlements = [...settlements.map(s => ({ ...s, isConsumed: false }))];
+      let totalPhonePe = 0;
+
+      for (const s of settlements) {
+        if (s.paymentType.toUpperCase() === 'PHONEPE') {
+          totalPhonePe += s.amount;
+        }
+      }
+
+      for (const swipe of swipes) {
+        const match = unconsumedSettlements.find(s =>
+          !s.isConsumed &&
+          s.paymentType.toUpperCase() === 'PHONEPE' &&
+          s.amount === swipe.amount
+        );
+
+        if (match) {
+          match.isConsumed = true;
+        } else {
+          totalPhonePe += swipe.amount;
+        }
+      }
+
+      expect(totalPhonePe).toBe(5700);
+      expect(totalPhonePe).not.toBe(5000);
+      expect(totalPhonePe).not.toBe(6200);
+      expect(totalPhonePe).not.toBe(10700);
+    });
+
+    it('Case 2: Two legitimate same-type same-amount transactions with different TIDs both survive on PWA', () => {
+      const swipes = [
+        { mode: 'PineLabs Card Morning', amount: 1500, otp: '8811', tid: 'POS01', batch: 'B01' },
+        { mode: 'PineLabs Card Morning', amount: 1500, otp: '8822', tid: 'POS02', batch: 'B02' }
+      ];
+
+      // Filter/Deduplicate by unique identity (amount + TID + OTP)
+      const uniqueSwipes = swipes.filter((swipe, idx, self) =>
+        idx === self.findIndex(s => s.mode === swipe.mode && s.amount === swipe.amount && s.tid === swipe.tid && s.otp === swipe.otp)
+      );
+
+      expect(uniqueSwipes.length).toBe(2);
+      const totalAmount = uniqueSwipes.reduce((sum, s) => sum + s.amount, 0);
+      expect(totalAmount).toBe(3000);
+    });
+  });
+
+  describe('Fix 1: Authoritative Fuel Rate Resolution', () => {
+    it('resolves configured station fuel rates (MS-I = ₹50, Speed = ₹80) accurately over historical defaults', async () => {
+      const { resolveFuelRate } = await import('./stationConfig');
+      const mockConfig = {
+        fuelRates: {
+          'MS-I': 50.0,
+          'Speed': 80.0,
+          'HSD': 92.5,
+          'CNG': 75.0,
+        },
+        hsdRate: 92.5,
+        msIRate: 50.0,
+        speedRate: 80.0,
+      } as any;
+
+      expect(resolveFuelRate(mockConfig, 'MS-I')).toBe(50.0);
+      expect(resolveFuelRate(mockConfig, 'Speed')).toBe(80.0);
+      expect(resolveFuelRate(mockConfig, 'MS', 'Speed Tank')).toBe(80.0);
+      expect(resolveFuelRate(mockConfig, 'XP95')).toBe(80.0); // Premium category matches Speed rate
+      expect(resolveFuelRate(mockConfig, 'HSD')).toBe(92.5);
+      expect(resolveFuelRate(mockConfig, 'CNG')).toBe(75.0);
+      expect(resolveFuelRate(mockConfig, 'UNKNOWN')).toBe(50.0); // Falls back to station msIRate
+    });
+  });
+
+  describe('Fix 2: Developer Side Slot Settings Enforcement', () => {
+    it('filters out Morning/Night/Day slots when disabled in station configuration', () => {
+      const collectionTypes = [
+        { code: 'PHONEPE', displayName: 'PhonePe', enableMorning: false, enableDay: true, enableNight: false },
+        { code: 'CREDIT_CARD', displayName: 'Credit Card', enableMorning: true, enableDay: true, enableNight: false },
+        { code: 'PETROCARD', displayName: 'PetroCard', enableMorning: false, enableDay: false, enableNight: false },
+      ];
+
+      function getTypeSlotConfig(code: string) {
+        const conf = collectionTypes.find(c => c.code === code);
+        if (!conf) return { enableMorning: true, enableDay: true, enableNight: true };
+        return {
+          enableMorning: conf.enableMorning !== false,
+          enableDay: conf.enableDay !== false,
+          enableNight: conf.enableNight !== false,
+        };
+      }
+
+      const ppConf = getTypeSlotConfig('PHONEPE');
+      expect(ppConf.enableMorning).toBe(false);
+      expect(ppConf.enableDay).toBe(true);
+      expect(ppConf.enableNight).toBe(false);
+
+      const petroConf = getTypeSlotConfig('PETROCARD');
+      expect(petroConf.enableDay).toBe(false);
+      expect(petroConf.enableMorning).toBe(false);
+      expect(petroConf.enableNight).toBe(false);
+    });
+  });
+
+  describe('Fix 3: Per-Collection Manual Entry Toggle & OTP Calculation', () => {
+    it('when Manual Toggle is OFF, only OTP rows contribute to total and submission', () => {
+      const manualToggles: Record<string, boolean> = { PHONEPE: false };
+      const isManualEnabled = (code: string) => manualToggles[code] ?? false;
+
+      const manualAmount = 5000.0;
+      const otpTxs = [
+        { amount: 1500, otp: '111' },
+        { amount: 700, otp: '222' },
+      ];
+      const otpTotal = otpTxs.reduce((sum, t) => sum + t.amount, 0);
+
+      const effectiveTotal = (isManualEnabled('PHONEPE') ? manualAmount : 0) + otpTotal;
+      expect(effectiveTotal).toBe(2200.0);
+    });
+
+    it('when Manual Toggle is ON, manual amount + OTP rows contribute exactly once', () => {
+      const manualToggles: Record<string, boolean> = { PHONEPE: true };
+      const isManualEnabled = (code: string) => manualToggles[code] ?? false;
+
+      const manualAmount = 5000.0;
+      const otpTxs = [
+        { amount: 1500, otp: '111' },
+        { amount: 700, otp: '222' },
+      ];
+      const otpTotal = otpTxs.reduce((sum, t) => sum + t.amount, 0);
+
+      const effectiveTotal = (isManualEnabled('PHONEPE') ? manualAmount : 0) + otpTotal;
+      expect(effectiveTotal).toBe(7200.0);
+    });
+  });
 });

@@ -6,6 +6,7 @@ import { supabase } from "../lib/supabase";
 import {
   fetchStationConfig,
   getDefaultStationConfig,
+  resolveFuelRate,
   type StationConfig,
   type OtpTransactionItem,
 } from "../lib/stationConfig";
@@ -247,6 +248,38 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   const getMachineTotalForType = (code: string) =>
     getTransactionsForType(code).reduce((sum, t) => sum + (t.amount || 0), 0);
 
+  // Per-collection-type Manual Entry Toggles & Slot Enforcement
+  const [manualEntryToggles, setManualEntryToggles] = useState<Record<string, boolean>>({});
+
+  function isManualEnabled(typeCode: string): boolean {
+    const clean = (typeCode || "").toUpperCase().replace(/_/g, "").replace(/\s+/g, "");
+    if (manualEntryToggles[clean] !== undefined) {
+      return manualEntryToggles[clean];
+    }
+    const txs = getTransactionsForType(typeCode);
+    return !(otpMachineTrackingEnabled && txs.length > 0);
+  }
+
+  function toggleManualEnabled(typeCode: string, enabled: boolean) {
+    const clean = (typeCode || "").toUpperCase().replace(/_/g, "").replace(/\s+/g, "");
+    setManualEntryToggles((prev) => ({ ...prev, [clean]: enabled }));
+  }
+
+  function getTypeSlotConfig(code: string) {
+    const clean = (code || "").toUpperCase().replace(/_/g, "").replace(/\s+/g, "");
+    const conf = stationConfig?.collectionTypes?.find(
+      (c) => c.code.toUpperCase().replace(/_/g, "").replace(/\s+/g, "") === clean
+    );
+    if (!conf) {
+      return { enableMorning: true, enableDay: true, enableNight: true };
+    }
+    return {
+      enableMorning: conf.enableMorning !== false,
+      enableDay: conf.enableDay !== false,
+      enableNight: conf.enableNight !== false,
+    };
+  }
+
   const getSharedTidBatch = (typeCode: string, slot: string) => {
     const code = typeCode.toUpperCase();
     if (code === "PHONEPE") {
@@ -305,8 +338,15 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   };
 
   const addMachineTransaction = (typeCode: string) => {
+    if (!typeCode || !typeCode.trim()) {
+      alert("Collection type is required.");
+      return;
+    }
     const amt = parseFloat(newTxAmount);
-    if (!amt || amt <= 0) return;
+    if (!amt || isNaN(amt) || amt <= 0) {
+      alert("Please enter a valid amount greater than 0.");
+      return;
+    }
     const effectiveSlot = newTxSlot || (shiftType === "B" ? "Day" : "Morning");
     const { tid, batch } = getSharedTidBatch(typeCode, effectiveSlot);
     const newTx: OtpTransactionItem = {
@@ -615,6 +655,9 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     cardSwipeDetails,
     salesQuantities,
     khandhareEntries,
+    qrPayments,
+    machineTransactions,
+    dynamicValues,
     step,
     nozzleRows,
   ]);
@@ -800,62 +843,21 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         localStorage.getItem("fuelpro_station_id") ||
         "";
 
-      // 1. Fetch rates from Settings
-      let hsdRate = 90.35;
-      let msIRate = 103.81;
-      let msIIRate = 103.81;
-      let cngRate = 85.0;
-
-      // Fast check cached rates first
-      try {
-        const ratesCacheKey = `nozzle_rates_${station || "default"}`;
-        const cachedRates = localStorage.getItem(ratesCacheKey);
-        if (cachedRates) {
-          const parsed = JSON.parse(cachedRates);
-          if (parsed.hsd) hsdRate = parsed.hsd;
-          if (parsed.msI) msIRate = parsed.msI;
-          if (parsed.msII) msIIRate = parsed.msII;
-          if (parsed.cng) cngRate = parsed.cng;
+      // 1. Fetch rates authoritatively from station configuration
+      let latestConfig = stationConfig;
+      if (station) {
+        try {
+          latestConfig = await fetchStationConfig(station);
+          setStationConfig(latestConfig);
+        } catch (e) {
+          console.warn("Could not fetch fresh station config for nozzle rates:", e);
         }
-      } catch {}
-
-      try {
-        let settingsQuery = supabase
-          .from("Settings")
-          .select("HsdRate, MsIRate, MsIIRate, CngRate, FuelRatesJson, LastUpdated");
-
-        if (station) {
-          settingsQuery = settingsQuery.eq("station_id", station);
-        }
-
-        const { data: settingsData } = await settingsQuery
-          .order("LastUpdated", { ascending: false, nullsFirst: false })
-          .limit(1);
-
-        if (settingsData && settingsData.length > 0) {
-          const s = settingsData[0];
-          if (s.HsdRate) hsdRate = Number(s.HsdRate);
-          if (s.MsIRate) msIRate = Number(s.MsIRate);
-          if (s.MsIIRate) msIIRate = Number(s.MsIIRate);
-          if (s.CngRate) cngRate = Number(s.CngRate);
-
-          if (s.FuelRatesJson) {
-            try {
-              const ratesMap = typeof s.FuelRatesJson === "string" ? JSON.parse(s.FuelRatesJson) : s.FuelRatesJson;
-              if (ratesMap && typeof ratesMap === "object") {
-                if (ratesMap["HSD"] || ratesMap["HSD - 20KL"]) hsdRate = Number(ratesMap["HSD"] || ratesMap["HSD - 20KL"]);
-                if (ratesMap["MS"] || ratesMap["MS-I"] || ratesMap["MS - 20KL"]) msIRate = Number(ratesMap["MS"] || ratesMap["MS-I"] || ratesMap["MS - 20KL"]);
-                if (ratesMap["MS-II"] || ratesMap["HSD - 20KL II"]) msIIRate = Number(ratesMap["MS-II"] || ratesMap["HSD - 20KL II"]);
-                if (ratesMap["CNG"]) cngRate = Number(ratesMap["CNG"]);
-              }
-            } catch (jsonErr) {
-              console.warn("Could not parse FuelRatesJson:", jsonErr);
-            }
-          }
-        }
-      } catch (e) {
-        console.error("Failed to fetch rates from Settings:", e);
       }
+
+      let hsdRate = latestConfig.hsdRate || 90.35;
+      let msIRate = latestConfig.msIRate || 103.81;
+      let msIIRate = latestConfig.msIIRate || 103.81;
+      let cngRate = latestConfig.cngRate || 85.0;
 
       // We load nozzles of both the primary and all connected pumps (deduplicated)
       const connectedPumps = profile?.ConnectedPumps && profile.ConnectedPumps.length > 0
@@ -1153,22 +1155,10 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         currentRows.forEach((r) => currentMap.set(r.nozzleId, r));
 
         return configRows.map((n, index) => {
-          let rate = 0;
-          const effectiveFuelType = (nozzleFuelTypes[n.nozzleId] || n.fuelType || "").trim().toUpperCase();
-          if (effectiveFuelType) {
-            if (effectiveFuelType.startsWith("HSD") || effectiveFuelType.includes("DIESEL")) {
-              rate = hsdRate;
-            } else if (effectiveFuelType.startsWith("MS-II") || effectiveFuelType.startsWith("MS_II") || effectiveFuelType.startsWith("MS2")) {
-              rate = msIIRate > 0 ? msIIRate : msIRate;
-            } else if (effectiveFuelType.startsWith("MS") || effectiveFuelType.includes("PETROL")) {
-              rate = msIRate;
-            } else if (effectiveFuelType.startsWith("CNG")) {
-              rate = cngRate;
-            }
-          }
+          let rate = resolveFuelRate(latestConfig, n.fuelType);
           if (rate <= 0) {
             // Fall back to any configured positive station rate
-            rate = msIRate > 0 ? msIRate : (hsdRate > 0 ? hsdRate : 0);
+            rate = latestConfig?.msIRate || latestConfig?.hsdRate || 0;
           }
 
           const prevClosing = prevClosings[n.nozzleId] || 0;
@@ -1257,38 +1247,63 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     (sum, r) => sum + Math.max(0, (Number(r.closingReading) || 0) - (Number(r.openingReading) || 0)) * (Number(r.rate) || 0),
     0,
   );
-  const upiTotal =
-    shiftType === "B" ? phonePeDay : phonePeMorning + phonePeNight;
-  const cardTotal =
-    shiftType === "B" ? creditCardDay : creditCardMorning + creditCardNight;
-  const petroCardTotal =
-    shiftType === "B" ? petroCardDay : petroCardMorning + petroCardNight;
+  const phonePeSlotConf = getTypeSlotConfig("PHONEPE");
+  const creditCardSlotConf = getTypeSlotConfig("CREDIT_CARD");
+  const petroCardSlotConf = getTypeSlotConfig("PETROCARD");
+
+  const phonePeManualAmt =
+    shiftType === "B"
+      ? (phonePeSlotConf.enableDay ? phonePeDay : 0)
+      : ((phonePeSlotConf.enableMorning ? phonePeMorning : 0) + (phonePeSlotConf.enableNight ? phonePeNight : 0));
+
+  const creditCardManualAmt =
+    shiftType === "B"
+      ? (creditCardSlotConf.enableDay ? creditCardDay : 0)
+      : ((creditCardSlotConf.enableMorning ? creditCardMorning : 0) + (creditCardSlotConf.enableNight ? creditCardNight : 0));
+
+  const petroCardManualAmt =
+    shiftType === "B"
+      ? (petroCardSlotConf.enableDay ? petroCardDay : 0)
+      : ((petroCardSlotConf.enableMorning ? petroCardMorning : 0) + (petroCardSlotConf.enableNight ? petroCardNight : 0));
 
   const phonePeTxTotal = getMachineTotalForType("PHONEPE");
   const cardTxTotal = getMachineTotalForType("CREDIT_CARD");
   const petroTxTotal = getMachineTotalForType("PETROCARD");
 
   const effectivePhonePeTotal =
-    otpMachineTrackingEnabled && phonePeTxTotal > 0
-      ? phonePeTxTotal
-      : upiTotal;
+    (isManualEnabled("PHONEPE") ? phonePeManualAmt : 0) +
+    (otpMachineTrackingEnabled ? phonePeTxTotal : 0);
 
   const effectiveCreditCardTotal =
-    otpMachineTrackingEnabled && cardTxTotal > 0
-      ? cardTxTotal
-      : cardTotal;
+    (isManualEnabled("CREDIT_CARD") ? creditCardManualAmt : 0) +
+    (otpMachineTrackingEnabled ? cardTxTotal : 0);
 
   const effectivePetroCardTotal =
-    otpMachineTrackingEnabled && petroTxTotal > 0
-      ? petroTxTotal
-      : petroCardTotal;
+    (isManualEnabled("PETROCARD") ? petroCardManualAmt : 0) +
+    (otpMachineTrackingEnabled ? petroTxTotal : 0);
 
   const dynamicTotal = Object.entries(dynamicValues).reduce((sum, [code, val]) => {
     const clean = code.toUpperCase().replace(/_/g, "");
     if (clean === "PHONEPE" || clean === "CREDITCARD" || clean === "PETROCARD") return sum;
     const txTotal = getMachineTotalForType(code);
-    return sum + (otpMachineTrackingEnabled && txTotal > 0 ? txTotal : (val.amount || 0));
+    const manualActive = isManualEnabled(code);
+    const slotConf = getTypeSlotConfig(code);
+    const isSlotAllowed = shiftType === "B" ? slotConf.enableDay : (slotConf.enableMorning || slotConf.enableNight);
+    const manualAmt = manualActive && isSlotAllowed ? (val.amount || 0) : 0;
+    const otpAmt = otpMachineTrackingEnabled ? txTotal : 0;
+    return sum + manualAmt + otpAmt;
   }, 0);
+
+  const getDynamicTypeEffectiveTotal = (code: string) => {
+    const val = dynamicValues[code] || { amount: 0, tid: "", batch: "", otp: "" };
+    const txTotal = getMachineTotalForType(code);
+    const manualActive = isManualEnabled(code);
+    const slotConf = getTypeSlotConfig(code);
+    const isSlotAllowed = shiftType === "B" ? slotConf.enableDay : (slotConf.enableMorning || slotConf.enableNight);
+    const manualAmt = manualActive && isSlotAllowed ? (val.amount || 0) : 0;
+    const otpAmt = otpMachineTrackingEnabled ? txTotal : 0;
+    return manualAmt + otpAmt;
+  };
 
   const creditTotal = debtorEntries.reduce((sum, d) => sum + d.amount, 0);
   const totalTesting = nozzleRows.reduce(
@@ -1470,14 +1485,10 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     submittingRef.current = true;
     setIsSubmitting(true);
 
-    const hasPhonePeMachineTxs = otpMachineTrackingEnabled && phonePeTxTotal > 0;
-    const hasCreditMachineTxs = otpMachineTrackingEnabled && cardTxTotal > 0;
-    const hasPetroMachineTxs = otpMachineTrackingEnabled && petroTxTotal > 0;
-
     const cardSwipes = [];
     const settlementsList = [];
     if (shiftType === "B") {
-      if (!hasPhonePeMachineTxs && phonePeDay > 0) {
+      if (isManualEnabled("PHONEPE") && phonePeSlotConf.enableDay && phonePeDay > 0) {
         cardSwipes.push({
           mode: "PhonePe Day",
           amount: phonePeDay,
@@ -1494,7 +1505,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           operationalShift: "B",
         });
       }
-      if (!hasCreditMachineTxs && creditCardDay > 0) {
+      if (isManualEnabled("CREDIT_CARD") && creditCardSlotConf.enableDay && creditCardDay > 0) {
         cardSwipes.push({
           mode: "PineLabs Card Day",
           amount: creditCardDay,
@@ -1511,7 +1522,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           operationalShift: "B",
         });
       }
-      if (!hasPetroMachineTxs && petroCardDay > 0) {
+      if (isManualEnabled("PETROCARD") && petroCardSlotConf.enableDay && petroCardDay > 0) {
         cardSwipes.push({
           mode: "PetroCard Day",
           amount: petroCardDay,
@@ -1529,7 +1540,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         });
       }
     } else {
-      if (!hasPhonePeMachineTxs && phonePeMorning > 0) {
+      if (isManualEnabled("PHONEPE") && phonePeSlotConf.enableMorning && phonePeMorning > 0) {
         cardSwipes.push({
           mode: "PhonePe Morning",
           amount: phonePeMorning,
@@ -1546,7 +1557,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           operationalShift: "A",
         });
       }
-      if (!hasPhonePeMachineTxs && phonePeNight > 0) {
+      if (isManualEnabled("PHONEPE") && phonePeSlotConf.enableNight && phonePeNight > 0) {
         cardSwipes.push({
           mode: "PhonePe Night",
           amount: phonePeNight,
@@ -1563,7 +1574,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           operationalShift: "A",
         });
       }
-      if (!hasCreditMachineTxs && creditCardMorning > 0) {
+      if (isManualEnabled("CREDIT_CARD") && creditCardSlotConf.enableMorning && creditCardMorning > 0) {
         cardSwipes.push({
           mode: "PineLabs Card Morning",
           amount: creditCardMorning,
@@ -1580,7 +1591,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           operationalShift: "A",
         });
       }
-      if (!hasCreditMachineTxs && creditCardNight > 0) {
+      if (isManualEnabled("CREDIT_CARD") && creditCardSlotConf.enableNight && creditCardNight > 0) {
         cardSwipes.push({
           mode: "PineLabs Card Night",
           amount: creditCardNight,
@@ -1597,7 +1608,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           operationalShift: "A",
         });
       }
-      if (!hasPetroMachineTxs && petroCardMorning > 0) {
+      if (isManualEnabled("PETROCARD") && petroCardSlotConf.enableMorning && petroCardMorning > 0) {
         cardSwipes.push({
           mode: "PetroCard Morning",
           amount: petroCardMorning,
@@ -1614,7 +1625,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           operationalShift: "A",
         });
       }
-      if (!hasPetroMachineTxs && petroCardNight > 0) {
+      if (isManualEnabled("PETROCARD") && petroCardSlotConf.enableNight && petroCardNight > 0) {
         cardSwipes.push({
           mode: "PetroCard Night",
           amount: petroCardNight,
@@ -1650,14 +1661,21 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       : (profile?.ConnectedPump ? [profile.ConnectedPump] : []);
 
     const dynamicItemsPayload = Object.entries(dynamicValues)
-      .map(([code, val]) => ({
-        collectionTypeCode: code,
-        amount: getTransactionsForType(code).length > 0 ? getMachineTotalForType(code) : (val.amount || 0),
-        tid: val.tid,
-        batch: val.batch,
-        slot: shiftType === "B" ? "Day" : "Morning",
-        otp: val.otp || "",
-      }))
+      .map(([code, val]) => {
+        const slotConf = getTypeSlotConfig(code);
+        const isSlotAllowed = shiftType === "B" ? slotConf.enableDay : (slotConf.enableMorning || slotConf.enableNight);
+        const manualAmt = isManualEnabled(code) && isSlotAllowed ? (val.amount || 0) : 0;
+        const txTotal = getMachineTotalForType(code);
+        const effectiveAmt = manualAmt + (otpMachineTrackingEnabled ? txTotal : 0);
+        return {
+          collectionTypeCode: code,
+          amount: effectiveAmt,
+          tid: val.tid,
+          batch: val.batch,
+          slot: shiftType === "B" ? "Day" : (slotConf.enableMorning ? "Morning" : "Night"),
+          otp: val.otp || "",
+        };
+      })
       .filter((item) => item.amount > 0);
 
     const draftData = {
@@ -1829,6 +1847,27 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     const mTotal = getMachineTotalForType(typeCode);
     const isOpen = activeOtpModalType === typeCode;
 
+    const typeConf = stationConfig?.collectionTypes?.find(
+      (c) => c.code.toUpperCase() === typeCode.toUpperCase()
+    );
+    const availableSlots: string[] = [];
+    if (shiftType === "B") {
+      if (typeConf ? typeConf.enableDay : true) availableSlots.push("Day");
+      if (typeConf && typeConf.enableMorning) availableSlots.push("Morning");
+      if (typeConf && typeConf.enableNight) availableSlots.push("Night");
+    } else {
+      if (typeConf ? typeConf.enableMorning : true) availableSlots.push("Morning");
+      if (typeConf && typeConf.enableDay) availableSlots.push("Day");
+      if (typeConf ? typeConf.enableNight : true) availableSlots.push("Night");
+    }
+    if (availableSlots.length === 0) {
+      availableSlots.push(shiftType === "B" ? "Day" : "Morning");
+    }
+    if (!availableSlots.includes("General")) {
+      availableSlots.push("General");
+    }
+    const defaultSlot = availableSlots[0] || (shiftType === "B" ? "Day" : "Morning");
+
     return (
       <div style={{ marginTop: "12px", borderTop: "1px dashed #334155", paddingTop: "10px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -1836,7 +1875,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
             type="button"
             onClick={() => {
               setActiveOtpModalType(isOpen ? null : typeCode);
-              setNewTxSlot(shiftType === "B" ? "Day" : "Morning");
+              setNewTxSlot(defaultSlot);
             }}
             style={{
               background: "transparent",
@@ -1894,18 +1933,14 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                 <label className="field-label">Slot</label>
                 <select
                   className="field-input"
-                  value={newTxSlot}
+                  value={newTxSlot || defaultSlot}
                   onChange={(e) => setNewTxSlot(e.target.value)}
                 >
-                  {shiftType === "B" ? (
-                    <option value="Day">Day</option>
-                  ) : (
-                    <>
-                      <option value="Morning">Morning</option>
-                      <option value="Night">Night</option>
-                    </>
-                  )}
-                  <option value="General">General</option>
+                  {availableSlots.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div style={{ display: "flex", alignItems: "flex-end" }}>
@@ -1939,6 +1974,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                     <tr key={tx.id} style={{ borderBottom: "1px solid #1e293b" }}>
                       <td style={{ padding: "6px 4px" }}>{tx.slot}</td>
                       <td style={{ padding: "6px 4px", color: "#38bdf8", fontWeight: "bold" }}>₹{tx.amount.toFixed(2)}</td>
+                      <td style={{ padding: "6px 4px", color: "#38bdf8", fontFamily: "monospace" }}>{tx.otp || "—"}</td>
                       <td style={{ padding: "6px 4px", color: "#64748b" }}>
                         {(() => {
                           const shared = getSharedTidBatch(typeCode, tx.slot);
@@ -2335,145 +2371,204 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
             className="nozzle-card"
             style={{ marginBottom: "16px", padding: "16px" }}
           >
-            <h3
+            <div
               style={{
-                fontSize: "1rem",
-                fontWeight: "bold",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
                 marginBottom: "12px",
                 borderBottom: "1px solid #334155",
                 paddingBottom: "6px",
               }}
             >
-              Petro Card
-            </h3>
-
-            {shiftType === "B" ? (
-              <div
+              <div>
+                <h3
+                  style={{
+                    fontSize: "1rem",
+                    fontWeight: "bold",
+                    margin: 0,
+                  }}
+                >
+                  Petro Card
+                </h3>
+                <span style={{ fontSize: "0.8rem", color: "#38bdf8", fontWeight: 600 }}>
+                  Total: ₹{effectivePetroCardTotal.toFixed(2)}
+                </span>
+              </div>
+              <label
                 style={{
-                  display: "grid",
-                  gridTemplateColumns: "1.2fr 1fr 1fr",
-                  gap: "8px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  fontSize: "0.8rem",
+                  color: isManualEnabled("PETROCARD") ? "#38bdf8" : "#94a3b8",
+                  cursor: "pointer",
+                  userSelect: "none",
                 }}
               >
-                <div className="field-group">
-                  <label className="field-label">Day (8am - 8pm) (₹)</label>
-                  <input
-                    type="number"
-                    className="field-input"
-                    value={petroCardDay || ""}
-                    step="0.01"
-                    min="0"
-                    onChange={(e) => setPetroCardDay(Number(e.target.value))}
-                  />
+                <input
+                  type="checkbox"
+                  checked={isManualEnabled("PETROCARD")}
+                  onChange={(e) => toggleManualEnabled("PETROCARD", e.target.checked)}
+                />
+                <span>Manual Entry</span>
+              </label>
+            </div>
+
+            {shiftType === "B" ? (
+              petroCardSlotConf.enableDay === false ? (
+                <div style={{ fontSize: "0.8rem", color: "#64748b", fontStyle: "italic", marginBottom: "8px" }}>
+                  Day slot disabled by station configuration.
                 </div>
-                <div className="field-group">
-                  <label className="field-label">TID</label>
-                  <input
-                    type="text"
-                    className="field-input"
-                    placeholder="TID"
-                    value={petroCardTidDay}
-                    onChange={(e) => setPetroCardTidDay(e.target.value)}
-                  />
+              ) : (
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1.2fr 1fr 1fr",
+                    gap: "8px",
+                    opacity: isManualEnabled("PETROCARD") ? 1 : 0.6,
+                  }}
+                >
+                  <div className="field-group">
+                    <label className="field-label">Day (8am - 8pm) (₹)</label>
+                    <input
+                      type="number"
+                      className="field-input"
+                      value={petroCardDay || ""}
+                      step="0.01"
+                      min="0"
+                      disabled={!isManualEnabled("PETROCARD")}
+                      onChange={(e) => setPetroCardDay(Number(e.target.value))}
+                    />
+                  </div>
+                  <div className="field-group">
+                    <label className="field-label">TID</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      placeholder="TID"
+                      value={petroCardTidDay}
+                      disabled={!isManualEnabled("PETROCARD")}
+                      onChange={(e) => setPetroCardTidDay(e.target.value)}
+                    />
+                  </div>
+                  <div className="field-group">
+                    <label className="field-label">Batch</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      placeholder="Batch"
+                      value={petroCardBatchDay}
+                      disabled={!isManualEnabled("PETROCARD")}
+                      onChange={(e) => setPetroCardBatchDay(e.target.value)}
+                    />
+                  </div>
                 </div>
-                <div className="field-group">
-                  <label className="field-label">Batch</label>
-                  <input
-                    type="text"
-                    className="field-input"
-                    placeholder="Batch"
-                    value={petroCardBatchDay}
-                    onChange={(e) => setPetroCardBatchDay(e.target.value)}
-                  />
-                </div>
-              </div>
+              )
             ) : (
               <>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1.2fr 1fr 1fr",
-                    gap: "8px",
-                    marginBottom: "10px",
-                  }}
-                >
-                  <div className="field-group">
-                    <label className="field-label">Morning (12am - 8pm) (₹)</label>
-                    <input
-                      type="number"
-                      className="field-input"
-                      value={petroCardMorning || ""}
-                      step="0.01"
-                      min="0"
-                      onChange={(e) =>
-                        setPetroCardMorning(Number(e.target.value))
-                      }
-                    />
+                {petroCardSlotConf.enableMorning !== false && (
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1.2fr 1fr 1fr",
+                      gap: "8px",
+                      marginBottom: "10px",
+                      opacity: isManualEnabled("PETROCARD") ? 1 : 0.6,
+                    }}
+                  >
+                    <div className="field-group">
+                      <label className="field-label">Morning (12am - 8pm) (₹)</label>
+                      <input
+                        type="number"
+                        className="field-input"
+                        value={petroCardMorning || ""}
+                        step="0.01"
+                        min="0"
+                        disabled={!isManualEnabled("PETROCARD")}
+                        onChange={(e) =>
+                          setPetroCardMorning(Number(e.target.value))
+                        }
+                      />
+                    </div>
+                    <div className="field-group">
+                      <label className="field-label">TID</label>
+                      <input
+                        type="text"
+                        className="field-input"
+                        placeholder="TID"
+                        value={petroCardTidMorning}
+                        disabled={!isManualEnabled("PETROCARD")}
+                        onChange={(e) => setPetroCardTidMorning(e.target.value)}
+                      />
+                    </div>
+                    <div className="field-group">
+                      <label className="field-label">Batch</label>
+                      <input
+                        type="text"
+                        className="field-input"
+                        placeholder="Batch"
+                        value={petroCardBatchMorning}
+                        disabled={!isManualEnabled("PETROCARD")}
+                        onChange={(e) =>
+                          setPetroCardBatchMorning(e.target.value)
+                        }
+                      />
+                    </div>
                   </div>
-                  <div className="field-group">
-                    <label className="field-label">TID</label>
-                    <input
-                      type="text"
-                      className="field-input"
-                      placeholder="TID"
-                      value={petroCardTidMorning}
-                      onChange={(e) => setPetroCardTidMorning(e.target.value)}
-                    />
+                )}
+                {petroCardSlotConf.enableNight !== false && (
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1.2fr 1fr 1fr",
+                      gap: "8px",
+                      opacity: isManualEnabled("PETROCARD") ? 1 : 0.6,
+                    }}
+                  >
+                    <div className="field-group">
+                      <label className="field-label">Night (8pm - 12am) (₹)</label>
+                      <input
+                        type="number"
+                        className="field-input"
+                        value={petroCardNight || ""}
+                        step="0.01"
+                        min="0"
+                        disabled={!isManualEnabled("PETROCARD")}
+                        onChange={(e) =>
+                          setPetroCardNight(Number(e.target.value))
+                        }
+                      />
+                    </div>
+                    <div className="field-group">
+                      <label className="field-label">TID</label>
+                      <input
+                        type="text"
+                        className="field-input"
+                        placeholder="TID"
+                        value={petroCardTidNight}
+                        disabled={!isManualEnabled("PETROCARD")}
+                        onChange={(e) => setPetroCardTidNight(e.target.value)}
+                      />
+                    </div>
+                    <div className="field-group">
+                      <label className="field-label">Batch</label>
+                      <input
+                        type="text"
+                        className="field-input"
+                        placeholder="Batch"
+                        value={petroCardBatchNight}
+                        disabled={!isManualEnabled("PETROCARD")}
+                        onChange={(e) => setPetroCardBatchNight(e.target.value)}
+                      />
+                    </div>
                   </div>
-                  <div className="field-group">
-                    <label className="field-label">Batch</label>
-                    <input
-                      type="text"
-                      className="field-input"
-                      placeholder="Batch"
-                      value={petroCardBatchMorning}
-                      onChange={(e) =>
-                        setPetroCardBatchMorning(e.target.value)
-                      }
-                    />
+                )}
+                {petroCardSlotConf.enableMorning === false && petroCardSlotConf.enableNight === false && (
+                  <div style={{ fontSize: "0.8rem", color: "#64748b", fontStyle: "italic", marginBottom: "8px" }}>
+                    Morning/Night slots disabled by station configuration.
                   </div>
-                </div>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1.2fr 1fr 1fr",
-                    gap: "8px",
-                  }}
-                >
-                  <div className="field-group">
-                    <label className="field-label">Night (8pm - 12am) (₹)</label>
-                    <input
-                      type="number"
-                      className="field-input"
-                      value={petroCardNight || ""}
-                      step="0.01"
-                      min="0"
-                      onChange={(e) =>
-                        setPetroCardNight(Number(e.target.value))
-                      }
-                    />
-                  </div>
-                  <div className="field-group">
-                    <label className="field-label">TID</label>
-                    <input
-                      type="text"
-                      className="field-input"
-                      placeholder="TID"
-                      value={petroCardTidNight}
-                      onChange={(e) => setPetroCardTidNight(e.target.value)}
-                    />
-                  </div>
-                  <div className="field-group">
-                    <label className="field-label">Batch</label>
-                    <input
-                      type="text"
-                      className="field-input"
-                      placeholder="Batch"
-                      value={petroCardBatchNight}
-                      onChange={(e) => setPetroCardBatchNight(e.target.value)}
-                    />
-                  </div>
-                </div>
+                )}
               </>
             )}
             {renderOtpTransactionManager("PETROCARD")}
@@ -2484,139 +2579,198 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
             className="nozzle-card"
             style={{ marginBottom: "16px", padding: "16px" }}
           >
-            <h3
+            <div
               style={{
-                fontSize: "1rem",
-                fontWeight: "bold",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
                 marginBottom: "12px",
                 borderBottom: "1px solid #334155",
                 paddingBottom: "6px",
               }}
             >
-              Credit Card (Card)
-            </h3>
-
-            {shiftType === "B" ? (
-              <div
+              <div>
+                <h3
+                  style={{
+                    fontSize: "1rem",
+                    fontWeight: "bold",
+                    margin: 0,
+                  }}
+                >
+                  Credit Card (Card)
+                </h3>
+                <span style={{ fontSize: "0.8rem", color: "#38bdf8", fontWeight: 600 }}>
+                  Total: ₹{effectiveCreditCardTotal.toFixed(2)}
+                </span>
+              </div>
+              <label
                 style={{
-                  display: "grid",
-                  gridTemplateColumns: "1.2fr 1fr 1fr",
-                  gap: "8px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  fontSize: "0.8rem",
+                  color: isManualEnabled("CREDIT_CARD") ? "#38bdf8" : "#94a3b8",
+                  cursor: "pointer",
+                  userSelect: "none",
                 }}
               >
-                <div className="field-group">
-                  <label className="field-label">Day (8am - 8pm) (₹)</label>
-                  <input
-                    type="number"
-                    className="field-input"
-                    value={creditCardDay || ""}
-                    step="0.01"
-                    min="0"
-                    onChange={(e) => setCreditCardDay(Number(e.target.value))}
-                  />
+                <input
+                  type="checkbox"
+                  checked={isManualEnabled("CREDIT_CARD")}
+                  onChange={(e) => toggleManualEnabled("CREDIT_CARD", e.target.checked)}
+                />
+                <span>Manual Entry</span>
+              </label>
+            </div>
+
+            {shiftType === "B" ? (
+              creditCardSlotConf.enableDay === false ? (
+                <div style={{ fontSize: "0.8rem", color: "#64748b", fontStyle: "italic", marginBottom: "8px" }}>
+                  Day slot disabled by station configuration.
                 </div>
-                <div className="field-group">
-                  <label className="field-label">TID</label>
-                  <input
-                    type="text"
-                    className="field-input"
-                    placeholder="TID"
-                    value={creditCardTidDay}
-                    onChange={(e) => setCreditCardTidDay(e.target.value)}
-                  />
+              ) : (
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1.2fr 1fr 1fr",
+                    gap: "8px",
+                    opacity: isManualEnabled("CREDIT_CARD") ? 1 : 0.6,
+                  }}
+                >
+                  <div className="field-group">
+                    <label className="field-label">Day (8am - 8pm) (₹)</label>
+                    <input
+                      type="number"
+                      className="field-input"
+                      value={creditCardDay || ""}
+                      step="0.01"
+                      min="0"
+                      disabled={!isManualEnabled("CREDIT_CARD")}
+                      onChange={(e) => setCreditCardDay(Number(e.target.value))}
+                    />
+                  </div>
+                  <div className="field-group">
+                    <label className="field-label">TID</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      placeholder="TID"
+                      value={creditCardTidDay}
+                      disabled={!isManualEnabled("CREDIT_CARD")}
+                      onChange={(e) => setCreditCardTidDay(e.target.value)}
+                    />
+                  </div>
+                  <div className="field-group">
+                    <label className="field-label">Batch</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      placeholder="Batch"
+                      value={creditCardBatchDay}
+                      disabled={!isManualEnabled("CREDIT_CARD")}
+                      onChange={(e) => setCreditCardBatchDay(e.target.value)}
+                    />
+                  </div>
                 </div>
-                <div className="field-group">
-                  <label className="field-label">Batch</label>
-                  <input
-                    type="text"
-                    className="field-input"
-                    placeholder="Batch"
-                    value={creditCardBatchDay}
-                    onChange={(e) => setCreditCardBatchDay(e.target.value)}
-                  />
-                </div>
-              </div>
+              )
             ) : (
               <>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1.2fr 1fr 1fr",
-                    gap: "8px",
-                    marginBottom: "10px",
-                  }}
-                >
-                  <div className="field-group">
-                    <label className="field-label">Morning (12am - 8pm) (₹)</label>
-                    <input
-                      type="number"
-                      className="field-input"
-                      value={creditCardMorning || ""}
-                      step="0.01"
-                      min="0"
-                      onChange={(e) => setCreditCardMorning(Number(e.target.value))}
-                    />
+                {creditCardSlotConf.enableMorning !== false && (
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1.2fr 1fr 1fr",
+                      gap: "8px",
+                      marginBottom: "10px",
+                      opacity: isManualEnabled("CREDIT_CARD") ? 1 : 0.6,
+                    }}
+                  >
+                    <div className="field-group">
+                      <label className="field-label">Morning (12am - 8pm) (₹)</label>
+                      <input
+                        type="number"
+                        className="field-input"
+                        value={creditCardMorning || ""}
+                        step="0.01"
+                        min="0"
+                        disabled={!isManualEnabled("CREDIT_CARD")}
+                        onChange={(e) => setCreditCardMorning(Number(e.target.value))}
+                      />
+                    </div>
+                    <div className="field-group">
+                      <label className="field-label">TID</label>
+                      <input
+                        type="text"
+                        className="field-input"
+                        placeholder="TID"
+                        value={creditCardTidMorning}
+                        disabled={!isManualEnabled("CREDIT_CARD")}
+                        onChange={(e) => setCreditCardTidMorning(e.target.value)}
+                      />
+                    </div>
+                    <div className="field-group">
+                      <label className="field-label">Batch</label>
+                      <input
+                        type="text"
+                        className="field-input"
+                        placeholder="Batch"
+                        value={creditCardBatchMorning}
+                        disabled={!isManualEnabled("CREDIT_CARD")}
+                        onChange={(e) => setCreditCardBatchMorning(e.target.value)}
+                      />
+                    </div>
                   </div>
-                  <div className="field-group">
-                    <label className="field-label">TID</label>
-                    <input
-                      type="text"
-                      className="field-input"
-                      placeholder="TID"
-                      value={creditCardTidMorning}
-                      onChange={(e) => setCreditCardTidMorning(e.target.value)}
-                    />
+                )}
+                {creditCardSlotConf.enableNight !== false && (
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1.2fr 1fr 1fr",
+                      gap: "8px",
+                      opacity: isManualEnabled("CREDIT_CARD") ? 1 : 0.6,
+                    }}
+                  >
+                    <div className="field-group">
+                      <label className="field-label">Night (8pm - 12am) (₹)</label>
+                      <input
+                        type="number"
+                        className="field-input"
+                        value={creditCardNight || ""}
+                        step="0.01"
+                        min="0"
+                        disabled={!isManualEnabled("CREDIT_CARD")}
+                        onChange={(e) => setCreditCardNight(Number(e.target.value))}
+                      />
+                    </div>
+                    <div className="field-group">
+                      <label className="field-label">TID</label>
+                      <input
+                        type="text"
+                        className="field-input"
+                        placeholder="TID"
+                        value={creditCardTidNight}
+                        disabled={!isManualEnabled("CREDIT_CARD")}
+                        onChange={(e) => setCreditCardTidNight(e.target.value)}
+                      />
+                    </div>
+                    <div className="field-group">
+                      <label className="field-label">Batch</label>
+                      <input
+                        type="text"
+                        className="field-input"
+                        placeholder="Batch"
+                        value={creditCardBatchNight}
+                        disabled={!isManualEnabled("CREDIT_CARD")}
+                        onChange={(e) => setCreditCardBatchNight(e.target.value)}
+                      />
+                    </div>
                   </div>
-                  <div className="field-group">
-                    <label className="field-label">Batch</label>
-                    <input
-                      type="text"
-                      className="field-input"
-                      placeholder="Batch"
-                      value={creditCardBatchMorning}
-                      onChange={(e) => setCreditCardBatchMorning(e.target.value)}
-                    />
+                )}
+                {creditCardSlotConf.enableMorning === false && creditCardSlotConf.enableNight === false && (
+                  <div style={{ fontSize: "0.8rem", color: "#64748b", fontStyle: "italic", marginBottom: "8px" }}>
+                    Morning/Night slots disabled by station configuration.
                   </div>
-                </div>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1.2fr 1fr 1fr",
-                    gap: "8px",
-                  }}
-                >
-                  <div className="field-group">
-                    <label className="field-label">Night (8pm - 12am) (₹)</label>
-                    <input
-                      type="number"
-                      className="field-input"
-                      value={creditCardNight || ""}
-                      step="0.01"
-                      min="0"
-                      onChange={(e) => setCreditCardNight(Number(e.target.value))}
-                    />
-                  </div>
-                  <div className="field-group">
-                    <label className="field-label">TID</label>
-                    <input
-                      type="text"
-                      className="field-input"
-                      placeholder="TID"
-                      value={creditCardTidNight}
-                      onChange={(e) => setCreditCardTidNight(e.target.value)}
-                    />
-                  </div>
-                  <div className="field-group">
-                    <label className="field-label">Batch</label>
-                    <input
-                      type="text"
-                      className="field-input"
-                      placeholder="Batch"
-                      value={creditCardBatchNight}
-                      onChange={(e) => setCreditCardBatchNight(e.target.value)}
-                    />
-                  </div>
-                </div>
+                )}
               </>
             )}
             {renderOtpTransactionManager("CREDIT_CARD")}
@@ -2627,141 +2781,200 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
             className="nozzle-card"
             style={{ marginBottom: "16px", padding: "16px" }}
           >
-            <h3
+            <div
               style={{
-                fontSize: "1rem",
-                fontWeight: "bold",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
                 marginBottom: "12px",
                 borderBottom: "1px solid #334155",
                 paddingBottom: "6px",
               }}
             >
-              PhonePe
-            </h3>
-
-            {shiftType === "B" ? (
-              <div
+              <div>
+                <h3
+                  style={{
+                    fontSize: "1rem",
+                    fontWeight: "bold",
+                    margin: 0,
+                  }}
+                >
+                  PhonePe
+                </h3>
+                <span style={{ fontSize: "0.8rem", color: "#38bdf8", fontWeight: 600 }}>
+                  Total: ₹{effectivePhonePeTotal.toFixed(2)}
+                </span>
+              </div>
+              <label
                 style={{
-                  display: "grid",
-                  gridTemplateColumns: "1.2fr 1fr 1fr",
-                  gap: "8px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  fontSize: "0.8rem",
+                  color: isManualEnabled("PHONEPE") ? "#38bdf8" : "#94a3b8",
+                  cursor: "pointer",
+                  userSelect: "none",
                 }}
               >
-                <div className="field-group">
-                  <label className="field-label">Day (8am - 8pm) (₹)</label>
-                  <input
-                    type="number"
-                    className="field-input"
-                    value={phonePeDay || ""}
-                    step="0.01"
-                    min="0"
-                    onChange={(e) => setPhonePeDay(Number(e.target.value))}
-                  />
+                <input
+                  type="checkbox"
+                  checked={isManualEnabled("PHONEPE")}
+                  onChange={(e) => toggleManualEnabled("PHONEPE", e.target.checked)}
+                />
+                <span>Manual Entry</span>
+              </label>
+            </div>
+
+            {shiftType === "B" ? (
+              phonePeSlotConf.enableDay === false ? (
+                <div style={{ fontSize: "0.8rem", color: "#64748b", fontStyle: "italic", marginBottom: "8px" }}>
+                  Day slot disabled by station configuration.
                 </div>
-                <div className="field-group">
-                  <label className="field-label">TID</label>
-                  <input
-                    type="text"
-                    className="field-input"
-                    placeholder="TID"
-                    value={phonePeTidDay}
-                    onChange={(e) => setPhonePeTidDay(e.target.value)}
-                  />
+              ) : (
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1.2fr 1fr 1fr",
+                    gap: "8px",
+                    opacity: isManualEnabled("PHONEPE") ? 1 : 0.6,
+                  }}
+                >
+                  <div className="field-group">
+                    <label className="field-label">Day (8am - 8pm) (₹)</label>
+                    <input
+                      type="number"
+                      className="field-input"
+                      value={phonePeDay || ""}
+                      step="0.01"
+                      min="0"
+                      disabled={!isManualEnabled("PHONEPE")}
+                      onChange={(e) => setPhonePeDay(Number(e.target.value))}
+                    />
+                  </div>
+                  <div className="field-group">
+                    <label className="field-label">TID</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      placeholder="TID"
+                      value={phonePeTidDay}
+                      disabled={!isManualEnabled("PHONEPE")}
+                      onChange={(e) => setPhonePeTidDay(e.target.value)}
+                    />
+                  </div>
+                  <div className="field-group">
+                    <label className="field-label">Batch</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      placeholder="Batch"
+                      value={phonePeBatchDay}
+                      disabled={!isManualEnabled("PHONEPE")}
+                      onChange={(e) => setPhonePeBatchDay(e.target.value)}
+                    />
+                  </div>
                 </div>
-                <div className="field-group">
-                  <label className="field-label">Batch</label>
-                  <input
-                    type="text"
-                    className="field-input"
-                    placeholder="Batch"
-                    value={phonePeBatchDay}
-                    onChange={(e) => setPhonePeBatchDay(e.target.value)}
-                  />
-                </div>
-              </div>
+              )
             ) : (
               <>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1.2fr 1fr 1fr",
-                    gap: "8px",
-                    marginBottom: "10px",
-                  }}
-                >
-                  <div className="field-group">
-                    <label className="field-label">Morning (12am - 8pm) (₹)</label>
-                    <input
-                      type="number"
-                      className="field-input"
-                      value={phonePeMorning || ""}
-                      step="0.01"
-                      min="0"
-                      onChange={(e) =>
-                        setPhonePeMorning(Number(e.target.value))
-                      }
-                    />
+                {phonePeSlotConf.enableMorning !== false && (
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1.2fr 1fr 1fr",
+                      gap: "8px",
+                      marginBottom: "10px",
+                      opacity: isManualEnabled("PHONEPE") ? 1 : 0.6,
+                    }}
+                  >
+                    <div className="field-group">
+                      <label className="field-label">Morning (12am - 8pm) (₹)</label>
+                      <input
+                        type="number"
+                        className="field-input"
+                        value={phonePeMorning || ""}
+                        step="0.01"
+                        min="0"
+                        disabled={!isManualEnabled("PHONEPE")}
+                        onChange={(e) =>
+                          setPhonePeMorning(Number(e.target.value))
+                        }
+                      />
+                    </div>
+                    <div className="field-group">
+                      <label className="field-label">TID</label>
+                      <input
+                        type="text"
+                        className="field-input"
+                        placeholder="TID"
+                        value={phonePeTidMorning}
+                        disabled={!isManualEnabled("PHONEPE")}
+                        onChange={(e) => setPhonePeTidMorning(e.target.value)}
+                      />
+                    </div>
+                    <div className="field-group">
+                      <label className="field-label">Batch</label>
+                      <input
+                        type="text"
+                        className="field-input"
+                        placeholder="Batch"
+                        value={phonePeBatchMorning}
+                        disabled={!isManualEnabled("PHONEPE")}
+                        onChange={(e) => setPhonePeBatchMorning(e.target.value)}
+                      />
+                    </div>
                   </div>
-                  <div className="field-group">
-                    <label className="field-label">TID</label>
-                    <input
-                      type="text"
-                      className="field-input"
-                      placeholder="TID"
-                      value={phonePeTidMorning}
-                      onChange={(e) => setPhonePeTidMorning(e.target.value)}
-                    />
+                )}
+                {phonePeSlotConf.enableNight !== false && (
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1.2fr 1fr 1fr",
+                      gap: "8px",
+                      opacity: isManualEnabled("PHONEPE") ? 1 : 0.6,
+                    }}
+                  >
+                    <div className="field-group">
+                      <label className="field-label">Night (8pm - 12am) (₹)</label>
+                      <input
+                        type="number"
+                        className="field-input"
+                        value={phonePeNight || ""}
+                        step="0.01"
+                        min="0"
+                        disabled={!isManualEnabled("PHONEPE")}
+                        onChange={(e) => setPhonePeNight(Number(e.target.value))}
+                      />
+                    </div>
+                    <div className="field-group">
+                      <label className="field-label">TID</label>
+                      <input
+                        type="text"
+                        className="field-input"
+                        placeholder="TID"
+                        value={phonePeTidNight}
+                        disabled={!isManualEnabled("PHONEPE")}
+                        onChange={(e) => setPhonePeTidNight(e.target.value)}
+                      />
+                    </div>
+                    <div className="field-group">
+                      <label className="field-label">Batch</label>
+                      <input
+                        type="text"
+                        className="field-input"
+                        placeholder="Batch"
+                        value={phonePeBatchNight}
+                        disabled={!isManualEnabled("PHONEPE")}
+                        onChange={(e) => setPhonePeBatchNight(e.target.value)}
+                      />
+                    </div>
                   </div>
-                  <div className="field-group">
-                    <label className="field-label">Batch</label>
-                    <input
-                      type="text"
-                      className="field-input"
-                      placeholder="Batch"
-                      value={phonePeBatchMorning}
-                      onChange={(e) => setPhonePeBatchMorning(e.target.value)}
-                    />
+                )}
+                {phonePeSlotConf.enableMorning === false && phonePeSlotConf.enableNight === false && (
+                  <div style={{ fontSize: "0.8rem", color: "#64748b", fontStyle: "italic", marginBottom: "8px" }}>
+                    Morning/Night slots disabled by station configuration.
                   </div>
-                </div>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1.2fr 1fr 1fr",
-                    gap: "8px",
-                  }}
-                >
-                  <div className="field-group">
-                    <label className="field-label">Night (8pm - 12am) (₹)</label>
-                    <input
-                      type="number"
-                      className="field-input"
-                      value={phonePeNight || ""}
-                      step="0.01"
-                      min="0"
-                      onChange={(e) => setPhonePeNight(Number(e.target.value))}
-                    />
-                  </div>
-                  <div className="field-group">
-                    <label className="field-label">TID</label>
-                    <input
-                      type="text"
-                      className="field-input"
-                      placeholder="TID"
-                      value={phonePeTidNight}
-                      onChange={(e) => setPhonePeTidNight(e.target.value)}
-                    />
-                  </div>
-                  <div className="field-group">
-                    <label className="field-label">Batch</label>
-                    <input
-                      type="text"
-                      className="field-input"
-                      placeholder="Batch"
-                      value={phonePeBatchNight}
-                      onChange={(e) => setPhonePeBatchNight(e.target.value)}
-                    />
-                  </div>
-                </div>
+                )}
               </>
             )}
 
@@ -3060,11 +3273,8 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                 batch: "",
                 otp: "",
               };
-              const txs = getTransactionsForType(type.code);
-              const mTotal = getMachineTotalForType(type.code);
-              const isDrivenByMachine =
-                otpMachineTrackingEnabled && txs.length > 0;
-              const displayAmt = isDrivenByMachine ? mTotal : val.amount;
+              const manualActive = isManualEnabled(type.code);
+              const effTypeTotal = getDynamicTypeEffectiveTotal(type.code);
 
               return (
                 <div
@@ -3082,26 +3292,51 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                       paddingBottom: "6px",
                     }}
                   >
-                    <h3
-                      style={{
-                        fontSize: "1rem",
-                        fontWeight: "bold",
-                        margin: 0,
-                      }}
-                    >
-                      {type.displayName}
-                    </h3>
-                    <span
-                      style={{
-                        fontSize: "0.75rem",
-                        backgroundColor: "#334155",
-                        color: "#94a3b8",
-                        padding: "2px 8px",
-                        borderRadius: "4px",
-                      }}
-                    >
-                      {type.category}
-                    </span>
+                    <div>
+                      <h3
+                        style={{
+                          fontSize: "1rem",
+                          fontWeight: "bold",
+                          margin: 0,
+                        }}
+                      >
+                        {type.displayName}
+                      </h3>
+                      <span style={{ fontSize: "0.8rem", color: "#38bdf8", fontWeight: 600 }}>
+                        Total: ₹{effTypeTotal.toFixed(2)}
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <label
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          fontSize: "0.8rem",
+                          color: manualActive ? "#38bdf8" : "#94a3b8",
+                          cursor: "pointer",
+                          userSelect: "none",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={manualActive}
+                          onChange={(e) => toggleManualEnabled(type.code, e.target.checked)}
+                        />
+                        <span>Manual Entry</span>
+                      </label>
+                      <span
+                        style={{
+                          fontSize: "0.75rem",
+                          backgroundColor: "#334155",
+                          color: "#94a3b8",
+                          padding: "2px 8px",
+                          borderRadius: "4px",
+                        }}
+                      >
+                        {type.category}
+                      </span>
+                    </div>
                   </div>
 
                   <div
@@ -3111,6 +3346,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                         ? "1.2fr 1fr 1fr"
                         : "1fr",
                       gap: "8px",
+                      opacity: manualActive ? 1 : 0.6,
                     }}
                   >
                     <div className="field-group">
@@ -3121,17 +3357,8 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                         step="0.01"
                         min="0"
                         placeholder="0.00"
-                        value={displayAmt || ""}
-                        readOnly={isDrivenByMachine}
-                        style={
-                          isDrivenByMachine
-                            ? {
-                                backgroundColor: "rgba(56, 189, 248, 0.1)",
-                                color: "#38bdf8",
-                                fontWeight: "bold",
-                              }
-                            : {}
-                        }
+                        value={val.amount || ""}
+                        disabled={!manualActive}
                         onChange={(e) => {
                           const newAmt = parseFloat(e.target.value) || 0;
                           setDynamicValues((prev) => ({
@@ -3150,6 +3377,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                             className="field-input"
                             placeholder="TID"
                             value={val.tid}
+                            disabled={!manualActive}
                             onChange={(e) =>
                               setDynamicValues((prev) => ({
                                 ...prev,
@@ -3168,6 +3396,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                             className="field-input"
                             placeholder="Batch"
                             value={val.batch}
+                            disabled={!manualActive}
                             onChange={(e) =>
                               setDynamicValues((prev) => ({
                                 ...prev,

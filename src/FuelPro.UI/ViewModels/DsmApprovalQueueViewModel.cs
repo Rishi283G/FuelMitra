@@ -270,8 +270,11 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
     
     // Computed Values
     [ObservableProperty] private double _grossSales;
+    [ObservableProperty] private double _totalTestingAmount;
+    [ObservableProperty] private double _netFuelSales;
+    [ObservableProperty] private double _totalOilDefSales;
     [ObservableProperty] private double _totalCollections;
-    [ObservableProperty] private double _mismatchAmount; // Collections - GrossSales
+    [ObservableProperty] private double _mismatchAmount; // Collections - (NetFuelSales + OilDefSales)
 
     public ObservableCollection<DsmNozzleRow> NozzleReadings { get; } = new();
     public ObservableCollection<DsmDebitRow> DebtorEntries { get; } = new();
@@ -668,7 +671,10 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                                 string? dBatch = (string?)(d.batch ?? d.Batch ?? "");
                                 if (dAmt <= 0 && string.IsNullOrWhiteSpace(dOtp)) continue;
 
-                                if (!CardSwipeDetails.Any(c => c.Mode.Equals(dCode, StringComparison.OrdinalIgnoreCase) && Math.Abs(c.Amount - dAmt) < 0.01))
+                                if (!CardSwipeDetails.Any(c => c.Mode.Equals(dCode, StringComparison.OrdinalIgnoreCase) 
+                                    && Math.Abs(c.Amount - dAmt) < 0.01
+                                    && (string.IsNullOrWhiteSpace(c.Tid) || string.IsNullOrWhiteSpace(dTid) || c.Tid.Equals(dTid, StringComparison.OrdinalIgnoreCase))
+                                    && (string.IsNullOrWhiteSpace(c.Otp) || string.IsNullOrWhiteSpace(dOtp) || c.Otp.Equals(dOtp, StringComparison.OrdinalIgnoreCase))))
                                 {
                                     CardSwipeDetails.Add(new DsmCardSwipeRow
                                     {
@@ -696,7 +702,10 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                                 string? mtSlot = (string?)(mt.slot ?? mt.Slot ?? "");
                                 if (mtAmt <= 0 && string.IsNullOrWhiteSpace(mtOtp)) continue;
 
-                                if (!CardSwipeDetails.Any(c => c.Mode.StartsWith(mtCode, StringComparison.OrdinalIgnoreCase) && Math.Abs(c.Amount - mtAmt) < 0.01 && c.Otp == mtOtp))
+                                if (!CardSwipeDetails.Any(c => c.Mode.StartsWith(mtCode, StringComparison.OrdinalIgnoreCase) 
+                                    && Math.Abs(c.Amount - mtAmt) < 0.01 
+                                    && (string.IsNullOrWhiteSpace(c.Otp) || string.IsNullOrWhiteSpace(mtOtp) || c.Otp.Equals(mtOtp, StringComparison.OrdinalIgnoreCase))
+                                    && (string.IsNullOrWhiteSpace(c.Tid) || string.IsNullOrWhiteSpace(mtTid) || c.Tid.Equals(mtTid, StringComparison.OrdinalIgnoreCase))))
                                 {
                                     CardSwipeDetails.Add(new DsmCardSwipeRow
                                     {
@@ -888,7 +897,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
             .ToList();
 
         var dynamicTotal = CardSwipeDetails
-            .Where(c => !PaymentCollection.IsStandardCollectionCode(c.Mode))
+            .Where(c => !PaymentCollection.IsStandardCollectionCode(c.Mode) && !string.IsNullOrWhiteSpace(c.Mode))
             .Sum(c => c.Amount);
 
         var dto = new FuelPro.Core.DTOs.DsmEntryDto
@@ -931,8 +940,12 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
         };
 
         var calc = _dsmCalculationService.Calculate(dto);
+        TotalTestingAmount = (double)calc.TotalTesting;
+        NetFuelSales = (double)calc.NetGrossSales;
+        TotalOilDefSales = OilDefSales.Sum(s => s.Total);
         TotalCollections = (double)calc.TotalCollection;
-        MismatchAmount = TotalCollections - GrossSales;
+        double totalSalesLiability = NetFuelSales + TotalOilDefSales;
+        MismatchAmount = TotalCollections - totalSalesLiability;
 
         double rawShortage = MismatchAmount < 0 ? Math.Abs(MismatchAmount) : 0;
         double dsmLossAmount = rawShortage; // No tolerance: full shortage is DSM loss
@@ -976,6 +989,8 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
             errors.Add($"• High Mismatch: Mismatch is ₹{MismatchAmount:F2} (threshold ₹500).");
         if (NozzleReadings.Any(r => r.ClosingReading < r.OpeningReading))
             errors.Add("• Closing reading is less than opening reading.");
+        if (CardSwipeDetails.Any(c => c.Amount > 0 && string.IsNullOrWhiteSpace(c.Mode)))
+            errors.Add("• Unclassified transaction: A card swipe entry has an amount but no collection type selected.");
 
         ValidationSummary = errors.Count > 0 
             ? string.Join(Environment.NewLine, errors) 
@@ -1188,6 +1203,14 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
             return;
         }
 
+        var unclassifiedSwipe = CardSwipeDetails.FirstOrDefault(s => s.Amount > 0 && string.IsNullOrWhiteSpace(s.Mode));
+        if (unclassifiedSwipe != null)
+        {
+            MessageBox.Show($"Cannot approve submission: A card swipe transaction of ₹{unclassifiedSwipe.Amount:N2} has no collection type specified. Please specify the collection type before approving.", 
+                "Missing Collection Type", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
         StatusMessage = "⏳ Saving submission to local SQLite...";
         
         Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? transaction = null;
@@ -1255,9 +1278,11 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
             bool isShiftA = shiftNorm == "A";
             bool isShiftB = shiftNorm == "B";
             bool isShiftC = shiftNorm == "C";
+            string defaultSlot = isShiftC ? "Night" : (isShiftB ? "Day" : "Morning");
 
-            // Try structured settlements array first (new PWA format)
-            bool hasStructuredSettlements = false;
+            // Transaction-level structured settlements matching list
+            var settlementRecords = new List<SettlementMatchRecord>();
+
             if (!string.IsNullOrEmpty(SelectedSubmission.MetadataJson))
             {
                 try
@@ -1265,10 +1290,9 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                     var metadata = JsonConvert.DeserializeObject<dynamic>(SelectedSubmission.MetadataJson);
                     if (metadata?.settlements != null)
                     {
-                        hasStructuredSettlements = true;
                         foreach (var s in metadata.settlements)
                         {
-                            string paymentType = (string)(s.paymentType ?? "");
+                            string pType = (string)(s.paymentType ?? "");
                             string period = (string)(s.period ?? "");
                             double amt = (double)(s.amount ?? 0.0);
                             string tid = (string)(s.tid ?? "");
@@ -1276,35 +1300,47 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
 
                             if (amt <= 0) continue;
 
-                            if (paymentType.Contains("PhonePe", StringComparison.OrdinalIgnoreCase))
+                            string normType = PaymentCollection.NormalizeCollectionTypeCode(pType);
+                            string normSlot = PaymentCollection.ExtractSlotFromMode(period, defaultSlot);
+
+                            settlementRecords.Add(new SettlementMatchRecord
                             {
-                                switch (period)
+                                PaymentType = normType,
+                                Period = normSlot,
+                                Amount = amt,
+                                Tid = tid,
+                                Batch = batch
+                            });
+
+                            if (normType == "PHONEPE")
+                            {
+                                switch (normSlot)
                                 {
-                                    case "Morning":
-                                        upiMorning += amt; phonePeTidMorning = tid; phonePeBatchMorning = batch;
-                                        break;
                                     case "Day":
                                         upiDay += amt; phonePeTidDay = tid; phonePeBatchDay = batch;
                                         break;
                                     case "Night":
                                         upiNight += amt; phonePeTidNight = tid; phonePeBatchNight = batch;
                                         break;
+                                    default:
+                                        upiMorning += amt; phonePeTidMorning = tid; phonePeBatchMorning = batch;
+                                        break;
                                 }
                                 phonePeTid = tid;
                                 phonePeBatch = batch;
                             }
-                            else if (paymentType.Contains("Petro", StringComparison.OrdinalIgnoreCase))
+                            else if (normType == "PETROCARD")
                             {
-                                switch (period)
+                                switch (normSlot)
                                 {
-                                    case "Morning":
-                                        petroCardMorning += amt; petroCardTidMorning = tid; petroCardBatchMorning = batch;
-                                        break;
                                     case "Day":
                                         petroCardDay += amt; petroCardTidDay = tid; petroCardBatchDay = batch;
                                         break;
                                     case "Night":
                                         petroCardNight += amt; petroCardTidNight = tid; petroCardBatchNight = batch;
+                                        break;
+                                    default:
+                                        petroCardMorning += amt; petroCardTidMorning = tid; petroCardBatchMorning = batch;
                                         break;
                                 }
                                 petroCardTid = tid;
@@ -1312,16 +1348,16 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                             }
                             else // PineLabs / Credit Card
                             {
-                                switch (period)
+                                switch (normSlot)
                                 {
-                                    case "Morning":
-                                        creditCardMorning += amt; creditCardTidMorning = tid; creditCardBatchMorning = batch;
-                                        break;
                                     case "Day":
                                         creditCardDay += amt; creditCardTidDay = tid; creditCardBatchDay = batch;
                                         break;
                                     case "Night":
                                         creditCardNight += amt; creditCardTidNight = tid; creditCardBatchNight = batch;
+                                        break;
+                                    default:
+                                        creditCardMorning += amt; creditCardTidMorning = tid; creditCardBatchMorning = batch;
                                         break;
                                 }
                                 cardTid = tid;
@@ -1336,41 +1372,52 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                 }
             }
 
-            // Fall back to legacy cardSwipeDetails parsing if no structured settlements
-            if (!hasStructuredSettlements)
-
+            // Transaction-level matching from CardSwipeDetails:
+            // Match each swipe against unconsumed settlements 1-to-1.
+            // If matched, the swipe is already represented by the settlement in the scalar total (prevent double-counting).
+            // If NOT matched, it is a separate legitimate transaction (prevent dropping).
             foreach (var swipe in CardSwipeDetails)
             {
                 string mode = swipe.Mode ?? "";
                 double amount = swipe.Amount;
+                if (amount <= 0 && string.IsNullOrWhiteSpace(swipe.Otp)) continue;
                 string tid = swipe.Tid ?? "";
                 string batch = swipe.Batch ?? "";
 
-                bool isSwipeNight = mode.Contains("Night", StringComparison.OrdinalIgnoreCase) || 
-                                    isShiftC ||
-                                    (!mode.Contains("Morning", StringComparison.OrdinalIgnoreCase) && 
-                                     !mode.Contains("Day", StringComparison.OrdinalIgnoreCase) && 
-                                     isShiftA && mode.Contains("Night"));
-                bool isSwipeDay = mode.Contains("Day", StringComparison.OrdinalIgnoreCase) ||
-                                  (!mode.Contains("Morning", StringComparison.OrdinalIgnoreCase) &&
-                                   !mode.Contains("Night", StringComparison.OrdinalIgnoreCase) &&
-                                   isShiftB);
+                string normType = PaymentCollection.NormalizeCollectionTypeCode(mode);
+                string swipeSlot = PaymentCollection.ExtractSlotFromMode(mode, defaultSlot);
 
-                if (mode.Contains("PhonePe Card", StringComparison.OrdinalIgnoreCase) || 
-                    mode.Contains("PhonePe UPI", StringComparison.OrdinalIgnoreCase) || 
-                    mode.Contains("PhonePe", StringComparison.OrdinalIgnoreCase))
+                var matchedSettlement = settlementRecords.FirstOrDefault(s =>
+                    !s.IsConsumed &&
+                    s.PaymentType.Equals(normType, StringComparison.OrdinalIgnoreCase) &&
+                    s.Period.Equals(swipeSlot, StringComparison.OrdinalIgnoreCase) &&
+                    Math.Abs(s.Amount - amount) < 0.01 &&
+                    (string.IsNullOrWhiteSpace(s.Tid) || string.IsNullOrWhiteSpace(tid) || s.Tid.Equals(tid, StringComparison.OrdinalIgnoreCase))
+                );
+
+                if (matchedSettlement != null)
                 {
-                    // Check if it's PhonePe Card vs PhonePe UPI
-                    bool isCard = mode.Contains("Card", StringComparison.OrdinalIgnoreCase);
-                    if (isCard)
+                    // 1-to-1 match found: already counted via structured settlement.
+                    matchedSettlement.IsConsumed = true;
+                    if (!string.IsNullOrWhiteSpace(tid))
                     {
-                        if (isSwipeNight)
+                        if (normType == "PHONEPE") { phonePeTid = tid; phonePeBatch = batch; }
+                        else if (normType == "PETROCARD") { petroCardTid = tid; petroCardBatch = batch; }
+                        else if (normType == "CREDIT_CARD") { cardTid = tid; cardBatch = batch; }
+                    }
+                }
+                else
+                {
+                    // Not matched by any settlement: losslessly aggregate into scalar totals
+                    if (normType == "PHONEPE_CARD")
+                    {
+                        if (swipeSlot == "Night")
                         {
                             upiCardNight += amount;
                             phonePeTidNight = tid;
                             phonePeBatchNight = batch;
                         }
-                        else if (isSwipeDay)
+                        else if (swipeSlot == "Day")
                         {
                             upiCardDay += amount;
                             phonePeTidDay = tid;
@@ -1382,16 +1429,18 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                             phonePeTidMorning = tid;
                             phonePeBatchMorning = batch;
                         }
+                        phonePeTid = tid;
+                        phonePeBatch = batch;
                     }
-                    else
+                    else if (normType == "PHONEPE")
                     {
-                        if (isSwipeNight)
+                        if (swipeSlot == "Night")
                         {
                             upiNight += amount;
                             phonePeTidNight = tid;
                             phonePeBatchNight = batch;
                         }
-                        else if (isSwipeDay)
+                        else if (swipeSlot == "Day")
                         {
                             upiDay += amount;
                             phonePeTidDay = tid;
@@ -1403,87 +1452,80 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                             phonePeTidMorning = tid;
                             phonePeBatchMorning = batch;
                         }
+                        phonePeTid = tid;
+                        phonePeBatch = batch;
                     }
-                    phonePeTid = tid;
-                    phonePeBatch = batch;
-                }
-                else if (mode.Contains("Petro", StringComparison.OrdinalIgnoreCase))
-                {
-                    if (isSwipeNight)
+                    else if (normType == "PETROCARD")
                     {
-                        petroCardNight += amount;
-                        petroCardTidNight = tid;
-                        petroCardBatchNight = batch;
+                        if (swipeSlot == "Night")
+                        {
+                            petroCardNight += amount;
+                            petroCardTidNight = tid;
+                            petroCardBatchNight = batch;
+                        }
+                        else if (swipeSlot == "Day")
+                        {
+                            petroCardDay += amount;
+                            petroCardTidDay = tid;
+                            petroCardBatchDay = batch;
+                        }
+                        else
+                        {
+                            petroCardMorning += amount;
+                            petroCardTidMorning = tid;
+                            petroCardBatchMorning = batch;
+                        }
+                        petroCardTid = tid;
+                        petroCardBatch = batch;
                     }
-                    else if (isSwipeDay)
+                    else if (normType == "CREDIT_CARD")
                     {
-                        petroCardDay += amount;
-                        petroCardTidDay = tid;
-                        petroCardBatchDay = batch;
+                        if (swipeSlot == "Night")
+                        {
+                            creditCardNight += amount;
+                            creditCardTidNight = tid;
+                            creditCardBatchNight = batch;
+                        }
+                        else if (swipeSlot == "Day")
+                        {
+                            creditCardDay += amount;
+                            creditCardTidDay = tid;
+                            creditCardBatchDay = batch;
+                        }
+                        else
+                        {
+                            creditCardMorning += amount;
+                            creditCardTidMorning = tid;
+                            creditCardBatchMorning = batch;
+                        }
+                        cardTid = tid;
+                        cardBatch = batch;
                     }
                     else
                     {
-                        petroCardMorning += amount;
-                        petroCardTidMorning = tid;
-                        petroCardBatchMorning = batch;
+                        // Any dynamic types handled purely via payment.Items to prevent misclassification.
                     }
-                    petroCardTid = tid;
-                    petroCardBatch = batch;
-                }
-                else if (mode.Contains("Credit", StringComparison.OrdinalIgnoreCase)
-                         || mode.Trim().Replace("_", "").Replace(" ", "").Equals("CREDITCARD", StringComparison.OrdinalIgnoreCase)
-                         || mode.Equals("PineLabs", StringComparison.OrdinalIgnoreCase))
-                {
-                    // Credit Card / Pinelabs Card / etc.
-                    if (isSwipeNight)
-                    {
-                        creditCardNight += amount;
-                        creditCardTidNight = tid;
-                        creditCardBatchNight = batch;
-                    }
-                    else if (isSwipeDay)
-                    {
-                        creditCardDay += amount;
-                        creditCardTidDay = tid;
-                        creditCardBatchDay = batch;
-                    }
-                    else
-                    {
-                        creditCardMorning += amount;
-                        creditCardTidMorning = tid;
-                        creditCardBatchMorning = batch;
-                    }
-                    cardTid = tid;
-                    cardBatch = batch;
-                }
-                else
-                {
-                    // Dynamic payment collection item (e.g. SBI_REDEEM, HP_PAY, BHARAT_PE)
-                    // Handled purely via payment.Items to prevent misclassification and double counting.
                 }
             }
 
-            // Fallbacks for backward compatibility / plain amount inputs (only when NO card swipe details AND no structured settlements exist)
-            if (CardSwipeDetails.Count == 0 && !hasStructuredSettlements)
+            // Fallbacks for backward compatibility / plain amount inputs (only when NO amount was aggregated yet from settlements or card swipes)
+            if (upiMorning == 0 && upiDay == 0 && upiNight == 0 && UpiAmount > 0)
             {
-                if (upiMorning == 0 && upiDay == 0 && upiNight == 0 && UpiAmount > 0)
-                {
-                    if (isShiftC) upiNight = UpiAmount;
-                    else if (isShiftB) upiDay = UpiAmount;
-                    else upiMorning = UpiAmount;
-                }
-                if (creditCardMorning == 0 && creditCardDay == 0 && creditCardNight == 0 && CardAmount > 0)
-                {
-                    if (isShiftC) creditCardNight = CardAmount;
-                    else if (isShiftB) creditCardDay = CardAmount;
-                    else creditCardMorning = CardAmount;
-                }
-                if (petroCardMorning == 0 && petroCardDay == 0 && petroCardNight == 0 && PetroCardAmount > 0)
-                {
-                    if (isShiftC) petroCardNight = PetroCardAmount;
-                    else if (isShiftB) petroCardDay = PetroCardAmount;
-                    else petroCardMorning = PetroCardAmount;
-                }
+                if (isShiftC) upiNight = UpiAmount;
+                else if (isShiftB) upiDay = UpiAmount;
+                else upiMorning = UpiAmount;
+            }
+            if (creditCardMorning == 0 && creditCardDay == 0 && creditCardNight == 0 && CardAmount > 0)
+            {
+                if (isShiftC) creditCardNight = CardAmount;
+                else if (isShiftB) creditCardDay = CardAmount;
+                else creditCardMorning = CardAmount;
+            }
+            if (petroCardMorning == 0 && petroCardDay == 0 && petroCardNight == 0 && PetroCardAmount > 0)
+            {
+                if (isShiftC) petroCardNight = PetroCardAmount;
+                else if (isShiftB) petroCardDay = PetroCardAmount;
+                else petroCardMorning = PetroCardAmount;
             }
 
             var payment = new PaymentCollection
@@ -1528,22 +1570,17 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                 PetroCardBatchNight = petroCardBatchNight
             };
 
-            string defaultSlot = isShiftC ? "Night" : (isShiftB ? "Day" : "Morning");
             foreach (var swipe in CardSwipeDetails)
             {
                 if (swipe.Amount <= 0 && string.IsNullOrWhiteSpace(swipe.Otp)) continue;
                 string mode = swipe.Mode ?? "";
-                string itemSlot = defaultSlot;
-                if (mode.Contains("Morning", StringComparison.OrdinalIgnoreCase)) itemSlot = "Morning";
-                else if (mode.Contains("Night", StringComparison.OrdinalIgnoreCase)) itemSlot = "Night";
-                else if (mode.Contains("Day", StringComparison.OrdinalIgnoreCase)) itemSlot = "Day";
+                string itemSlot = PaymentCollection.ExtractSlotFromMode(mode, defaultSlot);
 
-                string typeCode = mode;
-                string cleanM = mode.Trim().Replace("_", "").Replace(" ", "");
-                if (mode.Contains("Petro", StringComparison.OrdinalIgnoreCase)) typeCode = "PETROCARD";
-                else if (mode.Contains("PhonePe Card", StringComparison.OrdinalIgnoreCase)) typeCode = "PHONEPE_CARD";
-                else if (mode.Contains("PhonePe", StringComparison.OrdinalIgnoreCase) || mode.Contains("UPI", StringComparison.OrdinalIgnoreCase)) typeCode = "PHONEPE";
-                else if (cleanM.Equals("CREDITCARD", StringComparison.OrdinalIgnoreCase) || mode.Equals("Credit Card", StringComparison.OrdinalIgnoreCase) || mode.Equals("CREDIT_CARD", StringComparison.OrdinalIgnoreCase) || mode.Equals("PineLabs", StringComparison.OrdinalIgnoreCase)) typeCode = "CREDIT_CARD";
+                string typeCode = PaymentCollection.NormalizeCollectionTypeCode(mode);
+                if (string.IsNullOrWhiteSpace(typeCode))
+                {
+                    typeCode = mode;
+                }
 
                 payment.Items.Add(new PaymentCollectionItem
                 {
@@ -1572,7 +1609,10 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                             string? dOtp = (string?)d.otp;
                             if (dAmt <= 0 && string.IsNullOrWhiteSpace(dOtp)) continue;
 
-                            if (!payment.Items.Any(i => i.CollectionTypeCode.Equals(dCode, StringComparison.OrdinalIgnoreCase) && Math.Abs(i.Amount - dAmt) < 0.01))
+                            if (!payment.Items.Any(i => i.CollectionTypeCode.Equals(dCode, StringComparison.OrdinalIgnoreCase) 
+                                && Math.Abs(i.Amount - dAmt) < 0.01
+                                && (string.IsNullOrWhiteSpace(i.Tid) || string.IsNullOrWhiteSpace((string?)d.tid) || i.Tid.Equals((string?)d.tid, StringComparison.OrdinalIgnoreCase))
+                                && (string.IsNullOrWhiteSpace(i.Otp) || string.IsNullOrWhiteSpace(dOtp) || i.Otp.Equals(dOtp, StringComparison.OrdinalIgnoreCase))))
                             {
                                 payment.Items.Add(new PaymentCollectionItem
                                 {
@@ -1600,7 +1640,10 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                             string? mtSlot = (string?)mt.slot ?? defaultSlot;
                             if (mtAmt <= 0 && string.IsNullOrWhiteSpace(mtOtp)) continue;
 
-                            if (!payment.Items.Any(i => i.CollectionTypeCode.Equals(mtCode, StringComparison.OrdinalIgnoreCase) && Math.Abs(i.Amount - mtAmt) < 0.01 && (i.Otp ?? "") == (mtOtp ?? "")))
+                            if (!payment.Items.Any(i => i.CollectionTypeCode.Equals(mtCode, StringComparison.OrdinalIgnoreCase) 
+                                && Math.Abs(i.Amount - mtAmt) < 0.01 
+                                && (string.IsNullOrWhiteSpace(i.Tid) || string.IsNullOrWhiteSpace(mtTid) || i.Tid.Equals(mtTid, StringComparison.OrdinalIgnoreCase))
+                                && (string.IsNullOrWhiteSpace(i.Otp) || string.IsNullOrWhiteSpace(mtOtp) || i.Otp.Equals(mtOtp, StringComparison.OrdinalIgnoreCase))))
                             {
                                 payment.Items.Add(new PaymentCollectionItem
                                 {
@@ -2058,7 +2101,10 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                 var syncEngine = _serviceProvider.GetRequiredService<SyncEngine>();
                 _ = syncEngine.ForceSyncAsync();
 
-                MessageBox.Show("DSM Submission approved successfully and saved locally!", "Approved", MessageBoxButton.OK, MessageBoxImage.Information);
+                if (Environment.GetEnvironmentVariable("FUELPRO_ENV") != "TEST")
+                {
+                    MessageBox.Show("DSM Submission approved successfully and saved locally!", "Approved", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
                 
                 SelectedSubmission = null;
                 OverrideRemark = "";
@@ -2914,4 +2960,15 @@ public class DsmTimelineLog
     public string Description { get; set; } = string.Empty;
     public bool IsCompleted { get; set; }
 }
+
+internal sealed class SettlementMatchRecord
+{
+    public string PaymentType { get; set; } = string.Empty;
+    public string Period { get; set; } = string.Empty;
+    public double Amount { get; set; }
+    public string Tid { get; set; } = string.Empty;
+    public string Batch { get; set; } = string.Empty;
+    public bool IsConsumed { get; set; }
+}
+
 

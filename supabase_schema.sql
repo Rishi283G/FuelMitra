@@ -465,6 +465,7 @@ CREATE TABLE IF NOT EXISTS "OilDefDailyLogs" (
     "LogDate" TIMESTAMP NOT NULL,
     "ProductType" VARCHAR(10) NOT NULL DEFAULT 'Oil',
     "ProductId" UUID NOT NULL,
+    "ShiftId" UUID,
     "OverrideSaleRate" DOUBLE PRECISION,
     "AddedQuantity" DOUBLE PRECISION NOT NULL,
     "SoldQuantity" DOUBLE PRECISION NOT NULL,
@@ -475,7 +476,8 @@ CREATE TABLE IF NOT EXISTS "OilDefDailyLogs" (
     "created_at" TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     "updated_at" TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     PRIMARY KEY ("SyncGuid"),
-    CONSTRAINT fk_oil_def_daily_logs_product FOREIGN KEY ("ProductId") REFERENCES "ProductMasters" ("SyncGuid") ON DELETE CASCADE
+    CONSTRAINT fk_oil_def_daily_logs_product FOREIGN KEY ("ProductId") REFERENCES "ProductMasters" ("SyncGuid") ON DELETE CASCADE,
+    CONSTRAINT fk_oil_def_daily_logs_shift FOREIGN KEY ("ShiftId") REFERENCES "Shifts" ("SyncGuid") ON DELETE SET NULL
 );
 
 -- 3. Setup Triggers for Automatic updated_at Update
@@ -637,6 +639,7 @@ CREATE INDEX IF NOT EXISTS idx_ags_tank_stocks_import ON "AgsTankStocks" ("AgsSh
 CREATE INDEX IF NOT EXISTS idx_oil_def_inventories_product ON "OilDefInventories" ("ProductId");
 CREATE INDEX IF NOT EXISTS idx_oil_def_purchases_product ON "OilDefPurchases" ("ProductId");
 CREATE INDEX IF NOT EXISTS idx_oil_def_daily_logs_product ON "OilDefDailyLogs" ("ProductId");
+CREATE INDEX IF NOT EXISTS idx_oil_def_daily_logs_shift ON "OilDefDailyLogs" ("ShiftId");
 
 -- Machine tracking index for diagnostics
 CREATE INDEX IF NOT EXISTS idx_users_machine ON "Users" ("machine_id");

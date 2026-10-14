@@ -96,14 +96,89 @@ public class PaymentCollection
     public static bool IsStandardCollectionCode(string? code)
     {
         if (string.IsNullOrWhiteSpace(code)) return false;
-        var clean = code.Trim().Replace("_", "").Replace(" ", "");
-        return clean.Equals("PHONEPE", StringComparison.OrdinalIgnoreCase)
-            || clean.Equals("PHONEPECARD", StringComparison.OrdinalIgnoreCase)
-            || clean.Equals("CREDITCARD", StringComparison.OrdinalIgnoreCase)
-            || clean.Equals("PETROCARD", StringComparison.OrdinalIgnoreCase)
-            || clean.Equals("CASHDEPOSIT", StringComparison.OrdinalIgnoreCase)
-            || clean.Equals("CASH1", StringComparison.OrdinalIgnoreCase)
-            || clean.Equals("OTHERS", StringComparison.OrdinalIgnoreCase);
+        var clean = code.Trim();
+
+        // Strip slot parentheses, e.g. "PETROCARD (Morning)" -> "PETROCARD"
+        int parenIdx = clean.IndexOf('(');
+        if (parenIdx >= 0)
+        {
+            clean = clean.Substring(0, parenIdx).Trim();
+        }
+
+        var normalized = clean.Replace("_", "").Replace(" ", "");
+
+        // Strip trailing slot name without parentheses, e.g. "PetroCard Morning" -> "PetroCard"
+        if (normalized.EndsWith("Morning", StringComparison.OrdinalIgnoreCase) && normalized.Length > 7)
+            normalized = normalized[..^7];
+        else if (normalized.EndsWith("Night", StringComparison.OrdinalIgnoreCase) && normalized.Length > 5)
+            normalized = normalized[..^5];
+        else if (normalized.EndsWith("Day", StringComparison.OrdinalIgnoreCase) && normalized.Length > 3)
+            normalized = normalized[..^3];
+        else if (normalized.EndsWith("General", StringComparison.OrdinalIgnoreCase) && normalized.Length > 7)
+            normalized = normalized[..^7];
+
+        return normalized.Equals("PHONEPE", StringComparison.OrdinalIgnoreCase)
+            || normalized.Equals("PHONEPECARD", StringComparison.OrdinalIgnoreCase)
+            || normalized.Equals("CREDITCARD", StringComparison.OrdinalIgnoreCase)
+            || normalized.Equals("PINELABS", StringComparison.OrdinalIgnoreCase)
+            || normalized.Equals("PINELABSCARD", StringComparison.OrdinalIgnoreCase)
+            || normalized.Equals("PETROCARD", StringComparison.OrdinalIgnoreCase)
+            || normalized.Equals("CASHDEPOSIT", StringComparison.OrdinalIgnoreCase)
+            || normalized.Equals("CASH1", StringComparison.OrdinalIgnoreCase)
+            || normalized.Equals("OTHERS", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Normalizes raw collection type code/mode into canonical standard code or trimmed dynamic code.
+    /// Preserves dynamic codes without coercion.
+    /// </summary>
+    public static string NormalizeCollectionTypeCode(string? code)
+    {
+        if (string.IsNullOrWhiteSpace(code)) return string.Empty;
+        var clean = code.Trim();
+        int parenIdx = clean.IndexOf('(');
+        if (parenIdx >= 0)
+        {
+            clean = clean.Substring(0, parenIdx).Trim();
+        }
+
+        var test = clean.Replace("_", "").Replace(" ", "");
+        if (test.EndsWith("Morning", StringComparison.OrdinalIgnoreCase) && test.Length > 7)
+            test = test[..^7];
+        else if (test.EndsWith("Night", StringComparison.OrdinalIgnoreCase) && test.Length > 5)
+            test = test[..^5];
+        else if (test.EndsWith("Day", StringComparison.OrdinalIgnoreCase) && test.Length > 3)
+            test = test[..^3];
+        else if (test.EndsWith("General", StringComparison.OrdinalIgnoreCase) && test.Length > 7)
+            test = test[..^7];
+
+        if (test.Equals("PHONEPECARD", StringComparison.OrdinalIgnoreCase))
+            return "PHONEPE_CARD";
+        if (test.Equals("PHONEPE", StringComparison.OrdinalIgnoreCase) || test.Equals("UPI", StringComparison.OrdinalIgnoreCase))
+            return "PHONEPE";
+        if (test.Equals("CREDITCARD", StringComparison.OrdinalIgnoreCase) || test.Equals("PINELABS", StringComparison.OrdinalIgnoreCase) || test.Equals("PINELABSCARD", StringComparison.OrdinalIgnoreCase))
+            return "CREDIT_CARD";
+        if (test.Equals("PETROCARD", StringComparison.OrdinalIgnoreCase) || test.Equals("PETRO", StringComparison.OrdinalIgnoreCase))
+            return "PETROCARD";
+        if (test.Equals("CASHDEPOSIT", StringComparison.OrdinalIgnoreCase) || test.Equals("CASH1", StringComparison.OrdinalIgnoreCase))
+            return "CASH_DEPOSIT";
+        if (test.Equals("OTHERS", StringComparison.OrdinalIgnoreCase))
+            return "OTHERS";
+
+        return clean;
+    }
+
+    /// <summary>
+    /// Extracts slot identifier if embedded in mode/string (e.g. "PETROCARD (Morning)" -> "Morning").
+    /// </summary>
+    public static string ExtractSlotFromMode(string? mode, string? fallbackSlot = "General")
+    {
+        if (string.IsNullOrWhiteSpace(mode)) return fallbackSlot ?? "General";
+        if (mode.Contains("Morning", StringComparison.OrdinalIgnoreCase)) return "Morning";
+        if (mode.Contains("Night", StringComparison.OrdinalIgnoreCase)) return "Night";
+        if (mode.Contains("Day", StringComparison.OrdinalIgnoreCase)) return "Day";
+        if (mode.Contains("General", StringComparison.OrdinalIgnoreCase)) return "General";
+        return fallbackSlot ?? "General";
     }
 
     /// <summary>

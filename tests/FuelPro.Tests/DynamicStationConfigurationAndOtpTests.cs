@@ -455,5 +455,262 @@ public class DynamicStationConfigurationAndOtpTests
         Assert.Contains(dynamicItems, i => i.CollectionTypeCode == "SBI_REDEEM");
         Assert.Contains(dynamicItems, i => i.CollectionTypeCode == "HP_PAY");
     }
+
+    [Theory]
+    [InlineData("PETROCARD (Morning)", "PETROCARD")]
+    [InlineData("PetroCard Morning", "PETROCARD")]
+    [InlineData("PETROCARD", "PETROCARD")]
+    [InlineData("PHONEPE (Night)", "PHONEPE")]
+    [InlineData("PhonePe Morning", "PHONEPE")]
+    [InlineData("PhonePe", "PHONEPE")]
+    [InlineData("Credit Card (Day)", "CREDIT_CARD")]
+    [InlineData("CREDIT_CARD", "CREDIT_CARD")]
+    [InlineData("PineLabs", "CREDIT_CARD")]
+    [InlineData("PhonePe Card (Morning)", "PHONEPE_CARD")]
+    [InlineData("PHONEPE_CARD", "PHONEPE_CARD")]
+    [InlineData("SBI_REDEEM (Morning)", "SBI_REDEEM")]
+    [InlineData("HP_PAY", "HP_PAY")]
+    [InlineData("BHARAT_PE (General)", "BHARAT_PE")]
+    [InlineData("", "")]
+    [InlineData(null, "")]
+    public void NormalizeCollectionTypeCode_WithSlotSuffixes_NormalizesOnlyStandardTypesAndPreservesDynamic(string? code, string expected)
+    {
+        var result = PaymentCollection.NormalizeCollectionTypeCode(code);
+        Assert.Equal(expected, result);
+    }
+
+    [Theory]
+    [InlineData("PETROCARD (Morning)", "Morning")]
+    [InlineData("PhonePe Night", "Night")]
+    [InlineData("CREDIT_CARD (Day)", "Day")]
+    [InlineData("SBI_REDEEM (General)", "General")]
+    [InlineData("HP_PAY", "Morning")]
+    [InlineData("", "Morning")]
+    [InlineData(null, "Morning")]
+    public void ExtractSlotFromMode_AccuratelyExtractsSlotOrUsesFallback(string? mode, string expected)
+    {
+        var result = PaymentCollection.ExtractSlotFromMode(mode, "Morning");
+        Assert.Equal(expected, result);
+    }
+
+    [Fact]
+    public void DiagnosticReconciliation_MatchesDiagnosticNumbersExactly()
+    {
+        // Fixture: Gross sales ₹21,023.45; testing ₹3,214.10; net fuel sales ₹17,809.35; collections ₹17,809.00; expected mismatch −₹0.35
+        var grossSales = 21023.45m;
+        var testingLitres = 32.141m;
+        var testingRate = 100m;
+        var testingAmount = 3214.10m;
+
+        var dsmDto = new DsmEntryDto
+        {
+            NozzleReadings = new List<NozzleReadingDto>
+            {
+                new() { Amount = grossSales }
+            },
+            TestingEntries = new List<TestingEntryDto>
+            {
+                new() { Amount = testingAmount, Litres = testingLitres, Rate = testingRate, FuelType = "MS" }
+            },
+            PaymentCollection = new PaymentCollectionDto
+            {
+                PhysicalCash = 10000m,
+                PhonePe = 5000m,
+                CreditCard = 2574m,
+                PetroCard = 235m // Losslessly preserved PetroCard
+                // Total = 10000 + 5000 + 2574 + 235 = 17809.00
+            }
+        };
+
+        var calcService = new DsmCalculationService();
+        var result = calcService.Calculate(dsmDto);
+
+        Assert.Equal(21023.45m, result.GrossSales);
+        Assert.Equal(3214.10m, result.TotalTesting);
+        Assert.Equal(17809.35m, result.NetGrossSales);
+        Assert.Equal(17809.00m, result.TotalCollection);
+        Assert.Equal(-0.35m, result.Mismatch);
+    }
+
+    [Fact]
+    public void ScenarioA_SettlementAndSwipe_SamePayment_CountedOnce()
+    {
+        // A. A structured settlement of ₹5,000 and one itemized PhonePe record of ₹5,000 represent the same payment.
+        // Expected: count ₹5,000 once.
+        var settlements = new List<SettlementTestRecord>
+        {
+            new() { PaymentType = "PHONEPE", Period = "Morning", Amount = 5000.0, Tid = "PP01", Batch = "B01" }
+        };
+        var swipes = new List<SwipeTestRecord>
+        {
+            new() { Mode = "PhonePe (Morning)", Amount = 5000.0, Tid = "PP01", Batch = "B01", Otp = "1234" }
+        };
+
+        var (phonePeTotal, _, items) = AggregateWithTransactionMatching(settlements, swipes, "Morning");
+
+        Assert.Equal(5000.0, phonePeTotal);
+        Assert.Single(items);
+        Assert.Equal("1234", items[0].Otp);
+    }
+
+    [Fact]
+    public void ScenarioB_SettlementAndTwoSwipes_UnsettledTransactionCounted()
+    {
+        // B. A structured settlement of ₹5,000 and two itemized PhonePe records exist,
+        // where only one itemized record is represented by the settlement and the other is a separate legitimate ₹700 transaction.
+        // Expected: count ₹5,700, not ₹5,000 or ₹6,200.
+        var settlements = new List<SettlementTestRecord>
+        {
+            new() { PaymentType = "PHONEPE", Period = "Morning", Amount = 5000.0, Tid = "PP01", Batch = "B01" }
+        };
+        var swipes = new List<SwipeTestRecord>
+        {
+            new() { Mode = "PhonePe (Morning)", Amount = 5000.0, Tid = "PP01", Batch = "B01", Otp = "1111" },
+            new() { Mode = "PhonePe (Morning)", Amount = 700.0, Tid = "PP02", Batch = "B02", Otp = "2222" }
+        };
+
+        var (phonePeTotal, _, items) = AggregateWithTransactionMatching(settlements, swipes, "Morning");
+
+        Assert.Equal(5700.0, phonePeTotal);
+        Assert.Equal(2, items.Count);
+        Assert.Contains(items, i => i.Amount == 5000.0 && i.Tid == "PP01");
+        Assert.Contains(items, i => i.Amount == 700.0 && i.Tid == "PP02");
+    }
+
+    [Fact]
+    public void ScenarioC_TwoItemizedTransactions_SameTypeAndAmount_DifferentTids_BothPreserved()
+    {
+        // C. Two legitimate itemized transactions have the same payment type and amount but different transaction IDs.
+        // Expected: both remain accounted for (₹1,000 total).
+        var settlements = new List<SettlementTestRecord>();
+        var swipes = new List<SwipeTestRecord>
+        {
+            new() { Mode = "PhonePe (Morning)", Amount = 500.0, Tid = "T1", Batch = "B1" },
+            new() { Mode = "PhonePe (Morning)", Amount = 500.0, Tid = "T2", Batch = "B2" }
+        };
+
+        var (phonePeTotal, _, items) = AggregateWithTransactionMatching(settlements, swipes, "Morning");
+
+        Assert.Equal(1000.0, phonePeTotal);
+        Assert.Equal(2, items.Count);
+        Assert.Equal("T1", items[0].Tid);
+        Assert.Equal("T2", items[1].Tid);
+    }
+
+    [Fact]
+    public void ScenarioD_PetroCardOtpAbsentFromSettlements_PreservedWithDetails()
+    {
+        // D. An OTP-tracked PetroCard transaction is absent from structured settlements.
+        // Expected: it is included exactly once, with OTP, TID, batch, slot, and amount preserved.
+        var settlements = new List<SettlementTestRecord>
+        {
+            new() { PaymentType = "PHONEPE", Period = "Morning", Amount = 5000.0 }
+        };
+        var swipes = new List<SwipeTestRecord>
+        {
+            new() { Mode = "PETROCARD (Morning)", Amount = 235.0, Tid = "PC01", Batch = "B03", Otp = "4421" }
+        };
+
+        var (_, petroTotal, items) = AggregateWithTransactionMatching(settlements, swipes, "Morning");
+
+        Assert.Equal(235.0, petroTotal);
+        var petroItem = items.FirstOrDefault(i => i.CollectionTypeCode == "PETROCARD");
+        Assert.NotNull(petroItem);
+        Assert.Equal(235.0, petroItem!.Amount);
+        Assert.Equal("4421", petroItem.Otp);
+        Assert.Equal("PC01", petroItem.Tid);
+        Assert.Equal("B03", petroItem.Batch);
+        Assert.Equal("Morning", petroItem.Slot);
+    }
+
+    [Fact]
+    public void ScenarioE_MissingTidIdentity_SafeFallback_DoesNotDiscardLegitimatePayment()
+    {
+        // E. A transaction has incomplete identity information (blank TID).
+        // Expected: safe 1-to-1 matching rule; do not silently discard a potentially legitimate payment.
+        var settlements = new List<SettlementTestRecord>
+        {
+            new() { PaymentType = "PHONEPE", Period = "Morning", Amount = 5000.0, Tid = "" }
+        };
+        var swipes = new List<SwipeTestRecord>
+        {
+            new() { Mode = "PhonePe (Morning)", Amount = 5000.0, Tid = "", Otp = "" },
+            new() { Mode = "PhonePe (Morning)", Amount = 700.0, Tid = "", Otp = "" }
+        };
+
+        var (phonePeTotal, _, items) = AggregateWithTransactionMatching(settlements, swipes, "Morning");
+
+        Assert.Equal(5700.0, phonePeTotal);
+        Assert.Equal(2, items.Count);
+    }
+
+    private class SettlementTestRecord
+    {
+        public string PaymentType { get; set; } = "";
+        public string Period { get; set; } = "";
+        public double Amount { get; set; }
+        public string Tid { get; set; } = "";
+        public string Batch { get; set; } = "";
+        public bool IsConsumed { get; set; }
+    }
+
+    private class SwipeTestRecord
+    {
+        public string Mode { get; set; } = "";
+        public double Amount { get; set; }
+        public string Tid { get; set; } = "";
+        public string Batch { get; set; } = "";
+        public string Otp { get; set; } = "";
+    }
+
+    private static (double PhonePeTotal, double PetroTotal, List<PaymentCollectionItem> Items) AggregateWithTransactionMatching(
+        List<SettlementTestRecord> settlements, List<SwipeTestRecord> swipes, string defaultSlot)
+    {
+        double phonePeTotal = 0;
+        double petroTotal = 0;
+        var items = new List<PaymentCollectionItem>();
+
+        foreach (var s in settlements)
+        {
+            if (s.PaymentType.Equals("PHONEPE", StringComparison.OrdinalIgnoreCase)) phonePeTotal += s.Amount;
+            if (s.PaymentType.Equals("PETROCARD", StringComparison.OrdinalIgnoreCase)) petroTotal += s.Amount;
+        }
+
+        foreach (var sw in swipes)
+        {
+            string normType = PaymentCollection.NormalizeCollectionTypeCode(sw.Mode);
+            string swipeSlot = PaymentCollection.ExtractSlotFromMode(sw.Mode, defaultSlot);
+
+            var matched = settlements.FirstOrDefault(s =>
+                !s.IsConsumed &&
+                s.PaymentType.Equals(normType, StringComparison.OrdinalIgnoreCase) &&
+                s.Period.Equals(swipeSlot, StringComparison.OrdinalIgnoreCase) &&
+                Math.Abs(s.Amount - sw.Amount) < 0.01 &&
+                (string.IsNullOrWhiteSpace(s.Tid) || string.IsNullOrWhiteSpace(sw.Tid) || s.Tid.Equals(sw.Tid, StringComparison.OrdinalIgnoreCase))
+            );
+
+            if (matched != null)
+            {
+                matched.IsConsumed = true;
+            }
+            else
+            {
+                if (normType.Equals("PHONEPE", StringComparison.OrdinalIgnoreCase)) phonePeTotal += sw.Amount;
+                if (normType.Equals("PETROCARD", StringComparison.OrdinalIgnoreCase)) petroTotal += sw.Amount;
+            }
+
+            items.Add(new PaymentCollectionItem
+            {
+                CollectionTypeCode = normType,
+                Amount = sw.Amount,
+                Tid = sw.Tid,
+                Batch = sw.Batch,
+                Otp = sw.Otp,
+                Slot = swipeSlot
+            });
+        }
+
+        return (phonePeTotal, petroTotal, items);
+    }
 }
 

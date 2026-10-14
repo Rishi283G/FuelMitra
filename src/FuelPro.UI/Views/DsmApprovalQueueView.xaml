@@ -386,21 +386,41 @@
 
                             <Border BorderThickness="0,1,0,0" BorderBrush="#E0E0E0" Padding="0,12,0,0">
                                 <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="*"/>
                                     </Grid.ColumnDefinitions>
-                                    <StackPanel Grid.Column="0">
-                                        <TextBlock Text="Gross Sales" FontSize="12" Opacity="0.6"/>
-                                        <TextBlock Text="{Binding GrossSales, StringFormat='₹{0:N2}'}" FontSize="18" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
+
+                                    <!-- Row 0: Fuel Sales Breakdown -->
+                                    <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,8,12">
+                                        <TextBlock Text="1. Gross Fuel Sales (Meter)" FontSize="11" Opacity="0.6"/>
+                                        <TextBlock Text="{Binding GrossSales, StringFormat='₹{0:N2}'}" FontSize="16" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
                                     </StackPanel>
-                                    <StackPanel Grid.Column="1">
-                                        <TextBlock Text="Total Collections" FontSize="12" Opacity="0.6"/>
+                                    <StackPanel Grid.Row="0" Grid.Column="1" Margin="8,0,8,12">
+                                        <TextBlock Text="2. Less: Testing (Non-Sale)" FontSize="11" Opacity="0.6"/>
+                                        <TextBlock Text="{Binding TotalTestingAmount, StringFormat='-₹{0:N2}'}" FontSize="16" FontWeight="Bold" Foreground="#F57C00"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Row="0" Grid.Column="2" Margin="8,0,0,12">
+                                        <TextBlock Text="3. Net Fuel Sales" FontSize="11" Opacity="0.6"/>
+                                        <TextBlock Text="{Binding NetFuelSales, StringFormat='₹{0:N2}'}" FontSize="16" FontWeight="Bold" Foreground="#1976D2"/>
+                                    </StackPanel>
+
+                                    <!-- Row 1: Products, Collections & Mismatch -->
+                                    <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,0,8,0">
+                                        <TextBlock Text="4. Oil / DEF Sales" FontSize="11" Opacity="0.6"/>
+                                        <TextBlock Text="{Binding TotalOilDefSales, StringFormat='₹{0:N2}'}" FontSize="16" FontWeight="Bold" Foreground="#7B1FA2"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Row="1" Grid.Column="1" Margin="8,0,8,0">
+                                        <TextBlock Text="5. Total Collections" FontSize="11" Opacity="0.6"/>
                                         <TextBlock Text="{Binding TotalCollections, StringFormat='₹{0:N2}'}" FontSize="18" FontWeight="Bold" Foreground="#4CAF50"/>
                                     </StackPanel>
-                                    <StackPanel Grid.Column="2">
-                                        <TextBlock Text="Mismatch" FontSize="12" Opacity="0.6"/>
+                                    <StackPanel Grid.Row="1" Grid.Column="2" Margin="8,0,0,0">
+                                        <TextBlock Text="6. Mismatch" FontSize="11" Opacity="0.6"/>
                                         <TextBlock Text="{Binding MismatchAmount, StringFormat='₹{0:N2}'}" FontSize="18" FontWeight="Bold" Foreground="#C62828"/>
                                     </StackPanel>
                                 </Grid>

@@ -477,7 +477,7 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
 
     public void RefreshAvailableOtpCollectionTypes()
     {
-        var types = new List<string> { "CREDIT_CARD", "PETROCARD", "PHONEPE" };
+        var types = new List<string> { "CREDIT_CARD", "PETROCARD", "PHONEPE", "PHONEPE_CARD" };
         foreach (var dyn in DynamicCollections)
         {
             if (!string.IsNullOrWhiteSpace(dyn.Code) && !types.Contains(dyn.Code, StringComparer.OrdinalIgnoreCase))
@@ -512,7 +512,23 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
     {
         if (row != null && OtpTransactions.Contains(row))
         {
+            var removedCode = (row.CollectionTypeCode ?? "").ToUpperInvariant().Replace("_", "").Replace(" ", "");
             OtpTransactions.Remove(row);
+
+            // If no more rows for this code remain, reset its aggregate field
+            if (!OtpTransactions.Any(t => (t.CollectionTypeCode ?? "").ToUpperInvariant().Replace("_", "").Replace(" ", "") == removedCode))
+            {
+                if (removedCode == "CREDITCARD") { CreditCardMorning = null; CreditCardNight = null; }
+                else if (removedCode == "PETROCARD") { PetroCardMorning = null; PetroCardNight = null; }
+                else if (removedCode == "PHONEPECARD") { PhonePeCardMorning = null; PhonePeCardNight = null; }
+                else if (removedCode == "PHONEPE") { PhonePeMorning = null; PhonePeNight = null; }
+                else
+                {
+                    var dyn = DynamicCollections.FirstOrDefault(d => string.Equals(d.Code, row.CollectionTypeCode, StringComparison.OrdinalIgnoreCase));
+                    if (dyn != null) dyn.Amount = null;
+                }
+            }
+
             OnOtpTransactionsChanged();
         }
     }
@@ -554,59 +570,68 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
             return;
         }
 
-        var grouped = OtpTransactions.GroupBy(t => (t.CollectionTypeCode ?? "").ToUpperInvariant().Replace("_", "").Replace(" ", ""));
-        foreach (var group in grouped)
+        string Clean(string? s) => (s ?? "").ToUpperInvariant().Replace("_", "").Replace(" ", "");
+
+        if (OtpTransactions.Count > 0)
         {
-            var code = group.Key;
-            if (code == "CREDITCARD")
+            var ccRows = OtpTransactions.Where(t => Clean(t.CollectionTypeCode) == "CREDITCARD").ToList();
+            if (ccRows.Count > 0)
             {
-                if (IsDayShift)
-                {
-                    CreditCardMorning = group.Sum(t => t.Amount);
-                }
+                if (IsDayShift) CreditCardMorning = ccRows.Sum(t => t.Amount);
                 else
                 {
-                    var morningAmt = group.Where(t => t.Slot == "Morning" || t.Slot == "General").Sum(t => t.Amount);
-                    var nightAmt = group.Where(t => t.Slot == "Night").Sum(t => t.Amount);
+                    var morningAmt = ccRows.Where(t => t.Slot == "Morning" || t.Slot == "General").Sum(t => t.Amount);
+                    var nightAmt = ccRows.Where(t => t.Slot == "Night").Sum(t => t.Amount);
                     CreditCardMorning = morningAmt > 0 ? morningAmt : (double?)null;
                     if (IsNightShift) CreditCardNight = nightAmt > 0 ? nightAmt : (double?)null;
                 }
             }
-            else if (code == "PETROCARD")
+
+            var petroRows = OtpTransactions.Where(t => Clean(t.CollectionTypeCode) == "PETROCARD").ToList();
+            if (petroRows.Count > 0)
             {
-                if (IsDayShift)
-                {
-                    PetroCardMorning = group.Sum(t => t.Amount);
-                }
+                if (IsDayShift) PetroCardMorning = petroRows.Sum(t => t.Amount);
                 else
                 {
-                    var morningAmt = group.Where(t => t.Slot == "Morning" || t.Slot == "General").Sum(t => t.Amount);
-                    var nightAmt = group.Where(t => t.Slot == "Night").Sum(t => t.Amount);
+                    var morningAmt = petroRows.Where(t => t.Slot == "Morning" || t.Slot == "General").Sum(t => t.Amount);
+                    var nightAmt = petroRows.Where(t => t.Slot == "Night").Sum(t => t.Amount);
                     PetroCardMorning = morningAmt > 0 ? morningAmt : (double?)null;
                     if (IsNightShift) PetroCardNight = nightAmt > 0 ? nightAmt : (double?)null;
                 }
             }
-            else if (code == "PHONEPE" || code == "PHONEPECARD")
+
+            var phonePeCardRows = OtpTransactions.Where(t => Clean(t.CollectionTypeCode) == "PHONEPECARD").ToList();
+            if (phonePeCardRows.Count > 0)
             {
-                if (IsDayShift)
-                {
-                    PhonePeMorning = group.Sum(t => t.Amount);
-                }
+                if (IsDayShift) PhonePeCardMorning = phonePeCardRows.Sum(t => t.Amount);
                 else
                 {
-                    var morningAmt = group.Where(t => t.Slot == "Morning" || t.Slot == "General").Sum(t => t.Amount);
-                    var nightAmt = group.Where(t => t.Slot == "Night").Sum(t => t.Amount);
+                    var morningAmt = phonePeCardRows.Where(t => t.Slot == "Morning" || t.Slot == "General").Sum(t => t.Amount);
+                    var nightAmt = phonePeCardRows.Where(t => t.Slot == "Night").Sum(t => t.Amount);
+                    PhonePeCardMorning = morningAmt > 0 ? morningAmt : (double?)null;
+                    if (IsNightShift) PhonePeCardNight = nightAmt > 0 ? nightAmt : (double?)null;
+                }
+            }
+
+            var phonePeRows = OtpTransactions.Where(t => Clean(t.CollectionTypeCode) == "PHONEPE").ToList();
+            if (phonePeRows.Count > 0)
+            {
+                if (IsDayShift) PhonePeMorning = phonePeRows.Sum(t => t.Amount);
+                else
+                {
+                    var morningAmt = phonePeRows.Where(t => t.Slot == "Morning" || t.Slot == "General").Sum(t => t.Amount);
+                    var nightAmt = phonePeRows.Where(t => t.Slot == "Night").Sum(t => t.Amount);
                     PhonePeMorning = morningAmt > 0 ? morningAmt : (double?)null;
                     if (IsNightShift) PhonePeNight = nightAmt > 0 ? nightAmt : (double?)null;
                 }
             }
-            else
+
+            foreach (var dynRow in DynamicCollections)
             {
-                var origCode = group.First().CollectionTypeCode;
-                var dynRow = DynamicCollections.FirstOrDefault(d => string.Equals(d.Code, origCode, StringComparison.OrdinalIgnoreCase));
-                if (dynRow != null)
+                var dynRows = OtpTransactions.Where(t => string.Equals(t.CollectionTypeCode, dynRow.Code, StringComparison.OrdinalIgnoreCase)).ToList();
+                if (dynRows.Count > 0)
                 {
-                    var amt = group.Sum(t => t.Amount);
+                    var amt = dynRows.Sum(t => t.Amount);
                     dynRow.Amount = amt > 0 ? amt : (double?)null;
                 }
             }
@@ -948,18 +973,25 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
                 {
                     if (!string.IsNullOrWhiteSpace(item.Otp) || (IsOtpMachineTrackingEnabled && PaymentCollection.IsStandardCollectionCode(item.CollectionTypeCode)))
                     {
-                        var (sharedTid, sharedBatch) = GetSharedTidBatch(item.CollectionTypeCode, item.Slot);
+                        var normType = PaymentCollection.NormalizeCollectionTypeCode(item.CollectionTypeCode);
+                        var slot = !string.IsNullOrWhiteSpace(item.Slot) ? item.Slot : PaymentCollection.ExtractSlotFromMode(item.CollectionTypeCode, "General");
+                        var (sharedTid, sharedBatch) = GetSharedTidBatch(normType, slot);
                         OtpTransactions.Add(new DsmOtpTransactionRow
                         {
-                            CollectionTypeCode = item.CollectionTypeCode,
+                            CollectionTypeCode = normType,
                             Amount = item.Amount,
                             Otp = item.Otp,
                             Tid = string.IsNullOrWhiteSpace(item.Tid) ? sharedTid : item.Tid,
                             Batch = string.IsNullOrWhiteSpace(item.Batch) ? sharedBatch : item.Batch,
-                            Slot = string.IsNullOrWhiteSpace(item.Slot) ? "General" : item.Slot,
+                            Slot = slot,
                             OnRowChanged = OnOtpTransactionsChanged
                         });
                     }
+                }
+
+                if (OtpTransactions.Count > 0)
+                {
+                    OnOtpTransactionsChanged();
                 }
             }
         }
@@ -2334,20 +2366,24 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
                 }
                 else
                 {
-                    string canonicalFuel = testEntry.FuelType;
-                    if (canonicalFuel == "MS")
+                    string canonicalFuel = testEntry.FuelType?.Trim().ToUpperInvariant() ?? "";
+                    if (canonicalFuel.Contains("MS-I") || canonicalFuel == "MS" || canonicalFuel.Contains("PETROL"))
                     {
                         match = TestingRows.FirstOrDefault(t => t.FuelType.Contains("MS-I") || t.FuelType.Contains("MS"));
                     }
-                    else if (canonicalFuel == "HSD")
+                    else if (canonicalFuel.Contains("SPEED") || canonicalFuel.Contains("XP95") || canonicalFuel.Contains("POWER"))
+                    {
+                        match = TestingRows.FirstOrDefault(t => t.FuelType.Contains("SPEED") || t.FuelType.Contains("XP95") || t.FuelType.Contains("POWER"));
+                    }
+                    else if (canonicalFuel.Contains("HSD") && !canonicalFuel.Contains("HSD-II") && !canonicalFuel.Contains("II"))
                     {
                         match = TestingRows.FirstOrDefault(t => t.FuelType.Contains("HSD") && !t.FuelType.Contains("HSD-II"));
                     }
-                    else if (canonicalFuel == "HSD-II")
+                    else if (canonicalFuel.Contains("MS-II") || canonicalFuel.Contains("HSD-II") || canonicalFuel.Contains("II"))
                     {
                         match = TestingRows.FirstOrDefault(t => t.FuelType.Contains("MS-II") || t.FuelType.Contains("HSD-II"));
                     }
-                    else if (canonicalFuel == "CNG")
+                    else if (canonicalFuel.Contains("CNG"))
                     {
                         match = TestingRows.FirstOrDefault(t => t.FuelType.Contains("CNG"));
                     }
@@ -2818,6 +2854,23 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
             if (!qr.Amount.HasValue || qr.Amount.Value <= 0) errors.Add($"Cross-DSM QR amount must be greater than zero for {qr.TargetDsmName}.");
         }
         if (string.IsNullOrWhiteSpace(DsmName)) errors.Add("DSM Name is required.");
+
+        if (IsOtpMachineTrackingEnabled && OtpTransactions.Count > 0)
+        {
+            for (int i = 0; i < OtpTransactions.Count; i++)
+            {
+                var tx = OtpTransactions[i];
+                if (tx.Amount > 0 && string.IsNullOrWhiteSpace(tx.CollectionTypeCode))
+                {
+                    errors.Add($"OTP transaction #{i + 1} has an amount of ₹{tx.Amount:N2} but no collection type is selected. Please select a collection type or remove the row.");
+                }
+                if (tx.Amount < 0)
+                {
+                    errors.Add($"OTP transaction #{i + 1} amount cannot be negative.");
+                }
+            }
+        }
+
         return errors;
     }
 

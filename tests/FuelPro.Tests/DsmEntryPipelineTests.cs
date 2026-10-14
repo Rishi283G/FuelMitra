@@ -626,4 +626,506 @@ public class DsmEntryPipelineTests : IDisposable
         Assert.Equal(3000.0, vm.CreditCardMorning);
         Assert.Equal(1000.0, vm.PetroCardMorning);
     }
+
+    [Fact]
+    public async Task FullPipeline_PwaSubmission_Through_ApprovalQueue_To_Persistence_And_Reopen()
+    {
+        var date = new DateTime(2026, 10, 14);
+        var subGuid = Guid.NewGuid();
+
+        // 1. PWA Submission Payload with structured settlements + itemized OTP transactions
+        var submission = new DsmPendingSubmission
+        {
+            Id = subGuid,
+            ShiftDate = date,
+            ShiftType = "A",
+            DsmName = "Pipeline Operator",
+            PumpId = 1,
+            SubmittedAt = DateTime.UtcNow,
+            MetadataJson = JsonConvert.SerializeObject(new
+            {
+                settlements = new[]
+                {
+                    new { paymentType = "PhonePe", period = "Morning", amount = 5000.0, tid = "PP01", batch = "B01" },
+                    new { paymentType = "PineLabs", period = "Morning", amount = 2574.0, tid = "PL01", batch = "B02" }
+                },
+                cardSwipeDetails = new[]
+                {
+                    new { mode = "PhonePe (Morning)", amount = 5000.0, tid = "PP01", batch = "B01", otp = "1111" },
+                    new { mode = "PineLabs Card Morning", amount = 2574.0, tid = "PL01", batch = "B02", otp = "2222" },
+                    new { mode = "PETROCARD (Morning)", amount = 235.0, tid = "PC01", batch = "B03", otp = "4421" }
+                },
+                testingEntries = new[]
+                {
+                    new { nozzleId = 1, amount = 32.141, fuelType = "MS-I", pumpId = 1 }
+                },
+                cashAmount = 10000.0
+            })
+        };
+
+        // 2. Approval Queue loads the submission
+        var queueVm = _serviceProvider.GetRequiredService<DsmApprovalQueueViewModel>();
+        queueVm.SelectedSubmission = submission;
+        await Task.Delay(100);
+        while (queueVm.IsLoadingDetails)
+        {
+            await Task.Delay(50);
+        }
+        Assert.Equal("Submission details loaded.", queueVm.StatusMessage);
+        Assert.Equal(3, queueVm.CardSwipeDetails.Count);
+
+        // Configure nozzle reading and testing deduction to match test case: Gross = 21023.45, Testing = 3214.10
+        queueVm.NozzleReadings.Clear();
+        queueVm.NozzleReadings.Add(new DsmNozzleRow
+        {
+            NozzleId = 1,
+            FuelType = "MS-I",
+            OpeningReading = 1000.0,
+            ClosingReading = 1210.2345,
+            Rate = 100.0
+        });
+
+        queueVm.SubmissionTestingEntries.Clear();
+        queueVm.SubmissionTestingEntries.Add(new DsmTestingRow
+        {
+            NozzleId = 1,
+            FuelType = "MS-I",
+            Amount = 32.141,
+            RupeeAmount = 3214.10,
+            PumpId = 1
+        });
+
+        // Explicitly set scalar collections on ViewModel (simulating Supabase collection fetch)
+        queueVm.CashAmount = 10000.0;
+        queueVm.UpiAmount = 5000.0;
+        queueVm.CardAmount = 2574.0;
+        queueVm.PetroCardAmount = 235.0;
+        queueVm.CashDepositAmount = 0.0;
+        queueVm.ExpenseAmount = 0.0;
+        queueVm.CreditAmount = 0.0;
+        queueVm.OthersAmount = 0.0;
+
+        // Trigger RecalculateTotals on approval queue
+        typeof(DsmApprovalQueueViewModel).GetMethod("RecalculateTotals", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.Invoke(queueVm, null);
+
+        // Verify Approval Queue collections and mismatch before approval
+        Assert.Equal(17809.00, queueVm.TotalCollections);
+        Assert.Equal(-0.35, queueVm.MismatchAmount, precision: 2);
+
+        // 3. Approval -> SQLite persistence
+        await queueVm.ApproveCommand.ExecuteAsync(null);
+
+        // 4. Verify SQLite persistence in isolated test database
+        using var db = _serviceProvider.GetRequiredService<FuelProDbContext>();
+        var savedEntry = await db.DsmEntries
+            .Include(e => e.PaymentCollection)
+            .ThenInclude(p => p.Items)
+            .FirstOrDefaultAsync(e => e.DsmName == "Pipeline Operator");
+        Assert.NotNull(savedEntry);
+
+        var repo = _serviceProvider.GetRequiredService<IDsmEntryRepository>();
+        var fullEntryResult = await repo.GetFullEntryAsync(savedEntry!.DsmEntryId);
+        Assert.True(fullEntryResult.Success);
+        var fullEntry = fullEntryResult.Data!;
+
+        Assert.NotNull(fullEntry.PaymentCollection);
+        Assert.Equal(5000.0, fullEntry.PaymentCollection!.PhonePeMorning);
+        Assert.Equal(2574.0, fullEntry.PaymentCollection.CreditCardMorning);
+        Assert.Equal(235.0, fullEntry.PaymentCollection.PetroCardMorning);
+
+        var allItems = fullEntry.PaymentCollection.GetAllItems().ToList();
+        Assert.Equal(3, allItems.Count);
+        Assert.Contains(allItems, i => i.CollectionTypeCode == "PHONEPE" && i.Amount == 5000.0 && i.Otp == "1111");
+        Assert.Contains(allItems, i => i.CollectionTypeCode == "CREDIT_CARD" && i.Amount == 2574.0 && i.Otp == "2222");
+        Assert.Contains(allItems, i => i.CollectionTypeCode == "PETROCARD" && i.Amount == 235.0 && i.Otp == "4421");
+
+        // 5. Reopened Desktop DSM Entry
+        var dsmVm = _serviceProvider.GetRequiredService<DsmEntryViewModel>();
+        await dsmVm.HydrateFromEntryAsync(fullEntry);
+
+        Assert.Equal(17809.00, dsmVm.FinalAdjusted);
+        Assert.Equal(17809.35, dsmVm.NetGrossSales, precision: 2);
+        Assert.Equal(-0.35, dsmVm.Difference, precision: 2);
+
+        Assert.Equal(3, dsmVm.OtpTransactions.Count);
+        var pcOtp = dsmVm.OtpTransactions.FirstOrDefault(t => t.CollectionTypeCode == "PETROCARD");
+        Assert.NotNull(pcOtp);
+        Assert.Equal(235.0, pcOtp!.Amount);
+        Assert.Equal("4421", pcOtp.Otp);
+        Assert.Equal("PC01", pcOtp.Tid);
+        Assert.Equal("B03", pcOtp.Batch);
+        Assert.Equal("Morning", pcOtp.Slot);
+    }
+
+    [Fact]
+    public async Task StagingValidation_Case1_PhonePe_Structured5000_WithItemized5000And700_ApprovedAndReopened()
+    {
+        var date = new DateTime(2026, 10, 15);
+        var subGuid = Guid.NewGuid();
+
+        // 1. Submit one structured PhonePe settlement of ₹5,000 alongside two itemized PhonePe transactions:
+        //    - ₹5,000, OTP 1111
+        //    - ₹700, OTP 2222
+        var submission = new DsmPendingSubmission
+        {
+            Id = subGuid,
+            ShiftDate = date,
+            ShiftType = "A",
+            DsmName = "Staging Operator Case1",
+            PumpId = 1,
+            SubmittedAt = DateTime.UtcNow,
+            MetadataJson = JsonConvert.SerializeObject(new
+            {
+                settlements = new[]
+                {
+                    new { paymentType = "PhonePe", period = "Morning", amount = 5000.0, tid = "PP01", batch = "B01" }
+                },
+                cardSwipeDetails = new[]
+                {
+                    new { mode = "PhonePe (Morning)", amount = 5000.0, tid = "PP01", batch = "B01", otp = "1111" },
+                    new { mode = "PhonePe (Morning)", amount = 700.0, tid = "PP01", batch = "B01", otp = "2222" }
+                },
+                testingEntries = new[]
+                {
+                    new { nozzleId = 1, amount = 13.0, fuelType = "MS-I", pumpId = 1 }
+                },
+                cashAmount = 0.0
+            })
+        };
+
+        // 2. Desktop Approval Queue loads submission
+        var queueVm = _serviceProvider.GetRequiredService<DsmApprovalQueueViewModel>();
+        queueVm.SelectedSubmission = submission;
+        await Task.Delay(100);
+        while (queueVm.IsLoadingDetails)
+        {
+            await Task.Delay(50);
+        }
+
+        Assert.Equal("Submission details loaded.", queueVm.StatusMessage);
+        Assert.Equal(2, queueVm.CardSwipeDetails.Count);
+
+        // Configure nozzle reading: Opening = 1000, Closing = 1070 @ Rate 100 => Gross = 7000.0
+        // Testing = 13.0 L @ Rate 100 => 1300.0. NetGrossSales = 7000.0 - 1300.0 = 5700.0
+        queueVm.NozzleReadings.Clear();
+        queueVm.NozzleReadings.Add(new DsmNozzleRow
+        {
+            NozzleId = 1,
+            FuelType = "MS-I",
+            OpeningReading = 1000.0,
+            ClosingReading = 1070.0,
+            Rate = 100.0
+        });
+
+        // Simulating the PWA submission collection fetch where PhonePe total = ₹5,700
+        queueVm.CashAmount = 0.0;
+        queueVm.UpiAmount = 5700.0;
+        queueVm.CardAmount = 0.0;
+        queueVm.PetroCardAmount = 0.0;
+        queueVm.CashDepositAmount = 0.0;
+        queueVm.ExpenseAmount = 0.0;
+        queueVm.CreditAmount = 0.0;
+        queueVm.OthersAmount = 0.0;
+
+        // Trigger RecalculateTotals on approval queue
+        typeof(DsmApprovalQueueViewModel).GetMethod("RecalculateTotals", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.Invoke(queueVm, null);
+
+        // 3. Verify Desktop Approval Queue shows PhonePe total = ₹5,700, with no duplicate ₹5,000
+        Assert.Equal(5700.00, queueVm.TotalCollections);
+        Assert.Equal(0.00, queueVm.MismatchAmount, precision: 2);
+
+        // 4. Approve the submission and verify local SQLite persistence
+        await queueVm.ApproveCommand.ExecuteAsync(null);
+
+        using var db = _serviceProvider.GetRequiredService<FuelProDbContext>();
+        var savedEntry = await db.DsmEntries
+            .Include(e => e.PaymentCollection)
+            .ThenInclude(p => p.Items)
+            .FirstOrDefaultAsync(e => e.DsmName == "Staging Operator Case1");
+        Assert.NotNull(savedEntry);
+
+        var repo = _serviceProvider.GetRequiredService<IDsmEntryRepository>();
+        var fullEntryResult = await repo.GetFullEntryAsync(savedEntry!.DsmEntryId);
+        Assert.True(fullEntryResult.Success);
+        var fullEntry = fullEntryResult.Data!;
+
+        Assert.NotNull(fullEntry.PaymentCollection);
+        // PhonePeMorning is ₹5,000 (from settlement) + ₹700 (from unconsumed swipe) = ₹5,700
+        Assert.Equal(5700.0, fullEntry.PaymentCollection!.PhonePeMorning);
+        Assert.Equal(0.0, fullEntry.PaymentCollection.CreditCardMorning);
+
+        var allItems = fullEntry.PaymentCollection.GetAllItems().ToList();
+        Assert.Equal(2, allItems.Count);
+        Assert.Contains(allItems, i => i.CollectionTypeCode == "PHONEPE" && i.Amount == 5000.0 && i.Otp == "1111");
+        Assert.Contains(allItems, i => i.CollectionTypeCode == "PHONEPE" && i.Amount == 700.0 && i.Otp == "2222");
+
+        // 5. Reopen Desktop DSM Entry and verify:
+        //    - Total remains ₹5,700
+        //    - Both OTP transactions and their details are restored
+        //    - The saved values remain unchanged after reopening
+        //    - The reconciliation mismatch follows the verified accounting formula
+        var dsmVm = _serviceProvider.GetRequiredService<DsmEntryViewModel>();
+        await dsmVm.HydrateFromEntryAsync(fullEntry);
+
+        Assert.Equal(5700.00, dsmVm.FinalAdjusted);
+        Assert.Equal(5700.00, dsmVm.NetGrossSales, precision: 2);
+        Assert.Equal(0.00, dsmVm.Difference, precision: 2);
+        Assert.Equal(5700.00, dsmVm.PhonePeMorning);
+
+        Assert.Equal(2, dsmVm.OtpTransactions.Count);
+        var tx1 = dsmVm.OtpTransactions.FirstOrDefault(t => t.Otp == "1111");
+        Assert.NotNull(tx1);
+        Assert.Equal(5000.0, tx1!.Amount);
+        Assert.Equal("PP01", tx1.Tid);
+        Assert.Equal("B01", tx1.Batch);
+        Assert.Equal("Morning", tx1.Slot);
+
+        var tx2 = dsmVm.OtpTransactions.FirstOrDefault(t => t.Otp == "2222");
+        Assert.NotNull(tx2);
+        Assert.Equal(700.0, tx2!.Amount);
+        Assert.Equal("PP01", tx2.Tid);
+        Assert.Equal("B01", tx2.Batch);
+        Assert.Equal("Morning", tx2.Slot);
+    }
+
+    [Fact]
+    public async Task StagingValidation_Case2_TwoLegitimateSameTypeSameAmount_WithDifferentTids_ApprovedAndReopened()
+    {
+        var date = new DateTime(2026, 10, 15);
+        var subGuid = Guid.NewGuid();
+
+        // Two legitimate same-type, same-amount transactions with different TIDs:
+        // Item 1: PineLabs Card ₹1,500, TID POS01, Batch B01, OTP 8811
+        // Item 2: PineLabs Card ₹1,500, TID POS02, Batch B02, OTP 8822
+        var submission = new DsmPendingSubmission
+        {
+            Id = subGuid,
+            ShiftDate = date,
+            ShiftType = "A",
+            DsmName = "Staging Operator Case2",
+            PumpId = 1,
+            SubmittedAt = DateTime.UtcNow,
+            MetadataJson = JsonConvert.SerializeObject(new
+            {
+                cardSwipeDetails = new[]
+                {
+                    new { mode = "PineLabs Card Morning", amount = 1500.0, tid = "POS01", batch = "B01", otp = "8811" },
+                    new { mode = "PineLabs Card Morning", amount = 1500.0, tid = "POS02", batch = "B02", otp = "8822" }
+                },
+                cashAmount = 0.0
+            })
+        };
+
+        // Load into Approval Queue
+        var queueVm = _serviceProvider.GetRequiredService<DsmApprovalQueueViewModel>();
+        queueVm.SelectedSubmission = submission;
+        await Task.Delay(100);
+        while (queueVm.IsLoadingDetails)
+        {
+            await Task.Delay(50);
+        }
+
+        Assert.Equal("Submission details loaded.", queueVm.StatusMessage);
+        Assert.Equal(2, queueVm.CardSwipeDetails.Count);
+
+        // Configure nozzle reading: Opening = 1000, Closing = 1030 @ Rate 100 => Gross = 3000.0. Testing = 0
+        queueVm.NozzleReadings.Clear();
+        queueVm.NozzleReadings.Add(new DsmNozzleRow
+        {
+            NozzleId = 1,
+            FuelType = "MS-I",
+            OpeningReading = 1000.0,
+            ClosingReading = 1030.0,
+            Rate = 100.0
+        });
+
+        // Set collections
+        queueVm.CashAmount = 0.0;
+        queueVm.UpiAmount = 0.0;
+        queueVm.CardAmount = 3000.0;
+        queueVm.PetroCardAmount = 0.0;
+        queueVm.CashDepositAmount = 0.0;
+        queueVm.ExpenseAmount = 0.0;
+        queueVm.CreditAmount = 0.0;
+        queueVm.OthersAmount = 0.0;
+
+        typeof(DsmApprovalQueueViewModel).GetMethod("RecalculateTotals", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.Invoke(queueVm, null);
+
+        Assert.Equal(3000.00, queueVm.TotalCollections);
+        Assert.Equal(0.00, queueVm.MismatchAmount, precision: 2);
+
+        // Approve and persist
+        await queueVm.ApproveCommand.ExecuteAsync(null);
+
+        using var db = _serviceProvider.GetRequiredService<FuelProDbContext>();
+        var savedEntry = await db.DsmEntries
+            .Include(e => e.PaymentCollection)
+            .ThenInclude(p => p.Items)
+            .FirstOrDefaultAsync(e => e.DsmName == "Staging Operator Case2");
+        Assert.NotNull(savedEntry);
+
+        var repo = _serviceProvider.GetRequiredService<IDsmEntryRepository>();
+        var fullEntryResult = await repo.GetFullEntryAsync(savedEntry!.DsmEntryId);
+        Assert.True(fullEntryResult.Success);
+        var fullEntry = fullEntryResult.Data!;
+
+        Assert.NotNull(fullEntry.PaymentCollection);
+        Assert.Equal(3000.0, fullEntry.PaymentCollection!.CreditCardMorning);
+
+        var allItems = fullEntry.PaymentCollection.GetAllItems().ToList();
+        Assert.Equal(2, allItems.Count);
+        Assert.Contains(allItems, i => i.CollectionTypeCode == "CREDIT_CARD" && i.Amount == 1500.0 && i.Tid == "POS01" && i.Otp == "8811");
+        Assert.Contains(allItems, i => i.CollectionTypeCode == "CREDIT_CARD" && i.Amount == 1500.0 && i.Tid == "POS02" && i.Otp == "8822");
+
+        // Reopen Desktop DSM Entry
+        var dsmVm = _serviceProvider.GetRequiredService<DsmEntryViewModel>();
+        await dsmVm.HydrateFromEntryAsync(fullEntry);
+
+        Assert.Equal(3000.00, dsmVm.FinalAdjusted);
+        Assert.Equal(3000.00, dsmVm.NetGrossSales, precision: 2);
+        Assert.Equal(0.00, dsmVm.Difference, precision: 2);
+        Assert.Equal(3000.00, dsmVm.CreditCardMorning);
+
+        // Both survive approval and reopening
+        Assert.Equal(2, dsmVm.OtpTransactions.Count);
+        var item1 = dsmVm.OtpTransactions.FirstOrDefault(t => t.Tid == "POS01");
+        Assert.NotNull(item1);
+        Assert.Equal(1500.0, item1!.Amount);
+        Assert.Equal("8811", item1.Otp);
+
+        var item2 = dsmVm.OtpTransactions.FirstOrDefault(t => t.Tid == "POS02");
+        Assert.NotNull(item2);
+        Assert.Equal(1500.0, item2!.Amount);
+        Assert.Equal("8822", item2.Otp);
+    }
+
+    [Fact]
+    public async Task Verify_ApprovalQueue_SixLineReconciliation_CalculationAndPresentation()
+    {
+        var queueVm = _serviceProvider.GetRequiredService<DsmApprovalQueueViewModel>();
+
+        // Set nozzle readings: Gross Sales = 8,304.80
+        queueVm.NozzleReadings.Clear();
+        queueVm.NozzleReadings.Add(new DsmNozzleRow
+        {
+            NozzleId = 1,
+            FuelType = "MS-I",
+            OpeningReading = 1000.0,
+            ClosingReading = 1083.048,
+            Rate = 100.0,
+            Amount = 8304.80
+        });
+
+        // Set testing entry: Testing = 1,141.91
+        queueVm.SubmissionTestingEntries.Clear();
+        queueVm.SubmissionTestingEntries.Add(new DsmTestingRow
+        {
+            NozzleId = 1,
+            FuelType = "MS-I",
+            Amount = 11.4191,
+            RupeeAmount = 1141.91
+        });
+
+        // Set Collections: 7,162.00 (e.g. PhonePe)
+        queueVm.UpiAmount = 7162.00;
+        queueVm.CashAmount = 0.0;
+        queueVm.CardAmount = 0.0;
+        queueVm.PetroCardAmount = 0.0;
+        queueVm.CashDepositAmount = 0.0;
+        queueVm.ExpenseAmount = 0.0;
+        queueVm.CreditAmount = 0.0;
+        queueVm.OthersAmount = 0.0;
+
+        // Recalculate totals
+        typeof(DsmApprovalQueueViewModel).GetMethod("RecalculateTotals", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.Invoke(queueVm, null);
+
+        // 1. Gross Fuel Sales (Meter)
+        Assert.Equal(8304.80, queueVm.GrossSales, precision: 2);
+
+        // 2. Less: Testing (Non-Sale)
+        Assert.Equal(1141.91, queueVm.TotalTestingAmount, precision: 2);
+
+        // 3. Net Fuel Sales
+        Assert.Equal(7162.89, queueVm.NetFuelSales, precision: 2);
+
+        // 4. Oil / DEF Sales
+        Assert.Equal(0.00, queueVm.TotalOilDefSales, precision: 2);
+
+        // 5. Total Collections
+        Assert.Equal(7162.00, queueVm.TotalCollections, precision: 2);
+
+        // 6. Mismatch: Collections - (NetFuelSales + TotalOilDefSales) = 7162.00 - 7162.89 = -0.89
+        Assert.Equal(-0.89, queueVm.MismatchAmount, precision: 2);
+    }
+
+    [Fact]
+    public async Task Verify_DsmEntry_EditEntry_Reopen_And_Save_Preserves_Reconciliation_And_Otp_Transactions()
+    {
+        var date = new DateTime(2026, 10, 16);
+        var payment = new PaymentCollection
+        {
+            PhonePeMorning = 5000.0,
+            CashDeposit = 2000.0,
+            Items = new List<PaymentCollectionItem>
+            {
+                new() { CollectionTypeCode = "PHONEPE", Amount = 5000.0, Tid = "PP01", Batch = "B01", Otp = "9988", Slot = "Morning" }
+            }
+        };
+
+        var dsmService = _serviceProvider.GetRequiredService<DsmEntryService>();
+        var dbContext = _serviceProvider.GetRequiredService<FuelProDbContext>();
+
+        var nozzleReadings = new List<NozzleReading>
+        {
+            new() { NozzleNumber = 1, FuelType = "MS-I", OpeningReading = 1000.0, ClosingReading = 1083.048, Rate = 100.0, Amount = 8304.80, SaleLitres = 83.048 }
+        };
+        var testingEntries = new List<TestingEntry>
+        {
+            new() { FuelType = "MS-I", Litres = 11.4191, Rate = 100.0, Amount = 1141.91 }
+        };
+        var cashDenominations = new List<CashDenomination>
+        {
+            new() { CashType = "Cash1", Denom500 = 4, TotalAmount = 2000 },
+            new() { CashType = "Cash2", Denom100 = 1, Denom50 = 1, Denom10 = 1, Coins = 2, TotalAmount = 162 }
+        };
+
+        var saveResult = await dsmService.SaveCompleteEntryWithContextAsync(
+            dbContext,
+            date, "A", "Operator Reopen Parity", 1,
+            nozzleReadings,
+            payment,
+            new List<DebitEntry>(),
+            testingEntries,
+            new List<Expense>(),
+            cashDenominations);
+
+        Assert.True(saveResult.Success, saveResult.Error);
+        var entryId = saveResult.Data!.DsmEntryId;
+
+        // Reopen in DsmEntryViewModel
+        var repo = _serviceProvider.GetRequiredService<IDsmEntryRepository>();
+        var fullEntry = (await repo.GetFullEntryAsync(entryId)).Data!;
+
+        var vm = _serviceProvider.GetRequiredService<DsmEntryViewModel>();
+        await vm.HydrateFromEntryAsync(fullEntry);
+
+        // Verify loaded state
+        Assert.Equal(8304.80, vm.MeterGrossSales, precision: 2);
+        Assert.Equal(1141.91, vm.TotalTestingAmount, precision: 2);
+        Assert.Equal(7162.89, vm.NetGrossSales, precision: 2);
+        Assert.Equal(7162.00, vm.FinalAdjusted, precision: 2); // 5000 + 2000 + 162
+        Assert.Equal(-0.89, vm.Difference, precision: 2);      // 7162.00 - 7162.89 = -0.89
+
+        // Verify OTP transactions preserved
+        Assert.Single(vm.OtpTransactions);
+        Assert.Equal("9988", vm.OtpTransactions.First().Otp);
+        Assert.Equal(5000.0, vm.OtpTransactions.First().Amount);
+
+        // Edit and Re-save entry (simulate user adjusting Cash2 coins by +₹1.00)
+        vm.Cash2.Coins = 3; // +1 INR
+        vm.RecalculateAll();
+        Assert.Equal(7163.00, vm.FinalAdjusted, precision: 2);
+        Assert.Equal(0.11, vm.Difference, precision: 2); // 7163.00 - 7162.89 = +0.11
+    }
 }
+
