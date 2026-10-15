@@ -3,6 +3,7 @@ import { supabase } from './supabase';
 export interface StationFeatureSettings {
   cashDenominationsEnabled: boolean;
   otpMachineTrackingEnabled: boolean;
+  otpMachineTracking: boolean;
   splitMorningNightEnabled: boolean;
   personalLedgerEnabled: boolean;
   personalLedgerName: string;
@@ -86,6 +87,7 @@ export function getDefaultStationConfig(stationId: string): StationConfig {
     features: {
       cashDenominationsEnabled: false,
       otpMachineTrackingEnabled: false,
+      otpMachineTracking: false,
       splitMorningNightEnabled: false,
       personalLedgerEnabled: true,
       personalLedgerName: 'Personal Ledger',
@@ -134,26 +136,64 @@ export async function fetchStationConfig(stationId: string): Promise<StationConf
 
 async function fetchAndCacheStationConfig(cleanId: string, cacheKey: string): Promise<StationConfig> {
   try {
-    let { data, error } = await supabase
+    let data: any = null;
+    let lastError: any = null;
+
+    // 1. Try lowercase station_id with exact match
+    const r1 = await supabase
       .from('Settings')
       .select('*')
       .eq('station_id', cleanId)
       .limit(1)
       .maybeSingle();
 
-    if (!data && !error) {
-      const res = await supabase
+    if (r1.data) {
+      data = r1.data;
+    } else {
+      lastError = r1.error;
+      // 2. Try PascalCase StationId with exact match
+      const r2 = await supabase
         .from('Settings')
         .select('*')
         .eq('StationId', cleanId)
         .limit(1)
         .maybeSingle();
-      data = res.data;
-      error = res.error;
+
+      if (r2.data) {
+        data = r2.data;
+      } else {
+        lastError = r2.error || lastError;
+        // 3. Try case-insensitive lookup for station_id
+        const r3 = await supabase
+          .from('Settings')
+          .select('*')
+          .ilike('station_id', cleanId)
+          .limit(1)
+          .maybeSingle();
+
+        if (r3.data) {
+          data = r3.data;
+        } else {
+          lastError = r3.error || lastError;
+          // 4. Try case-insensitive lookup for StationId
+          const r4 = await supabase
+            .from('Settings')
+            .select('*')
+            .ilike('StationId', cleanId)
+            .limit(1)
+            .maybeSingle();
+
+          if (r4.data) {
+            data = r4.data;
+          } else {
+            lastError = r4.error || lastError;
+          }
+        }
+      }
     }
 
-    if (error || !data) {
-      console.warn('Could not fetch station settings from Supabase, checking cache:', error);
+    if (!data) {
+      console.warn('Could not fetch station settings from Supabase, checking cache:', lastError);
       try {
         const cached = localStorage.getItem(cacheKey);
         if (cached) {
@@ -166,9 +206,30 @@ async function fetchAndCacheStationConfig(cleanId: string, cacheKey: string): Pr
       return getDefaultStationConfig(cleanId);
     }
 
-    const collectionTypesRaw = data.CollectionTypesJson ?? data.collection_types_json ?? data.collectiontypesjson;
-    const appFeatureSettingsRaw = data.AppFeatureSettingsJson ?? data.app_feature_settings_json ?? data.appfeaturesettingsjson;
-    const fuelRatesRaw = data.FuelRatesJson ?? data.fuel_rates_json ?? data.fuelratesjson;
+    const collectionTypesRaw =
+      data.CollectionTypesJson ??
+      data.collection_types_json ??
+      data.collectiontypesjson;
+
+    let appFeatureSettingsRaw =
+      data.AppFeatureSettingsJson ??
+      data.app_feature_settings_json ??
+      data.appfeaturesettingsjson ??
+      data.FeatureSettingsJson ??
+      data.feature_settings_json ??
+      data.featuresettingsjson ??
+      data.FeatureTogglesJson ??
+      data.feature_toggles_json ??
+      data.feature_toggles ??
+      data.FeatureToggles ??
+      data.features ??
+      data.Features;
+
+    const fuelRatesRaw =
+      data.FuelRatesJson ??
+      data.fuel_rates_json ??
+      data.fuelratesjson;
+
     const rawHsd = data.HsdRate ?? data.hsd_rate ?? data.hsdrate;
     const rawMsI = data.MsIRate ?? data.ms_i_rate ?? data.ms_irate ?? data.msirate;
     const rawMsII = data.MsIIRate ?? data.ms_ii_rate ?? data.ms_iirate ?? data.msiirate;
@@ -199,28 +260,98 @@ async function fetchAndCacheStationConfig(cleanId: string, cacheKey: string): Pr
       }
     }
 
+    function parseExplicitBoolean(val: any, defaultVal = false): boolean {
+      if (val === undefined || val === null) return defaultVal;
+      if (typeof val === 'boolean') return val;
+      if (typeof val === 'number') return val !== 0;
+      if (typeof val === 'string') {
+        const s = val.trim().toLowerCase();
+        if (s === 'true' || s === '1' || s === 'yes' || s === 'y' || s === 'enabled') return true;
+        if (s === 'false' || s === '0' || s === 'no' || s === 'n' || s === 'disabled') return false;
+      }
+      return defaultVal;
+    }
+
+    function normalizeFeatureKey(k: string): string {
+      return (k || '').trim().toLowerCase().replace(/[-_\s]/g, '');
+    }
+
     let cashDenominationsEnabled = false;
     let otpMachineTrackingEnabled = false;
     let splitMorningNightEnabled = false;
     let personalLedgerEnabled = true;
     let personalLedgerName = 'Personal Ledger';
 
+    function applyFeatureItem(itemKey: string, itemVal: any, itemDisplayName?: string) {
+      const normKey = normalizeFeatureKey(itemKey);
+      const isEnabled = parseExplicitBoolean(itemVal, false);
+
+      if (normKey === 'operationscashdenominations' || normKey === 'cashdenominations') {
+        cashDenominationsEnabled = isEnabled;
+      } else if (
+        normKey === 'operationsotpmachinetracking' ||
+        normKey === 'otpmachinetracking' ||
+        normKey === 'operationsotptracking' ||
+        normKey === 'otptracking'
+      ) {
+        otpMachineTrackingEnabled = isEnabled;
+      } else if (normKey === 'collectionusemorningnight' || normKey === 'usemorningnight') {
+        splitMorningNightEnabled = isEnabled;
+      } else if (normKey === 'operationspersonalledger' || normKey === 'personalledger') {
+        personalLedgerEnabled = parseExplicitBoolean(itemVal, true);
+        if (itemDisplayName && itemDisplayName.trim()) {
+          personalLedgerName = itemDisplayName.trim();
+        }
+      }
+    }
+
     if (appFeatureSettingsRaw) {
       try {
         const feats = typeof appFeatureSettingsRaw === 'string' ? JSON.parse(appFeatureSettingsRaw) : appFeatureSettingsRaw;
         if (Array.isArray(feats)) {
           for (const f of feats) {
-            const key = f.FeatureKey || f.featureKey;
-            const enabled = f.IsEnabled ?? f.isEnabled;
-            const displayName = (f.DisplayName || f.displayName || '').trim();
-            if (key === 'Operations_CashDenominations') cashDenominationsEnabled = Boolean(enabled);
-            if (key === 'Operations_OtpMachineTracking') otpMachineTrackingEnabled = Boolean(enabled);
-            if (key === 'Collection_UseMorningNight') splitMorningNightEnabled = Boolean(enabled);
-            if (key === 'Operations_PersonalLedger') {
-              personalLedgerEnabled = enabled !== false;
-              if (displayName) {
-                personalLedgerName = displayName;
-              }
+            if (!f || typeof f !== 'object') continue;
+            const key =
+              f.FeatureKey ||
+              f.featureKey ||
+              f.feature_key ||
+              f.Feature_Key ||
+              f.Key ||
+              f.key ||
+              f.Name ||
+              f.name ||
+              f.Code ||
+              f.code ||
+              '';
+            const enabled =
+              f.IsEnabled ??
+              f.isEnabled ??
+              f.is_enabled ??
+              f.Enabled ??
+              f.enabled ??
+              f.Value ??
+              f.value ??
+              f.IsActive ??
+              f.isActive;
+            const displayName = f.DisplayName || f.displayName || f.Name || f.name || '';
+            applyFeatureItem(key, enabled, displayName);
+          }
+        } else if (feats && typeof feats === 'object') {
+          for (const [k, v] of Object.entries(feats)) {
+            if (v && typeof v === 'object' && !Array.isArray(v)) {
+              const objVal = v as any;
+              const enabled =
+                objVal.IsEnabled ??
+                objVal.isEnabled ??
+                objVal.is_enabled ??
+                objVal.Enabled ??
+                objVal.enabled ??
+                objVal.Value ??
+                objVal.value;
+              const displayName = objVal.DisplayName || objVal.displayName || '';
+              applyFeatureItem(k, enabled, displayName);
+            } else {
+              applyFeatureItem(k, v);
             }
           }
         }
@@ -255,6 +386,7 @@ async function fetchAndCacheStationConfig(cleanId: string, cacheKey: string): Pr
       features: {
         cashDenominationsEnabled,
         otpMachineTrackingEnabled,
+        otpMachineTracking: otpMachineTrackingEnabled,
         splitMorningNightEnabled,
         personalLedgerEnabled,
         personalLedgerName,

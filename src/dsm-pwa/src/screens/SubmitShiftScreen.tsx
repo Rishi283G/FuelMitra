@@ -217,6 +217,18 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         ? localStorage.getItem("current_station_id") || localStorage.getItem("fuelpro_station_id")
         : "") ||
       "";
+    if (typeof localStorage !== "undefined" && initialStation) {
+      try {
+        const cacheKey = `station_config_${initialStation.trim().toLowerCase()}`;
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed && (parsed.stationId === initialStation || !parsed.stationId)) {
+            return parsed;
+          }
+        }
+      } catch {}
+    }
     return getDefaultStationConfig(initialStation);
   });
 
@@ -233,9 +245,12 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     }
   }, [profile?.StationId, (profile as any)?.station_id]);
 
-  const cashDenominationsEnabled = stationConfig.features.cashDenominationsEnabled;
-  const otpMachineTrackingEnabled = stationConfig.features.otpMachineTrackingEnabled;
-  const splitMorningNightEnabled = stationConfig.features.splitMorningNightEnabled;
+  const cashDenominationsEnabled = Boolean(stationConfig?.features?.cashDenominationsEnabled);
+  const otpMachineTrackingEnabled = Boolean(
+    stationConfig?.features?.otpMachineTrackingEnabled ??
+    (stationConfig?.features as any)?.otpMachineTracking
+  );
+  const splitMorningNightEnabled = Boolean(stationConfig?.features?.splitMorningNightEnabled);
 
   const cashDeposit = cashDenominationsEnabled
     ? (cash1Denom500 * 500 + cash1Denom200 * 200 + cash1Denom100 * 100)
