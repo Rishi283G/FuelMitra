@@ -30,6 +30,7 @@ interface SubmitProps {
 interface NozzleRow extends DraftNozzleReading {
   rowId: number;
   isOpeningReadOnly?: boolean;
+  tankName?: string;
 }
 
 
@@ -244,6 +245,35 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       });
     }
   }, [profile?.StationId, (profile as any)?.station_id]);
+
+  // Whenever stationConfig updates with authoritative rates, propagate to existing nozzle rows immediately
+  useEffect(() => {
+    if (!stationConfig || nozzleRows.length === 0) return;
+    setNozzleRows((prevRows) => {
+      let changed = false;
+      const updated = prevRows.map((row) => {
+        let newRate = resolveFuelRate(stationConfig, row.fuelType, row.tankName);
+        if (newRate <= 0) {
+          const uFuel = (row.fuelType || '').toUpperCase();
+          if (uFuel.includes('SPEED') || uFuel.includes('XP95') || uFuel.includes('POWER')) {
+            newRate = stationConfig?.speedRate || stationConfig?.msIIRate || 0;
+          } else if (uFuel.includes('HSD') || uFuel.includes('DIESEL')) {
+            newRate = stationConfig?.hsdRate || 0;
+          } else if (uFuel.includes('CNG')) {
+            newRate = stationConfig?.cngRate || 0;
+          } else {
+            newRate = stationConfig?.msIRate || 0;
+          }
+        }
+        if (newRate > 0 && Math.abs(newRate - row.rate) > 0.0001) {
+          changed = true;
+          return { ...row, rate: newRate };
+        }
+        return row;
+      });
+      return changed ? updated : prevRows;
+    });
+  }, [stationConfig]);
 
   const cashDenominationsEnabled = Boolean(stationConfig?.features?.cashDenominationsEnabled);
   const otpMachineTrackingEnabled = Boolean(
@@ -938,7 +968,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       try {
         let pmQuery = supabase
           .from("PumpMappings")
-          .select("NozzleNumber, FuelType, PumpId")
+          .select("NozzleNumber, FuelType, PumpId, TankName")
           .in("PumpId", pumpsToFetch)
           .eq("IsActive", true);
 
@@ -949,11 +979,24 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         const pmRes = await pmQuery.order("NozzleNumber", { ascending: true });
         nozzleConfig = pmRes.data;
         nozzleErr = pmRes.error;
+        if (nozzleErr) {
+          let retryQuery = supabase
+            .from("PumpMappings")
+            .select("NozzleNumber, FuelType, PumpId")
+            .in("PumpId", pumpsToFetch)
+            .eq("IsActive", true);
+          if (station) retryQuery = retryQuery.eq("station_id", station);
+          const retryRes = await retryQuery.order("NozzleNumber", { ascending: true });
+          if (!retryRes.error && retryRes.data) {
+            nozzleConfig = retryRes.data;
+            nozzleErr = null;
+          }
+        }
       } catch (pmEx) {
         console.error("Error querying PumpMappings:", pmEx);
       }
 
-      let configRows: { nozzleId: number; fuelType: string; pumpId: number }[] =
+      let configRows: { nozzleId: number; fuelType: string; pumpId: number; tankName?: string }[] =
         [];
 
       if (!nozzleErr && nozzleConfig && nozzleConfig.length > 0) {
@@ -967,6 +1010,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
               nozzleId: nId,
               fuelType: r.FuelType,
               pumpId: r.PumpId,
+              tankName: r.TankName || r.tank_name || "",
             });
           }
         }
@@ -1215,10 +1259,18 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         currentRows.forEach((r) => currentMap.set(r.nozzleId, r));
 
         return configRows.map((n, index) => {
-          let rate = resolveFuelRate(latestConfig, n.fuelType);
+          let rate = resolveFuelRate(latestConfig, n.fuelType, n.tankName);
           if (rate <= 0) {
-            // Fall back to any configured positive station rate
-            rate = latestConfig?.msIRate || latestConfig?.hsdRate || 0;
+            const uFuel = (n.fuelType || '').toUpperCase();
+            if (uFuel.includes('SPEED') || uFuel.includes('XP95') || uFuel.includes('POWER')) {
+              rate = latestConfig?.speedRate || latestConfig?.msIIRate || 0;
+            } else if (uFuel.includes('HSD') || uFuel.includes('DIESEL')) {
+              rate = latestConfig?.hsdRate || 0;
+            } else if (uFuel.includes('CNG')) {
+              rate = latestConfig?.cngRate || 0;
+            } else {
+              rate = latestConfig?.msIRate || 0;
+            }
           }
 
           const prevClosing = prevClosings[n.nozzleId] || 0;
@@ -1248,6 +1300,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
             rowId: index + 1,
             nozzleId: n.nozzleId,
             fuelType: n.fuelType,
+            tankName: n.tankName,
             openingReading: opening,
             closingReading: closing,
             rate,

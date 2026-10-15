@@ -306,6 +306,8 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
     private readonly Action<string, string> _profileRenamedHandler;
     private readonly Action<string> _profileDeletedHandler;
     private readonly Action _debtorChangedHandler;
+    private readonly Action _fuelRatesChangedHandler;
+    private readonly Action _dsmEntryChangedHandler;
     private bool _disposed;
 
 
@@ -826,6 +828,38 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
         };
         FuelPro.Core.Services.DsmEntryService.DebtorChanged += _debtorChangedHandler;
 
+        _fuelRatesChangedHandler = () =>
+        {
+            var dispatcher = System.Windows.Application.Current?.Dispatcher;
+            if (dispatcher != null && !dispatcher.CheckAccess())
+            {
+                dispatcher.BeginInvoke(async () => await RefreshFuelRatesAsync());
+            }
+            else
+            {
+                _ = RefreshFuelRatesAsync();
+            }
+        };
+        FuelPro.Core.Services.DsmEntryService.FuelRatesChanged += _fuelRatesChangedHandler;
+
+        _dsmEntryChangedHandler = () =>
+        {
+            if (_isEditing) return;
+            var dispatcher = System.Windows.Application.Current?.Dispatcher;
+            if (dispatcher != null && !dispatcher.CheckAccess())
+            {
+                dispatcher.BeginInvoke(() =>
+                {
+                    if (!_isEditing) LoadNozzlesForPump();
+                });
+            }
+            else
+            {
+                if (!_isEditing) LoadNozzlesForPump();
+            }
+        };
+        FuelPro.Core.Services.DsmEntryService.DsmEntryChanged += _dsmEntryChangedHandler;
+
         // Populate pump options for default selected date
         ReloadPumpOptions();
 
@@ -1268,6 +1302,41 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
             }
         }
 
+        // Also inspect the current operational shift for earlier completed/approved entries
+        try
+        {
+            var currentShiftResult = await App.Services.GetRequiredService<Core.Repositories.IShiftRepository>()
+                .GetShiftAsync(SelectedDate, SelectedShift);
+            if (currentShiftResult.Success && currentShiftResult.Data != null)
+            {
+                var currentEntriesResult = await App.Services.GetRequiredService<IDsmEntryRepository>()
+                    .GetEntriesForShiftAsync(currentShiftResult.Data.ShiftId);
+                if (currentEntriesResult.Success && currentEntriesResult.Data != null)
+                {
+                    var relevantEntries = currentEntriesResult.Data
+                        .Where(e => !EditingEntryId.HasValue || (e.ReconciledToPumpId ?? e.DsmEntryId) < EditingEntryId.Value)
+                        .OrderBy(e => e.CreatedAt)
+                        .ThenBy(e => e.ReconciledToPumpId ?? e.DsmEntryId);
+
+                    foreach (var entry in relevantEntries)
+                    {
+                        if (entry.NozzleReadings == null) continue;
+                        foreach (var nr in entry.NozzleReadings)
+                        {
+                            if (nr.ClosingReading > 0)
+                            {
+                                allPreviousClosings[nr.NozzleNumber] = nr.ClosingReading;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Warning(ex, "Failed to load current shift closings for continuity");
+        }
+
         var currentShiftImport = await GetShiftImportAsync(SelectedDate, SelectedShift);
         var currentAgsReadings = currentShiftImport?.NozzleReadings
             .ToDictionary(r => r.NozzleNumber, r => r);
@@ -1301,24 +1370,24 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
             var hasPreviousDsm = allPreviousClosings.TryGetValue(n, out var previousDsmClosing);
 
             double? openingReading = null;
-            if (hasCurrentAgs && currentAgsRow?.OpeningReading > 0)
+            if (hasPreviousDsm && previousDsmClosing > 0)
             {
-                openingReading = currentAgsRow.OpeningReading;
-            }
-            else if (hasPreviousDsm && previousDsmClosing > 0)
-            {
-                // Prefer previous DSM closing (which captures latest shift/session readings)
-                // If previous AGS is higher (e.g. from a subsequent AGS import), use the higher meter reading.
-                if (openingFromAgsPreviousShift.HasValue && openingFromAgsPreviousShift.Value > previousDsmClosing)
+                // Prefer latest approved DSM closing reading as authoritative predecessor
+                openingReading = previousDsmClosing;
+                if (hasCurrentAgs && currentAgsRow?.OpeningReading > openingReading)
+                {
+                    openingReading = currentAgsRow.OpeningReading;
+                }
+                else if (openingFromAgsPreviousShift.HasValue && openingFromAgsPreviousShift.Value > openingReading)
                 {
                     openingReading = openingFromAgsPreviousShift.Value;
                 }
-                else
-                {
-                    openingReading = previousDsmClosing;
-                }
             }
-            else if (openingFromAgsPreviousShift.HasValue)
+            else if (hasCurrentAgs && currentAgsRow?.OpeningReading > 0)
+            {
+                openingReading = currentAgsRow.OpeningReading;
+            }
+            else if (openingFromAgsPreviousShift.HasValue && openingFromAgsPreviousShift.Value > 0)
             {
                 openingReading = openingFromAgsPreviousShift.Value;
             }
@@ -1551,6 +1620,7 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
 
     private void RebuildTestingRows(double hsdRate, double msIRate, double msIIRate, double cngRate)
     {
+        var existingTesting = TestingRows.ToDictionary(t => t.NozzleNumber, t => t.Litres);
         TestingRows.Clear();
         foreach (var nozzle in NozzleReadings)
         {
@@ -1560,12 +1630,15 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
                 continue;
             }
 
+            double? prevLitres = existingTesting.TryGetValue(nozzle.NozzleNumber, out var l) ? l : null;
+
             TestingRows.Add(new TestingRow
             {
                 NozzleNumber = nozzle.NozzleNumber,
                 FuelType = $"Nozzle {nozzle.NozzleNumber} ({nozzle.FuelType})",
                 TankName = tank,
                 Rate = nozzle.Rate,
+                Litres = prevLitres,
                 OnRowChanged = RecalculateAll
             });
         }
@@ -1620,6 +1693,11 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
             {
                 var speedMatch = ratesMap.FirstOrDefault(kv => kv.Value > 0 && (kv.Key.Contains("SPEED", StringComparison.OrdinalIgnoreCase) || kv.Key.Contains("XP95", StringComparison.OrdinalIgnoreCase) || kv.Key.Contains("POWER", StringComparison.OrdinalIgnoreCase)));
                 if (speedMatch.Value > 0) return speedMatch.Value;
+
+                var ms2Match = ratesMap.FirstOrDefault(kv => kv.Value > 0 && (kv.Key.Contains("MS-II", StringComparison.OrdinalIgnoreCase) || kv.Key.Contains("MS2", StringComparison.OrdinalIgnoreCase) || kv.Key.Contains("20KL II", StringComparison.OrdinalIgnoreCase)));
+                if (ms2Match.Value > 0) return ms2Match.Value;
+
+                if (msIIRate > 0) return msIIRate;
             }
 
             if (combined.Contains("HSD") || combined.Contains("DIESEL"))
@@ -1630,8 +1708,9 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
 
             if (combined.Contains("MS-II") || combined.Contains("MS2") || combined.Contains("MS_II") || combined.Contains("20KL II"))
             {
-                var ms2Match = ratesMap.FirstOrDefault(kv => kv.Value > 0 && (kv.Key.Contains("MS-II", StringComparison.OrdinalIgnoreCase) || kv.Key.Contains("MS2", StringComparison.OrdinalIgnoreCase) || kv.Key.Contains("20KL II", StringComparison.OrdinalIgnoreCase)));
+                var ms2Match = ratesMap.FirstOrDefault(kv => kv.Value > 0 && (kv.Key.Contains("MS-II", StringComparison.OrdinalIgnoreCase) || kv.Key.Contains("MS2", StringComparison.OrdinalIgnoreCase) || kv.Key.Contains("20KL II", StringComparison.OrdinalIgnoreCase) || kv.Key.Contains("SPEED", StringComparison.OrdinalIgnoreCase) || kv.Key.Contains("XP95", StringComparison.OrdinalIgnoreCase)));
                 if (ms2Match.Value > 0) return ms2Match.Value;
+                if (msIIRate > 0) return msIIRate;
             }
 
             if (combined.Contains("MS-I") || combined.Contains("MS") || combined.Contains("PETROL"))
@@ -1648,6 +1727,10 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
         }
 
         // Fallback to standard 4-rate switch
+        string c = $"{(fuelTypeName ?? "")} {(tankName ?? "")}".ToUpperInvariant();
+        if (c.Contains("SPEED") || c.Contains("XP95") || c.Contains("POWER") || c.Contains("TURBO") || c.Contains("EXTRA"))
+            return msIIRate > 0 ? msIIRate : msIRate;
+
         return fuelType switch
         {
             FuelType.HSD => hsdRate,
@@ -1656,6 +1739,47 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
             FuelType.CNG => cngRate,
             _ => msIRate
         };
+    }
+
+    /// <summary>
+    /// Refreshes fuel rates for currently loaded nozzles and recalculates amounts immediately without resetting readings.
+    /// </summary>
+    public async Task RefreshFuelRatesAsync()
+    {
+        try
+        {
+            var (hsdRate, msIRate, msIIRate, cngRate) = await _dsmService.GetCurrentRatesAsync();
+            var ratesMap = await _dsmService.GetFuelRatesMapAsync();
+
+            foreach (var nozzle in NozzleReadings)
+            {
+                var nozzlePumpId = nozzle.PumpId > 0 ? nozzle.PumpId : (SelectedPump?.PumpId ?? 1);
+                var fuelType = PumpConfiguration.GetFuelType(nozzlePumpId, nozzle.NozzleNumber, SelectedDate);
+                var tankName = PumpConfiguration.GetTankName(nozzlePumpId, nozzle.NozzleNumber, SelectedDate);
+                var fuelTypeName = PumpConfiguration.GetFuelTypeDisplayName(nozzlePumpId, nozzle.NozzleNumber, SelectedDate);
+
+                double newRate = ResolveFuelRate(tankName, fuelTypeName, fuelType, ratesMap, hsdRate, msIRate, msIIRate, cngRate);
+                if (newRate > 0)
+                {
+                    nozzle.Rate = newRate; // Triggers OnRateChanged -> Recalculate() -> OnRowChanged
+                }
+            }
+
+            foreach (var testRow in TestingRows)
+            {
+                var matchingNozzle = NozzleReadings.FirstOrDefault(n => n.NozzleNumber == testRow.NozzleNumber);
+                if (matchingNozzle != null && matchingNozzle.Rate.HasValue)
+                {
+                    testRow.Rate = matchingNozzle.Rate.Value;
+                }
+            }
+
+            RecalculateAll();
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to refresh fuel rates in DSM Entry");
+        }
     }
 
     public void RecalculateAll()
@@ -2846,6 +2970,12 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
 
         if (_debtorChangedHandler != null)
             FuelPro.Core.Services.DsmEntryService.DebtorChanged -= _debtorChangedHandler;
+
+        if (_fuelRatesChangedHandler != null)
+            FuelPro.Core.Services.DsmEntryService.FuelRatesChanged -= _fuelRatesChangedHandler;
+
+        if (_dsmEntryChangedHandler != null)
+            FuelPro.Core.Services.DsmEntryService.DsmEntryChanged -= _dsmEntryChangedHandler;
 
         if (_autoSaveTimer != null)
         {

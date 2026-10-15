@@ -18,18 +18,18 @@ public class ReleaseBinaryVerificationTests
         var repoRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
         var uiDllPath = Path.Combine(repoRoot, "publish_output", "FuelPro.UI.dll");
         var coreDllPath = Path.Combine(repoRoot, "publish_output", "FuelPro.Core.dll");
-        var installerPath = File.Exists(Path.Combine(repoRoot, "installer_output", "PyroSync_Setup_v1.3.43.exe"))
-            ? Path.Combine(repoRoot, "installer_output", "PyroSync_Setup_v1.3.43.exe")
-            : (File.Exists(Path.Combine(repoRoot, "installer_output", "PyroSync_Setup_v1.3.42.exe"))
-                ? Path.Combine(repoRoot, "installer_output", "PyroSync_Setup_v1.3.42.exe")
-                : Path.Combine(repoRoot, "installer_output", "PyroSync_Setup_v1.3.41.exe"));
+        var installerPath = File.Exists(Path.Combine(repoRoot, "installer_output", "PyroSync_Setup_v1.3.44.exe"))
+            ? Path.Combine(repoRoot, "installer_output", "PyroSync_Setup_v1.3.44.exe")
+            : (File.Exists(Path.Combine(repoRoot, "installer_output", "PyroSync_Setup_v1.3.43.exe"))
+                ? Path.Combine(repoRoot, "installer_output", "PyroSync_Setup_v1.3.43.exe")
+                : Path.Combine(repoRoot, "installer_output", "PyroSync_Setup_v1.3.42.exe"));
 
         Assert.True(File.Exists(uiDllPath), $"FuelPro.UI.dll missing in publish_output: {uiDllPath}");
         Assert.True(File.Exists(coreDllPath), $"FuelPro.Core.dll missing in publish_output: {coreDllPath}");
         Assert.True(File.Exists(installerPath), $"Installer missing in installer_output: {installerPath}");
 
         var uiVer = FileVersionInfo.GetVersionInfo(uiDllPath);
-        Assert.True(uiVer.FileVersion == "1.3.43.0" || uiVer.FileVersion == "1.3.42.0" || uiVer.FileVersion == "1.3.41.0", $"Unexpected FileVersion: {uiVer.FileVersion}");
+        Assert.True(uiVer.FileVersion == "1.3.44.0" || uiVer.FileVersion == "1.3.43.0" || uiVer.FileVersion == "1.3.42.0", $"Unexpected FileVersion: {uiVer.FileVersion}");
 
         var installerFileInfo = new FileInfo(installerPath);
         Assert.True(installerFileInfo.Length > 50_000_000, "Installer size seems too small");

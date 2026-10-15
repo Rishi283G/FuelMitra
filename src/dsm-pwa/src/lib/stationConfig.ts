@@ -30,6 +30,7 @@ export interface StationConfig {
   hsdRate?: number;
   msIRate?: number;
   msIIRate?: number;
+  speedRate?: number;
   cngRate?: number;
 }
 
@@ -98,6 +99,7 @@ export function getDefaultStationConfig(stationId: string): StationConfig {
     hsdRate: 90.35,
     msIRate: 103.81,
     msIIRate: 103.81,
+    speedRate: 103.81,
     cngRate: 85.0,
   };
 }
@@ -367,7 +369,10 @@ async function fetchAndCacheStationConfig(cleanId: string, cacheKey: string): Pr
         if (parsedRates && typeof parsedRates === 'object') {
           for (const [k, v] of Object.entries(parsedRates)) {
             const num = Number(v);
-            if (!isNaN(num) && num > 0) fuelRates[k] = num;
+            if (!isNaN(num) && num > 0) {
+              fuelRates[k] = num;
+              fuelRates[k.trim()] = num;
+            }
           }
         }
       } catch (err) {
@@ -375,11 +380,39 @@ async function fetchAndCacheStationConfig(cleanId: string, cacheKey: string): Pr
       }
     }
 
+    const rawSpeed = data.SpeedRate ?? data.speed_rate ?? data.speedrate;
+
+    function findRateInMap(map: Record<string, number>, keywords: string[], excludeKeywords: string[] = []): number | undefined {
+      for (const [k, v] of Object.entries(map)) {
+        const uk = k.toUpperCase();
+        if (excludeKeywords.some((ex) => uk.includes(ex))) continue;
+        if (keywords.some((kw) => uk === kw || uk.includes(kw))) {
+          if (v > 0) return v;
+        }
+      }
+      return undefined;
+    }
+
+    const hsdFromMap = findRateInMap(fuelRates, ['HSD', 'DIESEL'], ['II', 'MS-II']);
+    const msIFromMap = findRateInMap(fuelRates, ['MS-I', 'MS -', 'PETROL', 'MS1']) ?? (fuelRates['MS'] && fuelRates['MS'] > 0 ? fuelRates['MS'] : undefined);
+    const speedFromMap = findRateInMap(fuelRates, ['SPEED', 'XP95', 'POWER', 'TURBO', 'EXTRA']);
+    const msIIFromMap = findRateInMap(fuelRates, ['MS-II', 'MS2', 'MS_II', '20KL II']) ?? speedFromMap;
+    const cngFromMap = findRateInMap(fuelRates, ['CNG']);
+
     // Authoritative rate resolution: dynamic fuelRates map takes precedence over scalar columns, which take precedence over hardcoded defaults
-    const hsdRate = (fuelRates['HSD'] || fuelRates['HSD - 20KL']) ?? (rawHsd && Number(rawHsd) > 0 ? Number(rawHsd) : 90.35);
-    const msIRate = (fuelRates['MS-I'] || fuelRates['MS'] || fuelRates['MS - 20KL']) ?? (rawMsI && Number(rawMsI) > 0 ? Number(rawMsI) : 103.81);
-    const msIIRate = (fuelRates['MS-II'] || fuelRates['HSD - 20KL II']) ?? (rawMsII && Number(rawMsII) > 0 ? Number(rawMsII) : msIRate);
-    const cngRate = (fuelRates['CNG']) ?? (rawCng && Number(rawCng) > 0 ? Number(rawCng) : 85.0);
+    const hsdRate = hsdFromMap ?? (rawHsd && Number(rawHsd) > 0 ? Number(rawHsd) : 90.35);
+    const msIRate = msIFromMap ?? (rawMsI && Number(rawMsI) > 0 ? Number(rawMsI) : 103.81);
+    const msIIRate = msIIFromMap ?? (rawMsII && Number(rawMsII) > 0 ? Number(rawMsII) : (speedFromMap ?? msIRate));
+    const speedRate = speedFromMap ?? (rawSpeed && Number(rawSpeed) > 0 ? Number(rawSpeed) : msIIRate);
+    const cngRate = cngFromMap ?? (rawCng && Number(rawCng) > 0 ? Number(rawCng) : 85.0);
+
+    // Normalize canonical keys into fuelRates map for direct lookup
+    if (speedRate && !fuelRates['Speed']) fuelRates['Speed'] = speedRate;
+    if (speedRate && !fuelRates['SPEED']) fuelRates['SPEED'] = speedRate;
+    if (msIRate && !fuelRates['MS-I']) fuelRates['MS-I'] = msIRate;
+    if (msIIRate && !fuelRates['MS-II']) fuelRates['MS-II'] = msIIRate;
+    if (hsdRate && !fuelRates['HSD']) fuelRates['HSD'] = hsdRate;
+    if (cngRate && !fuelRates['CNG']) fuelRates['CNG'] = cngRate;
 
     const config: StationConfig = {
       stationId: cleanId,
@@ -397,6 +430,7 @@ async function fetchAndCacheStationConfig(cleanId: string, cacheKey: string): Pr
       hsdRate,
       msIRate,
       msIIRate,
+      speedRate,
       cngRate,
     };
 
@@ -426,25 +460,38 @@ export function resolveFuelRate(
   if (normFuel && ratesMap[normFuel] !== undefined && ratesMap[normFuel] > 0) return Number(ratesMap[normFuel]);
 
   // 2. Case-insensitive key match
+  const upperTank = normTank.toUpperCase();
+  const upperFuel = normFuel.toUpperCase();
   for (const [k, v] of Object.entries(ratesMap)) {
     const key = k.trim().toUpperCase();
     const val = Number(v);
     if (val <= 0) continue;
-    if (normTank && key === normTank.toUpperCase()) return val;
-    if (normFuel && key === normFuel.toUpperCase()) return val;
+    if (upperTank && key === upperTank) return val;
+    if (upperFuel && key === upperFuel) return val;
   }
 
   // 3. Keyword-based matching
   const combined = `${normFuel} ${normTank}`.toUpperCase();
 
+  // Speed / Premium Petrol
   if (combined.includes('SPEED') || combined.includes('XP95') || combined.includes('POWER') || combined.includes('TURBO') || combined.includes('EXTRA')) {
     for (const [k, v] of Object.entries(ratesMap)) {
       const key = k.toUpperCase();
       const val = Number(v);
       if (val > 0 && (key.includes('SPEED') || key.includes('XP95') || key.includes('POWER') || key.includes('EXTRA'))) return val;
     }
+    // Also check MS-II in ratesMap as alias
+    for (const [k, v] of Object.entries(ratesMap)) {
+      const key = k.toUpperCase();
+      const val = Number(v);
+      if (val > 0 && (key.includes('MS-II') || key.includes('MS2') || key.includes('20KL II'))) return val;
+    }
+    if (config.speedRate && config.speedRate > 0) return config.speedRate;
+    if (config.msIIRate && config.msIIRate > 0) return config.msIIRate;
+    return 0; // Crucial: never return msIRate for Speed!
   }
 
+  // HSD / Diesel
   if (combined.includes('HSD') || combined.includes('DIESEL')) {
     for (const [k, v] of Object.entries(ratesMap)) {
       const key = k.toUpperCase();
@@ -454,15 +501,18 @@ export function resolveFuelRate(
     if (config.hsdRate && config.hsdRate > 0) return config.hsdRate;
   }
 
+  // MS-II
   if (combined.includes('MS-II') || combined.includes('MS2') || combined.includes('MS_II') || combined.includes('20KL II')) {
     for (const [k, v] of Object.entries(ratesMap)) {
       const key = k.toUpperCase();
       const val = Number(v);
-      if (val > 0 && (key.includes('MS-II') || key.includes('MS2') || key.includes('20KL II'))) return val;
+      if (val > 0 && (key.includes('MS-II') || key.includes('MS2') || key.includes('20KL II') || key.includes('SPEED') || key.includes('XP95') || key.includes('POWER'))) return val;
     }
     if (config.msIIRate && config.msIIRate > 0) return config.msIIRate;
+    if (config.speedRate && config.speedRate > 0) return config.speedRate;
   }
 
+  // MS-I / Petrol
   if (combined.includes('MS-I') || combined.includes('MS') || combined.includes('PETROL')) {
     for (const [k, v] of Object.entries(ratesMap)) {
       const key = k.toUpperCase();
@@ -472,6 +522,7 @@ export function resolveFuelRate(
     if (config.msIRate && config.msIRate > 0) return config.msIRate;
   }
 
+  // CNG
   if (combined.includes('CNG')) {
     for (const [k, v] of Object.entries(ratesMap)) {
       const key = k.toUpperCase();
@@ -481,9 +532,12 @@ export function resolveFuelRate(
     if (config.cngRate && config.cngRate > 0) return config.cngRate;
   }
 
-  // 4. Fallbacks to standard rates
-  if (normFuel.toUpperCase().includes('HSD')) return config.hsdRate || 90.35;
-  if (normFuel.toUpperCase().includes('CNG')) return config.cngRate || 85.0;
-  if (normFuel.toUpperCase().includes('MS-II')) return config.msIIRate || 103.81;
+  // 4. Exact fuelType fallbacks
+  if (upperFuel.includes('SPEED') || upperFuel.includes('XP95') || upperFuel.includes('POWER')) return config.speedRate || config.msIIRate || 0;
+  if (upperFuel.includes('HSD')) return config.hsdRate || 90.35;
+  if (upperFuel.includes('CNG')) return config.cngRate || 85.0;
+  if (upperFuel.includes('MS-II')) return config.msIIRate || config.speedRate || 103.81;
+  if (upperFuel.includes('MS-I') || upperFuel.includes('MS') || upperFuel.includes('PETROL')) return config.msIRate || 103.81;
+
   return config.msIRate || 103.81;
 }

@@ -98,8 +98,23 @@ public class Setting
                 // Fallbacks for standard tanks / fuel types if not in JSON
                 if (!dict.ContainsKey("HSD - 20KL") && !dict.ContainsKey("HSD")) dict["HSD - 20KL"] = HsdRate;
                 if (!dict.ContainsKey("MS - 20KL") && !dict.ContainsKey("MS-I") && !dict.ContainsKey("MS")) dict["MS - 20KL"] = MsIRate;
-                if (!dict.ContainsKey("HSD - 20KL II") && !dict.ContainsKey("HSD II")) dict["HSD - 20KL II"] = MsIIRate;
-                if (!dict.ContainsKey("CNG")) dict["CNG"] = CngRate;
+                if (!dict.ContainsKey("HSD - 20KL II") && !dict.ContainsKey("HSD II") && !dict.ContainsKey("MS-II") && !dict.ContainsKey("Speed")) dict["HSD - 20KL II"] = MsIIRate;
+                if (!dict.ContainsKey("CNG") && !dict.ContainsKey("CNG Line")) dict["CNG"] = CngRate;
+
+                // Ensure cross-aliases exist so lookups by standard fuel name or tank name succeed
+                if (!dict.ContainsKey("HSD") && dict.TryGetValue("HSD - 20KL", out var hVal)) dict["HSD"] = hVal;
+                if (!dict.ContainsKey("HSD - 20KL") && dict.TryGetValue("HSD", out var hVal2)) dict["HSD - 20KL"] = hVal2;
+
+                if (!dict.ContainsKey("MS-I") && dict.TryGetValue("MS - 20KL", out var mVal)) dict["MS-I"] = mVal;
+                if (!dict.ContainsKey("MS - 20KL") && dict.TryGetValue("MS-I", out var mVal2)) dict["MS - 20KL"] = mVal2;
+
+                if (!dict.ContainsKey("Speed") && dict.TryGetValue("Speed - 20KL", out var spVal)) dict["Speed"] = spVal;
+                else if (!dict.ContainsKey("Speed") && dict.TryGetValue("MS-II", out var spVal2)) dict["Speed"] = spVal2;
+                if (!dict.ContainsKey("Speed - 20KL") && dict.TryGetValue("Speed", out var spVal3)) dict["Speed - 20KL"] = spVal3;
+                if (!dict.ContainsKey("MS-II") && dict.TryGetValue("Speed", out var spVal4)) dict["MS-II"] = spVal4;
+
+                if (!dict.ContainsKey("CNG") && dict.TryGetValue("CNG Line", out var cVal)) dict["CNG"] = cVal;
+                if (!dict.ContainsKey("CNG Line") && dict.TryGetValue("CNG", out var cVal2)) dict["CNG Line"] = cVal2;
 
                 _fuelRatesCache = dict;
             }
@@ -108,6 +123,30 @@ public class Setting
         set
         {
             _fuelRatesCache = new Dictionary<string, double>(value ?? new(), StringComparer.OrdinalIgnoreCase);
+
+            // Sync legacy fields
+            if (_fuelRatesCache.TryGetValue("HSD - 20KL", out var hsd) || _fuelRatesCache.TryGetValue("HSD", out hsd))
+                HsdRate = hsd;
+            if (_fuelRatesCache.TryGetValue("MS - 20KL", out var ms1) || _fuelRatesCache.TryGetValue("MS", out ms1) || _fuelRatesCache.TryGetValue("MS-I", out ms1))
+                MsIRate = ms1;
+            if (_fuelRatesCache.TryGetValue("Speed", out var spRate) || 
+                _fuelRatesCache.TryGetValue("Speed - 20KL", out spRate) ||
+                _fuelRatesCache.TryGetValue("SPEED", out spRate) ||
+                _fuelRatesCache.TryGetValue("XP95", out spRate) ||
+                _fuelRatesCache.TryGetValue("Power", out spRate) ||
+                _fuelRatesCache.TryGetValue("MS-II", out spRate) ||
+                _fuelRatesCache.TryGetValue("HSD - 20KL II", out spRate))
+                MsIIRate = spRate;
+            if (_fuelRatesCache.TryGetValue("CNG", out var cng) || _fuelRatesCache.TryGetValue("CNG Line", out cng))
+                CngRate = cng;
+
+            // Ensure canonical keys are present in cache before serialization
+            if (!_fuelRatesCache.ContainsKey("HSD")) _fuelRatesCache["HSD"] = HsdRate;
+            if (!_fuelRatesCache.ContainsKey("MS-I")) _fuelRatesCache["MS-I"] = MsIRate;
+            if (!_fuelRatesCache.ContainsKey("MS-II")) _fuelRatesCache["MS-II"] = MsIIRate;
+            if (!_fuelRatesCache.ContainsKey("Speed")) _fuelRatesCache["Speed"] = MsIIRate;
+            if (!_fuelRatesCache.ContainsKey("CNG")) _fuelRatesCache["CNG"] = CngRate;
+
             try
             {
                 FuelRatesJson = System.Text.Json.JsonSerializer.Serialize(_fuelRatesCache);
@@ -116,16 +155,6 @@ public class Setting
             {
                 FuelRatesJson = "{}";
             }
-
-            // Sync legacy fields
-            if (_fuelRatesCache.TryGetValue("HSD - 20KL", out var hsd) || _fuelRatesCache.TryGetValue("HSD", out hsd))
-                HsdRate = hsd;
-            if (_fuelRatesCache.TryGetValue("MS - 20KL", out var ms1) || _fuelRatesCache.TryGetValue("MS", out ms1) || _fuelRatesCache.TryGetValue("MS-I", out ms1))
-                MsIRate = ms1;
-            if (_fuelRatesCache.TryGetValue("HSD - 20KL II", out var hsd2) || _fuelRatesCache.TryGetValue("MS-II", out hsd2))
-                MsIIRate = hsd2;
-            if (_fuelRatesCache.TryGetValue("CNG", out var cng))
-                CngRate = cng;
         }
     }
 

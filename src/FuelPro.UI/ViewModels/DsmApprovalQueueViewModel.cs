@@ -2119,6 +2119,9 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
 
                 await context.SaveChangesAsync();
                 await transaction.CommitAsync();
+
+                // Notify active subscribers (e.g. DSM Entry screen) that a DSM entry has been committed
+                FuelPro.Core.Services.DsmEntryService.RaiseDsmEntryChanged();
                 
                 _logger.Information("Local transaction successfully committed for DSM entry. SelectedSubmissionId: {SubId}", SelectedSubmission.Id);
 

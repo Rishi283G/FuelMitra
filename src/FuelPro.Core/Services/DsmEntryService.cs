@@ -44,6 +44,14 @@ public class DsmEntryService
     public static event Action? PayrollChanged;
     public static void RaisePayrollChanged() => PayrollChanged?.Invoke();
 
+    public static event Action? FuelRatesChanged;
+    public static void RaiseFuelRatesChanged()
+    {
+        FuelRatesChanged?.Invoke();
+        SettingsChanged?.Invoke();
+        StationConfigurationChanged?.Invoke();
+    }
+
     public static event Action? SettingsChanged;
     public static void RaiseSettingsChanged() => SettingsChanged?.Invoke();
 

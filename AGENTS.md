@@ -180,7 +180,7 @@ Do not modify tests simply to make an implementation pass unless the existing te
 ## 12. Release / installer safety
 
 Current known application version:
-1.3.43
+1.3.44
 
 Do not rebuild the installer unless explicitly requested.
 

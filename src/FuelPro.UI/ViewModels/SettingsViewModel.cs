@@ -301,6 +301,28 @@ public partial class SettingsViewModel : ObservableObject
                 ratesDict[item.FuelType] = item.Rate;
             if (!string.IsNullOrWhiteSpace(item.DisplayName))
                 ratesDict[item.DisplayName] = item.Rate;
+
+            // Normalize cross-aliases
+            string combined = $"{item.FuelType} {item.TankName} {item.DisplayName}".ToUpperInvariant();
+            if (combined.Contains("SPEED") || combined.Contains("XP95") || combined.Contains("POWER"))
+            {
+                ratesDict["Speed"] = item.Rate;
+                ratesDict["SPEED"] = item.Rate;
+                if (!ratesDict.ContainsKey("MS-II")) ratesDict["MS-II"] = item.Rate;
+            }
+            else if (combined.Contains("MS-I") || combined.Contains("MS - 20KL") || combined.Contains("PETROL"))
+            {
+                ratesDict["MS-I"] = item.Rate;
+                ratesDict["MS"] = item.Rate;
+            }
+            else if (combined.Contains("HSD") && !combined.Contains("II"))
+            {
+                ratesDict["HSD"] = item.Rate;
+            }
+            else if (combined.Contains("CNG"))
+            {
+                ratesDict["CNG"] = item.Rate;
+            }
         }
 
         _settings.FuelRates = ratesDict;
@@ -315,11 +337,18 @@ public partial class SettingsViewModel : ObservableObject
                 _settings.HsdRate = v;
             else if (k.Contains("MS-I", StringComparison.OrdinalIgnoreCase) || k.Equals("MS", StringComparison.OrdinalIgnoreCase) || k.Contains("MS -", StringComparison.OrdinalIgnoreCase))
                 _settings.MsIRate = v;
-            else if (k.Contains("MS-II", StringComparison.OrdinalIgnoreCase) || k.Contains("HSD - 20KL II", StringComparison.OrdinalIgnoreCase))
+            else if (k.Contains("MS-II", StringComparison.OrdinalIgnoreCase) || 
+                     k.Contains("HSD - 20KL II", StringComparison.OrdinalIgnoreCase) ||
+                     k.Contains("Speed", StringComparison.OrdinalIgnoreCase) ||
+                     k.Contains("XP95", StringComparison.OrdinalIgnoreCase) ||
+                     k.Contains("Power", StringComparison.OrdinalIgnoreCase))
                 _settings.MsIIRate = v;
             else if (k.Contains("CNG", StringComparison.OrdinalIgnoreCase))
                 _settings.CngRate = v;
         }
+
+        // Re-assign to ensure legacy scalar updates and canonical keys are serialized in FuelRatesJson
+        _settings.FuelRates = ratesDict;
 
         _settings.Shift1Manager = Shift1Manager?.Trim();
         _settings.Shift2Manager = Shift2Manager?.Trim();
@@ -328,6 +357,9 @@ public partial class SettingsViewModel : ObservableObject
         var result = await _settingsRepo.SaveSettingsAsync(_settings);
         if (result.Success)
         {
+            // Propagate fuel rates change immediately to any open DSM Entry screens & data views without app restart
+            FuelPro.Core.Services.DsmEntryService.RaiseFuelRatesChanged();
+
             // Notify main windows to reload their titles and logos
             if (System.Windows.Application.Current.Windows.OfType<System.Windows.Window>().FirstOrDefault(w => w is Views.MainWindow) is System.Windows.Window mw && mw.DataContext is MainWindowViewModel mwVm)
             {
