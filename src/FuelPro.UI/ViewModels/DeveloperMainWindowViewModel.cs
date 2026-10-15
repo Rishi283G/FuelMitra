@@ -1972,6 +1972,7 @@ public partial class DeveloperMainWindowViewModel
                     try
                     {
                         await _syncEngine.ForceSyncAsync();
+                        await _syncEngine.PushStationSnapshotToCloudAsync(StationId);
                     }
                     catch { }
                 });

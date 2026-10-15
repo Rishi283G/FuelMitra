@@ -2415,6 +2415,10 @@ public class SyncEngine
                 ["CollectionTypesJson"] = localSetting.CollectionTypesJson,
                 ["AppFeatureSettingsJson"] = localSetting.AppFeatureSettingsJson,
                 ["FuelRatesJson"] = localSetting.FuelRatesJson,
+                ["HsdRate"] = localSetting.HsdRate,
+                ["MsIRate"] = localSetting.MsIRate,
+                ["MsIIRate"] = localSetting.MsIIRate,
+                ["CngRate"] = localSetting.CngRate,
                 ["updated_at"] = DateTime.UtcNow.ToString("o")
             };
 

@@ -359,18 +359,40 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string _phonePeDisplayName = "PhonePe";
     [ObservableProperty] private bool _phonePeHasTidBatch = true;
     [ObservableProperty] private bool _phonePeIsActive = true;
+    [ObservableProperty] private bool _phonePeEnableMorning = true;
+    [ObservableProperty] private bool _phonePeEnableNight = true;
 
     [ObservableProperty] private string _creditCardDisplayName = "Credit / Debit Card";
     [ObservableProperty] private bool _creditCardHasTidBatch = true;
     [ObservableProperty] private bool _creditCardIsActive = true;
+    [ObservableProperty] private bool _creditCardEnableMorning = true;
+    [ObservableProperty] private bool _creditCardEnableNight = true;
 
     [ObservableProperty] private string _petroCardDisplayName = "PetroCard";
     [ObservableProperty] private bool _petroCardHasTidBatch = true;
     [ObservableProperty] private bool _petroCardIsActive = true;
+    [ObservableProperty] private bool _petroCardEnableMorning = true;
+    [ObservableProperty] private bool _petroCardEnableNight = true;
 
-    public bool IsPhonePeNightTidVisible => IsMorningNightSplitEnabled && PhonePeHasTidBatch;
-    public bool IsCreditCardNightTidVisible => IsMorningNightSplitEnabled && CreditCardHasTidBatch;
-    public bool IsPetroCardNightTidVisible => IsMorningNightSplitEnabled && PetroCardHasTidBatch;
+    public bool IsPhonePeSplitEnabled => IsMorningNightSplitEnabled && PhonePeEnableMorning && PhonePeEnableNight;
+    public bool IsCreditCardSplitEnabled => IsMorningNightSplitEnabled && CreditCardEnableMorning && CreditCardEnableNight;
+    public bool IsPetroCardSplitEnabled => IsMorningNightSplitEnabled && PetroCardEnableMorning && PetroCardEnableNight;
+
+    public bool IsPhonePeNightTidVisible => IsPhonePeSplitEnabled && PhonePeHasTidBatch;
+    public bool IsCreditCardNightTidVisible => IsCreditCardSplitEnabled && CreditCardHasTidBatch;
+    public bool IsPetroCardNightTidVisible => IsPetroCardSplitEnabled && PetroCardHasTidBatch;
+
+    public string PhonePeMorningLabel => IsPhonePeSplitEnabled ? MorningLabel : "Amount (₹)";
+    public string CreditCardMorningLabel => IsCreditCardSplitEnabled ? MorningLabel : "Amount (₹)";
+    public string PetroCardMorningLabel => IsPetroCardSplitEnabled ? MorningLabel : "Amount (₹)";
+
+    public string PhonePeMorningTidLabel => IsPhonePeSplitEnabled ? MorningTidLabel : "TID";
+    public string CreditCardMorningTidLabel => IsCreditCardSplitEnabled ? MorningTidLabel : "TID";
+    public string PetroCardMorningTidLabel => IsPetroCardSplitEnabled ? MorningTidLabel : "TID";
+
+    public string PhonePeMorningBatchLabel => IsPhonePeSplitEnabled ? MorningBatchLabel : "Batch";
+    public string CreditCardMorningBatchLabel => IsCreditCardSplitEnabled ? MorningBatchLabel : "Batch";
+    public string PetroCardMorningBatchLabel => IsPetroCardSplitEnabled ? MorningBatchLabel : "Batch";
 
     [ObservableProperty] private double? _phonePeCardMorning;
     [ObservableProperty] private double? _phonePeCardNight;
@@ -477,14 +499,29 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
 
     public void RefreshAvailableOtpCollectionTypes()
     {
-        var types = new List<string> { "CREDIT_CARD", "PETROCARD", "PHONEPE", "PHONEPE_CARD" };
+        var types = new List<string>();
+        // Only collection types where both TID and Batch are enabled (HasTidBatch == true) and IsActive are eligible
+        if (CreditCardIsActive && CreditCardHasTidBatch) types.Add("CREDIT_CARD");
+        if (PetroCardIsActive && PetroCardHasTidBatch) types.Add("PETROCARD");
+        if (PhonePeIsActive && PhonePeHasTidBatch) types.Add("PHONEPE");
+
         foreach (var dyn in DynamicCollections)
         {
-            if (!string.IsNullOrWhiteSpace(dyn.Code) && !types.Contains(dyn.Code, StringComparer.OrdinalIgnoreCase))
+            if (dyn.HasTidBatch && !string.IsNullOrWhiteSpace(dyn.Code) && !types.Contains(dyn.Code, StringComparer.OrdinalIgnoreCase))
             {
                 types.Add(dyn.Code);
             }
         }
+
+        // Also preserve any types already present in loaded OtpTransactions for historical records
+        foreach (var tx in OtpTransactions)
+        {
+            if (!string.IsNullOrWhiteSpace(tx.CollectionTypeCode) && !types.Contains(tx.CollectionTypeCode, StringComparer.OrdinalIgnoreCase))
+            {
+                types.Add(tx.CollectionTypeCode);
+            }
+        }
+
         AvailableOtpCollectionTypes.Clear();
         foreach (var t in types) AvailableOtpCollectionTypes.Add(t);
     }
@@ -493,9 +530,10 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
     public void AddOtpTransaction()
     {
         var defaultSlot = IsDayShift ? "Day" : (IsNightShift ? "Night" : "Morning");
+        var defaultType = AvailableOtpCollectionTypes.FirstOrDefault() ?? "CREDIT_CARD";
         var row = new DsmOtpTransactionRow
         {
-            CollectionTypeCode = "CREDIT_CARD",
+            CollectionTypeCode = defaultType,
             Slot = defaultSlot,
             Amount = 0,
             OnRowChanged = OnOtpTransactionsChanged
@@ -844,12 +882,16 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
                 PhonePeDisplayName = ph.DisplayName;
                 PhonePeHasTidBatch = ph.HasTidBatch;
                 PhonePeIsActive = ph.IsActive && IsEnabledForCurrentShift(ph);
+                PhonePeEnableMorning = ph.EnableMorning;
+                PhonePeEnableNight = ph.EnableNight;
             }
             else
             {
                 PhonePeDisplayName = "PhonePe";
                 PhonePeHasTidBatch = true;
                 PhonePeIsActive = true;
+                PhonePeEnableMorning = true;
+                PhonePeEnableNight = true;
             }
 
             // 2. Resolve built-in Credit Card / PineLabs
@@ -865,12 +907,16 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
                 CreditCardDisplayName = cc.DisplayName;
                 CreditCardHasTidBatch = cc.HasTidBatch;
                 CreditCardIsActive = cc.IsActive && IsEnabledForCurrentShift(cc);
+                CreditCardEnableMorning = cc.EnableMorning;
+                CreditCardEnableNight = cc.EnableNight;
             }
             else
             {
                 CreditCardDisplayName = "Credit / Debit Card";
                 CreditCardHasTidBatch = true;
                 CreditCardIsActive = true;
+                CreditCardEnableMorning = true;
+                CreditCardEnableNight = true;
             }
 
             // 3. Resolve built-in PetroCard
@@ -882,25 +928,43 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
                 PetroCardDisplayName = pc.DisplayName;
                 PetroCardHasTidBatch = pc.HasTidBatch;
                 PetroCardIsActive = pc.IsActive && IsEnabledForCurrentShift(pc);
+                PetroCardEnableMorning = pc.EnableMorning;
+                PetroCardEnableNight = pc.EnableNight;
             }
             else
             {
                 PetroCardDisplayName = "PetroCard";
                 PetroCardHasTidBatch = true;
                 PetroCardIsActive = true;
+                PetroCardEnableMorning = true;
+                PetroCardEnableNight = true;
             }
 
             OnPropertyChanged(nameof(PhonePeDisplayName));
             OnPropertyChanged(nameof(PhonePeHasTidBatch));
             OnPropertyChanged(nameof(PhonePeIsActive));
+            OnPropertyChanged(nameof(IsPhonePeSplitEnabled));
+            OnPropertyChanged(nameof(PhonePeMorningLabel));
+            OnPropertyChanged(nameof(PhonePeMorningTidLabel));
+            OnPropertyChanged(nameof(PhonePeMorningBatchLabel));
+            OnPropertyChanged(nameof(IsPhonePeNightTidVisible));
+
             OnPropertyChanged(nameof(CreditCardDisplayName));
             OnPropertyChanged(nameof(CreditCardHasTidBatch));
             OnPropertyChanged(nameof(CreditCardIsActive));
+            OnPropertyChanged(nameof(IsCreditCardSplitEnabled));
+            OnPropertyChanged(nameof(CreditCardMorningLabel));
+            OnPropertyChanged(nameof(CreditCardMorningTidLabel));
+            OnPropertyChanged(nameof(CreditCardMorningBatchLabel));
+            OnPropertyChanged(nameof(IsCreditCardNightTidVisible));
+
             OnPropertyChanged(nameof(PetroCardDisplayName));
             OnPropertyChanged(nameof(PetroCardHasTidBatch));
             OnPropertyChanged(nameof(PetroCardIsActive));
-            OnPropertyChanged(nameof(IsPhonePeNightTidVisible));
-            OnPropertyChanged(nameof(IsCreditCardNightTidVisible));
+            OnPropertyChanged(nameof(IsPetroCardSplitEnabled));
+            OnPropertyChanged(nameof(PetroCardMorningLabel));
+            OnPropertyChanged(nameof(PetroCardMorningTidLabel));
+            OnPropertyChanged(nameof(PetroCardMorningBatchLabel));
             OnPropertyChanged(nameof(IsPetroCardNightTidVisible));
 
             var existingItems = existingPayment?.GetAllItems()?.ToList() ?? new List<PaymentCollectionItem>();
@@ -920,7 +984,9 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
             for (int i = DynamicCollections.Count - 1; i >= 0; i--)
             {
                 var row = DynamicCollections[i];
-                if (!targetTypes.Any(t => string.Equals(t.Code, row.Code, StringComparison.OrdinalIgnoreCase)))
+                bool isTarget = targetTypes.Any(t => string.Equals(t.Code, row.Code, StringComparison.OrdinalIgnoreCase));
+                bool hasHistoricalData = existingItems.Any(item => string.Equals(item.CollectionTypeCode, row.Code, StringComparison.OrdinalIgnoreCase) && item.Amount > 0);
+                if (!isTarget && !hasHistoricalData)
                 {
                     DynamicCollections.RemoveAt(i);
                 }
@@ -971,7 +1037,7 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
                 var allItems = existingPayment.GetAllItems()?.ToList() ?? new List<PaymentCollectionItem>();
                 foreach (var item in allItems)
                 {
-                    if (!string.IsNullOrWhiteSpace(item.Otp) || (IsOtpMachineTrackingEnabled && PaymentCollection.IsStandardCollectionCode(item.CollectionTypeCode)))
+                    if (!string.IsNullOrWhiteSpace(item.Otp))
                     {
                         var normType = PaymentCollection.NormalizeCollectionTypeCode(item.CollectionTypeCode);
                         var slot = !string.IsNullOrWhiteSpace(item.Slot) ? item.Slot : PaymentCollection.ExtractSlotFromMode(item.CollectionTypeCode, "General");
@@ -1101,6 +1167,21 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(MorningLabel));
         OnPropertyChanged(nameof(MorningTidLabel));
         OnPropertyChanged(nameof(MorningBatchLabel));
+        OnPropertyChanged(nameof(IsPhonePeSplitEnabled));
+        OnPropertyChanged(nameof(PhonePeMorningLabel));
+        OnPropertyChanged(nameof(PhonePeMorningTidLabel));
+        OnPropertyChanged(nameof(PhonePeMorningBatchLabel));
+        OnPropertyChanged(nameof(IsPhonePeNightTidVisible));
+        OnPropertyChanged(nameof(IsCreditCardSplitEnabled));
+        OnPropertyChanged(nameof(CreditCardMorningLabel));
+        OnPropertyChanged(nameof(CreditCardMorningTidLabel));
+        OnPropertyChanged(nameof(CreditCardMorningBatchLabel));
+        OnPropertyChanged(nameof(IsCreditCardNightTidVisible));
+        OnPropertyChanged(nameof(IsPetroCardSplitEnabled));
+        OnPropertyChanged(nameof(PetroCardMorningLabel));
+        OnPropertyChanged(nameof(PetroCardMorningTidLabel));
+        OnPropertyChanged(nameof(PetroCardMorningBatchLabel));
+        OnPropertyChanged(nameof(IsPetroCardNightTidVisible));
         _ = LoadDynamicCollectionTypesAsync();
         if (!_isEditing) LoadNozzlesForPump();
     }

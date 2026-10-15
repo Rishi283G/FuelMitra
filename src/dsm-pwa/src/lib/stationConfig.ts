@@ -134,10 +134,9 @@ export async function fetchStationConfig(stationId: string): Promise<StationConf
 
 async function fetchAndCacheStationConfig(cleanId: string, cacheKey: string): Promise<StationConfig> {
   try {
-    const selectCols = 'CollectionTypesJson, AppFeatureSettingsJson, PumpMappingsJson, FuelRatesJson, HsdRate, MsIRate, MsIIRate, CngRate';
     let { data, error } = await supabase
       .from('Settings')
-      .select(selectCols)
+      .select('*')
       .eq('station_id', cleanId)
       .limit(1)
       .maybeSingle();
@@ -145,7 +144,7 @@ async function fetchAndCacheStationConfig(cleanId: string, cacheKey: string): Pr
     if (!data && !error) {
       const res = await supabase
         .from('Settings')
-        .select(selectCols)
+        .select('*')
         .eq('StationId', cleanId)
         .limit(1)
         .maybeSingle();
@@ -154,14 +153,31 @@ async function fetchAndCacheStationConfig(cleanId: string, cacheKey: string): Pr
     }
 
     if (error || !data) {
-      console.warn('Could not fetch station settings from Supabase, using defaults:', error);
+      console.warn('Could not fetch station settings from Supabase, checking cache:', error);
+      try {
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed && parsed.stationId === cleanId) {
+            return parsed;
+          }
+        }
+      } catch {}
       return getDefaultStationConfig(cleanId);
     }
 
+    const collectionTypesRaw = data.CollectionTypesJson ?? data.collection_types_json ?? data.collectiontypesjson;
+    const appFeatureSettingsRaw = data.AppFeatureSettingsJson ?? data.app_feature_settings_json ?? data.appfeaturesettingsjson;
+    const fuelRatesRaw = data.FuelRatesJson ?? data.fuel_rates_json ?? data.fuelratesjson;
+    const rawHsd = data.HsdRate ?? data.hsd_rate ?? data.hsdrate;
+    const rawMsI = data.MsIRate ?? data.ms_i_rate ?? data.ms_irate ?? data.msirate;
+    const rawMsII = data.MsIIRate ?? data.ms_ii_rate ?? data.ms_iirate ?? data.msiirate;
+    const rawCng = data.CngRate ?? data.cng_rate ?? data.cngrate;
+
     let collectionTypes: DynamicCollectionType[] = [];
-    if (data.CollectionTypesJson) {
+    if (collectionTypesRaw) {
       try {
-        const parsed = JSON.parse(data.CollectionTypesJson);
+        const parsed = typeof collectionTypesRaw === 'string' ? JSON.parse(collectionTypesRaw) : collectionTypesRaw;
         if (Array.isArray(parsed) && parsed.length > 0) {
           collectionTypes = parsed
             .map((item: any) => ({
@@ -189,9 +205,9 @@ async function fetchAndCacheStationConfig(cleanId: string, cacheKey: string): Pr
     let personalLedgerEnabled = true;
     let personalLedgerName = 'Personal Ledger';
 
-    if (data.AppFeatureSettingsJson) {
+    if (appFeatureSettingsRaw) {
       try {
-        const feats = JSON.parse(data.AppFeatureSettingsJson);
+        const feats = typeof appFeatureSettingsRaw === 'string' ? JSON.parse(appFeatureSettingsRaw) : appFeatureSettingsRaw;
         if (Array.isArray(feats)) {
           for (const f of feats) {
             const key = f.FeatureKey || f.featureKey;
@@ -214,13 +230,13 @@ async function fetchAndCacheStationConfig(cleanId: string, cacheKey: string): Pr
     }
 
     let fuelRates: Record<string, number> = {};
-    if (data.FuelRatesJson) {
+    if (fuelRatesRaw) {
       try {
-        const parsedRates = typeof data.FuelRatesJson === 'string' ? JSON.parse(data.FuelRatesJson) : data.FuelRatesJson;
+        const parsedRates = typeof fuelRatesRaw === 'string' ? JSON.parse(fuelRatesRaw) : fuelRatesRaw;
         if (parsedRates && typeof parsedRates === 'object') {
           for (const [k, v] of Object.entries(parsedRates)) {
             const num = Number(v);
-            if (!isNaN(num)) fuelRates[k] = num;
+            if (!isNaN(num) && num > 0) fuelRates[k] = num;
           }
         }
       } catch (err) {
@@ -228,10 +244,11 @@ async function fetchAndCacheStationConfig(cleanId: string, cacheKey: string): Pr
       }
     }
 
-    const hsdRate = data.HsdRate ? Number(data.HsdRate) : (fuelRates['HSD'] || fuelRates['HSD - 20KL'] || 90.35);
-    const msIRate = data.MsIRate ? Number(data.MsIRate) : (fuelRates['MS-I'] || fuelRates['MS'] || fuelRates['MS - 20KL'] || 103.81);
-    const msIIRate = data.MsIIRate ? Number(data.MsIIRate) : (fuelRates['MS-II'] || fuelRates['HSD - 20KL II'] || msIRate);
-    const cngRate = data.CngRate ? Number(data.CngRate) : (fuelRates['CNG'] || 85.0);
+    // Authoritative rate resolution: dynamic fuelRates map takes precedence over scalar columns, which take precedence over hardcoded defaults
+    const hsdRate = (fuelRates['HSD'] || fuelRates['HSD - 20KL']) ?? (rawHsd && Number(rawHsd) > 0 ? Number(rawHsd) : 90.35);
+    const msIRate = (fuelRates['MS-I'] || fuelRates['MS'] || fuelRates['MS - 20KL']) ?? (rawMsI && Number(rawMsI) > 0 ? Number(rawMsI) : 103.81);
+    const msIIRate = (fuelRates['MS-II'] || fuelRates['HSD - 20KL II']) ?? (rawMsII && Number(rawMsII) > 0 ? Number(rawMsII) : msIRate);
+    const cngRate = (fuelRates['CNG']) ?? (rawCng && Number(rawCng) > 0 ? Number(rawCng) : 85.0);
 
     const config: StationConfig = {
       stationId: cleanId,

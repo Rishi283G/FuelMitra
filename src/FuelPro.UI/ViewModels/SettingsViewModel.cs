@@ -337,6 +337,15 @@ public partial class SettingsViewModel : ObservableObject
             {
                 omwVm.RefreshBranding();
             }
+
+            if (_syncEngine != null)
+            {
+                _ = Task.Run(async () =>
+                {
+                    try { await _syncEngine.PushStationSnapshotToCloudAsync(); }
+                    catch (Exception ex) { Serilog.Log.Warning(ex, "Background cloud snapshot push after settings save failed"); }
+                });
+            }
         }
         StatusMessage = result.Success ? "✅ Settings saved!" : $"❌ {result.Error}";
         if (result.Success) LastUpdated = DateTime.Now.ToString("dd MMM yyyy hh:mm tt");
