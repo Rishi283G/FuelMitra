@@ -96,36 +96,8 @@ public class PaymentCollection
     public static bool IsStandardCollectionCode(string? code)
     {
         if (string.IsNullOrWhiteSpace(code)) return false;
-        var clean = code.Trim();
-
-        // Strip slot parentheses, e.g. "PETROCARD (Morning)" -> "PETROCARD"
-        int parenIdx = clean.IndexOf('(');
-        if (parenIdx >= 0)
-        {
-            clean = clean.Substring(0, parenIdx).Trim();
-        }
-
-        var normalized = clean.Replace("_", "").Replace(" ", "");
-
-        // Strip trailing slot name without parentheses, e.g. "PetroCard Morning" -> "PetroCard"
-        if (normalized.EndsWith("Morning", StringComparison.OrdinalIgnoreCase) && normalized.Length > 7)
-            normalized = normalized[..^7];
-        else if (normalized.EndsWith("Night", StringComparison.OrdinalIgnoreCase) && normalized.Length > 5)
-            normalized = normalized[..^5];
-        else if (normalized.EndsWith("Day", StringComparison.OrdinalIgnoreCase) && normalized.Length > 3)
-            normalized = normalized[..^3];
-        else if (normalized.EndsWith("General", StringComparison.OrdinalIgnoreCase) && normalized.Length > 7)
-            normalized = normalized[..^7];
-
-        return normalized.Equals("PHONEPE", StringComparison.OrdinalIgnoreCase)
-            || normalized.Equals("PHONEPECARD", StringComparison.OrdinalIgnoreCase)
-            || normalized.Equals("CREDITCARD", StringComparison.OrdinalIgnoreCase)
-            || normalized.Equals("PINELABS", StringComparison.OrdinalIgnoreCase)
-            || normalized.Equals("PINELABSCARD", StringComparison.OrdinalIgnoreCase)
-            || normalized.Equals("PETROCARD", StringComparison.OrdinalIgnoreCase)
-            || normalized.Equals("CASHDEPOSIT", StringComparison.OrdinalIgnoreCase)
-            || normalized.Equals("CASH1", StringComparison.OrdinalIgnoreCase)
-            || normalized.Equals("OTHERS", StringComparison.OrdinalIgnoreCase);
+        var normalized = NormalizeCollectionTypeCode(code);
+        return normalized is "PHONEPE" or "PHONEPE_CARD" or "CREDIT_CARD" or "PETROCARD" or "CASH_DEPOSIT" or "OTHERS";
     }
 
     /// <summary>
@@ -154,9 +126,17 @@ public class PaymentCollection
 
         if (test.Equals("PHONEPECARD", StringComparison.OrdinalIgnoreCase))
             return "PHONEPE_CARD";
-        if (test.Equals("PHONEPE", StringComparison.OrdinalIgnoreCase) || test.Equals("UPI", StringComparison.OrdinalIgnoreCase))
+        if (test.Equals("PHONEPE", StringComparison.OrdinalIgnoreCase)
+            || test.Equals("UPI", StringComparison.OrdinalIgnoreCase)
+            || test.Equals("PHONEPEUPI", StringComparison.OrdinalIgnoreCase)
+            || test.Equals("PHONEPEDIRECT", StringComparison.OrdinalIgnoreCase))
             return "PHONEPE";
-        if (test.Equals("CREDITCARD", StringComparison.OrdinalIgnoreCase) || test.Equals("PINELABS", StringComparison.OrdinalIgnoreCase) || test.Equals("PINELABSCARD", StringComparison.OrdinalIgnoreCase))
+        if (test.Equals("CREDITCARD", StringComparison.OrdinalIgnoreCase)
+            || test.Equals("PINELABS", StringComparison.OrdinalIgnoreCase)
+            || test.Equals("PINELABSCARD", StringComparison.OrdinalIgnoreCase)
+            || test.Equals("PINELAB", StringComparison.OrdinalIgnoreCase)
+            || test.Equals("PINELABCARD", StringComparison.OrdinalIgnoreCase)
+            || test.Equals("CARD", StringComparison.OrdinalIgnoreCase))
             return "CREDIT_CARD";
         if (test.Equals("PETROCARD", StringComparison.OrdinalIgnoreCase) || test.Equals("PETRO", StringComparison.OrdinalIgnoreCase))
             return "PETROCARD";
@@ -183,14 +163,51 @@ public class PaymentCollection
 
     /// <summary>
     /// Computes total of all dynamic collection items (excluding standard payment cards to prevent double counting).
+    /// Prevents double-counting when itemized OTP transactions and an aggregate/parent row exist for the same dynamic collection.
     /// </summary>
     [NotMapped]
     public double DynamicItemsTotal
     {
         get
         {
-            var all = GetAllItems();
-            return all.Where(i => !IsStandardCollectionCode(i.CollectionTypeCode)).Sum(i => i.Amount);
+            var all = GetAllItems().Where(i => !IsStandardCollectionCode(i.CollectionTypeCode)).ToList();
+            if (all.Count == 0) return 0;
+
+            double total = 0;
+            foreach (var group in all.GroupBy(i => NormalizeCollectionTypeCode(i.CollectionTypeCode), StringComparer.OrdinalIgnoreCase))
+            {
+                var otpItems = group.Where(i => !string.IsNullOrWhiteSpace(i.Otp)).ToList();
+                var nonOtpItems = group.Where(i => string.IsNullOrWhiteSpace(i.Otp)).ToList();
+
+                if (otpItems.Count == 0)
+                {
+                    total += nonOtpItems.Sum(i => i.Amount);
+                    continue;
+                }
+
+                // Sum all legitimate distinct OTP transactions
+                total += otpItems.Sum(i => i.Amount);
+
+                double otpTotal = otpItems.Sum(i => i.Amount);
+                foreach (var nonOtp in nonOtpItems)
+                {
+                    bool isExactDuplicate = otpItems.Any(o =>
+                        Math.Abs(o.Amount - nonOtp.Amount) < 0.01
+                        && string.Equals(o.Slot ?? "", nonOtp.Slot ?? "", StringComparison.OrdinalIgnoreCase)
+                        && string.Equals(o.Tid ?? "", nonOtp.Tid ?? "", StringComparison.OrdinalIgnoreCase)
+                        && string.Equals(o.Batch ?? "", nonOtp.Batch ?? "", StringComparison.OrdinalIgnoreCase));
+
+                    bool isAggregateDuplicate = Math.Abs(nonOtp.Amount - otpTotal) < 0.01;
+
+                    if (!isExactDuplicate && !isAggregateDuplicate)
+                    {
+                        // Genuine separate manual collection item
+                        total += nonOtp.Amount;
+                    }
+                }
+            }
+
+            return total;
         }
     }
 

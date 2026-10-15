@@ -1815,11 +1815,32 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
             {
                 if ((dyn.Amount.HasValue && dyn.Amount.Value > 0) || !string.IsNullOrWhiteSpace(dyn.Otp))
                 {
-                    if (!payment.Items.Any(i => i.CollectionTypeCode.Equals(dyn.Code, StringComparison.OrdinalIgnoreCase)))
+                    string normDynCode = PaymentCollection.NormalizeCollectionTypeCode(dyn.Code);
+                    var matchingOtpTxs = OtpTransactions.Where(tx => 
+                        string.Equals(PaymentCollection.NormalizeCollectionTypeCode(tx.CollectionTypeCode), normDynCode, StringComparison.OrdinalIgnoreCase)).ToList();
+                    double otpTotalForDyn = matchingOtpTxs.Sum(tx => tx.Amount);
+                    double manualPortion = (dyn.Amount ?? 0) - otpTotalForDyn;
+
+                    if (matchingOtpTxs.Count > 0)
+                    {
+                        if (manualPortion > 0.009)
+                        {
+                            payment.Items.Add(new PaymentCollectionItem
+                            {
+                                CollectionTypeCode = normDynCode,
+                                Amount = manualPortion,
+                                Tid = dyn.Tid,
+                                Batch = dyn.Batch,
+                                Otp = "",
+                                Slot = isC ? "Night" : (isDay ? "Day" : "Morning")
+                            });
+                        }
+                    }
+                    else
                     {
                         payment.Items.Add(new PaymentCollectionItem
                         {
-                            CollectionTypeCode = dyn.Code,
+                            CollectionTypeCode = normDynCode,
                             Amount = dyn.Amount ?? 0,
                             Tid = dyn.Tid,
                             Batch = dyn.Batch,

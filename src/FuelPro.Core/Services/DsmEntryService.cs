@@ -558,9 +558,11 @@ public class DsmEntryService
                 var calcDto = ToCalculationDto(primary);
                 var calc = _dsmCalculationService.Calculate(calcDto);
                 double totalCollection = (double)calc.TotalCollection;
+                bool usedFallback = false;
                 if (totalCollection == 0 && primary.TotalCollection > 0)
                 {
                     totalCollection = (double)primary.TotalCollection;
+                    usedFallback = true;
                 }
 
                 double totalTesting = (double)group
@@ -568,7 +570,9 @@ public class DsmEntryService
                     .Sum(t => t.Amount);
 
                 double netSales = totalGrossSales - totalTesting;
-                double mismatch = primary.Mismatch != 0 ? (double)primary.Mismatch : (totalCollection - netSales);
+                double mismatch = usedFallback && primary.Mismatch != 0 
+                    ? (double)primary.Mismatch 
+                    : (totalCollection - netSales);
 
                 summaries.Add(new DsmEntrySummaryDto
                 {

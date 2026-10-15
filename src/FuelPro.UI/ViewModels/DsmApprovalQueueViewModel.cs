@@ -671,10 +671,41 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                                 string? dBatch = (string?)(d.batch ?? d.Batch ?? "");
                                 if (dAmt <= 0 && string.IsNullOrWhiteSpace(dOtp)) continue;
 
-                                if (!CardSwipeDetails.Any(c => c.Mode.Equals(dCode, StringComparison.OrdinalIgnoreCase) 
-                                    && Math.Abs(c.Amount - dAmt) < 0.01
-                                    && (string.IsNullOrWhiteSpace(c.Tid) || string.IsNullOrWhiteSpace(dTid) || c.Tid.Equals(dTid, StringComparison.OrdinalIgnoreCase))
-                                    && (string.IsNullOrWhiteSpace(c.Otp) || string.IsNullOrWhiteSpace(dOtp) || c.Otp.Equals(dOtp, StringComparison.OrdinalIgnoreCase))))
+                                string normDCode = PaymentCollection.NormalizeCollectionTypeCode(dCode);
+                                var existingMatchingSwipes = CardSwipeDetails
+                                    .Where(c => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(c.Mode), normDCode, StringComparison.OrdinalIgnoreCase))
+                                    .ToList();
+
+                                if (existingMatchingSwipes.Count > 0)
+                                {
+                                    // Itemized machine/OTP transactions already exist in CardSwipeDetails for this dynamic code.
+                                    // In PWA, dAmt represents (manualAmt + otpTransactionsTotal).
+                                    double otpSwipeTotal = existingMatchingSwipes.Where(c => !string.IsNullOrWhiteSpace(c.Otp)).Sum(c => c.Amount);
+                                    if (otpSwipeTotal <= 0)
+                                    {
+                                        otpSwipeTotal = existingMatchingSwipes.Sum(c => c.Amount);
+                                    }
+
+                                    double manualPortion = dAmt - otpSwipeTotal;
+                                    if (manualPortion > 0.009)
+                                    {
+                                        // Add only the distinct manual portion if not already present
+                                        bool alreadyHasManual = existingMatchingSwipes.Any(c => string.IsNullOrWhiteSpace(c.Otp) && Math.Abs(c.Amount - manualPortion) < 0.01);
+                                        if (!alreadyHasManual)
+                                        {
+                                            CardSwipeDetails.Add(new DsmCardSwipeRow
+                                            {
+                                                Mode = dCode,
+                                                Amount = manualPortion,
+                                                Tid = dTid ?? "",
+                                                Batch = dBatch ?? "",
+                                                Otp = "",
+                                                OnRowChanged = RecalculateTotals
+                                            });
+                                        }
+                                    }
+                                }
+                                else
                                 {
                                     CardSwipeDetails.Add(new DsmCardSwipeRow
                                     {
@@ -702,7 +733,10 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                                 string? mtSlot = (string?)(mt.slot ?? mt.Slot ?? "");
                                 if (mtAmt <= 0 && string.IsNullOrWhiteSpace(mtOtp)) continue;
 
-                                if (!CardSwipeDetails.Any(c => c.Mode.StartsWith(mtCode, StringComparison.OrdinalIgnoreCase) 
+                                string normMtCode = PaymentCollection.NormalizeCollectionTypeCode(mtCode);
+
+                                if (!CardSwipeDetails.Any(c => 
+                                    string.Equals(PaymentCollection.NormalizeCollectionTypeCode(c.Mode), normMtCode, StringComparison.OrdinalIgnoreCase)
                                     && Math.Abs(c.Amount - mtAmt) < 0.01 
                                     && (string.IsNullOrWhiteSpace(c.Otp) || string.IsNullOrWhiteSpace(mtOtp) || c.Otp.Equals(mtOtp, StringComparison.OrdinalIgnoreCase))
                                     && (string.IsNullOrWhiteSpace(c.Tid) || string.IsNullOrWhiteSpace(mtTid) || c.Tid.Equals(mtTid, StringComparison.OrdinalIgnoreCase))))
@@ -896,9 +930,40 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
             .Concat(KhandhareEntries.Select(k => new FuelPro.Core.DTOs.ExpenseDto { Amount = (decimal)k.Amount }))
             .ToList();
 
-        var dynamicTotal = CardSwipeDetails
+        var dynamicSwipes = CardSwipeDetails
             .Where(c => !PaymentCollection.IsStandardCollectionCode(c.Mode) && !string.IsNullOrWhiteSpace(c.Mode))
-            .Sum(c => c.Amount);
+            .ToList();
+
+        double dynamicTotal = 0;
+        foreach (var group in dynamicSwipes.GroupBy(c => PaymentCollection.NormalizeCollectionTypeCode(c.Mode), StringComparer.OrdinalIgnoreCase))
+        {
+            var otpSwipes = group.Where(c => !string.IsNullOrWhiteSpace(c.Otp)).ToList();
+            var nonOtpSwipes = group.Where(c => string.IsNullOrWhiteSpace(c.Otp)).ToList();
+
+            if (otpSwipes.Count == 0)
+            {
+                dynamicTotal += nonOtpSwipes.Sum(c => c.Amount);
+                continue;
+            }
+
+            dynamicTotal += otpSwipes.Sum(c => c.Amount);
+            double otpSum = otpSwipes.Sum(c => c.Amount);
+
+            foreach (var nonOtp in nonOtpSwipes)
+            {
+                bool isExactDuplicate = otpSwipes.Any(o =>
+                    Math.Abs(o.Amount - nonOtp.Amount) < 0.01
+                    && string.Equals(o.Tid ?? "", nonOtp.Tid ?? "", StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(o.Batch ?? "", nonOtp.Batch ?? "", StringComparison.OrdinalIgnoreCase));
+
+                bool isAggregateDuplicate = Math.Abs(nonOtp.Amount - otpSum) < 0.01;
+
+                if (!isExactDuplicate && !isAggregateDuplicate)
+                {
+                    dynamicTotal += nonOtp.Amount;
+                }
+            }
+        }
 
         var dto = new FuelPro.Core.DTOs.DsmEntryDto
         {
@@ -1605,18 +1670,20 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                         {
                             string dCode = (string)(d.collectionTypeCode ?? d.code ?? "");
                             if (string.IsNullOrWhiteSpace(dCode)) continue;
+                            string normDCode = PaymentCollection.NormalizeCollectionTypeCode(dCode);
                             double dAmt = Convert.ToDouble((object?)(d.amount ?? 0.0));
                             string? dOtp = (string?)d.otp;
                             if (dAmt <= 0 && string.IsNullOrWhiteSpace(dOtp)) continue;
 
-                            if (!payment.Items.Any(i => i.CollectionTypeCode.Equals(dCode, StringComparison.OrdinalIgnoreCase) 
-                                && Math.Abs(i.Amount - dAmt) < 0.01
-                                && (string.IsNullOrWhiteSpace(i.Tid) || string.IsNullOrWhiteSpace((string?)d.tid) || i.Tid.Equals((string?)d.tid, StringComparison.OrdinalIgnoreCase))
-                                && (string.IsNullOrWhiteSpace(i.Otp) || string.IsNullOrWhiteSpace(dOtp) || i.Otp.Equals(dOtp, StringComparison.OrdinalIgnoreCase))))
+                            // Check if payment.Items already has items for this collection type from CardSwipeDetails
+                            var existingItems = payment.Items.Where(i => 
+                                string.Equals(PaymentCollection.NormalizeCollectionTypeCode(i.CollectionTypeCode), normDCode, StringComparison.OrdinalIgnoreCase)).ToList();
+
+                            if (existingItems.Count == 0)
                             {
                                 payment.Items.Add(new PaymentCollectionItem
                                 {
-                                    CollectionTypeCode = dCode,
+                                    CollectionTypeCode = normDCode,
                                     Amount = dAmt,
                                     Tid = (string?)d.tid,
                                     Batch = (string?)d.batch,
@@ -1633,6 +1700,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                         {
                             string mtCode = (string)(mt.collectionTypeCode ?? mt.code ?? "");
                             if (string.IsNullOrWhiteSpace(mtCode)) continue;
+                            string normMtCode = PaymentCollection.NormalizeCollectionTypeCode(mtCode);
                             double mtAmt = Convert.ToDouble((object?)(mt.amount ?? 0.0));
                             string? mtOtp = (string?)mt.otp;
                             string? mtTid = (string?)mt.tid;
@@ -1640,14 +1708,15 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                             string? mtSlot = (string?)mt.slot ?? defaultSlot;
                             if (mtAmt <= 0 && string.IsNullOrWhiteSpace(mtOtp)) continue;
 
-                            if (!payment.Items.Any(i => i.CollectionTypeCode.Equals(mtCode, StringComparison.OrdinalIgnoreCase) 
+                            if (!payment.Items.Any(i => 
+                                string.Equals(PaymentCollection.NormalizeCollectionTypeCode(i.CollectionTypeCode), normMtCode, StringComparison.OrdinalIgnoreCase)
                                 && Math.Abs(i.Amount - mtAmt) < 0.01 
                                 && (string.IsNullOrWhiteSpace(i.Tid) || string.IsNullOrWhiteSpace(mtTid) || i.Tid.Equals(mtTid, StringComparison.OrdinalIgnoreCase))
                                 && (string.IsNullOrWhiteSpace(i.Otp) || string.IsNullOrWhiteSpace(mtOtp) || i.Otp.Equals(mtOtp, StringComparison.OrdinalIgnoreCase))))
                             {
                                 payment.Items.Add(new PaymentCollectionItem
                                 {
-                                    CollectionTypeCode = mtCode,
+                                    CollectionTypeCode = normMtCode,
                                     Amount = mtAmt,
                                     Tid = mtTid,
                                     Batch = mtBatch,
