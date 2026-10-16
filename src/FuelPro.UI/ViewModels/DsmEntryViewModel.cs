@@ -259,13 +259,49 @@ public partial class DynamicCollectionEntryRow : ObservableObject
     [ObservableProperty] private string _displayName = string.Empty;
     [ObservableProperty] private string _category = "Online";
     [ObservableProperty] private bool _hasTidBatch;
+    [ObservableProperty] private double? _manualAmount;
+    [ObservableProperty] private double _otpAmount;
     [ObservableProperty] private double? _amount;
     [ObservableProperty] private string? _tid;
     [ObservableProperty] private string? _batch;
     [ObservableProperty] private string? _otp;
     public Action? OnValueChangedAction { get; set; }
 
-    partial void OnAmountChanged(double? value) => OnValueChangedAction?.Invoke();
+    private bool _isRecalculating;
+
+    public void RecalculateTotal()
+    {
+        _isRecalculating = true;
+        try
+        {
+            double total = (ManualAmount ?? 0) + OtpAmount;
+            Amount = total > 0 ? total : (double?)null;
+        }
+        finally
+        {
+            _isRecalculating = false;
+        }
+        OnValueChangedAction?.Invoke();
+    }
+
+    partial void OnAmountChanged(double? value)
+    {
+        if (!_isRecalculating)
+        {
+            double manual = Math.Max(0, (value ?? 0) - OtpAmount);
+            ManualAmount = manual > 0 ? manual : (double?)null;
+        }
+        OnValueChangedAction?.Invoke();
+    }
+
+    partial void OnManualAmountChanged(double? value)
+    {
+        if (!_isRecalculating)
+        {
+            RecalculateTotal();
+        }
+    }
+
     partial void OnTidChanged(string? value) => OnValueChangedAction?.Invoke();
     partial void OnBatchChanged(string? value) => OnValueChangedAction?.Invoke();
     partial void OnOtpChanged(string? value) => OnValueChangedAction?.Invoke();
@@ -502,25 +538,19 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
     public void RefreshAvailableOtpCollectionTypes()
     {
         var types = new List<string>();
-        // Only collection types where both TID and Batch are enabled (HasTidBatch == true) and IsActive are eligible
-        if (CreditCardIsActive && CreditCardHasTidBatch) types.Add("CREDIT_CARD");
-        if (PetroCardIsActive && PetroCardHasTidBatch) types.Add("PETROCARD");
-        if (PhonePeIsActive && PhonePeHasTidBatch) types.Add("PHONEPE");
-
-        foreach (var dyn in DynamicCollections)
+        if (IsOtpMachineTrackingEnabled)
         {
-            if (dyn.HasTidBatch && !string.IsNullOrWhiteSpace(dyn.Code) && !types.Contains(dyn.Code, StringComparer.OrdinalIgnoreCase))
-            {
-                types.Add(dyn.Code);
-            }
-        }
+            // Only collection types where both TID and Batch are enabled (HasTidBatch == true) and IsActive are eligible
+            if (CreditCardIsActive && CreditCardHasTidBatch) types.Add("CREDIT_CARD");
+            if (PetroCardIsActive && PetroCardHasTidBatch) types.Add("PETROCARD");
+            if (PhonePeIsActive && PhonePeHasTidBatch) types.Add("PHONEPE");
 
-        // Also preserve any types already present in loaded OtpTransactions for historical records
-        foreach (var tx in OtpTransactions)
-        {
-            if (!string.IsNullOrWhiteSpace(tx.CollectionTypeCode) && !types.Contains(tx.CollectionTypeCode, StringComparer.OrdinalIgnoreCase))
+            foreach (var dyn in DynamicCollections)
             {
-                types.Add(tx.CollectionTypeCode);
+                if (dyn.HasTidBatch && !string.IsNullOrWhiteSpace(dyn.Code) && !types.Contains(dyn.Code, StringComparer.OrdinalIgnoreCase))
+                {
+                    types.Add(dyn.Code);
+                }
             }
         }
 
@@ -668,12 +698,9 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
 
             foreach (var dynRow in DynamicCollections)
             {
-                var dynRows = OtpTransactions.Where(t => string.Equals(t.CollectionTypeCode, dynRow.Code, StringComparison.OrdinalIgnoreCase)).ToList();
-                if (dynRows.Count > 0)
-                {
-                    var amt = dynRows.Sum(t => t.Amount);
-                    dynRow.Amount = amt > 0 ? amt : (double?)null;
-                }
+                var dynRows = OtpTransactions.Where(t => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(t.CollectionTypeCode), PaymentCollection.NormalizeCollectionTypeCode(dynRow.Code), StringComparison.OrdinalIgnoreCase)).ToList();
+                dynRow.OtpAmount = dynRows.Sum(t => t.Amount);
+                dynRow.RecalculateTotal();
             }
         }
 
@@ -892,12 +919,13 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
                     new() { Code = "PHONEPE", DisplayName = "PhonePe", Category = "Online", HasTidBatch = true, DisplayOrder = 1, IsActive = true, IsSystem = true, CreatedAt = now },
                     new() { Code = "CREDIT_CARD", DisplayName = "Credit / Debit Card", Category = "Card", HasTidBatch = true, DisplayOrder = 2, IsActive = true, IsSystem = true, CreatedAt = now },
                     new() { Code = "PETROCARD", DisplayName = "PetroCard", Category = "Card", HasTidBatch = true, DisplayOrder = 3, IsActive = true, IsSystem = true, CreatedAt = now },
-                    new() { Code = "SBI_REDEEM", DisplayName = "SBI Redeem", Category = "Card", HasTidBatch = true, DisplayOrder = 4, IsActive = true, IsSystem = false, CreatedAt = now },
-                    new() { Code = "PAYTM", DisplayName = "Paytm", Category = "Online", HasTidBatch = true, DisplayOrder = 5, IsActive = true, IsSystem = false, CreatedAt = now },
-                    new() { Code = "QR", DisplayName = "QR / Online", Category = "Online", HasTidBatch = true, DisplayOrder = 6, IsActive = true, IsSystem = false, CreatedAt = now },
-                    new() { Code = "MOBIKWIK", DisplayName = "Mobikwik", Category = "Online", HasTidBatch = true, DisplayOrder = 7, IsActive = true, IsSystem = false, CreatedAt = now },
-                    new() { Code = "CASH_DEPOSIT", DisplayName = "Cash Deposit (Bank)", Category = "Cash", HasTidBatch = false, DisplayOrder = 8, IsActive = true, IsSystem = true, CreatedAt = now },
-                    new() { Code = "OTHERS", DisplayName = "Other Online / UPI", Category = "Other", HasTidBatch = false, DisplayOrder = 9, IsActive = true, IsSystem = true, CreatedAt = now }
+                    new() { Code = "PINELABS_CARD", DisplayName = "Pine Labs Card", Category = "Card", HasTidBatch = true, DisplayOrder = 4, IsActive = true, IsSystem = true, CreatedAt = now },
+                    new() { Code = "SBI_REDEEM", DisplayName = "SBI Redeem", Category = "Card", HasTidBatch = true, DisplayOrder = 5, IsActive = true, IsSystem = false, CreatedAt = now },
+                    new() { Code = "PAYTM", DisplayName = "Paytm", Category = "Online", HasTidBatch = true, DisplayOrder = 6, IsActive = true, IsSystem = false, CreatedAt = now },
+                    new() { Code = "QR", DisplayName = "QR / Online", Category = "Online", HasTidBatch = true, DisplayOrder = 7, IsActive = true, IsSystem = false, CreatedAt = now },
+                    new() { Code = "MOBIKWIK", DisplayName = "Mobikwik", Category = "Online", HasTidBatch = true, DisplayOrder = 8, IsActive = true, IsSystem = false, CreatedAt = now },
+                    new() { Code = "CASH_DEPOSIT", DisplayName = "Cash Deposit (Bank)", Category = "Cash", HasTidBatch = false, DisplayOrder = 9, IsActive = true, IsSystem = true, CreatedAt = now },
+                    new() { Code = "OTHERS", DisplayName = "Other Online / UPI", Category = "Other", HasTidBatch = false, DisplayOrder = 10, IsActive = true, IsSystem = true, CreatedAt = now }
                 };
             }
 
@@ -928,14 +956,11 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
                 PhonePeEnableNight = true;
             }
 
-            // 2. Resolve built-in Credit Card / PineLabs
+            // 2. Resolve built-in Credit Card
             var cc = allTypes.FirstOrDefault(c => string.Equals(c.Code, "CREDIT_CARD", StringComparison.OrdinalIgnoreCase)
                                             || string.Equals(c.Code, "CREDITCARD", StringComparison.OrdinalIgnoreCase)
                                             || string.Equals(c.Code, "CREDIT CARD", StringComparison.OrdinalIgnoreCase)
-                                            || string.Equals(c.Code, "PINELAB", StringComparison.OrdinalIgnoreCase)
-                                            || string.Equals(c.Code, "PINELABS", StringComparison.OrdinalIgnoreCase)
-                                            || c.Code.IndexOf("PINELAB", StringComparison.OrdinalIgnoreCase) >= 0
-                                            || c.Code.IndexOf("CARD", StringComparison.OrdinalIgnoreCase) >= 0);
+                                            || string.Equals(c.Code, "CREDIT_DEBIT_CARD", StringComparison.OrdinalIgnoreCase));
             if (cc != null)
             {
                 CreditCardDisplayName = cc.DisplayName;
@@ -1010,16 +1035,33 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
             matchedCodes.Add("OTHERS");
 
             var targetTypes = allTypes
-                .Where(x => x.IsActive && IsEnabledForCurrentShift(x) && !matchedCodes.Contains(x.Code))
+                .Where(x => !matchedCodes.Contains(x.Code))
+                .Where(x => (x.IsActive && IsEnabledForCurrentShift(x)) || existingItems.Any(item => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(item.CollectionTypeCode), PaymentCollection.NormalizeCollectionTypeCode(x.Code), StringComparison.OrdinalIgnoreCase) && item.Amount > 0))
                 .OrderBy(x => x.DisplayOrder)
                 .ToList();
+
+            foreach (var item in existingItems.Where(i => i.Amount > 0 && !PaymentCollection.IsStandardCollectionCode(i.CollectionTypeCode)))
+            {
+                var normCode = PaymentCollection.NormalizeCollectionTypeCode(item.CollectionTypeCode);
+                if (!targetTypes.Any(t => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(t.Code), normCode, StringComparison.OrdinalIgnoreCase)))
+                {
+                    targetTypes.Add(new CollectionTypeMaster
+                    {
+                        Code = normCode,
+                        DisplayName = item.CollectionTypeCode,
+                        Category = "Card",
+                        HasTidBatch = !string.IsNullOrWhiteSpace(item.Tid) || !string.IsNullOrWhiteSpace(item.Batch),
+                        IsActive = false
+                    });
+                }
+            }
 
             // Synchronize DynamicCollections in place without clearing collection types
             for (int i = DynamicCollections.Count - 1; i >= 0; i--)
             {
                 var row = DynamicCollections[i];
                 bool isTarget = targetTypes.Any(t => string.Equals(t.Code, row.Code, StringComparison.OrdinalIgnoreCase));
-                bool hasHistoricalData = existingItems.Any(item => string.Equals(item.CollectionTypeCode, row.Code, StringComparison.OrdinalIgnoreCase) && item.Amount > 0);
+                bool hasHistoricalData = existingItems.Any(item => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(item.CollectionTypeCode), PaymentCollection.NormalizeCollectionTypeCode(row.Code), StringComparison.OrdinalIgnoreCase) && item.Amount > 0);
                 if (!isTarget && !hasHistoricalData)
                 {
                     DynamicCollections.RemoveAt(i);
@@ -1030,7 +1072,12 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
             {
                 var t = targetTypes[i];
                 var existingRow = DynamicCollections.FirstOrDefault(d => string.Equals(d.Code, t.Code, StringComparison.OrdinalIgnoreCase));
-                var existingItem = existingItems.FirstOrDefault(item => string.Equals(item.CollectionTypeCode, t.Code, StringComparison.OrdinalIgnoreCase));
+                var matchingItems = existingItems.Where(item =>
+                    string.Equals(PaymentCollection.NormalizeCollectionTypeCode(item.CollectionTypeCode), PaymentCollection.NormalizeCollectionTypeCode(t.Code), StringComparison.OrdinalIgnoreCase)).ToList();
+
+                double manualPortion = matchingItems.Where(item => string.IsNullOrWhiteSpace(item.Otp)).Sum(item => item.Amount);
+                double otpPortion = matchingItems.Where(item => !string.IsNullOrWhiteSpace(item.Otp)).Sum(item => item.Amount);
+                var firstManual = matchingItems.FirstOrDefault(item => string.IsNullOrWhiteSpace(item.Otp)) ?? matchingItems.FirstOrDefault();
 
                 if (existingRow != null)
                 {
@@ -1039,10 +1086,12 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
                     existingRow.HasTidBatch = t.HasTidBatch;
                     if (existingPayment != null)
                     {
-                        existingRow.Amount = (existingItem != null && existingItem.Amount > 0) ? existingItem.Amount : (double?)null;
-                        existingRow.Tid = existingItem?.Tid;
-                        existingRow.Batch = existingItem?.Batch;
-                        existingRow.Otp = existingItem?.Otp;
+                        existingRow.ManualAmount = manualPortion > 0 ? manualPortion : (double?)null;
+                        existingRow.OtpAmount = otpPortion;
+                        existingRow.RecalculateTotal();
+                        existingRow.Tid = firstManual?.Tid;
+                        existingRow.Batch = firstManual?.Batch;
+                        existingRow.Otp = firstManual?.Otp;
                     }
                 }
                 else
@@ -1053,12 +1102,14 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
                         DisplayName = t.DisplayName,
                         Category = t.Category,
                         HasTidBatch = t.HasTidBatch,
-                        Amount = (existingItem != null && existingItem.Amount > 0) ? existingItem.Amount : (double?)null,
-                        Tid = existingItem?.Tid,
-                        Batch = existingItem?.Batch,
-                        Otp = existingItem?.Otp,
+                        ManualAmount = (existingPayment != null && manualPortion > 0) ? manualPortion : (double?)null,
+                        OtpAmount = existingPayment != null ? otpPortion : 0,
+                        Tid = firstManual?.Tid,
+                        Batch = firstManual?.Batch,
+                        Otp = firstManual?.Otp,
                         OnValueChangedAction = RecalculateAll
                     };
+                    newRow.RecalculateTotal();
                     DynamicCollections.Insert(Math.Min(i, DynamicCollections.Count), newRow);
                 }
             }
@@ -2008,7 +2059,7 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
                 .Where(kp => !string.IsNullOrWhiteSpace(kp.Name) || !string.IsNullOrWhiteSpace(kp.SlipNumber) || !string.IsNullOrWhiteSpace(kp.VehicleNumber) || (kp.Amount ?? 0) > 0)
                 .Select(kp => new KhandharePetroleumEntry
                 {
-                    Name = !string.IsNullOrWhiteSpace(kp.Name) ? kp.Name : (!string.IsNullOrWhiteSpace(kp.SlipNumber) ? $"Slip #{kp.SlipNumber}" : "Kandhare Petroleum"),
+                    Name = !string.IsNullOrWhiteSpace(kp.Name) ? kp.Name : (!string.IsNullOrWhiteSpace(kp.SlipNumber) ? $"Slip #{kp.SlipNumber}" : "Station Drawings"),
                     VehicleNumber = kp.VehicleNumber ?? "",
                     SlipNumber = kp.SlipNumber ?? "",
                     Amount = kp.Amount ?? 0
@@ -2503,7 +2554,7 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
                                     DsmEntryId = entry.DsmEntryId,
                                     DsmName = entry.DsmName,
                                     Date = entry.Shift?.ShiftDate ?? SelectedDate,
-                                    Name = !string.IsNullOrWhiteSpace(name) ? name : (!string.IsNullOrWhiteSpace(slipNumber) ? $"Slip #{slipNumber}" : "Kandhare Petroleum"),
+                                    Name = !string.IsNullOrWhiteSpace(name) ? name : (!string.IsNullOrWhiteSpace(slipNumber) ? $"Slip #{slipNumber}" : "Station Drawings"),
                                     SlipNumber = slipNumber,
                                     VehicleNumber = string.IsNullOrWhiteSpace(vehicleNumber) ? null : vehicleNumber,
                                     Amount = amount

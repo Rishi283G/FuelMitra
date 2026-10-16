@@ -79,6 +79,44 @@ public class DsmPendingSubmission : ObservableObject
     }
     public string ShiftDateDisplay => ShiftDate.ToString("dd MMM yyyy");
     public string SubmittedTimeDisplay => SubmittedAt.ToLocalTime().ToString("hh:mm tt");
+
+    public string StationName
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(MetadataJson)) return string.Empty;
+            try
+            {
+                var metaObj = JsonConvert.DeserializeObject<Newtonsoft.Json.Linq.JObject>(MetadataJson);
+                if (metaObj != null)
+                {
+                    var name = (string?)metaObj["stationName"] ?? (string?)metaObj["StationName"] ?? (string?)metaObj["station_name"];
+                    if (!string.IsNullOrWhiteSpace(name)) return name;
+                }
+            }
+            catch {}
+            return string.Empty;
+        }
+    }
+
+    public string PersonalLedgerName
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(MetadataJson)) return string.Empty;
+            try
+            {
+                var metaObj = JsonConvert.DeserializeObject<Newtonsoft.Json.Linq.JObject>(MetadataJson);
+                if (metaObj != null)
+                {
+                    var name = (string?)metaObj["personalLedgerName"] ?? (string?)metaObj["PersonalLedgerName"] ?? (string?)metaObj["personal_ledger_name"];
+                    if (!string.IsNullOrWhiteSpace(name)) return name;
+                }
+            }
+            catch {}
+            return string.Empty;
+        }
+    }
 }
 
 
@@ -194,6 +232,10 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(HeaderTitleDisplay))]
     [NotifyPropertyChangedFor(nameof(HeaderShiftDateDisplay))]
     [NotifyPropertyChangedFor(nameof(HeaderSubmittedTimeDisplay))]
+    [NotifyPropertyChangedFor(nameof(StationNameDisplay))]
+    [NotifyPropertyChangedFor(nameof(HeaderStationNameDisplay))]
+    [NotifyPropertyChangedFor(nameof(HasStationName))]
+    [NotifyPropertyChangedFor(nameof(PersonalLedgerTitle))]
     [NotifyPropertyChangedFor(nameof(IsSubmissionComplete))]
     [NotifyPropertyChangedFor(nameof(SubmissionIncompleteReason))]
     [NotifyPropertyChangedFor(nameof(CanApprove))]
@@ -207,18 +249,35 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(CanApprove))]
     private bool _isLoadingDetails;
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsSubmissionComplete))]
+    [NotifyPropertyChangedFor(nameof(SubmissionIncompleteReason))]
+    [NotifyPropertyChangedFor(nameof(CanApprove))]
+    private string? _metadataParseError;
+
     public bool IsSubmissionComplete
     {
         get
         {
             if (SelectedSubmission == null) return false;
             if (IsLoadingDetails) return false;
+            if (!string.IsNullOrEmpty(MetadataParseError)) return false;
             if (NozzleReadings == null || NozzleReadings.Count == 0) return false;
 
             foreach (var n in NozzleReadings)
             {
                 if (n.Rate <= 0) return false;
                 if (n.ClosingReading < n.OpeningReading) return false;
+            }
+
+            if (HasContinuityWarnings && (!OverrideContinuity || string.IsNullOrWhiteSpace(OverrideRemark)))
+            {
+                return false;
+            }
+
+            if (CardSwipeDetails.Any(c => c.Amount > 0 && string.IsNullOrWhiteSpace(c.Mode)))
+            {
+                return false;
             }
 
             return true;
@@ -231,12 +290,23 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
         {
             if (SelectedSubmission == null) return "No submission selected.";
             if (IsLoadingDetails) return "⏳ Fetching submission details from PWA App...";
+            if (!string.IsNullOrEmpty(MetadataParseError)) return $"⚠️ Failed to parse submission payload: {MetadataParseError}";
             if (NozzleReadings == null || NozzleReadings.Count == 0) return "⚠️ Incomplete submission: No nozzle readings fetched from PWA App.";
 
             foreach (var n in NozzleReadings)
             {
                 if (n.Rate <= 0) return $"⚠️ Incomplete submission: Fuel rate is missing or 0 for Nozzle #{n.NozzleId}.";
                 if (n.ClosingReading < n.OpeningReading) return $"⚠️ Invalid readings: Closing reading ({n.ClosingReading:F2}) is less than opening reading ({n.OpeningReading:F2}) on Nozzle #{n.NozzleId}.";
+            }
+
+            if (HasContinuityWarnings && (!OverrideContinuity || string.IsNullOrWhiteSpace(OverrideRemark)))
+            {
+                return "⚠️ Continuity warnings detected. Please verify readings or provide a manager's override remark.";
+            }
+
+            if (CardSwipeDetails.Any(c => c.Amount > 0 && string.IsNullOrWhiteSpace(c.Mode)))
+            {
+                return "⚠️ Unclassified card/payment swipe detected with missing collection type mode.";
             }
 
             return string.Empty;
@@ -257,6 +327,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
     [ObservableProperty] private double _cashAmount;
     [ObservableProperty] private double _upiAmount;
     [ObservableProperty] private double _cardAmount;
+    [ObservableProperty] private double _pineLabsAmount;
     [ObservableProperty] private double _petroCardAmount;
     [ObservableProperty] private double _cashDepositAmount;
     [ObservableProperty] private double _othersAmount;
@@ -296,9 +367,24 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
     public List<string> ProductUnits { get; } = new() { "Litre", "Bottle", "Can", "Piece", "Bucket" };
 
     // Validations & Overrides
-    [ObservableProperty] private bool _hasContinuityWarnings;
-    [ObservableProperty] private bool _overrideContinuity;
-    [ObservableProperty] private string _overrideRemark = "";
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsSubmissionComplete))]
+    [NotifyPropertyChangedFor(nameof(SubmissionIncompleteReason))]
+    [NotifyPropertyChangedFor(nameof(CanApprove))]
+    private bool _hasContinuityWarnings;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsSubmissionComplete))]
+    [NotifyPropertyChangedFor(nameof(SubmissionIncompleteReason))]
+    [NotifyPropertyChangedFor(nameof(CanApprove))]
+    private bool _overrideContinuity;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsSubmissionComplete))]
+    [NotifyPropertyChangedFor(nameof(SubmissionIncompleteReason))]
+    [NotifyPropertyChangedFor(nameof(CanApprove))]
+    private string _overrideRemark = "";
+
     [ObservableProperty] private string _validationSummary = "";
 
     // Edit UI Visibility
@@ -311,7 +397,52 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(HeaderTitleDisplay))]
     [NotifyPropertyChangedFor(nameof(HeaderShiftDateDisplay))]
     [NotifyPropertyChangedFor(nameof(HeaderSubmittedTimeDisplay))]
+    [NotifyPropertyChangedFor(nameof(StationNameDisplay))]
+    [NotifyPropertyChangedFor(nameof(HeaderStationNameDisplay))]
+    [NotifyPropertyChangedFor(nameof(HasStationName))]
+    [NotifyPropertyChangedFor(nameof(PersonalLedgerTitle))]
     private DsmApprovedSubmissionDto? _selectedApprovedSubmission;
+
+    private string _localStationName = string.Empty;
+
+    public string StationNameDisplay
+    {
+        get
+        {
+            if (SelectedSubmission != null && !string.IsNullOrWhiteSpace(SelectedSubmission.StationName))
+                return SelectedSubmission.StationName;
+            if (SelectedApprovedSubmission != null && !string.IsNullOrWhiteSpace(SelectedApprovedSubmission.StationName))
+                return SelectedApprovedSubmission.StationName;
+            return _localStationName;
+        }
+    }
+
+    public string HeaderStationNameDisplay => !string.IsNullOrWhiteSpace(StationNameDisplay) ? $"🏢 {StationNameDisplay}" : string.Empty;
+    public bool HasStationName => !string.IsNullOrWhiteSpace(StationNameDisplay);
+
+    public string PersonalLedgerTitle
+    {
+        get
+        {
+            if (SelectedSubmission != null)
+            {
+                if (!string.IsNullOrWhiteSpace(SelectedSubmission.PersonalLedgerName))
+                    return $"🏢 {SelectedSubmission.PersonalLedgerName}";
+                if (!string.IsNullOrWhiteSpace(SelectedSubmission.StationName))
+                    return $"🏢 {SelectedSubmission.StationName}";
+            }
+            if (SelectedApprovedSubmission != null)
+            {
+                if (!string.IsNullOrWhiteSpace(SelectedApprovedSubmission.PersonalLedgerName))
+                    return $"🏢 {SelectedApprovedSubmission.PersonalLedgerName}";
+                if (!string.IsNullOrWhiteSpace(SelectedApprovedSubmission.StationName))
+                    return $"🏢 {SelectedApprovedSubmission.StationName}";
+            }
+            if (!string.IsNullOrWhiteSpace(_localStationName))
+                return $"🏢 {_localStationName}";
+            return "🏢 Station Drawings";
+        }
+    }
 
     public bool HasActiveSelection => SelectedSubmission != null || SelectedApprovedSubmission != null;
     public string HeaderTitleDisplay => SelectedSubmission != null ? SelectedSubmission.TitleDisplay : (SelectedApprovedSubmission != null ? SelectedApprovedSubmission.TitleDisplay : string.Empty);
@@ -362,9 +493,31 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
         _authService = _serviceProvider.GetRequiredService<AuthService>();
         _pollingService = _serviceProvider.GetRequiredService<DsmSubmissionPollingService>();
 
+        _ = LoadLocalStationNameAsync();
         _ = RefreshQueueAsync();
         _ = LoadApprovedHistoryAsync();
         _ = LoadProductsAsync();
+    }
+
+    private async Task LoadLocalStationNameAsync()
+    {
+        try
+        {
+            using var scope = _serviceProvider.CreateScope();
+            using var context = scope.ServiceProvider.GetRequiredService<FuelProDbContext>();
+            var s = await context.Settings.FirstOrDefaultAsync();
+            if (s != null)
+            {
+                _localStationName = !string.IsNullOrWhiteSpace(s.StationDisplayName)
+                    ? s.StationDisplayName
+                    : (!string.IsNullOrWhiteSpace(s.PumpStationName) ? s.PumpStationName : "");
+                OnPropertyChanged(nameof(StationNameDisplay));
+                OnPropertyChanged(nameof(HeaderStationNameDisplay));
+                OnPropertyChanged(nameof(HasStationName));
+                OnPropertyChanged(nameof(PersonalLedgerTitle));
+            }
+        }
+        catch {}
     }
 
     [RelayCommand]
@@ -525,11 +678,16 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
         IsLoadingDetails = true;
         StatusMessage = $"⏳ Loading details for {submission.DsmName}...";
         IsEditing = true;
+        MetadataParseError = null;
 
         try
         {
             // 1. Fetch readings from Supabase
             var readingsResult = await _supabaseService.FetchSubmissionReadingsAsync(submission.Id);
+            if (!readingsResult.Success)
+            {
+                MetadataParseError = $"Failed to fetch nozzle readings from server: {readingsResult.Error}";
+            }
             NozzleReadings.Clear();
             SubmissionTestingEntries.Clear();
             OilDefSales.Clear();
@@ -887,6 +1045,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                 catch (Exception ex)
                 {
                     _logger.Error(ex, "Failed to parse metadata JSON for details view");
+                    MetadataParseError = $"Metadata parsing failed: {ex.Message}";
                 }
             }
 
@@ -900,6 +1059,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
         {
             _logger.Error(ex, "Failed to load details for submission {SubId}", submission.Id);
             StatusMessage = $"❌ Details load error: {ex.Message}";
+            MetadataParseError = ex.Message;
         }
         finally
         {
@@ -935,34 +1095,53 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
             .ToList();
 
         double dynamicTotal = 0;
+        double calculatedPineLabsTotal = 0;
         foreach (var group in dynamicSwipes.GroupBy(c => PaymentCollection.NormalizeCollectionTypeCode(c.Mode), StringComparer.OrdinalIgnoreCase))
         {
             var otpSwipes = group.Where(c => !string.IsNullOrWhiteSpace(c.Otp)).ToList();
             var nonOtpSwipes = group.Where(c => string.IsNullOrWhiteSpace(c.Otp)).ToList();
 
+            double groupTotal = 0;
             if (otpSwipes.Count == 0)
             {
-                dynamicTotal += nonOtpSwipes.Sum(c => c.Amount);
-                continue;
+                groupTotal = nonOtpSwipes.Sum(c => c.Amount);
             }
-
-            dynamicTotal += otpSwipes.Sum(c => c.Amount);
-            double otpSum = otpSwipes.Sum(c => c.Amount);
-
-            foreach (var nonOtp in nonOtpSwipes)
+            else
             {
-                bool isExactDuplicate = otpSwipes.Any(o =>
-                    Math.Abs(o.Amount - nonOtp.Amount) < 0.01
-                    && string.Equals(o.Tid ?? "", nonOtp.Tid ?? "", StringComparison.OrdinalIgnoreCase)
-                    && string.Equals(o.Batch ?? "", nonOtp.Batch ?? "", StringComparison.OrdinalIgnoreCase));
+                groupTotal = otpSwipes.Sum(c => c.Amount);
+                double otpSum = otpSwipes.Sum(c => c.Amount);
 
-                bool isAggregateDuplicate = Math.Abs(nonOtp.Amount - otpSum) < 0.01;
-
-                if (!isExactDuplicate && !isAggregateDuplicate)
+                foreach (var nonOtp in nonOtpSwipes)
                 {
-                    dynamicTotal += nonOtp.Amount;
+                    bool isExactDuplicate = otpSwipes.Any(o =>
+                        Math.Abs(o.Amount - nonOtp.Amount) < 0.01
+                        && string.Equals(o.Tid ?? "", nonOtp.Tid ?? "", StringComparison.OrdinalIgnoreCase)
+                        && string.Equals(o.Batch ?? "", nonOtp.Batch ?? "", StringComparison.OrdinalIgnoreCase));
+
+                    bool isAggregateDuplicate = Math.Abs(nonOtp.Amount - otpSum) < 0.01;
+
+                    if (!isExactDuplicate && !isAggregateDuplicate)
+                    {
+                        groupTotal += nonOtp.Amount;
+                    }
                 }
             }
+
+            dynamicTotal += groupTotal;
+            if (string.Equals(group.Key, "PINELABS_CARD", StringComparison.OrdinalIgnoreCase))
+            {
+                calculatedPineLabsTotal = groupTotal;
+            }
+        }
+
+        _isRecalculatingPineLabs = true;
+        try
+        {
+            PineLabsAmount = calculatedPineLabsTotal;
+        }
+        finally
+        {
+            _isRecalculatingPineLabs = false;
         }
 
         var dto = new FuelPro.Core.DTOs.DsmEntryDto
@@ -1062,6 +1241,35 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
             : "✓ Calculations and continuity are correct.";
     }
 
+    private bool _isRecalculatingPineLabs;
+
+    partial void OnPineLabsAmountChanged(double value)
+    {
+        if (_isRecalculatingPineLabs) return;
+
+        var pineSwipes = CardSwipeDetails
+            .Where(c => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(c.Mode), "PINELABS_CARD", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        var otpSum = pineSwipes.Where(c => !string.IsNullOrWhiteSpace(c.Otp)).Sum(c => c.Amount);
+        double manualNeeded = Math.Max(0, value - otpSum);
+
+        var nonOtp = pineSwipes.FirstOrDefault(c => string.IsNullOrWhiteSpace(c.Otp));
+        if (nonOtp != null)
+        {
+            nonOtp.Amount = manualNeeded;
+        }
+        else if (manualNeeded > 0)
+        {
+            CardSwipeDetails.Add(new DsmCardSwipeRow
+            {
+                Mode = "PINELABS_CARD",
+                Amount = manualNeeded,
+                OnRowChanged = RecalculateTotals
+            });
+        }
+        RecalculateTotals();
+    }
+
     partial void OnCashAmountChanged(double value) => RecalculateTotals();
     partial void OnUpiAmountChanged(double value) => RecalculateTotals();
     partial void OnCardAmountChanged(double value) => RecalculateTotals();
@@ -1070,6 +1278,9 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
     partial void OnOthersAmountChanged(double value) => RecalculateTotals();
     partial void OnCreditAmountChanged(double value) => RecalculateTotals();
     partial void OnExpenseAmountChanged(double value) => RecalculateTotals();
+    partial void OnOverrideContinuityChanged(bool value) => NotifySubmissionStateChanged();
+    partial void OnOverrideRemarkChanged(string value) => NotifySubmissionStateChanged();
+    partial void OnHasContinuityWarningsChanged(bool value) => NotifySubmissionStateChanged();
 
     public async Task LoadProductsAsync()
     {
@@ -1411,7 +1622,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                                 petroCardTid = tid;
                                 petroCardBatch = batch;
                             }
-                            else // PineLabs / Credit Card
+                            else if (normType == "CREDIT_CARD")
                             {
                                 switch (normSlot)
                                 {
@@ -1427,6 +1638,11 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                                 }
                                 cardTid = tid;
                                 cardBatch = batch;
+                            }
+                            else
+                            {
+                                // Dynamic collection types (e.g. PINELABS_CARD, SBI_REDEEM) are tracked in payment.Items
+                                // and must never be dumped into scalar CreditCard fields to prevent double counting.
                             }
                         }
                     }
@@ -1656,6 +1872,26 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                     Otp = swipe.Otp,
                     Slot = itemSlot
                 });
+            }
+
+            // Ingest any unconsumed dynamic settlements that might not have been in CardSwipeDetails
+            foreach (var unconsumed in settlementRecords.Where(s => !s.IsConsumed && !PaymentCollection.IsStandardCollectionCode(s.PaymentType)))
+            {
+                var existing = payment.Items.FirstOrDefault(i =>
+                    string.Equals(PaymentCollection.NormalizeCollectionTypeCode(i.CollectionTypeCode), unconsumed.PaymentType, StringComparison.OrdinalIgnoreCase)
+                    && Math.Abs(i.Amount - unconsumed.Amount) < 0.01);
+                if (existing == null)
+                {
+                    payment.Items.Add(new PaymentCollectionItem
+                    {
+                        CollectionTypeCode = unconsumed.PaymentType,
+                        Amount = unconsumed.Amount,
+                        Tid = unconsumed.Tid,
+                        Batch = unconsumed.Batch,
+                        Slot = unconsumed.Period,
+                        Otp = ""
+                    });
+                }
             }
 
             // Also ingest any dynamicItems from metadata that might not be in CardSwipeDetails
@@ -2871,6 +3107,21 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
                         CardSwipeDetails.Add(new DsmCardSwipeRow { Mode = "Petro Card (Day)", Amount = pc.PetroCardDay, Tid = pc.PetroCardTidDay ?? "", Batch = pc.PetroCardBatchDay ?? "" });
                     if (pc.PetroCardNight > 0)
                         CardSwipeDetails.Add(new DsmCardSwipeRow { Mode = "Petro Card (Night)", Amount = pc.PetroCardNight, Tid = pc.PetroCardTidNight ?? "", Batch = pc.PetroCardBatchNight ?? "" });
+
+                    foreach (var item in pc.GetAllItems())
+                    {
+                        if (PaymentCollection.IsStandardCollectionCode(item.CollectionTypeCode)) continue;
+                        string mode = item.CollectionTypeCode;
+                        if (!string.IsNullOrWhiteSpace(item.Slot)) mode = $"{item.CollectionTypeCode} ({item.Slot})";
+                        CardSwipeDetails.Add(new DsmCardSwipeRow
+                        {
+                            Mode = mode,
+                            Amount = item.Amount,
+                            Tid = item.Tid ?? "",
+                            Batch = item.Batch ?? "",
+                            Otp = item.Otp ?? ""
+                        });
+                    }
                 }
 
                 foreach (var d in entry.PersonalDebtors)
@@ -3022,6 +3273,44 @@ public class DsmApprovedSubmissionDto : ObservableObject
     public string ShiftDateDisplay => ShiftDate.ToString("dd MMM yyyy");
     public string SubmittedTimeDisplay => SubmittedAt.ToLocalTime().ToString("hh:mm tt");
     public string ApprovedTimeDisplay => ApprovedAt.ToLocalTime().ToString("hh:mm tt");
+
+    public string StationName
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(MetadataJson)) return string.Empty;
+            try
+            {
+                var metaObj = JsonConvert.DeserializeObject<Newtonsoft.Json.Linq.JObject>(MetadataJson);
+                if (metaObj != null)
+                {
+                    var name = (string?)metaObj["stationName"] ?? (string?)metaObj["StationName"] ?? (string?)metaObj["station_name"];
+                    if (!string.IsNullOrWhiteSpace(name)) return name;
+                }
+            }
+            catch {}
+            return string.Empty;
+        }
+    }
+
+    public string PersonalLedgerName
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(MetadataJson)) return string.Empty;
+            try
+            {
+                var metaObj = JsonConvert.DeserializeObject<Newtonsoft.Json.Linq.JObject>(MetadataJson);
+                if (metaObj != null)
+                {
+                    var name = (string?)metaObj["personalLedgerName"] ?? (string?)metaObj["PersonalLedgerName"] ?? (string?)metaObj["personal_ledger_name"];
+                    if (!string.IsNullOrWhiteSpace(name)) return name;
+                }
+            }
+            catch {}
+            return string.Empty;
+        }
+    }
 }
 
 

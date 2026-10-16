@@ -252,7 +252,9 @@
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <StackPanel>
-                                <TextBlock Text="{Binding HeaderTitleDisplay}" FontSize="20" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                <TextBlock Text="{Binding HeaderStationNameDisplay}" FontSize="20" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" Margin="0,0,0,4"
+                                           Visibility="{Binding HasStationName, Converter={StaticResource BoolToVis}}"/>
+                                <TextBlock Text="{Binding HeaderTitleDisplay}" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource MaterialDesign.Brush.Foreground}"/>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <materialDesign:PackIcon Kind="Calendar" Width="16" Height="16" Opacity="0.6" VerticalAlignment="Center"/>
                                     <TextBlock Text="{Binding HeaderShiftDateDisplay}" FontSize="13" Margin="4,0,16,0" VerticalAlignment="Center" Opacity="0.7"/>
@@ -354,32 +356,35 @@
                                          materialDesign:HintAssist.Hint="PhonePe UPI" materialDesign:HintAssist.IsFloating="True" Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
                                 <TextBox Text="{Binding CardAmount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="8,0,0,12"
                                          IsReadOnly="{Binding IsReadOnlyMode}"
-                                         materialDesign:HintAssist.Hint="PineLab Card" materialDesign:HintAssist.IsFloating="True" Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                                         materialDesign:HintAssist.Hint="Credit Card" materialDesign:HintAssist.IsFloating="True" Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
  
-                                <TextBox Text="{Binding PetroCardAmount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,0,8,12"
+                                <TextBox Text="{Binding PineLabsAmount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,0,8,12"
+                                         IsReadOnly="{Binding IsReadOnlyMode}"
+                                         materialDesign:HintAssist.Hint="Pine Labs Card" materialDesign:HintAssist.IsFloating="True" Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                                <TextBox Text="{Binding PetroCardAmount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="8,0,8,12"
                                          IsReadOnly="{Binding IsReadOnlyMode}"
                                          materialDesign:HintAssist.Hint="Petro Card" materialDesign:HintAssist.IsFloating="True" Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
-                                <TextBox Text="{Binding CashDepositAmount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="8,0,8,12"
+                                <TextBox Text="{Binding CashDepositAmount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="8,0,0,12"
                                          IsReadOnly="{Binding IsReadOnlyMode}"
                                          materialDesign:HintAssist.Hint="Cash 1" materialDesign:HintAssist.IsFloating="True" Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
-                                <TextBox Text="{Binding OthersAmount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="8,0,0,12"
+
+                                <TextBox Text="{Binding OthersAmount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,0,8,12"
                                          IsReadOnly="{Binding IsReadOnlyMode}"
                                          materialDesign:HintAssist.Hint="Others (Not in Total)" materialDesign:HintAssist.IsFloating="True" Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
- 
-                                <TextBox Text="{Binding CreditAmount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,0,8,12"
+                                <TextBox Text="{Binding CreditAmount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="8,0,8,12"
                                          IsReadOnly="{Binding IsReadOnlyMode}"
                                          materialDesign:HintAssist.Hint="Credit (Debits)" materialDesign:HintAssist.IsFloating="True" Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
-                                <TextBox Text="{Binding ExpenseAmount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="8,0,8,12"
+                                <TextBox Text="{Binding ExpenseAmount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="8,0,0,12"
                                          IsReadOnly="{Binding IsReadOnlyMode}"
                                          materialDesign:HintAssist.Hint="Expenses" materialDesign:HintAssist.IsFloating="True" Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
-                                <TextBox Text="{Binding ExpenseNotes, UpdateSourceTrigger=PropertyChanged}" Margin="8,0,0,12"
+
+                                <TextBox Text="{Binding ExpenseNotes, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0"
                                          IsReadOnly="{Binding IsReadOnlyMode}"
                                          materialDesign:HintAssist.Hint="Expense Remarks" materialDesign:HintAssist.IsFloating="True" Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
- 
-                                <TextBox Text="{Binding ShortAmount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,0,8,0"
+                                <TextBox Text="{Binding ShortAmount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="8,0,8,0"
                                          IsReadOnly="{Binding IsReadOnlyMode}"
                                          materialDesign:HintAssist.Hint="Short" materialDesign:HintAssist.IsFloating="True" Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
-                                <TextBox Text="{Binding ExcessAmount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="8,0,8,0"
+                                <TextBox Text="{Binding ExcessAmount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="8,0,0,0"
                                          IsReadOnly="{Binding IsReadOnlyMode}"
                                          materialDesign:HintAssist.Hint="Excess" materialDesign:HintAssist.IsFloating="True" Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
                             </UniformGrid>
@@ -486,7 +491,7 @@
                             </Style>
                         </materialDesign:Card.Style>
                         <StackPanel>
-                            <TextBlock Text="🏢 Kandhare Petroleum" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}" Margin="0,0,0,12"/>
+                            <TextBlock Text="{Binding PersonalLedgerTitle}" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}" Margin="0,0,0,12"/>
                             <DataGrid ItemsSource="{Binding KhandhareEntries}" AutoGenerateColumns="False" IsReadOnly="True"
                                       HeadersVisibility="Column" GridLinesVisibility="Horizontal" materialDesign:DataGridAssist.CellPadding="12 8" materialDesign:DataGridAssist.ColumnHeaderPadding="12 8">
                                 <DataGrid.Columns>

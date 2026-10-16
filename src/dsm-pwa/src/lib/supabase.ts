@@ -64,6 +64,7 @@ export interface DsmUserProfile {
   AssignedShift: 'A' | 'B' | 'C' | null;
   AssignedDate: string | null;
   StationId: string;
+  StationName?: string;
 }
 
 export interface SubmissionPayload {

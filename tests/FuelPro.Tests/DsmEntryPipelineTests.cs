@@ -698,7 +698,7 @@ public class DsmEntryPipelineTests : IDisposable
         // Explicitly set scalar collections on ViewModel (simulating Supabase collection fetch)
         queueVm.CashAmount = 10000.0;
         queueVm.UpiAmount = 5000.0;
-        queueVm.CardAmount = 2574.0;
+        queueVm.CardAmount = 0.0;
         queueVm.PetroCardAmount = 235.0;
         queueVm.CashDepositAmount = 0.0;
         queueVm.ExpenseAmount = 0.0;
@@ -709,6 +709,7 @@ public class DsmEntryPipelineTests : IDisposable
         typeof(DsmApprovalQueueViewModel).GetMethod("RecalculateTotals", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.Invoke(queueVm, null);
 
         // Verify Approval Queue collections and mismatch before approval
+        Assert.Equal(2574.0, queueVm.PineLabsAmount);
         Assert.Equal(17809.00, queueVm.TotalCollections);
         Assert.Equal(-0.35, queueVm.MismatchAmount, precision: 2);
 
@@ -730,13 +731,14 @@ public class DsmEntryPipelineTests : IDisposable
 
         Assert.NotNull(fullEntry.PaymentCollection);
         Assert.Equal(5000.0, fullEntry.PaymentCollection!.PhonePeMorning);
-        Assert.Equal(2574.0, fullEntry.PaymentCollection.CreditCardMorning);
+        Assert.Equal(0.0, fullEntry.PaymentCollection.CreditCardMorning);
         Assert.Equal(235.0, fullEntry.PaymentCollection.PetroCardMorning);
+        Assert.Equal(2574.0, fullEntry.PaymentCollection.DynamicItemsTotal);
 
         var allItems = fullEntry.PaymentCollection.GetAllItems().ToList();
         Assert.Equal(3, allItems.Count);
         Assert.Contains(allItems, i => i.CollectionTypeCode == "PHONEPE" && i.Amount == 5000.0 && i.Otp == "1111");
-        Assert.Contains(allItems, i => i.CollectionTypeCode == "CREDIT_CARD" && i.Amount == 2574.0 && i.Otp == "2222");
+        Assert.Contains(allItems, i => i.CollectionTypeCode == "PINELABS_CARD" && i.Amount == 2574.0 && i.Otp == "2222");
         Assert.Contains(allItems, i => i.CollectionTypeCode == "PETROCARD" && i.Amount == 235.0 && i.Otp == "4421");
 
         // 5. Reopened Desktop DSM Entry
@@ -942,7 +944,7 @@ public class DsmEntryPipelineTests : IDisposable
         // Set collections
         queueVm.CashAmount = 0.0;
         queueVm.UpiAmount = 0.0;
-        queueVm.CardAmount = 3000.0;
+        queueVm.CardAmount = 0.0;
         queueVm.PetroCardAmount = 0.0;
         queueVm.CashDepositAmount = 0.0;
         queueVm.ExpenseAmount = 0.0;
@@ -951,6 +953,7 @@ public class DsmEntryPipelineTests : IDisposable
 
         typeof(DsmApprovalQueueViewModel).GetMethod("RecalculateTotals", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.Invoke(queueVm, null);
 
+        Assert.Equal(3000.00, queueVm.PineLabsAmount);
         Assert.Equal(3000.00, queueVm.TotalCollections);
         Assert.Equal(0.00, queueVm.MismatchAmount, precision: 2);
 
@@ -970,12 +973,13 @@ public class DsmEntryPipelineTests : IDisposable
         var fullEntry = fullEntryResult.Data!;
 
         Assert.NotNull(fullEntry.PaymentCollection);
-        Assert.Equal(3000.0, fullEntry.PaymentCollection!.CreditCardMorning);
+        Assert.Equal(0.0, fullEntry.PaymentCollection!.CreditCardMorning);
+        Assert.Equal(3000.0, fullEntry.PaymentCollection!.DynamicItemsTotal);
 
         var allItems = fullEntry.PaymentCollection.GetAllItems().ToList();
         Assert.Equal(2, allItems.Count);
-        Assert.Contains(allItems, i => i.CollectionTypeCode == "CREDIT_CARD" && i.Amount == 1500.0 && i.Tid == "POS01" && i.Otp == "8811");
-        Assert.Contains(allItems, i => i.CollectionTypeCode == "CREDIT_CARD" && i.Amount == 1500.0 && i.Tid == "POS02" && i.Otp == "8822");
+        Assert.Contains(allItems, i => i.CollectionTypeCode == "PINELABS_CARD" && i.Amount == 1500.0 && i.Tid == "POS01" && i.Otp == "8811");
+        Assert.Contains(allItems, i => i.CollectionTypeCode == "PINELABS_CARD" && i.Amount == 1500.0 && i.Tid == "POS02" && i.Otp == "8822");
 
         // Reopen Desktop DSM Entry
         var dsmVm = _serviceProvider.GetRequiredService<DsmEntryViewModel>();
@@ -984,7 +988,8 @@ public class DsmEntryPipelineTests : IDisposable
         Assert.Equal(3000.00, dsmVm.FinalAdjusted);
         Assert.Equal(3000.00, dsmVm.NetGrossSales, precision: 2);
         Assert.Equal(0.00, dsmVm.Difference, precision: 2);
-        Assert.Equal(3000.00, dsmVm.CreditCardMorning);
+        Assert.Null(dsmVm.CreditCardMorning);
+        Assert.Contains(dsmVm.DynamicCollections, d => d.Code == "PINELABS_CARD" && d.Amount == 3000.00);
 
         // Both survive approval and reopening
         Assert.Equal(2, dsmVm.OtpTransactions.Count);

@@ -642,15 +642,33 @@ public static class SeedData
                 new CollectionTypeMaster { Code = "PHONEPE", DisplayName = "PhonePe", Category = "Online", HasTidBatch = true, DisplayOrder = 1, IsActive = true, IsSystem = true, CreatedAt = now },
                 new CollectionTypeMaster { Code = "CREDIT_CARD", DisplayName = "Credit / Debit Card", Category = "Card", HasTidBatch = true, DisplayOrder = 2, IsActive = true, IsSystem = true, CreatedAt = now },
                 new CollectionTypeMaster { Code = "PETROCARD", DisplayName = "PetroCard", Category = "Card", HasTidBatch = true, DisplayOrder = 3, IsActive = true, IsSystem = true, CreatedAt = now },
-                new CollectionTypeMaster { Code = "SBI_REDEEM", DisplayName = "SBI Redeem", Category = "Card", HasTidBatch = true, DisplayOrder = 4, IsActive = true, IsSystem = false, CreatedAt = now },
-                new CollectionTypeMaster { Code = "PAYTM", DisplayName = "Paytm", Category = "Online", HasTidBatch = true, DisplayOrder = 5, IsActive = true, IsSystem = false, CreatedAt = now },
-                new CollectionTypeMaster { Code = "QR", DisplayName = "QR / Online", Category = "Online", HasTidBatch = true, DisplayOrder = 6, IsActive = true, IsSystem = false, CreatedAt = now },
-                new CollectionTypeMaster { Code = "MOBIKWIK", DisplayName = "Mobikwik", Category = "Online", HasTidBatch = true, DisplayOrder = 7, IsActive = true, IsSystem = false, CreatedAt = now },
-                new CollectionTypeMaster { Code = "CASH_DEPOSIT", DisplayName = "Cash Deposit (Bank)", Category = "Cash", HasTidBatch = false, DisplayOrder = 8, IsActive = true, IsSystem = true, CreatedAt = now },
-                new CollectionTypeMaster { Code = "OTHERS", DisplayName = "Other Online / UPI", Category = "Other", HasTidBatch = false, DisplayOrder = 9, IsActive = true, IsSystem = true, CreatedAt = now }
+                new CollectionTypeMaster { Code = "PINELABS_CARD", DisplayName = "Pine Labs Card", Category = "Card", HasTidBatch = true, DisplayOrder = 4, IsActive = true, IsSystem = true, CreatedAt = now },
+                new CollectionTypeMaster { Code = "SBI_REDEEM", DisplayName = "SBI Redeem", Category = "Card", HasTidBatch = true, DisplayOrder = 5, IsActive = true, IsSystem = false, CreatedAt = now },
+                new CollectionTypeMaster { Code = "PAYTM", DisplayName = "Paytm", Category = "Online", HasTidBatch = true, DisplayOrder = 6, IsActive = true, IsSystem = false, CreatedAt = now },
+                new CollectionTypeMaster { Code = "QR", DisplayName = "QR / Online", Category = "Online", HasTidBatch = true, DisplayOrder = 7, IsActive = true, IsSystem = false, CreatedAt = now },
+                new CollectionTypeMaster { Code = "MOBIKWIK", DisplayName = "Mobikwik", Category = "Online", HasTidBatch = true, DisplayOrder = 8, IsActive = true, IsSystem = false, CreatedAt = now },
+                new CollectionTypeMaster { Code = "CASH_DEPOSIT", DisplayName = "Cash Deposit (Bank)", Category = "Cash", HasTidBatch = false, DisplayOrder = 9, IsActive = true, IsSystem = true, CreatedAt = now },
+                new CollectionTypeMaster { Code = "OTHERS", DisplayName = "Other Online / UPI", Category = "Other", HasTidBatch = false, DisplayOrder = 10, IsActive = true, IsSystem = true, CreatedAt = now }
             );
             await context.SaveChangesAsync();
-            Log.Information("Seeded default CollectionTypes including SBI Redeem, Paytm, QR, Mobikwik");
+            Log.Information("Seeded default CollectionTypes including Pine Labs Card, SBI Redeem, Paytm, QR, Mobikwik");
+        }
+        else if (!await context.CollectionTypes.AnyAsync(c => c.Code == "PINELABS_CARD"))
+        {
+            var maxOrder = await context.CollectionTypes.MaxAsync(c => (int?)c.DisplayOrder) ?? 3;
+            context.CollectionTypes.Add(new CollectionTypeMaster
+            {
+                Code = "PINELABS_CARD",
+                DisplayName = "Pine Labs Card",
+                Category = "Card",
+                HasTidBatch = true,
+                DisplayOrder = maxOrder + 1,
+                IsActive = true,
+                IsSystem = true,
+                CreatedAt = DateTime.Now
+            });
+            await context.SaveChangesAsync();
+            Log.Information("Seeded missing PINELABS_CARD collection type for existing station database");
         }
 
         // Seed default AppFeatureSettings

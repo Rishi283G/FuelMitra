@@ -132,12 +132,16 @@ public class PaymentCollection
             || test.Equals("PHONEPEDIRECT", StringComparison.OrdinalIgnoreCase))
             return "PHONEPE";
         if (test.Equals("CREDITCARD", StringComparison.OrdinalIgnoreCase)
-            || test.Equals("PINELABS", StringComparison.OrdinalIgnoreCase)
+            || test.Equals("CREDIT_CARD", StringComparison.OrdinalIgnoreCase)
+            || test.Equals("CREDITDEBITCARD", StringComparison.OrdinalIgnoreCase)
+            || test.Equals("CARD", StringComparison.OrdinalIgnoreCase))
+            return "CREDIT_CARD";
+        if (test.Equals("PINELABS", StringComparison.OrdinalIgnoreCase)
             || test.Equals("PINELABSCARD", StringComparison.OrdinalIgnoreCase)
             || test.Equals("PINELAB", StringComparison.OrdinalIgnoreCase)
             || test.Equals("PINELABCARD", StringComparison.OrdinalIgnoreCase)
-            || test.Equals("CARD", StringComparison.OrdinalIgnoreCase))
-            return "CREDIT_CARD";
+            || test.Equals("PINELABSCREDITCARD", StringComparison.OrdinalIgnoreCase))
+            return "PINELABS_CARD";
         if (test.Equals("PETROCARD", StringComparison.OrdinalIgnoreCase) || test.Equals("PETRO", StringComparison.OrdinalIgnoreCase))
             return "PETROCARD";
         if (test.Equals("CASHDEPOSIT", StringComparison.OrdinalIgnoreCase) || test.Equals("CASH1", StringComparison.OrdinalIgnoreCase))

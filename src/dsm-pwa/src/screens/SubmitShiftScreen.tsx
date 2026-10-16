@@ -297,24 +297,20 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   >({});
 
   // Shared configuration-driven eligibility:
-  // Only collection types where both TID and Batch are enabled (hasTidBatch === true) and isActive are eligible
+  // Shared configuration-driven eligibility:
+  // Only collection types where both TID and Batch are enabled (hasTidBatch === true), isActive is true,
+  // and global otpMachineTrackingEnabled is true are eligible.
   const eligibleOtpTypes = useMemo(() => {
     const list: { code: string; displayName: string }[] = [];
-    if (stationConfig?.collectionTypes) {
+    if (otpMachineTrackingEnabled && stationConfig?.collectionTypes) {
       for (const ct of stationConfig.collectionTypes) {
         if (ct.hasTidBatch && ct.isActive !== false) {
           list.push({ code: ct.code, displayName: ct.displayName || ct.code });
         }
       }
     }
-    // Also include any types already present in loaded machineTransactions for historical records
-    for (const tx of machineTransactions) {
-      if (tx.collectionTypeCode && !list.some((t) => t.code.toUpperCase() === tx.collectionTypeCode.toUpperCase())) {
-        list.push({ code: tx.collectionTypeCode, displayName: tx.collectionTypeCode });
-      }
-    }
     return list;
-  }, [stationConfig?.collectionTypes, machineTransactions]);
+  }, [stationConfig?.collectionTypes, otpMachineTrackingEnabled]);
 
   const personalLedgerName = stationConfig.features.personalLedgerName || "Personal Ledger";
 
@@ -334,13 +330,23 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     if (manualEntryToggles[clean] !== undefined) {
       return manualEntryToggles[clean];
     }
-    const txs = getTransactionsForType(typeCode);
-    return !(otpMachineTrackingEnabled && txs.length > 0);
+    // Manual entry is enabled by default, even when OTP machine tracking has transactions
+    return true;
   }
 
   function toggleManualEnabled(typeCode: string, enabled: boolean) {
     const clean = (typeCode || "").toUpperCase().replace(/_/g, "").replace(/\s+/g, "");
     setManualEntryToggles((prev) => ({ ...prev, [clean]: enabled }));
+  }
+
+  function isTypeActive(typeCode: string): boolean {
+    if (!stationConfig?.collectionTypes) return true;
+    const clean = (typeCode || "").toUpperCase().replace(/_/g, "").replace(/\s+/g, "");
+    const ct = stationConfig.collectionTypes.find(
+      (c) => c.code.toUpperCase().replace(/_/g, "").replace(/\s+/g, "") === clean
+    );
+    if (!ct) return false;
+    return ct.isActive !== false;
   }
 
   function getTypeSlotConfig(code: string) {
@@ -1626,13 +1632,13 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       }
       if (isManualEnabled("CREDIT_CARD") && creditCardSlotConf.enableDay && creditCardDay > 0) {
         cardSwipes.push({
-          mode: "PineLabs Card Day",
+          mode: "Credit Card Day",
           amount: creditCardDay,
           tid: creditCardTidDay,
           batch: creditCardBatchDay,
         });
         settlementsList.push({
-          paymentType: "PineLabs",
+          paymentType: "CreditCard",
           period: "Day",
           amount: creditCardDay,
           tid: creditCardTidDay,
@@ -1718,13 +1724,13 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         if (isSplitEnabledForType("CREDIT_CARD")) {
           if (creditCardSlotConf.enableMorning && creditCardMorning > 0) {
             cardSwipes.push({
-              mode: "PineLabs Card Morning",
+              mode: "Credit Card Morning",
               amount: creditCardMorning,
               tid: creditCardTidMorning,
               batch: creditCardBatchMorning,
             });
             settlementsList.push({
-              paymentType: "PineLabs",
+              paymentType: "CreditCard",
               period: "Morning",
               amount: creditCardMorning,
               tid: creditCardTidMorning,
@@ -1735,13 +1741,13 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           }
           if (creditCardSlotConf.enableNight && creditCardNight > 0) {
             cardSwipes.push({
-              mode: "PineLabs Card Night",
+              mode: "Credit Card Night",
               amount: creditCardNight,
               tid: creditCardTidNight,
               batch: creditCardBatchNight,
             });
             settlementsList.push({
-              paymentType: "PineLabs",
+              paymentType: "CreditCard",
               period: "Night",
               amount: creditCardNight,
               tid: creditCardTidNight,
@@ -1752,13 +1758,13 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           }
         } else if (creditCardMorning > 0) {
           cardSwipes.push({
-            mode: "PineLabs Card",
+            mode: "Credit Card",
             amount: creditCardMorning,
             tid: creditCardTidMorning,
             batch: creditCardBatchMorning,
           });
           settlementsList.push({
-            paymentType: "PineLabs",
+            paymentType: "CreditCard",
             period: "Morning",
             amount: creditCardMorning,
             tid: creditCardTidMorning,
@@ -1865,6 +1871,8 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       connectedPumpIds: connectedPumps,
       shiftDate,
       shiftType: shiftType as "A" | "B" | "C",
+      stationName: stationConfig?.stationName || profile?.StationName || "",
+      personalLedgerName: personalLedgerName,
       notes,
       nozzleReadings: nozzleRows.map(
         ({ rowId: _r, isOpeningReadOnly, ...rest }) => rest,
@@ -2386,6 +2394,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           </h2>
 
           {/* 1. Petro Card */}
+          {(isTypeActive("PETROCARD") || effectivePetroCardTotal > 0 || petroCardDay > 0 || petroCardMorning > 0 || petroCardNight > 0) && (
           <div
             className="nozzle-card"
             style={{ marginBottom: "16px", padding: "16px" }}
@@ -2626,8 +2635,10 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
               </div>
             )}
           </div>
+          )}
 
-          {/* 2. Credit Card (Card / PineLabs Credit Card) */}
+          {/* 2. Credit Card */}
+          {(isTypeActive("CREDIT_CARD") || effectiveCreditCardTotal > 0 || creditCardDay > 0 || creditCardMorning > 0 || creditCardNight > 0) && (
           <div
             className="nozzle-card"
             style={{ marginBottom: "16px", padding: "16px" }}
@@ -2862,8 +2873,10 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
               </div>
             )}
           </div>
+          )}
 
           {/* 3. PhonePe */}
+          {(isTypeActive("PHONEPE") || effectivePhonePeTotal > 0 || phonePeDay > 0 || phonePeMorning > 0 || phonePeNight > 0 || qrTotal > 0) && (
           <div
             className="nozzle-card"
             style={{ marginBottom: "16px", padding: "16px" }}
@@ -3370,6 +3383,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
               )}
             </div>
           </div>
+          )}
 
           {/* Dynamic Collection Types (Configured by Station/Developer) */}
           {stationConfig.collectionTypes
@@ -3384,6 +3398,8 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                 ].includes(c.code.toUpperCase()),
             )
             .filter((c) => {
+              const hasData = (dynamicValues[c.code]?.amount || 0) > 0 || getMachineTotalForType(c.code) > 0;
+              if (c.isActive === false && !hasData) return false;
               if (shiftType === "B") return c.enableDay !== false;
               return c.enableMorning !== false || (splitMorningNightEnabled && c.enableNight !== false);
             })

@@ -52,6 +52,9 @@ export function useSubmissionService() {
       const isUpdate = existingId !== null;
 
       const metadataPayload = {
+        stationName: (draft as any).stationName || null,
+        stationId: stationId || null,
+        personalLedgerName: (draft as any).personalLedgerName || null,
         cardSwipeDetails: draft.cardSwipeDetails || [],
         machineTransactions: (draft as any).machineTransactions || [],
         dynamicItems: (draft as any).dynamicItems || [],

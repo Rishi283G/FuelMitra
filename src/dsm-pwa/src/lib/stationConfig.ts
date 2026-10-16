@@ -23,6 +23,7 @@ export interface DynamicCollectionType {
 
 export interface StationConfig {
   stationId: string;
+  stationName?: string;
   features: StationFeatureSettings;
   collectionTypes: DynamicCollectionType[];
   isDynamic: boolean;
@@ -166,24 +167,20 @@ async function fetchAndCacheStationConfig(cleanId: string, cacheKey: string): Pr
       } else {
         lastError = r2.error || lastError;
         // 3. Try case-insensitive lookup for station_id
-        const r3 = await supabase
-          .from('Settings')
-          .select('*')
-          .ilike('station_id', cleanId)
-          .limit(1)
-          .maybeSingle();
+        const q3 = supabase.from('Settings').select('*');
+        const r3 = typeof (q3 as any).ilike === 'function'
+          ? await (q3 as any).ilike('station_id', cleanId).limit(1).maybeSingle()
+          : await q3.eq('station_id', cleanId).limit(1).maybeSingle();
 
         if (r3.data) {
           data = r3.data;
         } else {
           lastError = r3.error || lastError;
           // 4. Try case-insensitive lookup for StationId
-          const r4 = await supabase
-            .from('Settings')
-            .select('*')
-            .ilike('StationId', cleanId)
-            .limit(1)
-            .maybeSingle();
+          const q4 = supabase.from('Settings').select('*');
+          const r4 = typeof (q4 as any).ilike === 'function'
+            ? await (q4 as any).ilike('StationId', cleanId).limit(1).maybeSingle()
+            : await q4.eq('StationId', cleanId).limit(1).maybeSingle();
 
           if (r4.data) {
             data = r4.data;
@@ -237,11 +234,22 @@ async function fetchAndCacheStationConfig(cleanId: string, cacheKey: string): Pr
     const rawMsII = data.MsIIRate ?? data.ms_ii_rate ?? data.ms_iirate ?? data.msiirate;
     const rawCng = data.CngRate ?? data.cng_rate ?? data.cngrate;
 
+    const stationName =
+      data.StationName ??
+      data.station_name ??
+      data.PumpStationName ??
+      data.DisplayName ??
+      data.Name ??
+      data.pump_station_name ??
+      undefined;
+
     let collectionTypes: DynamicCollectionType[] = [];
+    let hasAuthoritativeCollectionTypes = false;
     if (collectionTypesRaw) {
       try {
         const parsed = typeof collectionTypesRaw === 'string' ? JSON.parse(collectionTypesRaw) : collectionTypesRaw;
         if (Array.isArray(parsed) && parsed.length > 0) {
+          hasAuthoritativeCollectionTypes = true;
           collectionTypes = parsed
             .map((item: any) => ({
               code: (item.Code || item.code || '').trim().toUpperCase(),
@@ -254,7 +262,7 @@ async function fetchAndCacheStationConfig(cleanId: string, cacheKey: string): Pr
               enableDay: item.EnableDay !== false && item.enableDay !== false,
               enableNight: item.EnableNight !== false && item.enableNight !== false,
             }))
-            .filter((c: DynamicCollectionType) => c.isActive && c.code)
+            .filter((c: DynamicCollectionType) => c.code)
             .sort((a: DynamicCollectionType, b: DynamicCollectionType) => a.displayOrder - b.displayOrder);
         }
       } catch (err) {
@@ -416,6 +424,7 @@ async function fetchAndCacheStationConfig(cleanId: string, cacheKey: string): Pr
 
     const config: StationConfig = {
       stationId: cleanId,
+      stationName,
       features: {
         cashDenominationsEnabled,
         otpMachineTrackingEnabled,
@@ -424,8 +433,8 @@ async function fetchAndCacheStationConfig(cleanId: string, cacheKey: string): Pr
         personalLedgerEnabled,
         personalLedgerName,
       },
-      collectionTypes: collectionTypes.length > 0 ? collectionTypes : getDefaultCollectionTypes(),
-      isDynamic: collectionTypes.length > 0,
+      collectionTypes: hasAuthoritativeCollectionTypes ? collectionTypes : getDefaultCollectionTypes(),
+      isDynamic: hasAuthoritativeCollectionTypes,
       fuelRates,
       hsdRate,
       msIRate,
