@@ -86,17 +86,18 @@ public class ReportServiceTests : IDisposable
         // Assert
         Assert.Equal("II", report.ShiftLabel);
         Assert.Equal("Mitali Service Station", report.StationName);
-        // ExpectedCollection = DsrTotalFuelAmount(6095.85 - 500 testing = 5595.85) + reconcilableRecoveries(1000 cash repayment)
-        Assert.Equal(6595.85, report.ExpectedCollection, precision: 2);
+        // ExpectedCollection = DsrTotalFuelAmount(6095.85 - 500 testing = 5595.85), repayments excluded per client specification
+        Assert.Equal(5595.85, report.ExpectedCollection, precision: 2);
 
         // Verify the collection breakdown categories exist
         Assert.True(report.CollectionBreakdown.Count >= 5);
         
         var deposit = report.CollectionBreakdown.First(c => c.Category == "Cash Deposit").Amount;
-        var cashInHand = report.CollectionBreakdown.First(c => c.Category == "Cash In Hand").Amount;
+        var cashInHandCat = report.CollectionBreakdown.First(c => c.Category == "Cash In Hand");
         
         Assert.Equal(500, deposit);
-        Assert.Equal(1150, cashInHand); // 150 + 1000 repayment
+        Assert.Equal(150, cashInHandCat.Amount); // Pure operational cash in hand
+        Assert.Equal(1000, cashInHandCat.RecoveryAmount); // Repayment preserved in recovery metadata
     }
 
     [Fact]
@@ -173,11 +174,11 @@ public class ReportServiceTests : IDisposable
         Assert.True(testCat.IsInformational);
         Assert.Equal(500, testCat.Amount);
 
-        // Actual Collections = 4000 (deposit) + (3000 + 500 repayment) + 2500 (phonepe) + 1000 (oil) = 11000
-        Assert.Equal(11000, report.ActualCollection, precision: 2);
+        // Actual Collections = 4000 (deposit) + 3000 (cash in hand) + 2500 (phonepe) + 1000 (oil) = 10500 (repayments excluded)
+        Assert.Equal(10500, report.ActualCollection, precision: 2);
 
-        // Expected Collections = DsrTotalFuelAmount(9500) + OilDefSalesTotal(1000) + Repayments(500) = 11000
-        Assert.Equal(11000, report.ExpectedCollection, precision: 2);
+        // Expected Collections = DsrTotalFuelAmount(9500) + OilDefSalesTotal(1000) = 10500 (repayments excluded)
+        Assert.Equal(10500, report.ExpectedCollection, precision: 2);
 
         // Perfectly balanced with no difference
         Assert.Equal(0, report.Difference, precision: 2);
@@ -292,5 +293,184 @@ public class ReportServiceTests : IDisposable
         
         // Difference must equal -50.63
         Assert.Equal(-50.63, report.Difference, precision: 2);
+    }
+
+    [Fact]
+    public void CalculateShiftReport_ShouldExcludeDebtorRepaymentsFromSalesTotalsAndPaymentMethods()
+    {
+        var date = new DateTime(2026, 7, 11);
+        var entries = new List<DsmEntry>
+        {
+            new DsmEntry
+            {
+                DsmEntryId = 1,
+                DsmName = "Test DSM",
+                PumpId = 1,
+                GrossSales = 5000,
+                NozzleReadings = new List<NozzleReading>
+                {
+                    new NozzleReading { NozzleNumber = 1, FuelType = "MS-I", SaleLitres = 50, Amount = 5000, Rate = 100 }
+                },
+                PaymentCollection = new PaymentCollection 
+                { 
+                    PhonePeMorning = 1000, 
+                    CreditCardMorning = 1500,
+                    PetroCardMorning = 500
+                },
+                CashDenominations = new List<CashDenomination>
+                {
+                    new CashDenomination { CashType = "Cash2", TotalAmount = 2000 }
+                }
+            }
+        };
+
+        var repayments = new List<CreditorRepayment>
+        {
+            new CreditorRepayment { Amount = 800, PaymentMode = "Cash", ShiftNumber = "A", RepaymentDate = date },
+            new CreditorRepayment { Amount = 400, PaymentMode = "PhonePe", ShiftNumber = "A", RepaymentDate = date },
+            new CreditorRepayment { Amount = 600, PaymentMode = "Credit Card", ShiftNumber = "A", RepaymentDate = date },
+            new CreditorRepayment { Amount = 200, PaymentMode = "PetroCard", ShiftNumber = "A", RepaymentDate = date }
+        };
+
+        var report = _sut.CalculateShiftReport(
+            date: date,
+            shiftType: "A",
+            entries: entries,
+            shiftExpenses: new List<Expense>(),
+            otherCashList: new List<ShiftOtherCash>(),
+            repayments: repayments,
+            hsdRate: 90, msIRate: 100, msIIRate: 100, cngRate: 85,
+            todayTid: new BusinessDayTidSheet(), tomorrowTid: new BusinessDayTidSheet(),
+            stationName: "Mitali Service Station"
+        );
+
+        // Expected collection must NOT be inflated by the 2000 repayments
+        Assert.Equal(5000, report.ExpectedCollection, precision: 2);
+        Assert.Equal(5000, report.GrandTotalSaleAmount, precision: 2);
+
+        // Payment method category amounts must be pure operational sales, NOT inflated
+        var cashInHand = report.CollectionBreakdown.First(c => c.Category == "Cash In Hand");
+        Assert.Equal(2000, cashInHand.Amount);
+        Assert.Equal(800, cashInHand.RecoveryAmount);
+
+        var phonePe = report.CollectionBreakdown.First(c => c.Category.Contains("PhonePe"));
+        Assert.Equal(1000, phonePe.Amount);
+        Assert.Equal(400, phonePe.RecoveryAmount);
+
+        var creditCard = report.CollectionBreakdown.First(c => c.Category.Contains("Card") && !c.Category.Contains("Petro"));
+        Assert.Equal(1500, creditCard.Amount);
+        Assert.Equal(600, creditCard.RecoveryAmount);
+
+        var petroCard = report.CollectionBreakdown.First(c => c.Category.Contains("PetroCard"));
+        Assert.Equal(500, petroCard.Amount);
+        Assert.Equal(200, petroCard.RecoveryAmount);
+
+        // Operational reconciliation difference must remain 0 (balanced)
+        Assert.Equal(0, report.Difference, precision: 2);
+        Assert.True(report.IsBalanced);
+    }
+
+    [Fact]
+    public void CalculateDayReport_ShouldExcludeDebtorRepaymentsFromSalesTotalsAndPaymentMethods()
+    {
+        var date = new DateTime(2026, 7, 11);
+        var entries = new List<DsmEntry>
+        {
+            new DsmEntry
+            {
+                DsmEntryId = 1,
+                DsmName = "Test DSM",
+                PumpId = 1,
+                GrossSales = 4000,
+                Shift = new Shift { ShiftDate = date, ShiftType = "A" },
+                NozzleReadings = new List<NozzleReading>
+                {
+                    new NozzleReading { NozzleNumber = 1, FuelType = "MS-I", SaleLitres = 40, Amount = 4000, Rate = 100 }
+                },
+                PaymentCollection = new PaymentCollection 
+                { 
+                    PhonePeMorning = 1000, 
+                    CreditCardMorning = 1000
+                },
+                CashDenominations = new List<CashDenomination>
+                {
+                    new CashDenomination { CashType = "Cash2", TotalAmount = 2000 }
+                }
+            }
+        };
+
+        var repayments = new List<CreditorRepayment>
+        {
+            new CreditorRepayment { Amount = 500, PaymentMode = "Cash", RepaymentDate = date },
+            new CreditorRepayment { Amount = 300, PaymentMode = "PhonePe", RepaymentDate = date }
+        };
+
+        var report = _sut.CalculateDayReport(
+            startDate: date,
+            endDate: date,
+            entries: entries,
+            allExpenses: new List<Expense>(),
+            repayments: repayments,
+            hsdRate: 90, msIRate: 100, msIIRate: 100, cngRate: 85,
+            stationName: "Mitali Service Station"
+        );
+
+        // Day Expected Collection must NOT be inflated by the 800 repayments
+        Assert.Equal(4000, report.ExpectedCollection, precision: 2);
+        Assert.Equal(4000, report.GrandTotalSaleAmount, precision: 2);
+
+        var cashInHand = report.CollectionBreakdown.First(c => c.Category == "Cash In Hand");
+        Assert.Equal(2000, cashInHand.Amount);
+        Assert.Equal(500, cashInHand.RecoveryAmount);
+
+        var phonePe = report.CollectionBreakdown.First(c => c.Category.Contains("PhonePe"));
+        Assert.Equal(1000, phonePe.Amount);
+        Assert.Equal(300, phonePe.RecoveryAmount);
+
+        Assert.Equal(0, report.Difference, precision: 2);
+        Assert.True(report.IsBalanced);
+    }
+
+    [Fact]
+    public void NozzleGroupDto_StockVariation_CalculationsAndDisplay()
+    {
+        // 1. Normal positive variation (manual > calculated = Excess)
+        var dto = new NozzleGroupDto
+        {
+            OpeningStock = 1000,
+            FuelDispensed = 200,
+            TestingLitres = 10,
+            Receipts = 500,
+            Stock = 1320 // Calculated = 1000 - 200 + 10 + 500 = 1310. Variance = +10
+        };
+
+        Assert.True(dto.HasValidOpeningStock);
+        Assert.Equal(1310, dto.CalculatedStock);
+        Assert.Equal("1,310.00", dto.AutomaticStockDisplay);
+        Assert.Equal(10, dto.StockVariance, precision: 2);
+        Assert.Equal("+10.00", dto.StockVarianceDisplay);
+        Assert.Equal("Excess", dto.StockVarianceStatus);
+
+        // 2. Negative variation (manual < calculated = Shortage)
+        dto.Stock = 1300;
+        Assert.Equal(-10, dto.StockVariance, precision: 2);
+        Assert.Equal("-10.00", dto.StockVarianceDisplay);
+        Assert.Equal("Shortage", dto.StockVarianceStatus);
+
+        // 3. Zero variation
+        dto.Stock = 1310;
+        Assert.Equal(0, dto.StockVariance, precision: 2);
+        Assert.Equal("+0.00", dto.StockVarianceDisplay);
+
+        // 4. Missing opening stock (<= 0)
+        var dtoNoOpening = new NozzleGroupDto
+        {
+            OpeningStock = 0,
+            FuelDispensed = 100,
+            Stock = 500
+        };
+        Assert.False(dtoNoOpening.HasValidOpeningStock);
+        Assert.Equal("—", dtoNoOpening.AutomaticStockDisplay);
+        Assert.Equal("—", dtoNoOpening.StockVarianceDisplay);
     }
 }

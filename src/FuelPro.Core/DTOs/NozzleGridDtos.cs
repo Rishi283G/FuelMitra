@@ -51,7 +51,15 @@ public class NozzleGroupDto : INotifyPropertyChanged
     public double Stock
     {
         get => _stock;
-        set { _stock = Math.Round(value, 2); OnPropertyChanged(); }
+        set 
+        { 
+            _stock = Math.Round(value, 2); 
+            OnPropertyChanged(); 
+            OnPropertyChanged(nameof(StockLtr));
+            OnPropertyChanged(nameof(StockVariance));
+            OnPropertyChanged(nameof(StockVarianceDisplay));
+            OnPropertyChanged(nameof(StockVarianceStatus));
+        }
     }
 
     private double _density;
@@ -93,7 +101,15 @@ public class NozzleGroupDto : INotifyPropertyChanged
     public double CalculatedStock
     {
         get => _calculatedStock;
-        private set { _calculatedStock = Math.Round(value, 2); OnPropertyChanged(); }
+        private set 
+        { 
+            _calculatedStock = Math.Round(value, 2); 
+            OnPropertyChanged(); 
+            OnPropertyChanged(nameof(StockVariance));
+            OnPropertyChanged(nameof(AutomaticStockDisplay));
+            OnPropertyChanged(nameof(StockVarianceDisplay));
+            OnPropertyChanged(nameof(StockVarianceStatus));
+        }
     }
 
     private void RecalcCalculatedStock()
@@ -104,6 +120,10 @@ public class NozzleGroupDto : INotifyPropertyChanged
         {
             Stock = CalculatedStock;
         }
+        OnPropertyChanged(nameof(StockVariance));
+        OnPropertyChanged(nameof(AutomaticStockDisplay));
+        OnPropertyChanged(nameof(StockVarianceDisplay));
+        OnPropertyChanged(nameof(StockVarianceStatus));
     }
 
     public List<List<NozzleDisplayItem>> Rows { get; set; } = new();
@@ -115,6 +135,11 @@ public class NozzleGroupDto : INotifyPropertyChanged
     public double StockLtr => Stock;
     public double SaleLitres => FuelDispensed;
     public double StockVariance => Stock - CalculatedStock;
+
+    public bool HasValidOpeningStock => OpeningStock > 0;
+    public string AutomaticStockDisplay => HasValidOpeningStock ? CalculatedStock.ToString("N2") : "—";
+    public string StockVarianceDisplay => HasValidOpeningStock ? (StockVariance >= 0 ? $"+{StockVariance:N2}" : $"{StockVariance:N2}") : "—";
+    public string StockVarianceStatus => StockVariance >= 0 ? "Excess" : "Shortage";
 
     public bool IsCng => string.Equals(FuelType, "CNG", System.StringComparison.OrdinalIgnoreCase) || 
                          (GroupName != null && GroupName.Contains("CNG", System.StringComparison.OrdinalIgnoreCase));

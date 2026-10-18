@@ -425,6 +425,7 @@
     <table id="dsmShiftTable">
         <thead>
             <tr>
+                <th class="text-left">Entry Date</th>
                 <th>DSM Name</th>
                 <th class="text-center">Shifts</th>
                 <th>Pumps</th>
@@ -440,11 +441,11 @@
             </tr>
         </thead>
         <tbody id="dsmShiftBody">
-            <tr><td colspan="12" class="text-center">No DSM shift entries found</td></tr>
+            <tr><td colspan="13" class="text-center">No DSM shift entries found</td></tr>
         </tbody>
         <tfoot>
             <tr class="total-row" id="dsmShiftTotalRow">
-                <td>TOTAL</td>
+                <td colspan="2">TOTAL</td>
                 <td class="text-center" id="dsmTotalShifts">0</td>
                 <td class="text-center">-</td>
                 <td class="text-right" id="dsmTotalGross">₹0.00</td>
@@ -596,6 +597,7 @@
                 var misColor = mis < 0 ? '#dc2626' : (mis > 0 ? '#16a34a' : '#1e293b');
 
                 tr.innerHTML = 
+                    '<td>' + (d.entryDate || d.shiftDate || '—') + '</td>' +
                     '<td class="font-bold">' + (d.dsmName || '-') + '</td>' +
                     '<td class="text-center">' + (d.shiftCount || 1) + '</td>' +
                     '<td>' + (d.assignedPumps || '-') + '</td>' +

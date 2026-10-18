@@ -296,10 +296,10 @@ public class MitaliProductionVerificationTests : IDisposable
 
         // Assertions for Shift A
         Assert.Equal(500, shiftAReport.CashRepayments);
-        Assert.Equal(5500, shiftAReport.ExpectedCollection); // 5000 gross + 500 recovery
+        Assert.Equal(5000, shiftAReport.ExpectedCollection); // 5000 pure fuel sales (not inflated by repayments)
         var cashInHandA = shiftAReport.CollectionBreakdown.First(c => c.Category == "Cash In Hand").Amount;
-        Assert.Equal(2500, cashInHandA); // 2000 base cash + 500 cash repayment
-        Assert.Equal(5500, shiftAReport.ActualCollection); // 2500 cash in hand + 3000 bank cash
+        Assert.Equal(2000, cashInHandA); // 2000 base cash (operational cash collection, not inflated by repayments)
+        Assert.Equal(5000, shiftAReport.ActualCollection); // 2000 cash in hand + 3000 bank cash
         Assert.True(shiftAReport.IsBalanced);
         Assert.Equal(0, shiftAReport.Difference, precision: 2);
         Assert.Single(shiftAReport.PersonalDebtorRepayments);
@@ -368,10 +368,10 @@ public class MitaliProductionVerificationTests : IDisposable
 
         // Assertions for Shift B
         Assert.Equal(700, shiftBReport.CashRepayments);
-        Assert.Equal(6700, shiftBReport.ExpectedCollection); // 6000 gross + 700 recovery
+        Assert.Equal(6000, shiftBReport.ExpectedCollection); // 6000 pure fuel sales (not inflated by repayments)
         var cashInHandB = shiftBReport.CollectionBreakdown.First(c => c.Category == "Cash In Hand").Amount;
-        Assert.Equal(3200, cashInHandB); // 2500 base cash + 700 cash repayment
-        Assert.Equal(6700, shiftBReport.ActualCollection); // 3200 cash in hand + 3500 bank cash
+        Assert.Equal(2500, cashInHandB); // 2500 base cash
+        Assert.Equal(6000, shiftBReport.ActualCollection); // 2500 cash in hand + 3500 bank cash
         Assert.True(shiftBReport.IsBalanced);
         Assert.Equal(0, shiftBReport.Difference, precision: 2);
         Assert.Single(shiftBReport.PersonalDebtorRepayments);
@@ -412,10 +412,10 @@ public class MitaliProductionVerificationTests : IDisposable
         );
 
         Assert.Equal(1200, dayReport.CashRepayments); // 500 + 700
-        Assert.Equal(12200, dayReport.ExpectedCollection); // 5000 + 6000 + 1200 = 12200
+        Assert.Equal(11000, dayReport.ExpectedCollection); // 5000 + 6000 pure fuel sales = 11000
         var dayCashInHand = dayReport.CollectionBreakdown.First(c => c.Category == "Cash In Hand").Amount;
-        Assert.Equal(5700, dayCashInHand); // 2000 + 2500 + 1200 = 5700
-        Assert.Equal(12200, dayReport.ActualCollection); // 5700 + 6500 bank cash = 12200
+        Assert.Equal(4500, dayCashInHand); // 2000 + 2500 = 4500 base operational cash
+        Assert.Equal(11000, dayReport.ActualCollection); // 4500 + 6500 bank cash = 11000
         Assert.True(dayReport.IsBalanced);
         Assert.Equal(0, dayReport.Difference, precision: 2);
         Assert.Equal(2, dayReport.PersonalDebtorRepayments.Count);
@@ -510,22 +510,22 @@ public class MitaliProductionVerificationTests : IDisposable
         Assert.Equal(800, report.CreditCardRepayments);
         Assert.Equal(2000, report.DebtorRepaymentsTotal);
 
-        // 2. Physical cash integrity: Cash In Hand must ONLY increase by Cash repayments (500), NOT by digital (700 or 800)
+        // 2. Physical cash integrity: Cash In Hand reflects operational cash collection without inflation by repayments
         var cashInHand = report.CollectionBreakdown.First(c => c.Category == "Cash In Hand").Amount;
-        Assert.Equal(10500, cashInHand); // 10000 base + 500 cash repayment
+        Assert.Equal(10000, cashInHand); // 10000 base operational cash
 
         // 3. Digital category routing
         var phonePeCollection = report.CollectionBreakdown.First(c => c.Category.Contains("PhonePe")).Amount;
-        Assert.Equal(3700, phonePeCollection); // 3000 base + 700 repayment
+        Assert.Equal(3000, phonePeCollection); // 3000 base
 
         var cardCollection = report.CollectionBreakdown.First(c => c.Category.Contains("Card") || c.Category.Contains("PineLab")).Amount;
-        Assert.Equal(2800, cardCollection); // 2000 base + 800 repayment
+        Assert.Equal(2000, cardCollection); // 2000 base
 
-        // 4. ExpectedCollection = 20000 gross + 2000 recoveries = 22000
-        Assert.Equal(22000, report.ExpectedCollection);
+        // 4. ExpectedCollection = 20000 gross pure fuel sales (not inflated by recoveries)
+        Assert.Equal(20000, report.ExpectedCollection);
 
-        // 5. ActualCollection = 10500 (cash) + 5000 (bank cash) + 3700 (phonepe) + 2800 (card) = 22000
-        Assert.Equal(22000, report.ActualCollection);
+        // 5. ActualCollection = 10000 (cash) + 5000 (bank cash) + 3000 (phonepe) + 2000 (card) = 20000
+        Assert.Equal(20000, report.ActualCollection);
 
         // 6. No double counting and difference = 0
         Assert.True(report.IsBalanced);

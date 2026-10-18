@@ -1781,7 +1781,7 @@ public partial class DebtorManagementViewModel : ObservableObject
                 new() { Label = "Overall Active Debtors", Value = ActiveDebtorsCount.ToString(), Highlight = false }
             };
 
-            var headers = new List<string> { "Date", "Type / Mode", "Debtor Name", "Reference / Cheque", "Debit (Sales on Credit)", "Credit (Repayments Received)" };
+            var headers = new List<string> { "Date", "Type / Mode", "Debtor Name", "Cheque No / Details", "Debit (Sales on Credit)", "Credit (Repayments Received)" };
             var rows = new List<List<string>>();
 
             foreach (var d in DebtorLogs)
@@ -1849,7 +1849,7 @@ public partial class DebtorManagementViewModel : ObservableObject
                 new() { Label = "Overall Active Debtors", Value = ActiveDebtorsCount.ToString(), Highlight = false }
             };
 
-            var headers = new List<string> { "Date", "Type / Mode", "Debtor Name", "Reference / Cheque", "Debit (Sales on Credit)", "Credit (Repayments Received)" };
+            var headers = new List<string> { "Date", "Type / Mode", "Debtor Name", "Cheque No / Details", "Debit (Sales on Credit)", "Credit (Repayments Received)" };
             var rows = new List<List<string>>();
 
             foreach (var d in DebtorLogs)

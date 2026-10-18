@@ -213,7 +213,7 @@ public partial class DsmOilDefSaleRow : ObservableObject
     partial void OnPriceChanged(double value) => OnPropertyChanged(nameof(Total));
 }
 
-public partial class DsmApprovalQueueViewModel : ObservableObject
+public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly SupabaseDsmService _supabaseService;
@@ -222,6 +222,8 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
     private readonly IDsmCalculationService _dsmCalculationService;
     private readonly AuthService _authService;
     private readonly DsmSubmissionPollingService _pollingService;
+    private readonly IFeatureToggleService? _featureToggleService;
+    private readonly Action? _featureChangedHandler;
     private readonly ILogger _logger = Log.ForContext<DsmApprovalQueueViewModel>();
 
     public ObservableCollection<DsmPendingSubmission> PendingSubmissions { get; } = new();
@@ -424,23 +426,22 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
     {
         get
         {
-            if (SelectedSubmission != null)
-            {
-                if (!string.IsNullOrWhiteSpace(SelectedSubmission.PersonalLedgerName))
-                    return $"🏢 {SelectedSubmission.PersonalLedgerName}";
-                if (!string.IsNullOrWhiteSpace(SelectedSubmission.StationName))
-                    return $"🏢 {SelectedSubmission.StationName}";
-            }
-            if (SelectedApprovedSubmission != null)
-            {
-                if (!string.IsNullOrWhiteSpace(SelectedApprovedSubmission.PersonalLedgerName))
-                    return $"🏢 {SelectedApprovedSubmission.PersonalLedgerName}";
-                if (!string.IsNullOrWhiteSpace(SelectedApprovedSubmission.StationName))
-                    return $"🏢 {SelectedApprovedSubmission.StationName}";
-            }
-            if (!string.IsNullOrWhiteSpace(_localStationName))
-                return $"🏢 {_localStationName}";
-            return "🏢 Station Drawings";
+            if (SelectedSubmission != null && !string.IsNullOrWhiteSpace(SelectedSubmission.PersonalLedgerName))
+                return $"🏢 {SelectedSubmission.PersonalLedgerName}";
+            if (SelectedApprovedSubmission != null && !string.IsNullOrWhiteSpace(SelectedApprovedSubmission.PersonalLedgerName))
+                return $"🏢 {SelectedApprovedSubmission.PersonalLedgerName}";
+            
+            string configured = _featureToggleService?.GetFeatureDisplayName("Operations_PersonalLedger", "Personal Ledger") ?? "Personal Ledger";
+            return $"🏢 {configured}";
+        }
+    }
+
+    public string PersonalLedgerPwaHeader
+    {
+        get
+        {
+            string configured = _featureToggleService?.GetFeatureDisplayName("Operations_PersonalLedger", "DSM Loss") ?? "DSM Loss";
+            return $"👥 {configured} (PWA)";
         }
     }
 
@@ -492,11 +493,43 @@ public partial class DsmApprovalQueueViewModel : ObservableObject
         _dsmCalculationService = _serviceProvider.GetRequiredService<IDsmCalculationService>();
         _authService = _serviceProvider.GetRequiredService<AuthService>();
         _pollingService = _serviceProvider.GetRequiredService<DsmSubmissionPollingService>();
+        _featureToggleService = _serviceProvider?.GetService<IFeatureToggleService>();
+
+        if (_featureToggleService != null)
+        {
+            _featureChangedHandler = () =>
+            {
+                var dispatcher = System.Windows.Application.Current?.Dispatcher;
+                if (dispatcher != null && !dispatcher.CheckAccess())
+                {
+                    dispatcher.BeginInvoke(() =>
+                    {
+                        OnPropertyChanged(nameof(PersonalLedgerTitle));
+                        OnPropertyChanged(nameof(PersonalLedgerPwaHeader));
+                    });
+                }
+                else
+                {
+                    OnPropertyChanged(nameof(PersonalLedgerTitle));
+                    OnPropertyChanged(nameof(PersonalLedgerPwaHeader));
+                }
+            };
+            _featureToggleService.FeatureConfigurationChanged += _featureChangedHandler;
+        }
 
         _ = LoadLocalStationNameAsync();
         _ = RefreshQueueAsync();
         _ = LoadApprovedHistoryAsync();
         _ = LoadProductsAsync();
+    }
+
+    public void Dispose()
+    {
+        if (_featureToggleService != null && _featureChangedHandler != null)
+        {
+            _featureToggleService.FeatureConfigurationChanged -= _featureChangedHandler;
+        }
+        GC.SuppressFinalize(this);
     }
 
     private async Task LoadLocalStationNameAsync()

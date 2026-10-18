@@ -137,9 +137,13 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
 
     private readonly IFeatureToggleService _featureService;
     private readonly ICollectionTypeService? _collectionTypeService;
+    private readonly Action _featureChangedHandler;
+    private readonly Action? _collectionTypesChangedHandler;
     public bool IsDsmPersonalDebtorVisible => _featureService.IsFeatureEnabled("Admin_DsmPersonalDebtor", true);
     public bool IsDebtorManagementInShiftTotalVisible => !(_featureService?.IsFeatureEnabled("UI_DebtorManagement_AsNewPage", true) ?? true);
     public bool IsDebtorManagementAsNewPage => _featureService?.IsFeatureEnabled("UI_DebtorManagement_AsNewPage", true) ?? true;
+    public string PersonalLedgerTitle => _featureService?.GetFeatureDisplayName("Operations_PersonalLedger", "DSM Loss") ?? "DSM Loss";
+    public string PersonalLedgerRegisterHeader => $"E. {PersonalLedgerTitle} Register";
 
     [RelayCommand]
     public async Task ToggleDebtorManagementLocationAsync()
@@ -190,7 +194,7 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
         _featureService = App.Services.GetRequiredService<IFeatureToggleService>();
         _collectionTypeService = App.Services?.GetService<ICollectionTypeService>();
 
-        _featureService.FeatureConfigurationChanged += () =>
+        _featureChangedHandler = () =>
         {
             var dispatcher = System.Windows.Application.Current?.Dispatcher;
             if (dispatcher != null && !dispatcher.CheckAccess())
@@ -200,6 +204,8 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
                     OnPropertyChanged(nameof(IsDsmPersonalDebtorVisible));
                     OnPropertyChanged(nameof(IsDebtorManagementInShiftTotalVisible));
                     OnPropertyChanged(nameof(IsDebtorManagementAsNewPage));
+                    OnPropertyChanged(nameof(PersonalLedgerTitle));
+                    OnPropertyChanged(nameof(PersonalLedgerRegisterHeader));
                 });
             }
             else
@@ -207,12 +213,15 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
                 OnPropertyChanged(nameof(IsDsmPersonalDebtorVisible));
                 OnPropertyChanged(nameof(IsDebtorManagementInShiftTotalVisible));
                 OnPropertyChanged(nameof(IsDebtorManagementAsNewPage));
+                OnPropertyChanged(nameof(PersonalLedgerTitle));
+                OnPropertyChanged(nameof(PersonalLedgerRegisterHeader));
             }
         };
+        _featureService.FeatureConfigurationChanged += _featureChangedHandler;
 
         if (_collectionTypeService != null)
         {
-            _collectionTypeService.CollectionTypesChanged += () =>
+            _collectionTypesChangedHandler = () =>
             {
                 var dispatcher = System.Windows.Application.Current?.Dispatcher;
                 if (dispatcher != null && !dispatcher.CheckAccess())
@@ -224,6 +233,7 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
                     _ = UpdateCollectionHeadersAsync();
                 }
             };
+            _collectionTypeService.CollectionTypesChanged += _collectionTypesChangedHandler;
         }
         _ = UpdateCollectionHeadersAsync();
 
@@ -271,6 +281,11 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        _featureService.FeatureConfigurationChanged -= _featureChangedHandler;
+        if (_collectionTypeService != null && _collectionTypesChangedHandler != null)
+        {
+            _collectionTypeService.CollectionTypesChanged -= _collectionTypesChangedHandler;
+        }
         DsmEntryService.DsmEntryChanged -= OnDataChanged;
         DsmEntryService.DebtorChanged -= OnDataChanged;
         GC.SuppressFinalize(this);
@@ -359,11 +374,6 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
             var repayments = repaymentsRes.Success && repaymentsRes.Data != null 
                 ? repaymentsRes.Data.Where(r => !r.CreditorName.Contains("DSM Loss", StringComparison.OrdinalIgnoreCase)).ToList() 
                 : new List<CreditorRepayment>();
-            DebtorRepayments.Clear();
-            foreach (var r in repayments.Where(x => x.RepaymentDate.Date == SelectedDate.Date))
-            {
-                DebtorRepayments.Add(r);
-            }
 
             var pdRepaymentsRes = await pdRepaymentsTask;
             var pdRepayments = pdRepaymentsRes.Success && pdRepaymentsRes.Data != null 
@@ -382,7 +392,7 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
                 if (!string.IsNullOrWhiteSpace(dsmRep.CardBatch)) parts.Add($"Batch: {dsmRep.CardBatch}");
                 string refDisplay = string.Join(", ", parts);
 
-                DebtorRepayments.Add(new CreditorRepayment
+                repayments.Add(new CreditorRepayment
                 {
                     CreditorRepaymentId = dsmRep.Id,
                     CreditorName = $"DSM Loss ({dsmName})",
@@ -393,6 +403,12 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
                     CardBatch = dsmRep.CardBatch ?? "",
                     ShiftNumber = shift.ShiftType
                 });
+            }
+
+            DebtorRepayments.Clear();
+            foreach (var r in repayments.Where(x => x.RepaymentDate.Date == SelectedDate.Date))
+            {
+                DebtorRepayments.Add(r);
             }
 
             var tidSheetToday = await tidSheetTodayTask;

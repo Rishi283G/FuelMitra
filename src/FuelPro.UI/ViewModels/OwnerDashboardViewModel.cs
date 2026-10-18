@@ -690,6 +690,7 @@ public partial class OwnerDashboardViewModel : ObservableObject, IDisposable
                 }).ToList(),
                 dsmShiftTotals = DsmShiftTotals.Select(d => new
                 {
+                    entryDate = d.ShiftDateDisplay,
                     dsmName = d.DsmName,
                     shiftCount = d.SessionsCount,
                     assignedPumps = d.AssignedPumpsDisplay,
@@ -768,7 +769,7 @@ public partial class OwnerDashboardViewModel : ObservableObject, IDisposable
                 {
                     "3. DSM Shift Summary",
                     st.DsmName,
-                    $"Shifts: {st.SessionsCount}, Pumps: {st.AssignedPumpsDisplay}",
+                    $"Date: {st.ShiftDateDisplay}, Shifts: {st.SessionsCount}, Pumps: {st.AssignedPumpsDisplay}",
                     $"Gross: ₹{st.GrossSales:N2} | Coll: ₹{st.TotalCollection:N2} | Mis: ₹{st.Mismatch:N2}"
                 });
             }

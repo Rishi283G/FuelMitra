@@ -695,12 +695,12 @@ public class FinancialPipelineIntegrationTests : IDisposable
         );
 
         // Assertions:
-        // ExpectedCollection = Fuel Sales (5000) + Reconcilable Recoveries (800) = 5800
-        // ActualCollection = CashDeposit (0) + CashInHand (1500) + PhonePeMorning (1000) + PhonePeNight (1000 + 500 = 1500) + PineLabsMorning (1500) + PetroCard (300) = 5800
+        // ExpectedCollection = Fuel Sales (5000) (repayments do not inflate operational sales totals)
+        // ActualCollection = CashDeposit (0) + CashInHand (1500) + PhonePeMorning (1000) + PhonePeNight (1000) + PineLabsMorning (1500) + PetroCard (0) = 5000
         // Difference = 0 (Balanced)
         Assert.Equal(5000, report.TotalFuelAmount);
-        Assert.Equal(5800, report.ExpectedCollection);
-        Assert.Equal(5800, report.ActualCollection);
+        Assert.Equal(5000, report.ExpectedCollection);
+        Assert.Equal(5000, report.ActualCollection);
         Assert.Equal(0, report.Difference);
         Assert.True(report.IsBalanced);
         
@@ -711,15 +711,15 @@ public class FinancialPipelineIntegrationTests : IDisposable
         Assert.Equal(1500, cashInHandCol.BaseAmount);
         Assert.Equal(0, cashInHandCol.RecoveryAmount);
 
-        // PhonePe unified category total should be 2000 base (1000 morning + 1000 night) + 500 recovery = 2500
+        // PhonePe unified category base total should be 2000 base, with 500 recovery
         var phonePeCol = report.CollectionBreakdown.First(c => c.Category.Contains("PhonePe"));
-        Assert.Equal(2500, phonePeCol.Amount);
+        Assert.Equal(2000, phonePeCol.Amount);
         Assert.Equal(2000, phonePeCol.BaseAmount);
         Assert.Equal(500, phonePeCol.RecoveryAmount);
 
-        // Petro Card category total should be 0 base + 300 recovery = 300
-        var petroCardCol = report.CollectionBreakdown.First(c => c.Category.Contains("Petro", StringComparison.OrdinalIgnoreCase) && c.Amount > 0);
-        Assert.Equal(300, petroCardCol.Amount);
+        // Petro Card category total should be 0 base + 300 recovery = 300 in recovery
+        var petroCardCol = report.CollectionBreakdown.First(c => c.Category.Contains("Petro", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(0, petroCardCol.Amount);
         Assert.Equal(0, petroCardCol.BaseAmount);
         Assert.Equal(300, petroCardCol.RecoveryAmount);
     }

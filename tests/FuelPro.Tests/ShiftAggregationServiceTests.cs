@@ -443,4 +443,119 @@ public class ShiftAggregationServiceTests
         Assert.Equal(9800, st.TotalCollection);
         Assert.Equal(-200, st.Mismatch);
     }
+
+    [Fact]
+    public void BuildDsmShiftTotals_OneDsmMultipleDates_ProducesSeparateDailyRows()
+    {
+        // 1. One DSM with entries on multiple dates produces separate daily rows
+        var date1 = new DateTime(2026, 10, 1);
+        var date2 = new DateTime(2026, 10, 2);
+        var rows = new List<DsmSummaryRowDto>
+        {
+            new DsmSummaryRowDto { DsmName = "Ramesh", ShiftDate = date1, GrossSales = 5000, CashInHand = 5000 },
+            new DsmSummaryRowDto { DsmName = "Ramesh", ShiftDate = date2, GrossSales = 6000, CashInHand = 6000 }
+        };
+
+        var totals = _sut.BuildDsmShiftTotals(rows);
+
+        Assert.Equal(2, totals.Count);
+        Assert.Equal(date1, totals[0].ShiftDate);
+        Assert.Equal("01/10/2026", totals[0].ShiftDateDisplay);
+        Assert.Equal(5000, totals[0].GrossSales);
+
+        Assert.Equal(date2, totals[1].ShiftDate);
+        Assert.Equal("02/10/2026", totals[1].ShiftDateDisplay);
+        Assert.Equal(6000, totals[1].GrossSales);
+    }
+
+    [Fact]
+    public void BuildDsmShiftTotals_MultipleShiftsSameDsmSameDate_AggregatesCorrectly()
+    {
+        // 2. Multiple shifts for the same DSM on the same date aggregate correctly
+        var date = new DateTime(2026, 10, 1);
+        var rows = new List<DsmSummaryRowDto>
+        {
+            new DsmSummaryRowDto { DsmName = "Ramesh", Shift = "A", ShiftDate = date, GrossSales = 5000, CashInHand = 5000 },
+            new DsmSummaryRowDto { DsmName = "Ramesh", Shift = "B", ShiftDate = date, GrossSales = 7000, CashInHand = 7000 }
+        };
+
+        var totals = _sut.BuildDsmShiftTotals(rows);
+
+        Assert.Single(totals);
+        var st = totals[0];
+        Assert.Equal("Ramesh", st.DsmName);
+        Assert.Equal(date, st.ShiftDate);
+        Assert.Equal("01/10/2026", st.ShiftDateDisplay);
+        Assert.Equal(2, st.SessionsCount);
+        Assert.Equal(12000, st.GrossSales);
+        Assert.Equal(12000, st.TotalCollection);
+    }
+
+    [Fact]
+    public void BuildDsmShiftTotals_DifferentDsmsSameDate_RemainSeparate()
+    {
+        // 3. Different DSMs on the same date remain separate
+        var date = new DateTime(2026, 10, 1);
+        var rows = new List<DsmSummaryRowDto>
+        {
+            new DsmSummaryRowDto { DsmName = "Ramesh", ShiftDate = date, GrossSales = 5000, CashInHand = 5000 },
+            new DsmSummaryRowDto { DsmName = "Suresh", ShiftDate = date, GrossSales = 4000, CashInHand = 4000 }
+        };
+
+        var totals = _sut.BuildDsmShiftTotals(rows);
+
+        Assert.Equal(2, totals.Count);
+        Assert.Equal("Ramesh", totals[0].DsmName);
+        Assert.Equal("Suresh", totals[1].DsmName);
+    }
+
+    [Fact]
+    public void BuildDsmShiftTotals_DisplayedDate_MatchesUnderlyingShiftDate()
+    {
+        // 4. The displayed date matches the underlying shift/entry date
+        var date = new DateTime(2026, 8, 15);
+        var rows = new List<DsmSummaryRowDto>
+        {
+            new DsmSummaryRowDto { DsmName = "Ganesh", ShiftDate = date, GrossSales = 8000 }
+        };
+
+        var totals = _sut.BuildDsmShiftTotals(rows);
+
+        Assert.Single(totals);
+        Assert.Equal(date, totals[0].ShiftDate);
+        Assert.Equal("15/08/2026", totals[0].ShiftDateDisplay);
+    }
+
+    [Fact]
+    public void BuildDsmShiftTotals_ExistingSingleDayTotals_RemainUnchanged()
+    {
+        // 5. Existing single-day totals remain unchanged
+        var date = new DateTime(2026, 10, 1);
+        var rows = new List<DsmSummaryRowDto>
+        {
+            new DsmSummaryRowDto
+            {
+                DsmName = "Ramesh",
+                ShiftDate = date,
+                PumpId = 1,
+                GrossSales = 10000,
+                Testing = 100,
+                PhonePe = 2000,
+                CashDeposit = 3000,
+                CashInHand = 1000,
+                Debit = 3900 // Total collection = 9900, Net gross = 9900, mismatch = 0
+            }
+        };
+
+        var totals = _sut.BuildDsmShiftTotals(rows);
+
+        Assert.Single(totals);
+        var st = totals[0];
+        Assert.Equal(10000, st.GrossSales);
+        Assert.Equal(100, st.Testing);
+        Assert.Equal(9900, st.NetGrossSales);
+        Assert.Equal(9900, st.TotalCollection);
+        Assert.Equal(0, st.Mismatch);
+    }
 }
+

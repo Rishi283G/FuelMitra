@@ -49,6 +49,11 @@ public partial class DsmManagementViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string _newPassword = "";
     [ObservableProperty] private string _accountStatusMessage = "";
     [ObservableProperty] private bool _isCreatingAccount;
+    [ObservableProperty] private bool _isEditingUser;
+    [ObservableProperty] private DsmUser? _editingUser;
+    [ObservableProperty] private string _editingFullName = "";
+    [ObservableProperty] private string _editingMobileNumber = "";
+    [ObservableProperty] private string _editingEmail = "";
 
     // Pump Assignments
     public ObservableCollection<DsmPumpAssignment> PumpAssignments { get; } = new();
@@ -496,6 +501,108 @@ public partial class DsmManagementViewModel : ObservableObject, IDisposable
         {
             _logger.Error(ex, "Failed to deactivate assignment");
             AssignmentStatusMessage = $"❌ Error: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    private void StartEditUser(DsmUser? user)
+    {
+        if (user == null) return;
+        EditingUser = user;
+        EditingFullName = user.FullName ?? "";
+        EditingMobileNumber = user.MobileNumber ?? "";
+        EditingEmail = user.Email ?? "";
+        IsEditingUser = true;
+        AccountStatusMessage = "";
+    }
+
+    [RelayCommand]
+    private void CancelEditUser()
+    {
+        IsEditingUser = false;
+        EditingUser = null;
+        EditingFullName = "";
+        EditingMobileNumber = "";
+        EditingEmail = "";
+    }
+
+    [RelayCommand]
+    private async Task SaveUserEditAsync()
+    {
+        if (EditingUser == null) return;
+
+        var newName = EditingFullName?.Trim() ?? "";
+        if (string.IsNullOrWhiteSpace(newName))
+        {
+            AccountStatusMessage = "❌ Full Name is required.";
+            return;
+        }
+
+        try
+        {
+            AccountStatusMessage = "⏳ Updating DSM name...";
+            using var context = _serviceProvider.GetRequiredService<FuelProDbContext>();
+
+            // Duplicate check among other active users
+            var duplicateExists = await context.DsmUsers
+                .AnyAsync(u => u.DsmUserId != EditingUser.DsmUserId && u.FullName.ToLower() == newName.ToLower() && u.IsActive);
+            if (duplicateExists)
+            {
+                AccountStatusMessage = $"❌ A DSM with the name '{newName}' already exists.";
+                return;
+            }
+
+            var oldName = EditingUser.FullName;
+            var dbUser = await context.DsmUsers.FirstOrDefaultAsync(u => u.DsmUserId == EditingUser.DsmUserId);
+            if (dbUser != null)
+            {
+                dbUser.FullName = newName;
+                if (!string.IsNullOrWhiteSpace(EditingMobileNumber))
+                {
+                    dbUser.MobileNumber = EditingMobileNumber.Trim();
+                }
+                context.Entry(dbUser).State = EntityState.Modified;
+                await context.SaveChangesAsync();
+            }
+
+            // Propagate across profile repository (which updates DsmProfiles, DsmPersonalDebtors, OpeningBalances, DsmEntries, DsmSalaryAdjustments, DsmQrPayments, KhandharePetroleumEntries)
+            var profileRepo = _serviceProvider.GetService<Core.Repositories.IDsmProfileRepository>();
+            if (profileRepo != null && !string.IsNullOrWhiteSpace(oldName) && !string.Equals(oldName, newName, StringComparison.OrdinalIgnoreCase))
+            {
+                var profile = await context.DsmProfiles.FirstOrDefaultAsync(p => p.DsmName.ToLower() == oldName.ToLower());
+                if (profile != null)
+                {
+                    profile.DsmName = newName;
+                    await profileRepo.UpdateAsync(profile);
+                }
+                else
+                {
+                    // If no DsmProfile exists, propagate manually to ensure historical entries and balances stay consistent
+                    var entries = await context.DsmEntries.Where(e => e.DsmName.ToLower() == oldName.ToLower()).ToListAsync();
+                    foreach (var e in entries) e.DsmName = newName;
+
+                    var debtors = await context.DsmPersonalDebtors.Where(d => d.DsmName.ToLower() == oldName.ToLower()).ToListAsync();
+                    foreach (var d in debtors) d.DsmName = newName;
+
+                    var balances = await context.OpeningBalances
+                        .Where(b => (b.EntityType == "DsmLoss" || b.EntityType == "DSM") && b.EntityIdentifier.ToLower() == oldName.ToLower())
+                        .ToListAsync();
+                    foreach (var b in balances) b.EntityIdentifier = newName;
+
+                    await context.SaveChangesAsync();
+                }
+            }
+
+            IsEditingUser = false;
+            EditingUser = null;
+            AccountStatusMessage = $"✅ DSM name updated to '{newName}'.";
+            FuelPro.Core.Services.DsmEntryService.RaiseDsmProfileChanged();
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to update DSM user details");
+            AccountStatusMessage = $"❌ Update failed: {ex.Message}";
         }
     }
 

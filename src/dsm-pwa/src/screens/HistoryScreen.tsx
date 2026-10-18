@@ -215,7 +215,7 @@ export default function HistoryScreen({ onBack }: HistoryProps) {
                               <span>{(r.ClosingReading - r.OpeningReading).toFixed(2)} L (₹{((r.ClosingReading - r.OpeningReading) * r.Rate).toFixed(2)})</span>
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', marginTop: '2px' }}>
-                              <span>Op: {r.OpeningReading} | Cl: {r.ClosingReading}</span>
+                              <span>Op: {parseFloat(Number(r.OpeningReading).toFixed(2))} | Cl: {parseFloat(Number(r.ClosingReading).toFixed(2))}</span>
                               {testingLtr > 0 && <span style={{ color: '#fb923c' }}>Testing: {testingLtr} L</span>}
                             </div>
                           </div>

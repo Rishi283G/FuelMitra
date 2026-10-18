@@ -84,11 +84,11 @@ public class DebtorReconciliationSeparationTests
         // 2. Debtor Recovery must be 500
         Assert.Equal(500.0, report.DebtorRepaymentsTotal, precision: 2);
 
-        // 3. ExpectedCollection is the reconciliation-normalization target (5,000 + 500 = 5,500)
-        Assert.Equal(5500.0, report.ExpectedCollection, precision: 2);
+        // 3. ExpectedCollection is strictly operational sales (5,000) - repayments do not inflate it
+        Assert.Equal(5000.0, report.ExpectedCollection, precision: 2);
 
-        // 4. Verify separation: ExpectedCollection != TotalFuelAmount when recovery exists
-        Assert.NotEqual(report.TotalFuelAmount, report.ExpectedCollection);
+        // 4. Verify separation: Debtor recovery is available in dedicated register without inflating ExpectedCollection
+        Assert.Equal(report.TotalFuelAmount, report.ExpectedCollection);
     }
 
     [Fact]
@@ -205,11 +205,11 @@ public class DebtorReconciliationSeparationTests
         // Pure Gross Fuel Sale is strictly 10,000
         Assert.Equal(10000.0, report.TotalFuelAmount, precision: 2);
 
-        // ActualCollection has 10,000 (deposit) + 2,000 (cash repayment) = 12,000
-        Assert.Equal(12000.0, report.ActualCollection, precision: 2);
+        // ActualCollection has operational collections: 10,000 (deposit) - repayments do not inflate it
+        Assert.Equal(10000.0, report.ActualCollection, precision: 2);
 
-        // ExpectedCollection neutralizes recovery: 10,000 + 2,000 = 12,000
-        Assert.Equal(12000.0, report.ExpectedCollection, precision: 2);
+        // ExpectedCollection is operational sales: 10,000
+        Assert.Equal(10000.0, report.ExpectedCollection, precision: 2);
 
         // Shift is perfectly balanced! Difference is 0!
         Assert.Equal(0.0, report.Difference, precision: 2);
@@ -296,14 +296,14 @@ public class DebtorReconciliationSeparationTests
         // 3. Debtor Recovery = 30,740.00
         Assert.Equal(30740.0, report.DebtorRepaymentsTotal, precision: 2);
 
-        // 4. Expected Collection (Reconciliation Target) = 10,27,854.39 + 30,740.00 = 10,58,594.39
-        Assert.Equal(1058594.39, report.ExpectedCollection, precision: 2);
+        // 4. Expected Collection is operational sales (10,27,854.39) - repayments do not inflate it
+        Assert.Equal(1027854.39, report.ExpectedCollection, precision: 2);
 
         // 5. Total Collection (A):
-        //    Cash In Hand (746573.0 + 30740.0 = 777313.0) + Card (163273.0) + Petro (51042.0) + Debtors (109980.0) = 11,01,608.00
-        Assert.Equal(1101608.0, report.ActualCollection, precision: 2);
+        //    Cash In Hand (746573.0) + Card (163273.0) + Petro (51042.0) + Debtors (109980.0) = 10,70,868.00
+        Assert.Equal(1070868.0, report.ActualCollection, precision: 2);
 
-        // 6. Reconciliation Difference = 11,01,608.00 - 10,58,594.39 = +43,013.61
+        // 6. Reconciliation Difference = 10,70,868.00 - 10,27,854.39 = +43,013.61
         Assert.Equal(43013.61, report.Difference, precision: 2);
     }
 
@@ -377,11 +377,11 @@ public class DebtorReconciliationSeparationTests
         // Debtor Recovery = 500 + 700 = 1,200
         Assert.Equal(1200.0, dayReport.DebtorRepaymentsTotal, precision: 2);
 
-        // Expected Collection = 11,000 + 1,200 = 12,200
-        Assert.Equal(12200.0, dayReport.ExpectedCollection, precision: 2);
+        // Expected Collection is operational sales (11,000) - repayments do not inflate it
+        Assert.Equal(11000.0, dayReport.ExpectedCollection, precision: 2);
 
-        // Actual Collection = (5000+500) + (6000+700) = 12,200
-        Assert.Equal(12200.0, dayReport.ActualCollection, precision: 2);
+        // Actual Collection is operational collections (11,000)
+        Assert.Equal(11000.0, dayReport.ActualCollection, precision: 2);
 
         // Difference = 0 (Balanced)
         Assert.Equal(0.0, dayReport.Difference, precision: 2);
@@ -490,27 +490,27 @@ public class DebtorReconciliationSeparationTests
         var debtorsCat = report.CollectionBreakdown.First(c => c.Category == "Debtors");
         Assert.Equal(3000.0, debtorsCat.Amount);
 
-        // 3. Cash In Hand increments by Cash repayment (6000 base + 500 recovery = 6500)
+        // 3. Cash In Hand operational amount is base sales (6000), recovery in dedicated field (500)
         var cashInHand = report.CollectionBreakdown.First(c => c.Category == "Cash In Hand");
-        Assert.Equal(6500.0, cashInHand.Amount);
+        Assert.Equal(6000.0, cashInHand.Amount);
         Assert.Equal(6000.0, cashInHand.BaseAmount);
         Assert.Equal(500.0, cashInHand.RecoveryAmount);
 
-        // 4. PhonePe Direct increments by PhonePe repayment (2000 base + 1000 recovery = 3000)
+        // 4. PhonePe Direct operational amount is base sales (2000), recovery in dedicated field (1000)
         var phonePe = report.CollectionBreakdown.First(c => c.Category.Contains("PhonePe"));
-        Assert.Equal(3000.0, phonePe.Amount);
+        Assert.Equal(2000.0, phonePe.Amount);
         Assert.Equal(2000.0, phonePe.BaseAmount);
         Assert.Equal(1000.0, phonePe.RecoveryAmount);
 
-        // 5. PineLabs Card increments by Card repayment (3000 base + 2000 recovery = 5000)
+        // 5. PineLabs Card operational amount is base sales (3000), recovery in dedicated field (2000)
         var card = report.CollectionBreakdown.First(c => c.Category.Contains("PineLab") || c.Category.Contains("Card"));
-        Assert.Equal(5000.0, card.Amount);
+        Assert.Equal(3000.0, card.Amount);
         Assert.Equal(3000.0, card.BaseAmount);
         Assert.Equal(2000.0, card.RecoveryAmount);
 
-        // 6. PetroCard increments by PetroCard repayment (1000 base + 1500 recovery = 2500)
+        // 6. PetroCard operational amount is base sales (1000), recovery in dedicated field (1500)
         var petroCard = report.CollectionBreakdown.First(c => c.Category.Contains("PetroCard"));
-        Assert.Equal(2500.0, petroCard.Amount);
+        Assert.Equal(1000.0, petroCard.Amount);
         Assert.Equal(1000.0, petroCard.BaseAmount);
         Assert.Equal(1500.0, petroCard.RecoveryAmount);
 

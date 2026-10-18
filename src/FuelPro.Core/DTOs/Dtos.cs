@@ -159,6 +159,8 @@ public class FinalCalculationDto
 public class DsmSummaryRowDto
 {
     public string DsmName { get; set; } = string.Empty;
+    public DateTime? ShiftDate { get; set; }
+    public string ShiftDateDisplay => ShiftDate?.ToString("dd/MM/yyyy", System.Globalization.CultureInfo.InvariantCulture) ?? "—";
     public string Shift { get; set; } = string.Empty;
     public string ShiftLabel => Shift;
     public int PumpId { get; set; }
@@ -467,6 +469,8 @@ public class DebtorLogEntryDto
 public class DsmShiftTotalDto
 {
     public string DsmName { get; set; } = string.Empty;
+    public DateTime? ShiftDate { get; set; }
+    public string ShiftDateDisplay => ShiftDate?.ToString("dd/MM/yyyy", System.Globalization.CultureInfo.InvariantCulture) ?? "—";
     public int SessionsCount { get; set; }
     public string AssignedPumpsDisplay { get; set; } = string.Empty;
     public double GrossSales { get; set; }

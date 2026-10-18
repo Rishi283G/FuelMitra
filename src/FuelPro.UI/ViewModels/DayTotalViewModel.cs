@@ -124,7 +124,11 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
 
     private readonly IFeatureToggleService _featureService;
     private readonly ICollectionTypeService? _collectionTypeService;
+    private readonly Action _featureChangedHandler;
+    private readonly Action? _collectionTypesChangedHandler;
     public bool IsDsmPersonalDebtorVisible => _featureService.IsFeatureEnabled("Admin_DsmPersonalDebtor", true);
+    public string PersonalLedgerTitle => _featureService?.GetFeatureDisplayName("Operations_PersonalLedger", "DSM Loss") ?? "DSM Loss";
+    public string PersonalLedgerRegisterHeader => $"4b. {PersonalLedgerTitle} Register";
 
     [ObservableProperty] private string _phonePeDisplayName = "PhonePe Direct";
     [ObservableProperty] private string _creditCardDisplayName = "PineLabs Card";
@@ -148,22 +152,30 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
         _featureService = App.Services.GetRequiredService<IFeatureToggleService>();
         _collectionTypeService = App.Services?.GetService<ICollectionTypeService>();
 
-        _featureService.FeatureConfigurationChanged += () =>
+        _featureChangedHandler = () =>
         {
             var dispatcher = System.Windows.Application.Current?.Dispatcher;
             if (dispatcher != null && !dispatcher.CheckAccess())
             {
-                dispatcher.BeginInvoke(() => OnPropertyChanged(nameof(IsDsmPersonalDebtorVisible)));
+                dispatcher.BeginInvoke(() =>
+                {
+                    OnPropertyChanged(nameof(IsDsmPersonalDebtorVisible));
+                    OnPropertyChanged(nameof(PersonalLedgerTitle));
+                    OnPropertyChanged(nameof(PersonalLedgerRegisterHeader));
+                });
             }
             else
             {
                 OnPropertyChanged(nameof(IsDsmPersonalDebtorVisible));
+                OnPropertyChanged(nameof(PersonalLedgerTitle));
+                OnPropertyChanged(nameof(PersonalLedgerRegisterHeader));
             }
         };
+        _featureService.FeatureConfigurationChanged += _featureChangedHandler;
 
         if (_collectionTypeService != null)
         {
-            _collectionTypeService.CollectionTypesChanged += () =>
+            _collectionTypesChangedHandler = () =>
             {
                 var dispatcher = System.Windows.Application.Current?.Dispatcher;
                 if (dispatcher != null && !dispatcher.CheckAccess())
@@ -175,6 +187,7 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
                     _ = UpdateCollectionDisplayNamesAsync();
                 }
             };
+            _collectionTypeService.CollectionTypesChanged += _collectionTypesChangedHandler;
         }
         _ = UpdateCollectionDisplayNamesAsync();
 
@@ -211,6 +224,11 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        _featureService.FeatureConfigurationChanged -= _featureChangedHandler;
+        if (_collectionTypeService != null && _collectionTypesChangedHandler != null)
+        {
+            _collectionTypeService.CollectionTypesChanged -= _collectionTypesChangedHandler;
+        }
         DsmEntryService.DsmEntryChanged -= OnDataChanged;
         DsmEntryService.DebtorChanged -= OnDataChanged;
         GC.SuppressFinalize(this);

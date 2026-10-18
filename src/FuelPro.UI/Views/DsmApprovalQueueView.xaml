@@ -461,7 +461,7 @@
                     <!-- Personal Debtors Card -->
                     <materialDesign:Card Padding="20" UniformCornerRadius="12" Margin="0,0,0,16" materialDesign:ElevationAssist.Elevation="Dp3">
                         <StackPanel>
-                            <TextBlock Text="👥 DSM Loss (PWA)" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}" Margin="0,0,0,12"/>
+                            <TextBlock Text="{Binding PersonalLedgerPwaHeader}" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}" Margin="0,0,0,12"/>
                             <DataGrid ItemsSource="{Binding PersonalDebtors}" AutoGenerateColumns="False"
                                       IsReadOnly="{Binding IsReadOnlyMode}"
                                       CanUserAddRows="{Binding IsEditable}" CanUserDeleteRows="{Binding IsEditable}"
@@ -542,7 +542,7 @@
                                     <DataGridTextColumn Header="Card Mode (PhonePe / PhonePe Card / PineLabs Card / PetroCard)" Binding="{Binding Mode}" Width="2*"/>
                                     <DataGridTextColumn Header="TID" Binding="{Binding Tid}" Width="*"/>
                                     <DataGridTextColumn Header="Batch No." Binding="{Binding Batch}" Width="*"/>
-                                    <DataGridTextColumn Header="OTP" Binding="{Binding Otp}" Width="*"/>
+                                    <DataGridTextColumn Header="Slip Number" Binding="{Binding Otp}" Width="*"/>
                                     <DataGridTemplateColumn Header="Amount (₹)" Width="120">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>

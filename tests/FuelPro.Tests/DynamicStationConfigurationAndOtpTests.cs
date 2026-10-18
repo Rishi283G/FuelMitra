@@ -195,7 +195,7 @@ public class DynamicStationConfigurationAndOtpTests
         var otpTracking = defaults.FirstOrDefault(f => f.FeatureKey == "Operations_OtpMachineTracking");
         Assert.NotNull(otpTracking);
         Assert.Equal("Collections", otpTracking!.Category);
-        Assert.Contains("OTP", otpTracking.DisplayName);
+        Assert.Contains("Slip Number", otpTracking.DisplayName);
     }
 
     [Fact]

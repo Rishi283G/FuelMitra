@@ -430,7 +430,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   const addMachineTransaction = (typeCode?: string) => {
     const targetCode = (typeCode || newTxType || eligibleOtpTypes[0]?.code || "").trim();
     if (!targetCode) {
-      alert("Please select a collection method for the OTP transaction.");
+      alert("Please select a collection method for the Slip Number transaction.");
       return;
     }
     const amt = parseFloat(newTxAmount);
@@ -440,7 +440,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     }
     const otp = newTxOtp.trim();
     if (!otp) {
-      alert("OTP code is required for machine transactions.");
+      alert("Slip Number is required for machine transactions.");
       return;
     }
     const effectiveSlot = newTxSlot || (shiftType === "B" ? "Day" : "Morning");
@@ -1284,7 +1284,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           const draftEntry = draftMap[n.nozzleId];
 
           // Opening reading: authoritative closing from previous shift, else 0 (manual entry mode)
-          const opening = prevClosing > 0 ? prevClosing : 0;
+          const opening = prevClosing > 0 ? parseFloat(Number(prevClosing).toFixed(2)) : 0;
 
           // Closing reading: ALWAYS preserve whatever the user actively typed in memory, else restore draft
           let closing = 0;
@@ -3576,7 +3576,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                 <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                   <KeyRound size={18} color="#38bdf8" />
                   <h3 style={{ fontSize: "1rem", fontWeight: "bold", margin: 0, color: "#38bdf8" }}>
-                    Machine OTP Transactions
+                    Machine Slip Number Transactions
                   </h3>
                 </div>
                 <span style={{ fontSize: "0.85rem", fontWeight: "bold", color: "#38bdf8" }}>
@@ -3649,7 +3649,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                     />
                   </div>
                   <div className="field-group">
-                    <label className="field-label">OTP Code *</label>
+                    <label className="field-label">Slip Number *</label>
                     <input
                       type="text"
                       className="field-input"
@@ -3681,7 +3681,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
               {/* Transactions Table / List */}
               {machineTransactions.length === 0 ? (
                 <div style={{ textAlign: "center", padding: "12px", color: "#64748b", fontSize: "0.85rem", fontStyle: "italic" }}>
-                  No itemized OTP swipes added yet.
+                  No itemized Slip Number swipes added yet.
                 </div>
               ) : (
                 <div style={{ overflowX: "auto" }}>
@@ -3691,7 +3691,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                         <th style={{ padding: "6px 8px" }}>Method</th>
                         <th style={{ padding: "6px 8px" }}>Slot</th>
                         <th style={{ padding: "6px 8px" }}>Amount (₹)</th>
-                        <th style={{ padding: "6px 8px" }}>OTP</th>
+                        <th style={{ padding: "6px 8px" }}>Slip No.</th>
                         <th style={{ padding: "6px 8px" }}>TID / Batch</th>
                         <th style={{ padding: "6px 8px", width: "40px" }}></th>
                       </tr>

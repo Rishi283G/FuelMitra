@@ -237,18 +237,18 @@ public class ReportService : IReportService
             }
         }
 
-        dto.PetroCardMorning = petroCardMorning + (normShift == "B" ? dto.PetroCardRepayments : 0);
-        dto.PetroCardNight = petroCardNight + (normShift != "B" ? dto.PetroCardRepayments : 0);
+        dto.PetroCardMorning = petroCardMorning;
+        dto.PetroCardNight = petroCardNight;
 
 
-        // Apply debtor repayments adjustments (silent additions per logic rules)
+        // Debtor repayments excluded from operational sales totals per client specification
         double finalCashDeposit = dto.Cash1.GrandTotal;
-        double finalCashInHand = dto.Cash2.GrandTotal + dto.CashRepayments;
-        double finalPhonePeMorning = phonePeMorning + (normShift == "B" ? dto.PhonePeRepayments : 0);
-        double finalPhonePeNight = phonePeNight + (normShift != "B" ? dto.PhonePeRepayments : 0);
-        double finalCreditCardMorning = creditCardMorning + (normShift == "B" ? dto.CreditCardRepayments : 0);
-        double finalCreditCardNight = creditCardNight + (normShift != "B" ? dto.CreditCardRepayments : 0);
-        double finalPetroCard = petroCard + dto.PetroCardRepayments;
+        double finalCashInHand = dto.Cash2.GrandTotal;
+        double finalPhonePeMorning = phonePeMorning;
+        double finalPhonePeNight = phonePeNight;
+        double finalCreditCardMorning = creditCardMorning;
+        double finalCreditCardNight = creditCardNight;
+        double finalPetroCard = petroCard;
         double finalPhonePeCardMorning = phonePeCardMorning;
         double finalPhonePeCardNight = phonePeCardNight;
 
@@ -427,7 +427,7 @@ public class ReportService : IReportService
             breakdownList.Add(new CollectionCategoryDto
             {
                 Category = t.DisplayName,
-                Amount = sum + dynamicRecovery,
+                Amount = sum,
                 BaseAmount = sum,
                 RecoveryAmount = dynamicRecovery
             });
@@ -499,7 +499,7 @@ public class ReportService : IReportService
 
         dto.GrandTotalSaleAmount = dto.DsrTotalFuelAmount + dto.OilDefSalesTotal;
         dto.ActualCollection = dto.CollectionBreakdown.Where(c => c.Category != "DSM Short" && !c.IsInformational && !c.Category.EndsWith("Testing", StringComparison.OrdinalIgnoreCase) && !string.Equals(c.Category, "Others", StringComparison.OrdinalIgnoreCase) && !string.Equals(c.Category, "Other", StringComparison.OrdinalIgnoreCase)).Sum(c => c.Amount);
-        dto.ExpectedCollection = dto.DsrTotalFuelAmount + dto.OilDefSalesTotal + reconcilableRecoveriesTotal;
+        dto.ExpectedCollection = dto.DsrTotalFuelAmount + dto.OilDefSalesTotal;
         double rawDiff = dto.ActualCollection - dto.ExpectedCollection;
         dto.Difference = rawDiff < -0.01 ? -dto.TotalDsmShort : (rawDiff > 0.01 ? rawDiff : 0);
         dto.IsBalanced = Math.Abs(dto.Difference) < 0.01;
@@ -766,14 +766,14 @@ public class ReportService : IReportService
         }
 
         // Standardize categories for Day (Aggregates Morning+Day as Morning, and Night as Night)
-        double finalPhonePeMorning = phonePeDirectMorning + phonePeDirectDay + dto.PhonePeRepayments;
+        double finalPhonePeMorning = phonePeDirectMorning + phonePeDirectDay;
         double finalPhonePeNight = phonePeDirectNight;
         double finalPhonePeCardMorning = phonePeCardMorning + phonePeCardDay;
         double finalPhonePeCardNight = phonePeCardNight;
-        double finalCreditCardMorning = pineLabsCardMorning + pineLabsCardDay + dto.CreditCardRepayments;
+        double finalCreditCardMorning = pineLabsCardMorning + pineLabsCardDay;
         double finalCreditCardNight = pineLabsCardNight;
-        double finalPetroCard = petroCardMorning + petroCardDay + petroCardNight + dto.PetroCardRepayments;
-        dto.PetroCardMorning = petroCardMorning + petroCardDay + dto.PetroCardRepayments;
+        double finalPetroCard = petroCardMorning + petroCardDay + petroCardNight;
+        dto.PetroCardMorning = petroCardMorning + petroCardDay;
         dto.PetroCardNight = petroCardNight;
 
         // 9. Testing summary totals (Tank-Wise, excluding disabled testing / CNG)
@@ -880,7 +880,7 @@ public class ReportService : IReportService
         {
             dayBreakdown.Add(new() { Category = cdName, Amount = dto.Cash1.GrandTotal, BaseAmount = dto.Cash1.GrandTotal, RecoveryAmount = 0 });
         }
-        dayBreakdown.Add(new() { Category = "Cash In Hand", Amount = dto.Cash2.GrandTotal + dto.CashRepayments, BaseAmount = dto.Cash2.GrandTotal, RecoveryAmount = dto.CashRepayments });
+        dayBreakdown.Add(new() { Category = "Cash In Hand", Amount = dto.Cash2.GrandTotal, BaseAmount = dto.Cash2.GrandTotal, RecoveryAmount = dto.CashRepayments });
 
         if (phActive)
         {
@@ -929,7 +929,7 @@ public class ReportService : IReportService
             dayBreakdown.Add(new CollectionCategoryDto
             {
                 Category = t.DisplayName,
-                Amount = sum + dynamicRecovery,
+                Amount = sum,
                 BaseAmount = sum,
                 RecoveryAmount = dynamicRecovery
             });
@@ -1002,7 +1002,7 @@ public class ReportService : IReportService
         // 12. Final Reconciliation
         dto.GrandTotalSaleAmount = dto.DsrTotalFuelAmount + dto.OilDefSalesTotal;
         dto.ActualCollection = dto.CollectionBreakdown.Where(c => c.Category != "DSM Short" && !c.IsInformational && !c.Category.EndsWith("Testing", StringComparison.OrdinalIgnoreCase) && !string.Equals(c.Category, "Others", StringComparison.OrdinalIgnoreCase) && !string.Equals(c.Category, "Other", StringComparison.OrdinalIgnoreCase)).Sum(c => c.Amount);
-        dto.ExpectedCollection = dto.DsrTotalFuelAmount + dto.OilDefSalesTotal + reconcilableRecoveriesTotal;
+        dto.ExpectedCollection = dto.DsrTotalFuelAmount + dto.OilDefSalesTotal;
         double rawDiff = dto.ActualCollection - dto.ExpectedCollection;
         dto.Difference = rawDiff < -0.01 ? -dto.TotalDsmShort : (rawDiff > 0.01 ? rawDiff : 0);
         dto.IsBalanced = Math.Abs(dto.Difference) < 0.01;

@@ -227,6 +227,7 @@ public class ShiftAggregationService : IShiftAggregationService
                 rows.Add(new DsmSummaryRowDto
                 {
                     DsmName = entry.DsmName,
+                    ShiftDate = entry.Shift?.ShiftDate ?? (entry.CreatedAt != default ? entry.CreatedAt.Date : (DateTime?)null),
                     Shift = entry.Shift?.ShiftType ?? "",
                     PumpId = entry.PumpId,
                     ConnectedPumpId = entry.ConnectedPumpId ?? connectedSlaves.FirstOrDefault()?.PumpId,
@@ -333,10 +334,15 @@ public class ShiftAggregationService : IShiftAggregationService
         if (rows == null || rows.Count == 0) return new List<DsmShiftTotalDto>();
 
         return rows
-            .GroupBy(r => (r.DsmName ?? string.Empty).Trim(), StringComparer.OrdinalIgnoreCase)
+            .GroupBy(r => new
+            {
+                DsmKey = (r.DsmName ?? string.Empty).Trim().ToUpperInvariant(),
+                Date = r.ShiftDate?.Date
+            })
             .Select(g =>
             {
-                var dsmName = g.Key;
+                var dsmName = g.First().DsmName?.Trim() ?? string.Empty;
+                var shiftDate = g.Key.Date;
                 var pumpsList = g.Select(r => r.PumpLabel).Where(p => !string.IsNullOrEmpty(p)).Distinct().ToList();
                 var pumpsDisplay = string.Join(", ", pumpsList);
 
@@ -372,6 +378,7 @@ public class ShiftAggregationService : IShiftAggregationService
                 return new DsmShiftTotalDto
                 {
                     DsmName = dsmName,
+                    ShiftDate = shiftDate,
                     SessionsCount = g.Count(),
                     AssignedPumpsDisplay = pumpsDisplay,
                     GrossSales = grossSales,
@@ -391,7 +398,8 @@ public class ShiftAggregationService : IShiftAggregationService
                     Mismatch = mismatch
                 };
             })
-            .OrderBy(s => s.DsmName)
+            .OrderBy(s => s.ShiftDate)
+            .ThenBy(s => s.DsmName)
             .ToList();
     }
 
@@ -459,6 +467,7 @@ public class ShiftAggregationService : IShiftAggregationService
                             DsmName = entry.DsmName,
                             PumpId = entry.PumpId,
                             DebtorName = debit.DebtorName,
+                            VehicleNumber = debit.VehicleNumber,
                             Amount = debit.Amount,
                             ChequeNo = debit.ChequeNo
                         });

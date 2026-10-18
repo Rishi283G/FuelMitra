@@ -337,6 +337,7 @@
                                Margin="0,0,0,12" Opacity="0.7"/>
                     <DataGrid ItemsSource="{Binding DsmShiftTotals}" AutoGenerateColumns="False" IsReadOnly="True" MaxHeight="220">
                         <DataGrid.Columns>
+                            <DataGridTextColumn Header="Date" Binding="{Binding ShiftDateDisplay}" Width="95"/>
                             <DataGridTextColumn Header="DSM Name" Binding="{Binding DsmName}" FontWeight="Bold"/>
                             <DataGridTextColumn Header="Sessions" Binding="{Binding SessionsCount}" Width="70"/>
                             <DataGridTextColumn Header="Pumps" Binding="{Binding AssignedPumpsDisplay}"/>

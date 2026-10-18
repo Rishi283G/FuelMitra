@@ -9,6 +9,7 @@
     <UserControl.Resources>
         <converters:InverseBoolConverter x:Key="InverseBoolConverter"/>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
+        <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter"/>
         <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
     </UserControl.Resources>
 
@@ -30,41 +31,79 @@
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
 
-                <!-- Left Panel: Create Account -->
+                <!-- Left Panel: Create or Edit Account -->
                 <materialDesign:Card Grid.Column="0" Padding="20" UniformCornerRadius="12" materialDesign:ElevationAssist.Elevation="Dp3" VerticalAlignment="Top">
-                    <StackPanel>
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
-                            <materialDesign:PackIcon Kind="AccountPlus" Width="24" Height="24" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
-                            <TextBlock Text="Provision DSM Account" FontSize="16" FontWeight="Bold" Margin="8,0" VerticalAlignment="Center"/>
+                    <Grid>
+                        <!-- Provision View -->
+                        <StackPanel Visibility="{Binding IsEditingUser, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                                <materialDesign:PackIcon Kind="AccountPlus" Width="24" Height="24" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                <TextBlock Text="Provision DSM Account" FontSize="16" FontWeight="Bold" Margin="8,0" VerticalAlignment="Center"/>
+                            </StackPanel>
+
+                            <TextBox Text="{Binding NewEmployeeCode, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,12"
+                                     materialDesign:HintAssist.Hint="Employee Code / ID" materialDesign:HintAssist.IsFloating="True"
+                                     Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+
+                            <TextBox Text="{Binding NewFullName, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,12"
+                                     materialDesign:HintAssist.Hint="DSM Full Name" materialDesign:HintAssist.IsFloating="True"
+                                     Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+
+                            <TextBox Text="{Binding NewEmail, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,12"
+                                     materialDesign:HintAssist.Hint="Email (Login/PWA)" materialDesign:HintAssist.IsFloating="True"
+                                     Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+
+                            <TextBox Text="{Binding NewMobileNumber, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,12"
+                                     materialDesign:HintAssist.Hint="Mobile Number (Login)" materialDesign:HintAssist.IsFloating="True"
+                                     Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+
+                            <TextBox Text="{Binding NewPassword, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,16"
+                                     materialDesign:HintAssist.Hint="Temporary Password" materialDesign:HintAssist.IsFloating="True"
+                                     Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+
+                            <Button Content="Provision Account" Command="{Binding CreateAccountCommand}" Height="40"
+                                    IsEnabled="{Binding IsCreatingAccount, Converter={StaticResource InverseBoolConverter}}"
+                                    Style="{StaticResource MaterialDesignRaisedButton}"/>
+
+                            <TextBlock Text="{Binding AccountStatusMessage}" Margin="0,12,0,0" TextWrapping="Wrap"
+                                       FontSize="12" FontWeight="SemiBold" Foreground="#D32F2F" TextAlignment="Center"/>
                         </StackPanel>
 
-                        <TextBox Text="{Binding NewEmployeeCode, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,12"
-                                 materialDesign:HintAssist.Hint="Employee Code / ID" materialDesign:HintAssist.IsFloating="True"
-                                 Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                        <!-- Edit View -->
+                        <StackPanel Visibility="{Binding IsEditingUser, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                                <materialDesign:PackIcon Kind="AccountEdit" Width="24" Height="24" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                <TextBlock Text="Edit DSM Profile" FontSize="16" FontWeight="Bold" Margin="8,0" VerticalAlignment="Center"/>
+                            </StackPanel>
 
-                        <TextBox Text="{Binding NewFullName, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,12"
-                                 materialDesign:HintAssist.Hint="DSM Full Name" materialDesign:HintAssist.IsFloating="True"
-                                 Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                            <TextBox Text="{Binding EditingFullName, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,12"
+                                     materialDesign:HintAssist.Hint="DSM Full Name" materialDesign:HintAssist.IsFloating="True"
+                                     Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
 
-                        <TextBox Text="{Binding NewEmail, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,12"
-                                 materialDesign:HintAssist.Hint="Email (Login/PWA)" materialDesign:HintAssist.IsFloating="True"
-                                 Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                            <TextBox Text="{Binding EditingMobileNumber, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,12"
+                                     materialDesign:HintAssist.Hint="Mobile Number" materialDesign:HintAssist.IsFloating="True"
+                                     Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
 
-                        <TextBox Text="{Binding NewMobileNumber, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,12"
-                                 materialDesign:HintAssist.Hint="Mobile Number (Login)" materialDesign:HintAssist.IsFloating="True"
-                                 Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                            <TextBox Text="{Binding EditingEmail, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,16"
+                                     materialDesign:HintAssist.Hint="Email" materialDesign:HintAssist.IsFloating="True"
+                                     Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
 
-                        <TextBox Text="{Binding NewPassword, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,16"
-                                 materialDesign:HintAssist.Hint="Temporary Password" materialDesign:HintAssist.IsFloating="True"
-                                 Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="8"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Button Grid.Column="0" Content="Save" Command="{Binding SaveUserEditCommand}" Height="40"
+                                        Style="{StaticResource MaterialDesignRaisedButton}"/>
+                                <Button Grid.Column="2" Content="Cancel" Command="{Binding CancelEditUserCommand}" Height="40"
+                                        Style="{StaticResource MaterialDesignOutlinedButton}"/>
+                            </Grid>
 
-                        <Button Content="Provision Account" Command="{Binding CreateAccountCommand}" Height="40"
-                                IsEnabled="{Binding IsCreatingAccount, Converter={StaticResource InverseBoolConverter}}"
-                                Style="{StaticResource MaterialDesignRaisedButton}"/>
-
-                        <TextBlock Text="{Binding AccountStatusMessage}" Margin="0,12,0,0" TextWrapping="Wrap"
-                                   FontSize="12" FontWeight="SemiBold" Foreground="#D32F2F" TextAlignment="Center"/>
-                    </StackPanel>
+                            <TextBlock Text="{Binding AccountStatusMessage}" Margin="0,12,0,0" TextWrapping="Wrap"
+                                       FontSize="12" FontWeight="SemiBold" Foreground="#D32F2F" TextAlignment="Center"/>
+                        </StackPanel>
+                    </Grid>
                 </materialDesign:Card>
 
                 <!-- Right Panel: Accounts Grid -->
@@ -102,12 +141,17 @@
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>
 
-                                <DataGridTemplateColumn Header="Action" Width="100">
+                                <DataGridTemplateColumn Header="Action" Width="150">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
-                                            <Button Content="Delete" Style="{StaticResource MaterialDesignOutlinedButton}" Height="28" Padding="12,0" FontSize="11"
-                                                    Command="{Binding DataContext.DeleteUserCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                    CommandParameter="{Binding}"/>
+                                            <StackPanel Orientation="Horizontal">
+                                                <Button Content="Edit" Style="{StaticResource MaterialDesignOutlinedButton}" Height="28" Padding="10,0" FontSize="11" Margin="0,0,6,0"
+                                                        Command="{Binding DataContext.StartEditUserCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}"/>
+                                                <Button Content="Delete" Style="{StaticResource MaterialDesignOutlinedButton}" Height="28" Padding="10,0" FontSize="11"
+                                                        Command="{Binding DataContext.DeleteUserCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}"/>
+                                            </StackPanel>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>

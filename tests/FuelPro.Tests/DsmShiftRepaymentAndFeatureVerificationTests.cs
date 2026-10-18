@@ -114,9 +114,9 @@ public class DsmShiftRepaymentAndFeatureVerificationTests
 
         // 1. Shift A asserts
         Assert.Equal(500, reportA.CashRepayments);
-        Assert.Equal(5500, reportA.ExpectedCollection); // 5000 fuel + 500 recovery
+        Assert.Equal(5000, reportA.ExpectedCollection); // 5000 fuel (not inflated by repayments)
         var cashInHandA = reportA.CollectionBreakdown.First(c => c.Category == "Cash In Hand").Amount;
-        Assert.Equal(2500, cashInHandA); // 2000 base + 500 repayment
+        Assert.Equal(2000, cashInHandA); // 2000 base operational cash
         Assert.True(reportA.IsBalanced);
         Assert.Equal(0, reportA.Difference, precision: 2);
 
@@ -159,9 +159,9 @@ public class DsmShiftRepaymentAndFeatureVerificationTests
         );
 
         Assert.Equal(500, dayReport.CashRepayments);
-        Assert.Equal(5500, dayReport.ExpectedCollection);
+        Assert.Equal(5000, dayReport.ExpectedCollection);
         var dayCashInHand = dayReport.CollectionBreakdown.First(c => c.Category == "Cash In Hand").Amount;
-        Assert.Equal(2500, dayCashInHand);
+        Assert.Equal(2000, dayCashInHand);
         Assert.Single(dayReport.PersonalDebtorRepayments);
         Assert.Equal(500, dayReport.PersonalDebtorRepayments[0].Amount);
         Assert.True(dayReport.IsBalanced);
@@ -242,15 +242,15 @@ public class DsmShiftRepaymentAndFeatureVerificationTests
         Assert.Equal(0, report.CashRepayments);
 
         var phonePeCat = report.CollectionBreakdown.First(c => c.Category.Contains("PhonePe")).Amount;
-        Assert.Equal(3700, phonePeCat); // 3000 base + 700 recovery
+        Assert.Equal(3000, phonePeCat); // 3000 base
 
         var cardCat = report.CollectionBreakdown.First(c => c.Category.Contains("Card") || c.Category.Contains("PineLab")).Amount;
-        Assert.Equal(2800, cardCat); // 2000 base + 800 recovery
+        Assert.Equal(2000, cardCat); // 2000 base
 
-        // ExpectedCollection = 10000 + 700 + 800 = 11500
-        Assert.Equal(11500, report.ExpectedCollection);
-        // ActualCollection = 5000 (cash) + 3700 (phonepe) + 2800 (card) = 11500
-        Assert.Equal(11500, report.ActualCollection);
+        // ExpectedCollection = 10000 pure fuel sales (not inflated by repayments)
+        Assert.Equal(10000, report.ExpectedCollection);
+        // ActualCollection = 5000 (cash) + 3000 (phonepe) + 2000 (card) = 10000
+        Assert.Equal(10000, report.ActualCollection);
         Assert.True(report.IsBalanced);
         Assert.Equal(0, report.Difference, precision: 2);
 
@@ -340,7 +340,7 @@ public class DsmShiftRepaymentAndFeatureVerificationTests
             stationName: "Mitali Service Station"
         );
         Assert.Equal(1200, dayReport.CashRepayments);
-        Assert.Equal(5200, dayReport.ExpectedCollection);
+        Assert.Equal(4000, dayReport.ExpectedCollection);
         Assert.Single(dayReport.PersonalDebtorRepayments);
         Assert.Equal(1200, dayReport.PersonalDebtorRepayments[0].Amount);
     }

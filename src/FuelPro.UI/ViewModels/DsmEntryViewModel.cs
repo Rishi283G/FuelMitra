@@ -396,19 +396,19 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
 
     [ObservableProperty] private string _phonePeDisplayName = "PhonePe";
     [ObservableProperty] private bool _phonePeHasTidBatch = true;
-    [ObservableProperty] private bool _phonePeIsActive = true;
+    [ObservableProperty] private bool _phonePeIsActive;
     [ObservableProperty] private bool _phonePeEnableMorning = true;
     [ObservableProperty] private bool _phonePeEnableNight = true;
 
     [ObservableProperty] private string _creditCardDisplayName = "Credit / Debit Card";
     [ObservableProperty] private bool _creditCardHasTidBatch = true;
-    [ObservableProperty] private bool _creditCardIsActive = true;
+    [ObservableProperty] private bool _creditCardIsActive;
     [ObservableProperty] private bool _creditCardEnableMorning = true;
     [ObservableProperty] private bool _creditCardEnableNight = true;
 
     [ObservableProperty] private string _petroCardDisplayName = "PetroCard";
     [ObservableProperty] private bool _petroCardHasTidBatch = true;
-    [ObservableProperty] private bool _petroCardIsActive = true;
+    [ObservableProperty] private bool _petroCardIsActive;
     [ObservableProperty] private bool _petroCardEnableMorning = true;
     [ObservableProperty] private bool _petroCardEnableNight = true;
 
@@ -535,6 +535,8 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
     public ObservableCollection<string> AvailableOtpCollectionTypes { get; } = new();
     public string[] AvailableOtpSlots { get; } = { "Morning", "Day", "Night", "General" };
 
+    private List<CollectionTypeMaster> _cachedAllCollectionTypes = new();
+
     public void RefreshAvailableOtpCollectionTypes()
     {
         var types = new List<string>();
@@ -545,11 +547,40 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
             if (PetroCardIsActive && PetroCardHasTidBatch) types.Add("PETROCARD");
             if (PhonePeIsActive && PhonePeHasTidBatch) types.Add("PHONEPE");
 
+            // Explicitly support active PINELABS_CARD if present and eligible
+            var pineLabs = _cachedAllCollectionTypes.FirstOrDefault(c => string.Equals(c.Code, "PINELABS_CARD", StringComparison.OrdinalIgnoreCase));
+            if (pineLabs != null && pineLabs.IsActive && pineLabs.HasTidBatch && !types.Contains("PINELABS_CARD", StringComparer.OrdinalIgnoreCase))
+            {
+                types.Add("PINELABS_CARD");
+            }
+
+            // Include any other active developer-configured collection types with HasTidBatch
+            foreach (var master in _cachedAllCollectionTypes)
+            {
+                if (master.HasTidBatch && master.IsActive && !string.IsNullOrWhiteSpace(master.Code))
+                {
+                    var norm = PaymentCollection.NormalizeCollectionTypeCode(master.Code);
+                    if (!types.Contains(master.Code, StringComparer.OrdinalIgnoreCase) && !types.Contains(norm, StringComparer.OrdinalIgnoreCase))
+                    {
+                        types.Add(master.Code);
+                    }
+                }
+            }
+
             foreach (var dyn in DynamicCollections)
             {
                 if (dyn.HasTidBatch && !string.IsNullOrWhiteSpace(dyn.Code) && !types.Contains(dyn.Code, StringComparer.OrdinalIgnoreCase))
                 {
                     types.Add(dyn.Code);
+                }
+            }
+
+            // Preserve any historical OTP transaction codes so existing rows retain their value
+            foreach (var tx in OtpTransactions)
+            {
+                if (!string.IsNullOrWhiteSpace(tx.CollectionTypeCode) && !types.Contains(tx.CollectionTypeCode, StringComparer.OrdinalIgnoreCase))
+                {
+                    types.Add(tx.CollectionTypeCode);
                 }
             }
         }
@@ -929,6 +960,8 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
                 };
             }
 
+            _cachedAllCollectionTypes = allTypes;
+
             bool IsEnabledForCurrentShift(CollectionTypeMaster type)
             {
                 if (IsShiftC) return type.EnableNight;
@@ -937,13 +970,20 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
                 return type.EnableMorning;
             }
 
+            bool hasHistoricalPhonePe = (existingPayment != null && (existingPayment.PhonePe > 0 || existingPayment.PhonePeMorning > 0 || existingPayment.PhonePeNight > 0))
+                || (PhonePeMorning.GetValueOrDefault() > 0 || PhonePeNight.GetValueOrDefault() > 0);
+            bool hasHistoricalCreditCard = (existingPayment != null && (existingPayment.CreditCard > 0 || existingPayment.CreditCardMorning > 0 || existingPayment.CreditCardNight > 0))
+                || (CreditCardMorning.GetValueOrDefault() > 0 || CreditCardNight.GetValueOrDefault() > 0);
+            bool hasHistoricalPetroCard = (existingPayment != null && (existingPayment.PetroCard > 0 || existingPayment.PetroCardMorning > 0 || existingPayment.PetroCardNight > 0))
+                || (PetroCardMorning.GetValueOrDefault() > 0 || PetroCardNight.GetValueOrDefault() > 0);
+
             // 1. Resolve built-in PhonePe
             var ph = allTypes.FirstOrDefault(c => string.Equals(c.Code, "PHONEPE", StringComparison.OrdinalIgnoreCase));
             if (ph != null)
             {
                 PhonePeDisplayName = ph.DisplayName;
                 PhonePeHasTidBatch = ph.HasTidBatch;
-                PhonePeIsActive = ph.IsActive && IsEnabledForCurrentShift(ph);
+                PhonePeIsActive = (ph.IsActive && IsEnabledForCurrentShift(ph)) || hasHistoricalPhonePe;
                 PhonePeEnableMorning = ph.EnableMorning;
                 PhonePeEnableNight = ph.EnableNight;
             }
@@ -951,7 +991,7 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
             {
                 PhonePeDisplayName = "PhonePe";
                 PhonePeHasTidBatch = true;
-                PhonePeIsActive = true;
+                PhonePeIsActive = hasHistoricalPhonePe;
                 PhonePeEnableMorning = true;
                 PhonePeEnableNight = true;
             }
@@ -965,7 +1005,7 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
             {
                 CreditCardDisplayName = cc.DisplayName;
                 CreditCardHasTidBatch = cc.HasTidBatch;
-                CreditCardIsActive = cc.IsActive && IsEnabledForCurrentShift(cc);
+                CreditCardIsActive = (cc.IsActive && IsEnabledForCurrentShift(cc)) || hasHistoricalCreditCard;
                 CreditCardEnableMorning = cc.EnableMorning;
                 CreditCardEnableNight = cc.EnableNight;
             }
@@ -973,7 +1013,7 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
             {
                 CreditCardDisplayName = "Credit / Debit Card";
                 CreditCardHasTidBatch = true;
-                CreditCardIsActive = true;
+                CreditCardIsActive = hasHistoricalCreditCard;
                 CreditCardEnableMorning = true;
                 CreditCardEnableNight = true;
             }
@@ -986,7 +1026,7 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
             {
                 PetroCardDisplayName = pc.DisplayName;
                 PetroCardHasTidBatch = pc.HasTidBatch;
-                PetroCardIsActive = pc.IsActive && IsEnabledForCurrentShift(pc);
+                PetroCardIsActive = (pc.IsActive && IsEnabledForCurrentShift(pc)) || hasHistoricalPetroCard;
                 PetroCardEnableMorning = pc.EnableMorning;
                 PetroCardEnableNight = pc.EnableNight;
             }
@@ -994,7 +1034,7 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
             {
                 PetroCardDisplayName = "PetroCard";
                 PetroCardHasTidBatch = true;
-                PetroCardIsActive = true;
+                PetroCardIsActive = hasHistoricalPetroCard;
                 PetroCardEnableMorning = true;
                 PetroCardEnableNight = true;
             }
@@ -3145,11 +3185,11 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
                 var tx = OtpTransactions[i];
                 if (tx.Amount > 0 && string.IsNullOrWhiteSpace(tx.CollectionTypeCode))
                 {
-                    errors.Add($"OTP transaction #{i + 1} has an amount of ₹{tx.Amount:N2} but no collection type is selected. Please select a collection type or remove the row.");
+                    errors.Add($"Slip Number transaction #{i + 1} has an amount of ₹{tx.Amount:N2} but no collection type is selected. Please select a collection type or remove the row.");
                 }
                 if (tx.Amount < 0)
                 {
-                    errors.Add($"OTP transaction #{i + 1} amount cannot be negative.");
+                    errors.Add($"Slip Number transaction #{i + 1} amount cannot be negative.");
                 }
             }
         }
