@@ -255,14 +255,8 @@ public class PwaDsmReconciliationFixTests : IDisposable
             await Task.Delay(50);
         }
 
-        // Must have exactly 1 card swipe row for PINELABS_CARD
-        Assert.Single(queueVm.CardSwipeDetails);
-        var row = queueVm.CardSwipeDetails.First();
-        Assert.Equal("PINELABS_CARD", row.Mode);
-        Assert.Equal(200.0, row.Amount);
-
-        // Provenance fix: row must NOT be marked synthetic summary
-        Assert.False(row.IsSyntheticSummary);
+        // Strict UI separation: CardSwipeDetails is strictly for OTP machine transactions
+        Assert.Empty(queueVm.CardSwipeDetails);
 
         // Recalculate totals must include the ₹200.00 collection (base mock 2850 + 200 = 3050)
         typeof(DsmApprovalQueueViewModel).GetMethod("RecalculateTotals", BindingFlags.NonPublic | BindingFlags.Instance)?.Invoke(queueVm, null);
@@ -297,12 +291,15 @@ public class PwaDsmReconciliationFixTests : IDisposable
         await Task.Delay(100);
         while (queueVm.IsLoadingDetails) await Task.Delay(50);
 
-        Assert.Equal(2, queueVm.CardSwipeDetails.Count);
-        Assert.All(queueVm.CardSwipeDetails, r => Assert.False(r.IsSyntheticSummary));
+        // Strict UI separation: No non-OTP items in CardSwipeDetails
+        Assert.Empty(queueVm.CardSwipeDetails);
 
         typeof(DsmApprovalQueueViewModel).GetMethod("RecalculateTotals", BindingFlags.NonPublic | BindingFlags.Instance)?.Invoke(queueVm, null);
 
         Assert.Equal(200.0, queueVm.PineLabsAmount);
+        var sbiSummary = queueVm.DynamicCollectionSummaries.FirstOrDefault(s => s.Code == "SBI_REDEEM");
+        Assert.NotNull(sbiSummary);
+        Assert.Equal(400.0, sbiSummary.Amount);
         // TotalCollections should include base 2850 + 200 + 400 = 3450
         Assert.Equal(3450.0, queueVm.TotalCollections);
     }
@@ -338,18 +335,15 @@ public class PwaDsmReconciliationFixTests : IDisposable
         await Task.Delay(100);
         while (queueVm.IsLoadingDetails) await Task.Delay(50);
 
-        // Should have 2 rows: 1 OTP of ₹300, 1 manual portion of ₹100
-        Assert.Equal(2, queueVm.CardSwipeDetails.Count);
-        var otpRow = queueVm.CardSwipeDetails.First(r => !string.IsNullOrEmpty(r.Otp));
-        var manualRow = queueVm.CardSwipeDetails.First(r => string.IsNullOrEmpty(r.Otp));
-
+        // CardSwipeDetails strictly contains the OTP row
+        Assert.Single(queueVm.CardSwipeDetails);
+        var otpRow = queueVm.CardSwipeDetails.First();
         Assert.Equal(300.0, otpRow.Amount);
-        Assert.Equal(100.0, manualRow.Amount);
-        Assert.False(manualRow.IsSyntheticSummary);
+        Assert.Equal("123456", otpRow.Otp);
 
         typeof(DsmApprovalQueueViewModel).GetMethod("RecalculateTotals", BindingFlags.NonPublic | BindingFlags.Instance)?.Invoke(queueVm, null);
 
-        // Sum should be exactly base 2850 + 300 + 100 = 3250, not double-counted
+        // Total PineLabs is ₹400.0 and collections = base 2850 + 400 = 3250
         Assert.Equal(400.0, queueVm.PineLabsAmount);
         Assert.Equal(3250.0, queueVm.TotalCollections);
     }
@@ -379,7 +373,8 @@ public class PwaDsmReconciliationFixTests : IDisposable
         queueVm.SelectedSubmission = submission;
         await Task.Delay(100);
         while (queueVm.IsLoadingDetails) await Task.Delay(50);
-        Assert.Single(queueVm.CardSwipeDetails);
+        Assert.Empty(queueVm.CardSwipeDetails);
+        Assert.Equal(200.0, queueVm.PineLabsAmount);
 
         // Second load (simulating user deselecting and re-selecting or queue refresh)
         queueVm.SelectedSubmission = null;
@@ -387,8 +382,8 @@ public class PwaDsmReconciliationFixTests : IDisposable
         await Task.Delay(100);
         while (queueVm.IsLoadingDetails) await Task.Delay(50);
 
-        Assert.Single(queueVm.CardSwipeDetails);
-        Assert.Equal(200.0, queueVm.CardSwipeDetails[0].Amount);
+        Assert.Empty(queueVm.CardSwipeDetails);
+        Assert.Equal(200.0, queueVm.PineLabsAmount);
     }
 
     // =========================================================================
@@ -805,4 +800,464 @@ public class PwaDsmReconciliationFixTests : IDisposable
         Assert.Equal("9999", vm2.PhonePeTidNight);
         Assert.Equal("999", vm2.PhonePeBatchNight);
     }
+
+    [Fact]
+    public void Test_DynamicItemsTotal_SumsManualAndOtpTransactions_WithoutDroppingManualPortion()
+    {
+        // PWA OTP dynamic items arrive with Slot="General" while Manual dynamic items arrive with Slot="Morning".
+        // Both manual entries and OTP slip entries are valid additions and must be summed together.
+        var pc = new PaymentCollection
+        {
+            Items = new List<PaymentCollectionItem>
+            {
+                new() { CollectionTypeCode = "PINELABS_CARD", Amount = 100.0, Tid = "1211", Batch = "002", Otp = "", Slot = "Morning" },
+                new() { CollectionTypeCode = "PINELABS_CARD", Amount = 100.0, Tid = "1211", Batch = "002", Otp = "9876", Slot = "General" }
+            }
+        };
+
+        // Evaluates to 200.0 (100 manual + 100 OTP slip)
+        Assert.Equal(200.0, pc.DynamicItemsTotal);
+    }
+
+    [Fact]
+    public void Test_DynamicItemsTotal_PreservesDistinctTransactions_WithoutTidBatch()
+    {
+        // When TID and Batch are absent or different, separate legitimate transactions must not be deduplicated.
+        var pc = new PaymentCollection
+        {
+            Items = new List<PaymentCollectionItem>
+            {
+                new() { CollectionTypeCode = "PINELABS_CARD", Amount = 100.0, Tid = "TID_A", Batch = "001", Otp = "1234", Slot = "General" },
+                new() { CollectionTypeCode = "PINELABS_CARD", Amount = 100.0, Tid = "TID_B", Batch = "002", Otp = "5678", Slot = "General" },
+                new() { CollectionTypeCode = "PAYTM", Amount = 100.0, Tid = null, Batch = null, Otp = null, Slot = "Morning" },
+                new() { CollectionTypeCode = "PAYTM", Amount = 100.0, Tid = null, Batch = null, Otp = null, Slot = "Morning" }
+            }
+        };
+
+        // 100 + 100 + 100 + 100 = 400.0 (no false deduplication)
+        Assert.Equal(400.0, pc.DynamicItemsTotal);
+    }
+
+    [Fact]
+    public async Task Test_CaseB_ScreenshotParity_ApprovalVsEdit_CoexistingPineLabs()
+    {
+        // Reconstructs Case B:
+        // Gross Sales: ₹10,000, Testing: ₹1,000, Net Sales: ₹9,000
+        // Collections:
+        // Cash in Hand (Cash 2): ₹6,837
+        // Cash 1: ₹100
+        // PhonePe: ₹400
+        // Credit Card: ₹200
+        // Petro Card: ₹200
+        // Pine Labs Card: ₹200 (both manual ₹100 and OTP ₹100 present with TID "1211", Batch "002")
+        // Debtors: ₹41
+        // Expenses: ₹220 (General ₹20 + Drawings ₹200)
+        // Dynamic non-textbox payments: Paytm ₹100 + Mobikwik ₹100 + QR ₹100 + SBI Redeem ₹100 = ₹400
+        // Others: ₹12,421,421,422 (excluded)
+        // Total Collections = 6837 + 100 + 400 + 200 + 200 + 200 + 41 + 220 + 400 = ₹8,598.00
+        // Net Sales = ₹9,000.00
+        // Mismatch = ₹8,598 - ₹9,000 = -₹402.00
+
+        // 1. Approval Queue verification
+        var queueVm = _serviceProvider.GetRequiredService<DsmApprovalQueueViewModel>();
+        var subDto = new DsmPendingSubmission
+        {
+            Id = Guid.NewGuid(),
+            DsmName = "orion pax",
+            ShiftDate = new DateTime(2026, 10, 19),
+            ShiftType = "A",
+            PumpId = 1,
+            MetadataJson = JsonConvert.SerializeObject(new
+            {
+                dynamicCollectionValues = new
+                {
+                    PINELABS_CARD = new { amount = 100.0, tid = "1211", batch = "002", slot = "Morning" },
+                    PAYTM = new { amount = 100.0, tid = "", batch = "", slot = "Morning" },
+                    MOBIKWIK = new { amount = 100.0, tid = "", batch = "", slot = "Morning" },
+                    QR_CODE = new { amount = 100.0, tid = "", batch = "", slot = "Morning" },
+                    SBI_REDEEM = new { amount = 100.0, tid = "", batch = "", slot = "Morning" }
+                },
+                cardSwipeDetails = new[]
+                {
+                    new { mode = "PINELABS_CARD", amount = 100.0, tid = "1211", batch = "002", otp = "1234" }
+                }
+            })
+        };
+
+        queueVm.SelectedSubmission = subDto;
+        await Task.Delay(100);
+        while (queueVm.IsLoadingDetails) await Task.Delay(50);
+
+        queueVm.NozzleReadings.Clear();
+        queueVm.NozzleReadings.Add(new DsmNozzleRow { NozzleId = 1, FuelType = "MS-I", OpeningReading = 100.0, ClosingReading = 200.0, Rate = 100.0 }); // 10,000 gross
+        queueVm.SubmissionTestingEntries.Clear();
+        queueVm.SubmissionTestingEntries.Add(new DsmTestingRow { FuelType = "MS-I", Amount = 10.0, RupeeAmount = 1000.0 }); // 1,000 testing
+        
+        queueVm.CashAmount = 6837.0;
+        queueVm.CashDepositAmount = 100.0;
+        queueVm.UpiAmount = 400.0;
+        queueVm.CardAmount = 200.0;
+        queueVm.PetroCardAmount = 200.0;
+        queueVm.DebtorEntries.Clear();
+        queueVm.DebtorEntries.Add(new DsmDebitRow { DebtorName = "Customer A", Amount = 41.0 });
+        queueVm.CreditAmount = 41.0;
+        queueVm.ExpenseAmount = 20.0;
+        queueVm.KhandhareEntries.Clear();
+        queueVm.KhandhareEntries.Add(new KhandharePetroleumEntry { SlipNumber = "22", Amount = 200.0 });
+        queueVm.OthersAmount = 12421421422.0;
+
+        // Strictly OTP rows in CardSwipeDetails
+        Assert.Single(queueVm.CardSwipeDetails);
+        Assert.StartsWith("PINELABS_CARD", queueVm.CardSwipeDetails[0].Mode);
+        Assert.Equal(100.0, queueVm.CardSwipeDetails[0].Amount);
+        Assert.Equal("1234", queueVm.CardSwipeDetails[0].Otp);
+
+        typeof(DsmApprovalQueueViewModel).GetMethod("RecalculateTotals", BindingFlags.NonPublic | BindingFlags.Instance)
+            ?.Invoke(queueVm, null);
+
+        Assert.Equal(10000.00, queueVm.GrossSales, precision: 2);
+        Assert.Equal(1000.00, queueVm.TotalTestingAmount, precision: 2);
+        Assert.Equal(9000.00, queueVm.NetFuelSales, precision: 2);
+        Assert.Equal(8598.00, queueVm.TotalCollections, precision: 2);
+        Assert.Equal(-402.00, queueVm.MismatchAmount, precision: 2);
+        Assert.Equal(200.00, queueVm.PineLabsAmount, precision: 2);
+
+        // 2. Persist to DB and verify View and Edit modes
+        using var dbContext = _serviceProvider.GetRequiredService<FuelProDbContext>();
+        var dsmService = _serviceProvider.GetRequiredService<DsmEntryService>();
+
+        var nozzleModels = new List<NozzleReading>
+        {
+            new() { NozzleNumber = 1, FuelType = "MS-I", OpeningReading = 100.0, ClosingReading = 200.0, Rate = 100.0, Amount = 10000.0 }
+        };
+
+        var paymentModel = new PaymentCollection
+        {
+            PhonePeMorning = 400.0,
+            CreditCardMorning = 200.0,
+            PetroCardMorning = 200.0,
+            CashDeposit = 100.0,
+            Others = 12421421422.0,
+            Items = new List<PaymentCollectionItem>
+            {
+                new() { CollectionTypeCode = "PINELABS_CARD", Amount = 100.0, Tid = "1211", Batch = "002", Otp = "1234", Slot = "General" },
+                new() { CollectionTypeCode = "PINELABS_CARD", Amount = 100.0, Tid = "1211", Batch = "002", Otp = "", Slot = "Morning" },
+                new() { CollectionTypeCode = "PAYTM", Amount = 100.0, Slot = "Morning" },
+                new() { CollectionTypeCode = "MOBIKWIK", Amount = 100.0, Slot = "Morning" },
+                new() { CollectionTypeCode = "QR_CODE", Amount = 100.0, Slot = "Morning" },
+                new() { CollectionTypeCode = "SBI_REDEEM", Amount = 100.0, Slot = "Morning" }
+            }
+        };
+
+        var debits = new List<DebitEntry> { new() { DebtorName = "Customer A", Amount = 41.0 } };
+        var expenses = new List<Expense>
+        {
+            new() { Description = "General Expenses", Amount = 20.0 },
+            new() { Description = "Drawings / Khandhare", Amount = 200.0 }
+        };
+        var testings = new List<TestingEntry> { new() { FuelType = "MS-I", Rate = 100.0, Litres = 10.0, Amount = 1000.0 } };
+        var cashDenoms = new List<CashDenomination>
+        {
+            new() { CashType = "Cash1", Denom100 = 1, TotalAmount = 100.0 },
+            new() { CashType = "Cash2", TotalAmount = 6837.0 }
+        };
+
+        var saveResult = await dsmService.SaveCompleteEntryWithContextAsync(
+            dbContext,
+            new DateTime(2026, 10, 19), "A", "orion pax", 1,
+            nozzleModels, paymentModel, debits, testings, expenses, cashDenoms);
+
+        Assert.True(saveResult.Success, saveResult.Error);
+        int entryId = saveResult.Data!.DsmEntryId;
+
+        // Verify DynamicItemsTotal in stored model is 600 (200 PineLabs + 100 Paytm + 100 Mobikwik + 100 QR + 100 SBI)
+        Assert.Equal(600.0, saveResult.Data.PaymentCollection!.DynamicItemsTotal);
+
+        // View Mode
+        var summariesResult = await dsmService.GetShiftEntrySummariesAsync(saveResult.Data.ShiftId);
+        var viewSummary = summariesResult.Data!.First(s => s.DsmEntryId == entryId);
+        Assert.Equal(9000.00, viewSummary.NetSales, precision: 2);
+        Assert.Equal(8598.00, viewSummary.TotalPaymentIn, precision: 2);
+        Assert.Equal(-402.00, viewSummary.Difference, precision: 2);
+
+        // Edit Mode Hydration
+        var repo = _serviceProvider.GetRequiredService<IDsmEntryRepository>();
+        var fullEntry = (await repo.GetFullEntryAsync(entryId)).Data!;
+
+        var entryVm = _serviceProvider.GetRequiredService<DsmEntryViewModel>();
+        await entryVm.HydrateFromEntryAsync(fullEntry);
+
+        Assert.Equal(9000.00, entryVm.NetGrossSales, precision: 2);
+        Assert.Equal(8598.00, entryVm.FinalAdjusted, precision: 2);
+        Assert.Equal(-402.00, entryVm.Difference, precision: 2);
+
+        // Pine Labs dynamic collection must display ₹200.00 (₹100 manual + ₹100 OTP)
+        var pineLabsDynamic = entryVm.DynamicCollections.FirstOrDefault(d => d.Code == "PINELABS_CARD");
+        Assert.NotNull(pineLabsDynamic);
+        Assert.Equal(200.00, pineLabsDynamic.Amount ?? 0.0, precision: 2);
+
+        // Save & Reopen
+        var reopenedVm = _serviceProvider.GetRequiredService<DsmEntryViewModel>();
+        var fullEntryReloaded = (await repo.GetFullEntryAsync(entryId)).Data!;
+        await reopenedVm.HydrateFromEntryAsync(fullEntryReloaded);
+
+        Assert.Equal(9000.00, reopenedVm.NetGrossSales, precision: 2);
+        Assert.Equal(8598.00, reopenedVm.FinalAdjusted, precision: 2);
+        Assert.Equal(-402.00, reopenedVm.Difference, precision: 2);
+    }
+
+    [Fact]
+    public async Task Test_ApprovedShift7_ZeroMismatchParity_AcrossApprovalViewAndEdit()
+    {
+        // Reconstructs the exact Shift 7 scenario verified in production DB:
+        // Gross Sales: ₹10,000 (MS-I: 100 to 200 @ ₹100)
+        // Testing: ₹300 (MS-I: 3L @ ₹100)
+        // Net Fuel Sales: ₹9,700.00
+        // Collections:
+        // Cash 2: ₹7,000.00
+        // PhonePe: ₹300.00
+        // Credit Card: ₹200.00
+        // Petro Card: ₹200.00
+        // 5 Dynamic Collections (PINELABS_CARD, PAYTM, QR_CODE, MOBIKWIK, SBI_REDEEM):
+        // Each has Manual ₹200 + OTP slip ₹200 = ₹400 each (Total Dynamic = ₹2,000.00)
+        // Total Collections = 7000 + 300 + 200 + 200 + 2000 = ₹9,700.00
+        // Mismatch = 9700.00 - 9700.00 = ₹0.00
+
+        // 1. Approval Queue
+        var queueVm = _serviceProvider.GetRequiredService<DsmApprovalQueueViewModel>();
+        var subDto = new DsmPendingSubmission
+        {
+            Id = Guid.NewGuid(),
+            DsmName = "Test Attendant",
+            ShiftDate = DateTime.Today,
+            ShiftType = "A",
+            PumpId = 1,
+            MetadataJson = JsonConvert.SerializeObject(new
+            {
+                dynamicCollectionValues = new
+                {
+                    PINELABS_CARD = new { amount = 200.0, tid = "2", batch = "2", slot = "Morning" },
+                    PAYTM = new { amount = 200.0, tid = "2", batch = "2", slot = "Morning" },
+                    QR_CODE = new { amount = 200.0, tid = "2", batch = "2", slot = "Morning" },
+                    MOBIKWIK = new { amount = 200.0, tid = "2", batch = "2", slot = "Morning" },
+                    SBI_REDEEM = new { amount = 200.0, tid = "2", batch = "2", slot = "Morning" }
+                },
+                cardSwipeDetails = new[]
+                {
+                    new { mode = "PINELABS_CARD", amount = 200.0, tid = "2", batch = "2", otp = "12" },
+                    new { mode = "PAYTM", amount = 200.0, tid = "2", batch = "2", otp = "12" },
+                    new { mode = "QR_CODE", amount = 200.0, tid = "2", batch = "2", otp = "12" },
+                    new { mode = "MOBIKWIK", amount = 200.0, tid = "2", batch = "2", otp = "12" },
+                    new { mode = "SBI_REDEEM", amount = 200.0, tid = "2", batch = "2", otp = "12" }
+                }
+            })
+        };
+
+        queueVm.SelectedSubmission = subDto;
+        await Task.Delay(100);
+        while (queueVm.IsLoadingDetails) await Task.Delay(50);
+
+        queueVm.NozzleReadings.Clear();
+        queueVm.NozzleReadings.Add(new DsmNozzleRow { NozzleId = 1, FuelType = "MS-I", OpeningReading = 100.0, ClosingReading = 200.0, Rate = 100.0 });
+        queueVm.SubmissionTestingEntries.Clear();
+        queueVm.SubmissionTestingEntries.Add(new DsmTestingRow { FuelType = "MS-I", Amount = 3.0, RupeeAmount = 300.0 });
+
+        queueVm.CashAmount = 7000.0;
+        queueVm.CashDepositAmount = 0.0;
+        queueVm.UpiAmount = 300.0;
+        queueVm.CardAmount = 200.0;
+        queueVm.PetroCardAmount = 200.0;
+        queueVm.CreditAmount = 0.0;
+        queueVm.ExpenseAmount = 0.0;
+        queueVm.DebtorEntries.Clear();
+
+        // User requirement: CardSwipeDetails strictly contains the 5 OTP slips
+        Assert.Equal(5, queueVm.CardSwipeDetails.Count);
+        Assert.All(queueVm.CardSwipeDetails, row => Assert.False(string.IsNullOrWhiteSpace(row.Otp)));
+
+        typeof(DsmApprovalQueueViewModel).GetMethod("RecalculateTotals", BindingFlags.NonPublic | BindingFlags.Instance)
+            ?.Invoke(queueVm, null);
+
+        Assert.Equal(10000.00, queueVm.GrossSales, precision: 2);
+        Assert.Equal(300.00, queueVm.TotalTestingAmount, precision: 2);
+        Assert.Equal(9700.00, queueVm.NetFuelSales, precision: 2);
+        Assert.Equal(9700.00, queueVm.TotalCollections, precision: 2);
+        Assert.Equal(0.00, queueVm.MismatchAmount, precision: 2);
+        Assert.Equal(400.00, queueVm.PineLabsAmount, precision: 2);
+
+        // Dynamic summaries list must contain the other 4 non-PineLabs dynamic collections with ₹400 each
+        Assert.Equal(4, queueVm.DynamicCollectionSummaries.Count);
+        Assert.All(queueVm.DynamicCollectionSummaries, s => Assert.Equal(400.00, s.Amount, precision: 2));
+
+        // 2. Persist and check View Mode & Edit Mode Parity
+        using var dbContext = _serviceProvider.GetRequiredService<FuelProDbContext>();
+        var dsmService = _serviceProvider.GetRequiredService<DsmEntryService>();
+
+        var nozzleModels = new List<NozzleReading>
+        {
+            new() { NozzleNumber = 1, FuelType = "MS-I", OpeningReading = 100.0, ClosingReading = 200.0, Rate = 100.0, Amount = 10000.0 }
+        };
+
+        var paymentModel = new PaymentCollection
+        {
+            PhonePeMorning = 300.0,
+            CreditCardMorning = 200.0,
+            PetroCardMorning = 200.0,
+            Items = new List<PaymentCollectionItem>
+            {
+                new() { CollectionTypeCode = "PINELABS_CARD", Amount = 200.0, Tid = "2", Batch = "2", Otp = "12", Slot = "General" },
+                new() { CollectionTypeCode = "PINELABS_CARD", Amount = 200.0, Tid = "2", Batch = "2", Otp = "", Slot = "Morning" },
+                new() { CollectionTypeCode = "PAYTM", Amount = 200.0, Tid = "2", Batch = "2", Otp = "12", Slot = "General" },
+                new() { CollectionTypeCode = "PAYTM", Amount = 200.0, Tid = "2", Batch = "2", Otp = "", Slot = "Morning" },
+                new() { CollectionTypeCode = "QR_CODE", Amount = 200.0, Tid = "2", Batch = "2", Otp = "12", Slot = "General" },
+                new() { CollectionTypeCode = "QR_CODE", Amount = 200.0, Tid = "2", Batch = "2", Otp = "", Slot = "Morning" },
+                new() { CollectionTypeCode = "MOBIKWIK", Amount = 200.0, Tid = "2", Batch = "2", Otp = "12", Slot = "General" },
+                new() { CollectionTypeCode = "MOBIKWIK", Amount = 200.0, Tid = "2", Batch = "2", Otp = "", Slot = "Morning" },
+                new() { CollectionTypeCode = "SBI_REDEEM", Amount = 200.0, Tid = "2", Batch = "2", Otp = "12", Slot = "General" },
+                new() { CollectionTypeCode = "SBI_REDEEM", Amount = 200.0, Tid = "2", Batch = "2", Otp = "", Slot = "Morning" }
+            }
+        };
+
+        var testings = new List<TestingEntry> { new() { FuelType = "MS-I", Rate = 100.0, Litres = 3.0, Amount = 300.0 } };
+        var cashDenoms = new List<CashDenomination> { new() { CashType = "Cash2", TotalAmount = 7000.0 } };
+
+        var saveResult = await dsmService.SaveCompleteEntryWithContextAsync(
+            dbContext,
+            DateTime.Today, "A", "Test Attendant", 1,
+            nozzleModels, paymentModel, new List<DebitEntry>(), testings, new List<Expense>(), cashDenoms);
+
+        Assert.True(saveResult.Success, saveResult.Error);
+        int entryId = saveResult.Data!.DsmEntryId;
+
+        // DynamicItemsTotal in model must be 2000.00
+        Assert.Equal(2000.00, saveResult.Data.PaymentCollection!.DynamicItemsTotal);
+
+        // View Mode Parity
+        var summariesResult = await dsmService.GetShiftEntrySummariesAsync(saveResult.Data.ShiftId);
+        var viewSummary = summariesResult.Data!.First(s => s.DsmEntryId == entryId);
+        Assert.Equal(9700.00, viewSummary.NetSales, precision: 2);
+        Assert.Equal(9700.00, viewSummary.TotalPaymentIn, precision: 2);
+        Assert.Equal(0.00, viewSummary.Difference, precision: 2);
+
+        // Edit Mode Parity
+        var repo = _serviceProvider.GetRequiredService<IDsmEntryRepository>();
+        var fullEntry = (await repo.GetFullEntryAsync(entryId)).Data!;
+
+        var entryVm = _serviceProvider.GetRequiredService<DsmEntryViewModel>();
+        await entryVm.HydrateFromEntryAsync(fullEntry);
+
+        Assert.Equal(9700.00, entryVm.NetGrossSales, precision: 2);
+        Assert.Equal(9700.00, entryVm.FinalAdjusted, precision: 2);
+        Assert.Equal(0.00, entryVm.Difference, precision: 2);
+
+        // Check each dynamic collection in edit mode has 400.00
+        var dynamicCodes = new[] { "PINELABS_CARD", "PAYTM", "QR_CODE", "MOBIKWIK", "SBI_REDEEM" };
+        foreach (var code in dynamicCodes)
+        {
+            var col = entryVm.DynamicCollections.FirstOrDefault(d => d.Code == code);
+            Assert.NotNull(col);
+            Assert.Equal(400.00, col.Amount ?? 0.0, precision: 2);
+        }
+    }
+
+    [Fact]
+    public async Task Test_GetShiftEntrySummariesAsync_IsolatesMultiplePrimarySessions()
+    {
+        // When multiple primary entries exist in the same shift (e.g. Entry 9 and Entry 11 in Shift 7),
+        // each primary session must retain its own slave entries (ReconciledToPumpId) without cross-claiming
+        // via fallback heuristic matching.
+        using var dbContext = _serviceProvider.GetRequiredService<FuelProDbContext>();
+        var dsmService = _serviceProvider.GetRequiredService<DsmEntryService>();
+
+        var shift = new Shift { ShiftDate = DateTime.Today.AddDays(-1), ShiftType = "A" };
+        dbContext.Shifts.Add(shift);
+        await dbContext.SaveChangesAsync();
+
+        // Primary Entry 1 (e.g. Entry 9) on Pump 1
+        var primary1 = new DsmEntry
+        {
+            ShiftId = shift.ShiftId,
+            DsmName = "Attendant A",
+            PumpId = 1,
+            ConnectedPumpId = 2,
+            PaymentCollection = new PaymentCollection { PhonePeMorning = 1000 },
+            CashDenominations = new List<CashDenomination>()
+        };
+        dbContext.DsmEntries.Add(primary1);
+        await dbContext.SaveChangesAsync();
+
+        // Slave Entry 1 (e.g. Entry 10) on Pump 2 explicitly linked to primary1
+        var slave1 = new DsmEntry
+        {
+            ShiftId = shift.ShiftId,
+            DsmName = "Attendant A",
+            PumpId = 2,
+            ReconciledToPumpId = primary1.DsmEntryId,
+            PaymentCollection = new PaymentCollection(),
+            CashDenominations = new List<CashDenomination>()
+        };
+        dbContext.DsmEntries.Add(slave1);
+
+        // Primary Entry 2 (e.g. Entry 11) on Pump 1
+        var primary2 = new DsmEntry
+        {
+            ShiftId = shift.ShiftId,
+            DsmName = "Attendant A",
+            PumpId = 1,
+            ConnectedPumpId = 2,
+            PaymentCollection = new PaymentCollection { PhonePeMorning = 2000 },
+            CashDenominations = new List<CashDenomination>()
+        };
+        dbContext.DsmEntries.Add(primary2);
+        await dbContext.SaveChangesAsync();
+
+        // Slave Entry 2 (e.g. Entry 12) on Pump 2 explicitly linked to primary2
+        var slave2 = new DsmEntry
+        {
+            ShiftId = shift.ShiftId,
+            DsmName = "Attendant A",
+            PumpId = 2,
+            ReconciledToPumpId = primary2.DsmEntryId,
+            PaymentCollection = new PaymentCollection(),
+            CashDenominations = new List<CashDenomination>()
+        };
+        dbContext.DsmEntries.Add(slave2);
+        await dbContext.SaveChangesAsync();
+
+        var summaries = (await dsmService.GetShiftEntrySummariesAsync(shift.ShiftId)).Data!;
+
+        // Must produce 2 primary summaries
+        Assert.Equal(2, summaries.Count);
+        var sum1 = summaries.First(s => s.DsmEntryId == primary1.DsmEntryId);
+        var sum2 = summaries.First(s => s.DsmEntryId == primary2.DsmEntryId);
+
+        // Each summary claims exactly one slave entry; primary1 must NOT claim slave2!
+        Assert.Equal(1000.0, sum1.TotalPaymentIn);
+        Assert.Equal(2000.0, sum2.TotalPaymentIn);
+    }
+
+    [Fact]
+    public void Test_DescriptiveContinuityWarning_ReportsPredecessorAndMissingShifts()
+    {
+        var row = new DsmNozzleRow
+        {
+            NozzleId = 1,
+            PumpId = 1,
+            OpeningReading = 120.0,
+            ClosingReading = 140.0,
+            Rate = 100.0,
+            ExpectedOpening = 100.0,
+            PredecessorDate = new DateTime(2026, 10, 15),
+            PredecessorShift = "A",
+            HopsBack = 12
+        };
+
+        row.Recalculate();
+
+        Assert.True(row.HasContinuityError);
+        Assert.Contains("Opening (120) does not match previous closing (100)", row.ContinuityWarning);
+        Assert.Contains("Shift A (15-Oct-2026, Pump 1, Nozzle 1)", row.ContinuityWarning);
+        Assert.Contains("[intermediate shifts missing]", row.ContinuityWarning);
+    }
 }
+

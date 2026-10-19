@@ -629,16 +629,23 @@ public class NozzleReadingRepository : INozzleReadingRepository
 
     public async Task<Result<Dictionary<int, double>>> GetPreviousShiftClosingsAsync(DateTime date, string shiftType, int pumpId, int? currentDsmEntryId = null)
     {
+        var detailsRes = await GetPreviousShiftClosingDetailsAsync(date, shiftType, pumpId, currentDsmEntryId);
+        if (!detailsRes.Success) return Result<Dictionary<int, double>>.Fail(detailsRes.Error);
+        return Result<Dictionary<int, double>>.Ok(detailsRes.Data!.ToDictionary(kvp => kvp.Key, kvp => kvp.Value.ClosingReading));
+    }
+
+    public async Task<Result<Dictionary<int, PredecessorClosingDetail>>> GetPreviousShiftClosingDetailsAsync(DateTime date, string shiftType, int pumpId, int? currentDsmEntryId = null)
+    {
         try
         {
             var normShift = _shiftCycleService.NormalizeShiftType(shiftType);
             var pumpNozzles = PumpConfiguration.GetNozzlesForPump(pumpId, date.Date);
             if (pumpNozzles == null || pumpNozzles.Length == 0)
             {
-                return Result<Dictionary<int, double>>.Ok(new Dictionary<int, double>());
+                return Result<Dictionary<int, PredecessorClosingDetail>>.Ok(new Dictionary<int, PredecessorClosingDetail>());
             }
 
-            var resolvedClosings = new Dictionary<int, double>();
+            var resolvedClosings = new Dictionary<int, PredecessorClosingDetail>();
             var remainingNozzles = new HashSet<int>(pumpNozzles);
 
             var (currDate, currShift) = _shiftCycleService.GetPreviousShift(date.Date, normShift);
@@ -692,7 +699,15 @@ public class NozzleReadingRepository : INozzleReadingRepository
                 {
                     if (!resolvedClosings.ContainsKey(item.NozzleNumber))
                     {
-                        resolvedClosings[item.NozzleNumber] = item.Closing;
+                        resolvedClosings[item.NozzleNumber] = new PredecessorClosingDetail
+                        {
+                            NozzleNumber = item.NozzleNumber,
+                            ClosingReading = item.Closing,
+                            ShiftDate = currDate,
+                            ShiftType = currShift,
+                            PumpId = pumpId,
+                            HopsBack = hops
+                        };
                         remainingNozzles.Remove(item.NozzleNumber);
                     }
                 }
@@ -706,15 +721,15 @@ public class NozzleReadingRepository : INozzleReadingRepository
 
             if (resolvedClosings.Count == 0)
             {
-                return Result<Dictionary<int, double>>.Fail($"Predecessor shift chain starting at {immediatePredShift} on {immediatePredDate:dd-MMM-yyyy} has no recorded closing readings.");
+                return Result<Dictionary<int, PredecessorClosingDetail>>.Fail($"Predecessor shift chain starting at {immediatePredShift} on {immediatePredDate:dd-MMM-yyyy} has no recorded closing readings.");
             }
 
-            return Result<Dictionary<int, double>>.Ok(resolvedClosings);
+            return Result<Dictionary<int, PredecessorClosingDetail>>.Ok(resolvedClosings);
         }
         catch (Exception ex)
         {
             _logger.Error(ex, "Failed to get previous-shift closings for date {Date} shift {ShiftType} pump {PumpId}", date, shiftType, pumpId);
-            return Result<Dictionary<int, double>>.Fail($"Failed to load previous-shift closings: {ex.Message}");
+            return Result<Dictionary<int, PredecessorClosingDetail>>.Fail($"Failed to load previous-shift closings: {ex.Message}");
         }
     }
 

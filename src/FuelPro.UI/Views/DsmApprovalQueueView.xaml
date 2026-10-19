@@ -389,6 +389,27 @@
                                          materialDesign:HintAssist.Hint="Excess" materialDesign:HintAssist.IsFloating="True" Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
                             </UniformGrid>
 
+                            <!-- Dynamic Collection Summaries (Paytm, QR, Mobikwik, SBI Redeem, etc.) -->
+                            <ItemsControl ItemsSource="{Binding DynamicCollectionSummaries}"
+                                          Visibility="{Binding HasDynamicSummaries, Converter={StaticResource BoolToVis}}"
+                                          Margin="0,0,0,12">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel Orientation="Horizontal"/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="#E8EAF6" CornerRadius="8" Padding="10,6" Margin="0,0,8,6" BorderBrush="#C5CAE9" BorderThickness="1">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" Foreground="#283593" FontSize="12" Margin="0,0,6,0"/>
+                                                <TextBlock Text="{Binding Amount, StringFormat='₹{0:N2}'}" FontWeight="Bold" Foreground="#1A237E" FontSize="12"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
                             <Border BorderThickness="0,1,0,0" BorderBrush="#E0E0E0" Padding="0,12,0,0">
                                 <Grid>
                                     <Grid.RowDefinitions>
@@ -517,10 +538,10 @@
                             <DockPanel Margin="0,0,0,12" LastChildFill="False">
                                 <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
                                     <materialDesign:PackIcon Kind="CreditCardCheckOutline" Width="22" Height="22" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                    <TextBlock Text="Card Swipe &amp; Machine Slip Details" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Machine Slip &amp; OTP Transactions" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}" VerticalAlignment="Center"/>
                                 </StackPanel>
                                 <Border DockPanel.Dock="Right" Background="#E0F2F1" CornerRadius="12" Padding="10,4">
-                                    <TextBlock Text="Itemized Machine Slips &amp; Card Payments" FontSize="11.5" FontWeight="SemiBold" Foreground="#00796B"/>
+                                    <TextBlock Text="Itemized Machine OTP Transactions" FontSize="11.5" FontWeight="SemiBold" Foreground="#00796B"/>
                                 </Border>
                             </DockPanel>
 

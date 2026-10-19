@@ -533,6 +533,7 @@ public class DsmEntryService
             var usedSlaveIds = new HashSet<int>();
             var summaries = new List<DsmEntrySummaryDto>();
 
+            var allPrimaryIds = new HashSet<int>(primaryEntries.Select(p => p.DsmEntryId));
             int sequenceCounter = 1;
             foreach (var primary in primaryEntries)
             {
@@ -540,9 +541,10 @@ public class DsmEntryService
                 var connectedSlaves = allSlaves
                     .Where(e => !usedSlaveIds.Contains(e.DsmEntryId)
                         && (e.ReconciledToPumpId == primary.DsmEntryId 
-                            || (primaryConnectedPumps.Contains(e.PumpId) && string.Equals((e.DsmName ?? "").Trim(), (primary.DsmName ?? "").Trim(), StringComparison.OrdinalIgnoreCase))
-                            || (primary.ConnectedPumpId.HasValue && e.PumpId == primary.ConnectedPumpId.Value && string.Equals((e.DsmName ?? "").Trim(), (primary.DsmName ?? "").Trim(), StringComparison.OrdinalIgnoreCase))
-                            || (e.ReconciledToPumpId == primary.PumpId && string.Equals((e.DsmName ?? "").Trim(), (primary.DsmName ?? "").Trim(), StringComparison.OrdinalIgnoreCase))))
+                            || (!allPrimaryIds.Contains(e.ReconciledToPumpId!.Value)
+                                && ((primaryConnectedPumps.Contains(e.PumpId) && string.Equals((e.DsmName ?? "").Trim(), (primary.DsmName ?? "").Trim(), StringComparison.OrdinalIgnoreCase))
+                                    || (primary.ConnectedPumpId.HasValue && e.PumpId == primary.ConnectedPumpId.Value && string.Equals((e.DsmName ?? "").Trim(), (primary.DsmName ?? "").Trim(), StringComparison.OrdinalIgnoreCase))
+                                    || (e.ReconciledToPumpId == primary.PumpId && string.Equals((e.DsmName ?? "").Trim(), (primary.DsmName ?? "").Trim(), StringComparison.OrdinalIgnoreCase))))))
                     .ToList();
 
                 foreach (var s in connectedSlaves)

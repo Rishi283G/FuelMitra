@@ -45,11 +45,23 @@ public interface IDsmEntryRepository
     Task<Result<List<DsmEntry>>> GetEntriesForDateRangeAsync(DateTime startDate, DateTime endDate);
 }
 
+public class PredecessorClosingDetail
+{
+    public int NozzleNumber { get; set; }
+    public double ClosingReading { get; set; }
+    public DateTime ShiftDate { get; set; }
+    public string ShiftType { get; set; } = string.Empty;
+    public int PumpId { get; set; }
+    public int HopsBack { get; set; }
+    public bool IsImmediatePredecessor => HopsBack <= 1;
+}
+
 public interface INozzleReadingRepository
 {
     Task<Result<List<NozzleReading>>> GetByDsmEntryIdAsync(int dsmEntryId);
     Task<Result> SaveReadingsAsync(int dsmEntryId, List<NozzleReading> readings);
     Task<Result<Dictionary<int, double>>> GetPreviousShiftClosingsAsync(DateTime date, string shiftType, int pumpId, int? currentDsmEntryId = null);
+    Task<Result<Dictionary<int, PredecessorClosingDetail>>> GetPreviousShiftClosingDetailsAsync(DateTime date, string shiftType, int pumpId, int? currentDsmEntryId = null);
 }
 
 public interface IPaymentRepository

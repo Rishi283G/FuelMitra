@@ -182,7 +182,7 @@ public class PaymentCollection
             foreach (var group in all.GroupBy(i => NormalizeCollectionTypeCode(i.CollectionTypeCode), StringComparer.OrdinalIgnoreCase))
             {
                 var otpItems = group.Where(i => !string.IsNullOrWhiteSpace(i.Otp)).ToList();
-                var nonOtpItems = group.Where(i => string.IsNullOrWhiteSpace(i.Otp)).ToList();
+                var nonOtpItems = group.Where(i => string.IsNullOrWhiteSpace(i.Otp) && !i.IsSyntheticSummary).ToList();
 
                 if (otpItems.Count == 0)
                 {
@@ -191,21 +191,25 @@ public class PaymentCollection
                 }
 
                 // Sum all legitimate distinct OTP transactions
-                total += otpItems.Sum(i => i.Amount);
+                double otpTotal = otpItems.Sum(i => i.Amount);
+                total += otpTotal;
+
+                // Only ignore a non-OTP row if it is a single aggregate header for multiple itemized OTP items
+                bool isSingleAggregateHeader = nonOtpItems.Count == 1 && otpItems.Count > 1 && Math.Abs(nonOtpItems[0].Amount - otpTotal) < 0.01;
+                if (isSingleAggregateHeader)
+                {
+                    continue;
+                }
 
                 foreach (var nonOtp in nonOtpItems)
                 {
-                    if (nonOtp.IsSyntheticSummary) continue;
+                    // Exclude only if an exact duplicate within the SAME slot with matching TID and Batch
+                    bool isDuplicateInSameSlot = otpItems.Any(otp =>
+                        string.Equals(nonOtp.Slot?.Trim(), otp.Slot?.Trim(), StringComparison.OrdinalIgnoreCase)
+                        && IsDuplicateManualAndOtp(nonOtp.Amount, nonOtp.Tid, nonOtp.Batch, otp.Amount, otp.Tid, otp.Batch));
 
-                    bool isExactDuplicate = otpItems.Any(o =>
-                        Math.Abs(o.Amount - nonOtp.Amount) < 0.01
-                        && string.Equals(o.Slot ?? "", nonOtp.Slot ?? "", StringComparison.OrdinalIgnoreCase)
-                        && string.Equals(o.Tid ?? "", nonOtp.Tid ?? "", StringComparison.OrdinalIgnoreCase)
-                        && string.Equals(o.Batch ?? "", nonOtp.Batch ?? "", StringComparison.OrdinalIgnoreCase));
-
-                    if (!isExactDuplicate)
+                    if (!isDuplicateInSameSlot)
                     {
-                        // Genuine separate manual collection item
                         total += nonOtp.Amount;
                     }
                 }
@@ -213,6 +217,49 @@ public class PaymentCollection
 
             return total;
         }
+    }
+
+    /// <summary>
+    /// Determines whether a non-OTP manual item and an OTP-derived item represent the same physical card/terminal transaction.
+    /// Deduplication requires:
+    /// 1. Matching transaction amount within 0.01 tolerance.
+    /// 2. Evidence of machine transaction identity: TID and/or Batch must be present on both records and match.
+    /// Empty or missing TID/Batch values on either side cannot establish that two transactions are identical.
+    /// </summary>
+    public static bool IsDuplicateManualAndOtp(
+        double nonOtpAmount, string? nonOtpTid, string? nonOtpBatch,
+        double otpAmount, string? otpTid, string? otpBatch)
+    {
+        if (Math.Abs(nonOtpAmount - otpAmount) >= 0.01) return false;
+
+        bool hasTidOrBatchNonOtp = !string.IsNullOrWhiteSpace(nonOtpTid) || !string.IsNullOrWhiteSpace(nonOtpBatch);
+        bool hasTidOrBatchOtp = !string.IsNullOrWhiteSpace(otpTid) || !string.IsNullOrWhiteSpace(otpBatch);
+
+        // If either record lacks machine identity (both TID and Batch empty), they cannot be established as identical.
+        if (!hasTidOrBatchNonOtp || !hasTidOrBatchOtp)
+            return false;
+
+        // If TID is present on either, they must match
+        if (!string.IsNullOrWhiteSpace(nonOtpTid) || !string.IsNullOrWhiteSpace(otpTid))
+        {
+            if (!string.Equals(nonOtpTid?.Trim(), otpTid?.Trim(), StringComparison.OrdinalIgnoreCase))
+                return false;
+        }
+
+        // If Batch is present on either, they must match
+        if (!string.IsNullOrWhiteSpace(nonOtpBatch) || !string.IsNullOrWhiteSpace(otpBatch))
+        {
+            if (!string.Equals(nonOtpBatch?.Trim(), otpBatch?.Trim(), StringComparison.OrdinalIgnoreCase))
+                return false;
+        }
+
+        return true;
+    }
+
+    public static bool IsDuplicateManualAndOtp(PaymentCollectionItem nonOtp, PaymentCollectionItem otp)
+    {
+        if (nonOtp == null || otp == null) return false;
+        return IsDuplicateManualAndOtp(nonOtp.Amount, nonOtp.Tid, nonOtp.Batch, otp.Amount, otp.Tid, otp.Batch);
     }
 
     /// <summary>

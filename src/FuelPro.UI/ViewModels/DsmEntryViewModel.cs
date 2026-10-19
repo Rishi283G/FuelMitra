@@ -390,6 +390,7 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string _startTime = "08:00 AM";
     [ObservableProperty] private string _endTime = "08:00 PM";
     private double? _savedEntryGrossSales;
+    private bool _isHydratingEntry;
 
     public bool HasInProgressEntry
     {
@@ -692,6 +693,20 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
     {
         if (!IsOtpMachineTrackingEnabled)
         {
+            RecalculateAll();
+            return;
+        }
+
+        if (_isHydratingEntry)
+        {
+            // During hydration, existing standard card totals (PhonePe, CreditCard, PetroCard)
+            // are already authoritatively loaded from database columns. Do not overwrite them!
+            foreach (var dynRow in DynamicCollections)
+            {
+                var dynRows = OtpTransactions.Where(t => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(t.CollectionTypeCode), PaymentCollection.NormalizeCollectionTypeCode(dynRow.Code), StringComparison.OrdinalIgnoreCase)).ToList();
+                dynRow.OtpAmount = dynRows.Sum(t => t.Amount);
+                dynRow.RecalculateTotal();
+            }
             RecalculateAll();
             return;
         }
@@ -1147,9 +1162,13 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
                 var matchingItems = existingItems.Where(item =>
                     string.Equals(PaymentCollection.NormalizeCollectionTypeCode(item.CollectionTypeCode), PaymentCollection.NormalizeCollectionTypeCode(t.Code), StringComparison.OrdinalIgnoreCase)).ToList();
 
-                double manualPortion = matchingItems.Where(item => string.IsNullOrWhiteSpace(item.Otp)).Sum(item => item.Amount);
-                double otpPortion = matchingItems.Where(item => !string.IsNullOrWhiteSpace(item.Otp)).Sum(item => item.Amount);
-                var firstManual = matchingItems.FirstOrDefault(item => string.IsNullOrWhiteSpace(item.Otp)) ?? matchingItems.FirstOrDefault();
+                var otpItems = matchingItems.Where(item => !string.IsNullOrWhiteSpace(item.Otp)).ToList();
+                var nonOtpItems = matchingItems.Where(item => string.IsNullOrWhiteSpace(item.Otp)).ToList();
+
+                double otpPortion = otpItems.Sum(item => item.Amount);
+                bool isSingleAggregateHeader = nonOtpItems.Count == 1 && otpItems.Count > 1 && Math.Abs(nonOtpItems[0].Amount - otpPortion) < 0.01;
+                double manualPortion = isSingleAggregateHeader ? 0 : nonOtpItems.Where(nonOtp => !nonOtp.IsSyntheticSummary).Sum(nonOtp => nonOtp.Amount);
+                var firstManual = nonOtpItems.FirstOrDefault() ?? matchingItems.FirstOrDefault();
 
                 if (existingRow != null)
                 {
@@ -1190,31 +1209,39 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
 
             if (existingPayment != null)
             {
-                OtpTransactions.Clear();
-                var allItems = existingPayment.GetAllItems()?.ToList() ?? new List<PaymentCollectionItem>();
-                foreach (var item in allItems)
+                _isHydratingEntry = true;
+                try
                 {
-                    if (!string.IsNullOrWhiteSpace(item.Otp))
+                    OtpTransactions.Clear();
+                    var allItems = existingPayment.GetAllItems()?.ToList() ?? new List<PaymentCollectionItem>();
+                    foreach (var item in allItems)
                     {
-                        var normType = PaymentCollection.NormalizeCollectionTypeCode(item.CollectionTypeCode);
-                        var slot = !string.IsNullOrWhiteSpace(item.Slot) ? item.Slot : PaymentCollection.ExtractSlotFromMode(item.CollectionTypeCode, "General");
-                        var (sharedTid, sharedBatch) = GetSharedTidBatch(normType, slot);
-                        OtpTransactions.Add(new DsmOtpTransactionRow
+                        if (!string.IsNullOrWhiteSpace(item.Otp))
                         {
-                            CollectionTypeCode = normType,
-                            Amount = item.Amount,
-                            Otp = item.Otp,
-                            Tid = string.IsNullOrWhiteSpace(item.Tid) ? sharedTid : item.Tid,
-                            Batch = string.IsNullOrWhiteSpace(item.Batch) ? sharedBatch : item.Batch,
-                            Slot = slot,
-                            OnRowChanged = OnOtpTransactionsChanged
-                        });
+                            var normType = PaymentCollection.NormalizeCollectionTypeCode(item.CollectionTypeCode);
+                            var slot = !string.IsNullOrWhiteSpace(item.Slot) ? item.Slot : PaymentCollection.ExtractSlotFromMode(item.CollectionTypeCode, "General");
+                            var (sharedTid, sharedBatch) = GetSharedTidBatch(normType, slot);
+                            OtpTransactions.Add(new DsmOtpTransactionRow
+                            {
+                                CollectionTypeCode = normType,
+                                Amount = item.Amount,
+                                Otp = item.Otp,
+                                Tid = string.IsNullOrWhiteSpace(item.Tid) ? sharedTid : item.Tid,
+                                Batch = string.IsNullOrWhiteSpace(item.Batch) ? sharedBatch : item.Batch,
+                                Slot = slot,
+                                OnRowChanged = OnOtpTransactionsChanged
+                            });
+                        }
+                    }
+
+                    if (OtpTransactions.Count > 0)
+                    {
+                        OnOtpTransactionsChanged();
                     }
                 }
-
-                if (OtpTransactions.Count > 0)
+                finally
                 {
-                    OnOtpTransactionsChanged();
+                    _isHydratingEntry = false;
                 }
             }
             else if (OtpTransactions.Count > 0)
