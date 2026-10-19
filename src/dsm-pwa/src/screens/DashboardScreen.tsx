@@ -414,7 +414,14 @@ export default function DashboardScreen({ onNavigate }: DashboardProps) {
         >
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <span className="modal-title">Previous Sheet Details</span>
+              <div>
+                <span className="modal-title">Last Submission Details</span>
+                {recentStatus && (
+                  <p style={{ fontSize: "0.75rem", color: "#94a3b8", margin: 0 }}>
+                    My submitted sheet for Shift {recentStatus.shiftType} ({new Date(recentStatus.shiftDate).toLocaleDateString("en-IN", { day: "numeric", month: "short" })})
+                  </p>
+                )}
+              </div>
               <button
                 className="icon-btn"
                 onClick={() => setShowLastDetails(false)}
