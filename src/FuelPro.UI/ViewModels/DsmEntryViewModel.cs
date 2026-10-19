@@ -391,6 +391,31 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string _endTime = "08:00 PM";
     private double? _savedEntryGrossSales;
 
+    public bool HasInProgressEntry
+    {
+        get
+        {
+            if (_isEditing) return true;
+            if (!string.IsNullOrWhiteSpace(DsmName)) return true;
+            if (NozzleReadings.Any(r => r.ClosingReading.HasValue || r.IsManualOpeningOverride)) return true;
+            if (OtpTransactions.Count > 0) return true;
+            if (Debits.Count > 0) return true;
+            if (Expenses.Count > 0) return true;
+            if (TestingRows.Any(t => t.Litres.HasValue && t.Litres.Value > 0)) return true;
+            if ((Cash1?.TotalAmount ?? 0) > 0 || (Cash2?.TotalAmount ?? 0) > 0) return true;
+            if (DynamicCollections.Any(d => (d.Amount.HasValue && d.Amount.Value > 0) || !string.IsNullOrWhiteSpace(d.Tid) || !string.IsNullOrWhiteSpace(d.Batch) || !string.IsNullOrWhiteSpace(d.Otp))) return true;
+            if (PhonePeMorning.HasValue || PhonePeNight.HasValue || PhonePeCardMorning.HasValue || PhonePeCardNight.HasValue ||
+                CreditCardMorning.HasValue || CreditCardNight.HasValue ||
+                PetroCardMorning.HasValue || PetroCardNight.HasValue ||
+                Others.HasValue || CashDeposit.HasValue) return true;
+            if (!string.IsNullOrWhiteSpace(CardTid) || !string.IsNullOrWhiteSpace(CardBatch) ||
+                !string.IsNullOrWhiteSpace(PhonePeTid) || !string.IsNullOrWhiteSpace(PhonePeBatch) ||
+                !string.IsNullOrWhiteSpace(PetroCardTid) || !string.IsNullOrWhiteSpace(PetroCardBatch)) return true;
+            if (QrPayments.Count > 0 || KhandharePetroleumEntries.Count > 0) return true;
+            return false;
+        }
+    }
+
     // Nozzle readings
     public ObservableCollection<NozzleReadingRow> NozzleReadings { get; } = new();
 
@@ -778,19 +803,26 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
 
         _stationConfigChangedHandler = () =>
         {
+            if (_isEditing || HasInProgressEntry) return;
             var dispatcher = System.Windows.Application.Current?.Dispatcher;
             if (dispatcher != null && !dispatcher.CheckAccess())
             {
                 dispatcher.BeginInvoke(() =>
                 {
-                    ReloadPumpOptions();
-                    if (!_isEditing) LoadNozzlesForPump();
+                    if (!_isEditing && !HasInProgressEntry)
+                    {
+                        ReloadPumpOptions();
+                        LoadNozzlesForPump();
+                    }
                 });
             }
             else
             {
-                ReloadPumpOptions();
-                if (!_isEditing) LoadNozzlesForPump();
+                if (!_isEditing && !HasInProgressEntry)
+                {
+                    ReloadPumpOptions();
+                    LoadNozzlesForPump();
+                }
             }
         };
         if (_stationConfigService != null)
@@ -902,18 +934,18 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
 
         _dsmEntryChangedHandler = () =>
         {
-            if (_isEditing) return;
+            if (_isEditing || HasInProgressEntry) return;
             var dispatcher = System.Windows.Application.Current?.Dispatcher;
             if (dispatcher != null && !dispatcher.CheckAccess())
             {
                 dispatcher.BeginInvoke(() =>
                 {
-                    if (!_isEditing) LoadNozzlesForPump();
+                    if (!_isEditing && !HasInProgressEntry) LoadNozzlesForPump();
                 });
             }
             else
             {
-                if (!_isEditing) LoadNozzlesForPump();
+                if (!_isEditing && !HasInProgressEntry) LoadNozzlesForPump();
             }
         };
         FuelPro.Core.Services.DsmEntryService.DsmEntryChanged += _dsmEntryChangedHandler;
@@ -1156,9 +1188,9 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
 
             RefreshAvailableOtpCollectionTypes();
 
-            OtpTransactions.Clear();
             if (existingPayment != null)
             {
+                OtpTransactions.Clear();
                 var allItems = existingPayment.GetAllItems()?.ToList() ?? new List<PaymentCollectionItem>();
                 foreach (var item in allItems)
                 {
@@ -1183,6 +1215,16 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
                 if (OtpTransactions.Count > 0)
                 {
                     OnOtpTransactionsChanged();
+                }
+            }
+            else if (OtpTransactions.Count > 0)
+            {
+                // In-progress entry: update OTP amounts on dynamic collections from existing OtpTransactions
+                foreach (var dynRow in DynamicCollections)
+                {
+                    var dynRows = OtpTransactions.Where(t => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(t.CollectionTypeCode), PaymentCollection.NormalizeCollectionTypeCode(dynRow.Code), StringComparison.OrdinalIgnoreCase)).ToList();
+                    dynRow.OtpAmount = dynRows.Sum(t => t.Amount);
+                    dynRow.RecalculateTotal();
                 }
             }
         }

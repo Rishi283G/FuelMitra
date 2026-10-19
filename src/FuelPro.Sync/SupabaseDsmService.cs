@@ -105,7 +105,7 @@ public class SupabaseDsmService
     {
         try
         {
-            var endpoint = $"DsmSubmissionReadings?SubmissionId=eq.{submissionId}";
+            var endpoint = $"DsmSubmissionReadings?SubmissionId=eq.{submissionId}&order=NozzleId.asc";
             var request = await CreateRequestAsync(HttpMethod.Get, endpoint);
 
             var response = await _client.SendAsync(request);

@@ -2251,7 +2251,11 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                     <input
                       type="number"
                       className="field-input"
-                      value={row.openingReading || ""}
+                      value={
+                        row.isOpeningReadOnly
+                          ? (Number(row.openingReading) || 0).toFixed(2)
+                          : row.openingReading || ""
+                      }
                       step="0.01"
                       min="0"
                       readOnly={row.isOpeningReadOnly}
@@ -2369,7 +2373,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                     {(
                       Math.max(0, (Number(row.closingReading) || 0) - (Number(row.openingReading) || 0)) *
                       (Number(row.rate) || 0)
-                    ).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                    ).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
               </div>

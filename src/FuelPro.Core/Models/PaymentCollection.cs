@@ -138,6 +138,7 @@ public class PaymentCollection
             return "CREDIT_CARD";
         if (test.Equals("PINELABS", StringComparison.OrdinalIgnoreCase)
             || test.Equals("PINELABSCARD", StringComparison.OrdinalIgnoreCase)
+            || test.Equals("PINELABSCARDS", StringComparison.OrdinalIgnoreCase)
             || test.Equals("PINELAB", StringComparison.OrdinalIgnoreCase)
             || test.Equals("PINELABCARD", StringComparison.OrdinalIgnoreCase)
             || test.Equals("PINELABSCREDITCARD", StringComparison.OrdinalIgnoreCase))
@@ -192,18 +193,17 @@ public class PaymentCollection
                 // Sum all legitimate distinct OTP transactions
                 total += otpItems.Sum(i => i.Amount);
 
-                double otpTotal = otpItems.Sum(i => i.Amount);
                 foreach (var nonOtp in nonOtpItems)
                 {
+                    if (nonOtp.IsSyntheticSummary) continue;
+
                     bool isExactDuplicate = otpItems.Any(o =>
                         Math.Abs(o.Amount - nonOtp.Amount) < 0.01
                         && string.Equals(o.Slot ?? "", nonOtp.Slot ?? "", StringComparison.OrdinalIgnoreCase)
                         && string.Equals(o.Tid ?? "", nonOtp.Tid ?? "", StringComparison.OrdinalIgnoreCase)
                         && string.Equals(o.Batch ?? "", nonOtp.Batch ?? "", StringComparison.OrdinalIgnoreCase));
 
-                    bool isAggregateDuplicate = Math.Abs(nonOtp.Amount - otpTotal) < 0.01;
-
-                    if (!isExactDuplicate && !isAggregateDuplicate)
+                    if (!isExactDuplicate)
                     {
                         // Genuine separate manual collection item
                         total += nonOtp.Amount;

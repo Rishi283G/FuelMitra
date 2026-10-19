@@ -43,6 +43,13 @@ public class PaymentCollectionItem
     [MaxLength(50)]
     public string? Otp { get; set; }
 
+    /// <summary>
+    /// Provenance flag indicating whether this row was generated as a synthetic summary row.
+    /// Not persisted in database schema.
+    /// </summary>
+    [NotMapped]
+    public bool IsSyntheticSummary { get; set; }
+
     [ForeignKey(nameof(PaymentId))]
     public PaymentCollection? PaymentCollection { get; set; }
 }

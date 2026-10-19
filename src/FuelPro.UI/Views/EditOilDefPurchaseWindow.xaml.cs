@@ -21,8 +21,8 @@ public partial class EditOilDefPurchaseWindow : Window
         PurchaseDatePicker.SelectedDate = date.Date;
         SupplierTextBox.Text = supplier ?? string.Empty;
         InvoiceTextBox.Text = invoice ?? string.Empty;
-        QuantityTextBox.Text = currentQty.ToString("0.##");
-        UnitPriceTextBox.Text = currentUnitPrice.ToString("0.##");
+        QuantityTextBox.Text = currentQty.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+        UnitPriceTextBox.Text = currentUnitPrice.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
 
         UpdateTotalDisplay();
     }

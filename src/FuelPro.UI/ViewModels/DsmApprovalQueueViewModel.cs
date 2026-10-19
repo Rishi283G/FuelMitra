@@ -173,6 +173,7 @@ public partial class DsmDebitRow : ObservableObject
     [ObservableProperty] private string? _entryTime;
 
     partial void OnAmountChanged(double value) => OnRowChanged?.Invoke();
+    partial void OnDebtorNameChanged(string value) => OnRowChanged?.Invoke();
 }
 
 public partial class DsmCardSwipeRow : ObservableObject
@@ -183,6 +184,7 @@ public partial class DsmCardSwipeRow : ObservableObject
     [ObservableProperty] private string _tid = "";
     [ObservableProperty] private string _batch = "";
     [ObservableProperty] private string _otp = "";
+    public bool IsSyntheticSummary { get; set; }
 
     partial void OnAmountChanged(double value) => OnRowChanged?.Invoke();
     partial void OnModeChanged(string value) => OnRowChanged?.Invoke();
@@ -257,6 +259,20 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(CanApprove))]
     private string? _metadataParseError;
 
+    public bool HasValidItemizedDebtors()
+    {
+        if (CreditAmount < 0) return false;
+        if (CreditAmount <= 0.009) return true;
+        if (DebtorEntries == null || DebtorEntries.Count == 0) return false;
+        if (DebtorEntries.Any(d => d.Amount < 0)) return false;
+        if (DebtorEntries.Any(d => d.Amount > 0.009 && string.IsNullOrWhiteSpace(d.DebtorName))) return false;
+        if (DebtorEntries.Any(d => !string.IsNullOrWhiteSpace(d.DebtorName) && d.Amount <= 0.009)) return false;
+        double validTotal = DebtorEntries.Where(d => !string.IsNullOrWhiteSpace(d.DebtorName) && d.Amount > 0.009).Sum(d => d.Amount);
+        if (validTotal <= 0.009) return false;
+        if (Math.Abs(CreditAmount - validTotal) > 0.01) return false;
+        return true;
+    }
+
     public bool IsSubmissionComplete
     {
         get
@@ -278,6 +294,11 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
             }
 
             if (CardSwipeDetails.Any(c => c.Amount > 0 && string.IsNullOrWhiteSpace(c.Mode)))
+            {
+                return false;
+            }
+
+            if (!HasValidItemizedDebtors())
             {
                 return false;
             }
@@ -309,6 +330,11 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
             if (CardSwipeDetails.Any(c => c.Amount > 0 && string.IsNullOrWhiteSpace(c.Mode)))
             {
                 return "⚠️ Unclassified card/payment swipe detected with missing collection type mode.";
+            }
+
+            if (!HasValidItemizedDebtors())
+            {
+                return $"Unitemized credit detected (₹{CreditAmount:N2}). All credit sales must be itemized with customer names in the Debtor Entries Log before approval.";
             }
 
             return string.Empty;
@@ -516,6 +542,19 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
             };
             _featureToggleService.FeatureConfigurationChanged += _featureChangedHandler;
         }
+
+        DebtorEntries.CollectionChanged += (s, e) =>
+        {
+            if (e.NewItems != null)
+            {
+                foreach (DsmDebitRow item in e.NewItems)
+                {
+                    item.OnRowChanged ??= RecalculateTotals;
+                }
+            }
+            RecalculateTotals();
+            NotifySubmissionStateChanged();
+        };
 
         _ = LoadLocalStationNameAsync();
         _ = RefreshQueueAsync();
@@ -757,23 +796,37 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
 
             if (readingsResult.Success && readingsResult.Data != null)
             {
-                foreach (var r in readingsResult.Data)
+                var sortedReadings = readingsResult.Data
+                    .OrderBy(r => GetDynamicNozzleId(r))
+                    .ToList();
+
+                foreach (var r in sortedReadings)
                 {
-                    int nozzleId = r.NozzleId;
-                    double opening = r.OpeningReading;
-                    double closing = r.ClosingReading;
-                    double rate = r.Rate;
+                    int nozzleId = GetDynamicNozzleId(r);
+                    double opening = Convert.ToDouble((object?)r.OpeningReading);
+                    double closing = Convert.ToDouble((object?)r.ClosingReading);
+                    double rate = Convert.ToDouble((object?)r.Rate);
                     
                     double? expectedOpening = prevClosings.TryGetValue(nozzleId, out var prevClosing) 
                         ? prevClosing 
                         : null;
 
-                    int nozzlePumpId = r.PumpId != null ? (int)r.PumpId : (int)submission.PumpId;
+                    int nozzlePumpId = (int)submission.PumpId;
+                    try
+                    {
+                        if (r.PumpId != null) nozzlePumpId = (int)r.PumpId;
+                    }
+                    catch {}
+
+                    string submittedFuelType = GetDynamicFuelType(r) ?? "";
+                    string resolvedFuelType = !string.IsNullOrWhiteSpace(submittedFuelType)
+                        ? submittedFuelType
+                        : GetFuelTypeName(nozzlePumpId, nozzleId, submission.ShiftDate);
 
                     var row = new DsmNozzleRow
                     {
                         NozzleId = nozzleId,
-                        FuelType = GetFuelTypeName(nozzlePumpId, nozzleId, submission.ShiftDate),
+                        FuelType = resolvedFuelType,
                         OpeningReading = opening,
                         ClosingReading = closing,
                         Rate = rate,
@@ -850,6 +903,40 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                             }
                         }
 
+                        if (metadata.machineTransactions != null)
+                        {
+                            foreach (var mt in metadata.machineTransactions)
+                            {
+                                string mtCode = (string)(mt.collectionTypeCode ?? mt.code ?? "");
+                                if (string.IsNullOrWhiteSpace(mtCode)) continue;
+                                double mtAmt = Convert.ToDouble((object?)(mt.amount ?? 0.0));
+                                string? mtOtp = (string?)(mt.otp ?? mt.Otp ?? "");
+                                string? mtTid = (string?)(mt.tid ?? mt.Tid ?? "");
+                                string? mtBatch = (string?)(mt.batch ?? mt.Batch ?? "");
+                                string? mtSlot = (string?)(mt.slot ?? mt.Slot ?? "");
+                                if (mtAmt <= 0 && string.IsNullOrWhiteSpace(mtOtp)) continue;
+
+                                string normMtCode = PaymentCollection.NormalizeCollectionTypeCode(mtCode);
+
+                                if (!CardSwipeDetails.Any(c => 
+                                    string.Equals(PaymentCollection.NormalizeCollectionTypeCode(c.Mode), normMtCode, StringComparison.OrdinalIgnoreCase)
+                                    && Math.Abs(c.Amount - mtAmt) < 0.01 
+                                    && (string.IsNullOrWhiteSpace(c.Otp) || string.IsNullOrWhiteSpace(mtOtp) || c.Otp.Equals(mtOtp, StringComparison.OrdinalIgnoreCase))
+                                    && (string.IsNullOrWhiteSpace(c.Tid) || string.IsNullOrWhiteSpace(mtTid) || c.Tid.Equals(mtTid, StringComparison.OrdinalIgnoreCase))))
+                                {
+                                    CardSwipeDetails.Add(new DsmCardSwipeRow
+                                    {
+                                        Mode = string.IsNullOrWhiteSpace(mtSlot) ? mtCode : $"{mtCode} ({mtSlot})",
+                                        Amount = mtAmt,
+                                        Tid = mtTid ?? "",
+                                        Batch = mtBatch ?? "",
+                                        Otp = mtOtp ?? "",
+                                        OnRowChanged = RecalculateTotals
+                                    });
+                                }
+                            }
+                        }
+
                         if (metadata.dynamicItems != null)
                         {
                             foreach (var d in metadata.dynamicItems)
@@ -905,72 +992,17 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                                         Tid = dTid ?? "",
                                         Batch = dBatch ?? "",
                                         Otp = dOtp ?? "",
+                                        IsSyntheticSummary = string.IsNullOrWhiteSpace(dOtp),
                                         OnRowChanged = RecalculateTotals
                                     });
                                 }
                             }
                         }
 
-                        if (metadata.machineTransactions != null)
-                        {
-                            foreach (var mt in metadata.machineTransactions)
-                            {
-                                string mtCode = (string)(mt.collectionTypeCode ?? mt.code ?? "");
-                                if (string.IsNullOrWhiteSpace(mtCode)) continue;
-                                double mtAmt = Convert.ToDouble((object?)(mt.amount ?? 0.0));
-                                string? mtOtp = (string?)(mt.otp ?? mt.Otp ?? "");
-                                string? mtTid = (string?)(mt.tid ?? mt.Tid ?? "");
-                                string? mtBatch = (string?)(mt.batch ?? mt.Batch ?? "");
-                                string? mtSlot = (string?)(mt.slot ?? mt.Slot ?? "");
-                                if (mtAmt <= 0 && string.IsNullOrWhiteSpace(mtOtp)) continue;
-
-                                string normMtCode = PaymentCollection.NormalizeCollectionTypeCode(mtCode);
-
-                                if (!CardSwipeDetails.Any(c => 
-                                    string.Equals(PaymentCollection.NormalizeCollectionTypeCode(c.Mode), normMtCode, StringComparison.OrdinalIgnoreCase)
-                                    && Math.Abs(c.Amount - mtAmt) < 0.01 
-                                    && (string.IsNullOrWhiteSpace(c.Otp) || string.IsNullOrWhiteSpace(mtOtp) || c.Otp.Equals(mtOtp, StringComparison.OrdinalIgnoreCase))
-                                    && (string.IsNullOrWhiteSpace(c.Tid) || string.IsNullOrWhiteSpace(mtTid) || c.Tid.Equals(mtTid, StringComparison.OrdinalIgnoreCase))))
-                                {
-                                    CardSwipeDetails.Add(new DsmCardSwipeRow
-                                    {
-                                        Mode = string.IsNullOrWhiteSpace(mtSlot) ? mtCode : $"{mtCode} ({mtSlot})",
-                                        Amount = mtAmt,
-                                        Tid = mtTid ?? "",
-                                        Batch = mtBatch ?? "",
-                                        Otp = mtOtp ?? "",
-                                        OnRowChanged = RecalculateTotals
-                                    });
-                                }
-                            }
-                        }
+                        // Clean up any redundant total row when itemized OTP transactions exist
+                        CleanupRedundantTotals(metadata, collResult.Success ? collResult.Data : null);
 
                         PersonalDebtors.Clear();
-                        if (metadata.personalDebtors != null)
-                        {
-                            foreach (var pd in metadata.personalDebtors)
-                            {
-                                PersonalDebtors.Add(new DsmPersonalDebtor
-                                {
-                                    DsmName = submission.DsmName,
-                                    Date = submission.ShiftDate,
-                                    Time = DateTime.Now.ToString("hh:mm tt"),
-                                    Amount = Convert.ToDouble((object?)(pd.amount ?? 0.0)),
-                                    FuelProduct = (pd.fuelProduct ?? string.Empty).ToString(),
-                                    Remarks = (pd.remarks ?? string.Empty).ToString(),
-                                    PaymentMethod = (pd.paymentMethod ?? "Cash").ToString(),
-                                    CardTid = (pd.tid ?? string.Empty).ToString(),
-                                    CardBatch = (pd.batch ?? string.Empty).ToString(),
-                                    Denom500 = Convert.ToInt32((object?)(pd.denom500 ?? 0)),
-                                    Denom200 = Convert.ToInt32((object?)(pd.denom200 ?? 0)),
-                                    Denom100 = Convert.ToInt32((object?)(pd.denom100 ?? 0)),
-                                    Denom50 = Convert.ToInt32((object?)(pd.denom50 ?? 0)),
-                                    Denom20 = Convert.ToInt32((object?)(pd.denom20 ?? 0)),
-                                    Denom10 = Convert.ToInt32((object?)(pd.denom10 ?? 0)),
-                                    Coins = Convert.ToInt32((object?)(pd.coins ?? 0))
-                                });
-                            }
-                        }
 
                         KhandhareEntries.Clear();
                         var kpRawList = metadata.khandhareEntries ?? metadata.khandharePetroleumEntries;
@@ -1113,9 +1145,148 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
         }
     }
 
+    private static int GetDynamicNozzleId(dynamic r)
+    {
+        if (r == null) return 0;
+        try
+        {
+            if (r is System.Dynamic.ExpandoObject exp)
+            {
+                var dict = (IDictionary<string, object?>)exp;
+                if (dict.TryGetValue("NozzleId", out var nid) || dict.TryGetValue("nozzleId", out nid))
+                    return Convert.ToInt32(nid);
+            }
+            if (r is Newtonsoft.Json.Linq.JObject jobj)
+            {
+                return (int?)(jobj["NozzleId"] ?? jobj["nozzleId"]) ?? 0;
+            }
+            return (int)(r.NozzleId ?? r.nozzleId ?? 0);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    private static string? GetDynamicFuelType(dynamic r)
+    {
+        if (r == null) return null;
+        try
+        {
+            if (r is System.Dynamic.ExpandoObject expando)
+            {
+                var dict = (IDictionary<string, object?>)expando;
+                if (dict.TryGetValue("FuelType", out var val) || dict.TryGetValue("fuelType", out val))
+                    return val?.ToString();
+                return null;
+            }
+            if (r is Newtonsoft.Json.Linq.JObject jobj)
+            {
+                return (string?)(jobj["FuelType"] ?? jobj["fuelType"]);
+            }
+            return (string?)r.FuelType;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private void CleanupRedundantTotals(dynamic? metadata, dynamic? coll)
+    {
+        var dynamicGroups = CardSwipeDetails
+            .GroupBy(c => PaymentCollection.NormalizeCollectionTypeCode(c.Mode), StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        foreach (var group in dynamicGroups)
+        {
+            var otpRows = group.Where(c => !string.IsNullOrWhiteSpace(c.Otp)).ToList();
+            if (otpRows.Count == 0) continue;
+
+            double otpSum = otpRows.Sum(c => c.Amount);
+            string normCode = group.Key;
+
+            // Determine if metadata or collection indicates a legitimate manual portion
+            double expectedManual = 0;
+            bool hasExplicitTotal = false;
+
+            if (metadata != null && metadata.dynamicItems != null)
+            {
+                foreach (var d in metadata.dynamicItems)
+                {
+                    string dCode = (string)(d.collectionTypeCode ?? d.code ?? "");
+                    if (string.Equals(PaymentCollection.NormalizeCollectionTypeCode(dCode), normCode, StringComparison.OrdinalIgnoreCase))
+                    {
+                        double dAmt = Convert.ToDouble((object?)(d.amount ?? 0.0));
+                        expectedManual = Math.Max(0, dAmt - otpSum);
+                        hasExplicitTotal = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!hasExplicitTotal && coll != null)
+            {
+                try
+                {
+                    if (string.Equals(normCode, "PHONEPE", StringComparison.OrdinalIgnoreCase))
+                    {
+                        double collUpi = Convert.ToDouble((object?)(coll.UPI ?? 0.0));
+                        expectedManual = Math.Max(0, collUpi - otpSum);
+                        hasExplicitTotal = true;
+                    }
+                    else if (string.Equals(normCode, "CREDIT_CARD", StringComparison.OrdinalIgnoreCase))
+                    {
+                        double collCard = Convert.ToDouble((object?)(coll.Card ?? 0.0));
+                        expectedManual = Math.Max(0, collCard - otpSum);
+                        hasExplicitTotal = true;
+                    }
+                    else if (string.Equals(normCode, "PETROCARD", StringComparison.OrdinalIgnoreCase))
+                    {
+                        double collPetro = Convert.ToDouble((object?)(coll.PetroCard ?? 0.0));
+                        expectedManual = Math.Max(0, collPetro - otpSum);
+                        hasExplicitTotal = true;
+                    }
+                }
+                catch {}
+            }
+
+            // Only remove non-OTP rows that are explicitly synthetic or when expectedManual is 0
+            var redundantTotals = group
+                .Where(c => string.IsNullOrWhiteSpace(c.Otp) && 
+                            (c.IsSyntheticSummary || 
+                             (c.Amount <= 0.009) || 
+                             (hasExplicitTotal && expectedManual <= 0.009 && Math.Abs(c.Amount - otpSum) < 0.01)))
+                .ToList();
+
+            foreach (var red in redundantTotals)
+            {
+                CardSwipeDetails.Remove(red);
+            }
+        }
+    }
+
     private void RecalculateTotals()
     {
         GrossSales = NozzleReadings.Sum(r => r.Amount);
+
+        // Keep CreditAmount in sync when itemized DebtorEntries exist with non-zero amounts
+        if (DebtorEntries.Count > 0)
+        {
+            double sumDebtors = DebtorEntries.Sum(d => d.Amount);
+            if (sumDebtors > 0.009 && Math.Abs(_creditAmount - sumDebtors) > 0.009)
+            {
+                _isSyncingCredit = true;
+                try
+                {
+                    CreditAmount = sumDebtors;
+                }
+                finally
+                {
+                    _isSyncingCredit = false;
+                }
+            }
+        }
 
         var expenseDtos = (SubmissionExpenses.Count > 0
             ? SubmissionExpenses.Select(e => new FuelPro.Core.DTOs.ExpenseDto { Amount = (decimal)e.Amount })
@@ -1137,23 +1308,22 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
             double groupTotal = 0;
             if (otpSwipes.Count == 0)
             {
-                groupTotal = nonOtpSwipes.Sum(c => c.Amount);
+                groupTotal = nonOtpSwipes.Where(c => !c.IsSyntheticSummary).Sum(c => c.Amount);
             }
             else
             {
                 groupTotal = otpSwipes.Sum(c => c.Amount);
-                double otpSum = otpSwipes.Sum(c => c.Amount);
 
                 foreach (var nonOtp in nonOtpSwipes)
                 {
+                    if (nonOtp.IsSyntheticSummary) continue;
+
                     bool isExactDuplicate = otpSwipes.Any(o =>
                         Math.Abs(o.Amount - nonOtp.Amount) < 0.01
                         && string.Equals(o.Tid ?? "", nonOtp.Tid ?? "", StringComparison.OrdinalIgnoreCase)
                         && string.Equals(o.Batch ?? "", nonOtp.Batch ?? "", StringComparison.OrdinalIgnoreCase));
 
-                    bool isAggregateDuplicate = Math.Abs(nonOtp.Amount - otpSum) < 0.01;
-
-                    if (!isExactDuplicate && !isAggregateDuplicate)
+                    if (!isExactDuplicate)
                     {
                         groupTotal += nonOtp.Amount;
                     }
@@ -1229,31 +1399,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
         ShortAmount = rawShortage;          // Shift Short matches full shortage
         ExcessAmount = MismatchAmount > 0 ? MismatchAmount : 0;
 
-        // Auto update PersonalDebtors grid for shortage
-        var autoLossItem = PersonalDebtors.FirstOrDefault(pd => pd.Remarks != null && pd.Remarks.Contains("Auto Shift Shortage"));
-        if (dsmLossAmount > 0)
-        {
-            if (autoLossItem != null)
-            {
-                autoLossItem.Amount = dsmLossAmount;
-            }
-            else if (SelectedSubmission != null)
-            {
-                PersonalDebtors.Add(new DsmPersonalDebtor
-                {
-                    DsmName = SelectedSubmission.DsmName,
-                    Date = SelectedSubmission.ShiftDate,
-                    Time = DateTime.Now.ToString("hh:mm tt"),
-                    Amount = dsmLossAmount,
-                    Remarks = $"Auto Shift Shortage (Pump {SelectedSubmission.PumpId}, Shift {SelectedSubmission.ShiftType})",
-                    PaymentMethod = "Cash"
-                });
-            }
-        }
-        else if (autoLossItem != null)
-        {
-            PersonalDebtors.Remove(autoLossItem);
-        }
+
 
         // Check continuity warnings
         HasContinuityWarnings = NozzleReadings.Any(r => r.HasContinuityError);
@@ -1268,10 +1414,14 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
             errors.Add("• Closing reading is less than opening reading.");
         if (CardSwipeDetails.Any(c => c.Amount > 0 && string.IsNullOrWhiteSpace(c.Mode)))
             errors.Add("• Unclassified transaction: A card swipe entry has an amount but no collection type selected.");
+        if (!HasValidItemizedDebtors())
+            errors.Add($"• Unitemized credit detected (₹{CreditAmount:N2}). All credit sales must be itemized with customer names in the Debtor Entries Log before approval.");
 
         ValidationSummary = errors.Count > 0 
             ? string.Join(Environment.NewLine, errors) 
             : "✓ Calculations and continuity are correct.";
+
+        NotifySubmissionStateChanged();
     }
 
     private bool _isRecalculatingPineLabs;
@@ -1309,7 +1459,12 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
     partial void OnPetroCardAmountChanged(double value) => RecalculateTotals();
     partial void OnCashDepositAmountChanged(double value) => RecalculateTotals();
     partial void OnOthersAmountChanged(double value) => RecalculateTotals();
-    partial void OnCreditAmountChanged(double value) => RecalculateTotals();
+    private bool _isSyncingCredit;
+    partial void OnCreditAmountChanged(double value)
+    {
+        if (_isSyncingCredit) return;
+        RecalculateTotals();
+    }
     partial void OnExpenseAmountChanged(double value) => RecalculateTotals();
     partial void OnOverrideContinuityChanged(bool value) => NotifySubmissionStateChanged();
     partial void OnOverrideRemarkChanged(string value) => NotifySubmissionStateChanged();
@@ -1477,6 +1632,14 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
         return personalDebtors;
     }
 
+    private static void ShowUiMessage(string message, string caption, MessageBoxButton button = MessageBoxButton.OK, MessageBoxImage image = MessageBoxImage.Information)
+    {
+        if (Environment.GetEnvironmentVariable("FUELPRO_ENV") != "TEST" && System.Windows.Application.Current != null)
+        {
+            MessageBox.Show(message, caption, button, image);
+        }
+    }
+
     [RelayCommand]
     private async Task ApproveAsync()
     {
@@ -1485,7 +1648,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
         // Completeness Guard
         if (!IsSubmissionComplete)
         {
-            MessageBox.Show($"Cannot approve submission: {SubmissionIncompleteReason}", 
+            ShowUiMessage($"Cannot approve submission: {SubmissionIncompleteReason}", 
                 "Incomplete PWA Submission", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
@@ -1493,21 +1656,21 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
         // Validation Rules
         if (HasContinuityWarnings && !OverrideContinuity)
         {
-            MessageBox.Show("Cannot approve: Continuity warnings exist. Check 'Override continuity warnings' checkbox.", 
+            ShowUiMessage("Cannot approve: Continuity warnings exist. Check 'Override continuity warnings' checkbox.", 
                 "Continuity Mismatch", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
         if (HasContinuityWarnings && string.IsNullOrWhiteSpace(OverrideRemark))
         {
-            MessageBox.Show("Cannot approve: Overridden continuity mismatch requires a manager's override remark/note.", 
+            ShowUiMessage("Cannot approve: Overridden continuity mismatch requires a manager's override remark/note.", 
                 "Remark Required", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
         if (NozzleReadings.Any(r => r.ClosingReading < r.OpeningReading))
         {
-            MessageBox.Show("Cannot approve: Closing reading cannot be less than opening reading.", 
+            ShowUiMessage("Cannot approve: Closing reading cannot be less than opening reading.", 
                 "Reading Error", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
@@ -1515,8 +1678,17 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
         var unclassifiedSwipe = CardSwipeDetails.FirstOrDefault(s => s.Amount > 0 && string.IsNullOrWhiteSpace(s.Mode));
         if (unclassifiedSwipe != null)
         {
-            MessageBox.Show($"Cannot approve submission: A card swipe transaction of ₹{unclassifiedSwipe.Amount:N2} has no collection type specified. Please specify the collection type before approving.", 
+            ShowUiMessage($"Cannot approve submission: A card swipe transaction of ₹{unclassifiedSwipe.Amount:N2} has no collection type specified. Please specify the collection type before approving.", 
                 "Missing Collection Type", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        // Strict Blocking for Unitemized Credit Execution Guard
+        if (!HasValidItemizedDebtors())
+        {
+            ShowUiMessage(
+                $"Unitemized credit detected (₹{CreditAmount:N2}). All credit sales must be itemized with customer names in the Debtor Entries Log before approval.", 
+                "Unitemized Credit", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
@@ -2028,33 +2200,8 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                 });
             }
 
-            // Fallback for CreditAmount if no debtor entries exist
-            if (debitModels.Count == 0 && CreditAmount > 0)
-            {
-                debitModels.Add(new DebitEntry
-                {
-                    DebtorName = "DSM PWA Credit",
-                    Amount = CreditAmount,
-                    PaymentMethod = "Credit"
-                });
-            }
-
-            // Save personal debtors (including auto DSM loss shortage - no tolerance)
-            double totalShortage = MismatchAmount < 0 ? Math.Abs(MismatchAmount) : 0;
-            double dsmLossAmount = totalShortage;
-            var personalDebtors = PersonalDebtors.ToList();
-            if (personalDebtors.Count == 0 && dsmLossAmount > 0)
-            {
-                personalDebtors.Add(new DsmPersonalDebtor
-                {
-                    DsmName = SelectedSubmission.DsmName,
-                    Date = SelectedSubmission.ShiftDate,
-                    Time = DateTime.Now.ToString("hh:mm tt"),
-                    Amount = dsmLossAmount,
-                    Remarks = $"Auto Shift Shortage (Pump {SelectedSubmission.PumpId}, Shift {SelectedSubmission.ShiftType})",
-                    PaymentMethod = "Cash"
-                });
-            }
+            // Personal debtors are managed under the dedicated Personal Ledger / drawings register
+            var personalDebtors = new List<DsmPersonalDebtor>();
 
             // Parse cash denominations, connected pump, and testing entries
             int denom500 = 0, denom200 = 0, denom100 = 0, denom50 = 0, denom20 = 0, denom10 = 0, coins = 0;
@@ -2253,7 +2400,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                 if (!localSaveResult.Success)
                 {
                     await transaction.RollbackAsync();
-                    MessageBox.Show($"WPF local save failed: {localSaveResult.Error}", "Save Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    ShowUiMessage($"WPF local save failed: {localSaveResult.Error}", "Save Error", MessageBoxButton.OK, MessageBoxImage.Error);
                     await RefreshQueueAsync();
                     return;
                 }
@@ -2442,10 +2589,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                 var syncEngine = _serviceProvider.GetRequiredService<SyncEngine>();
                 _ = syncEngine.ForceSyncAsync();
 
-                if (Environment.GetEnvironmentVariable("FUELPRO_ENV") != "TEST")
-                {
-                    MessageBox.Show("DSM Submission approved successfully and saved locally!", "Approved", MessageBoxButton.OK, MessageBoxImage.Information);
-                }
+                ShowUiMessage("DSM Submission approved successfully and saved locally!", "Approved", MessageBoxButton.OK, MessageBoxImage.Information);
                 
                 SelectedSubmission = null;
                 OverrideRemark = "";
@@ -2458,13 +2602,13 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
             {
                 await transaction.RollbackAsync();
                 LogDbUpdateExceptionDetails(dbEx);
-                MessageBox.Show($"Approval failed: A database update constraint or validation error occurred. Check log files for technical details.", "Database Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                ShowUiMessage($"Approval failed: A database update constraint or validation error occurred. Check log files for technical details.", "Database Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
             catch (Exception ex)
             {
                 await transaction.RollbackAsync();
                 _logger.Error(ex, "Approval process failed for submission {SubId}", SelectedSubmission.Id);
-                MessageBox.Show($"Approval failed: {ex.Message}", "System Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                ShowUiMessage($"Approval failed: {ex.Message}", "System Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
             finally
             {
@@ -3034,14 +3178,19 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                 var uniqueReadings = entry.NozzleReadings
                     .GroupBy(r => r.NozzleNumber)
                     .Select(g => g.OrderByDescending(r => r.NozzleReadingId).First())
+                    .OrderBy(r => r.NozzleNumber)
                     .ToList();
 
                 foreach (var r in uniqueReadings)
                 {
+                    string fuelType = !string.IsNullOrWhiteSpace(r.FuelType)
+                        ? r.FuelType
+                        : GetFuelTypeName(entry.PumpId, r.NozzleNumber, approvedSub.ShiftDate);
+
                     var row = new DsmNozzleRow
                     {
                         NozzleId = r.NozzleNumber,
-                        FuelType = GetFuelTypeName(entry.PumpId, r.NozzleNumber, approvedSub.ShiftDate),
+                        FuelType = fuelType,
                         OpeningReading = r.OpeningReading,
                         ClosingReading = r.ClosingReading,
                         Rate = r.Rate,
@@ -3059,14 +3208,19 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                     var uniqueConnectedReadings = connectedEntry.NozzleReadings
                         .GroupBy(r => r.NozzleNumber)
                         .Select(g => g.OrderByDescending(r => r.NozzleReadingId).First())
+                        .OrderBy(r => r.NozzleNumber)
                         .ToList();
 
                     foreach (var r in uniqueConnectedReadings)
                     {
+                        string fuelType = !string.IsNullOrWhiteSpace(r.FuelType)
+                            ? r.FuelType
+                            : GetFuelTypeName(connectedEntry.PumpId, r.NozzleNumber, approvedSub.ShiftDate);
+
                         var row = new DsmNozzleRow
                         {
                             NozzleId = r.NozzleNumber,
-                            FuelType = GetFuelTypeName(connectedEntry.PumpId, r.NozzleNumber, approvedSub.ShiftDate),
+                            FuelType = fuelType,
                             OpeningReading = r.OpeningReading,
                             ClosingReading = r.ClosingReading,
                             Rate = r.Rate,
@@ -3155,11 +3309,14 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                             Otp = item.Otp ?? ""
                         });
                     }
-                }
 
-                foreach (var d in entry.PersonalDebtors)
-                {
-                    PersonalDebtors.Add(d);
+                    // Clean up redundant totals safely using explicit row provenance and metadata
+                    dynamic? appMeta = null;
+                    if (!string.IsNullOrEmpty(approvedSub.MetadataJson))
+                    {
+                        try { appMeta = JsonConvert.DeserializeObject<dynamic>(approvedSub.MetadataJson); } catch {}
+                    }
+                    CleanupRedundantTotals(appMeta, null);
                 }
 
                 foreach (var t in entry.TestingEntries)

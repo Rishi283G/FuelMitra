@@ -16,8 +16,8 @@ public partial class EditOilDefSaleWindow : Window
 
         ProductLabel.Text = $"Product: {productName}";
         SaleDatePicker.SelectedDate = date.Date;
-        QuantityTextBox.Text = currentQty.ToString("0.##");
-        RateTextBox.Text = currentRate.ToString("0.##");
+        QuantityTextBox.Text = currentQty.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+        RateTextBox.Text = currentRate.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
 
         UpdateTotalDisplay();
     }

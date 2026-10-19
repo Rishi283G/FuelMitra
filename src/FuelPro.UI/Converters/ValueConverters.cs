@@ -27,14 +27,14 @@ public class IndianCurrencyConverter : IValueConverter
 }
 
 /// <summary>
-/// Formats litres to 4 decimal places.
+/// Formats litres to 2 decimal places.
 /// </summary>
 public class LitreFormatConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        if (value is double d) return $"{d:F4} L";
-        return "0.0000 L";
+        if (value is double d) return $"{d:F2} L";
+        return "0.00 L";
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
@@ -59,14 +59,14 @@ public class LitresConverter : IValueConverter
 }
 
 /// <summary>
-/// Formats Kg to 4 decimal places.
+/// Formats Kg to 2 decimal places.
 /// </summary>
 public class KgFormatConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        if (value is double d) return $"{d:F4} Kg";
-        return "0.0000 Kg";
+        if (value is double d) return $"{d:F2} Kg";
+        return "0.00 Kg";
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)

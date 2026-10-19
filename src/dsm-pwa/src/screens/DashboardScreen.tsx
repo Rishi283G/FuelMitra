@@ -501,7 +501,7 @@ export default function DashboardScreen({ onNavigate }: DashboardProps) {
                           }}
                         >
                           <span>
-                            Op: {parseFloat(Number(r.OpeningReading).toFixed(2))} | Cl: {parseFloat(Number(r.ClosingReading).toFixed(2))}
+                            Op: {Number(r.OpeningReading).toFixed(2)} | Cl: {Number(r.ClosingReading).toFixed(2)}
                           </span>
                           {testingLtr > 0 && (
                             <span style={{ color: "#fb923c" }}>

@@ -101,7 +101,7 @@
                             <DataGridTemplateColumn Header="Opening Reading" Width="210">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
-                                        <TextBox Width="140" Text="{Binding OpeningReading, UpdateSourceTrigger=LostFocus, StringFormat=0.##}"
+                                        <TextBox Width="140" Text="{Binding OpeningReading, UpdateSourceTrigger=LostFocus, StringFormat=0.00}"
                                                  PreviewTextInput="DecimalTextBox_PreviewTextInput"
                                                  DataObject.Pasting="DecimalTextBox_Pasting"
                                                  GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"
@@ -112,7 +112,7 @@
                             <DataGridTemplateColumn Header="Closing Reading" Width="140">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
-                                        <TextBox Text="{Binding ClosingReading, UpdateSourceTrigger=LostFocus, StringFormat=0.##}"
+                                        <TextBox Text="{Binding ClosingReading, UpdateSourceTrigger=LostFocus, StringFormat=0.00}"
                                                  PreviewTextInput="DecimalTextBox_PreviewTextInput"
                                                  DataObject.Pasting="DecimalTextBox_Pasting"
                                                  GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"
@@ -133,7 +133,7 @@
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
-                            <DataGridTextColumn Header="Sale (L)" Binding="{Binding SaleLitres, StringFormat=F4}" IsReadOnly="True" Width="120"/>
+                            <DataGridTextColumn Header="Sale (L)" Binding="{Binding SaleLitres, StringFormat=F2}" IsReadOnly="True" Width="120"/>
                             <DataGridTemplateColumn Header="Rate (₹)" Width="100">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
@@ -154,7 +154,7 @@
                             <ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="1" FontSize="14" FontWeight="SemiBold" Margin="0,0,32,0">
-                            <Run Text="Total Litres: "/><Run Text="{Binding TotalLitres, Mode=OneWay, StringFormat=F4, FallbackValue=0}" Foreground="#2196F3"/>
+                            <Run Text="Total Litres: "/><Run Text="{Binding TotalLitres, Mode=OneWay, StringFormat=F2, FallbackValue=0}" Foreground="#2196F3"/>
                         </TextBlock>
                         <TextBlock Grid.Column="2" FontSize="14" FontWeight="SemiBold">
                             <Run Text="Gross Sales: ₹"/><Run Text="{Binding GrossSales, Mode=OneWay, StringFormat=N2}" Foreground="#4CAF50"/>
@@ -608,7 +608,7 @@
                                     <DataGridTemplateColumn Header="Litres" Width="120">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
-                                                <TextBox Text="{Binding Litres, UpdateSourceTrigger=LostFocus, StringFormat=F4}"
+                                                <TextBox Text="{Binding Litres, UpdateSourceTrigger=LostFocus, StringFormat=F2}"
                                                          PreviewTextInput="DecimalTextBox_PreviewTextInput"
                                                          DataObject.Pasting="DecimalTextBox_Pasting"
                                                          GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"

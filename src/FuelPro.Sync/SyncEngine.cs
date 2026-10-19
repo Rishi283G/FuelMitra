@@ -1932,10 +1932,17 @@ public class SyncEngine
                                             var existingTank = existingTanks.FirstOrDefault(x => string.Equals(x.TankName, t.TankName, StringComparison.OrdinalIgnoreCase));
                                             if (existingTank != null)
                                             {
-                                                existingTank.CapacityKL = t.CapacityKL;
-                                                existingTank.FuelType = t.FuelType;
-                                                existingTank.IsActive = t.IsActive;
-                                                existingTank.HasTesting = t.HasTesting;
+                                                if (Math.Abs(existingTank.CapacityKL - t.CapacityKL) > 0.001 ||
+                                                    existingTank.FuelType != t.FuelType ||
+                                                    existingTank.IsActive != t.IsActive ||
+                                                    existingTank.HasTesting != t.HasTesting)
+                                                {
+                                                    existingTank.CapacityKL = t.CapacityKL;
+                                                    existingTank.FuelType = t.FuelType;
+                                                    existingTank.IsActive = t.IsActive;
+                                                    existingTank.HasTesting = t.HasTesting;
+                                                    configChanged = true;
+                                                }
                                                 processedNames.Add(existingTank.TankName);
                                             }
                                             else
@@ -1950,6 +1957,7 @@ public class SyncEngine
                                                     CreatedAt = DateTime.Now
                                                 });
                                                 processedNames.Add(t.TankName);
+                                                configChanged = true;
                                             }
                                         }
 
@@ -1960,10 +1968,9 @@ public class SyncEngine
                                                 !tanks.Any(t => string.Equals(t.TankName, existing.TankName, StringComparison.OrdinalIgnoreCase)))
                                             {
                                                 context.TankDefinitions.Remove(existing);
+                                                configChanged = true;
                                             }
                                         }
-
-                                        configChanged = true;
                                     }
                                 }
 
@@ -1981,11 +1988,19 @@ public class SyncEngine
                                             var existingCt = existingCts.FirstOrDefault(x => string.Equals(x.Code, ct.Code, StringComparison.OrdinalIgnoreCase));
                                             if (existingCt != null)
                                             {
-                                                existingCt.DisplayName = ct.DisplayName;
-                                                existingCt.Category = ct.Category;
-                                                existingCt.HasTidBatch = ct.HasTidBatch;
-                                                existingCt.DisplayOrder = ct.DisplayOrder;
-                                                existingCt.IsActive = ct.IsActive;
+                                                if (existingCt.DisplayName != ct.DisplayName ||
+                                                    existingCt.Category != ct.Category ||
+                                                    existingCt.HasTidBatch != ct.HasTidBatch ||
+                                                    existingCt.DisplayOrder != ct.DisplayOrder ||
+                                                    existingCt.IsActive != ct.IsActive)
+                                                {
+                                                    existingCt.DisplayName = ct.DisplayName;
+                                                    existingCt.Category = ct.Category;
+                                                    existingCt.HasTidBatch = ct.HasTidBatch;
+                                                    existingCt.DisplayOrder = ct.DisplayOrder;
+                                                    existingCt.IsActive = ct.IsActive;
+                                                    configChanged = true;
+                                                }
                                                 processedCodes.Add(existingCt.Code);
                                             }
                                             else
@@ -2002,6 +2017,7 @@ public class SyncEngine
                                                     CreatedAt = DateTime.Now
                                                 });
                                                 processedCodes.Add(ct.Code);
+                                                configChanged = true;
                                             }
                                         }
 
@@ -2012,10 +2028,9 @@ public class SyncEngine
                                                 !types.Any(t => string.Equals(t.Code, existing.Code, StringComparison.OrdinalIgnoreCase)))
                                             {
                                                 context.CollectionTypes.Remove(existing);
+                                                configChanged = true;
                                             }
                                         }
-
-                                        configChanged = true;
                                     }
                                 }
 
@@ -2030,11 +2045,18 @@ public class SyncEngine
                                             var existingFeat = await context.AppFeatureSettings.FirstOrDefaultAsync(x => x.FeatureKey == feat.FeatureKey && x.TargetRole == feat.TargetRole);
                                             if (existingFeat != null)
                                             {
-                                                existingFeat.IsEnabled = feat.IsEnabled;
-                                                existingFeat.DisplayName = feat.DisplayName;
-                                                existingFeat.Category = feat.Category;
-                                                existingFeat.DisplayOrder = feat.DisplayOrder;
-                                                existingFeat.UpdatedAt = DateTime.Now;
+                                                if (existingFeat.IsEnabled != feat.IsEnabled ||
+                                                    existingFeat.DisplayName != feat.DisplayName ||
+                                                    existingFeat.Category != feat.Category ||
+                                                    existingFeat.DisplayOrder != feat.DisplayOrder)
+                                                {
+                                                    existingFeat.IsEnabled = feat.IsEnabled;
+                                                    existingFeat.DisplayName = feat.DisplayName;
+                                                    existingFeat.Category = feat.Category;
+                                                    existingFeat.DisplayOrder = feat.DisplayOrder;
+                                                    existingFeat.UpdatedAt = DateTime.Now;
+                                                    configChanged = true;
+                                                }
                                             }
                                             else
                                             {
@@ -2048,9 +2070,9 @@ public class SyncEngine
                                                     IsEnabled = feat.IsEnabled,
                                                     UpdatedAt = DateTime.Now
                                                 });
+                                                configChanged = true;
                                             }
                                         }
-                                        configChanged = true;
                                     }
                                 }
 
@@ -2073,11 +2095,19 @@ public class SyncEngine
 
                                             if (existing != null)
                                             {
-                                                existing.PumpId = m.PumpId;
-                                                existing.NozzleNumber = m.NozzleNumber;
-                                                existing.FuelType = m.FuelType;
-                                                existing.TankName = m.TankName;
-                                                existing.IsActive = m.IsActive;
+                                                if (existing.PumpId != m.PumpId ||
+                                                    existing.NozzleNumber != m.NozzleNumber ||
+                                                    existing.FuelType != m.FuelType ||
+                                                    existing.TankName != m.TankName ||
+                                                    existing.IsActive != m.IsActive)
+                                                {
+                                                    existing.PumpId = m.PumpId;
+                                                    existing.NozzleNumber = m.NozzleNumber;
+                                                    existing.FuelType = m.FuelType;
+                                                    existing.TankName = m.TankName;
+                                                    existing.IsActive = m.IsActive;
+                                                    configChanged = true;
+                                                }
                                                 processedIds.Add(existing.PumpMappingId);
                                             }
                                             else
@@ -2094,6 +2124,7 @@ public class SyncEngine
                                                 context.PumpMappings.Add(newEntity);
                                                 await context.SaveChangesAsync();
                                                 processedIds.Add(newEntity.PumpMappingId);
+                                                configChanged = true;
                                             }
                                         }
 
@@ -2103,10 +2134,9 @@ public class SyncEngine
                                             if (!processedIds.Contains(existing.PumpMappingId))
                                             {
                                                 context.PumpMappings.Remove(existing);
+                                                configChanged = true;
                                             }
                                         }
-
-                                        configChanged = true;
                                     }
                                 }
 

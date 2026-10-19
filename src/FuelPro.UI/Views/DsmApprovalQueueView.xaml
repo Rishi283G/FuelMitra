@@ -458,25 +458,6 @@
                         </StackPanel>
                     </materialDesign:Card>
 
-                    <!-- Personal Debtors Card -->
-                    <materialDesign:Card Padding="20" UniformCornerRadius="12" Margin="0,0,0,16" materialDesign:ElevationAssist.Elevation="Dp3">
-                        <StackPanel>
-                            <TextBlock Text="{Binding PersonalLedgerPwaHeader}" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}" Margin="0,0,0,12"/>
-                            <DataGrid ItemsSource="{Binding PersonalDebtors}" AutoGenerateColumns="False"
-                                      IsReadOnly="{Binding IsReadOnlyMode}"
-                                      CanUserAddRows="{Binding IsEditable}" CanUserDeleteRows="{Binding IsEditable}"
-                                      HeadersVisibility="Column" GridLinesVisibility="Horizontal" materialDesign:DataGridAssist.CellPadding="12 8" materialDesign:DataGridAssist.ColumnHeaderPadding="12 8">
-                                <DataGrid.Columns>
-                                    <DataGridTextColumn Header="Amount (₹)" Binding="{Binding Amount, StringFormat=F2}" Width="100"/>
-                                    <DataGridTextColumn Header="Payment" Binding="{Binding PaymentMethod}" Width="120"/>
-                                    <DataGridTextColumn Header="Fuel Product" Binding="{Binding FuelProduct}" Width="140"/>
-                                    <DataGridTextColumn Header="Remarks" Binding="{Binding Remarks}" Width="2*"/>
-                                    <DataGridTextColumn Header="TID" Binding="{Binding CardTid}" Width="120"/>
-                                    <DataGridTextColumn Header="Batch" Binding="{Binding CardBatch}" Width="120"/>
-                                </DataGrid.Columns>
-                            </DataGrid>
-                        </StackPanel>
-                    </materialDesign:Card>
  
                     <!-- Khandhare Petroleum Drawings Card -->
                     <materialDesign:Card Padding="20" UniformCornerRadius="12" Margin="0,0,0,16" materialDesign:ElevationAssist.Elevation="Dp3">
@@ -533,20 +514,40 @@
                     <!-- Card Swipe Details Card -->
                     <materialDesign:Card Padding="20" UniformCornerRadius="12" Margin="0,0,0,16" materialDesign:ElevationAssist.Elevation="Dp3">
                         <StackPanel>
-                            <TextBlock Text="💳 Card Swipe Details (Editable)" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}" Margin="0,0,0,12"/>
+                            <DockPanel Margin="0,0,0,12" LastChildFill="False">
+                                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <materialDesign:PackIcon Kind="CreditCardCheckOutline" Width="22" Height="22" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <TextBlock Text="Card Swipe &amp; Machine Slip Details" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}" VerticalAlignment="Center"/>
+                                </StackPanel>
+                                <Border DockPanel.Dock="Right" Background="#E0F2F1" CornerRadius="12" Padding="10,4">
+                                    <TextBlock Text="Itemized Machine Slips &amp; Card Payments" FontSize="11.5" FontWeight="SemiBold" Foreground="#00796B"/>
+                                </Border>
+                            </DockPanel>
+
                             <DataGrid ItemsSource="{Binding CardSwipeDetails}" AutoGenerateColumns="False" 
                                       IsReadOnly="{Binding IsReadOnlyMode}"
                                       CanUserAddRows="{Binding IsEditable}" CanUserDeleteRows="{Binding IsEditable}"
                                       HeadersVisibility="Column" GridLinesVisibility="Horizontal" materialDesign:DataGridAssist.CellPadding="12 8" materialDesign:DataGridAssist.ColumnHeaderPadding="12 8">
                                 <DataGrid.Columns>
-                                    <DataGridTextColumn Header="Card Mode (PhonePe / PhonePe Card / PineLabs Card / PetroCard)" Binding="{Binding Mode}" Width="2*"/>
-                                    <DataGridTextColumn Header="TID" Binding="{Binding Tid}" Width="*"/>
-                                    <DataGridTextColumn Header="Batch No." Binding="{Binding Batch}" Width="*"/>
-                                    <DataGridTextColumn Header="Slip Number" Binding="{Binding Otp}" Width="*"/>
-                                    <DataGridTemplateColumn Header="Amount (₹)" Width="120">
+                                    <DataGridTextColumn Header="Payment / Card Mode" Binding="{Binding Mode}" Width="2*"/>
+                                    <DataGridTextColumn Header="TID" Binding="{Binding Tid}" Width="90"/>
+                                    <DataGridTextColumn Header="Batch No." Binding="{Binding Batch}" Width="90"/>
+                                    <DataGridTemplateColumn Header="Slip No. / OTP" Width="120">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
-                                                <TextBox Text="{Binding Amount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" FontSize="14" IsEnabled="{Binding DataContext.IsEditable, RelativeSource={RelativeSource AncestorType=UserControl}}"/>
+                                                <TextBlock Text="{Binding Otp}" FontWeight="SemiBold" Foreground="#00796B" VerticalAlignment="Center"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                        <DataGridTemplateColumn.CellEditingTemplate>
+                                            <DataTemplate>
+                                                <TextBox Text="{Binding Otp, UpdateSourceTrigger=LostFocus}"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellEditingTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="Amount (₹)" Width="130">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBox Text="{Binding Amount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" FontSize="14" FontWeight="SemiBold" HorizontalContentAlignment="Right" IsEnabled="{Binding DataContext.IsEditable, RelativeSource={RelativeSource AncestorType=UserControl}}"/>
                                             </DataTemplate>
                                         </DataGridTemplateColumn.CellTemplate>
                                     </DataGridTemplateColumn>

@@ -355,12 +355,12 @@ const fuelLabels = {'HSD':'Diesel','MS-I':'Petrol','MS-II':'Diesel','CNG':'CNG'}
     <td>${friendlyFuel}</td>
     <td class="num">${NUM(r.openingReading,2)}</td>
     <td class="num">${NUM(r.closingReading,2)}</td>
-    <td class="num">${NUM(r.saleLitres,4) + unit}</td>
+    <td class="num">${NUM(r.saleLitres,2) + unit}</td>
     <td class="num">${INR(r.rate)}</td>
     <td class="num">${INR(r.amount)}</td>
   </tr>`;
 });
-document.getElementById('totalLitres').textContent = NUM(data.totalLitres, 4);
+document.getElementById('totalLitres').textContent = NUM(data.totalLitres, 2);
 document.getElementById('grossSales').textContent = INR(data.grossSales);
 
 // Section 3 — Payment Collection
@@ -453,7 +453,7 @@ const teb = document.getElementById('testingBody');
 (data.testing || []).forEach(t => {
   const friendlyFuel = fuelLabels[t.fuelType] || t.fuelType;
   const unit = t.fuelType === 'CNG' ? ' Kg' : ' L';
-  teb.innerHTML += `<tr><td>${friendlyFuel}</td><td class="num">${NUM(t.litres,4) + unit}</td><td class="num">${INR(t.rate)}</td><td class="num">${INR(t.amount)}</td></tr>`;
+  teb.innerHTML += `<tr><td>${friendlyFuel}</td><td class="num">${NUM(t.litres,2) + unit}</td><td class="num">${INR(t.rate)}</td><td class="num">${INR(t.amount)}</td></tr>`;
 });
 document.getElementById('testingTotal').textContent = INR(data.totalTesting);
 

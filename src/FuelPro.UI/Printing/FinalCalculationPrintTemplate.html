@@ -388,7 +388,7 @@ function renderData(){
 
   document.getElementById('sGross').textContent=inrZ(grossFuel);
   document.getElementById('sCollect').textContent=inrZ(recTotal);
-  document.getElementById('sLitres').textContent=parseFloat(totalL).toFixed(4)+' L';
+  document.getElementById('sLitres').textContent=parseFloat(totalL).toFixed(2)+' L';
   document.getElementById('sCreditors').textContent=inrZ(d.creditorsTotal||0);
   var dEl=document.getElementById('sDiff');
   if(Math.abs(diff)<0.01){dEl.textContent='\u2713 Balanced';dEl.className='stat-val ok';}
@@ -569,11 +569,11 @@ function renderData(){
     var desc = f.description || f.tankLabel || '';
     var labelStr = desc ? (badge + ' &nbsp; ' + desc) : badge;
     var unit = (f.fuelType === 'CNG' || (desc && desc.indexOf('CNG') >= 0)) ? ' Kg' : ' L';
-    tr.innerHTML='<td>'+(i+1)+'</td><td style="text-align:left;">'+labelStr+'</td><td>'+parseFloat(f.litres||0).toFixed(4)+unit+'</td><td>'+parseFloat(f.rate||0).toFixed(2)+'</td><td>'+inrZ(f.amount)+'</td>';
+    tr.innerHTML='<td>'+(i+1)+'</td><td style="text-align:left;">'+labelStr+'</td><td>'+parseFloat(f.litres||0).toFixed(2)+unit+'</td><td>'+parseFloat(f.rate||0).toFixed(2)+'</td><td>'+inrZ(f.amount)+'</td>';
     ft.appendChild(tr);
   });
   var ftr2=document.createElement('tr');ftr2.className='tr-total';
-  ftr2.innerHTML='<td colspan="2">TOTAL FUEL SALE</td><td>'+parseFloat(ftTotL).toFixed(4)+'</td><td>\u2013</td><td>'+inrZ(ftTotA)+'</td>';ft.appendChild(ftr2);
+  ftr2.innerHTML='<td colspan="2">TOTAL FUEL SALE</td><td>'+parseFloat(ftTotL).toFixed(2)+'</td><td>\u2013</td><td>'+inrZ(ftTotA)+'</td>';ft.appendChild(ftr2);
 
   // Render Oil & DEF Sales
   var secOilDef = document.getElementById('secOilDef');

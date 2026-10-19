@@ -1132,5 +1132,267 @@ public class DsmEntryPipelineTests : IDisposable
         Assert.Equal(7163.00, vm.FinalAdjusted, precision: 2);
         Assert.Equal(0.11, vm.Difference, precision: 2); // 7163.00 - 7162.89 = +0.11
     }
+
+    [Fact]
+    public async Task Verify_ApprovalQueue_BlocksApproval_WhenCreditUnitemized_WithZeroSideEffects()
+    {
+        using var db = _serviceProvider.GetRequiredService<FuelProDbContext>();
+        int dsmCountBefore = db.DsmEntries.Count();
+        int debitCountBefore = db.DebitEntries.Count();
+        int pdCountBefore = db.DsmPersonalDebtors.Count();
+
+        var submission = new DsmPendingSubmission
+        {
+            Id = Guid.NewGuid(),
+            DsmName = "Test Unitemized DSM",
+            DsmUserId = "usr-unit-01",
+            PumpId = 1,
+            ShiftDate = DateTime.Today,
+            ShiftType = "Morning",
+            Notes = "Unitemized Credit Test",
+            MetadataJson = JsonConvert.SerializeObject(new
+            {
+                readings = new[]
+                {
+                    new { nozzleId = 1, openingReading = 1000.0, closingReading = 1050.0, rate = 100.0, fuelType = "MS-I" }
+                },
+                collections = new
+                {
+                    cash = 4500.0,
+                    credit = 500.0
+                }
+            })
+        };
+
+        var queueVm = _serviceProvider.GetRequiredService<DsmApprovalQueueViewModel>();
+        queueVm.SelectedSubmission = submission;
+        await Task.Delay(50);
+        while (queueVm.IsLoadingDetails)
+        {
+            await Task.Delay(50);
+        }
+
+        queueVm.NozzleReadings.Clear();
+        queueVm.NozzleReadings.Add(new DsmNozzleRow
+        {
+            NozzleId = 1,
+            FuelType = "MS-I",
+            OpeningReading = 1000.0,
+            ClosingReading = 1050.0,
+            Rate = 100.0,
+            Amount = 5000.0
+        });
+
+        queueVm.CashAmount = 4500.0;
+        queueVm.UpiAmount = 0.0;
+        queueVm.CardAmount = 0.0;
+        queueVm.PetroCardAmount = 0.0;
+        queueVm.CashDepositAmount = 0.0;
+        queueVm.ExpenseAmount = 0.0;
+        queueVm.OthersAmount = 0.0;
+        queueVm.CreditAmount = 500.0;
+        queueVm.DebtorEntries.Clear(); // No itemized debtor entries!
+
+        // Recalculate totals
+        typeof(DsmApprovalQueueViewModel).GetMethod("RecalculateTotals", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.Invoke(queueVm, null);
+
+        // 1. Verify approval is strictly blocked at property level
+        Assert.False(queueVm.HasValidItemizedDebtors());
+        Assert.False(queueVm.IsSubmissionComplete);
+        Assert.False(queueVm.CanApprove);
+
+        // 2. Verify exact rejection message
+        Assert.Equal("Unitemized credit detected (₹500.00). All credit sales must be itemized with customer names in the Debtor Entries Log before approval.", queueVm.SubmissionIncompleteReason);
+
+        // 3. Attempt execution of ApproveCommand directly
+        await queueVm.ApproveCommand.ExecuteAsync(null);
+
+        // 4. Verify ZERO side effects: no DsmEntry, no DebitEntry, no DsmPersonalDebtor created
+        using var verifyDb = _serviceProvider.GetRequiredService<FuelProDbContext>();
+        Assert.Equal(dsmCountBefore, verifyDb.DsmEntries.Count());
+        Assert.Equal(debitCountBefore, verifyDb.DebitEntries.Count());
+        Assert.Equal(pdCountBefore, verifyDb.DsmPersonalDebtors.Count());
+    }
+
+    [Fact]
+    public void Verify_ApprovalQueue_BlocksApproval_WhenDebtorEntriesHaveBlankOrInvalidNames()
+    {
+        var queueVm = _serviceProvider.GetRequiredService<DsmApprovalQueueViewModel>();
+        queueVm.CreditAmount = 500.0;
+        queueVm.DebtorEntries.Clear();
+
+        // 1. Empty entries -> false
+        Assert.False(queueVm.HasValidItemizedDebtors());
+
+        // 2. Entry with empty name -> false
+        var blankEntry = new DsmDebitRow { DebtorName = "", Amount = 500.0 };
+        queueVm.DebtorEntries.Add(blankEntry);
+        Assert.False(queueVm.HasValidItemizedDebtors());
+
+        // 3. Entry with whitespace name -> false
+        blankEntry.DebtorName = "   ";
+        Assert.False(queueVm.HasValidItemizedDebtors());
+
+        // 4. Entry with valid name but 0 amount -> false
+        blankEntry.DebtorName = "Valid Name";
+        blankEntry.Amount = 0.0;
+        Assert.False(queueVm.HasValidItemizedDebtors());
+
+        // 5. One valid entry + one blank entry -> false (must not allow invalid/blank entry to slip through)
+        blankEntry.Amount = 250.0;
+        var secondBlank = new DsmDebitRow { DebtorName = "", Amount = 250.0 };
+        queueVm.DebtorEntries.Add(secondBlank);
+        Assert.False(queueVm.HasValidItemizedDebtors());
+
+        // 6. When second entry gets valid name -> true
+        secondBlank.DebtorName = "Second Customer";
+        Assert.True(queueVm.HasValidItemizedDebtors());
+
+        // 7. Negative debtor amount -> false
+        secondBlank.Amount = -250.0;
+        Assert.False(queueVm.HasValidItemizedDebtors());
+
+        // 8. Named debtor with 0 amount alongside valid debtor -> false
+        secondBlank.Amount = 0.0;
+        blankEntry.Amount = 500.0;
+        Assert.False(queueVm.HasValidItemizedDebtors());
+
+        // 9. Negative CreditAmount without itemized debtors -> false
+        queueVm.DebtorEntries.Clear();
+        queueVm.CreditAmount = -500.0;
+        Assert.False(queueVm.HasValidItemizedDebtors());
+    }
+
+    [Fact]
+    public async Task Verify_ApprovalQueue_AllowsApproval_WhenCreditIsFullyAndValidlyItemized()
+    {
+        var submission = new DsmPendingSubmission
+        {
+            Id = Guid.NewGuid(),
+            DsmName = "Test Itemized DSM",
+            DsmUserId = "usr-item-01",
+            PumpId = 1,
+            ShiftDate = DateTime.Today,
+            ShiftType = "Morning",
+            Notes = "Itemized Credit Test",
+            MetadataJson = JsonConvert.SerializeObject(new
+            {
+                readings = new[]
+                {
+                    new { nozzleId = 1, openingReading = 1000.0, closingReading = 1050.0, rate = 100.0, fuelType = "MS-I" }
+                }
+            })
+        };
+
+        var queueVm = _serviceProvider.GetRequiredService<DsmApprovalQueueViewModel>();
+        queueVm.SelectedSubmission = submission;
+        await Task.Delay(50);
+        while (queueVm.IsLoadingDetails)
+        {
+            await Task.Delay(50);
+        }
+
+        queueVm.NozzleReadings.Clear();
+        queueVm.NozzleReadings.Add(new DsmNozzleRow
+        {
+            NozzleId = 1,
+            FuelType = "MS-I",
+            OpeningReading = 1000.0,
+            ClosingReading = 1050.0,
+            Rate = 100.0,
+            Amount = 5000.0
+        });
+
+        queueVm.CashAmount = 4500.0;
+        queueVm.UpiAmount = 0.0;
+        queueVm.CardAmount = 0.0;
+        queueVm.PetroCardAmount = 0.0;
+        queueVm.CashDepositAmount = 0.0;
+        queueVm.ExpenseAmount = 0.0;
+        queueVm.OthersAmount = 0.0;
+        queueVm.CreditAmount = 500.0;
+        queueVm.DebtorEntries.Clear();
+        queueVm.DebtorEntries.Add(new DsmDebitRow
+        {
+            DebtorName = "Shree Travels",
+            Amount = 500.0,
+            VehicleNumber = "MH12AB1234",
+            SlipNumber = "SL-501"
+        });
+
+        // Recalculate totals
+        typeof(DsmApprovalQueueViewModel).GetMethod("RecalculateTotals", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.Invoke(queueVm, null);
+
+        // 1. Verify approval is allowed
+        Assert.True(queueVm.HasValidItemizedDebtors());
+        Assert.True(queueVm.IsSubmissionComplete);
+        Assert.True(queueVm.CanApprove);
+        Assert.Empty(queueVm.SubmissionIncompleteReason);
+
+        // 2. Approve submission into SQLite
+        await queueVm.ApproveCommand.ExecuteAsync(null);
+
+        // 3. Verify successful save in SQLite
+        using var db = _serviceProvider.GetRequiredService<FuelProDbContext>();
+        var savedEntry = db.DsmEntries.OrderByDescending(e => e.DsmEntryId).First();
+        Assert.Equal("Test Itemized DSM", savedEntry.DsmName);
+        Assert.Equal(500.0, (double)savedEntry.TotalCreditors, precision: 2);
+        Assert.Equal(5000.0, (double)savedEntry.TotalCollection, precision: 2);
+        Assert.Equal(0.0, (double)savedEntry.Mismatch, precision: 2);
+
+        var savedDebit = db.DebitEntries.FirstOrDefault(d => d.DsmEntryId == savedEntry.DsmEntryId);
+        Assert.NotNull(savedDebit);
+        Assert.Equal("Shree Travels", savedDebit!.DebtorName);
+        Assert.Equal(500.0, savedDebit.Amount);
+
+        // 4. Verify no shortage created
+        var shortages = db.DsmPersonalDebtors.Where(pd => pd.DsmEntryId == savedEntry.DsmEntryId).ToList();
+        Assert.Empty(shortages);
+    }
+
+    [Fact]
+    public void Verify_ApprovalQueue_EditingOrRemovingDebtorEntries_CannotLeaveStaleCreditThatPassesApproval()
+    {
+        var queueVm = _serviceProvider.GetRequiredService<DsmApprovalQueueViewModel>();
+        queueVm.CreditAmount = 500.0;
+        queueVm.DebtorEntries.Clear();
+
+        var entry1 = new DsmDebitRow { DebtorName = "Shree Travels", Amount = 300.0 };
+        var entry2 = new DsmDebitRow { DebtorName = "Sai Motors", Amount = 200.0 };
+        queueVm.DebtorEntries.Add(entry1);
+        queueVm.DebtorEntries.Add(entry2);
+
+        // Recalculate totals
+        typeof(DsmApprovalQueueViewModel).GetMethod("RecalculateTotals", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.Invoke(queueVm, null);
+
+        // State 1: Fully valid itemized entries
+        Assert.True(queueVm.HasValidItemizedDebtors());
+        Assert.Equal(500.0, queueVm.CreditAmount);
+
+        // State 2: Edit entry 2 amount from 200 to 0 -> invalid zero-amount named entry blocks approval
+        entry2.Amount = 0.0;
+        Assert.False(queueVm.HasValidItemizedDebtors());
+
+        // State 3: Edit entry 2 amount to negative -> invalid negative entry blocks approval
+        entry2.Amount = -100.0;
+        Assert.False(queueVm.HasValidItemizedDebtors());
+
+        // State 4: Edit entry 2 name to empty with positive amount -> missing name blocks approval
+        entry2.Amount = 200.0;
+        entry2.DebtorName = "";
+        Assert.False(queueVm.HasValidItemizedDebtors());
+
+        // State 5: Remove entry 2 entirely -> CreditAmount auto-syncs to 300
+        entry2.DebtorName = "Sai Motors";
+        queueVm.DebtorEntries.Remove(entry2);
+        typeof(DsmApprovalQueueViewModel).GetMethod("RecalculateTotals", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.Invoke(queueVm, null);
+        Assert.Equal(300.0, queueVm.CreditAmount);
+        Assert.True(queueVm.HasValidItemizedDebtors());
+
+        // State 6: Remove entry 1 entirely -> DebtorEntries is empty, CreditAmount remains 300 -> MUST strictly block approval!
+        queueVm.DebtorEntries.Remove(entry1);
+        Assert.Empty(queueVm.DebtorEntries);
+        Assert.False(queueVm.HasValidItemizedDebtors());
+    }
 }
 

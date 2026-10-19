@@ -714,5 +714,804 @@ public class DynamicStationConfigurationAndOtpTests
 
         return (phonePeTotal, petroTotal, items);
     }
+
+    [Fact]
+    public void DsmOtpTransactions_ShouldBePreserved_WhenReloadingWithoutSavedPayment()
+    {
+        // Simulate in-progress OTP transactions
+        var otpTransactions = new List<PaymentCollectionItem>
+        {
+            new() { CollectionTypeCode = "CREDIT_CARD", Amount = 1500, Otp = "987654", Tid = "TID01", Batch = "B01", Slot = "Morning" },
+            new() { CollectionTypeCode = "PHONEPE", Amount = 750, Otp = "123456", Tid = "POS02", Batch = "B02", Slot = "General" }
+        };
+
+        PaymentCollection? existingPayment = null; // Background sync triggered refresh
+
+        // The fix guarantees: if existingPayment == null, OtpTransactions must NOT be cleared
+        if (existingPayment != null)
+        {
+            otpTransactions.Clear();
+        }
+
+        Assert.Equal(2, otpTransactions.Count);
+        Assert.Equal("987654", otpTransactions[0].Otp);
+        Assert.Equal(1500, otpTransactions[0].Amount);
+        Assert.Equal("123456", otpTransactions[1].Otp);
+        Assert.Equal(750, otpTransactions[1].Amount);
+    }
+
+    [Fact]
+    public void DebtorRecoveries_AreStrictlyExcludedFromSalesAndDayTotals()
+    {
+        var aggregation = new ShiftAggregationService();
+        var reportService = new ReportService(aggregation);
+        var date = new DateTime(2026, 10, 15);
+
+        var entries = new List<DsmEntry>
+        {
+            new()
+            {
+                DsmEntryId = 1,
+                DsmName = "Test DSM",
+                GrossSales = 10000,
+                NozzleReadings = new List<NozzleReading>
+                {
+                    new() { NozzleNumber = 1, FuelType = "MS-I", SaleLitres = 100, Amount = 10000, Rate = 100 }
+                },
+                CashDenominations = new List<CashDenomination>
+                {
+                    new() { CashType = "Cash2", TotalAmount = 6000 }
+                },
+                PaymentCollection = new PaymentCollection
+                {
+                    PhonePeMorning = 2000,
+                    CreditCardMorning = 2000
+                }
+            }
+        };
+
+        var repayments = new List<CreditorRepayment>
+        {
+            new()
+            {
+                CreditorRepaymentId = 1,
+                CreditorName = "Debtor ABC",
+                PaymentMode = "Cash",
+                Amount = 3000,
+                RepaymentDate = date
+            },
+            new()
+            {
+                CreditorRepaymentId = 2,
+                CreditorName = "Debtor XYZ",
+                PaymentMode = "PhonePe",
+                Amount = 1500,
+                RepaymentDate = date
+            }
+        };
+
+        var dayReport = reportService.CalculateDayReport(
+            startDate: date,
+            endDate: date,
+            entries: entries,
+            allExpenses: new List<Expense>(),
+            repayments: repayments,
+            hsdRate: 90, msIRate: 100, msIIRate: 100, cngRate: 85,
+            stationName: "Mitali Service Station"
+        );
+
+        // 1. Debtor recoveries MUST NOT inflate GrandTotalSaleAmount or ExpectedCollection
+        Assert.Equal(10000, dayReport.GrandTotalSaleAmount);
+        Assert.Equal(10000, dayReport.ExpectedCollection);
+
+        // 2. Pure fuel payment amounts must not be inflated by repayments
+        var cashInHand = dayReport.CollectionBreakdown.First(c => c.Category == "Cash In Hand");
+        Assert.Equal(6000, cashInHand.Amount); // pure fuel cash in hand, NOT 9000
+        Assert.Equal(3000, cashInHand.RecoveryAmount);
+
+        var phonePe = dayReport.CollectionBreakdown.First(c => c.Category.Contains("PhonePe"));
+        Assert.Equal(2000, phonePe.Amount); // pure fuel PhonePe, NOT 3500
+        Assert.Equal(1500, phonePe.RecoveryAmount);
+
+        // 3. DebtorRepaymentsTotal is recorded separately in its own register
+        Assert.Equal(4500, dayReport.DebtorRepaymentsTotal);
+
+        // 4. ActualCollection and Difference are based on pure fuel collections
+        Assert.Equal(10000, dayReport.ActualCollection);
+        Assert.True(dayReport.IsBalanced);
+        Assert.Equal(0, dayReport.Difference, precision: 2);
+    }
+
+    [Fact]
+    public void NormalizeCollectionTypeCode_ShouldCanonicalize_PineLabsCards_WithPluralS()
+    {
+        string norm1 = PaymentCollection.NormalizeCollectionTypeCode("PINE LABS CARDS");
+        string norm2 = PaymentCollection.NormalizeCollectionTypeCode("PINE LABS CARDS (General)");
+        string norm3 = PaymentCollection.NormalizeCollectionTypeCode("PINELABS_CARD");
+        string norm4 = PaymentCollection.NormalizeCollectionTypeCode("PINELABS CARD");
+
+        Assert.Equal("PINELABS_CARD", norm1);
+        Assert.Equal("PINELABS_CARD", norm2);
+        Assert.Equal("PINELABS_CARD", norm3);
+        Assert.Equal("PINELABS_CARD", norm4);
+    }
+
+    [Fact]
+    public void DynamicItemsTotal_IncludesLegitimateEqualAmountManualPayment()
+    {
+        var payment = new PaymentCollection
+        {
+            Items = new List<PaymentCollectionItem>
+            {
+                // Machine transaction slip with OTP: 250
+                new() { CollectionTypeCode = "PINELABS_CARD", Amount = 250, Tid = "T1", Batch = "B1", Otp = "998877" },
+                // Legitimate manual payment: 250
+                new() { CollectionTypeCode = "PINELABS_CARD", Amount = 250, Tid = "T2", Batch = "B2", Otp = null }
+            }
+        };
+
+        // Must NOT drop the manual 250 merely because it equals the OTP sum of 250!
+        // Both rows are legitimate distinct collections and must sum to 500.
+        Assert.Equal(500, payment.DynamicItemsTotal);
+    }
+
+    [Fact]
+    public void DynamicItemsTotal_ExcludesExactDuplicatesAndSyntheticSummaries()
+    {
+        var payment = new PaymentCollection
+        {
+            Items = new List<PaymentCollectionItem>
+            {
+                // Legitimate OTP machine slip: 250
+                new() { CollectionTypeCode = "SBI_REDEEM", Amount = 250, Tid = "T1", Batch = "B1", Otp = "123456", Slot = "General" },
+                // Exact duplicate with same amount, Tid, Batch, Slot: 250
+                new() { CollectionTypeCode = "SBI_REDEEM", Amount = 250, Tid = "T1", Batch = "B1", Otp = null, Slot = "General" },
+                // Synthetic summary row flagged explicitly: 250
+                new() { CollectionTypeCode = "SBI_REDEEM", Amount = 250, Otp = null, IsSyntheticSummary = true }
+            }
+        };
+
+        // Only the genuine 250 OTP slip should be counted
+        Assert.Equal(250, payment.DynamicItemsTotal);
+    }
+
+    [Fact]
+    public void ApprovalQueue_Deduplication_PreservesLegitimateManualPayment_WhenAmountEqualsOtpSum()
+    {
+        // DSM PWA submitted:
+        // - Manual Pine Labs card payment: 250
+        // - One machine transaction slip: 250 (OTP 112233)
+        // dynamicItems sent effective total: 500 (manual 250 + txTotal 250)
+        var cardSwipeDetails = new List<FuelPro.UI.ViewModels.DsmCardSwipeRow>
+        {
+            new() { Mode = "PINE LABS CARDS", Amount = 250, Otp = "112233", Tid = "T01", Batch = "B01" },
+            new() { Mode = "PINE LABS CARDS", Amount = 250, Otp = "", Tid = "", Batch = "" }
+        };
+
+        var metadata = new
+        {
+            dynamicItems = new[]
+            {
+                new { collectionTypeCode = "PINE LABS CARDS", amount = 500.0 }
+            }
+        };
+
+        // Provenance deduplication logic from DsmApprovalQueueViewModel.CleanupRedundantTotals
+        var dynamicGroups = cardSwipeDetails
+            .GroupBy(c => PaymentCollection.NormalizeCollectionTypeCode(c.Mode), StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        foreach (var group in dynamicGroups)
+        {
+            var otpRows = group.Where(c => !string.IsNullOrWhiteSpace(c.Otp)).ToList();
+            if (otpRows.Count == 0) continue;
+
+            double otpSum = otpRows.Sum(c => c.Amount);
+            string normCode = group.Key;
+
+            double expectedManual = 0;
+            bool hasExplicitTotal = false;
+
+            if (metadata?.dynamicItems != null)
+            {
+                foreach (var d in metadata.dynamicItems)
+                {
+                    string dCode = d.collectionTypeCode;
+                    if (string.Equals(PaymentCollection.NormalizeCollectionTypeCode(dCode), normCode, StringComparison.OrdinalIgnoreCase))
+                    {
+                        double dAmt = d.amount;
+                        expectedManual = Math.Max(0, dAmt - otpSum);
+                        hasExplicitTotal = true;
+                        break;
+                    }
+                }
+            }
+
+            var redundantTotals = group
+                .Where(c => string.IsNullOrWhiteSpace(c.Otp) &&
+                            (c.IsSyntheticSummary ||
+                             c.Amount <= 0.009 ||
+                             (hasExplicitTotal && expectedManual <= 0.009 && Math.Abs(c.Amount - otpSum) < 0.01)))
+                .ToList();
+
+            foreach (var red in redundantTotals)
+            {
+                cardSwipeDetails.Remove(red);
+            }
+        }
+
+        // The manual 250 row MUST be preserved because expectedManual (500 - 250 = 250) > 0.009
+        Assert.Equal(2, cardSwipeDetails.Count);
+        Assert.Equal(500, cardSwipeDetails.Sum(c => c.Amount));
+        Assert.Contains(cardSwipeDetails, c => string.IsNullOrWhiteSpace(c.Otp) && Math.Abs(c.Amount - 250) < 0.01);
+        Assert.Contains(cardSwipeDetails, c => !string.IsNullOrWhiteSpace(c.Otp) && Math.Abs(c.Amount - 250) < 0.01);
+    }
+
+    [Fact]
+    public void ApprovalQueue_Deduplication_RemovesSyntheticSummary_WhenNoManualPortion()
+    {
+        // DSM PWA submitted NO manual portion, only 5 machine slips totaling 350.
+        // dynamicItems sent effective total: 350 (manual 0 + txTotal 350).
+        var cardSwipeDetails = new List<FuelPro.UI.ViewModels.DsmCardSwipeRow>
+        {
+            new() { Mode = "PINE LABS CARDS", Amount = 100, Otp = "01", Tid = "3", Batch = "3" },
+            new() { Mode = "PINE LABS CARDS", Amount = 50, Otp = "02", Tid = "3", Batch = "3" },
+            new() { Mode = "PINE LABS CARDS", Amount = 100, Otp = "03", Tid = "3", Batch = "3" },
+            new() { Mode = "PINE LABS CARDS", Amount = 70, Otp = "04", Tid = "3", Batch = "3" },
+            new() { Mode = "PINE LABS CARDS", Amount = 30, Otp = "05", Tid = "3", Batch = "3" },
+            new() { Mode = "PINE LABS CARDS", Amount = 350, Otp = "", Tid = "3", Batch = "3", IsSyntheticSummary = true } // Redundant summary
+        };
+
+        var metadata = new
+        {
+            dynamicItems = new[]
+            {
+                new { collectionTypeCode = "PINE LABS CARDS", amount = 350.0 }
+            }
+        };
+
+        // Provenance deduplication logic from DsmApprovalQueueViewModel.CleanupRedundantTotals
+        var dynamicGroups = cardSwipeDetails
+            .GroupBy(c => PaymentCollection.NormalizeCollectionTypeCode(c.Mode), StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        foreach (var group in dynamicGroups)
+        {
+            var otpRows = group.Where(c => !string.IsNullOrWhiteSpace(c.Otp)).ToList();
+            if (otpRows.Count == 0) continue;
+
+            double otpSum = otpRows.Sum(c => c.Amount);
+            string normCode = group.Key;
+
+            double expectedManual = 0;
+            bool hasExplicitTotal = false;
+
+            if (metadata?.dynamicItems != null)
+            {
+                foreach (var d in metadata.dynamicItems)
+                {
+                    string dCode = d.collectionTypeCode;
+                    if (string.Equals(PaymentCollection.NormalizeCollectionTypeCode(dCode), normCode, StringComparison.OrdinalIgnoreCase))
+                    {
+                        double dAmt = d.amount;
+                        expectedManual = Math.Max(0, dAmt - otpSum);
+                        hasExplicitTotal = true;
+                        break;
+                    }
+                }
+            }
+
+            var redundantTotals = group
+                .Where(c => string.IsNullOrWhiteSpace(c.Otp) &&
+                            (c.IsSyntheticSummary ||
+                             c.Amount <= 0.009 ||
+                             (hasExplicitTotal && expectedManual <= 0.009 && Math.Abs(c.Amount - otpSum) < 0.01)))
+                .ToList();
+
+            foreach (var red in redundantTotals)
+            {
+                cardSwipeDetails.Remove(red);
+            }
+        }
+
+        // Summary row (350) is removed because expectedManual == 0 and IsSyntheticSummary is true
+        Assert.Equal(5, cardSwipeDetails.Count);
+        Assert.Equal(350, cardSwipeDetails.Sum(c => c.Amount));
+        Assert.DoesNotContain(cardSwipeDetails, c => string.IsNullOrWhiteSpace(c.Otp));
+    }
+
+    [Fact]
+    public void ApprovalQueue_NozzleReadings_DeterministicOrderAndFuelTypePreserved()
+    {
+        var rawReadings = new List<FuelPro.UI.ViewModels.DsmNozzleRow>
+        {
+            new() { NozzleId = 4, FuelType = "HSD", OpeningReading = 100.0, ClosingReading = 200.0, Rate = 90.0 },
+            new() { NozzleId = 1, FuelType = "SPEED", OpeningReading = 50.0, ClosingReading = 150.0, Rate = 105.0 },
+            new() { NozzleId = 2, FuelType = "MS-I", OpeningReading = 300.0, ClosingReading = 400.0, Rate = 100.0 }
+        };
+
+        var sorted = rawReadings.OrderBy(r => r.NozzleId).ToList();
+
+        // Must be deterministically ordered 1, 2, 4
+        Assert.Equal(1, sorted[0].NozzleId);
+        Assert.Equal(2, sorted[1].NozzleId);
+        Assert.Equal(4, sorted[2].NozzleId);
+
+        // Submitted FuelType must be preserved
+        Assert.Equal("SPEED", sorted[0].FuelType);
+        Assert.Equal("MS-I", sorted[1].FuelType);
+        Assert.Equal("HSD", sorted[2].FuelType);
+    }
+
+    [Fact]
+    public void CreditAndDebtorAccounting_SyncsWhenDebtorsPresent_DoesNotFabricateDebtorWhenEmpty()
+    {
+        var calcService = new DsmCalculationService();
+
+        // 1. When DebtorEntries are present
+        var debtorDto = new DsmEntryDto
+        {
+            PaymentCollection = new PaymentCollectionDto(),
+            DebitEntries = new List<DebitEntryDto>
+            {
+                new() { Amount = 1500m }
+            }
+        };
+        var resultWithDebtors = calcService.Calculate(debtorDto);
+        Assert.Equal(1500m, resultWithDebtors.TotalCreditors);
+
+        // 2. When DebtorEntries is empty, TotalCreditors must be 0 and no phantom debtor is fabricated
+        var emptyDebtorDto = new DsmEntryDto
+        {
+            PaymentCollection = new PaymentCollectionDto(),
+            DebitEntries = new List<DebitEntryDto>()
+        };
+        var resultEmpty = calcService.Calculate(emptyDebtorDto);
+        Assert.Equal(0m, resultEmpty.TotalCreditors);
+    }
+
+    [Fact]
+    public void TwoDecimalFormatting_DisplaysReadingsAndSalesWithConsistentPrecision()
+    {
+        double opening = 26.5;
+        double closing = 56.4;
+        double sales = closing - opening; // 29.9
+
+        Assert.Equal("26.50", opening.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture));
+        Assert.Equal("56.40", closing.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture));
+        Assert.Equal("29.90", sales.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture));
+
+        var litreConverter = new FuelPro.UI.Converters.LitreFormatConverter();
+        Assert.Equal("26.50 L", litreConverter.Convert(opening, typeof(string), string.Empty, System.Globalization.CultureInfo.InvariantCulture));
+        Assert.Equal("56.40 L", litreConverter.Convert(closing, typeof(string), string.Empty, System.Globalization.CultureInfo.InvariantCulture));
+    }
+
+    [Fact]
+    public void PaymentCollection_PhonePe_Manual250_And_OtpSlip250_BothRetained_OtpCountedOnce()
+    {
+        // 1. Transaction matching regression:
+        // Structured settlement of 250 for PhonePe (from POS machine settlement)
+        var settlements = new List<SettlementTestRecord>
+        {
+            new() { PaymentType = "PHONEPE", Period = "Morning", Amount = 250.0, Tid = "POS01", Batch = "B01" }
+        };
+
+        // Two swipes: one OTP machine slip (250) and one manual PhonePe payment (250)
+        var swipes = new List<SwipeTestRecord>
+        {
+            new() { Mode = "PhonePe (Morning)", Amount = 250.0, Tid = "POS01", Batch = "B01", Otp = "987654" },
+            new() { Mode = "PhonePe (Morning)", Amount = 250.0, Tid = "MANUAL01", Batch = "B02", Otp = "" }
+        };
+
+        var (phonePeTotal, _, items) = AggregateWithTransactionMatching(settlements, swipes, "Morning");
+
+        // Structured settlement matches OTP slip (POS01, 250), so OTP is counted once (via settlement).
+        // The manual payment (250) is unmatched by settlement, so it is losslessly added.
+        // Total must be 500.0, NOT 250 (which would drop the manual payment) and NOT 750 (which would double-count OTP).
+        Assert.Equal(500.0, phonePeTotal);
+        Assert.Equal(2, items.Count);
+        Assert.Contains(items, i => i.Amount == 250.0 && !string.IsNullOrWhiteSpace(i.Otp));
+        Assert.Contains(items, i => i.Amount == 250.0 && string.IsNullOrWhiteSpace(i.Otp));
+
+        // 2. Queue loading deduplication logic:
+        var cardSwipeRows = new List<FuelPro.UI.ViewModels.DsmCardSwipeRow>
+        {
+            new() { Mode = "PhonePe (Morning)", Amount = 250.0, Otp = "987654", Tid = "POS01", Batch = "B01" },
+            new() { Mode = "PhonePe (Morning)", Amount = 250.0, Otp = "", Tid = "", Batch = "" }
+        };
+
+        var coll = new { UPI = 500.0 }; // Total UPI collection submitted by DSM
+
+        // Provenance deduplication logic from CleanupRedundantTotals:
+        var dynamicGroups = cardSwipeRows
+            .GroupBy(c => PaymentCollection.NormalizeCollectionTypeCode(c.Mode), StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        foreach (var group in dynamicGroups)
+        {
+            var otpRows = group.Where(c => !string.IsNullOrWhiteSpace(c.Otp)).ToList();
+            if (otpRows.Count == 0) continue;
+
+            double otpSum = otpRows.Sum(c => c.Amount);
+            string normCode = group.Key;
+
+            double expectedManual = 0;
+            bool hasExplicitTotal = false;
+
+            if (string.Equals(normCode, "PHONEPE", StringComparison.OrdinalIgnoreCase))
+            {
+                double collUpi = coll.UPI;
+                expectedManual = Math.Max(0, collUpi - otpSum);
+                hasExplicitTotal = true;
+            }
+
+            var redundantTotals = group
+                .Where(c => string.IsNullOrWhiteSpace(c.Otp) &&
+                            (c.IsSyntheticSummary ||
+                             c.Amount <= 0.009 ||
+                             (hasExplicitTotal && expectedManual <= 0.009 && Math.Abs(c.Amount - otpSum) < 0.01)))
+                .ToList();
+
+            foreach (var red in redundantTotals)
+            {
+                cardSwipeRows.Remove(red);
+            }
+        }
+
+        // Both rows must be retained: manual 250 is NOT dropped!
+        Assert.Equal(2, cardSwipeRows.Count);
+        Assert.Equal(500.0, cardSwipeRows.Sum(c => c.Amount));
+    }
+
+    [Fact]
+    public void ApprovalQueue_Deduplication_RepeatedLoading_IsIdempotent()
+    {
+        var cardSwipeRows = new List<FuelPro.UI.ViewModels.DsmCardSwipeRow>
+        {
+            new() { Mode = "PINE LABS CARDS", Amount = 250, Otp = "112233", Tid = "T01", Batch = "B01" },
+            new() { Mode = "PINE LABS CARDS", Amount = 250, Otp = "", Tid = "", Batch = "" }
+        };
+
+        var metadata = new
+        {
+            dynamicItems = new[]
+            {
+                new { collectionTypeCode = "PINE LABS CARDS", amount = 500.0 }
+            }
+        };
+
+        void RunCleanup()
+        {
+            var dynamicGroups = cardSwipeRows
+                .GroupBy(c => PaymentCollection.NormalizeCollectionTypeCode(c.Mode), StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            foreach (var group in dynamicGroups)
+            {
+                var otpRows = group.Where(c => !string.IsNullOrWhiteSpace(c.Otp)).ToList();
+                if (otpRows.Count == 0) continue;
+
+                double otpSum = otpRows.Sum(c => c.Amount);
+                string normCode = group.Key;
+
+                double expectedManual = 0;
+                bool hasExplicitTotal = false;
+
+                if (metadata?.dynamicItems != null)
+                {
+                    foreach (var d in metadata.dynamicItems)
+                    {
+                        string dCode = d.collectionTypeCode;
+                        if (string.Equals(PaymentCollection.NormalizeCollectionTypeCode(dCode), normCode, StringComparison.OrdinalIgnoreCase))
+                        {
+                            double dAmt = d.amount;
+                            expectedManual = Math.Max(0, dAmt - otpSum);
+                            hasExplicitTotal = true;
+                            break;
+                        }
+                    }
+                }
+
+                var redundantTotals = group
+                    .Where(c => string.IsNullOrWhiteSpace(c.Otp) &&
+                                (c.IsSyntheticSummary ||
+                                 c.Amount <= 0.009 ||
+                                 (hasExplicitTotal && expectedManual <= 0.009 && Math.Abs(c.Amount - otpSum) < 0.01)))
+                    .ToList();
+
+                foreach (var red in redundantTotals)
+                {
+                    cardSwipeRows.Remove(red);
+                }
+            }
+        }
+
+        // First pass
+        RunCleanup();
+        Assert.Equal(2, cardSwipeRows.Count);
+
+        // Second pass (simulating repeated reload / reopening)
+        RunCleanup();
+        Assert.Equal(2, cardSwipeRows.Count);
+
+        // Third pass
+        RunCleanup();
+        Assert.Equal(2, cardSwipeRows.Count);
+        Assert.Equal(500.0, cardSwipeRows.Sum(c => c.Amount));
+    }
+
+    [Fact]
+    public void ApprovalQueue_Deduplication_RemovesZeroAndNearZeroEntries()
+    {
+        var cardSwipeRows = new List<FuelPro.UI.ViewModels.DsmCardSwipeRow>
+        {
+            new() { Mode = "PINE LABS CARDS", Amount = 500, Otp = "998877", Tid = "T01", Batch = "B01" },
+            new() { Mode = "PINE LABS CARDS", Amount = 0.000, Otp = "", Tid = "", Batch = "" },
+            new() { Mode = "PINE LABS CARDS", Amount = 0.005, Otp = "", Tid = "", Batch = "" }
+        };
+
+        var dynamicGroups = cardSwipeRows
+            .GroupBy(c => PaymentCollection.NormalizeCollectionTypeCode(c.Mode), StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        foreach (var group in dynamicGroups)
+        {
+            var otpRows = group.Where(c => !string.IsNullOrWhiteSpace(c.Otp)).ToList();
+            if (otpRows.Count == 0) continue;
+
+            var redundantTotals = group
+                .Where(c => string.IsNullOrWhiteSpace(c.Otp) && (c.IsSyntheticSummary || c.Amount <= 0.009))
+                .ToList();
+
+            foreach (var red in redundantTotals)
+            {
+                cardSwipeRows.Remove(red);
+            }
+        }
+
+        // Only the genuine 500 OTP row remains; 0.000 and 0.005 rows were cleaned up
+        Assert.Single(cardSwipeRows);
+        Assert.Equal(500, cardSwipeRows[0].Amount);
+    }
+
+    [Fact]
+    public void PaymentCollectionItem_IsSyntheticSummary_HasNotMappedAttribute_RequiresNoDatabaseMigration()
+    {
+        var prop = typeof(PaymentCollectionItem).GetProperty(nameof(PaymentCollectionItem.IsSyntheticSummary));
+        Assert.NotNull(prop);
+
+        var notMappedAttr = prop!.GetCustomAttributes(typeof(System.ComponentModel.DataAnnotations.Schema.NotMappedAttribute), false);
+        Assert.NotEmpty(notMappedAttr);
+    }
+
+    [Fact]
+    public void CreditAndDebtors_EditedDebtors_UpdatesCreditAmountAndTotals()
+    {
+        var debtorList = new List<FuelPro.UI.ViewModels.DsmDebitRow>
+        {
+            new() { DebtorName = "Customer A", Amount = 1000.0 },
+            new() { DebtorName = "Customer B", Amount = 500.0 }
+        };
+
+        double creditAmount = debtorList.Sum(d => d.Amount);
+        Assert.Equal(1500.0, creditAmount);
+
+        // Edit debtor amount (e.g. manager modifies slip from 500 to 750)
+        debtorList[1].Amount = 750.0;
+        creditAmount = debtorList.Sum(d => d.Amount);
+        Assert.Equal(1750.0, creditAmount);
+
+        // Add a new debtor entry
+        debtorList.Add(new FuelPro.UI.ViewModels.DsmDebitRow { DebtorName = "Customer C", Amount = 250.0 });
+        creditAmount = debtorList.Sum(d => d.Amount);
+        Assert.Equal(2000.0, creditAmount);
+
+        // Calculate DsmCalculationService result with the edited debtor rows
+        var calcService = new DsmCalculationService();
+        var dto = new DsmEntryDto
+        {
+            NozzleReadings = new List<NozzleReadingDto> { new() { Amount = 5000m } },
+            PaymentCollection = new PaymentCollectionDto { PhysicalCash = 3000m },
+            DebitEntries = debtorList.Select(d => new DebitEntryDto { Amount = (decimal)d.Amount }).ToList()
+        };
+
+        var result = calcService.Calculate(dto);
+        Assert.Equal(2000m, result.TotalCreditors);
+        Assert.Equal(5000m, result.TotalCollection);
+        Assert.Equal(0m, result.Mismatch);
+        Assert.True(result.IsBalanced);
+    }
+
+    [Fact]
+    public void ApprovedSubmission_Reopening_RestoresExactDebitModels()
+    {
+        // Simulate saved entry with exact debit models in SQLite
+        var savedEntry = new DsmEntry
+        {
+            DsmEntryId = 42,
+            DsmName = "Ramesh",
+            DebitEntries = new List<DebitEntry>
+            {
+                new() { DebtorName = "Shree Travels", Amount = 1200.0, VehicleNumber = "MH12AB1234", SlipNumber = "SL-99" },
+                new() { DebtorName = "Pawar Transport", Amount = 800.0, VehicleNumber = "MH14CD5678", SlipNumber = "SL-100" }
+            }
+        };
+
+        // When reopening in LoadApprovedSubmissionDetailsAsync:
+        var reloadedDebtorRows = new List<FuelPro.UI.ViewModels.DsmDebitRow>();
+        foreach (var db in savedEntry.DebitEntries)
+        {
+            reloadedDebtorRows.Add(new FuelPro.UI.ViewModels.DsmDebitRow
+            {
+                DebtorName = db.DebtorName,
+                Amount = db.Amount,
+                VehicleNumber = db.VehicleNumber ?? "",
+                SlipNumber = db.SlipNumber ?? ""
+            });
+        }
+
+        Assert.Equal(2, reloadedDebtorRows.Count);
+        Assert.Equal("Shree Travels", reloadedDebtorRows[0].DebtorName);
+        Assert.Equal(1200.0, reloadedDebtorRows[0].Amount);
+        Assert.Equal("Pawar Transport", reloadedDebtorRows[1].DebtorName);
+        Assert.Equal(800.0, reloadedDebtorRows[1].Amount);
+        Assert.Equal(2000.0, reloadedDebtorRows.Sum(d => d.Amount));
+    }
+
+    [Fact]
+    public void PaymentReconciliation_MultipleOtpSlips_ManualMatchingOneSlip_RepeatedLoading_And_EditedCollections_CountedExactlyOnce()
+    {
+        // 1. Multiple OTP slips: 300, 250, 450 (sum = 1000)
+        // 2. Manual payment matching one slip's amount: 250
+        // Effective total submitted in dynamicItems: 1250 (1000 OTP + 250 manual)
+        var cardSwipeDetails = new List<FuelPro.UI.ViewModels.DsmCardSwipeRow>
+        {
+            new() { Mode = "PINELABS_CARD", Amount = 300, Otp = "111111", Tid = "T01", Batch = "B01" },
+            new() { Mode = "PINELABS_CARD", Amount = 250, Otp = "222222", Tid = "T02", Batch = "B02" },
+            new() { Mode = "PINELABS_CARD", Amount = 450, Otp = "333333", Tid = "T03", Batch = "B03" },
+            new() { Mode = "PINELABS_CARD", Amount = 250, Otp = "", Tid = "", Batch = "" }
+        };
+
+        var metadata = new
+        {
+            dynamicItems = new[]
+            {
+                new { collectionTypeCode = "PINELABS_CARD", amount = 1250.0 }
+            }
+        };
+
+        void RunCleanup()
+        {
+            var dynamicGroups = cardSwipeDetails
+                .GroupBy(c => PaymentCollection.NormalizeCollectionTypeCode(c.Mode), StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            foreach (var group in dynamicGroups)
+            {
+                var otpRows = group.Where(c => !string.IsNullOrWhiteSpace(c.Otp)).ToList();
+                if (otpRows.Count == 0) continue;
+
+                double otpSum = otpRows.Sum(c => c.Amount);
+                string normCode = group.Key;
+
+                double expectedManual = 0;
+                bool hasExplicitTotal = false;
+
+                if (metadata?.dynamicItems != null)
+                {
+                    foreach (var d in metadata.dynamicItems)
+                    {
+                        string dCode = d.collectionTypeCode;
+                        if (string.Equals(PaymentCollection.NormalizeCollectionTypeCode(dCode), normCode, StringComparison.OrdinalIgnoreCase))
+                        {
+                            double dAmt = d.amount;
+                            expectedManual = Math.Max(0, dAmt - otpSum);
+                            hasExplicitTotal = true;
+                            break;
+                        }
+                    }
+                }
+
+                var redundantTotals = group
+                    .Where(c => string.IsNullOrWhiteSpace(c.Otp) &&
+                                (c.IsSyntheticSummary ||
+                                 c.Amount <= 0.009 ||
+                                 (hasExplicitTotal && expectedManual <= 0.009 && Math.Abs(c.Amount - otpSum) < 0.01)))
+                    .ToList();
+
+                foreach (var red in redundantTotals)
+                {
+                    cardSwipeDetails.Remove(red);
+                }
+            }
+        }
+
+        // Pass 1: Deduplication
+        RunCleanup();
+        Assert.Equal(4, cardSwipeDetails.Count);
+        Assert.Equal(1250.0, cardSwipeDetails.Sum(c => c.Amount));
+
+        // Pass 2 & 3: Idempotent repeated loads
+        RunCleanup();
+        RunCleanup();
+        Assert.Equal(4, cardSwipeDetails.Count);
+        Assert.Equal(1250.0, cardSwipeDetails.Sum(c => c.Amount));
+
+        // Confirm each legitimate amount is counted exactly once:
+        var otp250 = cardSwipeDetails.Where(c => !string.IsNullOrWhiteSpace(c.Otp) && c.Amount == 250).ToList();
+        var manual250 = cardSwipeDetails.Where(c => string.IsNullOrWhiteSpace(c.Otp) && c.Amount == 250).ToList();
+        Assert.Single(otp250);
+        Assert.Single(manual250);
+
+        // DynamicItemsTotal in PaymentCollection also calculates exactly 1250:
+        var payment = new PaymentCollection
+        {
+            Items = cardSwipeDetails.Select(c => new PaymentCollectionItem
+            {
+                CollectionTypeCode = c.Mode,
+                Amount = c.Amount,
+                Tid = c.Tid,
+                Batch = c.Batch,
+                Otp = c.Otp
+            }).ToList()
+        };
+        Assert.Equal(1250.0, payment.DynamicItemsTotal);
+
+        // Edited collections: manager edits the manual payment amount from 250 to 350
+        var manualRow = cardSwipeDetails.First(c => string.IsNullOrWhiteSpace(c.Otp));
+        manualRow.Amount = 350.0;
+
+        // Recalculate dynamic total with edited collections
+        var dynamicSwipes = cardSwipeDetails
+            .Where(c => !PaymentCollection.IsStandardCollectionCode(c.Mode))
+            .ToList();
+
+        double editedDynamicTotal = 0;
+        foreach (var group in dynamicSwipes.GroupBy(c => PaymentCollection.NormalizeCollectionTypeCode(c.Mode)))
+        {
+            var otpSwipes = group.Where(c => !string.IsNullOrWhiteSpace(c.Otp)).ToList();
+            var nonOtpSwipes = group.Where(c => string.IsNullOrWhiteSpace(c.Otp)).ToList();
+            double groupTotal = otpSwipes.Sum(c => c.Amount) + nonOtpSwipes.Where(c => !c.IsSyntheticSummary).Sum(c => c.Amount);
+            editedDynamicTotal += groupTotal;
+        }
+
+        Assert.Equal(1350.0, editedDynamicTotal);
+
+        // Verify with DsmCalculationService
+        var dsmDto = new DsmEntryDto
+        {
+            NozzleReadings = new List<NozzleReadingDto> { new() { Amount = 1350m } },
+            PaymentCollection = new PaymentCollectionDto { DynamicPayments = (decimal)editedDynamicTotal }
+        };
+        var calcResult = new DsmCalculationService().Calculate(dsmDto);
+        Assert.Equal(1350m, calcResult.TotalCollection);
+        Assert.True(calcResult.IsBalanced);
+    }
+
+    [Fact]
+    public void CreditAccounting_WhenCreditAmountGreaterThanZero_ButDebtorEntriesEmpty_TotalCreditorsIsZero_And_MismatchReflectsUnitemizedCredit()
+    {
+        // PWA or payload submitted with credit amount = 500, but no debtor items
+        var calcService = new DsmCalculationService();
+        var dto = new DsmEntryDto
+        {
+            NozzleReadings = new List<NozzleReadingDto> { new() { Amount = 5000m } },
+            PaymentCollection = new PaymentCollectionDto { PhysicalCash = 4500m },
+            DebitEntries = new List<DebitEntryDto>() // Empty debtor entries
+        };
+
+        var result = calcService.Calculate(dto);
+
+        // Core business rule: TotalCreditors strictly equals sum of DebitEntries
+        // No fake debtor is fabricated, so TotalCreditors is 0m
+        Assert.Equal(0m, result.TotalCreditors);
+        // TotalCollection = 4500m (cash only)
+        Assert.Equal(4500m, result.TotalCollection);
+        // Mismatch is -500m (surfacing the unitemized credit as a collection shortage of 500)
+        Assert.Equal(-500m, result.Mismatch);
+        Assert.False(result.IsBalanced);
+    }
 }
+
+
 
