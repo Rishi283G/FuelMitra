@@ -992,7 +992,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                                         Tid = dTid ?? "",
                                         Batch = dBatch ?? "",
                                         Otp = dOtp ?? "",
-                                        IsSyntheticSummary = string.IsNullOrWhiteSpace(dOtp),
+                                        IsSyntheticSummary = false,
                                         OnRowChanged = RecalculateTotals
                                     });
                                 }

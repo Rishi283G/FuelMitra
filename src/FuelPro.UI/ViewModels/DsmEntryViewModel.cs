@@ -2024,12 +2024,12 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
                 PetroCardNight = isC ? (PetroCardMorning ?? 0) : (PetroCardNight ?? 0),
                 Others = Others ?? 0,
                 CashDeposit = Cash1.TotalAmount,
-                CardTid = isC ? (CreditCardTidNight ?? CreditCardTidMorning) : (isDay ? CreditCardTidMorning : (CreditCardTidNight ?? CreditCardTidMorning)),
-                CardBatch = isC ? (CreditCardBatchNight ?? CreditCardBatchMorning) : (isDay ? CreditCardBatchMorning : (CreditCardBatchNight ?? CreditCardBatchMorning)),
-                PhonePeTid = isC ? (PhonePeTidNight ?? PhonePeTidMorning) : (isDay ? PhonePeTidMorning : (PhonePeTidNight ?? PhonePeTidMorning)),
-                PhonePeBatch = isC ? (PhonePeBatchNight ?? PhonePeBatchMorning) : (isDay ? PhonePeBatchMorning : (PhonePeBatchNight ?? PhonePeBatchMorning)),
-                PetroCardTid = isC ? (PetroCardTidNight ?? PetroCardTidMorning) : (isDay ? PetroCardTidMorning : (PetroCardTidNight ?? PetroCardTidMorning)),
-                PetroCardBatch = isC ? (PetroCardBatchNight ?? PetroCardBatchMorning) : (isDay ? PetroCardBatchMorning : (PetroCardBatchNight ?? PetroCardBatchMorning)),
+                CardTid = isC ? (CreditCardTidNight ?? CreditCardTidMorning) : (isDay ? CreditCardTidMorning : (CreditCardTidMorning ?? CreditCardTidNight)),
+                CardBatch = isC ? (CreditCardBatchNight ?? CreditCardBatchMorning) : (isDay ? CreditCardBatchMorning : (CreditCardBatchMorning ?? CreditCardBatchNight)),
+                PhonePeTid = isC ? (PhonePeTidNight ?? PhonePeTidMorning) : (isDay ? PhonePeTidMorning : (PhonePeTidMorning ?? PhonePeTidNight)),
+                PhonePeBatch = isC ? (PhonePeBatchNight ?? PhonePeBatchMorning) : (isDay ? PhonePeBatchMorning : (PhonePeBatchMorning ?? PhonePeBatchNight)),
+                PetroCardTid = isC ? (PetroCardTidNight ?? PetroCardTidMorning) : (isDay ? PetroCardTidMorning : (PetroCardTidMorning ?? PetroCardTidNight)),
+                PetroCardBatch = isC ? (PetroCardBatchNight ?? PetroCardBatchMorning) : (isDay ? PetroCardBatchMorning : (PetroCardBatchMorning ?? PetroCardBatchNight)),
                 PhonePeTidMorning = (!isDay && !isC) ? PhonePeTidMorning : null,
                 PhonePeBatchMorning = (!isDay && !isC) ? PhonePeBatchMorning : null,
                 PhonePeTidDay = isDay ? PhonePeTidMorning : null,
@@ -2450,12 +2450,12 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
             Others = paymentSource?.Others;
             CashDeposit = paymentSource?.CashDeposit;
 
-            PhonePeTid = isShiftC ? (paymentSource?.PhonePeTidNight ?? paymentSource?.PhonePeTid) : (isShiftB ? (paymentSource?.PhonePeTidDay ?? paymentSource?.PhonePeTid) : (paymentSource?.PhonePeTidMorning ?? paymentSource?.PhonePeTidNight ?? paymentSource?.PhonePeTid));
-            PhonePeBatch = isShiftC ? (paymentSource?.PhonePeBatchNight ?? paymentSource?.PhonePeBatch) : (isShiftB ? (paymentSource?.PhonePeBatchDay ?? paymentSource?.PhonePeBatch) : (paymentSource?.PhonePeBatchMorning ?? paymentSource?.PhonePeBatchNight ?? paymentSource?.PhonePeBatch));
-            CardTid = isShiftC ? (paymentSource?.CreditCardTidNight ?? paymentSource?.CardTid) : (isShiftB ? (paymentSource?.CreditCardTidDay ?? paymentSource?.CardTid) : (paymentSource?.CreditCardTidMorning ?? paymentSource?.CreditCardTidNight ?? paymentSource?.CardTid));
-            CardBatch = isShiftC ? (paymentSource?.CreditCardBatchNight ?? paymentSource?.CardBatch) : (isShiftB ? (paymentSource?.CreditCardBatchDay ?? paymentSource?.CardBatch) : (paymentSource?.CreditCardBatchMorning ?? paymentSource?.CreditCardBatchNight ?? paymentSource?.CardBatch));
-            PetroCardTid = isShiftC ? (paymentSource?.PetroCardTidNight ?? paymentSource?.PetroCardTid) : (isShiftB ? (paymentSource?.PetroCardTidDay ?? paymentSource?.PetroCardTid) : (paymentSource?.PetroCardTidMorning ?? paymentSource?.PetroCardTidNight ?? paymentSource?.PetroCardTid));
-            PetroCardBatch = isShiftC ? (paymentSource?.PetroCardBatchNight ?? paymentSource?.PetroCardBatch) : (isShiftB ? (paymentSource?.PetroCardBatchDay ?? paymentSource?.PetroCardBatch) : (paymentSource?.PetroCardBatchMorning ?? paymentSource?.PetroCardBatchNight ?? paymentSource?.PetroCardBatch));
+            PhonePeTid = isShiftC ? (paymentSource?.PhonePeTidNight ?? paymentSource?.PhonePeTid) : (isShiftB ? (paymentSource?.PhonePeTidDay ?? paymentSource?.PhonePeTid) : (paymentSource?.PhonePeTidMorning ?? paymentSource?.PhonePeTid ?? paymentSource?.PhonePeTidNight));
+            PhonePeBatch = isShiftC ? (paymentSource?.PhonePeBatchNight ?? paymentSource?.PhonePeBatch) : (isShiftB ? (paymentSource?.PhonePeBatchDay ?? paymentSource?.PhonePeBatch) : (paymentSource?.PhonePeBatchMorning ?? paymentSource?.PhonePeBatch ?? paymentSource?.PhonePeBatchNight));
+            CardTid = isShiftC ? (paymentSource?.CreditCardTidNight ?? paymentSource?.CardTid) : (isShiftB ? (paymentSource?.CreditCardTidDay ?? paymentSource?.CardTid) : (paymentSource?.CreditCardTidMorning ?? paymentSource?.CardTid ?? paymentSource?.CreditCardTidNight));
+            CardBatch = isShiftC ? (paymentSource?.CreditCardBatchNight ?? paymentSource?.CardBatch) : (isShiftB ? (paymentSource?.CreditCardBatchDay ?? paymentSource?.CardBatch) : (paymentSource?.CreditCardBatchMorning ?? paymentSource?.CardBatch ?? paymentSource?.CreditCardBatchNight));
+            PetroCardTid = isShiftC ? (paymentSource?.PetroCardTidNight ?? paymentSource?.PetroCardTid) : (isShiftB ? (paymentSource?.PetroCardTidDay ?? paymentSource?.PetroCardTid) : (paymentSource?.PetroCardTidMorning ?? paymentSource?.PetroCardTid ?? paymentSource?.PetroCardTidNight));
+            PetroCardBatch = isShiftC ? (paymentSource?.PetroCardBatchNight ?? paymentSource?.PetroCardBatch) : (isShiftB ? (paymentSource?.PetroCardBatchDay ?? paymentSource?.PetroCardBatch) : (paymentSource?.PetroCardBatchMorning ?? paymentSource?.PetroCardBatch ?? paymentSource?.PetroCardBatchNight));
 
             await LoadDynamicCollectionTypesAsync(paymentSource);
 
@@ -2728,23 +2728,23 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
                     string canonicalFuel = testEntry.FuelType?.Trim().ToUpperInvariant() ?? "";
                     if (canonicalFuel.Contains("MS-I") || canonicalFuel == "MS" || canonicalFuel.Contains("PETROL"))
                     {
-                        match = TestingRows.FirstOrDefault(t => t.FuelType.Contains("MS-I") || t.FuelType.Contains("MS"));
+                        match = TestingRows.FirstOrDefault(t => t.FuelType.Contains("MS-I", StringComparison.OrdinalIgnoreCase) || t.FuelType.Contains("MS", StringComparison.OrdinalIgnoreCase));
                     }
                     else if (canonicalFuel.Contains("SPEED") || canonicalFuel.Contains("XP95") || canonicalFuel.Contains("POWER"))
                     {
-                        match = TestingRows.FirstOrDefault(t => t.FuelType.Contains("SPEED") || t.FuelType.Contains("XP95") || t.FuelType.Contains("POWER"));
+                        match = TestingRows.FirstOrDefault(t => t.FuelType.Contains("SPEED", StringComparison.OrdinalIgnoreCase) || t.FuelType.Contains("XP95", StringComparison.OrdinalIgnoreCase) || t.FuelType.Contains("POWER", StringComparison.OrdinalIgnoreCase));
                     }
                     else if (canonicalFuel.Contains("HSD") && !canonicalFuel.Contains("HSD-II") && !canonicalFuel.Contains("II"))
                     {
-                        match = TestingRows.FirstOrDefault(t => t.FuelType.Contains("HSD") && !t.FuelType.Contains("HSD-II"));
+                        match = TestingRows.FirstOrDefault(t => t.FuelType.Contains("HSD", StringComparison.OrdinalIgnoreCase) && !t.FuelType.Contains("HSD-II", StringComparison.OrdinalIgnoreCase));
                     }
                     else if (canonicalFuel.Contains("MS-II") || canonicalFuel.Contains("HSD-II") || canonicalFuel.Contains("II"))
                     {
-                        match = TestingRows.FirstOrDefault(t => t.FuelType.Contains("MS-II") || t.FuelType.Contains("HSD-II"));
+                        match = TestingRows.FirstOrDefault(t => t.FuelType.Contains("MS-II", StringComparison.OrdinalIgnoreCase) || t.FuelType.Contains("HSD-II", StringComparison.OrdinalIgnoreCase));
                     }
                     else if (canonicalFuel.Contains("CNG"))
                     {
-                        match = TestingRows.FirstOrDefault(t => t.FuelType.Contains("CNG"));
+                        match = TestingRows.FirstOrDefault(t => t.FuelType.Contains("CNG", StringComparison.OrdinalIgnoreCase));
                     }
                 }
 
@@ -3139,9 +3139,9 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
             PaymentCollection = new PaymentCollectionDto
             {
                 // Others is NOT included in TotalInDirect — it is informational only
-                PhonePe = (decimal)((PhonePeMorning ?? 0) + (PhonePeNight ?? 0) + (PhonePeCardMorning ?? 0) + (PhonePeCardNight ?? 0) + QrPayments.Sum(q => q.Amount ?? 0)),
-                CreditCard = (decimal)((CreditCardMorning ?? 0) + (CreditCardNight ?? 0)),
-                PetroCard = (decimal)((PetroCardMorning ?? 0) + (PetroCardNight ?? 0)),
+                PhonePe = (decimal)((PhonePeMorning ?? 0) + (IsPhonePeSplitEnabled ? (PhonePeNight ?? 0) : 0) + (PhonePeCardMorning ?? 0) + (IsPhonePeSplitEnabled ? (PhonePeCardNight ?? 0) : 0) + QrPayments.Sum(q => q.Amount ?? 0)),
+                CreditCard = (decimal)((CreditCardMorning ?? 0) + (IsCreditCardSplitEnabled ? (CreditCardNight ?? 0) : 0)),
+                PetroCard = (decimal)((PetroCardMorning ?? 0) + (IsPetroCardSplitEnabled ? (PetroCardNight ?? 0) : 0)),
                 DynamicPayments = (decimal)DynamicCollections.Sum(d => d.Amount ?? 0),
                 CashDeposit = (decimal)Cash1.TotalAmount,
                 PhysicalCash = (decimal)Cash2.TotalAmount

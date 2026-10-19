@@ -2432,6 +2432,17 @@ public class SyncEngine
                 }
             }
 
+            // Determine authoritative Speed rate from FuelRates, falling back to legacy MsIIRate only if absent
+            double authoritativeSpeedRate = (localSetting.FuelRates.TryGetValue("Speed", out var sRate) && sRate > 0)
+                ? sRate
+                : (localSetting.FuelRates.TryGetValue("Speed - 20KL", out var sTankRate) && sTankRate > 0
+                    ? sTankRate
+                    : (localSetting.FuelRates.TryGetValue("XP95", out var xpRate) && xpRate > 0
+                        ? xpRate
+                        : (localSetting.FuelRates.TryGetValue("Power", out var pwrRate) && pwrRate > 0
+                            ? pwrRate
+                            : localSetting.MsIIRate)));
+
             // Prepare Payload for Supabase Settings table
             var payload = new Dictionary<string, object?>
             {
@@ -2452,8 +2463,8 @@ public class SyncEngine
                 ["ms_i_rate"] = localSetting.MsIRate,
                 ["MsIIRate"] = localSetting.MsIIRate,
                 ["ms_ii_rate"] = localSetting.MsIIRate,
-                ["SpeedRate"] = localSetting.MsIIRate,
-                ["speed_rate"] = localSetting.MsIIRate,
+                ["SpeedRate"] = authoritativeSpeedRate,
+                ["speed_rate"] = authoritativeSpeedRate,
                 ["CngRate"] = localSetting.CngRate,
                 ["cng_rate"] = localSetting.CngRate,
                 ["updated_at"] = DateTime.UtcNow.ToString("o")
