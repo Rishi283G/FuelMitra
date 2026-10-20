@@ -142,7 +142,7 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
     public bool IsDsmPersonalDebtorVisible => _featureService.IsFeatureEnabled("Admin_DsmPersonalDebtor", true);
     public bool IsDebtorManagementInShiftTotalVisible => !(_featureService?.IsFeatureEnabled("UI_DebtorManagement_AsNewPage", true) ?? true);
     public bool IsDebtorManagementAsNewPage => _featureService?.IsFeatureEnabled("UI_DebtorManagement_AsNewPage", true) ?? true;
-    public string PersonalLedgerTitle => _featureService?.GetFeatureDisplayName("Operations_PersonalLedger", "DSM Loss") ?? "DSM Loss";
+    public string PersonalLedgerTitle => _featureService?.GetFeatureDisplayName("Operations_PersonalLedger", "Personal Ledger") ?? "Personal Ledger";
     public string PersonalLedgerRegisterHeader => $"E. {PersonalLedgerTitle} Register";
 
     [RelayCommand]

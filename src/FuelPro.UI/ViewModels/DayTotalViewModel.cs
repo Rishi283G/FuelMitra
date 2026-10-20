@@ -127,7 +127,7 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
     private readonly Action _featureChangedHandler;
     private readonly Action? _collectionTypesChangedHandler;
     public bool IsDsmPersonalDebtorVisible => _featureService.IsFeatureEnabled("Admin_DsmPersonalDebtor", true);
-    public string PersonalLedgerTitle => _featureService?.GetFeatureDisplayName("Operations_PersonalLedger", "DSM Loss") ?? "DSM Loss";
+    public string PersonalLedgerTitle => _featureService?.GetFeatureDisplayName("Operations_PersonalLedger", "Personal Ledger") ?? "Personal Ledger";
     public string PersonalLedgerRegisterHeader => $"4b. {PersonalLedgerTitle} Register";
 
     [ObservableProperty] private string _phonePeDisplayName = "PhonePe Direct";
@@ -519,7 +519,9 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
                     cat.Equals("Debtors", StringComparison.OrdinalIgnoreCase) ||
                     cat.Equals("Expenses", StringComparison.OrdinalIgnoreCase) ||
                     cat.Contains("DSM Short", StringComparison.OrdinalIgnoreCase) ||
-                    cat.Contains("Kandhare", StringComparison.OrdinalIgnoreCase))
+                    cat.Contains("Kandhare", StringComparison.OrdinalIgnoreCase) ||
+                    cat.Contains("Personal Ledger", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(cat, PersonalLedgerTitle, StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }

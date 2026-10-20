@@ -1143,11 +1143,35 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
                 }
             }
 
+            // Deduplicate targetTypes by normalized code
+            var distinctTargetTypes = new List<CollectionTypeMaster>();
+            var seenCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var t in targetTypes)
+            {
+                var norm = PaymentCollection.NormalizeCollectionTypeCode(t.Code);
+                if (seenCodes.Add(norm))
+                {
+                    distinctTargetTypes.Add(t);
+                }
+            }
+            targetTypes = distinctTargetTypes;
+
+            // Purge duplicate rows within DynamicCollections by normalized code
+            var seenDynCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (int i = DynamicCollections.Count - 1; i >= 0; i--)
+            {
+                var norm = PaymentCollection.NormalizeCollectionTypeCode(DynamicCollections[i].Code);
+                if (!seenDynCodes.Add(norm))
+                {
+                    DynamicCollections.RemoveAt(i);
+                }
+            }
+
             // Synchronize DynamicCollections in place without clearing collection types
             for (int i = DynamicCollections.Count - 1; i >= 0; i--)
             {
                 var row = DynamicCollections[i];
-                bool isTarget = targetTypes.Any(t => string.Equals(t.Code, row.Code, StringComparison.OrdinalIgnoreCase));
+                bool isTarget = targetTypes.Any(t => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(t.Code), PaymentCollection.NormalizeCollectionTypeCode(row.Code), StringComparison.OrdinalIgnoreCase));
                 bool hasHistoricalData = existingItems.Any(item => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(item.CollectionTypeCode), PaymentCollection.NormalizeCollectionTypeCode(row.Code), StringComparison.OrdinalIgnoreCase) && item.Amount > 0);
                 if (!isTarget && !hasHistoricalData)
                 {
@@ -1158,7 +1182,7 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
             for (int i = 0; i < targetTypes.Count; i++)
             {
                 var t = targetTypes[i];
-                var existingRow = DynamicCollections.FirstOrDefault(d => string.Equals(d.Code, t.Code, StringComparison.OrdinalIgnoreCase));
+                var existingRow = DynamicCollections.FirstOrDefault(d => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(d.Code), PaymentCollection.NormalizeCollectionTypeCode(t.Code), StringComparison.OrdinalIgnoreCase));
                 var matchingItems = existingItems.Where(item =>
                     string.Equals(PaymentCollection.NormalizeCollectionTypeCode(item.CollectionTypeCode), PaymentCollection.NormalizeCollectionTypeCode(t.Code), StringComparison.OrdinalIgnoreCase)).ToList();
 
@@ -1166,9 +1190,17 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
                 var nonOtpItems = matchingItems.Where(item => string.IsNullOrWhiteSpace(item.Otp)).ToList();
 
                 double otpPortion = otpItems.Sum(item => item.Amount);
-                bool isSingleAggregateHeader = nonOtpItems.Count == 1 && otpItems.Count > 1 && Math.Abs(nonOtpItems[0].Amount - otpPortion) < 0.01;
+                bool isSingleAggregateHeader = nonOtpItems.Count == 1 && (
+                    (otpItems.Count > 1 && Math.Abs(nonOtpItems[0].Amount - otpPortion) < 0.01) ||
+                    (otpItems.Count == 1 && Math.Abs(nonOtpItems[0].Amount - otpPortion) < 0.01
+                        && string.IsNullOrWhiteSpace(nonOtpItems[0].Tid) && string.IsNullOrWhiteSpace(nonOtpItems[0].Batch)
+                        && string.Equals(nonOtpItems[0].Slot?.Trim(), otpItems[0].Slot?.Trim(), StringComparison.OrdinalIgnoreCase))
+                );
                 double manualPortion = isSingleAggregateHeader ? 0 : nonOtpItems.Where(nonOtp => !nonOtp.IsSyntheticSummary).Sum(nonOtp => nonOtp.Amount);
-                var firstManual = nonOtpItems.FirstOrDefault() ?? matchingItems.FirstOrDefault();
+                var firstManual = nonOtpItems.FirstOrDefault(item => !string.IsNullOrWhiteSpace(item.Tid) || !string.IsNullOrWhiteSpace(item.Batch))
+                    ?? matchingItems.FirstOrDefault(item => !string.IsNullOrWhiteSpace(item.Tid) || !string.IsNullOrWhiteSpace(item.Batch))
+                    ?? nonOtpItems.FirstOrDefault()
+                    ?? matchingItems.FirstOrDefault();
 
                 if (existingRow != null)
                 {

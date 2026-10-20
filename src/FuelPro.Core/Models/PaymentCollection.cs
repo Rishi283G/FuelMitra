@@ -194,8 +194,15 @@ public class PaymentCollection
                 double otpTotal = otpItems.Sum(i => i.Amount);
                 total += otpTotal;
 
-                // Only ignore a non-OTP row if it is a single aggregate header for multiple itemized OTP items
-                bool isSingleAggregateHeader = nonOtpItems.Count == 1 && otpItems.Count > 1 && Math.Abs(nonOtpItems[0].Amount - otpTotal) < 0.01;
+                // Only ignore a non-OTP row if:
+                // 1) It is a single aggregate header for multiple itemized OTP items (otpItems.Count > 1), OR
+                // 2) It is a phantom duplicate without TID/Batch in the same slot matching the single OTP transaction
+                bool isSingleAggregateHeader = nonOtpItems.Count == 1 && (
+                    (otpItems.Count > 1 && Math.Abs(nonOtpItems[0].Amount - otpTotal) < 0.01) ||
+                    (otpItems.Count == 1 && Math.Abs(nonOtpItems[0].Amount - otpTotal) < 0.01
+                        && string.IsNullOrWhiteSpace(nonOtpItems[0].Tid) && string.IsNullOrWhiteSpace(nonOtpItems[0].Batch)
+                        && string.Equals(nonOtpItems[0].Slot?.Trim(), otpItems[0].Slot?.Trim(), StringComparison.OrdinalIgnoreCase))
+                );
                 if (isSingleAggregateHeader)
                 {
                     continue;

@@ -465,7 +465,7 @@ public class ReportService : IReportService
         breakdownList.Add(new() { Category = "Expenses", Amount = dto.ExpensesTotal, BaseAmount = dto.ExpensesTotal, RecoveryAmount = 0 });
         if (khandhareTotal > 0)
         {
-            breakdownList.Add(new() { Category = "Kandhare Petroleum", Amount = khandhareTotal, BaseAmount = khandhareTotal, RecoveryAmount = 0 });
+            breakdownList.Add(new() { Category = GetPersonalLedgerCategory(), Amount = khandhareTotal, BaseAmount = khandhareTotal, RecoveryAmount = 0 });
         }
 
         if (dto.OilDefSalesTotal > 0)
@@ -994,7 +994,7 @@ public class ReportService : IReportService
         double khandhareTotal = todayEntries.SelectMany(e => e.KhandharePetroleumEntries ?? new List<KhandharePetroleumEntry>()).Sum(k => k.Amount);
         if (khandhareTotal > 0)
         {
-            dayBreakdown.Add(new() { Category = "Kandhare Petroleum", Amount = khandhareTotal, BaseAmount = khandhareTotal, RecoveryAmount = 0 });
+            dayBreakdown.Add(new() { Category = GetPersonalLedgerCategory(), Amount = khandhareTotal, BaseAmount = khandhareTotal, RecoveryAmount = 0 });
         }
 
         dto.CollectionBreakdown = dayBreakdown;
@@ -1779,5 +1779,11 @@ public class ReportService : IReportService
     {
         if (string.IsNullOrWhiteSpace(name)) return string.Empty;
         return new string(name.Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant();
+    }
+
+    private string GetPersonalLedgerCategory()
+    {
+        var featureService = _serviceProvider?.GetService<IFeatureToggleService>();
+        return featureService?.GetFeatureDisplayName("Operations_PersonalLedger", "Personal Ledger") ?? "Personal Ledger";
     }
 }

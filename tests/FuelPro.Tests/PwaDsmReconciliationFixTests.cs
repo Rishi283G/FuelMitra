@@ -1259,5 +1259,157 @@ public class PwaDsmReconciliationFixTests : IDisposable
         Assert.Contains("Shift A (15-Oct-2026, Pump 1, Nozzle 1)", row.ContinuityWarning);
         Assert.Contains("[intermediate shifts missing]", row.ContinuityWarning);
     }
+
+    [Fact]
+    public async Task ApprovalQueue_DeduplicatesOtpTransactions_WhenSentInMultipleMetadataSections()
+    {
+        var queueVm = _serviceProvider.GetRequiredService<DsmApprovalQueueViewModel>();
+
+        var submission = new DsmPendingSubmission
+        {
+            Id = Guid.NewGuid(),
+            DsmName = "Deduplication Test",
+            ShiftDate = DateTime.Today,
+            ShiftType = "A",
+            PumpId = 1,
+            MetadataJson = JsonConvert.SerializeObject(new
+            {
+                dynamicCollectionValues = new Dictionary<string, object>
+                {
+                    ["PINELABS_CARD"] = new { amount = 500.0, tid = "", batch = "", slot = "Slot 1" }
+                },
+                machineTransactions = new[]
+                {
+                    new { collectionTypeCode = "PINELABS_CARD", amount = 500.0, tid = "TID01", batch = "B01", otp = "998877", slot = "Slot 1" }
+                },
+                cardSwipeDetails = new[]
+                {
+                    new { mode = "PINELABS_CARD", amount = 500.0, tid = "TID01", batch = "B01", otp = "998877" }
+                },
+                dynamicItems = new[]
+                {
+                    new { collectionTypeCode = "PINELABS_CARD", amount = 500.0, tid = "TID01", batch = "B01", otp = "998877", slot = "Slot 1" }
+                }
+            })
+        };
+
+        queueVm.SelectedSubmission = submission;
+        await Task.Delay(100);
+        while (queueVm.IsLoadingDetails)
+        {
+            await Task.Delay(50);
+        }
+
+        // Exactly one OTP transaction must be in CardSwipeDetails (deduplicated across all 3 metadata lists)
+        Assert.Single(queueVm.CardSwipeDetails);
+        Assert.Equal(500.0, queueVm.CardSwipeDetails[0].Amount);
+        Assert.Equal("998877", queueVm.CardSwipeDetails[0].Otp);
+
+        typeof(DsmApprovalQueueViewModel).GetMethod("RecalculateTotals", BindingFlags.NonPublic | BindingFlags.Instance)?.Invoke(queueVm, null);
+
+        // PineLabs total must be strictly ₹500.00 without double counting
+        Assert.Equal(500.0, queueVm.PineLabsAmount);
+    }
+
+    [Fact]
+    public async Task DynamicCollections_EditMode_DeduplicatesCards_AndMaintainsPopulatedTidBatch()
+    {
+        var dsmVm = _serviceProvider.GetRequiredService<DsmEntryViewModel>();
+
+        // Simulate payment containing 1 OTP transaction and 1 potential duplicate/synthetic item
+        var payment = new PaymentCollection
+        {
+            Items = new List<PaymentCollectionItem>
+            {
+                new PaymentCollectionItem
+                {
+                    CollectionTypeCode = "PINELABS_CARD",
+                    Amount = 500.0,
+                    Tid = "TID99",
+                    Batch = "B88",
+                    Otp = "123456",
+                    Slot = "General"
+                }
+            }
+        };
+
+        await dsmVm.LoadDynamicCollectionTypesAsync(payment);
+
+        var pineCards = dsmVm.DynamicCollections
+            .Where(d => PaymentCollection.NormalizeCollectionTypeCode(d.Code) == "PINELABS_CARD")
+            .ToList();
+
+        // Must display strictly ONE card for PineLabs Card
+        Assert.Single(pineCards);
+        var card = pineCards[0];
+        Assert.Equal(500.0, card.Amount);
+        Assert.Equal("TID99", card.Tid);
+        Assert.Equal("B88", card.Batch);
+    }
+
+    [Fact]
+    public void PaymentCollection_DynamicItemsTotal_DoesNotDoubleCount_WhenSingleOtpTransactionHasMatchingNonOtp()
+    {
+        var payment = new PaymentCollection
+        {
+            Items = new List<PaymentCollectionItem>
+            {
+                new PaymentCollectionItem
+                {
+                    CollectionTypeCode = "PINELABS_CARD",
+                    Amount = 500.0,
+                    Tid = "TID01",
+                    Batch = "B01",
+                    Otp = "123456",
+                    Slot = "General"
+                },
+                new PaymentCollectionItem
+                {
+                    CollectionTypeCode = "PINELABS_CARD",
+                    Amount = 500.0,
+                    Tid = "",
+                    Batch = "",
+                    Otp = "",
+                    Slot = "General"
+                }
+            }
+        };
+
+        // When a single OTP item of 500 has a matching non-OTP summary of 500, total must be 500, NOT 1000
+        Assert.Equal(500.0, payment.DynamicItemsTotal);
+    }
+
+    [Fact]
+    public void PersonalLedgerTitle_DefaultsToPersonalLedger_InViewModels_AndDynamicInReports()
+    {
+        var featureService = _serviceProvider.GetRequiredService<IFeatureToggleService>();
+        var finalCalcVm = new FinalCalculationViewModel();
+        var dayTotalVm = new DayTotalViewModel();
+
+        Assert.Equal("Personal Ledger", finalCalcVm.PersonalLedgerTitle);
+        Assert.Equal("Personal Ledger", dayTotalVm.PersonalLedgerTitle);
+
+        var reportService = _serviceProvider.GetRequiredService<IReportService>();
+        var entries = new List<DsmEntry>
+        {
+            new DsmEntry
+            {
+                DsmName = "Test Dsm",
+                KhandharePetroleumEntries = new List<KhandharePetroleumEntry>
+                {
+                    new KhandharePetroleumEntry { Name = "Owner Drawing", Amount = 1500.0 }
+                }
+            }
+        };
+
+        var shiftReport = reportService.CalculateShiftReport(
+            DateTime.Today, "A", entries, new List<Expense>(), new List<ShiftOtherCash>(), new List<CreditorRepayment>(),
+            90.0, 100.0, 100.0, 80.0, new BusinessDayTidSheet(), new BusinessDayTidSheet(), "Mitali Station");
+
+        var plItem = shiftReport.CollectionBreakdown.FirstOrDefault(c => c.Category == "Personal Ledger");
+        Assert.NotNull(plItem);
+        Assert.Equal(1500.0, plItem.Amount);
+    }
 }
+
 
