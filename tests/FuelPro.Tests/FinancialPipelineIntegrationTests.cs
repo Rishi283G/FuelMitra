@@ -872,6 +872,8 @@ public class MockFinancialCalculationService : IFinancialCalculationService
 
 public class FakeSupabaseDsmService : SupabaseDsmService
 {
+    public static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, dynamic> CustomCollections = new();
+
     public FakeSupabaseDsmService(SyncConfigService syncConfigService) : base(syncConfigService) { }
 
     public override Task<Result<List<dynamic>>> FetchPendingSubmissionsAsync()
@@ -901,6 +903,11 @@ public class FakeSupabaseDsmService : SupabaseDsmService
 
     public override Task<Result<dynamic>> FetchSubmissionCollectionAsync(Guid submissionId)
     {
+        if (CustomCollections.TryGetValue(submissionId, out var customColl))
+        {
+            return Task.FromResult(Result<dynamic>.Ok(customColl));
+        }
+
         dynamic coll = new System.Dynamic.ExpandoObject();
         coll.Cash = 500.0;
         coll.UPI = 1000.0;

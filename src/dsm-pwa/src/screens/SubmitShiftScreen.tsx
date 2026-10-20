@@ -391,40 +391,11 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     return { tid: dyn.tid || "", batch: dyn.batch || "" };
   };
 
-  const syncParentCollectionTotal = (typeCode: string, txs: OtpTransactionItem[]) => {
-    const code = typeCode.toUpperCase();
-    const typeTxs = txs.filter((t) => t.collectionTypeCode.toUpperCase() === code);
-    if (code === "PHONEPE") {
-      if (shiftType === "B") {
-        setPhonePeDay(typeTxs.reduce((sum, t) => sum + (t.amount || 0), 0));
-      } else {
-        setPhonePeMorning(typeTxs.filter((t) => t.slot !== "Night").reduce((sum, t) => sum + (t.amount || 0), 0));
-        setPhonePeNight(typeTxs.filter((t) => t.slot === "Night").reduce((sum, t) => sum + (t.amount || 0), 0));
-      }
-    } else if (code === "CREDIT_CARD") {
-      if (shiftType === "B") {
-        setCreditCardDay(typeTxs.reduce((sum, t) => sum + (t.amount || 0), 0));
-      } else {
-        setCreditCardMorning(typeTxs.filter((t) => t.slot !== "Night").reduce((sum, t) => sum + (t.amount || 0), 0));
-        setCreditCardNight(typeTxs.filter((t) => t.slot === "Night").reduce((sum, t) => sum + (t.amount || 0), 0));
-      }
-    } else if (code === "PETROCARD") {
-      if (shiftType === "B") {
-        setPetroCardDay(typeTxs.reduce((sum, t) => sum + (t.amount || 0), 0));
-      } else {
-        setPetroCardMorning(typeTxs.filter((t) => t.slot !== "Night").reduce((sum, t) => sum + (t.amount || 0), 0));
-        setPetroCardNight(typeTxs.filter((t) => t.slot === "Night").reduce((sum, t) => sum + (t.amount || 0), 0));
-      }
-    } else {
-      const sum = typeTxs.reduce((acc, t) => acc + (t.amount || 0), 0);
-      setDynamicValues((prev) => ({
-        ...prev,
-        [typeCode]: {
-          ...(prev[typeCode] || { tid: "", batch: "", otp: "" }),
-          amount: sum,
-        },
-      }));
-    }
+  const syncParentCollectionTotal = (_typeCode: string, _txs: OtpTransactionItem[]) => {
+    // Machine OTP transactions are automatically aggregated into effective totals
+    // via getMachineTotalForType and machineTransactions.
+    // We intentionally do NOT overwrite manual entry states (phonePeMorning, dynamicValues, etc.)
+    // so that manual amounts remain strictly what the attendant manually typed, preventing doubled totals.
   };
 
   const addMachineTransaction = (typeCode?: string) => {
@@ -1396,27 +1367,41 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   const petroTxTotal = getMachineTotalForType("PETROCARD");
 
   const effectivePhonePeTotal =
-    (isManualEnabled("PHONEPE") ? phonePeManualAmt : 0) +
-    (otpMachineTrackingEnabled ? phonePeTxTotal : 0);
+    otpMachineTrackingEnabled && phonePeTxTotal > 0
+      ? Math.max(isManualEnabled("PHONEPE") ? phonePeManualAmt : 0, phonePeTxTotal)
+      : (isManualEnabled("PHONEPE") ? phonePeManualAmt : 0);
 
   const effectiveCreditCardTotal =
-    (isManualEnabled("CREDIT_CARD") ? creditCardManualAmt : 0) +
-    (otpMachineTrackingEnabled ? cardTxTotal : 0);
+    otpMachineTrackingEnabled && cardTxTotal > 0
+      ? Math.max(isManualEnabled("CREDIT_CARD") ? creditCardManualAmt : 0, cardTxTotal)
+      : (isManualEnabled("CREDIT_CARD") ? creditCardManualAmt : 0);
 
   const effectivePetroCardTotal =
-    (isManualEnabled("PETROCARD") ? petroCardManualAmt : 0) +
-    (otpMachineTrackingEnabled ? petroTxTotal : 0);
+    otpMachineTrackingEnabled && petroTxTotal > 0
+      ? Math.max(isManualEnabled("PETROCARD") ? petroCardManualAmt : 0, petroTxTotal)
+      : (isManualEnabled("PETROCARD") ? petroCardManualAmt : 0);
 
-  const dynamicTotal = Object.entries(dynamicValues).reduce((sum, [code, val]) => {
+  const allDynamicTypeCodes = Array.from(
+    new Set([
+      ...(stationConfig?.collectionTypes || []).map((c) => c.code),
+      ...Object.keys(dynamicValues),
+      ...machineTransactions.map((t) => t.collectionTypeCode),
+    ])
+  );
+
+  const dynamicTotal = allDynamicTypeCodes.reduce((sum, code) => {
     const clean = code.toUpperCase().replace(/_/g, "");
-    if (clean === "PHONEPE" || clean === "CREDITCARD" || clean === "PETROCARD") return sum;
+    if (clean === "PHONEPE" || clean === "CREDITCARD" || clean === "PETROCARD" || clean === "CASHDEPOSIT" || clean === "OTHERS") return sum;
+    const val = dynamicValues[code] || { amount: 0, tid: "", batch: "", otp: "" };
     const txTotal = getMachineTotalForType(code);
     const manualActive = isManualEnabled(code);
     const slotConf = getTypeSlotConfig(code);
     const isSlotAllowed = shiftType === "B" ? slotConf.enableDay : (slotConf.enableMorning || slotConf.enableNight);
     const manualAmt = manualActive && isSlotAllowed ? (val.amount || 0) : 0;
-    const otpAmt = otpMachineTrackingEnabled ? txTotal : 0;
-    return sum + manualAmt + otpAmt;
+    const effAmt = otpMachineTrackingEnabled && txTotal > 0
+      ? Math.max(manualAmt, txTotal)
+      : manualAmt;
+    return sum + effAmt;
   }, 0);
 
   const getDynamicTypeEffectiveTotal = (code: string) => {
@@ -1426,8 +1411,9 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     const slotConf = getTypeSlotConfig(code);
     const isSlotAllowed = shiftType === "B" ? slotConf.enableDay : (slotConf.enableMorning || slotConf.enableNight);
     const manualAmt = manualActive && isSlotAllowed ? (val.amount || 0) : 0;
-    const otpAmt = otpMachineTrackingEnabled ? txTotal : 0;
-    return manualAmt + otpAmt;
+    return otpMachineTrackingEnabled && txTotal > 0
+      ? Math.max(manualAmt, txTotal)
+      : manualAmt;
   };
 
   const creditTotal = debtorEntries.reduce((sum, d) => sum + d.amount, 0);
@@ -1847,13 +1833,23 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       ? profile.ConnectedPumps
       : (profile?.ConnectedPump ? [profile.ConnectedPump] : []);
 
-    const dynamicItemsPayload = Object.entries(dynamicValues)
-      .map(([code, val]) => {
+    const allDynamicCodesForPayload = Array.from(
+      new Set([
+        ...Object.keys(dynamicValues),
+        ...machineTransactions.map((t) => t.collectionTypeCode),
+      ])
+    );
+
+    const dynamicItemsPayload = allDynamicCodesForPayload
+      .map((code) => {
+        const val = dynamicValues[code] || { amount: 0, tid: "", batch: "", otp: "" };
         const slotConf = getTypeSlotConfig(code);
         const isSlotAllowed = shiftType === "B" ? slotConf.enableDay : (slotConf.enableMorning || slotConf.enableNight);
         const manualAmt = isManualEnabled(code) && isSlotAllowed ? (val.amount || 0) : 0;
         const txTotal = getMachineTotalForType(code);
-        const effectiveAmt = manualAmt + (otpMachineTrackingEnabled ? txTotal : 0);
+        const effectiveAmt = otpMachineTrackingEnabled && txTotal > 0
+          ? Math.max(manualAmt, txTotal)
+          : manualAmt;
         return {
           collectionTypeCode: code,
           amount: effectiveAmt,

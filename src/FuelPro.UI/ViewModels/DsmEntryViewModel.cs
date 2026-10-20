@@ -573,11 +573,16 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
             if (PetroCardIsActive && PetroCardHasTidBatch) types.Add("PETROCARD");
             if (PhonePeIsActive && PhonePeHasTidBatch) types.Add("PHONEPE");
 
-            // Explicitly support active PINELABS_CARD if present and eligible
-            var pineLabs = _cachedAllCollectionTypes.FirstOrDefault(c => string.Equals(c.Code, "PINELABS_CARD", StringComparison.OrdinalIgnoreCase));
-            if (pineLabs != null && pineLabs.IsActive && pineLabs.HasTidBatch && !types.Contains("PINELABS_CARD", StringComparer.OrdinalIgnoreCase))
+            // Explicitly support active PINELABS_CARD if present and eligible (matching any Pine Labs naming variant)
+            var pineLabs = _cachedAllCollectionTypes.FirstOrDefault(c =>
+                string.Equals(c.Code, "PINELABS_CARD", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(PaymentCollection.NormalizeCollectionTypeCode(c.Code), "PINELABS_CARD", StringComparison.OrdinalIgnoreCase));
+            if (pineLabs != null && pineLabs.IsActive && pineLabs.HasTidBatch)
             {
-                types.Add("PINELABS_CARD");
+                if (!types.Contains("PINELABS_CARD", StringComparer.OrdinalIgnoreCase))
+                    types.Add("PINELABS_CARD");
+                if (!string.IsNullOrWhiteSpace(pineLabs.Code) && !types.Contains(pineLabs.Code, StringComparer.OrdinalIgnoreCase))
+                    types.Add(pineLabs.Code);
             }
 
             // Include any other active developer-configured collection types with HasTidBatch
@@ -586,27 +591,55 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
                 if (master.HasTidBatch && master.IsActive && !string.IsNullOrWhiteSpace(master.Code))
                 {
                     var norm = PaymentCollection.NormalizeCollectionTypeCode(master.Code);
-                    if (!types.Contains(master.Code, StringComparer.OrdinalIgnoreCase) && !types.Contains(norm, StringComparer.OrdinalIgnoreCase))
+                    if (!types.Contains(master.Code, StringComparer.OrdinalIgnoreCase))
                     {
                         types.Add(master.Code);
+                    }
+                    if (!types.Contains(norm, StringComparer.OrdinalIgnoreCase))
+                    {
+                        types.Add(norm);
                     }
                 }
             }
 
             foreach (var dyn in DynamicCollections)
             {
-                if (dyn.HasTidBatch && !string.IsNullOrWhiteSpace(dyn.Code) && !types.Contains(dyn.Code, StringComparer.OrdinalIgnoreCase))
+                if (dyn.HasTidBatch && !string.IsNullOrWhiteSpace(dyn.Code))
                 {
-                    types.Add(dyn.Code);
+                    var norm = PaymentCollection.NormalizeCollectionTypeCode(dyn.Code);
+                    if (!types.Contains(dyn.Code, StringComparer.OrdinalIgnoreCase))
+                    {
+                        types.Add(dyn.Code);
+                    }
+                    if (!types.Contains(norm, StringComparer.OrdinalIgnoreCase))
+                    {
+                        types.Add(norm);
+                    }
                 }
+            }
+
+            // Also check if Pine Labs is present in DynamicCollections or OtpTransactions
+            bool hasPineLabs = DynamicCollections.Any(d => PaymentCollection.NormalizeCollectionTypeCode(d.Code) == "PINELABS_CARD")
+                || OtpTransactions.Any(t => PaymentCollection.NormalizeCollectionTypeCode(t.CollectionTypeCode) == "PINELABS_CARD");
+            if (hasPineLabs && !types.Contains("PINELABS_CARD", StringComparer.OrdinalIgnoreCase))
+            {
+                types.Add("PINELABS_CARD");
             }
 
             // Preserve any historical OTP transaction codes so existing rows retain their value
             foreach (var tx in OtpTransactions)
             {
-                if (!string.IsNullOrWhiteSpace(tx.CollectionTypeCode) && !types.Contains(tx.CollectionTypeCode, StringComparer.OrdinalIgnoreCase))
+                if (!string.IsNullOrWhiteSpace(tx.CollectionTypeCode))
                 {
-                    types.Add(tx.CollectionTypeCode);
+                    var norm = PaymentCollection.NormalizeCollectionTypeCode(tx.CollectionTypeCode);
+                    if (!types.Contains(tx.CollectionTypeCode, StringComparer.OrdinalIgnoreCase))
+                    {
+                        types.Add(tx.CollectionTypeCode);
+                    }
+                    if (!types.Contains(norm, StringComparer.OrdinalIgnoreCase))
+                    {
+                        types.Add(norm);
+                    }
                 }
             }
         }
@@ -1237,8 +1270,6 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
                 }
             }
 
-            RefreshAvailableOtpCollectionTypes();
-
             if (existingPayment != null)
             {
                 _isHydratingEntry = true;
@@ -1284,6 +1315,25 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
                     var dynRows = OtpTransactions.Where(t => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(t.CollectionTypeCode), PaymentCollection.NormalizeCollectionTypeCode(dynRow.Code), StringComparison.OrdinalIgnoreCase)).ToList();
                     dynRow.OtpAmount = dynRows.Sum(t => t.Amount);
                     dynRow.RecalculateTotal();
+                }
+            }
+
+            RefreshAvailableOtpCollectionTypes();
+
+            // Reconcile row CollectionTypeCode against AvailableOtpCollectionTypes so ComboBox selects accurately
+            foreach (var row in OtpTransactions)
+            {
+                var norm = PaymentCollection.NormalizeCollectionTypeCode(row.CollectionTypeCode);
+                var matched = AvailableOtpCollectionTypes.FirstOrDefault(t =>
+                    string.Equals(t, row.CollectionTypeCode, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(PaymentCollection.NormalizeCollectionTypeCode(t), norm, StringComparison.OrdinalIgnoreCase));
+                if (matched != null)
+                {
+                    row.CollectionTypeCode = matched;
+                }
+                else if (!string.IsNullOrWhiteSpace(row.CollectionTypeCode))
+                {
+                    AvailableOtpCollectionTypes.Add(row.CollectionTypeCode);
                 }
             }
         }

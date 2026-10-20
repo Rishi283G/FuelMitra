@@ -648,19 +648,24 @@ public class NozzleReadingRepository : INozzleReadingRepository
             var resolvedClosings = new Dictionary<int, PredecessorClosingDetail>();
             var remainingNozzles = new HashSet<int>(pumpNozzles);
 
-            var (currDate, currShift) = _shiftCycleService.GetPreviousShift(date.Date, normShift);
-            var immediatePredDate = currDate;
-            var immediatePredShift = currShift;
+            DateTime currDate = date.Date;
+            string currShift = normShift;
+            var (immediatePredDate, immediatePredShift) = _shiftCycleService.GetPreviousShift(date.Date, normShift);
 
             // Bounded operational shift horizon: 15 operational shifts (5 operational days @ 3 shifts/day).
             // Safe and bounded because retail stations operate continuously, and unoperated pumps
             // in night shifts resume within 1-2 shifts.
             const int maxHops = 15;
             int hops = 0;
+            bool isCurrentShift = true;
 
             while (remainingNozzles.Count > 0 && hops < maxHops)
             {
-                hops++;
+                if (!isCurrentShift)
+                {
+                    hops++;
+                }
+
                 var altShift = currShift == "A" ? "I" : (currShift == "B" ? "II" : (currShift == "C" ? "III" : currShift));
                 var remList = remainingNozzles.ToList();
 
@@ -674,11 +679,15 @@ public class NozzleReadingRepository : INozzleReadingRepository
                         && r.DsmEntry.Shift.ShiftDate.Date == currDate.Date
                         && (r.DsmEntry.Shift.ShiftType == currShift || r.DsmEntry.Shift.ShiftType == altShift));
 
-                if (currentDsmEntryId.HasValue && currDate.Date == date.Date && (currShift == normShift || altShift == normShift))
+                if (isCurrentShift)
                 {
-                    int cId = currentDsmEntryId.Value;
-                    query = query.Where(r => 
-                        (r.DsmEntry!.ReconciledToPumpId.HasValue ? r.DsmEntry.ReconciledToPumpId.Value : r.DsmEntry.DsmEntryId) < cId);
+                    if (currentDsmEntryId.HasValue)
+                    {
+                        int cId = currentDsmEntryId.Value;
+                        query = query.Where(r => 
+                            (r.DsmEntry!.ReconciledToPumpId.HasValue ? r.DsmEntry.ReconciledToPumpId.Value : r.DsmEntry.DsmEntryId) < cId);
+                    }
+                    // If currentDsmEntryId is null, any already-approved entry in the current shift is a valid chronological predecessor.
                 }
 
                 // Determine latest record per nozzle strictly by persisted record chronology (NOT ClosingReading value)
@@ -706,7 +715,7 @@ public class NozzleReadingRepository : INozzleReadingRepository
                             ShiftDate = currDate,
                             ShiftType = currShift,
                             PumpId = pumpId,
-                            HopsBack = hops
+                            HopsBack = isCurrentShift ? 1 : hops
                         };
                         remainingNozzles.Remove(item.NozzleNumber);
                     }
@@ -717,6 +726,7 @@ public class NozzleReadingRepository : INozzleReadingRepository
 
                 // Move backward to previous operational shift in the sequence
                 (currDate, currShift) = _shiftCycleService.GetPreviousShift(currDate, currShift);
+                isCurrentShift = false;
             }
 
             if (resolvedClosings.Count == 0)

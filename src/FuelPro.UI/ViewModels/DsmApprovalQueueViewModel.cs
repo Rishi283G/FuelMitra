@@ -1019,14 +1019,23 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                                         });
                                     }
                                 }
-                                else if (!PaymentCollection.IsStandardCollectionCode(mode))
+                                else
                                 {
-                                    if (!_dynamicManualAmounts.ContainsKey(normMode))
+                                    if (!PaymentCollection.IsStandardCollectionCode(mode))
                                     {
-                                        _dynamicManualAmounts[normMode] = amt;
-                                        _dynamicManualTids[normMode] = tid;
-                                        _dynamicManualBatches[normMode] = batch;
-                                        _dynamicManualSlots[normMode] = PaymentCollection.ExtractSlotFromMode(mode, "General");
+                                        if (!_dynamicManualAmounts.ContainsKey(normMode))
+                                        {
+                                            _dynamicManualAmounts[normMode] = amt;
+                                            _dynamicManualTids[normMode] = tid;
+                                            _dynamicManualBatches[normMode] = batch;
+                                            _dynamicManualSlots[normMode] = PaymentCollection.ExtractSlotFromMode(mode, "General");
+                                        }
+                                    }
+                                    else
+                                    {
+                                        if (normMode == "CREDIT_CARD" && CardAmount <= 0) CardAmount += amt;
+                                        else if (normMode == "PETROCARD" && PetroCardAmount <= 0) PetroCardAmount += amt;
+                                        else if (normMode == "PHONEPE" && UpiAmount <= 0) UpiAmount += amt;
                                     }
                                 }
                             }
@@ -1064,52 +1073,83 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                                         });
                                     }
                                 }
-                                else if (!PaymentCollection.IsStandardCollectionCode(dCode))
+                                else
                                 {
-                                    if (!_dynamicManualAmounts.ContainsKey(normDCode))
+                                    if (!PaymentCollection.IsStandardCollectionCode(dCode))
                                     {
-                                        double existingOtp = CardSwipeDetails
-                                            .Where(c => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(c.Mode), normDCode, StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(c.Otp))
-                                            .Sum(c => c.Amount);
-
-                                        double manualPortion = (dAmt >= existingOtp && existingOtp > 0) ? (dAmt - existingOtp) : dAmt;
-                                        _dynamicManualAmounts[normDCode] = manualPortion;
-                                        _dynamicManualTids[normDCode] = dTid ?? "";
-                                        _dynamicManualBatches[normDCode] = dBatch ?? "";
-                                        _dynamicManualSlots[normDCode] = dSlot ?? "General";
+                                        if (!_dynamicManualAmounts.ContainsKey(normDCode))
+                                        {
+                                            _dynamicManualAmounts[normDCode] = dAmt;
+                                            _dynamicManualTids[normDCode] = dTid ?? "";
+                                            _dynamicManualBatches[normDCode] = dBatch ?? "";
+                                            _dynamicManualSlots[normDCode] = dSlot ?? "General";
+                                        }
+                                    }
+                                    else
+                                    {
+                                        if (normDCode == "CREDIT_CARD" && CardAmount <= 0) CardAmount += dAmt;
+                                        else if (normDCode == "PETROCARD" && PetroCardAmount <= 0) PetroCardAmount += dAmt;
+                                        else if (normDCode == "PHONEPE" && UpiAmount <= 0) UpiAmount += dAmt;
                                     }
                                 }
                             }
+                        }
+
+                        if (metadata.settlements != null)
+                        {
+                            foreach (var s in metadata.settlements)
+                            {
+                                string pType = (string)(s.paymentType ?? "");
+                                double amt = (double)(s.amount ?? 0.0);
+                                if (amt <= 0) continue;
+
+                                string normType = PaymentCollection.NormalizeCollectionTypeCode(pType);
+                                if (normType == "CREDIT_CARD" && CardAmount <= 0) CardAmount += amt;
+                                else if (normType == "PETROCARD" && PetroCardAmount <= 0) PetroCardAmount += amt;
+                                else if (normType == "PHONEPE" && UpiAmount <= 0) UpiAmount += amt;
+                            }
+                        }
+
+                        // Fallback card and UPI totals if zero from summary collection but present in card swipes/settlements
+                        if (CardAmount <= 0)
+                        {
+                            double ccTotal = CardSwipeDetails
+                                .Where(c => PaymentCollection.NormalizeCollectionTypeCode(c.Mode) == "CREDIT_CARD")
+                                .Sum(c => c.Amount);
+                            if (ccTotal > 0) CardAmount = ccTotal;
+                        }
+                        if (PetroCardAmount <= 0)
+                        {
+                            double pcTotal = CardSwipeDetails
+                                .Where(c => PaymentCollection.NormalizeCollectionTypeCode(c.Mode) == "PETROCARD")
+                                .Sum(c => c.Amount);
+                            if (pcTotal > 0) PetroCardAmount = pcTotal;
+                        }
+                        if (UpiAmount <= 0)
+                        {
+                            double upiTotal = CardSwipeDetails
+                                .Where(c => PaymentCollection.NormalizeCollectionTypeCode(c.Mode) == "PHONEPE")
+                                .Sum(c => c.Amount);
+                            if (upiTotal > 0) UpiAmount = upiTotal;
                         }
 
                         // Clean up any redundant total row when itemized OTP transactions exist
                         CleanupRedundantTotals(metadata, collResult.Success ? collResult.Data : null);
 
                         // Ensure _dynamicManualAmounts reflects strictly the excess manual portion (Total - OtpTotal)
-                        // for amounts originating from dynamicCollectionValues (which stores the total entered amount in PWA).
-                        // If the entry has its own distinct TID or Batch, it represents an intentional coexisting manual payment.
-                        foreach (var normCode in dcvCodes)
+                        // for amounts originating from dynamicCollectionValues or dynamicItems.
+                        var allDynamicKeys = _dynamicManualAmounts.Keys.ToList();
+                        foreach (var normCode in allDynamicKeys)
                         {
                             if (_dynamicManualAmounts.TryGetValue(normCode, out var totalAmt))
                             {
-                                _dynamicManualTids.TryGetValue(normCode, out var tid);
-                                _dynamicManualBatches.TryGetValue(normCode, out var batch);
-                                bool hasMachineIdentity = !string.IsNullOrWhiteSpace(tid) || !string.IsNullOrWhiteSpace(batch);
-
                                 double existingOtp = CardSwipeDetails
                                     .Where(c => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(c.Mode), normCode, StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(c.Otp))
                                     .Sum(c => c.Amount);
 
                                 if (existingOtp > 0)
                                 {
-                                    if (!hasMachineIdentity && Math.Abs(totalAmt - existingOtp) < 0.01)
-                                    {
-                                        _dynamicManualAmounts[normCode] = 0;
-                                    }
-                                    else if (!hasMachineIdentity && totalAmt > existingOtp)
-                                    {
-                                        _dynamicManualAmounts[normCode] = totalAmt - existingOtp;
-                                    }
+                                    _dynamicManualAmounts[normCode] = Math.Max(0, totalAmt - existingOtp);
                                 }
                             }
                         }
@@ -1306,16 +1346,16 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
 
     private void CleanupRedundantTotals(dynamic? metadata, dynamic? coll)
     {
+        // 1. Remove rows explicitly flagged as synthetic summaries or lacking OTP
         for (int i = CardSwipeDetails.Count - 1; i >= 0; i--)
         {
-            if (string.IsNullOrWhiteSpace(CardSwipeDetails[i].Otp) || CardSwipeDetails[i].IsSyntheticSummary)
+            if (CardSwipeDetails[i].IsSyntheticSummary || string.IsNullOrWhiteSpace(CardSwipeDetails[i].Otp))
             {
                 CardSwipeDetails.RemoveAt(i);
             }
         }
 
-        // Defensive deduplication across all OTP entries:
-        // Any duplicate transaction for the same normalized collection type code and OTP is removed
+        // 2. Deduplicate exact duplicate OTP entries
         var seenOtps = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (int i = CardSwipeDetails.Count - 1; i >= 0; i--)
         {
@@ -1376,7 +1416,11 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
 
         foreach (var normCode in allDynamicCodes)
         {
-            double manualAmt = _dynamicManualAmounts.TryGetValue(normCode, out var m) ? m : 0;
+            double nonOtpAmt = CardSwipeDetails
+                .Where(c => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(c.Mode), normCode, StringComparison.OrdinalIgnoreCase) && string.IsNullOrWhiteSpace(c.Otp))
+                .Sum(c => c.Amount);
+
+            double manualAmt = _dynamicManualAmounts.TryGetValue(normCode, out var m) && m > 0 ? m : nonOtpAmt;
             double otpAmt = CardSwipeDetails
                 .Where(c => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(c.Mode), normCode, StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(c.Otp))
                 .Sum(c => c.Amount);
@@ -2052,24 +2096,32 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                 }
             }
 
-            // Fallbacks for backward compatibility / plain amount inputs (only when NO amount was aggregated yet from settlements or card swipes)
-            if (upiMorning == 0 && upiDay == 0 && upiNight == 0 && UpiAmount > 0)
+            // Honor manager UI edits and provide fallbacks for plain amount inputs
+            double totalUpi = upiMorning + upiDay + upiNight;
+            if (Math.Abs(totalUpi - UpiAmount) > 0.01)
             {
-                if (isShiftC) upiNight = UpiAmount;
-                else if (isShiftB) upiDay = UpiAmount;
-                else upiMorning = UpiAmount;
+                double diff = UpiAmount - totalUpi;
+                if (isShiftC) upiNight += diff;
+                else if (isShiftB) upiDay += diff;
+                else upiMorning += diff;
             }
-            if (creditCardMorning == 0 && creditCardDay == 0 && creditCardNight == 0 && CardAmount > 0)
+
+            double totalCC = creditCardMorning + creditCardDay + creditCardNight;
+            if (Math.Abs(totalCC - CardAmount) > 0.01)
             {
-                if (isShiftC) creditCardNight = CardAmount;
-                else if (isShiftB) creditCardDay = CardAmount;
-                else creditCardMorning = CardAmount;
+                double diff = CardAmount - totalCC;
+                if (isShiftC) creditCardNight += diff;
+                else if (isShiftB) creditCardDay += diff;
+                else creditCardMorning += diff;
             }
-            if (petroCardMorning == 0 && petroCardDay == 0 && petroCardNight == 0 && PetroCardAmount > 0)
+
+            double totalPetro = petroCardMorning + petroCardDay + petroCardNight;
+            if (Math.Abs(totalPetro - PetroCardAmount) > 0.01)
             {
-                if (isShiftC) petroCardNight = PetroCardAmount;
-                else if (isShiftB) petroCardDay = PetroCardAmount;
-                else petroCardMorning = PetroCardAmount;
+                double diff = PetroCardAmount - totalPetro;
+                if (isShiftC) petroCardNight += diff;
+                else if (isShiftB) petroCardDay += diff;
+                else petroCardMorning += diff;
             }
 
             var payment = new PaymentCollection
@@ -3141,12 +3193,14 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
             var entry = await context.DsmEntries
                 .Include(e => e.NozzleReadings)
                 .Include(e => e.PaymentCollection)
+                    .ThenInclude(p => p.Items)
                 .Include(e => e.DebitEntries)
                 .Include(e => e.TestingEntries)
                 .Include(e => e.Expenses)
                 .Include(e => e.CashDenominations)
                 .Include(e => e.PersonalDebtors)
                 .Include(e => e.KhandharePetroleumEntries)
+                .Include(e => e.QrPayments)
                 .FirstOrDefaultAsync(e => e.DsmEntryId == approvedSub.DsmEntryId);
 
             var connectedEntries = new List<DsmEntry>();
@@ -3255,6 +3309,81 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                     }
                 }
 
+                SubmissionExpenses.Clear();
+                if (entry.Expenses != null)
+                {
+                    foreach (var exp in entry.Expenses)
+                    {
+                        SubmissionExpenses.Add(new Expense
+                        {
+                            ExpenseId = exp.ExpenseId,
+                            DsmEntryId = exp.DsmEntryId,
+                            Description = exp.Description,
+                            Amount = exp.Amount
+                        });
+                    }
+                }
+
+                KhandhareEntries.Clear();
+                if (entry.KhandharePetroleumEntries != null)
+                {
+                    foreach (var kp in entry.KhandharePetroleumEntries)
+                    {
+                        KhandhareEntries.Add(new KhandharePetroleumEntry
+                        {
+                            Id = kp.Id,
+                            DsmEntryId = kp.DsmEntryId,
+                            DsmName = kp.DsmName,
+                            Date = kp.Date,
+                            Name = kp.Name,
+                            SlipNumber = kp.SlipNumber,
+                            VehicleNumber = kp.VehicleNumber,
+                            Amount = kp.Amount
+                        });
+                    }
+                }
+
+                QrPayments.Clear();
+                if (!string.IsNullOrEmpty(approvedSub.MetadataJson))
+                {
+                    try
+                    {
+                        var metadata = JsonConvert.DeserializeObject<dynamic>(approvedSub.MetadataJson);
+                        var qrRawList = metadata?.qrPayments ?? metadata?.qrPaymentEntries ?? metadata?.Collections?.qrPayments;
+                        if (qrRawList != null)
+                        {
+                            foreach (var qr in qrRawList)
+                            {
+                                string targetDsm = (qr.targetDsmName ?? qr.TargetDsmName ?? qr.target_dsm_name ?? qr.targetDsm ?? string.Empty).ToString();
+                                double amount = Convert.ToDouble((object?)(qr.amount ?? qr.Amount ?? 0.0));
+                                string tid = (qr.tid ?? qr.Tid ?? string.Empty).ToString();
+                                string batch = (qr.batch ?? qr.Batch ?? string.Empty).ToString();
+                                string slot = (qr.slot ?? qr.Slot ?? string.Empty).ToString();
+
+                                if (amount > 0 && !string.IsNullOrWhiteSpace(targetDsm))
+                                {
+                                    QrPayments.Add(new DsmQrPaymentEntry
+                                    {
+                                        DsmName = entry.DsmName,
+                                        TargetDsmName = targetDsm,
+                                        Date = approvedSub.ShiftDate,
+                                        Amount = amount,
+                                        Tid = string.IsNullOrWhiteSpace(tid) ? null : tid,
+                                        Batch = string.IsNullOrWhiteSpace(batch) ? null : batch,
+                                        Slot = string.IsNullOrWhiteSpace(slot) ? null : slot
+                                    });
+                                }
+                            }
+                        }
+                    }
+                    catch {}
+                }
+
+                _dynamicManualAmounts.Clear();
+                _dynamicManualTids.Clear();
+                _dynamicManualBatches.Clear();
+                _dynamicManualSlots.Clear();
+
                 var pc = entry.PaymentCollection;
                 if (pc != null)
                 {
@@ -3262,8 +3391,8 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                     var cash2Total = entry.CashDenominations.Where(c => c.CashType == "Cash2").Sum(c => c.TotalAmount);
 
                     CashAmount = cash2Total;
-                    UpiAmount = pc.PhonePeMorning + pc.PhonePeDay + pc.PhonePeNight;
-                    CardAmount = pc.CreditCardMorning + pc.CreditCardDay + pc.CreditCardNight + pc.PhonePeCardMorning + pc.PhonePeCardDay + pc.PhonePeCardNight;
+                    UpiAmount = pc.PhonePeMorning + pc.PhonePeDay + pc.PhonePeNight + pc.PhonePeCardMorning + pc.PhonePeCardDay + pc.PhonePeCardNight;
+                    CardAmount = pc.CreditCardMorning + pc.CreditCardDay + pc.CreditCardNight;
                     PetroCardAmount = pc.PetroCardMorning + pc.PetroCardDay + pc.PetroCardNight;
                     CashDepositAmount = cash1Total > 0 ? cash1Total : pc.CashDeposit;
                     OthersAmount = pc.Others;
@@ -3272,54 +3401,59 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                     ExpenseNotes = entry.Expenses.FirstOrDefault()?.Description ?? "";
                     ShortAmount = (double)(entry.Mismatch < 0 ? Math.Abs(entry.Mismatch) : 0);
                     ExcessAmount = (double)(entry.Mismatch > 0 ? entry.Mismatch : 0);
-                }
 
-                foreach (var d in entry.DebitEntries)
-                {
-                    DebtorEntries.Add(new DsmDebitRow
+                    var allItems = pc.GetAllItems()?.ToList() ?? new List<PaymentCollectionItem>();
+                    var distinctCodes = allItems
+                        .Where(i => !PaymentCollection.IsStandardCollectionCode(i.CollectionTypeCode) && !string.IsNullOrWhiteSpace(i.CollectionTypeCode))
+                        .Select(i => PaymentCollection.NormalizeCollectionTypeCode(i.CollectionTypeCode))
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+
+                    foreach (var normCode in distinctCodes)
                     {
-                        DebtorName = d.DebtorName,
-                        Amount = d.Amount,
-                        VehicleNumber = d.VehicleNumber,
-                        SlipNumber = d.SlipNumber,
-                        EntryTime = d.CreatedAt.ToString("hh:mm tt")
-                    });
-                }
+                        var matchingItems = allItems.Where(i =>
+                            string.Equals(PaymentCollection.NormalizeCollectionTypeCode(i.CollectionTypeCode), normCode, StringComparison.OrdinalIgnoreCase)).ToList();
 
-                if (pc != null)
-                {
-                    if (pc.CreditCardMorning > 0)
-                        CardSwipeDetails.Add(new DsmCardSwipeRow { Mode = "Credit Card (Morning)", Amount = pc.CreditCardMorning, Tid = pc.CreditCardTidMorning ?? "", Batch = pc.CreditCardBatchMorning ?? "" });
-                    if (pc.CreditCardDay > 0)
-                        CardSwipeDetails.Add(new DsmCardSwipeRow { Mode = "Credit Card (Day)", Amount = pc.CreditCardDay, Tid = pc.CreditCardTidDay ?? "", Batch = pc.CreditCardBatchDay ?? "" });
-                    if (pc.CreditCardNight > 0)
-                        CardSwipeDetails.Add(new DsmCardSwipeRow { Mode = "Credit Card (Night)", Amount = pc.CreditCardNight, Tid = pc.CreditCardTidNight ?? "", Batch = pc.CreditCardBatchNight ?? "" });
-                    if (pc.PhonePeCardMorning > 0)
-                        CardSwipeDetails.Add(new DsmCardSwipeRow { Mode = "PhonePe Card (Morning)", Amount = pc.PhonePeCardMorning, Tid = pc.PhonePeTidMorning ?? "", Batch = pc.PhonePeBatchMorning ?? "" });
-                    if (pc.PhonePeCardDay > 0)
-                        CardSwipeDetails.Add(new DsmCardSwipeRow { Mode = "PhonePe Card (Day)", Amount = pc.PhonePeCardDay, Tid = pc.PhonePeTidDay ?? "", Batch = pc.PhonePeBatchDay ?? "" });
-                    if (pc.PhonePeCardNight > 0)
-                        CardSwipeDetails.Add(new DsmCardSwipeRow { Mode = "PhonePe Card (Night)", Amount = pc.PhonePeCardNight, Tid = pc.PhonePeTidNight ?? "", Batch = pc.PhonePeBatchNight ?? "" });
-                    if (pc.PetroCardMorning > 0)
-                        CardSwipeDetails.Add(new DsmCardSwipeRow { Mode = "Petro Card (Morning)", Amount = pc.PetroCardMorning, Tid = pc.PetroCardTidMorning ?? "", Batch = pc.PetroCardBatchMorning ?? "" });
-                    if (pc.PetroCardDay > 0)
-                        CardSwipeDetails.Add(new DsmCardSwipeRow { Mode = "Petro Card (Day)", Amount = pc.PetroCardDay, Tid = pc.PetroCardTidDay ?? "", Batch = pc.PetroCardBatchDay ?? "" });
-                    if (pc.PetroCardNight > 0)
-                        CardSwipeDetails.Add(new DsmCardSwipeRow { Mode = "Petro Card (Night)", Amount = pc.PetroCardNight, Tid = pc.PetroCardTidNight ?? "", Batch = pc.PetroCardBatchNight ?? "" });
+                        var otpItems = matchingItems.Where(i => !string.IsNullOrWhiteSpace(i.Otp)).ToList();
+                        var nonOtpItems = matchingItems.Where(i => string.IsNullOrWhiteSpace(i.Otp)).ToList();
 
-                    foreach (var item in pc.GetAllItems())
-                    {
-                        if (PaymentCollection.IsStandardCollectionCode(item.CollectionTypeCode)) continue;
-                        string mode = item.CollectionTypeCode;
-                        if (!string.IsNullOrWhiteSpace(item.Slot)) mode = $"{item.CollectionTypeCode} ({item.Slot})";
-                        CardSwipeDetails.Add(new DsmCardSwipeRow
+                        double otpPortion = otpItems.Sum(i => i.Amount);
+                        bool isSingleAggregateHeader = nonOtpItems.Count == 1 && (
+                            (otpItems.Count > 1 && Math.Abs(nonOtpItems[0].Amount - otpPortion) < 0.01) ||
+                            (otpItems.Count == 1 && Math.Abs(nonOtpItems[0].Amount - otpPortion) < 0.01
+                                && string.IsNullOrWhiteSpace(nonOtpItems[0].Tid) && string.IsNullOrWhiteSpace(nonOtpItems[0].Batch)
+                                && string.Equals(nonOtpItems[0].Slot?.Trim(), otpItems[0].Slot?.Trim(), StringComparison.OrdinalIgnoreCase))
+                        );
+
+                        double manualPortion = isSingleAggregateHeader ? 0 : nonOtpItems.Where(nonOtp => !nonOtp.IsSyntheticSummary).Sum(nonOtp => nonOtp.Amount);
+                        var firstManual = nonOtpItems.FirstOrDefault(i => !string.IsNullOrWhiteSpace(i.Tid) || !string.IsNullOrWhiteSpace(i.Batch))
+                            ?? matchingItems.FirstOrDefault(i => !string.IsNullOrWhiteSpace(i.Tid) || !string.IsNullOrWhiteSpace(i.Batch))
+                            ?? nonOtpItems.FirstOrDefault()
+                            ?? matchingItems.FirstOrDefault();
+
+                        if (manualPortion > 0)
                         {
-                            Mode = mode,
-                            Amount = item.Amount,
-                            Tid = item.Tid ?? "",
-                            Batch = item.Batch ?? "",
-                            Otp = item.Otp ?? ""
-                        });
+                            _dynamicManualAmounts[normCode] = manualPortion;
+                            _dynamicManualTids[normCode] = firstManual?.Tid ?? "";
+                            _dynamicManualBatches[normCode] = firstManual?.Batch ?? "";
+                            _dynamicManualSlots[normCode] = firstManual?.Slot ?? "General";
+                        }
+
+                        // Add OTP items to CardSwipeDetails
+                        foreach (var item in otpItems)
+                        {
+                            string mode = item.CollectionTypeCode;
+                            if (!string.IsNullOrWhiteSpace(item.Slot)) mode = $"{item.CollectionTypeCode} ({item.Slot})";
+                            CardSwipeDetails.Add(new DsmCardSwipeRow
+                            {
+                                Mode = mode,
+                                Amount = item.Amount,
+                                Tid = item.Tid ?? "",
+                                Batch = item.Batch ?? "",
+                                Otp = item.Otp ?? "",
+                                OnRowChanged = RecalculateTotals
+                            });
+                        }
                     }
 
                     // Clean up redundant totals safely using explicit row provenance and metadata
