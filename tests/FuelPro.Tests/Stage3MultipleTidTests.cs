@@ -599,22 +599,29 @@ public class Stage3MultipleTidTests : IDisposable
     }
 
     [Fact]
-    public void NonTidDynamicMethods_RemainScalarBased()
+    public void DeletingAllTidAndOtpRows_ResultsInZero_AndDoesNotRestoreScalarAmount()
     {
         var dynRow = new DynamicCollectionEntryRow
         {
-            Code = "CASH_DEPOSIT",
-            DisplayName = "Cash Deposit (Bank)",
-            Category = "Cash",
-            HasTidBatch = false, // Non-TID dynamic collection
-            ManualAmount = 5000.0
+            Code = "PAYTM",
+            DisplayName = "Paytm",
+            Category = "Online",
+            HasTidBatch = true,
+            ManualAmount = 5000.0, // Stale scalar value
+            TidAmount = 2000.0,
+            OtpAmount = 1000.0
         };
 
         dynRow.RecalculateTotal();
+        Assert.Equal(3000.0, dynRow.Amount);
 
-        // Amount equals manual amount directly without TID row requirement
-        Assert.Equal(5000.0, dynRow.Amount);
-        Assert.False(dynRow.HasTidBatch);
+        // Delete all transactions
+        dynRow.TidAmount = 0;
+        dynRow.OtpAmount = 0;
+        dynRow.RecalculateTotal();
+
+        // Amount is null (zero) and does not resurrect stale ManualAmount
+        Assert.Null(dynRow.Amount);
     }
 
     // ─────────────────────────────────────────────────────────────────────────────

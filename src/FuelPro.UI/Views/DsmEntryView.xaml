@@ -319,37 +319,6 @@
                                 </Border>
 
 
-                                <!-- Dynamic Collections Items -->
-                                <ItemsControl ItemsSource="{Binding DynamicCollections}">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <Border BorderBrush="{DynamicResource MaterialDesign.Brush.Divider}" BorderThickness="1" CornerRadius="6" Padding="12,8" Margin="0,0,0,8" Background="{DynamicResource MaterialDesign.Brush.Card.Background}">
-                                                <StackPanel>
-                                                    <TextBlock FontWeight="Bold" FontSize="12" Opacity="0.9" Margin="0,0,0,6">
-                                                        <Run Text="{Binding DisplayName, Mode=OneWay}" Foreground="{DynamicResource MaterialDesign.Brush.Primary.Dark}"/>
-                                                        <Run Text=" (" Foreground="#888888" FontSize="11"/><Run Text="{Binding Category, Mode=OneWay}" Foreground="#888888" FontSize="11"/><Run Text=")" Foreground="#888888" FontSize="11"/>
-                                                    </TextBlock>
-                                                    <Grid>
-                                                        <Grid.ColumnDefinitions>
-                                                            <ColumnDefinition Width="*"/>
-                                                            <ColumnDefinition Width="Auto"/>
-                                                        </Grid.ColumnDefinitions>
-                                                        <TextBox Grid.Column="0" Text="{Binding ManualAmount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,0,0,0"
-                                                                 materialDesign:HintAssist.Hint="Manual Amount (₹)" materialDesign:HintAssist.IsFloating="True"
-                                                                 Style="{StaticResource MaterialDesignOutlinedTextBox}"
-                                                                 PreviewTextInput="DecimalTextBox_PreviewTextInput"
-                                                                 GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"
-                                                                 LostKeyboardFocus="DecimalTextBox_LostKeyboardFocus"/>
-                                                        <Border Grid.Column="1" Visibility="{Binding HasTidOrOtp, Converter={StaticResource BooleanToVisibilityConverter}}"
-                                                                Background="#0D6A1B9A" BorderBrush="#266A1B9A" BorderThickness="1" CornerRadius="4" Padding="8,4" VerticalAlignment="Center" Margin="6,0,0,0">
-                                                            <TextBlock Text="{Binding SummaryDisplay}" FontSize="11" Foreground="#6A1B9A" VerticalAlignment="Center"/>
-                                                        </Border>
-                                                    </Grid>
-                                                </StackPanel>
-                                            </Border>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
 
                                 <!-- Machine Slip Number Transactions (Itemized card swipes / Slip Number tracking) -->
                                 <Border Background="#0D1565C0" BorderBrush="#261565C0" BorderThickness="1" CornerRadius="6" Padding="12,8" Margin="0,0,0,8"

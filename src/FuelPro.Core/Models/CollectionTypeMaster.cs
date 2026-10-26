@@ -74,10 +74,10 @@ public class CollectionTypeMaster : ObservableObject
 
     /// <summary>
     /// Derived helper to determine if this collection type is OTP-eligible.
-    /// Strictly requires HasOtp == true (enabled from Developer settings).
+    /// If HasOtp is set, respects explicit true/false. If null/unconfigured, falls back to HasTidBatch.
     /// </summary>
     [NotMapped]
-    public bool IsOtpEligible => HasOtp == true;
+    public bool IsOtpEligible => HasOtp ?? HasTidBatch;
 
     private int _displayOrder = 0;
     /// <summary>

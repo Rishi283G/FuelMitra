@@ -1085,8 +1085,8 @@ public class PwaDsmReconciliationFixTests : IDisposable
         Assert.Equal(0.00, queueVm.MismatchAmount, precision: 2);
         Assert.Equal(400.00, queueVm.PineLabsAmount, precision: 2);
 
-        // Dynamic summaries list must contain the other 4 non-PineLabs dynamic collections with ₹400 each
-        Assert.Equal(4, queueVm.DynamicCollectionSummaries.Count);
+        // Dynamic summaries list must contain all 5 active dynamic collections (including PineLabs) with ₹400 each
+        Assert.Equal(5, queueVm.DynamicCollectionSummaries.Count);
         Assert.All(queueVm.DynamicCollectionSummaries, s => Assert.Equal(400.00, s.Amount, precision: 2));
 
         // 2. Persist and check View Mode & Edit Mode Parity
@@ -1154,7 +1154,7 @@ public class PwaDsmReconciliationFixTests : IDisposable
         var dynamicCodes = new[] { "PINELABS_CARD", "PAYTM", "QR_CODE", "MOBIKWIK", "SBI_REDEEM" };
         foreach (var code in dynamicCodes)
         {
-            var col = entryVm.DynamicCollections.FirstOrDefault(d => d.Code == code);
+            var col = entryVm.DynamicCollections.FirstOrDefault(d => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(d.Code), PaymentCollection.NormalizeCollectionTypeCode(code), StringComparison.OrdinalIgnoreCase));
             Assert.NotNull(col);
             Assert.Equal(400.00, col.Amount ?? 0.0, precision: 2);
         }
@@ -1644,7 +1644,7 @@ public class PwaDsmReconciliationFixTests : IDisposable
 
         // Verification of Dynamic Collection Parity
         Assert.Equal(400.0, queueVm.PineLabsAmount, precision: 2);
-        Assert.Equal(4, queueVm.DynamicCollectionSummaries.Count);
+        Assert.Equal(5, queueVm.DynamicCollectionSummaries.Count);
         Assert.All(queueVm.DynamicCollectionSummaries, s => Assert.Equal(400.0, s.Amount, precision: 2));
 
         // Invariant: CardSwipeDetails strictly contains the 5 OTP slips
@@ -1659,7 +1659,7 @@ public class PwaDsmReconciliationFixTests : IDisposable
     }
 
     [Fact]
-    public void Test_PwaManualAmountEntry_ForTidEligibleType_CalculatesTotalAsManualPlusTidPlusOtp()
+    public void Test_PwaDynamicAmountEntry_ForTidEligibleType_CalculatesTotalAsTidPlusOtp_ExcludingScalar()
     {
         var row = new DynamicCollectionEntryRow
         {
@@ -1674,11 +1674,18 @@ public class PwaDsmReconciliationFixTests : IDisposable
 
         row.RecalculateTotal();
 
-        Assert.Equal(900.0, row.Amount);
+        // Under TID/OTP-only workflow, Total = Sum(TID) + Sum(OTP) = 500 + 150 = 650.0 (ManualAmount is excluded)
+        Assert.Equal(650.0, row.Amount);
         Assert.True(row.HasTidOrOtp);
         Assert.Contains("TID: ₹500.00", row.SummaryDisplay);
         Assert.Contains("OTP: ₹150.00", row.SummaryDisplay);
-        Assert.Contains("Total: ₹900.00", row.SummaryDisplay);
+        Assert.Contains("Total: ₹650.00", row.SummaryDisplay);
+
+        // Deleting all transactions zeroes out total without falling back to stale scalar amount
+        row.TidAmount = 0;
+        row.OtpAmount = 0;
+        row.RecalculateTotal();
+        Assert.Null(row.Amount);
     }
 
     [Fact]
@@ -1763,7 +1770,8 @@ public class PwaDsmReconciliationFixTests : IDisposable
         Assert.Equal(500.0, paytmRow.ManualAmount);
         Assert.Equal(700.0, paytmRow.TidAmount);
         Assert.Equal(300.0, paytmRow.OtpAmount);
-        Assert.Equal(1500.0, paytmRow.Amount);
+        // Canonical Dynamic Total = TID (700) + OTP (300) = 1000.0 (ManualAmount 500 excluded from active total)
+        Assert.Equal(1000.0, paytmRow.Amount);
 
         // Verify TID transactions list has exactly the TID item
         Assert.Contains(queueVm.ManualTidTransactions, t => t.Amount == 700.0 && t.Tid == "T123");

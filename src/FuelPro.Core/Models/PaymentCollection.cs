@@ -183,6 +183,7 @@ public class PaymentCollection
         if (test.Equals("SBIREDEEM", StringComparison.OrdinalIgnoreCase))
             return "SBI_REDEEM";
         if (test.Equals("QR", StringComparison.OrdinalIgnoreCase) 
+            || test.Equals("QRCODE", StringComparison.OrdinalIgnoreCase)
             || test.Equals("QRONLINE", StringComparison.OrdinalIgnoreCase) 
             || test.StartsWith("QRONLINE", StringComparison.OrdinalIgnoreCase))
             return "QR";

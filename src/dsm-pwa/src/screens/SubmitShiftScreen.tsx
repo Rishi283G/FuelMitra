@@ -347,7 +347,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     const list: { code: string; displayName: string }[] = [];
     if (otpMachineTrackingEnabled && stationConfig?.collectionTypes) {
       for (const ct of stationConfig.collectionTypes) {
-        const isOtpEligible = Boolean(ct.hasOtp);
+        const isOtpEligible = ct.hasOtp !== undefined && ct.hasOtp !== null ? Boolean(ct.hasOtp) : Boolean(ct.hasTidBatch);
         if (isOtpEligible && ct.isActive !== false) {
           list.push({ code: ct.code, displayName: ct.displayName || ct.code });
         }
@@ -698,8 +698,28 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       setKhandhareEntries(parsed.khandhareEntries ?? []);
       setQrPayments(parsed.qrPayments ?? []);
       if (parsed.machineTransactions) setMachineTransactions(parsed.machineTransactions);
-      if (parsed.manualTidTransactions) setManualTidTransactions(parsed.manualTidTransactions);
-      if (parsed.dynamicValues) setDynamicValues(parsed.dynamicValues);
+      const restoredTids: ManualTidTransactionItem[] = parsed.manualTidTransactions ? [...parsed.manualTidTransactions] : [];
+      if (parsed.dynamicValues) {
+        Object.entries(parsed.dynamicValues).forEach(([code, val]: [string, any]) => {
+          const amt = Number(val?.amount) || 0;
+          if (amt > 0) {
+            const hasTid = restoredTids.some((t) => t.collectionTypeCode.toUpperCase() === code.toUpperCase());
+            const hasOtp = (parsed.machineTransactions || []).some((m: any) => m.collectionTypeCode?.toUpperCase() === code.toUpperCase());
+            if (!hasTid && !hasOtp) {
+              restoredTids.push({
+                id: `legacy-${code}-${Date.now()}`,
+                collectionTypeCode: code,
+                amount: amt,
+                tid: val?.tid || "",
+                batch: val?.batch || "",
+                slot: val?.slot || (parsed.shiftType === "B" ? "Day" : "Morning"),
+              });
+            }
+          }
+        });
+      }
+      setManualTidTransactions(restoredTids);
+      setDynamicValues({});
       if (parsed.qrPayments && parsed.qrPayments.length > 0) {
         setShowCrossQrSection(true);
       }
@@ -1530,13 +1550,8 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     const ct = (stationConfig?.collectionTypes || []).find((c) => c.code.toUpperCase() === code.toUpperCase());
     const isTidEligible = Boolean(ct?.hasTidBatch);
     const manualTidSum = isTidEligible && multiTidTransactionsEnabled ? getManualTidTotalForType(code) : 0;
-    const val = dynamicValues[code] || { amount: 0, tid: "", batch: "", otp: "" };
     const txTotal = otpMachineTrackingEnabled ? getMachineTotalForType(code) : 0;
-    const manualActive = isManualEnabled(code);
-    const slotConf = getTypeSlotConfig(code);
-    const isSlotAllowed = shiftType === "B" ? slotConf.enableDay : (slotConf.enableMorning || slotConf.enableNight);
-    const manualAmt = manualActive && isSlotAllowed ? (val.amount || 0) : 0;
-    return manualAmt + manualTidSum + txTotal;
+    return manualTidSum + txTotal;
   };
 
   const dynamicTotal = allDynamicTypeCodes.reduce((sum, code) => {
@@ -1971,31 +1986,6 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       }
     });
 
-    // 2. Ingest manual dynamic collection amounts from dynamicValues
-    const activeDynamicCodes = (stationConfig?.collectionTypes || [])
-      .filter((ct) => ct.isActive !== false)
-      .map((ct) => ct.code);
-
-    activeDynamicCodes.forEach((code) => {
-      const clean = code.toUpperCase().replace(/_/g, "");
-      if (clean === "PHONEPE" || clean === "CREDITCARD" || clean === "PETROCARD" || clean === "CASHDEPOSIT" || clean === "OTHERS") return;
-      const val = dynamicValues[code] || { amount: 0, tid: "", batch: "", otp: "" };
-      const slotConf = getTypeSlotConfig(code);
-      const isSlotAllowed = shiftType === "B" ? slotConf.enableDay : (slotConf.enableMorning || slotConf.enableNight);
-      const manualAmt = isManualEnabled(code) && isSlotAllowed ? (val.amount || 0) : 0;
-      if (manualAmt > 0) {
-        dynamicItemsPayload.push({
-          transactionId: `manual-scalar-${code.toUpperCase()}`,
-          collectionTypeCode: code,
-          amount: manualAmt,
-          tid: "",
-          batch: "",
-          slot: shiftType === "B" ? "Day" : (slotConf.enableMorning ? "Morning" : "Night"),
-          otp: "",
-        });
-      }
-    });
-
     const draftData = {
       pumpId,
       connectedPumpId: connectedPumps.length > 0 ? connectedPumps[0] : null,
@@ -2025,6 +2015,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       excess: 0,
       cardSwipeDetails: cardSwipes,
       machineTransactions,
+      manualTidTransactions,
       dynamicItems: dynamicItemsPayload,
       dynamicCollectionValues: dynamicValues,
       settlements: settlementsList,
@@ -3540,160 +3531,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           </div>
           )}
 
-          {/* Dynamic Collection Types (Configured by Station/Developer) */}
-          {stationConfig.collectionTypes
-            .filter(
-              (c) =>
-                ![
-                  "PETROCARD",
-                  "CREDIT_CARD",
-                  "PHONEPE",
-                  "CASH_DEPOSIT",
-                  "OTHERS",
-                ].includes(c.code.toUpperCase()),
-            )
-            .filter((c) => {
-              const hasData = (dynamicValues[c.code]?.amount || 0) > 0 || getMachineTotalForType(c.code) > 0;
-              if (c.isActive === false && !hasData) return false;
-              if (shiftType === "B") return c.enableDay !== false;
-              return c.enableMorning !== false || (splitMorningNightEnabled && c.enableNight !== false);
-            })
-            .map((type) => {
-              const val = dynamicValues[type.code] || {
-                amount: 0,
-                tid: "",
-                batch: "",
-                otp: "",
-              };
-              const manualActive = isManualEnabled(type.code);
-              const effTypeTotal = getDynamicTypeEffectiveTotal(type.code);
 
-              return (
-                <div
-                  key={type.code}
-                  className="nozzle-card"
-                  style={{ marginBottom: "16px", padding: "16px" }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      marginBottom: "12px",
-                      borderBottom: "1px solid #334155",
-                      paddingBottom: "6px",
-                    }}
-                  >
-                    <div>
-                      <h3
-                        style={{
-                          fontSize: "1rem",
-                          fontWeight: "bold",
-                          margin: 0,
-                        }}
-                      >
-                        {type.displayName}
-                      </h3>
-                      <span style={{ fontSize: "0.8rem", color: "#38bdf8", fontWeight: 600 }}>
-                        Total: ₹{effTypeTotal.toFixed(2)}
-                      </span>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      <label
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "6px",
-                          fontSize: "0.8rem",
-                          color: manualActive ? "#38bdf8" : "#94a3b8",
-                          cursor: "pointer",
-                          userSelect: "none",
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={manualActive}
-                          onChange={(e) => toggleManualEnabled(type.code, e.target.checked)}
-                        />
-                        <span>Manual Entry</span>
-                      </label>
-                      <span
-                        style={{
-                          fontSize: "0.75rem",
-                          backgroundColor: "#334155",
-                          color: "#94a3b8",
-                          padding: "2px 8px",
-                          borderRadius: "4px",
-                        }}
-                      >
-                        {type.category}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr",
-                      gap: "8px",
-                      opacity: manualActive ? 1 : 0.6,
-                    }}
-                  >
-                    <div className="field-group">
-                      <label className="field-label">Manual Amount (₹)</label>
-                      <input
-                        type="number"
-                        className="field-input"
-                        step="0.01"
-                        min="0"
-                        placeholder="0.00"
-                        value={val.amount || ""}
-                        disabled={!manualActive}
-                        onChange={(e) => {
-                          const newAmt = parseFloat(e.target.value) || 0;
-                          setDynamicValues((prev) => ({
-                            ...prev,
-                            [type.code]: { ...val, amount: newAmt },
-                          }));
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  {type.hasTidBatch && (
-                    <div
-                      style={{
-                        marginTop: "8px",
-                        padding: "10px",
-                        backgroundColor: "rgba(30, 41, 59, 0.5)",
-                        borderRadius: "6px",
-                        border: "1px dashed #475569",
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                      }}
-                    >
-                      <div>
-                        <span style={{ fontSize: "0.85rem", color: "#94a3b8" }}>
-                          Itemized TID Total ({manualTidTransactions.filter(t => t.collectionTypeCode.toUpperCase() === type.code.toUpperCase()).length} txs):
-                        </span>
-                        <div style={{ fontSize: "1rem", fontWeight: "bold", color: "#38bdf8" }}>
-                          ₹{getManualTidTotalForType(type.code).toFixed(2)}
-                        </div>
-                      </div>
-                      <div style={{ textAlign: "right" }}>
-                        <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>
-                          Type Total:
-                        </span>
-                        <div style={{ fontSize: "1.1rem", fontWeight: "bold", color: "#4ade80" }}>
-                          ₹{getDynamicTypeEffectiveTotal(type.code).toFixed(2)}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
 
           {/* Itemized Card & TID Transactions */}
           {multiTidTransactionsEnabled && eligibleTidTypes.length > 0 && (

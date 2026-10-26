@@ -1304,6 +1304,43 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                             }
                         }
 
+                        if (metadata.manualTidTransactions != null)
+                        {
+                            foreach (var mt in metadata.manualTidTransactions)
+                            {
+                                string mtCode = Convert.ToString((object?)(mt.collectionTypeCode ?? mt.code ?? mt.mode ?? mt.displayName ?? "")) ?? "";
+                                if (string.IsNullOrWhiteSpace(mtCode)) continue;
+                                double mtAmt = Convert.ToDouble((object?)(mt.amount ?? 0.0));
+                                string? mtTid = Convert.ToString((object?)(mt.tid ?? mt.Tid ?? "")) ?? "";
+                                string? mtBatch = Convert.ToString((object?)(mt.batch ?? mt.Batch ?? "")) ?? "";
+                                string? mtSlot = Convert.ToString((object?)(mt.slot ?? mt.Slot ?? "General")) ?? "General";
+                                string? mtTxId = Convert.ToString((object?)(mt.transactionId ?? mt.TransactionId ?? mt.id ?? mt.Id ?? "")) ?? "";
+                                if (mtAmt <= 0) continue;
+
+                                string normMtCode = PaymentCollection.NormalizeCollectionTypeCode(mtCode);
+                                string dispMode = ResolveCollectionTypeDisplayName(mtCode);
+
+                                if (!ManualTidTransactions.Any(m =>
+                                    (!string.IsNullOrWhiteSpace(mtTxId) && string.Equals(m.TransactionId, mtTxId, StringComparison.OrdinalIgnoreCase))
+                                    || (string.Equals(PaymentCollection.NormalizeCollectionTypeCode(m.Mode), normMtCode, StringComparison.OrdinalIgnoreCase)
+                                        && Math.Abs(m.Amount - mtAmt) < 0.001
+                                        && string.Equals(m.Tid, mtTid, StringComparison.OrdinalIgnoreCase)
+                                        && string.Equals(m.Batch, mtBatch, StringComparison.OrdinalIgnoreCase))))
+                                {
+                                    ManualTidTransactions.Add(new DsmCardSwipeRow
+                                    {
+                                        Mode = dispMode,
+                                        Amount = mtAmt,
+                                        Tid = mtTid,
+                                        Batch = mtBatch,
+                                        Slot = mtSlot,
+                                        TransactionId = !string.IsNullOrWhiteSpace(mtTxId) ? mtTxId : Guid.NewGuid().ToString("D"),
+                                        OnRowChanged = RecalculateTotals
+                                    });
+                                }
+                            }
+                        }
+
                         if (formatVersion >= 3)
                         {
                             // In formatVersion >= 3:
@@ -1390,7 +1427,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                                     else
                                     {
                                         bool isManualScalar = !string.IsNullOrWhiteSpace(dTxId) && dTxId.StartsWith("manual-scalar-", StringComparison.OrdinalIgnoreCase);
-                                        bool isTidItem = !isManualScalar && (!string.IsNullOrWhiteSpace(dTid) || !string.IsNullOrWhiteSpace(dBatch) || normDCode == "PINELABS_CARD");
+                                        bool isTidItem = !isManualScalar;
                                         if (isTidItem)
                                         {
                                             string dispMode = ResolveCollectionTypeDisplayName(dCode);
@@ -1398,11 +1435,12 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                                             string cleanBatch = dBatch ?? "";
                                             string cleanSlot = dSlot ?? "General";
                                             bool exists = ManualTidTransactions.Any(m =>
-                                                string.Equals(m.Mode, dispMode, StringComparison.OrdinalIgnoreCase) &&
-                                                Math.Abs(m.Amount - dAmt) < 0.001 &&
-                                                string.Equals(m.Tid, cleanTid, StringComparison.OrdinalIgnoreCase) &&
-                                                string.Equals(m.Batch, cleanBatch, StringComparison.OrdinalIgnoreCase) &&
-                                                string.Equals(m.Slot, cleanSlot, StringComparison.OrdinalIgnoreCase));
+                                                (!string.IsNullOrWhiteSpace(dTxId) && string.Equals(m.TransactionId, dTxId, StringComparison.OrdinalIgnoreCase))
+                                                || (string.Equals(m.Mode, dispMode, StringComparison.OrdinalIgnoreCase) &&
+                                                    Math.Abs(m.Amount - dAmt) < 0.001 &&
+                                                    string.Equals(m.Tid, cleanTid, StringComparison.OrdinalIgnoreCase) &&
+                                                    string.Equals(m.Batch, cleanBatch, StringComparison.OrdinalIgnoreCase) &&
+                                                    string.Equals(m.Slot, cleanSlot, StringComparison.OrdinalIgnoreCase)));
 
                                             if (!exists)
                                             {
@@ -1510,6 +1548,35 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                                 }
                             }
 
+                            if (metadata.dynamicCollectionValues != null)
+                            {
+                                try
+                                {
+                                    var dcvJson = JsonConvert.SerializeObject(metadata.dynamicCollectionValues);
+                                    var dcvDict = JsonConvert.DeserializeObject<Dictionary<string, dynamic>>(dcvJson);
+                                    if (dcvDict != null)
+                                    {
+                                        foreach (var kvp in dcvDict)
+                                        {
+                                            string dCode = kvp.Key;
+                                            if (string.IsNullOrWhiteSpace(dCode)) continue;
+                                            string normDCode = PaymentCollection.NormalizeCollectionTypeCode(dCode);
+                                            if (legacyCandidates.Any(c => string.IsNullOrWhiteSpace(c.Otp) && string.Equals(PaymentCollection.NormalizeCollectionTypeCode(c.Mode), normDCode, StringComparison.OrdinalIgnoreCase)))
+                                                continue;
+
+                                            double dAmt = Convert.ToDouble((object?)(kvp.Value?.amount ?? 0.0));
+                                            string? dTid = Convert.ToString((object?)(kvp.Value?.tid ?? "")) ?? "";
+                                            string? dBatch = Convert.ToString((object?)(kvp.Value?.batch ?? "")) ?? "";
+                                            string? dSlot = Convert.ToString((object?)(kvp.Value?.slot ?? "General")) ?? "General";
+                                            if (dAmt <= 0) continue;
+
+                                            legacyCandidates.Add((dCode, dAmt, dTid, dBatch, dSlot, null, null));
+                                        }
+                                    }
+                                }
+                                catch { }
+                            }
+
                             foreach (var cand in legacyCandidates)
                             {
                                 string normCode = PaymentCollection.NormalizeCollectionTypeCode(cand.Mode);
@@ -1608,12 +1675,22 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                                     }
                                     else
                                     {
-                                        if (!_dynamicManualAmounts.ContainsKey(normCode))
+                                        // Legacy scalar dynamic amount without TID/Batch:
+                                        // Hydrate as a preserved transaction row in ManualTidTransactions so it is visible and editable,
+                                        // avoiding hidden resurrecting scalar fields.
+                                        string legacyTxId = $"legacy-scalar-{normCode}";
+                                        if (!ManualTidTransactions.Any(t => string.Equals(t.TransactionId, legacyTxId, StringComparison.OrdinalIgnoreCase)))
                                         {
-                                            _dynamicManualAmounts[normCode] = effectiveAmount;
-                                            _dynamicManualTids[normCode] = cand.Tid;
-                                            _dynamicManualBatches[normCode] = cand.Batch;
-                                            _dynamicManualSlots[normCode] = cand.Slot;
+                                            ManualTidTransactions.Add(new DsmCardSwipeRow
+                                            {
+                                                Mode = ResolveCollectionTypeDisplayName(cand.Mode),
+                                                Amount = effectiveAmount,
+                                                Tid = cand.Tid ?? "",
+                                                Batch = cand.Batch ?? "",
+                                                Slot = cand.Slot,
+                                                TransactionId = legacyTxId,
+                                                OnRowChanged = RecalculateTotals
+                                            });
                                         }
                                     }
                                 }
@@ -2084,7 +2161,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                 .Where(c => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(c.Mode), normCode, StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(c.Otp))
                 .Sum(c => c.Amount);
 
-            double effectiveCodeTotal = manualScalarAmt + itemizedTidAmt + otpAmt;
+            double effectiveCodeTotal = itemizedTidAmt + otpAmt;
             if (effectiveCodeTotal <= 0) continue;
 
             dynamicTotal += effectiveCodeTotal;
@@ -2093,16 +2170,18 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
             {
                 calculatedPineLabsTotal = effectiveCodeTotal;
             }
-            else
+
+            var dynMatch = DynamicCollections.FirstOrDefault(d => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(d.Code), normCode, StringComparison.OrdinalIgnoreCase));
+            string displayName = !string.IsNullOrWhiteSpace(dynMatch?.DisplayName)
+                ? dynMatch.DisplayName
+                : (normCode == "PINELABS_CARD" ? "Pine Labs Card" : normCode.Replace("_", " "));
+
+            summaries.Add(new DynamicCollectionSummaryDto
             {
-                string displayName = normCode.Replace("_", " ");
-                summaries.Add(new DynamicCollectionSummaryDto
-                {
-                    Code = normCode,
-                    DisplayName = displayName,
-                    Amount = effectiveCodeTotal
-                });
-            }
+                Code = normCode,
+                DisplayName = displayName,
+                Amount = effectiveCodeTotal
+            });
         }
 
         DynamicCollectionSummaries.Clear();
@@ -2125,7 +2204,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
             double otpAmt = CardSwipeDetails
                 .Where(c => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(c.Mode), norm, StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(c.Otp))
                 .Sum(c => c.Amount);
-            double total = manualScalarAmt + itemizedTidAmt + otpAmt;
+            double total = itemizedTidAmt + otpAmt;
 
             dynRow.ManualAmount = manualScalarAmt > 0 ? manualScalarAmt : null;
             dynRow.OtpAmount = otpAmt;
@@ -2497,7 +2576,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                 double otpAmt = CardSwipeDetails
                     .Where(x => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(x.Mode), norm, StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(x.Otp))
                     .Sum(x => x.Amount);
-                double total = manualScalarAmt + itemizedTidAmt + otpAmt;
+                double total = (itemizedTidAmt > 0 || otpAmt > 0) ? (itemizedTidAmt + otpAmt) : manualScalarAmt;
 
                 DynamicCollections.Add(new DynamicCollectionEntryRow
                 {
@@ -3438,17 +3517,22 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                 }
             }
 
-            // Ingest manual dynamic amounts from _dynamicManualAmounts
+            // Ingest manual dynamic amounts from _dynamicManualAmounts ONLY for legacy submissions where NO TID/OTP exist
             foreach (var kvp in _dynamicManualAmounts)
             {
                 string normCode = PaymentCollection.NormalizeCollectionTypeCode(kvp.Key);
                 double manualAmt = kvp.Value;
                 if (manualAmt <= 0.009) continue;
 
-                var existingManual = payment.Items.FirstOrDefault(i =>
+                bool hasTidOrOtp = payment.Items.Any(i =>
                     string.Equals(PaymentCollection.NormalizeCollectionTypeCode(i.CollectionTypeCode), normCode, StringComparison.OrdinalIgnoreCase)
-                    && (string.Equals(i.TransactionId, $"manual-scalar-{normCode}", StringComparison.OrdinalIgnoreCase)
-                        || (string.IsNullOrWhiteSpace(i.Otp) && string.IsNullOrWhiteSpace(i.Tid) && string.IsNullOrWhiteSpace(i.Batch))));
+                    && (!string.IsNullOrWhiteSpace(i.Otp) || !string.IsNullOrWhiteSpace(i.Tid) || !string.IsNullOrWhiteSpace(i.Batch)
+                        || !string.Equals(i.TransactionId, $"manual-scalar-{normCode}", StringComparison.OrdinalIgnoreCase)));
+
+                if (hasTidOrOtp) continue;
+
+                var existingManual = payment.Items.FirstOrDefault(i =>
+                    string.Equals(PaymentCollection.NormalizeCollectionTypeCode(i.CollectionTypeCode), normCode, StringComparison.OrdinalIgnoreCase));
 
                 if (existingManual != null)
                 {
@@ -3471,6 +3555,21 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                         Otp = ""
                     });
                 }
+            }
+
+            // Remove any manual-scalar items if TID or OTP items are present for that type
+            var toRemove = payment.Items.Where(i =>
+                !string.IsNullOrWhiteSpace(i.TransactionId) &&
+                i.TransactionId.StartsWith("manual-scalar-", StringComparison.OrdinalIgnoreCase) &&
+                payment.Items.Any(other =>
+                    other != i &&
+                    string.Equals(PaymentCollection.NormalizeCollectionTypeCode(other.CollectionTypeCode),
+                                  PaymentCollection.NormalizeCollectionTypeCode(i.CollectionTypeCode),
+                                  StringComparison.OrdinalIgnoreCase))).ToList();
+
+            foreach (var rem in toRemove)
+            {
+                payment.Items.Remove(rem);
             }
 
 

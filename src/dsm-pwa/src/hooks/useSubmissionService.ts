@@ -58,6 +58,7 @@ export function useSubmissionService() {
         personalLedgerName: (draft as any).personalLedgerName || null,
         cardSwipeDetails: draft.cardSwipeDetails || [],
         machineTransactions: (draft as any).machineTransactions || [],
+        manualTidTransactions: (draft as any).manualTidTransactions || [],
         dynamicItems: (draft as any).dynamicItems || [],
         settlements: draft.settlements || [],
         debtorEntries: draft.debtorEntries || [],
