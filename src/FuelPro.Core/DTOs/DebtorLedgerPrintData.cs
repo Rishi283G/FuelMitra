@@ -5,6 +5,8 @@ namespace FuelPro.Core.DTOs;
 
 public class DebtorLedgerPrintData
 {
+    public string Title { get; set; } = "DEBTOR ACCOUNT STATEMENT";
+    public string Subtitle { get; set; } = "Auto-compiled from ledger records";
     public string DebtorName { get; set; } = string.Empty;
     public string DebtorPhone { get; set; } = string.Empty;
     public string StartDate { get; set; } = string.Empty;

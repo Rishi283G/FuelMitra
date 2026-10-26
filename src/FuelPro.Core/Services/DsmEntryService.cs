@@ -556,32 +556,32 @@ public class DsmEntryService
                 group.AddRange(connectedSlaves);
 
                 var distinctNozzles = group
-                    .SelectMany(e => e.NozzleReadings ?? new List<NozzleReading>())
-                    .GroupBy(n => n.NozzleNumber)
-                    .Select(g => g.First())
+                    .SelectMany(e => (e.NozzleReadings ?? new List<NozzleReading>()).Select(n => (PumpId: e.PumpId, Reading: n)))
+                    .GroupBy(x => (x.PumpId, x.Reading.NozzleNumber))
+                    .Select(g => g.First().Reading)
                     .ToList();
 
-                double totalGrossSales = distinctNozzles.Count > 0 
-                    ? distinctNozzles.Sum(n => (double)n.Amount)
-                    : (primary.GrossSales > 0 ? (double)primary.GrossSales : (double)group.Sum(e => e.GrossSales));
+                double totalGrossSales = primary.GrossSales > 0 
+                    ? (double)primary.GrossSales 
+                    : (distinctNozzles.Count > 0 ? distinctNozzles.Sum(n => (double)n.Amount) : (double)group.Sum(e => e.GrossSales));
 
                 var calcDto = ToCalculationDto(primary);
                 var calc = _dsmCalculationService.Calculate(calcDto);
-                double totalCollection = (double)calc.TotalCollection;
-                bool usedFallback = false;
-                if (totalCollection == 0 && primary.TotalCollection > 0)
-                {
-                    totalCollection = (double)primary.TotalCollection;
-                    usedFallback = true;
-                }
+
+                double totalCollection = (primary.TotalCollection > 0)
+                    ? (double)primary.TotalCollection
+                    : (double)calc.TotalCollection;
 
                 double totalTesting = (double)group
                     .SelectMany(e => e.TestingEntries ?? new List<TestingEntry>())
                     .Sum(t => t.Amount);
 
-                double netSales = totalGrossSales - totalTesting;
-                double mismatch = usedFallback && primary.Mismatch != 0 
-                    ? (double)primary.Mismatch 
+                double netSales = (primary.GrossSales > 0 && primary.NetGrossSales > 0)
+                    ? (double)primary.NetGrossSales
+                    : (totalGrossSales - totalTesting);
+
+                double mismatch = (primary.Mismatch != 0 || primary.TotalCollection > 0)
+                    ? (double)primary.Mismatch
                     : (totalCollection - netSales);
 
                 summaries.Add(new DsmEntrySummaryDto
@@ -613,6 +613,48 @@ public class DsmEntryService
     }
 
     /// <summary>
+    /// Gets shift-level cumulative fuel type summaries (DSR) across all entries in the shift.
+    /// </summary>
+    public async Task<Result<List<FuelTypeReadingSummary>>> GetShiftFuelTypeSummariesAsync(int shiftId)
+    {
+        try
+        {
+            var entriesResult = await _dsmRepo.GetEntriesForShiftAsync(shiftId);
+            if (!entriesResult.Success) return Result<List<FuelTypeReadingSummary>>.Fail(entriesResult.Error);
+
+            var allEntries = entriesResult.Data!;
+            // Group distinct nozzle readings across the shift by (PumpId, NozzleNumber) to avoid duplicate counting of connected pumps
+            var distinctNozzles = allEntries
+                .SelectMany(e => (e.NozzleReadings ?? new List<NozzleReading>())
+                    .Select(n => new { Entry = e, Reading = n }))
+                .GroupBy(x => new { x.Entry.PumpId, x.Reading.NozzleNumber })
+                .Select(g => g.First().Reading)
+                .ToList();
+
+            var summaries = distinctNozzles
+                .Where(n => !string.IsNullOrWhiteSpace(n.FuelType))
+                .GroupBy(n => n.FuelType.Trim().ToUpperInvariant())
+                .OrderBy(g => g.Key)
+                .Select(g => new FuelTypeReadingSummary
+                {
+                    FuelType = g.First().FuelType,
+                    NozzleCount = g.Count(),
+                    TotalLitres = g.Sum(n => (double)n.SaleLitres),
+                    Rate = g.FirstOrDefault(n => (double)n.Rate > 0)?.Rate ?? 0,
+                    TotalAmount = g.Sum(n => (double)n.Amount)
+                })
+                .ToList();
+
+            return Result<List<FuelTypeReadingSummary>>.Ok(summaries);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to get shift fuel type summaries");
+            return Result<List<FuelTypeReadingSummary>>.Fail($"Failed to load fuel summaries: {ex.Message}");
+        }
+    }
+
+    /// <summary>
     /// Gets autocomplete DSM names from previous entries.
     /// </summary>
     public async Task<List<string>> GetDsmNameSuggestionsAsync()
@@ -625,6 +667,29 @@ public class DsmEntryService
     {
         var cash1Total = entry.CashDenominations.Where(c => c.CashType == "Cash1").Sum(c => c.TotalAmount);
         var cash2Total = entry.CashDenominations.Where(c => c.CashType == "Cash2").Sum(c => c.TotalAmount);
+        var cash3Total = entry.CashDenominations.Where(c => c.CashType == "Cash3").Sum(c => c.TotalAmount);
+
+        var phonePe = (decimal)((entry.PaymentCollection?.PhonePeMorning ?? 0)
+                               + (entry.PaymentCollection?.PhonePeDay ?? 0)
+                               + (entry.PaymentCollection?.PhonePeNight ?? 0)
+                               + (entry.PaymentCollection?.PhonePeCardMorning ?? 0)
+                               + (entry.PaymentCollection?.PhonePeCardDay ?? 0)
+                               + (entry.PaymentCollection?.PhonePeCardNight ?? 0)
+                               + (entry.QrPayments?.Sum(q => q.Amount) ?? 0));
+        var creditCard = (decimal)((entry.PaymentCollection?.CreditCardMorning ?? 0)
+                               + (entry.PaymentCollection?.CreditCardDay ?? 0)
+                               + (entry.PaymentCollection?.CreditCardNight ?? 0));
+        var petroCard = (decimal)((entry.PaymentCollection?.PetroCardMorning ?? 0)
+                               + (entry.PaymentCollection?.PetroCardDay ?? 0)
+                               + (entry.PaymentCollection?.PetroCardNight ?? 0));
+        var cashDeposit = (decimal)(cash1Total > 0 ? cash1Total : (entry.PaymentCollection?.CashDeposit ?? 0));
+        var cash3 = (decimal)cash3Total;
+        var dynamicPayments = (decimal)(entry.PaymentCollection?.DynamicItemsTotal ?? 0);
+
+        var physicalCash = cash2Total > 0
+            ? (decimal)cash2Total
+            : Math.Max(0m, entry.TotalInDirect - (phonePe + creditCard + petroCard + cashDeposit + cash3 + dynamicPayments));
+
         return new DsmEntryDto
         {
             DSMEntryId = entry.DsmEntryId,
@@ -632,23 +697,16 @@ public class DsmEntryService
             PaymentCollection = new PaymentCollectionDto
             {
                 // Others is NOT included in TotalInDirect — it is informational only
-                PhonePe      = (decimal)((entry.PaymentCollection?.PhonePeMorning ?? 0)
-                                       + (entry.PaymentCollection?.PhonePeDay ?? 0)
-                                       + (entry.PaymentCollection?.PhonePeNight ?? 0)
-                                       + (entry.PaymentCollection?.PhonePeCardMorning ?? 0)
-                                       + (entry.PaymentCollection?.PhonePeCardDay ?? 0)
-                                       + (entry.PaymentCollection?.PhonePeCardNight ?? 0)
-                                       + (entry.QrPayments?.Sum(q => q.Amount) ?? 0)),
-                CreditCard   = (decimal)((entry.PaymentCollection?.CreditCardMorning ?? 0)
-                                       + (entry.PaymentCollection?.CreditCardDay ?? 0)
-                                       + (entry.PaymentCollection?.CreditCardNight ?? 0)),
-                PetroCard    = (decimal)((entry.PaymentCollection?.PetroCardMorning ?? 0)
-                                       + (entry.PaymentCollection?.PetroCardDay ?? 0)
-                                       + (entry.PaymentCollection?.PetroCardNight ?? 0)),
-                CashDeposit  = (decimal)(cash1Total > 0 ? cash1Total : (entry.PaymentCollection?.CashDeposit ?? 0)),
-                PhysicalCash = (decimal)cash2Total,
-                DynamicPayments = (decimal)(entry.PaymentCollection?.DynamicItemsTotal ?? 0),
-                Others       = (decimal)(entry.PaymentCollection?.Others ?? 0)
+                PhonePe      = phonePe,
+                CreditCard   = creditCard,
+                PetroCard    = petroCard,
+                CashDeposit  = cashDeposit,
+                PhysicalCash = physicalCash,
+                Cash3        = cash3,
+                DynamicPayments = dynamicPayments,
+                Others       = (decimal)(entry.PaymentCollection?.Others ?? 0),
+                CollectionReduction = (decimal)(entry.PaymentCollection?.CollectionReduction ?? 0),
+                CollectionReductionRemark = entry.PaymentCollection?.CollectionReductionRemark
             },
             DebitEntries   = entry.DebitEntries.Select(d => new DebitEntryDto { Amount = (decimal)d.Amount }).ToList(),
             Expenses       = entry.Expenses.Select(e => new ExpenseDto { Amount = (decimal)e.Amount })
@@ -861,6 +919,8 @@ public class DsmEntryService
                 existingPayment.PetroCardDay = payment.PetroCardDay;
                 existingPayment.CashDeposit = payment.CashDeposit;
                 existingPayment.Others = payment.Others;
+                existingPayment.CollectionReduction = payment.CollectionReduction;
+                existingPayment.CollectionReductionRemark = payment.CollectionReductionRemark;
 
                 existingPayment.CardTid = payment.CardTid;
                 existingPayment.CardBatch = payment.CardBatch;

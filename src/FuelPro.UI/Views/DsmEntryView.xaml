@@ -149,17 +149,50 @@
                         </DataGrid.Columns>
                     </DataGrid>
 
-                    <Grid Margin="0,12,0,0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="1" FontSize="14" FontWeight="SemiBold" Margin="0,0,32,0">
-                            <Run Text="Total Litres: "/><Run Text="{Binding TotalLitres, Mode=OneWay, StringFormat=F2, FallbackValue=0}" Foreground="#2196F3"/>
-                        </TextBlock>
-                        <TextBlock Grid.Column="2" FontSize="14" FontWeight="SemiBold">
-                            <Run Text="Gross Sales: ₹"/><Run Text="{Binding GrossSales, Mode=OneWay, StringFormat=N2}" Foreground="#4CAF50"/>
-                        </TextBlock>
-                    </Grid>
+                    <!-- CUMULATIVE FUEL-TYPE DSR TOTALS -->
+                    <Border Background="#F8F9FA" BorderBrush="{DynamicResource MaterialDesign.Brush.Divider}" BorderThickness="1" CornerRadius="8" Padding="12,10" Margin="0,12,0,0">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            
+                            <!-- Fuel Type Chips -->
+                            <ItemsControl Grid.Row="0" ItemsSource="{Binding FuelTypeSummaries}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel Orientation="Horizontal"/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="{Binding BadgeBackground}" BorderBrush="{Binding BadgeBorder}" BorderThickness="1.5"
+                                                CornerRadius="6" Padding="10,6" Margin="0,0,10,6">
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding FuelTypeLabel}" FontWeight="Bold" FontSize="13" Foreground="{Binding BadgeForeground}" Margin="0,0,8,0"/>
+                                                <TextBlock FontSize="12" Foreground="#333333" VerticalAlignment="Center">
+                                                    <Run Text="(" Foreground="#777777"/><Run Text="{Binding NozzleCount}" FontWeight="SemiBold"/><Run Text=" Nozzle" Foreground="#777777"/><Run Text="): "/><Run Text="{Binding TotalLitres, StringFormat=N2}" FontWeight="Bold"/><Run Text=" L × ₹"/><Run Text="{Binding Rate, StringFormat=N2}"/><Run Text=" = ₹"/><Run Text="{Binding TotalAmount, StringFormat=N2}" FontWeight="Bold" Foreground="{Binding BadgeForeground}"/>
+                                                </TextBlock>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <!-- Overall Total Litres & Gross Sales Footer -->
+                            <Grid Grid.Row="1" Margin="0,4,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="1" FontSize="14" FontWeight="SemiBold" Margin="0,0,24,0" VerticalAlignment="Center">
+                                    <Run Text="Total Litres: "/><Run Text="{Binding TotalLitres, Mode=OneWay, StringFormat=F2, FallbackValue=0}" Foreground="#2196F3"/>
+                                </TextBlock>
+                                <TextBlock Grid.Column="2" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center">
+                                    <Run Text="Gross Sales: ₹"/><Run Text="{Binding GrossSales, Mode=OneWay, StringFormat=N2}" Foreground="#4CAF50"/>
+                                </TextBlock>
+                            </Grid>
+                        </Grid>
+                    </Border>
                 </StackPanel>
             </materialDesign:Card>
 
@@ -178,7 +211,6 @@
                             <TextBlock Text="💳 Payment Collection" FontSize="15" FontWeight="SemiBold"
                                        Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}" Margin="0,0,0,8"/>
                             <StackPanel>
-
                                 <!-- Item 1: PhonePe UPI -->
                                 <Border BorderBrush="{DynamicResource MaterialDesign.Brush.Divider}" BorderThickness="1" CornerRadius="6" Padding="12,8" Margin="0,0,0,8" Background="{DynamicResource MaterialDesign.Brush.Card.Background}"
                                         Visibility="{Binding PhonePeIsActive, Converter={StaticResource BooleanToVisibilityConverter}}">
@@ -187,50 +219,22 @@
                                             <Run Text="{Binding PhonePeDisplayName, Mode=OneWay}" Foreground="{DynamicResource MaterialDesign.Brush.Primary.Dark}"/>
                                             <Run Text=" (Online)" Foreground="#888888" FontSize="11"/>
                                         </TextBlock>
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="Auto"/>
-                                            </Grid.ColumnDefinitions>
-                                            <Grid.RowDefinitions>
-                                                <RowDefinition Height="Auto"/>
-                                                <RowDefinition Height="Auto"/>
-                                            </Grid.RowDefinitions>
-                                            <!-- Morning / Day -->
-                                            <TextBox Grid.Row="0" Grid.Column="0" Text="{Binding PhonePeMorning, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,0,0,4"
-                                                     materialDesign:HintAssist.Hint="{Binding PhonePeMorningLabel}" materialDesign:HintAssist.IsFloating="True"
-                                                     Style="{StaticResource MaterialDesignOutlinedTextBox}"
-                                                     PreviewTextInput="DecimalTextBox_PreviewTextInput"
-                                                     GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"
-                                                     LostKeyboardFocus="DecimalTextBox_LostKeyboardFocus"/>
-                                            <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal"
-                                                        Visibility="{Binding PhonePeHasTidBatch, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                <TextBox Width="130" Text="{Binding PhonePeTidMorning, UpdateSourceTrigger=PropertyChanged}" Margin="6,0,6,4"
-                                                         materialDesign:HintAssist.Hint="{Binding PhonePeMorningTidLabel}" materialDesign:HintAssist.IsFloating="True"
-                                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
-                                                <TextBox Width="130" Text="{Binding PhonePeBatchMorning, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,4"
-                                                         materialDesign:HintAssist.Hint="{Binding PhonePeMorningBatchLabel}" materialDesign:HintAssist.IsFloating="True"
-                                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
-                                            </StackPanel>
-                                                     
-                                            <!-- Night Shift (Only visible when split enabled) -->
-                                            <TextBox Grid.Row="1" Grid.Column="0" Text="{Binding PhonePeNight, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,4,0,0"
-                                                     materialDesign:HintAssist.Hint="Night (₹)" materialDesign:HintAssist.IsFloating="True"
-                                                     Visibility="{Binding IsPhonePeSplitEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"
-                                                     Style="{StaticResource MaterialDesignOutlinedTextBox}"
-                                                     PreviewTextInput="DecimalTextBox_PreviewTextInput"
-                                                     GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"
-                                                     LostKeyboardFocus="DecimalTextBox_LostKeyboardFocus"/>
-                                            <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal"
-                                                        Visibility="{Binding IsPhonePeNightTidVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                <TextBox Width="130" Text="{Binding PhonePeTidNight, UpdateSourceTrigger=PropertyChanged}" Margin="6,4,6,0"
-                                                         materialDesign:HintAssist.Hint="Night TID" materialDesign:HintAssist.IsFloating="True"
-                                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
-                                                <TextBox Width="130" Text="{Binding PhonePeBatchNight, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,0"
-                                                         materialDesign:HintAssist.Hint="Night Batch" materialDesign:HintAssist.IsFloating="True"
-                                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
-                                            </StackPanel>
-                                        </Grid>
+                                        <!-- Morning / Day Amount -->
+                                        <TextBox Text="{Binding PhonePeMorning, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,0,0,4"
+                                                 materialDesign:HintAssist.Hint="{Binding PhonePeMorningLabel}" materialDesign:HintAssist.IsFloating="True"
+                                                 Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                                 PreviewTextInput="DecimalTextBox_PreviewTextInput"
+                                                 GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"
+                                                 LostKeyboardFocus="DecimalTextBox_LostKeyboardFocus"/>
+                                                 
+                                        <!-- Night Shift (Only visible when split enabled) -->
+                                        <TextBox Text="{Binding PhonePeNight, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,4,0,0"
+                                                 materialDesign:HintAssist.Hint="Night (₹)" materialDesign:HintAssist.IsFloating="True"
+                                                 Visibility="{Binding IsPhonePeSplitEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                 Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                                 PreviewTextInput="DecimalTextBox_PreviewTextInput"
+                                                 GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"
+                                                 LostKeyboardFocus="DecimalTextBox_LostKeyboardFocus"/>
                                     </StackPanel>
                                 </Border>
 
@@ -295,50 +299,25 @@
                                             <Run Text="{Binding PetroCardDisplayName, Mode=OneWay}" Foreground="{DynamicResource MaterialDesign.Brush.Primary.Dark}"/>
                                             <Run Text=" (Card)" Foreground="#888888" FontSize="11"/>
                                         </TextBlock>
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="Auto"/>
-                                            </Grid.ColumnDefinitions>
-                                            <Grid.RowDefinitions>
-                                                <RowDefinition Height="Auto"/>
-                                                <RowDefinition Height="Auto"/>
-                                            </Grid.RowDefinitions>
-                                            <TextBox Grid.Row="0" Grid.Column="0" Text="{Binding PetroCardMorning, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,0,0,4"
-                                                     materialDesign:HintAssist.Hint="{Binding PetroCardMorningLabel}" materialDesign:HintAssist.IsFloating="True"
-                                                     Style="{StaticResource MaterialDesignOutlinedTextBox}"
-                                                     PreviewTextInput="DecimalTextBox_PreviewTextInput"
-                                                     GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"
-                                                     LostKeyboardFocus="DecimalTextBox_LostKeyboardFocus"/>
-                                            <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal"
-                                                        Visibility="{Binding PetroCardHasTidBatch, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                <TextBox Width="130" Text="{Binding PetroCardTidMorning, UpdateSourceTrigger=PropertyChanged}" Margin="6,0,6,4"
-                                                         materialDesign:HintAssist.Hint="{Binding PetroCardMorningTidLabel}" materialDesign:HintAssist.IsFloating="True"
-                                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
-                                                <TextBox Width="130" Text="{Binding PetroCardBatchMorning, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,4"
-                                                         materialDesign:HintAssist.Hint="{Binding PetroCardMorningBatchLabel}" materialDesign:HintAssist.IsFloating="True"
-                                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
-                                            </StackPanel>
-                                                      
-                                            <TextBox Grid.Row="1" Grid.Column="0" Text="{Binding PetroCardNight, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,4,0,0"
-                                                     materialDesign:HintAssist.Hint="Night (₹)" materialDesign:HintAssist.IsFloating="True"
-                                                     Visibility="{Binding IsPetroCardSplitEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"
-                                                     Style="{StaticResource MaterialDesignOutlinedTextBox}"
-                                                     PreviewTextInput="DecimalTextBox_PreviewTextInput"
-                                                     GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"
-                                                     LostKeyboardFocus="DecimalTextBox_LostKeyboardFocus"/>
-                                            <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal"
-                                                        Visibility="{Binding IsPetroCardNightTidVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                <TextBox Width="130" Text="{Binding PetroCardTidNight, UpdateSourceTrigger=PropertyChanged}" Margin="6,4,6,0"
-                                                         materialDesign:HintAssist.Hint="Night TID" materialDesign:HintAssist.IsFloating="True"
-                                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
-                                                <TextBox Width="130" Text="{Binding PetroCardBatchNight, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,0"
-                                                         materialDesign:HintAssist.Hint="Night Batch" materialDesign:HintAssist.IsFloating="True"
-                                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
-                                            </StackPanel>
-                                        </Grid>
+                                        <!-- Morning / Day Amount -->
+                                        <TextBox Text="{Binding PetroCardMorning, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,0,0,4"
+                                                 materialDesign:HintAssist.Hint="{Binding PetroCardMorningLabel}" materialDesign:HintAssist.IsFloating="True"
+                                                 Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                                 PreviewTextInput="DecimalTextBox_PreviewTextInput"
+                                                 GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"
+                                                 LostKeyboardFocus="DecimalTextBox_LostKeyboardFocus"/>
+                                                 
+                                        <!-- Night Shift (Only visible when split enabled) -->
+                                        <TextBox Text="{Binding PetroCardNight, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,4,0,0"
+                                                 materialDesign:HintAssist.Hint="Night (₹)" materialDesign:HintAssist.IsFloating="True"
+                                                 Visibility="{Binding IsPetroCardSplitEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                 Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                                 PreviewTextInput="DecimalTextBox_PreviewTextInput"
+                                                 GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"
+                                                 LostKeyboardFocus="DecimalTextBox_LostKeyboardFocus"/>
                                     </StackPanel>
                                 </Border>
+
 
                                 <!-- Dynamic Collections Items -->
                                 <ItemsControl ItemsSource="{Binding DynamicCollections}">
@@ -358,18 +337,14 @@
                                                         <TextBox Grid.Column="0" Text="{Binding Amount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,0,0,0"
                                                                  materialDesign:HintAssist.Hint="Amount (₹)" materialDesign:HintAssist.IsFloating="True"
                                                                  Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                                                 IsReadOnly="{Binding HasTidBatch}"
                                                                  PreviewTextInput="DecimalTextBox_PreviewTextInput"
                                                                  GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"
                                                                  LostKeyboardFocus="DecimalTextBox_LostKeyboardFocus"/>
-                                                        <StackPanel Grid.Column="1" Orientation="Horizontal"
-                                                                    Visibility="{Binding HasTidBatch, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                            <TextBox Width="120" Text="{Binding Tid, UpdateSourceTrigger=PropertyChanged}" Margin="6,0,6,0"
-                                                                     materialDesign:HintAssist.Hint="TID" materialDesign:HintAssist.IsFloating="True"
-                                                                     Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
-                                                            <TextBox Width="120" Text="{Binding Batch, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,0"
-                                                                     materialDesign:HintAssist.Hint="Batch" materialDesign:HintAssist.IsFloating="True"
-                                                                     Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
-                                                        </StackPanel>
+                                                        <Border Grid.Column="1" Visibility="{Binding HasTidBatch, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                                Background="#0D6A1B9A" BorderBrush="#266A1B9A" BorderThickness="1" CornerRadius="4" Padding="8,4" VerticalAlignment="Center" Margin="6,0,0,0">
+                                                            <TextBlock Text="Itemized in Card &amp; TID Table below" FontSize="11" Foreground="#6A1B9A" VerticalAlignment="Center"/>
+                                                        </Border>
                                                     </Grid>
                                                 </StackPanel>
                                             </Border>
@@ -430,6 +405,74 @@
 
                                                         <Button Grid.Column="4" Style="{StaticResource MaterialDesignIconButton}" Height="28" Width="28"
                                                                 Command="{Binding DataContext.RemoveOtpTransactionCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                CommandParameter="{Binding}" Foreground="{DynamicResource MaterialDesign.Brush.Error}">
+                                                            <materialDesign:PackIcon Kind="TrashCanOutline" Width="16" Height="16"/>
+                                                        </Button>
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Itemized Card & TID Transactions (Multiple Swipes per Collection Type) -->
+                                <Border Background="#0D6A1B9A" BorderBrush="#266A1B9A" BorderThickness="1" CornerRadius="6" Padding="12,8" Margin="0,0,0,8"
+                                        Visibility="{Binding HasTidCollectionTypes, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                    <StackPanel>
+                                        <DockPanel LastChildFill="False" Margin="0,0,0,6">
+                                            <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                                                <materialDesign:PackIcon Kind="CreditCardFastOutline" Width="16" Height="16" Foreground="#6A1B9A" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                                <TextBlock Text="Itemized Card &amp; TID Transactions (Multiple Swipes)" FontWeight="SemiBold" FontSize="12" Foreground="#6A1B9A" VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                            <Button DockPanel.Dock="Right" Style="{StaticResource MaterialDesignOutlinedButton}" Height="28" Padding="10,0" FontSize="11"
+                                                    Command="{Binding AddTidTransactionCommand}" BorderBrush="#6A1B9A" Foreground="#6A1B9A">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <materialDesign:PackIcon Kind="Plus" Width="14" Height="14" Margin="0,0,4,0" VerticalAlignment="Center"/>
+                                                    <TextBlock Text="Add Card / TID Tx"/>
+                                                </StackPanel>
+                                            </Button>
+                                        </DockPanel>
+
+                                        <ItemsControl ItemsSource="{Binding TidTransactions}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid Margin="0,3,0,3">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="1.5*"/>
+                                                            <ColumnDefinition Width="1.0*"/>
+                                                            <ColumnDefinition Width="1.1*"/>
+                                                            <ColumnDefinition Width="1.1*"/>
+                                                            <ColumnDefinition Width="1.1*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+
+                                                        <ComboBox Grid.Column="0" ItemsSource="{Binding DataContext.AvailableTidCollectionTypes, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                  SelectedItem="{Binding CollectionTypeCode, UpdateSourceTrigger=PropertyChanged}"
+                                                                  materialDesign:HintAssist.Hint="Collection Type" materialDesign:HintAssist.IsFloating="True"
+                                                                  Style="{StaticResource MaterialDesignOutlinedComboBox}" Margin="0,0,6,0"/>
+
+                                                        <ComboBox Grid.Column="1" ItemsSource="{Binding DataContext.AvailableTidSlots, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                  SelectedItem="{Binding Slot, UpdateSourceTrigger=PropertyChanged}"
+                                                                  materialDesign:HintAssist.Hint="Slot" materialDesign:HintAssist.IsFloating="True"
+                                                                  Style="{StaticResource MaterialDesignOutlinedComboBox}" Margin="0,0,6,0"/>
+
+                                                        <TextBox Grid.Column="2" Text="{Binding Tid, UpdateSourceTrigger=PropertyChanged}"
+                                                                 materialDesign:HintAssist.Hint="TID" materialDesign:HintAssist.IsFloating="True"
+                                                                 Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,6,0"/>
+
+                                                        <TextBox Grid.Column="3" Text="{Binding Batch, UpdateSourceTrigger=PropertyChanged}"
+                                                                 materialDesign:HintAssist.Hint="Batch" materialDesign:HintAssist.IsFloating="True"
+                                                                 Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,6,0"/>
+
+                                                        <TextBox Grid.Column="4" Text="{Binding Amount, UpdateSourceTrigger=LostFocus, StringFormat=F2}"
+                                                                 materialDesign:HintAssist.Hint="Amount (₹)" materialDesign:HintAssist.IsFloating="True"
+                                                                 Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,6,0"
+                                                                 PreviewTextInput="DecimalTextBox_PreviewTextInput"
+                                                                 GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"
+                                                                 LostKeyboardFocus="DecimalTextBox_LostKeyboardFocus"/>
+
+                                                        <Button Grid.Column="5" Style="{StaticResource MaterialDesignIconButton}" Height="28" Width="28"
+                                                                Command="{Binding DataContext.RemoveTidTransactionCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                                 CommandParameter="{Binding}" Foreground="{DynamicResource MaterialDesign.Brush.Error}">
                                                             <materialDesign:PackIcon Kind="TrashCanOutline" Width="16" Height="16"/>
                                                         </Button>
@@ -520,6 +563,23 @@
                                              GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"
                                              LostKeyboardFocus="DecimalTextBox_LostKeyboardFocus"/>
                                 </Grid>
+
+                                <!-- Collection Reduction (Manual mode only) -->
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="2*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Grid.Column="0" Text="{Binding CollectionReduction, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,0,6,0"
+                                             materialDesign:HintAssist.Hint="Collection Reduction (₹)" materialDesign:HintAssist.IsFloating="True"
+                                             Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                             PreviewTextInput="DecimalTextBox_PreviewTextInput"
+                                             GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"
+                                             LostKeyboardFocus="DecimalTextBox_LostKeyboardFocus"/>
+                                    <TextBox Grid.Column="1" Text="{Binding CollectionReductionRemark, UpdateSourceTrigger=PropertyChanged}" Margin="6,0,0,0"
+                                             materialDesign:HintAssist.Hint="Reduction Remark (Required if amount > 0)" materialDesign:HintAssist.IsFloating="True"
+                                             Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                                </Grid>
                             </StackPanel>
                         </StackPanel>
                     </materialDesign:Card>
@@ -577,6 +637,69 @@
 
                                                 <Button Grid.Column="4" Style="{StaticResource MaterialDesignIconButton}"
                                                         Command="{Binding DataContext.RemoveDebitCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}">
+                                                    <materialDesign:PackIcon Kind="Delete" Foreground="#F44336"/>
+                                                </Button>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </materialDesign:Card>
+
+                    <!-- Debtor Repayments Section (Direct to DSM) -->
+                    <materialDesign:Card Padding="20" UniformCornerRadius="12" Margin="0,0,0,12"
+                                         materialDesign:ElevationAssist.Elevation="Dp3">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                <TextBlock Text="🤝 Debtor Repayments (Direct to DSM)" FontSize="16" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}"/>
+                                <Button Content="+ Add" Margin="16,0,0,0"
+                                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                                        Command="{Binding AddDebtorRepaymentCommand}" Height="28" FontSize="12"/>
+                            </StackPanel>
+                            <ItemsControl ItemsSource="{Binding DebtorRepayments}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border BorderBrush="{DynamicResource MaterialDesign.Brush.Divider}" BorderThickness="0,0,0,1" Padding="0,8" Margin="0,4">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="2.2*"/>
+                                                    <ColumnDefinition Width="1.5*"/>
+                                                    <ColumnDefinition Width="1.2*"/>
+                                                    <ColumnDefinition Width="2.0*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                
+                                                <ComboBox IsEditable="True"
+                                                          Text="{Binding DebtorName, UpdateSourceTrigger=PropertyChanged}"
+                                                          ItemsSource="{Binding DataContext.Creditors, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                          DisplayMemberPath="Name"
+                                                          Margin="0,0,8,0"
+                                                          materialDesign:HintAssist.Hint="Debtor Name"
+                                                          Style="{StaticResource MaterialDesignOutlinedComboBox}"/>
+                                                
+                                                <ComboBox Grid.Column="1"
+                                                          SelectedItem="{Binding PaymentMode, UpdateSourceTrigger=PropertyChanged}"
+                                                          ItemsSource="{Binding DataContext.AvailableRepaymentModes, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                          Margin="0,0,8,0"
+                                                          materialDesign:HintAssist.Hint="Collection Mode"
+                                                          Style="{StaticResource MaterialDesignOutlinedComboBox}"/>
+
+                                                <TextBox Grid.Column="2" Text="{Binding Amount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,0,8,0"
+                                                         materialDesign:HintAssist.Hint="Amount (&#x20B9;)"
+                                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                                         PreviewTextInput="DecimalTextBox_PreviewTextInput"
+                                                         GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"
+                                                         LostKeyboardFocus="DecimalTextBox_LostKeyboardFocus"/>
+
+                                                <TextBox Grid.Column="3" Text="{Binding Notes, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0"
+                                                         materialDesign:HintAssist.Hint="Notes / Ref"
+                                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+
+                                                <Button Grid.Column="4" Style="{StaticResource MaterialDesignIconButton}"
+                                                        Command="{Binding DataContext.RemoveDebtorRepaymentCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                         CommandParameter="{Binding}">
                                                     <materialDesign:PackIcon Kind="Delete" Foreground="#F44336"/>
                                                 </Button>
@@ -888,6 +1011,178 @@
                         </StackPanel>
                     </materialDesign:Card>
 
+                    <!-- Cash 3 (Final Cash) — Denomination Table -->
+                    <materialDesign:Card Padding="20" UniformCornerRadius="12" Margin="0,0,0,12"
+                                         materialDesign:ElevationAssist.Elevation="Dp3"
+                                         Visibility="{Binding IsCash3Enabled, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                                <TextBlock Text="💵 Cash 3 (Final Cash)" FontSize="16" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}"/>
+                            </StackPanel>
+
+                            <!-- Denomination table header -->
+                            <Grid Margin="0,0,0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="90"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Denom" FontSize="11" FontWeight="Bold" Foreground="#555" HorizontalAlignment="Center"/>
+                                <TextBlock Grid.Column="1" Text="Qty" FontSize="11" FontWeight="Bold" Foreground="#555" HorizontalAlignment="Center"/>
+                                <TextBlock Grid.Column="2" Text="Amount (₹)" FontSize="11" FontWeight="Bold" Foreground="#555" HorizontalAlignment="Center"/>
+                            </Grid>
+
+                            <!-- ₹500 -->
+                            <Grid Margin="0,2">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="90"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                <Border Background="#E3F2FD" CornerRadius="4" Padding="6,4" Grid.Column="0" Margin="0,0,4,0">
+                                    <TextBlock Text="₹ 500" FontWeight="SemiBold" FontSize="12" HorizontalAlignment="Center"/>
+                                </Border>
+                                <TextBox Grid.Column="1" Margin="0,0,4,0"
+                                         Text="{Binding Cash3.Denom500, UpdateSourceTrigger=LostFocus}"
+                                         materialDesign:HintAssist.Hint="Qty" materialDesign:HintAssist.IsFloating="True"
+                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                         PreviewTextInput="IntegerTextBox_PreviewTextInput"
+                                         GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"
+                                         LostKeyboardFocus="IntegerTextBox_LostKeyboardFocus"/>
+                                <TextBox Grid.Column="2" IsReadOnly="True" Focusable="False"
+                                         Background="#F5F5F5" Foreground="#1976D2" FontWeight="Bold"
+                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                         materialDesign:HintAssist.Hint="Amount" materialDesign:HintAssist.IsFloating="True"
+                                         Text="{Binding Cash3.Denom500, Converter={StaticResource DenomAmountConv}, ConverterParameter=500, Mode=OneWay, StringFormat=N2}"/>
+                            </Grid>
+
+                            <!-- ₹200 -->
+                            <Grid Margin="0,2">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="90"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                <Border Background="#E3F2FD" CornerRadius="4" Padding="6,4" Grid.Column="0" Margin="0,0,4,0">
+                                    <TextBlock Text="₹ 200" FontWeight="SemiBold" FontSize="12" HorizontalAlignment="Center"/>
+                                </Border>
+                                <TextBox Grid.Column="1" Margin="0,0,4,0"
+                                         Text="{Binding Cash3.Denom200, UpdateSourceTrigger=LostFocus}"
+                                         materialDesign:HintAssist.Hint="Qty" materialDesign:HintAssist.IsFloating="True"
+                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                         PreviewTextInput="IntegerTextBox_PreviewTextInput"
+                                         GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"
+                                         LostKeyboardFocus="IntegerTextBox_LostKeyboardFocus"/>
+                                <TextBox Grid.Column="2" IsReadOnly="True" Focusable="False"
+                                         Background="#F5F5F5" Foreground="#1976D2" FontWeight="Bold"
+                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                         materialDesign:HintAssist.Hint="Amount" materialDesign:HintAssist.IsFloating="True"
+                                         Text="{Binding Cash3.Denom200, Converter={StaticResource DenomAmountConv}, ConverterParameter=200, Mode=OneWay, StringFormat=N2}"/>
+                            </Grid>
+
+                            <!-- ₹100 -->
+                            <Grid Margin="0,2">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="90"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                <Border Background="#E3F2FD" CornerRadius="4" Padding="6,4" Grid.Column="0" Margin="0,0,4,0">
+                                    <TextBlock Text="₹ 100" FontWeight="SemiBold" FontSize="12" HorizontalAlignment="Center"/>
+                                </Border>
+                                <TextBox Grid.Column="1" Margin="0,0,4,0"
+                                         Text="{Binding Cash3.Denom100, UpdateSourceTrigger=LostFocus}"
+                                         materialDesign:HintAssist.Hint="Qty" materialDesign:HintAssist.IsFloating="True"
+                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                         PreviewTextInput="IntegerTextBox_PreviewTextInput"
+                                         GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"
+                                         LostKeyboardFocus="IntegerTextBox_LostKeyboardFocus"/>
+                                <TextBox Grid.Column="2" IsReadOnly="True" Focusable="False"
+                                         Background="#F5F5F5" Foreground="#1976D2" FontWeight="Bold"
+                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                         materialDesign:HintAssist.Hint="Amount" materialDesign:HintAssist.IsFloating="True"
+                                         Text="{Binding Cash3.Denom100, Converter={StaticResource DenomAmountConv}, ConverterParameter=100, Mode=OneWay, StringFormat=N2}"/>
+                            </Grid>
+
+                            <!-- ₹50 -->
+                            <Grid Margin="0,2">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="90"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                <Border Background="#E3F2FD" CornerRadius="4" Padding="6,4" Grid.Column="0" Margin="0,0,4,0">
+                                    <TextBlock Text="₹ 50" FontWeight="SemiBold" FontSize="12" HorizontalAlignment="Center"/>
+                                </Border>
+                                <TextBox Grid.Column="1" Margin="0,0,4,0"
+                                         Text="{Binding Cash3.Denom50, UpdateSourceTrigger=LostFocus}"
+                                         materialDesign:HintAssist.Hint="Qty" materialDesign:HintAssist.IsFloating="True"
+                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                         PreviewTextInput="IntegerTextBox_PreviewTextInput"
+                                         GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"
+                                         LostKeyboardFocus="IntegerTextBox_LostKeyboardFocus"/>
+                                <TextBox Grid.Column="2" IsReadOnly="True" Focusable="False"
+                                         Background="#F5F5F5" Foreground="#1976D2" FontWeight="Bold"
+                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                         materialDesign:HintAssist.Hint="Amount" materialDesign:HintAssist.IsFloating="True"
+                                         Text="{Binding Cash3.Denom50, Converter={StaticResource DenomAmountConv}, ConverterParameter=50, Mode=OneWay, StringFormat=N2}"/>
+                            </Grid>
+
+                            <!-- ₹20 -->
+                            <Grid Margin="0,2">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="90"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                <Border Background="#E3F2FD" CornerRadius="4" Padding="6,4" Grid.Column="0" Margin="0,0,4,0">
+                                    <TextBlock Text="₹ 20" FontWeight="SemiBold" FontSize="12" HorizontalAlignment="Center"/>
+                                </Border>
+                                <TextBox Grid.Column="1" Margin="0,0,4,0"
+                                         Text="{Binding Cash3.Denom20, UpdateSourceTrigger=LostFocus}"
+                                         materialDesign:HintAssist.Hint="Qty" materialDesign:HintAssist.IsFloating="True"
+                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                         PreviewTextInput="IntegerTextBox_PreviewTextInput"
+                                         GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"
+                                         LostKeyboardFocus="IntegerTextBox_LostKeyboardFocus"/>
+                                <TextBox Grid.Column="2" IsReadOnly="True" Focusable="False"
+                                         Background="#F5F5F5" Foreground="#1976D2" FontWeight="Bold"
+                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                         materialDesign:HintAssist.Hint="Amount" materialDesign:HintAssist.IsFloating="True"
+                                         Text="{Binding Cash3.Denom20, Converter={StaticResource DenomAmountConv}, ConverterParameter=20, Mode=OneWay, StringFormat=N2}"/>
+                            </Grid>
+
+                            <!-- ₹10 -->
+                            <Grid Margin="0,2">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="90"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                <Border Background="#E3F2FD" CornerRadius="4" Padding="6,4" Grid.Column="0" Margin="0,0,4,0">
+                                    <TextBlock Text="₹ 10" FontWeight="SemiBold" FontSize="12" HorizontalAlignment="Center"/>
+                                </Border>
+                                <TextBox Grid.Column="1" Margin="0,0,4,0"
+                                         Text="{Binding Cash3.Denom10, UpdateSourceTrigger=LostFocus}"
+                                         materialDesign:HintAssist.Hint="Qty" materialDesign:HintAssist.IsFloating="True"
+                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                         PreviewTextInput="IntegerTextBox_PreviewTextInput"
+                                         GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"
+                                         LostKeyboardFocus="IntegerTextBox_LostKeyboardFocus"/>
+                                <TextBox Grid.Column="2" IsReadOnly="True" Focusable="False"
+                                         Background="#F5F5F5" Foreground="#1976D2" FontWeight="Bold"
+                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                         materialDesign:HintAssist.Hint="Amount" materialDesign:HintAssist.IsFloating="True"
+                                         Text="{Binding Cash3.Denom10, Converter={StaticResource DenomAmountConv}, ConverterParameter=10, Mode=OneWay, StringFormat=N2}"/>
+                            </Grid>
+
+                            <!-- Coins — direct amount entry -->
+                            <Grid Margin="0,2">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="90"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                <Border Background="#FFF9C4" CornerRadius="4" Padding="6,4" Grid.Column="0" Margin="0,0,4,0">
+                                    <TextBlock Text="Coins" FontWeight="SemiBold" FontSize="12" HorizontalAlignment="Center"/>
+                                </Border>
+                                <TextBlock Grid.Column="1" Text="(direct ₹ value)" FontSize="11" Foreground="#777"
+                                           VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                                <TextBox Grid.Column="2"
+                                         Text="{Binding Cash3.Coins, UpdateSourceTrigger=LostFocus, StringFormat=F2}"
+                                         materialDesign:HintAssist.Hint="Coin Amount" materialDesign:HintAssist.IsFloating="True"
+                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                                         PreviewTextInput="DecimalTextBox_PreviewTextInput"
+                                         GotKeyboardFocus="DecimalTextBox_GotKeyboardFocus"
+                                         LostKeyboardFocus="DecimalTextBox_LostKeyboardFocus"/>
+                            </Grid>
+
+                            <!-- Total Cash 3 -->
+                            <Border Background="#E8F5E9" CornerRadius="8" Padding="12,8" Margin="0,10,0,0">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                    <TextBlock Text="Total Cash 3" FontSize="13" FontWeight="Bold" Foreground="#2E7D32" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="1" FontSize="16" FontWeight="Bold" Foreground="#1B5E20">
+                                        <Run Text="₹"/><Run Text="{Binding Cash3.TotalAmount, Mode=OneWay, StringFormat=N2}"/>
+                                    </TextBlock>
+                                </Grid>
+                            </Border>
+                        </StackPanel>
+                    </materialDesign:Card>
+
                     <!-- Expenses Section (moved below Cash In Hand) -->
                     <materialDesign:Card Padding="20" UniformCornerRadius="12"
                                          materialDesign:ElevationAssist.Elevation="Dp3">
@@ -1059,6 +1354,33 @@
                                 Style="{StaticResource MaterialDesignOutlinedButton}"
                                 Command="{Binding PrintShiftSummaryCommand}" FontSize="12"/>
                     </Grid>
+                    <!-- Shift Cumulative Fuel-Type DSR Summary -->
+                    <Border Background="#F8F9FA" BorderBrush="{DynamicResource MaterialDesign.Brush.Divider}" BorderThickness="1" CornerRadius="8" Padding="12,10" Margin="0,0,0,12"
+                            Visibility="{Binding HasShiftFuelTypeSummaries, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <StackPanel>
+                            <TextBlock Text="⛽ Shift Dispenser Sales Report (DSR) Cumulative" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource MaterialDesign.Brush.Primary.Dark}" Margin="0,0,0,6"/>
+                            <ItemsControl ItemsSource="{Binding ShiftFuelTypeSummaries}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel Orientation="Horizontal"/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="{Binding BadgeBackground}" BorderBrush="{Binding BadgeBorder}" BorderThickness="1.5"
+                                                CornerRadius="6" Padding="10,6" Margin="0,0,10,6">
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding FuelTypeLabel}" FontWeight="Bold" FontSize="13" Foreground="{Binding BadgeForeground}" Margin="0,0,8,0"/>
+                                                <TextBlock FontSize="12" Foreground="#333333" VerticalAlignment="Center">
+                                                    <Run Text="(" Foreground="#777777"/><Run Text="{Binding NozzleCount}" FontWeight="SemiBold"/><Run Text=" Nozzles" Foreground="#777777"/><Run Text="): "/><Run Text="{Binding TotalLitres, StringFormat=N2}" FontWeight="Bold"/><Run Text=" L × ₹"/><Run Text="{Binding Rate, StringFormat=N2}"/><Run Text=" = ₹"/><Run Text="{Binding TotalAmount, StringFormat=N2}" FontWeight="Bold" Foreground="{Binding BadgeForeground}"/>
+                                                </TextBlock>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
                     <DataGrid ItemsSource="{Binding ShiftEntries}" IsReadOnly="True"
                               HeadersVisibility="Column"
                               GridLinesVisibility="All"

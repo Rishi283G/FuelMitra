@@ -380,7 +380,7 @@
   </div>
 
   <div class="print-footer" id="printFooter"></div>
-  <div style="text-align: center; font-weight: bold; letter-spacing: 0.1em; font-size: 11px; color: #0f172a; margin-top: 6px; text-transform: uppercase;">KANDHARE NANGADE SURVE GROUP</div>
+  <div id="bottomTagline" style="text-align: center; font-weight: bold; letter-spacing: 0.1em; font-size: 11px; color: #0f172a; margin-top: 6px; text-transform: uppercase;"></div>
 
   <div class="notches bottom"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
 </div>
@@ -407,27 +407,30 @@ const periodSubtitle = {
 };
 
 // ── Station / header ──────────────────────────────────────────────────────────
-const station = data.stationName || 'Mitali Service Station';
-let cleanedStation = station
-  .replace(/\(KANDHARE NANGADE SURVE GROUP\)/gi, '')
-  .replace(/\(KANDHARE NANGADE GROUP\)/gi, '')
-  .replace(/KANDHARE NANGADE SURVE GROUP/gi, '')
-  .replace(/KANDHARE NANGADE GROUP/gi, '')
-  .replace(/\(KANDHARE NAGDE SURVE GROUP\)/gi, '')
-  .replace(/\(KANDHARE NAGDE GROUP\)/gi, '')
-  .replace(/KANDHARE NAGDE SURVE GROUP/gi, '')
-  .replace(/KANDHARE NAGDE GROUP/gi, '')
-  .trim();
+const station = data.stationName || 'FuelPro Service Station';
 
-document.title = cleanedStation + ' — TID Sheet';
-document.getElementById('toolbarTitle').textContent = `📋 ${cleanedStation} — Settlement Summary`;
-document.getElementById('headerStationName').textContent = cleanedStation.toUpperCase();
+document.title = station + ' — TID Sheet';
+document.getElementById('toolbarTitle').textContent = `📋 ${station} — Settlement Summary`;
+document.getElementById('headerStationName').textContent = station.toUpperCase();
 
-if (cleanedStation.toUpperCase().includes('KANDHARE')) {
-  document.getElementById('stationSubtitle').innerHTML =
-    'Gat No. 119/B Jamgaon, Taluka Mulshi, Dist - Pune.<br/>Tel. : 8975549999 / 9850846783';
-} else {
-  document.getElementById('stationSubtitle').innerHTML = 'Fuel &amp; Digital Settlement Sheet';
+const subParts = [];
+if (data.stationSubtitle && data.stationSubtitle.trim()) subParts.push(data.stationSubtitle.trim());
+if (data.stationAddress && data.stationAddress.trim()) subParts.push(data.stationAddress.trim());
+if (data.stationContact && data.stationContact.trim()) subParts.push(data.stationContact.trim());
+
+const subEl = document.getElementById('stationSubtitle');
+if (subEl) {
+  subEl.innerHTML = subParts.length > 0 ? subParts.join('<br/>') : 'Fuel &amp; Digital Settlement Sheet';
+}
+
+const btmEl = document.getElementById('bottomTagline');
+if (btmEl) {
+  if (data.stationSubtitle && data.stationSubtitle.trim()) {
+    btmEl.textContent = data.stationSubtitle.trim();
+    btmEl.style.display = 'block';
+  } else {
+    btmEl.style.display = 'none';
+  }
 }
 
 if (data.logo) {

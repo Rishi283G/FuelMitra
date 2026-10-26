@@ -398,7 +398,6 @@ public partial class OilDefSummaryViewModel : ObservableObject, IDisposable
                             && l.SoldQuantity > 0)
                 .OrderByDescending(l => l.LogDate)
                 .ThenByDescending(l => l.Id)
-                .Take(100)
                 .ToListAsync();
 
             var products = await _dbContext.ProductMasters.ToListAsync();
@@ -528,7 +527,6 @@ public partial class OilDefSummaryViewModel : ObservableObject, IDisposable
                 .Where(p => p.PurchaseDate >= start && p.PurchaseDate < end)
                 .OrderByDescending(p => p.PurchaseDate)
                 .ThenByDescending(p => p.Id)
-                .Take(100)
                 .ToListAsync();
 
             var products = await _dbContext.ProductMasters.ToListAsync();
@@ -828,8 +826,44 @@ public partial class OilDefSummaryViewModel : ObservableObject, IDisposable
                 .Where(l => l.LogDate >= start && l.LogDate < endOfDay && defProdIds.Contains(l.ProductId))
                 .SumAsync(l => l.AdjustmentQuantity);
 
+            // Fetch sequential date-wise sales entries in range
+            var salesList = await _dbContext.OilDefDailyLogs
+                .Include(l => l.Product)
+                .Where(l => l.LogDate >= start && l.LogDate < endOfDay && l.SoldQuantity > 0)
+                .OrderBy(l => l.LogDate)
+                .ThenBy(l => l.Id)
+                .Select(s => new
+                {
+                    date = s.LogDate.ToString("dd-MMM-yyyy"),
+                    productName = s.Product != null ? s.Product.ProductName : s.ProductType,
+                    category = s.ProductType,
+                    soldQty = s.SoldQuantity,
+                    rate = s.OverrideSaleRate ?? (s.Product != null ? s.Product.DefaultSaleRate : 0),
+                    totalAmount = s.SoldQuantity * (s.OverrideSaleRate ?? (s.Product != null ? s.Product.DefaultSaleRate : 0)),
+                    remainingStock = s.RemainingStock
+                })
+                .ToListAsync();
+
+            // Fetch sequential date-wise purchase entries in range
+            var purchasesList = await _dbContext.OilDefPurchases
+                .Include(p => p.Product)
+                .Where(p => p.PurchaseDate >= start && p.PurchaseDate < endOfDay)
+                .OrderBy(p => p.PurchaseDate)
+                .ThenBy(p => p.Id)
+                .Select(p => new
+                {
+                    date = p.PurchaseDate.ToString("dd-MMM-yyyy"),
+                    productName = p.Product != null ? p.Product.ProductName : p.ProductType,
+                    supplier = p.SupplierName ?? "—",
+                    invoiceNo = p.InvoiceNumber ?? "—",
+                    purchasedQty = p.Quantity,
+                    unitPrice = p.UnitPrice,
+                    totalCost = p.TotalCost
+                })
+                .ToListAsync();
+
             var settings = await _dbContext.Settings.FirstOrDefaultAsync();
-            var stationName = settings?.StationDisplayName ?? "Mitali Service Station";
+            var stationName = settings?.StationDisplayName ?? "FuelPro Station";
 
             var payload = new
             {
@@ -839,6 +873,8 @@ public partial class OilDefSummaryViewModel : ObservableObject, IDisposable
                 oilProducts = oilRows,
                 defProducts = defRows,
                 adjustments = adjustmentsList,
+                salesTransactions = salesList,
+                purchaseTransactions = purchasesList,
                 totalAdjustmentLoss = TotalAdjustmentLoss,
                 totalSalesRevenue = TotalSalesRevenue,
                 totalProfit = TotalProfit,

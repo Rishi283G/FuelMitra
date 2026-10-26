@@ -156,6 +156,8 @@
     <img id="logo" style="display: none; height: 50px;" src="" alt="logo" />
     <div style="text-align: left;">
       <div class="company" id="headerStationName">PETROLEUM</div>
+      <div class="station-subtitle" id="stationSubtitle" style="font-size: 11px; font-weight: bold; color: #15803d; display: none;"></div>
+      <div class="station-address" id="stationAddress" style="font-size: 10px; color: #64748b; display: none;"></div>
       <div class="doc-title" style="margin-top: 0;">DSM Entry Sheet</div>
     </div>
   </div>
@@ -187,6 +189,27 @@
           <td class="num" id="totalLitres"></td>
           <td></td>
           <td class="num" id="grossSales"></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+
+  <!-- SECTION 2B: Cumulative Fuel Sales -->
+  <div class="section" id="cumulativeSection" style="display: none;">
+    <div class="section-title">📊 Section 2B — Shift Cumulative Fuel Sales (All Pumps)</div>
+    <table id="cumulativeTable">
+      <thead>
+        <tr>
+          <th>Fuel Type</th><th class="num">Nozzles</th><th class="num">Total Sale (Litres / Kg)</th><th class="num">Rate (₹)</th><th class="num">Total Amount (₹)</th>
+        </tr>
+      </thead>
+      <tbody id="cumulativeBody"></tbody>
+      <tfoot>
+        <tr class="total-row">
+          <td colspan="2" style="text-align:right;font-weight:700;">Cumulative Totals</td>
+          <td class="num" id="cumTotalLitres"></td>
+          <td></td>
+          <td class="num" id="cumTotalAmount"></td>
         </tr>
       </tfoot>
     </table>
@@ -233,6 +256,24 @@
             <tr class="grand-total-row">
               <td colspan="2" style="text-align:right;">Total Cash in Hand</td>
               <td class="num" id="cashTotal"></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <!-- SECTION 4B: Cash 3 (Final Cash) Denomination -->
+      <div class="section" id="cash3Section" style="display: none;">
+        <div class="section-title">💵 Section 4B — Cash 3 (Final Cash)</div>
+        <p class="denom-note">Qty × Denomination = Amount</p>
+        <table id="cash3Table">
+          <thead>
+            <tr><th>Denomination</th><th>Qty</th><th class="num">Amount (₹)</th></tr>
+          </thead>
+          <tbody id="cash3Body"></tbody>
+          <tfoot>
+            <tr class="grand-total-row">
+              <td colspan="2" style="text-align:right;">Total Final Cash</td>
+              <td class="num" id="cash3Total"></td>
             </tr>
           </tfoot>
         </table>
@@ -322,10 +363,33 @@ const row = (cells, cls='') => `<tr class="${cls}">${cells.map(c=>`<td class="${
 const td = (v, num=false) => ({ v, num });
 
 // Dynamic Station and Logo
-const station = data.stationName || 'Mitali Service Station';
+const station = data.stationName || 'FuelPro Service Station';
 document.title = station + ' — DSM Entry Sheet';
 document.getElementById('toolbarTitle').textContent = `🖨️ ${station} — DSM Entry Sheet`;
 document.getElementById('headerStationName').textContent = station.toUpperCase();
+
+const subEl = document.getElementById('stationSubtitle');
+if (subEl) {
+  if (data.stationSubtitle && data.stationSubtitle.trim()) {
+    subEl.textContent = data.stationSubtitle.trim();
+    subEl.style.display = 'block';
+  } else {
+    subEl.style.display = 'none';
+  }
+}
+
+const addrEl = document.getElementById('stationAddress');
+if (addrEl) {
+  const parts = [];
+  if (data.stationAddress && data.stationAddress.trim()) parts.push(data.stationAddress.trim());
+  if (data.stationContact && data.stationContact.trim()) parts.push(data.stationContact.trim());
+  if (parts.length > 0) {
+    addrEl.textContent = parts.join(' | ');
+    addrEl.style.display = 'block';
+  } else {
+    addrEl.style.display = 'none';
+  }
+}
 
 if (data.logo) {
   const logoImg = document.getElementById('logo');
@@ -339,7 +403,11 @@ if (data.logo) {
 document.getElementById('metaDate').textContent = data.date || '';
 document.getElementById('metaShift').textContent = 'Shift ' + (data.shift || '');
 document.getElementById('metaDsm').textContent = data.dsmName || '';
-document.getElementById('metaPump').textContent = data.pumpNo || '';
+let pumpDisplay = data.pumpNo || '';
+if (data.connectedPumpsDisplay && data.connectedPumpsDisplay.trim()) {
+  pumpDisplay += ' (+ ' + data.connectedPumpsDisplay.trim() + ')';
+}
+document.getElementById('metaPump').textContent = pumpDisplay;
 document.getElementById('metaPrinted').textContent = data.printedAt || new Date().toLocaleString('en-IN');
 document.getElementById('metaStart').textContent = data.startTime || '—';
 document.getElementById('metaEnd').textContent = data.endTime || '—';
@@ -362,6 +430,27 @@ const fuelLabels = {'HSD':'Diesel','MS-I':'Petrol','MS-II':'Diesel','CNG':'CNG'}
 });
 document.getElementById('totalLitres').textContent = NUM(data.totalLitres, 2);
 document.getElementById('grossSales').textContent = INR(data.grossSales);
+
+// Section 2B — Cumulative Fuel Sales (Shift-level DSR)
+if (data.cumulativeFuelSales && data.cumulativeFuelSales.length > 0) {
+  document.getElementById('cumulativeSection').style.display = 'block';
+  const cb = document.getElementById('cumulativeBody');
+  let cumLitres = 0;
+  let cumAmount = 0;
+  data.cumulativeFuelSales.forEach(c => {
+    cumLitres += (c.saleLitres || 0);
+    cumAmount += (c.amount || 0);
+    cb.innerHTML += `<tr>
+      <td style="font-weight:600;">${c.fuelType || ''}</td>
+      <td class="num">${c.nozzleCount || '—'}</td>
+      <td class="num">${NUM(c.saleLitres, 2)}</td>
+      <td class="num">${INR(c.rate)}</td>
+      <td class="num" style="font-weight:600;">${INR(c.amount)}</td>
+    </tr>`;
+  });
+  document.getElementById('cumTotalLitres').textContent = NUM(cumLitres, 2);
+  document.getElementById('cumTotalAmount').textContent = INR(cumAmount);
+}
 
 // Section 3 — Payment Collection
 const p = data.payments || {};
@@ -393,8 +482,9 @@ if (petroVal > 0) {
   }
 });
 
-if (p.cashDeposit > 0) payRows.push({ label: 'Cash Deposit', val: p.cashDeposit });
-if (p.bankDeposit > 0) payRows.push({ label: 'Bank Deposit', val: p.bankDeposit });
+if (p.cashDeposit > 0) payRows.push({ label: 'Cash 1 (Advance Cash)', val: p.cashDeposit });
+if (p.cash3 > 0) payRows.push({ label: 'Cash 3 (Final Cash)', val: p.cash3 });
+if (p.bankDeposit > 0 && p.bankDeposit !== p.cashDeposit) payRows.push({ label: 'Bank Deposit', val: p.bankDeposit });
 if (p.others > 0) payRows.push({ label: 'Others', val: p.others });
 
 payRows.filter(r => r.val > 0).forEach(r => {
@@ -413,7 +503,7 @@ payRows.filter(r => r.val > 0).forEach(r => {
 payHtml += `</div><div class="payment-row payment-total" style="padding: 4px 6px;"><span class="payment-label">Total Digital Payments</span><span class="payment-value">${INR(p.totalDigital)}</span></div>`;
 document.getElementById('paymentBlock').innerHTML = payHtml;
 
-// Section 4 — Cash Denomination
+// Section 4 — Cash Denomination (Cash 2 - Middle Cash)
 const cd = data.cashDenom || {};
 const db = document.getElementById('denomBody');
 const denomRows = [
@@ -433,6 +523,30 @@ if ((cd.coins||0) > 0) {
   db.innerHTML += `<tr><td>Coins</td><td class="num">—</td><td class="num">${INR(cd.coins)}</td></tr>`;
 }
 document.getElementById('cashTotal').textContent = INR(cd.total);
+
+// Section 4B — Cash 3 Denomination (Final Cash)
+const c3d = data.cash3Denom;
+if (c3d && (c3d.total > 0 || (p && p.cash3 > 0))) {
+  document.getElementById('cash3Section').style.display = 'block';
+  const c3b = document.getElementById('cash3Body');
+  const c3Rows = [
+    ['₹500', c3d.qty500, c3d.amt500],
+    ['₹200', c3d.qty200, c3d.amt200],
+    ['₹100', c3d.qty100, c3d.amt100],
+    ['₹50',  c3d.qty50,  c3d.amt50],
+    ['₹20',  c3d.qty20,  c3d.amt20],
+    ['₹10',  c3d.qty10,  c3d.amt10],
+  ];
+  c3Rows.forEach(([label, qty, amt]) => {
+    if ((qty||0) > 0 || (amt||0) > 0) {
+      c3b.innerHTML += `<tr><td>${label}</td><td class="num">${qty||0}</td><td class="num">${INR(amt)}</td></tr>`;
+    }
+  });
+  if ((c3d.coins||0) > 0) {
+    c3b.innerHTML += `<tr><td>Coins</td><td class="num">—</td><td class="num">${INR(c3d.coins)}</td></tr>`;
+  }
+  document.getElementById('cash3Total').textContent = INR(c3d.total || p.cash3 || 0);
+}
 
 // Section 5 — Debtors
 const crb = document.getElementById('creditorBody');
@@ -484,12 +598,17 @@ const reb = document.getElementById('reconBody');
 const reconLines = [
   ['Gross Sales', rc.grossSales, false],
   ['Total Digital Payments', (data.payments||{}).totalDigital, false],
-  ['Cash in Hand', rc.cash, false],
+  ['Cash in Hand (Cash 2)', rc.cash, false],
+];
+if (p.cash3 > 0 || (data.cash3Denom && data.cash3Denom.total > 0)) {
+  reconLines.push(['Final Cash (Cash 3)', (p.cash3 || (data.cash3Denom ? data.cash3Denom.total : 0)), false]);
+}
+reconLines.push(
   ['Debtors', rc.creditors, false],
   ['Testing', rc.testing, false],
   ['Expenses', rc.expenses, false],
-  ['Total Collection', rc.totalCollection, false],
-];
+  ['Total Collection', rc.totalCollection, false]
+);
 reconLines.forEach(([label, val, highlight]) => {
   reb.innerHTML += `<tr class="${highlight?'grand-total-row':'total-row'}">
     <td style="font-weight:600">${label}</td>

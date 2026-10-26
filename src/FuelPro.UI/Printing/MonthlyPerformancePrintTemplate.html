@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Monthly Performance Statement</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: #ffffff;
+            color: #0f172a;
+            padding: 20px 28px;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+        .no-print-bar {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 12px;
+        }
+        .btn-print {
+            background-color: #0b4d8c;
+            color: #ffffff;
+            border: none;
+            padding: 8px 18px;
+            font-size: 13px;
+            font-weight: 600;
+            border-radius: 6px;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.12);
+        }
+        .btn-print:hover { background-color: #083764; }
+
+        /* HEADER */
+        .station-header {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid #0284c7;
+        }
+        .station-logo {
+            height: 65px;
+            max-width: 85px;
+            object-fit: contain;
+        }
+        .station-details {
+            text-align: center;
+            flex: 1;
+        }
+        .station-name {
+            font-size: 22px;
+            font-weight: 800;
+            color: #0b4d8c;
+            letter-spacing: 0.5px;
+        }
+        .station-subtitle {
+            font-size: 11.5px;
+            font-weight: 700;
+            color: #0284c7;
+            margin-top: 1px;
+            letter-spacing: 0.6px;
+        }
+        .station-address {
+            font-size: 11px;
+            color: #334155;
+            margin-top: 3px;
+        }
+        .station-contact {
+            font-size: 11px;
+            font-weight: 600;
+            color: #0f172a;
+            margin-top: 2px;
+        }
+
+        /* SUB-RIBBON */
+        .sub-ribbon {
+            margin-top: 12px;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            padding: 9px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .badge-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: #e0f2fe;
+            color: #0369a1;
+            border: 1px solid #bae6fd;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-weight: 700;
+            font-size: 12px;
+        }
+        .month-text {
+            font-weight: 700;
+            font-size: 12px;
+            color: #1e293b;
+        }
+        .generated-text {
+            font-size: 11px;
+            color: #64748b;
+        }
+
+        /* KPI SUMMARY CARDS */
+        .kpi-row {
+            display: grid;
+            grid-template-columns: 1.2fr 1fr 1fr 1fr 1fr;
+            gap: 12px;
+            margin-top: 14px;
+            margin-bottom: 16px;
+        }
+        .kpi-card {
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            padding: 12px 14px;
+            text-align: left;
+            position: relative;
+        }
+        .kpi-card .kpi-label {
+            font-size: 10px;
+            font-weight: 700;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+        .kpi-card .kpi-value {
+            font-size: 18px;
+            font-weight: 800;
+            color: #0f172a;
+        }
+        .kpi-card.highlight {
+            background-color: #0b2a63;
+            border-color: #0b2a63;
+        }
+        .kpi-card.highlight .kpi-label { color: #93c5fd; }
+        .kpi-card.highlight .kpi-value { color: #facc15; }
+        .mini-entries-tag {
+            font-size: 10px;
+            font-weight: 700;
+            color: #0369a1;
+            margin-top: 4px;
+        }
+
+        /* TABLE */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 11px;
+            margin-bottom: 24px;
+        }
+        thead th {
+            background-color: #0b2a63;
+            color: #ffffff;
+            font-weight: 700;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            padding: 9px 7px;
+            text-align: right;
+            border: 1px solid #081d45;
+        }
+        thead th:first-child { text-align: left; }
+        thead th.text-center { text-align: center; }
+
+        tbody td {
+            padding: 7px 7px;
+            border: 1px solid #e2e8f0;
+            text-align: right;
+            color: #1e293b;
+        }
+        tbody td:first-child { text-align: left; font-weight: 600; }
+        tbody td.text-center { text-align: center; }
+        tbody tr:nth-child(even) { background-color: #f8fafc; }
+
+        tfoot td {
+            background-color: #e8eff8;
+            border: 1px solid #cbd5e1;
+            padding: 9px 7px;
+            font-weight: 800;
+            font-size: 11.5px;
+            text-align: right;
+            color: #0b2a63;
+        }
+        tfoot td:first-child { text-align: left; }
+        tfoot td.text-center { text-align: center; }
+
+        /* SIGNATURES */
+        .signatures-area {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 36px;
+            padding: 0 50px;
+        }
+        .sig-box {
+            text-align: center;
+            width: 220px;
+            border-top: 1.5px solid #64748b;
+            padding-top: 6px;
+            font-size: 11.5px;
+            font-weight: 600;
+            color: #475569;
+        }
+
+        /* FOOTER */
+        .report-footer {
+            margin-top: 24px;
+            text-align: right;
+            font-size: 10.5px;
+            color: #94a3b8;
+        }
+
+        /* PRINT STYLES */
+        @media print {
+            .no-print-bar { display: none !important; }
+            body {
+                padding: 6mm 10mm;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            @page {
+                size: A4 landscape;
+                margin: 0;
+            }
+            thead th {
+                background-color: #0b2a63 !important;
+                color: #ffffff !important;
+            }
+            .kpi-card.highlight {
+                background-color: #0b2a63 !important;
+            }
+            .kpi-card.highlight .kpi-label { color: #93c5fd !important; }
+            .kpi-card.highlight .kpi-value { color: #facc15 !important; }
+            tfoot td {
+                background-color: #e8eff8 !important;
+            }
+            tr { page-break-inside: avoid; }
+        }
+    </style>
+    <script>
+        const data = /* INJECT_JSON_HERE */{};
+
+        function formatCurrency(val) {
+            if (val === undefined || val === null || isNaN(val)) val = 0;
+            return "₹" + Number(val).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        function formatLitres(val) {
+            if (val === undefined || val === null || isNaN(val)) val = 0;
+            return Number(val).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " L";
+        }
+
+        function renderData() {
+            if (!data) return;
+
+            document.getElementById('stationName').innerText = (data.stationName || "FUELPRO SERVICE STATION").toUpperCase();
+
+            const subEl = document.getElementById('stationSubtitle');
+            if (subEl) {
+                if (data.stationSubtitle && data.stationSubtitle.trim()) {
+                    subEl.innerText = data.stationSubtitle.trim();
+                    subEl.style.display = 'block';
+                } else {
+                    subEl.style.display = 'none';
+                }
+            }
+
+            const addrEl = document.getElementById('stationAddress');
+            if (addrEl) {
+                if (data.stationAddress && data.stationAddress.trim()) {
+                    addrEl.innerText = data.stationAddress.trim();
+                    addrEl.style.display = 'block';
+                } else {
+                    addrEl.style.display = 'none';
+                }
+            }
+
+            const contactEl = document.getElementById('stationContact');
+            if (contactEl) {
+                if (data.stationContact && data.stationContact.trim()) {
+                    contactEl.innerText = data.stationContact.trim();
+                    contactEl.style.display = 'block';
+                } else {
+                    contactEl.style.display = 'none';
+                }
+            }
+
+            if (data.logo) {
+                const img = document.getElementById('companyLogo');
+                img.src = data.logo;
+                img.style.display = 'block';
+            }
+
+            document.getElementById('selectedMonthText').innerText = data.subtitle || (data.selectedMonth ? `Selected Month: ${data.selectedMonth}` : "Selected Month: Current Month");
+            document.getElementById('generatedAt').innerText = `Generated: ${data.generatedAt || new Date().toLocaleString()}`;
+
+            // Metric Cards
+            document.getElementById('totalSaleVal').innerText = formatCurrency(data.totalSale);
+            document.getElementById('totalVolumeVal').innerText = formatLitres(data.totalLitres);
+            document.getElementById('totalCollectionVal').innerText = formatCurrency(data.totalCollection);
+            document.getElementById('totalExpensesVal').innerText = formatCurrency(data.totalExpenses);
+            document.getElementById('avgDailySaleVal').innerText = formatCurrency(data.avgDailySale);
+            document.getElementById('totalEntriesTag').innerText = `TOTAL ENTRIES: ${data.totalEntries || 0}`;
+
+            // Populate rows
+            const tbody = document.getElementById('tableBody');
+            let rowsHtml = '';
+
+            let sumEntries = 0, sumSale = 0, sumMs = 0, sumHsd1 = 0, sumHsd2 = 0, sumCng = 0, sumLitres = 0, sumExp = 0, sumColl = 0, sumMis = 0;
+
+            if (data.rows && data.rows.length > 0) {
+                data.rows.forEach(r => {
+                    const entries = Number(r.dsmEntries || r.dsmEntryCount || 0);
+                    const sale = Number(r.totalSale || 0);
+                    const ms = Number(r.petrolLitres || 0);
+                    const hsd1 = Number(r.dieselLitres || 0);
+                    const hsd2 = Number(r.speedLitres || 0);
+                    const cng = Number(r.cngKg || 0);
+                    const litres = Number(r.totalLitres || 0);
+                    const exp = Number(r.expenses || 0);
+                    const coll = Number(r.totalCollection || 0);
+                    const mis = Number(r.mismatch || 0);
+
+                    sumEntries += entries;
+                    sumSale += sale;
+                    sumMs += ms;
+                    sumHsd1 += hsd1;
+                    sumHsd2 += hsd2;
+                    sumCng += cng;
+                    sumLitres += litres;
+                    sumExp += exp;
+                    sumColl += coll;
+                    sumMis += mis;
+
+                    rowsHtml += `
+                        <tr>
+                            <td>${r.dateDisplay || r.date || '—'}</td>
+                            <td class="text-center">${r.dayName || '—'}</td>
+                            <td class="text-center">${entries}</td>
+                            <td>${formatCurrency(sale)}</td>
+                            <td>${formatLitres(ms)}</td>
+                            <td>${formatLitres(hsd1)}</td>
+                            <td>${formatLitres(hsd2)}</td>
+                            <td>${formatLitres(cng)}</td>
+                            <td style="font-weight: 700;">${formatLitres(litres)}</td>
+                            <td>${formatCurrency(exp)}</td>
+                            <td>${formatCurrency(coll)}</td>
+                            <td>${formatCurrency(mis)}</td>
+                        </tr>
+                    `;
+                });
+            } else {
+                rowsHtml = `<tr><td colspan="12" class="text-center" style="padding: 24px;">No monthly performance data recorded.</td></tr>`;
+            }
+            tbody.innerHTML = rowsHtml;
+
+            // Footer
+            document.getElementById('totEntries').innerText = sumEntries;
+            document.getElementById('totSale').innerText = formatCurrency(sumSale);
+            document.getElementById('totMs').innerText = formatLitres(sumMs);
+            document.getElementById('totHsd1').innerText = formatLitres(sumHsd1);
+            document.getElementById('totHsd2').innerText = formatLitres(sumHsd2);
+            document.getElementById('totCng').innerText = formatLitres(sumCng);
+            document.getElementById('totLitres').innerText = formatLitres(sumLitres);
+            document.getElementById('totExp').innerText = formatCurrency(sumExp);
+            document.getElementById('totColl').innerText = formatCurrency(sumColl);
+            document.getElementById('totMis').innerText = formatCurrency(sumMis);
+        }
+
+        window.onload = renderData;
+    </script>
+</head>
+<body>
+    <div class="no-print-bar">
+        <button class="btn-print" onclick="window.print()">&#128424; Print Statement / PDF</button>
+    </div>
+
+    <!-- STATION HEADER -->
+    <div class="station-header">
+        <img id="companyLogo" class="station-logo" style="display: none;" alt="Company Logo" />
+        <div class="station-details">
+            <div class="station-name" id="stationName">FuelPro Station</div>
+            <div class="station-subtitle" id="stationSubtitle" style="display:none;"></div>
+            <div class="station-address" id="stationAddress" style="display:none;"></div>
+            <div class="station-contact" id="stationContact" style="display:none;"></div>
+        </div>
+    </div>
+
+    <!-- SUB-RIBBON -->
+    <div class="sub-ribbon">
+        <div class="badge-pill">
+            <span>📅</span>
+            <span>Monthly Performance Statement</span>
+        </div>
+        <div class="month-text" id="selectedMonthText">Selected Month: October 2026</div>
+        <div class="generated-text" id="generatedAt">Generated: 23 Oct 2026, 11:39 pm</div>
+    </div>
+
+    <!-- KPI CARDS -->
+    <div class="kpi-row">
+        <div class="kpi-card highlight">
+            <div class="kpi-label">Total Sale</div>
+            <div class="kpi-value" id="totalSaleVal">₹0.00</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">Total Volume</div>
+            <div class="kpi-value" id="totalVolumeVal">0.00 L</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">Total Collection</div>
+            <div class="kpi-value" id="totalCollectionVal">₹0.00</div>
+            <div class="mini-entries-tag" id="totalEntriesTag">TOTAL ENTRIES: 0</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">Total Expenses</div>
+            <div class="kpi-value" id="totalExpensesVal">₹0.00</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">Avg Daily Sale</div>
+            <div class="kpi-value" id="avgDailySaleVal">₹0.00</div>
+        </div>
+    </div>
+
+    <!-- DATA TABLE -->
+    <table>
+        <thead>
+            <tr>
+                <th style="width: 8%;">Date</th>
+                <th style="width: 5%;" class="text-center">Day</th>
+                <th style="width: 7%;" class="text-center">DSM Entries</th>
+                <th style="width: 10%;">Total Sales</th>
+                <th style="width: 8%;">MS (Petrol) (L)</th>
+                <th style="width: 9%;">HSD 1 (Diesel) (L)</th>
+                <th style="width: 9%;">HSD 2 (Diesel) (L)</th>
+                <th style="width: 7%;">CNG (L)</th>
+                <th style="width: 9%;">Total Litres</th>
+                <th style="width: 8%;">Expenses</th>
+                <th style="width: 10%;">Collection</th>
+                <th style="width: 10%;">Mismatch</th>
+            </tr>
+        </thead>
+        <tbody id="tableBody">
+        </tbody>
+        <tfoot>
+            <tr>
+                <td>Total</td>
+                <td class="text-center">—</td>
+                <td class="text-center" id="totEntries">0</td>
+                <td id="totSale">₹0.00</td>
+                <td id="totMs">0.00 L</td>
+                <td id="totHsd1">0.00 L</td>
+                <td id="totHsd2">0.00 L</td>
+                <td id="totCng">0.00 L</td>
+                <td id="totLitres" style="font-weight: 800;">0.00 L</td>
+                <td id="totExp">₹0.00</td>
+                <td id="totColl">₹0.00</td>
+                <td id="totMis">₹0.00</td>
+            </tr>
+        </tfoot>
+    </table>
+
+    <!-- SIGNATURES -->
+    <div class="signatures-area">
+        <div class="sig-box">Manager Signature</div>
+        <div class="sig-box">Owner / Authorized Signatory</div>
+    </div>
+
+    <div class="report-footer">
+        FuelPro Automation Platform • Official Record
+    </div>
+</body>
+</html>

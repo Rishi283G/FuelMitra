@@ -36,19 +36,26 @@ public class ReleasePackageSmokeTests : IDisposable
     public void SmokeTest_Step1_InstallerPackageIntegrityAndMetadata()
     {
         var repoRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
-        var installerPath = File.Exists(Path.Combine(repoRoot, "installer_output", "PyroSync_Setup_v1.3.49.exe"))
-            ? Path.Combine(repoRoot, "installer_output", "PyroSync_Setup_v1.3.49.exe")
-            : (File.Exists(Path.Combine(repoRoot, "installer_output", "PyroSync_Setup_v1.3.48.exe"))
-                ? Path.Combine(repoRoot, "installer_output", "PyroSync_Setup_v1.3.48.exe")
-                : (File.Exists(Path.Combine(repoRoot, "installer_output", "PyroSync_Setup_v1.3.47.exe"))
-                    ? Path.Combine(repoRoot, "installer_output", "PyroSync_Setup_v1.3.47.exe")
-                    : (File.Exists(Path.Combine(repoRoot, "installer_output", "PyroSync_Setup_v1.3.46.exe"))
-                        ? Path.Combine(repoRoot, "installer_output", "PyroSync_Setup_v1.3.46.exe")
-                        : (File.Exists(Path.Combine(repoRoot, "installer_output", "PyroSync_Setup_v1.3.45.exe"))
-                            ? Path.Combine(repoRoot, "installer_output", "PyroSync_Setup_v1.3.45.exe")
-                            : (File.Exists(Path.Combine(repoRoot, "installer_output", "PyroSync_Setup_v1.3.44.exe"))
-                                ? Path.Combine(repoRoot, "installer_output", "PyroSync_Setup_v1.3.44.exe")
-                                : Path.Combine(repoRoot, "installer_output", "PyroSync_Setup_v1.3.43.exe"))))));
+        string[] candidateNames =
+        [
+            "PyroSync_Setup_v1.3.56.exe",
+            "PyroSync_Setup_v1.3.55.exe",
+            "PyroSync_Setup_v1.3.54.exe",
+            "PyroSync_Setup_v1.3.53.exe",
+            "PyroSync_Setup_v1.3.52.exe",
+            "PyroSync_Setup_v1.3.51.exe",
+            "PyroSync_Setup_v1.3.50.exe",
+            "PyroSync_Setup_v1.3.49.exe",
+            "PyroSync_Setup_v1.3.48.exe",
+            "PyroSync_Setup_v1.3.47.exe",
+            "PyroSync_Setup_v1.3.46.exe",
+            "PyroSync_Setup_v1.3.45.exe",
+            "PyroSync_Setup_v1.3.44.exe",
+            "PyroSync_Setup_v1.3.43.exe"
+        ];
+        var installerPath = candidateNames
+            .Select(name => Path.Combine(repoRoot, "installer_output", name))
+            .FirstOrDefault(File.Exists) ?? Path.Combine(repoRoot, "installer_output", candidateNames[0]);
         var publishDir = Path.Combine(repoRoot, "publish_output");
 
         Assert.True(File.Exists(installerPath), $"Installer missing at {installerPath}");
@@ -67,8 +74,8 @@ public class ReleasePackageSmokeTests : IDisposable
         Assert.True(File.Exists(dataDll), "FuelPro.Data.dll missing from publish_output");
 
         var verInfo = FileVersionInfo.GetVersionInfo(uiDll);
-        Assert.True(verInfo.FileVersion == "1.3.49.0" || verInfo.FileVersion == "1.3.48.0" || verInfo.FileVersion == "1.3.47.0" || verInfo.FileVersion == "1.3.46.0" || verInfo.FileVersion == "1.3.45.0" || verInfo.FileVersion == "1.3.44.0" || verInfo.FileVersion == "1.3.43.0", $"Unexpected FileVersion: {verInfo.FileVersion}");
-        Assert.True(verInfo.ProductVersion.StartsWith("1.3.49") || verInfo.ProductVersion.StartsWith("1.3.48") || verInfo.ProductVersion.StartsWith("1.3.47") || verInfo.ProductVersion.StartsWith("1.3.46") || verInfo.ProductVersion.StartsWith("1.3.45") || verInfo.ProductVersion.StartsWith("1.3.44") || verInfo.ProductVersion.StartsWith("1.3.43"), $"Unexpected ProductVersion: {verInfo.ProductVersion}");
+        Assert.True(verInfo.FileVersion == "1.3.56.0" || verInfo.FileVersion == "1.3.55.0" || verInfo.FileVersion == "1.3.54.0" || verInfo.FileVersion == "1.3.53.0" || verInfo.FileVersion == "1.3.52.0" || verInfo.FileVersion == "1.3.51.0" || verInfo.FileVersion == "1.3.50.0" || verInfo.FileVersion == "1.3.49.0" || verInfo.FileVersion == "1.3.48.0" || verInfo.FileVersion == "1.3.47.0" || verInfo.FileVersion == "1.3.46.0" || verInfo.FileVersion == "1.3.45.0" || verInfo.FileVersion == "1.3.44.0" || verInfo.FileVersion == "1.3.43.0", $"Unexpected FileVersion: {verInfo.FileVersion}");
+        Assert.True(verInfo.ProductVersion.StartsWith("1.3.56") || verInfo.ProductVersion.StartsWith("1.3.55") || verInfo.ProductVersion.StartsWith("1.3.54") || verInfo.ProductVersion.StartsWith("1.3.53") || verInfo.ProductVersion.StartsWith("1.3.52") || verInfo.ProductVersion.StartsWith("1.3.51") || verInfo.ProductVersion.StartsWith("1.3.50") || verInfo.ProductVersion.StartsWith("1.3.49") || verInfo.ProductVersion.StartsWith("1.3.48") || verInfo.ProductVersion.StartsWith("1.3.47") || verInfo.ProductVersion.StartsWith("1.3.46") || verInfo.ProductVersion.StartsWith("1.3.45") || verInfo.ProductVersion.StartsWith("1.3.44") || verInfo.ProductVersion.StartsWith("1.3.43"), $"Unexpected ProductVersion: {verInfo.ProductVersion}");
 
         // Confirm no test databases or source files exist in publish_output
         var dbFiles = Directory.GetFiles(publishDir, "*.db*", SearchOption.AllDirectories);

@@ -25,39 +25,29 @@ public class Dynamic3ShiftContinuityTests
     }
 
     [Fact]
-    public void Test01_CalendarDateReturns_A_B_C()
+    public void Test01_CalendarDateReturns_B_C_A()
     {
         var date = new DateTime(2026, 10, 3);
         var shifts = _cycleService.GetShiftsForDate(date);
 
         Assert.Equal(3, shifts.Count);
-        Assert.Equal("A", shifts[0]);
-        Assert.Equal("B", shifts[1]);
-        Assert.Equal("C", shifts[2]);
+        Assert.Equal("B", shifts[0]);
+        Assert.Equal("C", shifts[1]);
+        Assert.Equal("A", shifts[2]);
     }
 
     [Fact]
-    public void Test02_Prev_A_D_Returns_C_DMinus1()
-    {
-        var date = new DateTime(2026, 10, 3);
-        var (predDate, predShift) = _cycleService.GetPreviousShift(date, "A");
-
-        Assert.Equal(date.AddDays(-1).Date, predDate.Date);
-        Assert.Equal("C", predShift);
-    }
-
-    [Fact]
-    public void Test03_Prev_B_D_Returns_A_D()
+    public void Test02_Prev_B_D_Returns_A_DMinus1()
     {
         var date = new DateTime(2026, 10, 3);
         var (predDate, predShift) = _cycleService.GetPreviousShift(date, "B");
 
-        Assert.Equal(date.Date, predDate.Date);
+        Assert.Equal(date.AddDays(-1).Date, predDate.Date);
         Assert.Equal("A", predShift);
     }
 
     [Fact]
-    public void Test04_Prev_C_D_Returns_B_D()
+    public void Test03_Prev_C_D_Returns_B_D()
     {
         var date = new DateTime(2026, 10, 3);
         var (predDate, predShift) = _cycleService.GetPreviousShift(date, "C");
@@ -67,17 +57,17 @@ public class Dynamic3ShiftContinuityTests
     }
 
     [Fact]
-    public void Test05_Next_A_D_Returns_B_D()
+    public void Test04_Prev_A_D_Returns_C_D()
     {
         var date = new DateTime(2026, 10, 3);
-        var (nextDate, nextShift) = _cycleService.GetNextShift(date, "A");
+        var (predDate, predShift) = _cycleService.GetPreviousShift(date, "A");
 
-        Assert.Equal(date.Date, nextDate.Date);
-        Assert.Equal("B", nextShift);
+        Assert.Equal(date.Date, predDate.Date);
+        Assert.Equal("C", predShift);
     }
 
     [Fact]
-    public void Test06_Next_B_D_Returns_C_D()
+    public void Test05_Next_B_D_Returns_C_D()
     {
         var date = new DateTime(2026, 10, 3);
         var (nextDate, nextShift) = _cycleService.GetNextShift(date, "B");
@@ -87,31 +77,41 @@ public class Dynamic3ShiftContinuityTests
     }
 
     [Fact]
-    public void Test07_Next_C_D_Returns_A_DPlus1()
+    public void Test06_Next_C_D_Returns_A_D()
     {
         var date = new DateTime(2026, 10, 3);
         var (nextDate, nextShift) = _cycleService.GetNextShift(date, "C");
 
-        Assert.Equal(date.AddDays(1).Date, nextDate.Date);
+        Assert.Equal(date.Date, nextDate.Date);
         Assert.Equal("A", nextShift);
     }
 
     [Fact]
-    public void Test08_DayOpeningShift_Returns_A()
+    public void Test07_Next_A_D_Returns_B_DPlus1()
     {
         var date = new DateTime(2026, 10, 3);
-        Assert.Equal("A", _cycleService.GetOpeningShiftForDate(date));
+        var (nextDate, nextShift) = _cycleService.GetNextShift(date, "A");
+
+        Assert.Equal(date.AddDays(1).Date, nextDate.Date);
+        Assert.Equal("B", nextShift);
     }
 
     [Fact]
-    public void Test09_DayClosingShift_Returns_C()
+    public void Test08_DayOpeningShift_Returns_B()
     {
         var date = new DateTime(2026, 10, 3);
-        Assert.Equal("C", _cycleService.GetClosingShiftForDate(date));
+        Assert.Equal("B", _cycleService.GetOpeningShiftForDate(date));
     }
 
     [Fact]
-    public async Task Test10_ShiftB_OpeningUses_ShiftA_SameDate_Closing()
+    public void Test09_DayClosingShift_Returns_A()
+    {
+        var date = new DateTime(2026, 10, 3);
+        Assert.Equal("A", _cycleService.GetClosingShiftForDate(date));
+    }
+
+    [Fact]
+    public async Task Test10_ShiftB_OpeningUses_ShiftA_PreviousDate_Closing()
     {
         var options = new DbContextOptionsBuilder<FuelProDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
@@ -122,8 +122,8 @@ public class Dynamic3ShiftContinuityTests
 
         var date = new DateTime(2026, 10, 3);
 
-        // Predecessor of B(D) is A(D)
-        var shiftA = new Shift { ShiftId = 1, ShiftDate = date, ShiftType = "A" };
+        // Predecessor of B(D) is A(D-1)
+        var shiftA = new Shift { ShiftId = 1, ShiftDate = date.AddDays(-1), ShiftType = "A" };
         var entryA = new DsmEntry { DsmEntryId = 1, ShiftId = 1, Shift = shiftA, PumpId = 1 };
         var readingA = new NozzleReading { NozzleReadingId = 1, DsmEntryId = 1, DsmEntry = entryA, NozzleNumber = 1, ClosingReading = 1000.50 };
         context.AddRange(shiftA, entryA, readingA);
@@ -161,7 +161,7 @@ public class Dynamic3ShiftContinuityTests
     }
 
     [Fact]
-    public async Task Test12_ShiftA_OpeningUses_ShiftC_PreviousDate_Closing()
+    public async Task Test12_ShiftA_OpeningUses_ShiftC_SameDate_Closing()
     {
         var options = new DbContextOptionsBuilder<FuelProDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
@@ -171,10 +171,9 @@ public class Dynamic3ShiftContinuityTests
         var repo = new NozzleReadingRepository(context, _cycleService);
 
         var date = new DateTime(2026, 10, 3);
-        var prevDate = date.AddDays(-1);
 
-        // Predecessor of A(D) is C(D-1)
-        var shiftC = new Shift { ShiftId = 3, ShiftDate = prevDate, ShiftType = "C" };
+        // Predecessor of A(D) is C(D)
+        var shiftC = new Shift { ShiftId = 3, ShiftDate = date, ShiftType = "C" };
         var entryC = new DsmEntry { DsmEntryId = 3, ShiftId = 3, Shift = shiftC, PumpId = 1 };
         var readingC = new NozzleReading { NozzleReadingId = 3, DsmEntryId = 3, DsmEntry = entryC, NozzleNumber = 1, ClosingReading = 2200.25 };
         context.AddRange(shiftC, entryC, readingC);
@@ -551,31 +550,31 @@ public class Dynamic3ShiftContinuityTests
     }
 
     [Fact]
-    public void Test25_DayTotal_OpeningA_ClosingC()
+    public void Test25_DayTotal_OpeningB_ClosingA()
     {
         var service = new AgsDailyAggregationService();
         var date = new DateTime(2026, 10, 3);
 
-        var shiftA = new AgsShiftImport { ImportDate = date, ShiftType = "A", IsActive = true, HsdOpeningStock = 15000, HsdClosingStock = 14000 };
         var shiftB = new AgsShiftImport { ImportDate = date, ShiftType = "B", IsActive = true, HsdOpeningStock = 14000, HsdClosingStock = 13000 };
         var shiftC = new AgsShiftImport { ImportDate = date, ShiftType = "C", IsActive = true, HsdOpeningStock = 13000, HsdClosingStock = 12000 };
+        var shiftA = new AgsShiftImport { ImportDate = date, ShiftType = "A", IsActive = true, HsdOpeningStock = 12000, HsdClosingStock = 11000 };
 
-        var summary = service.Aggregate(date, new List<AgsShiftImport> { shiftA, shiftB, shiftC });
+        var summary = service.Aggregate(date, new List<AgsShiftImport> { shiftB, shiftC, shiftA });
 
-        // Day Opening Stock must strictly come from Shift A: 15000
-        Assert.Equal(15000, summary.HsdDayOpeningStock);
-        // Day Closing Stock must strictly come from Shift C: 12000
-        Assert.Equal(12000, summary.HsdDayClosingStock);
+        // Day Opening Stock must strictly come from Shift B: 14000
+        Assert.Equal(14000, summary.HsdDayOpeningStock);
+        // Day Closing Stock must strictly come from Shift A: 11000
+        Assert.Equal(11000, summary.HsdDayClosingStock);
         Assert.True(summary.ShiftAImported);
         Assert.True(summary.ShiftBImported);
         Assert.True(summary.ShiftCImported);
     }
 
     [Fact]
-    public void Test26_UiDisplayOrder_Remains_A_B_C()
+    public void Test26_UiDisplayOrder_Is_B_C_A()
     {
         var shifts = _cycleService.GetShiftsForDate(DateTime.Today);
-        Assert.Equal(new[] { "A", "B", "C" }, shifts);
+        Assert.Equal(new[] { "B", "C", "A" }, shifts);
     }
 
     [Fact]
@@ -588,17 +587,17 @@ public class Dynamic3ShiftContinuityTests
             var simulatedTime = date.AddHours(hour);
 
             var shifts = _cycleService.GetShiftsForDate(simulatedTime);
-            Assert.Equal("A", shifts[0]);
-            Assert.Equal("B", shifts[1]);
-            Assert.Equal("C", shifts[2]);
+            Assert.Equal("B", shifts[0]);
+            Assert.Equal("C", shifts[1]);
+            Assert.Equal("A", shifts[2]);
 
-            Assert.Equal(("B", date.Date), (_cycleService.GetNextShift(simulatedTime.Date, "A").ShiftType, _cycleService.GetNextShift(simulatedTime.Date, "A").Date.Date));
             Assert.Equal(("C", date.Date), (_cycleService.GetNextShift(simulatedTime.Date, "B").ShiftType, _cycleService.GetNextShift(simulatedTime.Date, "B").Date.Date));
-            Assert.Equal(("A", date.AddDays(1).Date), (_cycleService.GetNextShift(simulatedTime.Date, "C").ShiftType, _cycleService.GetNextShift(simulatedTime.Date, "C").Date.Date));
+            Assert.Equal(("A", date.Date), (_cycleService.GetNextShift(simulatedTime.Date, "C").ShiftType, _cycleService.GetNextShift(simulatedTime.Date, "C").Date.Date));
+            Assert.Equal(("B", date.AddDays(1).Date), (_cycleService.GetNextShift(simulatedTime.Date, "A").ShiftType, _cycleService.GetNextShift(simulatedTime.Date, "A").Date.Date));
 
-            Assert.Equal(("C", date.AddDays(-1).Date), (_cycleService.GetPreviousShift(simulatedTime.Date, "A").ShiftType, _cycleService.GetPreviousShift(simulatedTime.Date, "A").Date.Date));
-            Assert.Equal(("A", date.Date), (_cycleService.GetPreviousShift(simulatedTime.Date, "B").ShiftType, _cycleService.GetPreviousShift(simulatedTime.Date, "B").Date.Date));
+            Assert.Equal(("A", date.AddDays(-1).Date), (_cycleService.GetPreviousShift(simulatedTime.Date, "B").ShiftType, _cycleService.GetPreviousShift(simulatedTime.Date, "B").Date.Date));
             Assert.Equal(("B", date.Date), (_cycleService.GetPreviousShift(simulatedTime.Date, "C").ShiftType, _cycleService.GetPreviousShift(simulatedTime.Date, "C").Date.Date));
+            Assert.Equal(("C", date.Date), (_cycleService.GetPreviousShift(simulatedTime.Date, "A").ShiftType, _cycleService.GetPreviousShift(simulatedTime.Date, "A").Date.Date));
         }
     }
 

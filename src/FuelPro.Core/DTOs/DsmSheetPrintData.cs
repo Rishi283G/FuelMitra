@@ -46,6 +46,10 @@ public class DsmSheetPrintData
     // Section 9 — Personal Debtors
     public List<DsmPersonalDebtorPrintRow> PersonalDebtors { get; set; } = new();
     public double TotalPersonalDebtors { get; set; }
+
+    public string ConnectedPumpsDisplay { get; set; } = string.Empty;
+    public List<FuelTypeReadingSummary> CumulativeFuelSales { get; set; } = new();
+    public DsmCashDenomPrintBlock Cash3Denom { get; set; } = new();
 }
 
 public class DsmPersonalDebtorPrintRow
@@ -79,6 +83,7 @@ public class DsmPaymentPrintBlock
     public double CreditCardNight     { get; set; } // PineLab Night
     public double PetroCard           { get; set; }
     public double CashDeposit         { get; set; }
+    public double Cash3               { get; set; }
     public double Others              { get; set; }
     public double BankDeposit         { get; set; }
     public double TotalDigital        { get; set; }
@@ -89,6 +94,18 @@ public class DsmPaymentPrintBlock
     public string PhonePeBatch        { get; set; } = string.Empty;
     public string PetroCardTid        { get; set; } = string.Empty;
     public string PetroCardBatch      { get; set; } = string.Empty;
+
+    public List<DsmPaymentItemPrintRow> Items { get; set; } = new();
+}
+
+public class DsmPaymentItemPrintRow
+{
+    public string CollectionTypeCode { get; set; } = string.Empty;
+    public string DisplayName { get; set; } = string.Empty;
+    public double Amount { get; set; }
+    public string Tid { get; set; } = string.Empty;
+    public string Batch { get; set; } = string.Empty;
+    public string Slot { get; set; } = string.Empty;
 }
 
 /// <summary>

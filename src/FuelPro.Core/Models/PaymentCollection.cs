@@ -30,6 +30,18 @@ public class PaymentCollection
     public double Others { get; set; }
     public double CashDeposit { get; set; }
 
+    /// <summary>
+    /// Manager-authorized collection reduction amount entered in manual DSM entry mode.
+    /// Deducted exactly once from the canonical collection total.
+    /// </summary>
+    public double CollectionReduction { get; set; } = 0.0;
+
+    /// <summary>
+    /// Mandatory reason or explanation for the collection reduction.
+    /// </summary>
+    [MaxLength(255)]
+    public string? CollectionReductionRemark { get; set; }
+
     // Legacy fields mapped/fallback
     public string? CardTid { get; set; }
     public string? CardBatch { get; set; }
@@ -57,7 +69,16 @@ public class PaymentCollection
     public string? PetroCardBatchNight { get; set; }
 
     [NotMapped]
-    public double PetroCard => PetroCardMorning + PetroCardDay + PetroCardNight;
+    public double PetroCard
+    {
+        get
+        {
+            double scalar = PetroCardMorning + PetroCardDay + PetroCardNight;
+            if (scalar > 0) return scalar;
+            var items = GetAllItems().Where(i => NormalizeCollectionTypeCode(i.CollectionTypeCode) == "PETROCARD").ToList();
+            return items.Count > 0 ? items.Sum(i => i.Amount) : 0;
+        }
+    }
 
     public string? PhonePeTidMorning { get; set; }
     public string? PhonePeBatchMorning { get; set; }
@@ -71,7 +92,16 @@ public class PaymentCollection
     /// The old DB column 'PhonePe' is maintained via legacy migration; this is NotMapped.
     /// </summary>
     [NotMapped]
-    public double PhonePe => PhonePeMorning + PhonePeDay + PhonePeNight;
+    public double PhonePe
+    {
+        get
+        {
+            double scalar = PhonePeMorning + PhonePeDay + PhonePeNight;
+            if (scalar > 0) return scalar;
+            var items = GetAllItems().Where(i => NormalizeCollectionTypeCode(i.CollectionTypeCode) == "PHONEPE").ToList();
+            return items.Count > 0 ? items.Sum(i => i.Amount) : 0;
+        }
+    }
 
     /// <summary>
     /// Total of all digital payment methods (including dynamic collection types).

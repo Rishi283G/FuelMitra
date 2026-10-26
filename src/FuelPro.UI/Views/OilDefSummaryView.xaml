@@ -56,9 +56,9 @@
                     <Button Content="Prev. Month" Style="{StaticResource MaterialDesignOutlinedButton}"
                             Command="{Binding SetPresetCommand}" CommandParameter="PreviousMonth" Margin="0,0,16,0" Height="40"/>
 
-                    <DatePicker SelectedDate="{Binding StartDate}" materialDesign:HintAssist.Hint="From"
+                    <DatePicker SelectedDate="{Binding StartDate, UpdateSourceTrigger=PropertyChanged}" materialDesign:HintAssist.Hint="From"
                                 Width="140" Height="48" Margin="0,0,8,0"/>
-                    <DatePicker SelectedDate="{Binding EndDate}" materialDesign:HintAssist.Hint="To"
+                    <DatePicker SelectedDate="{Binding EndDate, UpdateSourceTrigger=PropertyChanged}" materialDesign:HintAssist.Hint="To"
                                 Width="140" Height="48"/>
                 </StackPanel>
 

@@ -120,53 +120,53 @@ public class Phase217UiConsistencyAndShiftCTests : IDisposable
     }
 
     [Fact]
-    public void Test01_ShiftCycleService_GetDisplayShifts_Returns_A_B_C()
+    public void Test01_ShiftCycleService_GetDisplayShifts_Returns_B_C_A()
     {
         var displayShifts = _shiftCycleService.GetDisplayShifts();
 
         Assert.Equal(3, displayShifts.Count);
-        Assert.Equal("A", displayShifts[0]);
-        Assert.Equal("B", displayShifts[1]);
-        Assert.Equal("C", displayShifts[2]);
+        Assert.Equal("B", displayShifts[0]);
+        Assert.Equal("C", displayShifts[1]);
+        Assert.Equal("A", displayShifts[2]);
     }
 
     [Fact]
-    public void Test02_ShiftCycleService_OperationalContinuity_Preserved_A_B_C()
+    public void Test02_ShiftCycleService_OperationalContinuity_Preserved_B_C_A()
     {
         var date = new DateTime(2026, 10, 3);
         var operationalShifts = _shiftCycleService.GetShiftsForDate(date);
 
-        // Traversal order is A, B, C
+        // Traversal order is B, C, A
         Assert.Equal(3, operationalShifts.Count);
-        Assert.Equal("A", operationalShifts[0]);
-        Assert.Equal("B", operationalShifts[1]);
-        Assert.Equal("C", operationalShifts[2]);
+        Assert.Equal("B", operationalShifts[0]);
+        Assert.Equal("C", operationalShifts[1]);
+        Assert.Equal("A", operationalShifts[2]);
 
-        // Exact Predecessors
-        var (prevADate, prevAShift) = _shiftCycleService.GetPreviousShift(date, "A");
-        Assert.Equal(date.AddDays(-1).Date, prevADate.Date);
-        Assert.Equal("C", prevAShift);
-
+        // Exact Predecessors in Mitali Sequence: Prev(B,D)=(D-1,A), Prev(C,D)=(D,B), Prev(A,D)=(D,C)
         var (prevBDate, prevBShift) = _shiftCycleService.GetPreviousShift(date, "B");
-        Assert.Equal(date.Date, prevBDate.Date);
+        Assert.Equal(date.AddDays(-1).Date, prevBDate.Date);
         Assert.Equal("A", prevBShift);
 
         var (prevCDate, prevCShift) = _shiftCycleService.GetPreviousShift(date, "C");
         Assert.Equal(date.Date, prevCDate.Date);
         Assert.Equal("B", prevCShift);
 
-        // Exact Successors
-        var (nextADate, nextAShift) = _shiftCycleService.GetNextShift(date, "A");
-        Assert.Equal(date.Date, nextADate.Date);
-        Assert.Equal("B", nextAShift);
+        var (prevADate, prevAShift) = _shiftCycleService.GetPreviousShift(date, "A");
+        Assert.Equal(date.Date, prevADate.Date);
+        Assert.Equal("C", prevAShift);
 
+        // Exact Successors in Mitali Sequence: Next(B,D)=(D,C), Next(C,D)=(D,A), Next(A,D)=(D+1,B)
         var (nextBDate, nextBShift) = _shiftCycleService.GetNextShift(date, "B");
         Assert.Equal(date.Date, nextBDate.Date);
         Assert.Equal("C", nextBShift);
 
         var (nextCDate, nextCShift) = _shiftCycleService.GetNextShift(date, "C");
-        Assert.Equal(date.AddDays(1).Date, nextCDate.Date);
+        Assert.Equal(date.Date, nextCDate.Date);
         Assert.Equal("A", nextCShift);
+
+        var (nextADate, nextAShift) = _shiftCycleService.GetNextShift(date, "A");
+        Assert.Equal(date.AddDays(1).Date, nextADate.Date);
+        Assert.Equal("B", nextAShift);
     }
 
     [Theory]

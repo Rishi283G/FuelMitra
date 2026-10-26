@@ -22,6 +22,7 @@ public partial class ExpenseAnalysisViewModel : ObservableObject, IDisposable
     private readonly IExpenseRepository _expenseRepo;
     private readonly PrintService _printService;
     private readonly ExcelExportService _excelExportService;
+    private readonly IFeatureToggleService? _featureService;
 
     [ObservableProperty] private DateTime _startDate = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
     [ObservableProperty] private DateTime _endDate = DateTime.Today;
@@ -41,6 +42,7 @@ public partial class ExpenseAnalysisViewModel : ObservableObject, IDisposable
         _expenseRepo = App.Services.GetRequiredService<IExpenseRepository>();
         _printService = App.Services.GetRequiredService<PrintService>();
         _excelExportService = App.Services.GetRequiredService<ExcelExportService>();
+        _featureService = App.Services?.GetService<IFeatureToggleService>();
 
         DsmEntryService.DsmEntryChanged += OnDataChanged;
         DsmEntryService.PettyCashChanged += OnDataChanged;
@@ -96,6 +98,8 @@ public partial class ExpenseAnalysisViewModel : ObservableObject, IDisposable
             }
 
             // 2. Get DSM-entry-level expenses
+            string plName = _featureService?.GetFeatureDisplayName("Operations_PersonalLedger", "Personal Ledger") ?? "Personal Ledger";
+            if (string.IsNullOrWhiteSpace(plName)) plName = "Personal Ledger";
             var entriesResult = await _dsmEntryRepo.GetEntriesForDateRangeAsync(StartDate, EndDate);
             if (entriesResult.Success && entriesResult.Data != null)
             {
@@ -122,8 +126,8 @@ public partial class ExpenseAnalysisViewModel : ObservableObject, IDisposable
                                 ExpenseId = kp.Id,
                                 Date = kp.Date,
                                 ShiftType = entry.Shift?.ShiftType ?? "—",
-                                Source = $"DSM: {entry.DsmName} (Kandhare Petroleum)",
-                                Description = $"Kandhare Petroleum: {kp.Name} (Slip: {kp.SlipNumber})",
+                                Source = $"DSM: {entry.DsmName} ({plName})",
+                                Description = $"{plName}: {kp.Name} (Slip: {kp.SlipNumber})",
                                 Amount = kp.Amount
                             });
                         }
@@ -184,38 +188,76 @@ public partial class ExpenseAnalysisViewModel : ObservableObject, IDisposable
     {
         try
         {
-            var summaryCards = new List<GenericGridPrintCard>
-            {
-                new() { Label = "Total Expenses", Value = "₹" + TotalExpensesAmount.ToString("N2"), Highlight = true }
-            };
+            int calDays = Math.Max(1, (int)(EndDate.Date - StartDate.Date).TotalDays + 1);
+            var shiftTypes = new[] { "A", "B" };
+            var shiftRows = new List<object>();
 
-            var headers = new List<string> { "Date", "Shift", "Source", "Description / Purpose", "Amount" };
-            var rows = new List<List<string>>();
-
-            foreach (var row in ItemizedExpenses)
+            for (var dt = StartDate.Date; dt <= EndDate.Date; dt = dt.AddDays(1))
             {
-                rows.Add(new List<string>
+                var curDate = dt;
+                foreach (var st in shiftTypes)
                 {
-                    row.Date.ToString("dd-MMM-yyyy"),
-                    row.ShiftType,
-                    row.Source,
-                    row.Description,
-                    "₹" + row.Amount.ToString("N2")
-                });
+                    var matching = _allLoadedExpenses
+                        .Where(e => e.Date.Date == curDate && string.Equals((e.ShiftType ?? "").Trim(), st, StringComparison.OrdinalIgnoreCase))
+                        .ToList();
+
+                    if (!string.IsNullOrWhiteSpace(SearchText))
+                    {
+                        matching = matching.Where(e => e.Description.Contains(SearchText, StringComparison.OrdinalIgnoreCase) ||
+                                                       e.Source.Contains(SearchText, StringComparison.OrdinalIgnoreCase)).ToList();
+                    }
+
+                    string dsmDetails = "—";
+                    string otherDetails = "—";
+                    double shiftTotal = matching.Sum(e => e.Amount);
+
+                    var dsmExp = matching.Where(e => e.Source.StartsWith("DSM", StringComparison.OrdinalIgnoreCase)).ToList();
+                    if (dsmExp.Count > 0)
+                    {
+                        var dsmGroups = dsmExp.GroupBy(e => {
+                            var s = e.Source;
+                            var idx = s.IndexOf(':');
+                            return idx >= 0 ? s.Substring(idx + 1).Trim() : s;
+                        });
+
+                        var dsmLines = new List<string>();
+                        foreach (var g in dsmGroups)
+                        {
+                            var items = g.Select(x => $"{x.Description} <span class=\"exp-cost\">₹{x.Amount:N2}</span>");
+                            dsmLines.Add($"<span class=\"exp-dsm-name\">{g.Key}:</span> {string.Join(" • ", items)}");
+                        }
+                        dsmDetails = string.Join("<br/>", dsmLines);
+                    }
+
+                    var otherExp = matching.Where(e => !e.Source.StartsWith("DSM", StringComparison.OrdinalIgnoreCase)).ToList();
+                    if (otherExp.Count > 0)
+                    {
+                        var items = otherExp.Select(x => $"{x.Description} <span class=\"exp-cost\">₹{x.Amount:N2}</span>");
+                        otherDetails = string.Join(" • ", items);
+                    }
+
+                    shiftRows.Add(new
+                    {
+                        date = curDate.ToString("dd-MMM-yyyy"),
+                        shift = st,
+                        dsmDetails = dsmDetails,
+                        otherDetails = otherDetails,
+                        shiftTotal = shiftTotal
+                    });
+                }
             }
 
-            var printData = new GenericGridPrintData
+            var printData = new
             {
-                Title = "Expense Analysis Report",
-                Subtitle = $"Date Range: {StartDate:dd-MMM-yyyy} to {EndDate:dd-MMM-yyyy}" + 
-                           (string.IsNullOrWhiteSpace(SearchText) ? "" : $" (Filtered by: '{SearchText}')"),
-                SummaryCards = summaryCards,
-                Headers = headers,
-                Rows = rows,
-                ShowSignatures = true
+                statementPeriod = $"{StartDate:dd-MMM-yyyy} to {EndDate:dd-MMM-yyyy}",
+                totalExpenses = TotalExpensesAmount,
+                calendarDays = calDays,
+                operationalShifts = calDays * 2,
+                totalEntries = ItemizedExpenses.Count,
+                rows = shiftRows
             };
 
-            _printService.PrintGenericGrid(printData);
+            _printService.PrintExpenseAnalysis(printData);
         }
         catch (Exception ex)
         {

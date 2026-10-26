@@ -50,6 +50,12 @@ public partial class SettingsViewModel : ObservableObject
     private readonly IStationConfigurationService? _stationConfigService;
 
     [ObservableProperty] private string _pumpStationName = "";
+    [ObservableProperty] private string _stationSubtitle = "";
+    [ObservableProperty] private string _stationAddress = "";
+    [ObservableProperty] private string _stationContact = "";
+    [ObservableProperty] private string _oilCompany = "BPCL";
+    [ObservableProperty] private string _customLogoPath = "";
+    public ObservableCollection<string> OilCompanies { get; } = new() { "BPCL", "HPCL", "IOCL", "SHELL", "JIO_BP", "OTHER" };
     [ObservableProperty] private string _hsdRate = "";
 
     // Dynamic Fuel Rates
@@ -250,6 +256,11 @@ public partial class SettingsViewModel : ObservableObject
         {
             _settings = result.Data;
             PumpStationName = _settings.PumpStationName;
+            StationSubtitle = _settings.StationSubtitle ?? "";
+            StationAddress = _settings.StationAddress ?? "";
+            StationContact = _settings.StationContact ?? "";
+            OilCompany = string.IsNullOrWhiteSpace(_settings.OilCompany) ? "BPCL" : _settings.OilCompany;
+            CustomLogoPath = _settings.CustomLogoPath ?? "";
             HsdRate = _settings.HsdRate.ToString(CultureInfo.CurrentCulture);
             MsIRate = _settings.MsIRate.ToString(CultureInfo.CurrentCulture);
             MsIIRate = _settings.MsIIRate.ToString(CultureInfo.CurrentCulture);
@@ -353,6 +364,11 @@ public partial class SettingsViewModel : ObservableObject
         _settings.Shift1Manager = Shift1Manager?.Trim();
         _settings.Shift2Manager = Shift2Manager?.Trim();
         _settings.Shift3Manager = Shift3Manager?.Trim();
+        _settings.StationSubtitle = StationSubtitle?.Trim();
+        _settings.StationAddress = StationAddress?.Trim();
+        _settings.StationContact = StationContact?.Trim();
+        _settings.OilCompany = string.IsNullOrWhiteSpace(OilCompany) ? "BPCL" : OilCompany.Trim();
+        _settings.CustomLogoPath = CustomLogoPath?.Trim();
 
         var result = await _settingsRepo.SaveSettingsAsync(_settings);
         if (result.Success)
@@ -388,6 +404,33 @@ public partial class SettingsViewModel : ObservableObject
         if (double.TryParse(text, NumberStyles.Any, CultureInfo.CurrentCulture, out value))
             return true;
         return double.TryParse(text, NumberStyles.Any, CultureInfo.InvariantCulture, out value);
+    }
+
+    [RelayCommand]
+    private void BrowseCustomLogo()
+    {
+        try
+        {
+            var dlg = new Microsoft.Win32.OpenFileDialog
+            {
+                Filter = "Image Files (*.png;*.jpg;*.jpeg;*.bmp;*.svg)|*.png;*.jpg;*.jpeg;*.bmp;*.svg|All Files (*.*)|*.*",
+                Title = "Select Custom Station / Company Logo"
+            };
+            if (dlg.ShowDialog() == true)
+            {
+                CustomLogoPath = dlg.FileName;
+            }
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to browse custom logo");
+        }
+    }
+
+    [RelayCommand]
+    private void ClearCustomLogo()
+    {
+        CustomLogoPath = "";
     }
 
     [RelayCommand]

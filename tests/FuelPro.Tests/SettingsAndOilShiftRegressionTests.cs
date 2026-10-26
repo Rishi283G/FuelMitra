@@ -62,11 +62,11 @@ public class SettingsAndOilShiftRegressionTests : IDisposable
         vm.SaleDate = date;
         await vm.LoadSaleShiftsAsync();
 
-        // Must offer exactly 3 shifts in physical operational order: A, B, C
+        // Must offer exactly 3 shifts in physical operational order: B, C, A
         Assert.Equal(3, vm.SaleShifts.Count);
-        Assert.Equal("A", vm.SaleShifts[0].ShiftType);
-        Assert.Equal("B", vm.SaleShifts[1].ShiftType);
-        Assert.Equal("C", vm.SaleShifts[2].ShiftType);
+        Assert.Equal("B", vm.SaleShifts[0].ShiftType);
+        Assert.Equal("C", vm.SaleShifts[1].ShiftType);
+        Assert.Equal("A", vm.SaleShifts[2].ShiftType);
 
         // Each must have a valid local primary key (ShiftId > 0)
         Assert.All(vm.SaleShifts, shift =>
@@ -103,8 +103,10 @@ public class SettingsAndOilShiftRegressionTests : IDisposable
 
         Assert.Equal(3, vm.SaleShifts.Count);
         // Existing Shift A must be reused with the same ShiftId
-        Assert.Equal(originalIdA, vm.SaleShifts[0].ShiftId);
-        Assert.Equal("A", vm.SaleShifts[0].ShiftType);
+        Assert.Equal(originalIdA, vm.SaleShifts.First(s => s.ShiftType == "A").ShiftId);
+        Assert.Equal("B", vm.SaleShifts[0].ShiftType);
+        Assert.Equal("C", vm.SaleShifts[1].ShiftType);
+        Assert.Equal("A", vm.SaleShifts[2].ShiftType);
 
         // Total shifts for that date in DB must be exactly 3 (no duplicate A)
         var dbShifts = await context.Shifts.Where(s => s.ShiftDate == date).ToListAsync();
@@ -224,11 +226,11 @@ public class SettingsAndOilShiftRegressionTests : IDisposable
         vm.SaleDate = date;
         await vm.LoadSaleShiftsAsync();
 
-        // Must display exactly 3 slots: A, B, C (no duplicate C!)
+        // Must display exactly 3 slots: B, C, A (no duplicate C!)
         Assert.Equal(3, vm.SaleShifts.Count);
-        Assert.Equal("A", vm.SaleShifts[0].ShiftType);
-        Assert.Equal("B", vm.SaleShifts[1].ShiftType);
-        Assert.Equal("C", vm.SaleShifts[2].ShiftType);
+        Assert.Equal("B", vm.SaleShifts[0].ShiftType);
+        Assert.Equal("C", vm.SaleShifts[1].ShiftType);
+        Assert.Equal("A", vm.SaleShifts[2].ShiftType);
 
         // Both Shift C records in the DB must remain intact (no destructive deletes)
         var dbShifts = await context.Shifts.Where(s => s.ShiftDate == date).ToListAsync();

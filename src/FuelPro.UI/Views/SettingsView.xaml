@@ -25,9 +25,44 @@
                                    Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}"/>
                     </StackPanel>
 
-                    <TextBox Text="{Binding PumpStationName, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,16"
-                             materialDesign:HintAssist.Hint="Station Display Name" materialDesign:HintAssist.IsFloating="True"
-                             Style="{StaticResource MaterialDesignOutlinedTextBox}" FontSize="16"/>
+                    <Grid Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBox Grid.Column="0" Text="{Binding PumpStationName, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0"
+                                 materialDesign:HintAssist.Hint="Station Display Name" materialDesign:HintAssist.IsFloating="True"
+                                 Style="{StaticResource MaterialDesignOutlinedTextBox}" FontSize="15"/>
+                        <TextBox Grid.Column="1" Text="{Binding StationSubtitle, UpdateSourceTrigger=PropertyChanged}" Margin="8,0,0,0"
+                                 materialDesign:HintAssist.Hint="Station Subtitle / Group Name" materialDesign:HintAssist.IsFloating="True"
+                                 Style="{StaticResource MaterialDesignOutlinedTextBox}" FontSize="15"/>
+                    </Grid>
+
+                    <TextBox Text="{Binding StationAddress, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,12"
+                             materialDesign:HintAssist.Hint="Station Address (for official prints &amp; ledgers)" materialDesign:HintAssist.IsFloating="True"
+                             TextWrapping="Wrap" AcceptsReturn="True" MinHeight="56"
+                             Style="{StaticResource MaterialDesignOutlinedTextBox}" FontSize="14"/>
+
+                    <Grid Margin="0,0,0,16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="2*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBox Grid.Column="0" Text="{Binding StationContact, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0"
+                                 materialDesign:HintAssist.Hint="Contact Phone / Email" materialDesign:HintAssist.IsFloating="True"
+                                 Style="{StaticResource MaterialDesignOutlinedTextBox}" FontSize="14"/>
+                        <ComboBox Grid.Column="1" ItemsSource="{Binding OilCompanies}" SelectedItem="{Binding OilCompany}" Margin="4,0,8,0"
+                                  materialDesign:HintAssist.Hint="Oil Company Brand" materialDesign:HintAssist.IsFloating="True"
+                                  Style="{StaticResource MaterialDesignOutlinedComboBox}" FontSize="14"/>
+                        <Button Grid.Column="2" Command="{Binding BrowseCustomLogoCommand}" Style="{StaticResource MaterialDesignOutlinedButton}"
+                                Height="48" Padding="12,0" ToolTip="Select Custom Logo Image (optional)">
+                            <StackPanel Orientation="Horizontal">
+                                <materialDesign:PackIcon Kind="ImageOutline" Width="18" Height="18" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <TextBlock Text="Custom Logo" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                    </Grid>
 
                     <!-- Dynamic Fuel Rates configured from Dev Side -->
                     <ItemsControl ItemsSource="{Binding FuelRateItems}" Margin="0,0,0,12">

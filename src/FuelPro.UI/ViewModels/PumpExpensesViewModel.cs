@@ -460,52 +460,43 @@ public partial class PumpExpensesViewModel : ObservableObject
     {
         try
         {
+            var totalExpensesSum = HistoryExpenses.Sum(e => e.TotalAmount);
             var summaryCards = new List<GenericGridPrintCard>
             {
-                new() { Label = "Total Rent", Value = "₹" + HistoryExpenses.Sum(e => e.Rent).ToString("N2") },
-                new() { Label = "Total Staff Salary", Value = "₹" + HistoryExpenses.Sum(e => e.Salary).ToString("N2") },
-                new() { Label = "Total Trip Sheet Loss", Value = "₹" + HistoryExpenses.Sum(e => e.TripSheetLoss).ToString("N2") },
-                new() { Label = "Total DSM Short", Value = "₹" + HistoryExpenses.Sum(e => e.DsmShort).ToString("N2") },
-                new() { Label = "Total Pump Expenses", Value = "₹" + HistoryExpenses.Sum(e => e.Rent + e.Salary + e.TripSheetLoss + e.DsmShort + e.BankingExpenses + e.BpclPortalExpenses + e.FuelAndTravel + e.OilPurchase + e.RepairsAndMaintenance + e.ElectricityExpenses + e.OfficeExpenses + e.PrintingExpense + e.OtherAmount).ToString("N2"), Highlight = true }
+                new() { Label = "Total Pump Expenses", Value = "₹" + totalExpensesSum.ToString("N2"), Highlight = true },
+                new() { Label = "Total Entries Invoiced", Value = HistoryExpenses.Count.ToString(), Highlight = false },
+                new() { Label = "Period Invoiced", Value = $"{HistoryStartDate:dd MMM yyyy} – {HistoryEndDate:dd MMM yyyy}", Highlight = false }
             };
 
-            var headers = new List<string> { "Date", "Rent", "Staff Salary", "Trip Sheet Loss", "DSM Short", "Banking", "BPCL Portal", "Fuel & Travel", "Oil Purchase", "Repairs & Maint.", "Electricity", "Office Exp.", "Printing", "Other Desc", "Other Amt", "Remarks" };
-            var rows = new List<List<string>>();
+            var rows = new List<object>();
 
-            foreach (var e in HistoryExpenses.OrderBy(x => x.ExpenseDate))
+            foreach (var e in HistoryExpenses.OrderBy(x => x.ExpenseDate).ThenBy(x => x.Id))
             {
-                rows.Add(new List<string>
+                rows.Add(new
                 {
-                    e.ExpenseDate.ToString("dd-MMM-yyyy"),
-                    "₹" + e.Rent.ToString("N2"),
-                    "₹" + e.Salary.ToString("N2"),
-                    "₹" + e.TripSheetLoss.ToString("N2"),
-                    "₹" + e.DsmShort.ToString("N2"),
-                    "₹" + e.BankingExpenses.ToString("N2"),
-                    "₹" + e.BpclPortalExpenses.ToString("N2"),
-                    "₹" + e.FuelAndTravel.ToString("N2"),
-                    "₹" + e.OilPurchase.ToString("N2"),
-                    "₹" + e.RepairsAndMaintenance.ToString("N2"),
-                    "₹" + e.ElectricityExpenses.ToString("N2"),
-                    "₹" + e.OfficeExpenses.ToString("N2"),
-                    "₹" + e.PrintingExpense.ToString("N2"),
-                    e.OtherDescription,
-                    "₹" + e.OtherAmount.ToString("N2"),
-                    e.Remarks
+                    id = $"#{e.Id}",
+                    date = e.ExpenseDate.ToString("dd-MMM-yyyy"),
+                    totalAmount = e.TotalAmount,
+                    breakdown = e.ActiveFieldsSummary,
+                    remarks = string.IsNullOrWhiteSpace(e.Remarks) ? "—" : e.Remarks
                 });
             }
 
-            var printData = new GenericGridPrintData
+            var printData = new
             {
-                Title = "Pump Expenses Log Report",
-                Subtitle = $"Period: {HistoryStartDate:dd-MMM-yyyy} to {HistoryEndDate:dd-MMM-yyyy}",
-                SummaryCards = summaryCards,
-                Headers = headers,
-                Rows = rows,
-                ShowSignatures = true
+                title = "PUMP EXPENSES LOG REPORT",
+                subtitle = $"Period: {HistoryStartDate:dd-MMM-yyyy} to {HistoryEndDate:dd-MMM-yyyy}",
+                period = $"{HistoryStartDate:dd MMM yyyy} – {HistoryEndDate:dd MMM yyyy}",
+                startDate = HistoryStartDate.ToString("dd-MMM-yyyy"),
+                endDate = HistoryEndDate.ToString("dd-MMM-yyyy"),
+                totalExpenses = totalExpensesSum,
+                totalEntries = HistoryExpenses.Count,
+                summaryCards = summaryCards,
+                rows = rows,
+                generatedAt = DateTime.Now.ToString("dd-MMM-yyyy, hh:mm tt")
             };
 
-            _printService.PrintGenericGrid(printData);
+            _printService.PrintPumpExpenses(printData);
         }
         catch (Exception ex)
         {
@@ -521,17 +512,19 @@ public partial class PumpExpensesViewModel : ObservableObject
         {
             var summaryCards = new List<GenericGridPrintCard>
             {
-                new() { Label = "Total Expenses Invoiced", Value = "₹" + HistoryExpenses.Sum(e => e.Rent + e.Salary + e.TripSheetLoss + e.DsmShort + e.BankingExpenses + e.BpclPortalExpenses + e.FuelAndTravel + e.OilPurchase + e.RepairsAndMaintenance + e.ElectricityExpenses + e.OfficeExpenses + e.PrintingExpense + e.OtherAmount).ToString("N2"), Highlight = true }
+                new() { Label = "Total Expenses Invoiced", Value = "₹" + HistoryExpenses.Sum(e => e.TotalAmount).ToString("N2"), Highlight = true }
             };
 
-            var headers = new List<string> { "Date", "Rent", "Staff Salary", "Trip Sheet Loss", "DSM Short", "Banking", "BPCL Portal", "Fuel & Travel", "Oil Purchase", "Repairs & Maint.", "Electricity", "Office Exp.", "Printing", "Other Desc", "Other Amt", "Remarks" };
+            var headers = new List<string> { "#", "Date", "Total Amount", "Rent", "Staff Salary", "Trip Sheet Loss", "DSM Short", "Banking", "BPCL Portal", "Fuel & Travel", "Oil Purchase", "Repairs & Maint.", "Electricity", "Office Exp.", "Printing", "Other Desc", "Other Amt", "Remarks" };
             var rows = new List<List<string>>();
 
             foreach (var e in HistoryExpenses.OrderBy(x => x.ExpenseDate))
             {
                 rows.Add(new List<string>
                 {
+                    $"#{e.Id}",
                     e.ExpenseDate.ToString("dd-MMM-yyyy"),
+                    "₹" + e.TotalAmount.ToString("N2"),
                     "₹" + e.Rent.ToString("N2"),
                     "₹" + e.Salary.ToString("N2"),
                     "₹" + e.TripSheetLoss.ToString("N2"),

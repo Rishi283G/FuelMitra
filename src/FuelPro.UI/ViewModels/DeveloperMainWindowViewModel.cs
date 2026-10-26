@@ -3135,6 +3135,7 @@ public partial class DeveloperMainWindowViewModel
             DisplayName = "New Collection Method",
             Category = "Online",
             HasTidBatch = true,
+            HasOtp = true,
             DisplayOrder = nextOrder,
             IsActive = true,
             IsSystem = false,

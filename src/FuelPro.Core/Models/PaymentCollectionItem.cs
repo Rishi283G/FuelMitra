@@ -44,6 +44,12 @@ public class PaymentCollectionItem
     public string? Otp { get; set; }
 
     /// <summary>
+    /// Stable transaction UUID to guarantee independent identity across entry, serialization, and persistence.
+    /// </summary>
+    [MaxLength(50)]
+    public string? TransactionId { get; set; }
+
+    /// <summary>
     /// Provenance flag indicating whether this row was generated as a synthetic summary row.
     /// Not persisted in database schema.
     /// </summary>

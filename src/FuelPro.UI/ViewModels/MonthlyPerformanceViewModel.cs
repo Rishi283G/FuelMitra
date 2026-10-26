@@ -210,48 +210,37 @@ public partial class MonthlyPerformanceViewModel : ObservableObject, IDisposable
     {
         try
         {
-            var summaryCards = new List<GenericGridPrintCard>
+            var rows = DayRows.Select(row => new
             {
-                new() { Label = "Total Sale", Value = "₹" + MonthTotalSale.ToString("N2"), Highlight = true },
-                new() { Label = "Total Volume", Value = MonthTotalLitres.ToString("N2") + " L", Highlight = false },
-                new() { Label = "Total Collection", Value = "₹" + MonthTotalCollection.ToString("N2"), Highlight = false },
-                new() { Label = "Avg Daily Sale", Value = "₹" + MonthAvgDailySale.ToString("N2"), Highlight = false },
-                new() { Label = "Total Entries", Value = MonthTotalEntries.ToString(), Highlight = false }
+                dateDisplay = row.DateDisplay,
+                dayName = row.DayName,
+                dsmEntries = row.DsmEntryCount,
+                totalSale = row.TotalSale,
+                petrolLitres = row.PetrolLitres,
+                dieselLitres = row.DieselLitres,
+                speedLitres = row.SpeedLitres,
+                cngKg = row.CngKg,
+                totalLitres = row.TotalLitres,
+                expenses = row.Expenses,
+                totalCollection = row.TotalCollection,
+                mismatch = row.Mismatch
+            }).ToList();
+
+            var printData = new
+            {
+                selectedMonth = SelectedMonth.ToString("MMMM yyyy"),
+                subtitle = $"Selected Month: {SelectedMonth:MMMM yyyy}",
+                totalSale = MonthTotalSale,
+                totalVolume = MonthTotalLitres,
+                totalLitres = MonthTotalLitres,
+                totalCollection = MonthTotalCollection,
+                totalExpenses = DayRows.Sum(r => r.Expenses),
+                avgDailySale = MonthAvgDailySale,
+                totalEntries = MonthTotalEntries,
+                rows = rows
             };
 
-            var headers = new List<string> { "Date", "Day", "DSM Entries", "Sale", "Total Litres", "Expenses", "Diesel (L)", "Petrol (L)", "Speed (L)", "CNG (Kg)", "Collection", "Mismatch" };
-            var rows = new List<List<string>>();
-
-            foreach (var row in DayRows)
-            {
-                rows.Add(new List<string>
-                {
-                    row.DateDisplay,
-                    row.DayName,
-                    row.DsmEntryCount.ToString(),
-                    "₹" + row.TotalSale.ToString("N2"),
-                    row.TotalLitres.ToString("N2") + " L",
-                    "₹" + row.Expenses.ToString("N2"),
-                    row.DieselLitres.ToString("N2"),
-                    row.PetrolLitres.ToString("N2"),
-                    row.SpeedLitres.ToString("N2"),
-                    row.CngKg.ToString("N2"),
-                    "₹" + row.TotalCollection.ToString("N2"),
-                    "₹" + row.Mismatch.ToString("N2")
-                });
-            }
-
-            var printData = new GenericGridPrintData
-            {
-                Title = "Monthly Performance Statement",
-                Subtitle = $"Selected Month: {SelectedMonth:MMMM yyyy}",
-                SummaryCards = summaryCards,
-                Headers = headers,
-                Rows = rows,
-                ShowSignatures = true
-            };
-
-            _printService.PrintGenericGrid(printData);
+            _printService.PrintMonthlyPerformance(printData);
         }
         catch (Exception ex)
         {

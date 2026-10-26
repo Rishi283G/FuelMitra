@@ -2695,7 +2695,7 @@ public class SyncEngine
 
                         foreach (var existing in existingCts)
                         {
-                            if (!existing.IsSystem && !processedCodes.Contains(existing.Code))
+                            if (!processedCodes.Contains(existing.Code))
                             {
                                 context.CollectionTypes.Remove(existing);
                             }

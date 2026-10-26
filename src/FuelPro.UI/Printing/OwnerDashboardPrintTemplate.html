@@ -299,7 +299,8 @@
         </div>
         <div class="header-title-box">
             <h1 id="stationName">FUEL STATION</h1>
-            <div class="tagline" id="stationTagline">KANDHARE NANGADE SURVE GROUP</div>
+            <div class="tagline" id="stationTagline" style="display: none;"></div>
+            <div class="address" id="stationAddress" style="font-size: 11px; color: #475569; margin-top: 2px; display: none;"></div>
             <div class="doc-title">Owner Dashboard Operational Summary</div>
         </div>
         <div class="logo-box" style="visibility: hidden;"></div>
@@ -489,10 +490,31 @@
 
         // Station Header & Branding
         if (data.stationName) document.getElementById('stationName').innerText = data.stationName;
-        if (data.stationTagline) document.getElementById('stationTagline').innerText = data.stationTagline;
-        if (data.logoBase64) {
+        var tagline = data.stationTagline || data.stationSubtitle || '';
+        var tagEl = document.getElementById('stationTagline');
+        if (tagEl) {
+            if (tagline && tagline.trim()) {
+                tagEl.innerText = tagline.trim();
+                tagEl.style.display = 'block';
+            } else {
+                tagEl.style.display = 'none';
+            }
+        }
+        var addrEl = document.getElementById('stationAddress');
+        if (addrEl) {
+            var parts = [];
+            if (data.stationAddress && data.stationAddress.trim()) parts.push(data.stationAddress.trim());
+            if (data.stationContact && data.stationContact.trim()) parts.push(data.stationContact.trim());
+            if (parts.length > 0) {
+                addrEl.innerText = parts.join(' | ');
+                addrEl.style.display = 'block';
+            } else {
+                addrEl.style.display = 'none';
+            }
+        }
+        if (data.logo || data.logoBase64) {
             var logo = document.getElementById('stationLogo');
-            logo.src = 'data:image/png;base64,' + data.logoBase64;
+            logo.src = data.logo || ('data:image/png;base64,' + data.logoBase64);
             logo.style.display = 'block';
         }
 

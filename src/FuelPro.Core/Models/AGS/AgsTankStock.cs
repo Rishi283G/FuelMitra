@@ -31,6 +31,13 @@ public class AgsTankStock
     /// <summary>Any receipt received during this shift (tanker delivery).</summary>
     public double ReceiptLitres { get; set; }
 
+    /// <summary>Explicit measurement flag distinguishing genuine zero dip from unrecorded dip.</summary>
+    public bool HasPhysicalDip { get; set; }
+
+    /// <summary>"AgsGauge", "Manual", or "None"</summary>
+    [MaxLength(20)]
+    public string? DipSource { get; set; }
+
     // Navigation
     [ForeignKey(nameof(AgsShiftImportId))]
     public AgsShiftImport? AgsShiftImport { get; set; }

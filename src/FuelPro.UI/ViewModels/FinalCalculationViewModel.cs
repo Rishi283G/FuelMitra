@@ -258,10 +258,10 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
             }
 
             var ph = types.FirstOrDefault(c => string.Equals(c.Code, "PHONEPE", StringComparison.OrdinalIgnoreCase));
-            var cc = types.FirstOrDefault(c => string.Equals(c.Code, "CREDIT_CARD", StringComparison.OrdinalIgnoreCase)
-                                            || string.Equals(c.Code, "CREDITCARD", StringComparison.OrdinalIgnoreCase)
-                                            || string.Equals(c.Code, "PINELAB", StringComparison.OrdinalIgnoreCase)
-                                            || string.Equals(c.Code, "PINELABS", StringComparison.OrdinalIgnoreCase));
+            var cc = types.FirstOrDefault(c => {
+                var nc = c.Code?.ToUpper().Replace("_", "").Replace(" ", "") ?? "";
+                return nc.Contains("PINELAB") || nc.Contains("CREDITCARD") || nc == "CARD";
+            });
             var pc = types.FirstOrDefault(c => string.Equals(c.Code, "PETROCARD", StringComparison.OrdinalIgnoreCase)
                                             || string.Equals(c.Code, "PETRO_CARD", StringComparison.OrdinalIgnoreCase));
 

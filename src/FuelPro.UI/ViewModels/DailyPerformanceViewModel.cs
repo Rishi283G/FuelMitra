@@ -7,6 +7,7 @@ using FuelPro.Core.Repositories;
 using FuelPro.Core.Services;
 using Microsoft.Extensions.DependencyInjection;
 using System.Collections.ObjectModel;
+using System.Windows;
 using FuelPro.UI.Printing;
 
 namespace FuelPro.UI.ViewModels;
@@ -83,58 +84,6 @@ public partial class DailyPerformanceViewModel : ObservableObject, IDisposable
 
     partial void OnSelectedDateChanged(DateTime value) => _ = LoadAsync();
 
-    [RelayCommand]
-    private void Print()
-    {
-        try
-        {
-            var summaryCards = new List<GenericGridPrintCard>
-            {
-                new() { Label = "Total Sale", Value = "₹" + TotalSale.ToString("N2"), Highlight = true },
-                new() { Label = "Total Volume", Value = TotalLitres.ToString("N2") + " L", Highlight = false },
-                new() { Label = "Total Collection", Value = "₹" + TotalCollection.ToString("N2"), Highlight = false },
-                new() { Label = "Total Mismatch", Value = "₹" + TotalMismatch.ToString("N2"), Highlight = false }
-            };
-
-            var headers = new List<string> { "DSM Name", "Shifts", "Sale", "Total Litres", "Expenses", "Diesel (L)", "Petrol (L)", "Speed (L)", "CNG (Kg)", "Collection", "Mismatch" };
-            var rows = new List<List<string>>();
-
-            foreach (var row in DsmBreakdown)
-            {
-                rows.Add(new List<string>
-                {
-                    row.DsmName,
-                    row.ShiftCount.ToString(),
-                    "₹" + row.TotalSale.ToString("N2"),
-                    row.TotalLitres.ToString("N2") + " L",
-                    "₹" + row.Expenses.ToString("N2"),
-                    row.DieselLitres.ToString("N2"),
-                    row.PetrolLitres.ToString("N2"),
-                    row.SpeedLitres.ToString("N2"),
-                    row.CngKg.ToString("N2"),
-                    "₹" + row.TotalCollection.ToString("N2"),
-                    "₹" + row.Mismatch.ToString("N2")
-                });
-            }
-
-            var printData = new GenericGridPrintData
-            {
-                Title = "Daily Performance Report",
-                Subtitle = $"Date: {SelectedDate:dd-MMM-yyyy}",
-                SummaryCards = summaryCards,
-                Headers = headers,
-                Rows = rows,
-                ShowSignatures = true
-            };
-
-            _printService.PrintGenericGrid(printData);
-        }
-        catch (Exception ex)
-        {
-            Serilog.Log.Error(ex, "Failed to print daily performance report");
-            System.Windows.MessageBox.Show($"Print failed: {ex.Message}", "Print Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
-        }
-    }
 
     [RelayCommand]
     private async Task ExportExcelAsync()
@@ -291,6 +240,47 @@ public partial class DailyPerformanceViewModel : ObservableObject, IDisposable
             }
         }
         finally { IsLoading = false; }
+    }
+
+    [RelayCommand]
+    private void Print()
+    {
+        try
+        {
+            var rows = DsmBreakdown.Select(r => new
+            {
+                dsmName = r.DsmName,
+                shiftCount = r.ShiftCount,
+                totalSale = r.TotalSale,
+                dieselLitres = r.DieselLitres,
+                petrolLitres = r.PetrolLitres,
+                speedLitres = r.SpeedLitres,
+                cngKg = r.CngKg,
+                totalLitres = r.TotalLitres,
+                expenses = r.Expenses,
+                totalCollection = r.TotalCollection,
+                mismatch = r.Mismatch
+            }).ToList();
+
+            var printData = new
+            {
+                dateDisplay = SelectedDate.ToString("dd-MMM-yyyy"),
+                totalSale = TotalSale,
+                totalVolume = TotalLitres,
+                totalLitres = TotalLitres,
+                totalCollection = TotalCollection,
+                totalExpenses = TotalExpenses,
+                totalMismatch = TotalMismatch,
+                rows = rows
+            };
+
+            _printService.PrintDailyPerformance(printData);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to print Daily Performance report");
+            MessageBox.Show($"Print failed: {ex.Message}", "Print Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 }
 

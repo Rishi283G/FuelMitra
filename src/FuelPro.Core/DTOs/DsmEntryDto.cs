@@ -22,9 +22,12 @@ public class PaymentCollectionDto
     public decimal CreditCard { get; set; }
     public decimal CashDeposit { get; set; }
     public decimal PhysicalCash { get; set; }
+    public decimal Cash3 { get; set; }
     public decimal PetroCard { get; set; }
     public decimal DynamicPayments { get; set; }
     public decimal Others { get; set; }
+    public decimal CollectionReduction { get; set; }
+    public string? CollectionReductionRemark { get; set; }
 }
 
 public class DebitEntryDto

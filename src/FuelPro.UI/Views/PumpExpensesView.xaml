@@ -181,7 +181,15 @@
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
 
-                            <TextBlock Grid.Column="0" Text="Expense Log History" Style="{StaticResource SectionTitle}" VerticalAlignment="Center" Margin="0"/>
+                            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="Expense Log History" Style="{StaticResource SectionTitle}" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                                <Border Background="#E8F5E9" CornerRadius="12" Padding="10,4" VerticalAlignment="Center" BorderBrush="#A5D6A7" BorderThickness="1">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="Total: " FontSize="12" FontWeight="SemiBold" Foreground="#2E7D32"/>
+                                        <TextBlock Text="{Binding TotalPumpExpensesAmount, Converter={StaticResource CurrencyConverter}}" FontSize="13" FontWeight="Bold" Foreground="#1B5E20"/>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
 
                             <!-- Range selector -->
                             <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center">
@@ -190,14 +198,25 @@
                             </StackPanel>
 
                             <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                                <Button Content="Print Log" Command="{Binding PrintCommand}" Style="{StaticResource MaterialDesignRaisedButton}" Background="#00695C" BorderBrush="#00695C" Height="40" Padding="12,0" Margin="0,0,8,0"/>
-                                <Button Content="Export Excel" Command="{Binding ExportExcelCommand}" Style="{StaticResource MaterialDesignRaisedButton}" Background="#1B5E20" BorderBrush="#1B5E20" Height="40" Padding="12,0"/>
+                                <Button Command="{Binding PrintCommand}" Style="{StaticResource MaterialDesignRaisedButton}" Background="#00695C" BorderBrush="#00695C" Height="40" Padding="14,0" Margin="0,0,8,0">
+                                    <StackPanel Orientation="Horizontal">
+                                        <materialDesign:PackIcon Kind="Printer" Margin="0,0,6,0" VerticalAlignment="Center" Width="18" Height="18"/>
+                                        <TextBlock Text="Print Log" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Button>
+                                <Button Command="{Binding ExportExcelCommand}" Style="{StaticResource MaterialDesignRaisedButton}" Background="#1B5E20" BorderBrush="#1B5E20" Height="40" Padding="14,0">
+                                    <StackPanel Orientation="Horizontal">
+                                        <materialDesign:PackIcon Kind="FileExcel" Margin="0,0,6,0" VerticalAlignment="Center" Width="18" Height="18"/>
+                                        <TextBlock Text="Export Excel" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Button>
                             </StackPanel>
                         </Grid>
 
                         <!-- History Table -->
                         <DataGrid Grid.Row="1" ItemsSource="{Binding HistoryExpenses}" AutoGenerateColumns="False" 
                                   IsReadOnly="True" VerticalScrollBarVisibility="Auto"
+                                  AlternatingRowBackground="#FAFAFA" GridLinesVisibility="All"
                                   RowDetailsVisibilityMode="Visible">
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="#" Binding="{Binding Id, StringFormat='#{0}'}" Width="55" FontWeight="Bold"/>

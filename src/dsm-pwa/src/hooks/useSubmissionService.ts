@@ -52,6 +52,7 @@ export function useSubmissionService() {
       const isUpdate = existingId !== null;
 
       const metadataPayload = {
+        formatVersion: 3,
         stationName: (draft as any).stationName || null,
         stationId: stationId || null,
         personalLedgerName: (draft as any).personalLedgerName || null,
@@ -66,10 +67,43 @@ export function useSubmissionService() {
         expenseEntries: draft.expenseEntries || [],
         cashDenominations: (draft as any).cashDenominations || null,
         cash1Denominations: (draft as any).cash1Denominations || null,
+        cash3Amount: (draft as any).cash3Amount || (draft as any).cash3 || 0,
+        cash3Denominations: (draft as any).cash3Denominations || null,
+        debtorRepayments: (draft as any).debtorRepayments || [],
         testingEntries: (draft as any).testingEntries || [],
         connectedPumpId: (draft as any).connectedPumpId || null,
         connectedPumpIds: (draft as any).connectedPumpIds || ((draft as any).connectedPumpId ? [(draft as any).connectedPumpId] : []),
-        oilDefSales: draft.oilDefSales || []
+        oilDefSales: draft.oilDefSales || [],
+        collectionReduction: (draft as any).collectionReduction || 0,
+        collectionReductionRemark: (draft as any).collectionReductionRemark || null,
+        phonePeMorning: (draft as any).phonePeMorning ?? 0,
+        phonePeTidMorning: (draft as any).phonePeTidMorning || "",
+        phonePeBatchMorning: (draft as any).phonePeBatchMorning || "",
+        phonePeDay: (draft as any).phonePeDay ?? 0,
+        phonePeTidDay: (draft as any).phonePeTidDay || "",
+        phonePeBatchDay: (draft as any).phonePeBatchDay || "",
+        phonePeNight: (draft as any).phonePeNight ?? 0,
+        phonePeTidNight: (draft as any).phonePeTidNight || "",
+        phonePeBatchNight: (draft as any).phonePeBatchNight || "",
+        creditCardMorning: (draft as any).creditCardMorning ?? 0,
+        creditCardTidMorning: (draft as any).creditCardTidMorning || "",
+        creditCardBatchMorning: (draft as any).creditCardBatchMorning || "",
+        creditCardDay: (draft as any).creditCardDay ?? 0,
+        creditCardTidDay: (draft as any).creditCardTidDay || "",
+        creditCardBatchDay: (draft as any).creditCardBatchDay || "",
+        creditCardNight: (draft as any).creditCardNight ?? 0,
+        creditCardTidNight: (draft as any).creditCardTidNight || "",
+        creditCardBatchNight: (draft as any).creditCardBatchNight || "",
+        petroCardMorning: (draft as any).petroCardMorning ?? 0,
+        petroCardTidMorning: (draft as any).petroCardTidMorning || "",
+        petroCardBatchMorning: (draft as any).petroCardBatchMorning || "",
+        petroCardDay: (draft as any).petroCardDay ?? 0,
+        petroCardTidDay: (draft as any).petroCardTidDay || "",
+        petroCardBatchDay: (draft as any).petroCardBatchDay || "",
+        petroCardNight: (draft as any).petroCardNight ?? 0,
+        petroCardTidNight: (draft as any).petroCardTidNight || "",
+        petroCardBatchNight: (draft as any).petroCardBatchNight || "",
+        dynamicCollectionValues: (draft as any).dynamicCollectionValues || {}
       };
 
       if (isUpdate) {

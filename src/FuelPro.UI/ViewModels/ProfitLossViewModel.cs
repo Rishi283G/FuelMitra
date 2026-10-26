@@ -419,6 +419,10 @@ public partial class ProfitLossViewModel : ObservableObject, IDisposable
                 defaultHsd, defaultMsI, defaultMsII, defaultCng,
                 stationName);
 
+            _cachedEntries = entries;
+            _cachedShifts = shifts;
+            _cachedShiftExpenses = shiftExpensesList;
+
             TotalCreditorRepayments = report.DebtorRepaymentsTotal;
             TotalGrossSales = report.TotalFuelAmount;
             TotalCollection = report.ActualCollection;
@@ -432,6 +436,10 @@ public partial class ProfitLossViewModel : ObservableObject, IDisposable
         finally { IsLoading = false; }
     }
 
+    private List<DsmEntry> _cachedEntries = new();
+    private List<Shift> _cachedShifts = new();
+    private List<Expense> _cachedShiftExpenses = new();
+
     private readonly PrintService _printService = App.Services.GetRequiredService<PrintService>();
 
     [RelayCommand]
@@ -439,6 +447,104 @@ public partial class ProfitLossViewModel : ObservableObject, IDisposable
     {
         try
         {
+            // 1. Fuel Details with Testing
+            double hsdTesting = _cachedEntries.SelectMany(e => e.TestingEntries ?? Enumerable.Empty<TestingEntry>())
+                .Where(t => string.Equals(t.FuelType, "HSD", StringComparison.OrdinalIgnoreCase))
+                .Sum(t => t.Litres);
+            double msITesting = _cachedEntries.SelectMany(e => e.TestingEntries ?? Enumerable.Empty<TestingEntry>())
+                .Where(t => string.Equals(t.FuelType, "MS", StringComparison.OrdinalIgnoreCase) || string.Equals(t.FuelType, "MS-I", StringComparison.OrdinalIgnoreCase))
+                .Sum(t => t.Litres);
+            double msIITesting = _cachedEntries.SelectMany(e => e.TestingEntries ?? Enumerable.Empty<TestingEntry>())
+                .Where(t => string.Equals(t.FuelType, "SPEED", StringComparison.OrdinalIgnoreCase) || string.Equals(t.FuelType, "MS-II", StringComparison.OrdinalIgnoreCase))
+                .Sum(t => t.Litres);
+
+            var fuelBreakdown = new List<object>
+            {
+                new { name = "Diesel (HSD)", totalSale = HsdLitres, testing = hsdTesting, actualSale = Math.Max(0, HsdLitres - hsdTesting), margin = HsdMargin, profit = HsdProfit, avgSaleRate = HsdAvgSaleRate, avgPurchaseRate = HsdAvgPurchaseRate },
+                new { name = "Petrol (MS-I)", totalSale = MsILitres, testing = msITesting, actualSale = Math.Max(0, MsILitres - msITesting), margin = MsIMargin, profit = MsIProfit, avgSaleRate = MsIAvgSaleRate, avgPurchaseRate = MsIAvgPurchaseRate },
+                new { name = "Speed (MS-II)", totalSale = MsIILitres, testing = msIITesting, actualSale = Math.Max(0, MsIILitres - msIITesting), margin = MsIIMargin, profit = MsIIProfit, avgSaleRate = MsIIAvgSaleRate, avgPurchaseRate = MsIIAvgPurchaseRate },
+                new { name = "CNG", totalSale = CngLitres, testing = 0.0, actualSale = CngLitres, margin = CngMargin, profit = CngProfit, avgSaleRate = CngAvgSaleRate, avgPurchaseRate = CngAvgPurchaseRate }
+            };
+
+            // 2. Oil & DEF Details
+            var oilDefBreakdown = new List<object>
+            {
+                new { productType = "Lube Oil", openingStock = OilSalesQty * 1.2, closingStock = OilSalesQty * 0.2, qtySold = OilSalesQty, avgCost = OilAvgPurchasePrice, avgSale = OilSalePrice, profit = OilProfit },
+                new { productType = "DEF (AdBlue)", openingStock = DefSalesQty * 1.2, closingStock = DefSalesQty * 0.2, qtySold = DefSalesQty, avgCost = DefAvgPurchasePrice, avgSale = DefSalePrice, profit = DefProfit }
+            };
+
+            // 3. Detailed Shift / DSM Expenses
+            var detailedExpenses = new List<object>();
+            foreach (var entry in _cachedEntries)
+            {
+                var shift = _cachedShifts.FirstOrDefault(s => s.ShiftId == entry.ShiftId);
+                var shiftName = shift != null ? $"Shift {shift.ShiftType}" : "Shift";
+                var dateStr = (shift?.ShiftDate ?? entry.CreatedAt).ToString("dd-MMM-yyyy");
+                foreach (var exp in entry.Expenses ?? Enumerable.Empty<Expense>())
+                {
+                    detailedExpenses.Add(new
+                    {
+                        date = dateStr,
+                        shift = shiftName,
+                        dsm = entry.DsmName,
+                        particulars = exp.Description ?? "DSM Expense",
+                        amount = exp.Amount
+                    });
+                }
+            }
+            foreach (var exp in _cachedShiftExpenses)
+            {
+                var shift = _cachedShifts.FirstOrDefault(s => s.ShiftId == exp.ShiftId);
+                detailedExpenses.Add(new
+                {
+                    date = shift != null ? shift.ShiftDate.ToString("dd-MMM-yyyy") : StartDate.ToString("dd-MMM-yyyy"),
+                    shift = shift != null ? $"Shift {shift.ShiftType}" : "Shift",
+                    dsm = "Shift Level",
+                    particulars = exp.Description ?? "Shift Expense",
+                    amount = exp.Amount
+                });
+            }
+
+            // 4. Kandhare Petroleum / Personal Ledger Entries
+            var kpEntries = new List<object>();
+            foreach (var entry in _cachedEntries)
+            {
+                if (entry.KhandharePetroleumEntries != null)
+                {
+                    foreach (var kp in entry.KhandharePetroleumEntries)
+                    {
+                        kpEntries.Add(new
+                        {
+                            date = kp.Date.ToString("dd-MMM-yyyy"),
+                            dsmName = kp.DsmName,
+                            name = kp.Name,
+                            slipNumber = kp.SlipNumber,
+                            vehicleNumber = kp.VehicleNumber ?? "-",
+                            amount = kp.Amount
+                        });
+                    }
+                }
+            }
+            double totalKp = kpEntries.Count > 0 ? kpEntries.Sum(k => (double)((dynamic)k).amount) : 0;
+
+            // 5. Owner Pump Expenses
+            var pumpExpensesList = new List<object>
+            {
+                new { category = "Station Rent / Lease", particulars = "Monthly site rent / lease overhead", amount = PumpRent },
+                new { category = "Staff & Manager Salaries", particulars = "Station permanent staff & manager remuneration", amount = PumpSalary },
+                new { category = "Trip Sheet Loss", particulars = "Transit shortage & tank truck unloading variances", amount = PumpTripSheetLoss },
+                new { category = "DSM Shift Shortages", particulars = "Unrecovered DSM cash & meter discrepancies", amount = PumpDsmShort },
+                new { category = "Banking & POS Charges", particulars = "EDC terminal rental & card processing MDR charges", amount = PumpBankingExpenses },
+                new { category = "BPCL Portal Expenses", particulars = "Oil company portal subscription & automation fees", amount = PumpBpclPortalExpenses },
+                new { category = "Generator Fuel & Travel", particulars = "DG set diesel & operational conveyance", amount = PumpFuelAndTravel },
+                new { category = "Bulk Oil / Inventory Purchases", particulars = "Direct lube & consumable procurement", amount = PumpOilPurchase },
+                new { category = "Repairs & Maintenance", particulars = "DU maintenance, electrical & dispenser upkeep", amount = PumpRepairsAndMaintenance },
+                new { category = "Electricity & Power Charges", particulars = "Electricity utility bills for pump forecourt & canopy", amount = PumpElectricity },
+                new { category = "Office & Administrative", particulars = "Stationery, cleaning & administrative overheads", amount = PumpOfficeExpenses },
+                new { category = "Printing & Computer Stationery", particulars = "Slip paper rolls, printer ribbon & cartridges", amount = PumpPrintingExpense },
+                new { category = "Other Pump Miscellaneous", particulars = "Unclassified dealer direct expenses", amount = PumpOtherAmount }
+            };
+
             var printData = new
             {
                 StartDate = StartDate.ToString("dd-MMM-yyyy"),
@@ -460,6 +566,7 @@ public partial class ProfitLossViewModel : ObservableObject, IDisposable
                     totalLitres = TotalFuelLitres,
                     totalFuelProfit = TotalFuelProfit
                 },
+                fuelBreakdown = fuelBreakdown,
                 oilProfit = new
                 {
                     openingStock = OilSalesQty * 1.2,
@@ -478,7 +585,12 @@ public partial class ProfitLossViewModel : ObservableObject, IDisposable
                     salePrice = DefSalePrice,
                     totalProfit = DefProfit
                 },
+                oilDefBreakdown = oilDefBreakdown,
                 expenses = ExpenseBreakdown.Select(e => new { category = e.Category, amount = e.Amount }).ToList(),
+                detailedExpenses = detailedExpenses,
+                kpEntries = kpEntries,
+                totalKpDrawings = totalKp,
+                pumpExpensesList = pumpExpensesList,
                 totalExpenses = TotalExpenses,
                 totalDsmSalaries = TotalDsmSalaries,
                 grossProfit = GrossProfit,

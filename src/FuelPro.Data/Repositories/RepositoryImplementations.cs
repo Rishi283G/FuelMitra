@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using FuelPro.Core.Common;
+using FuelPro.Core.DTOs;
 using FuelPro.Core.Models;
 using FuelPro.Core.Models.AGS;
 using FuelPro.Core.Repositories;
@@ -829,6 +830,8 @@ public class PaymentRepository : IPaymentRepository
                 existing.PetroCardNight   = payment.PetroCardNight;
                 existing.CashDeposit = payment.CashDeposit;
                 existing.Others      = payment.Others;
+                existing.CollectionReduction = payment.CollectionReduction;
+                existing.CollectionReductionRemark = payment.CollectionReductionRemark;
                 existing.CardTid     = payment.CardTid;
                 existing.CardBatch   = payment.CardBatch;
                 existing.PhonePeTid  = payment.PhonePeTid;
@@ -2423,10 +2426,11 @@ public class TankDailyStockRepository : ITankDailyStockRepository
                 }
             }
 
-            var fuelTypes = new[] { "HSD", "MS-I", "MS-II" };
+            var fuelTypes = new[] { "HSD", "MS-I", "MS-II", "CNG" };
             var shiftB = activeImports.FirstOrDefault(i => i.ShiftType == "B");
+            var shiftC = activeImports.FirstOrDefault(i => i.ShiftType == "C");
             var shiftA = activeImports.FirstOrDefault(i => i.ShiftType == "A");
-            var lastImport = shiftA ?? shiftB;
+            var lastImport = shiftA ?? shiftC ?? shiftB;
 
             int? shiftId = null;
             if (lastImport != null)
@@ -2454,17 +2458,37 @@ public class TankDailyStockRepository : ITankDailyStockRepository
                     _ => 0
                 };
 
-                if (stocks.Any())
+                if (ft == "CNG")
                 {
+                    sale = dsmEntries
+                        .SelectMany(e => e.NozzleReadings ?? new List<NozzleReading>())
+                        .Where(r => string.Equals(r.FuelType, "CNG", StringComparison.OrdinalIgnoreCase))
+                        .Sum(r => r.SaleLitres);
                     opening = shiftB?.TankStocks?.FirstOrDefault(t => t.FuelType == ft)?.OpeningStockLitres 
+                           ?? shiftC?.TankStocks?.FirstOrDefault(t => t.FuelType == ft)?.OpeningStockLitres 
                            ?? shiftA?.TankStocks?.FirstOrDefault(t => t.FuelType == ft)?.OpeningStockLitres 
                            ?? 0;
                     closing = shiftA?.TankStocks?.FirstOrDefault(t => t.FuelType == ft)?.ClosingStockLitres 
+                           ?? shiftC?.TankStocks?.FirstOrDefault(t => t.FuelType == ft)?.ClosingStockLitres 
+                           ?? shiftB?.TankStocks?.FirstOrDefault(t => t.FuelType == ft)?.ClosingStockLitres 
+                           ?? (opening - sale);
+                    dip = 0;
+                    manual = closing;
+                }
+                else if (stocks.Any())
+                {
+                    opening = shiftB?.TankStocks?.FirstOrDefault(t => t.FuelType == ft)?.OpeningStockLitres 
+                           ?? shiftC?.TankStocks?.FirstOrDefault(t => t.FuelType == ft)?.OpeningStockLitres 
+                           ?? shiftA?.TankStocks?.FirstOrDefault(t => t.FuelType == ft)?.OpeningStockLitres 
+                           ?? 0;
+                    closing = shiftA?.TankStocks?.FirstOrDefault(t => t.FuelType == ft)?.ClosingStockLitres 
+                           ?? shiftC?.TankStocks?.FirstOrDefault(t => t.FuelType == ft)?.ClosingStockLitres 
                            ?? shiftB?.TankStocks?.FirstOrDefault(t => t.FuelType == ft)?.ClosingStockLitres 
                            ?? 0;
                     sale = stocks.Sum(t => t.FuelDispensedLitres);
                     purchased = stocks.Sum(t => t.ReceiptLitres);
                     dip = shiftA?.TankStocks?.FirstOrDefault(t => t.FuelType == ft)?.ClosingDipMM 
+                       ?? shiftC?.TankStocks?.FirstOrDefault(t => t.FuelType == ft)?.ClosingDipMM 
                        ?? shiftB?.TankStocks?.FirstOrDefault(t => t.FuelType == ft)?.ClosingDipMM 
                        ?? 0;
                     manual = closing;
@@ -2537,6 +2561,342 @@ public class TankDailyStockRepository : ITankDailyStockRepository
         catch (Exception ex)
         {
             Log.Error(ex, "Failed to update TankDailyStocks for date {Date}", date);
+        }
+    }
+
+    public async Task<Result<TankStockHistoryResultDto>> GetDetailedHistoryAsync(DateTime startDate, DateTime endDate, string? fuelFilter = null)
+    {
+        try
+        {
+            var result = new TankStockHistoryResultDto();
+
+            // Load relevant active imports without tracking
+            var activeImports = await _context.AgsShiftImports
+                .AsNoTracking()
+                .Include(i => i.TankStocks)
+                .Include(i => i.NozzleReadings)
+                .Where(i => i.ImportDate.Date >= startDate.Date.AddDays(-2) && i.ImportDate.Date <= endDate.Date && i.IsActive)
+                .ToListAsync();
+
+            // Load daily summaries
+            var dailySummaries = await _context.AgsDailySummaries
+                .AsNoTracking()
+                .Where(s => s.SummaryDate.Date >= startDate.Date && s.SummaryDate.Date <= endDate.Date)
+                .ToListAsync();
+
+            // Load DSM entries
+            var dsmEntries = await _context.DsmEntries
+                .AsNoTracking()
+                .Include(e => e.NozzleReadings)
+                .Include(e => e.TestingEntries)
+                .Include(e => e.Shift)
+                .Where(e => e.Shift != null && e.Shift.ShiftDate.Date >= startDate.Date && e.Shift.ShiftDate.Date <= endDate.Date)
+                .ToListAsync();
+
+            // Load fuel tankers
+            var tankers = await _context.FuelTankers
+                .AsNoTracking()
+                .Where(t => t.TankerDate.Date >= startDate.Date && t.TankerDate.Date <= endDate.Date)
+                .ToListAsync();
+
+            var allFuelTypes = new[] { "HSD", "MS-I", "MS-II", "CNG" };
+            var activeFuels = allFuelTypes;
+            if (!string.IsNullOrWhiteSpace(fuelFilter) && fuelFilter != "All" && fuelFilter != "All Fuels")
+            {
+                activeFuels = allFuelTypes.Where(f => string.Equals(f, fuelFilter, StringComparison.OrdinalIgnoreCase)).ToArray();
+            }
+
+            var shiftOrder = new[] { "B", "C", "A" };
+
+            for (var dt = startDate.Date; dt <= endDate.Date; dt = dt.AddDays(1))
+            {
+                var daySummary = dailySummaries.FirstOrDefault(s => s.SummaryDate.Date == dt);
+                var dayImports = activeImports.Where(i => i.ImportDate.Date == dt).ToList();
+                var dayDsm = dsmEntries.Where(e => e.Shift != null && e.Shift.ShiftDate.Date == dt).ToList();
+                var dayTankers = tankers.Where(t => t.TankerDate.Date == dt).ToList();
+
+                var comparisonDto = new TankDateComparisonDto { Date = dt };
+
+                foreach (var fuel in activeFuels)
+                {
+                    double daySales = 0;
+                    double dayTesting = 0;
+                    double dayReceipts = 0;
+                    double dayOpeningStock = 0;
+                    double? dayClosingStock = null;
+                    double? dayMeasuredStock = null;
+                    bool hasDayOpening = false;
+                    bool hasShiftA = false;
+                    bool hasShiftC = false;
+                    bool hasShiftB = false;
+
+                    foreach (var shift in shiftOrder)
+                    {
+                        var shiftImport = dayImports.FirstOrDefault(i => i.ShiftType == shift);
+                        var shiftDsm = dayDsm.Where(e => e.Shift?.ShiftType == shift).ToList();
+
+                        if (shift == "B") hasShiftB = shiftImport != null || shiftDsm.Count > 0;
+                        if (shift == "C") hasShiftC = shiftImport != null || shiftDsm.Count > 0;
+                        if (shift == "A") hasShiftA = shiftImport != null || shiftDsm.Count > 0;
+
+                        // Only generate shift row if shift data exists or there are DSM entries
+                        if (shiftImport == null && shiftDsm.Count == 0)
+                        {
+                            continue;
+                        }
+
+                        var tankStock = shiftImport?.TankStocks?.FirstOrDefault(ts => string.Equals(ts.FuelType, fuel, StringComparison.OrdinalIgnoreCase));
+
+                        // 1. Resolve Opening Stock & Continuity Status
+                        double openingStock = 0;
+                        string continuity = "DirectPredecessor";
+
+                        if (shift == "B")
+                        {
+                            // Predecessor is Shift A of D-1
+                            var predA = activeImports.FirstOrDefault(i => i.ImportDate.Date == dt.AddDays(-1) && i.ShiftType == "A");
+                            var predATank = predA?.TankStocks?.FirstOrDefault(ts => string.Equals(ts.FuelType, fuel, StringComparison.OrdinalIgnoreCase));
+                            if (predATank != null)
+                            {
+                                openingStock = predATank.ClosingStockLitres;
+                                continuity = "DirectPredecessor";
+                            }
+                            else if (tankStock != null)
+                            {
+                                openingStock = tankStock.OpeningStockLitres;
+                                continuity = "DirectPredecessor";
+                            }
+                            else
+                            {
+                                continuity = "Incomplete";
+                            }
+                            if (!hasDayOpening)
+                            {
+                                dayOpeningStock = openingStock;
+                                hasDayOpening = true;
+                            }
+                        }
+                        else if (shift == "C")
+                        {
+                            // Predecessor is Shift B of D
+                            var predB = dayImports.FirstOrDefault(i => i.ShiftType == "B");
+                            var predBTank = predB?.TankStocks?.FirstOrDefault(ts => string.Equals(ts.FuelType, fuel, StringComparison.OrdinalIgnoreCase));
+                            if (predBTank != null)
+                            {
+                                openingStock = predBTank.ClosingStockLitres;
+                                continuity = "DirectPredecessor";
+                            }
+                            else if (tankStock != null)
+                            {
+                                openingStock = tankStock.OpeningStockLitres;
+                                continuity = "DirectPredecessor";
+                            }
+                            else
+                            {
+                                continuity = "Incomplete";
+                            }
+                        }
+                        else if (shift == "A")
+                        {
+                            // Predecessor is Shift C of D
+                            var predC = dayImports.FirstOrDefault(i => i.ShiftType == "C");
+                            var predCTank = predC?.TankStocks?.FirstOrDefault(ts => string.Equals(ts.FuelType, fuel, StringComparison.OrdinalIgnoreCase));
+                            if (predCTank != null)
+                            {
+                                openingStock = predCTank.ClosingStockLitres;
+                                continuity = "DirectPredecessor";
+                            }
+                            else
+                            {
+                                // Case A: Shift C is missing from AGS, but can we reconstruct from Shift B + DSM?
+                                var predB = dayImports.FirstOrDefault(i => i.ShiftType == "B");
+                                var predBTank = predB?.TankStocks?.FirstOrDefault(ts => string.Equals(ts.FuelType, fuel, StringComparison.OrdinalIgnoreCase));
+                                var shiftCDsm = dayDsm.Where(e => e.Shift?.ShiftType == "C").ToList();
+
+                                if (predBTank != null && shiftCDsm.Count > 0)
+                                {
+                                    double cSales = shiftCDsm.SelectMany(e => e.NozzleReadings ?? new List<NozzleReading>())
+                                                             .Where(r => string.Equals(r.FuelType, fuel, StringComparison.OrdinalIgnoreCase))
+                                                             .Sum(r => r.SaleLitres);
+                                    double cTesting = shiftCDsm.SelectMany(e => e.TestingEntries ?? new List<TestingEntry>())
+                                                               .Where(t => string.Equals(t.FuelType, fuel, StringComparison.OrdinalIgnoreCase))
+                                                               .Sum(t => t.Litres);
+                                    openingStock = Math.Round(predBTank.ClosingStockLitres - cSales + cTesting, 2);
+                                    continuity = "Reconstructed";
+                                }
+                                else if (tankStock != null)
+                                {
+                                    openingStock = tankStock.OpeningStockLitres;
+                                    continuity = "Incomplete";
+                                }
+                                else
+                                {
+                                    continuity = "Incomplete";
+                                }
+                            }
+                        }
+
+                        // 2. Dispensed / Sales
+                        double dispensed = 0;
+                        if (fuel == "CNG")
+                        {
+                            dispensed = shiftDsm
+                                .SelectMany(e => e.NozzleReadings ?? new List<NozzleReading>())
+                                .Where(r => string.Equals(r.FuelType, "CNG", StringComparison.OrdinalIgnoreCase))
+                                .Sum(r => r.SaleLitres);
+                        }
+                        else
+                        {
+                            if (shiftImport != null && shiftImport.NozzleReadings != null && shiftImport.NozzleReadings.Any(r => r.FuelType == fuel))
+                            {
+                                dispensed = shiftImport.NozzleReadings.Where(r => r.FuelType == fuel).Sum(r => r.NetSaleLitres);
+                            }
+                            else if (tankStock != null && tankStock.FuelDispensedLitres > 0)
+                            {
+                                dispensed = tankStock.FuelDispensedLitres;
+                            }
+                            else
+                            {
+                                dispensed = shiftDsm
+                                    .SelectMany(e => e.NozzleReadings ?? new List<NozzleReading>())
+                                    .Where(r => string.Equals(r.FuelType, fuel, StringComparison.OrdinalIgnoreCase))
+                                    .Sum(r => r.SaleLitres);
+                            }
+                        }
+
+                        // 3. Testing
+                        double testing = 0;
+                        if (fuel != "CNG")
+                        {
+                            foreach (var entry in shiftDsm)
+                            {
+                                foreach (var t in entry.TestingEntries ?? new List<TestingEntry>())
+                                {
+                                    var cat = PumpConfiguration.GetTestingTankCategory(t.FuelType, entry.PumpId, dt);
+                                    if ((cat == "HSD" && fuel == "HSD") ||
+                                        (cat == "MS" && fuel == "MS-I") ||
+                                        (cat == "HSD-II" && fuel == "MS-II"))
+                                    {
+                                        testing += t.Litres;
+                                    }
+                                }
+                            }
+                        }
+
+                        // 4. Receipts
+                        double receipts = 0;
+                        if (shift == "B")
+                        {
+                            receipts = dayTankers.Where(t => string.Equals(t.FuelType, fuel, StringComparison.OrdinalIgnoreCase)).Sum(t => t.Quantity);
+                            if (receipts == 0 && tankStock != null)
+                            {
+                                receipts = tankStock.ReceiptLitres;
+                            }
+                        }
+
+                        double bookStock = Math.Round(openingStock - dispensed + testing + receipts, 2);
+
+                        // 5. Measurement Provenance
+                        var prov = AgsInventoryService.ResolveMeasurementProvenance(
+                            tankStock, 
+                            shiftImport, 
+                            daySummary?.ShiftBreakdownJson, 
+                            shift, 
+                            fuel);
+
+                        bool hasMeasurement = prov.HasMeasurement && fuel != "CNG";
+                        double? measuredStock = hasMeasurement ? prov.MeasuredStock : null;
+                        double? variance = hasMeasurement ? Math.Round(prov.MeasuredStock - bookStock, 2) : null;
+                        string varianceStatus = "NotRecorded";
+
+                        if (fuel == "CNG")
+                        {
+                            varianceStatus = "N/A";
+                        }
+                        else if (hasMeasurement)
+                        {
+                            if (Math.Abs(variance!.Value) < 0.001) varianceStatus = "Balanced";
+                            else if (variance.Value > 0) varianceStatus = "Excess";
+                            else varianceStatus = "Shortage";
+                        }
+                        else
+                        {
+                            varianceStatus = "Dip Not Recorded";
+                        }
+
+                        var shiftItem = new TankShiftHistoryItemDto
+                        {
+                            OperationalDate = dt,
+                            ShiftType = shift,
+                            FuelType = fuel,
+                            TankName = fuel switch { "HSD" => "Tank 1", "MS-I" => "Tank 2", "MS-II" => "Tank 3", _ => fuel },
+                            OpeningStock = openingStock,
+                            FuelDispensed = dispensed,
+                            TestingLitres = testing,
+                            Receipts = receipts,
+                            BookStock = bookStock,
+                            DipMm = hasMeasurement ? prov.DipValue : 0,
+                            MeasuredStock = measuredStock,
+                            Variance = variance,
+                            HasPhysicalMeasurement = hasMeasurement,
+                            MeasurementSource = prov.Source ?? "None",
+                            VarianceStatus = varianceStatus,
+                            ContinuityStatus = continuity,
+                            Unit = fuel == "CNG" ? "Kg" : "L"
+                        };
+
+                        result.ShiftRows.Add(shiftItem);
+                        comparisonDto.Shifts.Add(shiftItem);
+
+                        daySales += dispensed;
+                        dayTesting += testing;
+                        dayReceipts += receipts;
+                        dayClosingStock = hasMeasurement ? measuredStock : bookStock;
+                        if (hasMeasurement) dayMeasuredStock = measuredStock;
+                    }
+
+                    // Build daily summary row
+                    if (hasShiftB || hasShiftC || hasShiftA)
+                    {
+                        double dayBookStock = Math.Round(dayOpeningStock - daySales + dayTesting + dayReceipts, 2);
+                        double? dayVar = dayMeasuredStock.HasValue && fuel != "CNG" 
+                            ? Math.Round(dayMeasuredStock.Value - dayBookStock, 2) 
+                            : null;
+
+                        string status = hasShiftA ? "Complete" : ((hasShiftB || hasShiftC) ? "Provisional" : "Incomplete");
+
+                        var dailyRow = new TankDailyHistoryItemDto
+                        {
+                            Date = dt,
+                            FuelType = fuel,
+                            DayOpeningStock = dayOpeningStock,
+                            DaySales = daySales,
+                            DayTesting = dayTesting,
+                            DayReceipts = dayReceipts,
+                            DayBookStock = dayBookStock,
+                            DayClosingStock = dayClosingStock ?? dayBookStock,
+                            DayMeasuredStock = dayMeasuredStock,
+                            DayVariance = dayVar,
+                            Status = status,
+                            Unit = fuel == "CNG" ? "Kg" : "L"
+                        };
+
+                        result.DailyRows.Add(dailyRow);
+                    }
+                }
+
+                if (comparisonDto.Shifts.Count > 0)
+                {
+                    result.DateComparisons.Add(comparisonDto);
+                }
+            }
+
+            return Result<TankStockHistoryResultDto>.Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to get detailed tank stock history");
+            return Result<TankStockHistoryResultDto>.Fail($"Failed to load detailed history: {ex.Message}");
         }
     }
 

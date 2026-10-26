@@ -27,6 +27,21 @@ public class Setting
     [MaxLength(100)]
     public string? Shift3Manager { get; set; }
 
+    [MaxLength(300)]
+    public string? StationSubtitle { get; set; } = "(KANDHARE NANGADE SURVE GROUP)";
+
+    [MaxLength(500)]
+    public string? StationAddress { get; set; } = "Gat No. 119/B Jamgaon, Taluka Mulshi, Dist - Pune. POST-Shere, Pin - 412 108.";
+
+    [MaxLength(300)]
+    public string? StationContact { get; set; } = "Tel. : 8975549999 / 9850846783 | Email : kandharepetroleum@gmail.com";
+
+    [MaxLength(100)]
+    public string? OilCompany { get; set; } = "BPCL";
+
+    [MaxLength(500)]
+    public string? CustomLogoPath { get; set; }
+
     [NotMapped]
     public string StationDisplayName
     {

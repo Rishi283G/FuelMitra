@@ -64,7 +64,9 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject, IDisposable
     // Dynamic Personal Ledger
     public bool IsPersonalLedgerEnabled => _featureService?.IsFeatureEnabled("Operations_PersonalLedger", true) ?? true;
     public string PersonalLedgerTitle => _featureService?.GetFeatureDisplayName("Operations_PersonalLedger", "Personal Ledger") ?? "Personal Ledger";
-    public string PersonalLedgerTabHeader => $"{PersonalLedgerTitle} Ledger";
+    public string PersonalLedgerTabHeader => PersonalLedgerTitle.Trim().EndsWith("Ledger", StringComparison.OrdinalIgnoreCase)
+        ? PersonalLedgerTitle.Trim()
+        : $"{PersonalLedgerTitle.Trim()} Ledger";
     public string PrintPersonalLedgerText => $"Print {PersonalLedgerTitle}";
     public string TotalPersonalLedgerLabel => $"Total {PersonalLedgerTitle}: ";
 
@@ -1037,7 +1039,9 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject, IDisposable
 
             var printData = new DebtorLedgerPrintData
             {
-                DebtorName = $"{SelectedSummary.DsmName} (DSM Personal Debtors)",
+                Title = "DSM PERSONAL LEDGER",
+                Subtitle = "Auto-compiled from DSM loss & shortage records",
+                DebtorName = SelectedSummary.DsmName,
                 DebtorPhone = "N/A",
                 StartDate = LedgerStartDate.ToString("dd-MMM-yyyy"),
                 EndDate = LedgerEndDate.ToString("dd-MMM-yyyy"),
@@ -1119,10 +1123,10 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject, IDisposable
         {
             var summaryCards = new List<GenericGridPrintCard>
             {
-                new() { Label = "Total Kandhare Petroleum", Value = "₹" + KpTotalAmount.ToString("N2"), Highlight = true }
+                new() { Label = $"Total {PersonalLedgerTitle}", Value = "₹" + KpTotalAmount.ToString("N2"), Highlight = true }
             };
 
-            var headers = new List<string> { "Date", "Logged By", "Person Name", "Slip No", "Amount" };
+            var headers = new List<string> { "Date", "Logged By", "Person Name", "Vehicle No", "Slip No", "Amount" };
             var rows = new List<List<string>>();
 
             foreach (var row in KpEntries)
@@ -1132,6 +1136,7 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject, IDisposable
                     row.Date.ToString("dd-MMM-yyyy"),
                     row.DsmName,
                     row.Name,
+                    row.VehicleNumber ?? "—",
                     row.SlipNumber,
                     "₹" + row.Amount.ToString("N2")
                 });
@@ -1139,7 +1144,7 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject, IDisposable
 
             var printData = new GenericGridPrintData
             {
-                Title = "Kandhare Petroleum Report",
+                Title = $"{PersonalLedgerTitle.ToUpperInvariant()} STATEMENT",
                 Subtitle = $"Date Range: {KpStartDate:dd-MMM-yyyy} to {KpEndDate:dd-MMM-yyyy}" + 
                            (string.IsNullOrWhiteSpace(KpSearchText) ? "" : $" (Filtered by: '{KpSearchText}')"),
                 SummaryCards = summaryCards,
@@ -1148,7 +1153,7 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject, IDisposable
                 ShowSignatures = true
             };
 
-            _printService.PrintGenericGrid(printData);
+            _printService.PrintPersonalLedger(printData);
         }
         catch (Exception ex)
         {
@@ -1164,7 +1169,7 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject, IDisposable
         {
             var summaryCards = new List<GenericGridPrintCard>
             {
-                new() { Label = "Total Kandhare Petroleum", Value = "₹" + KpTotalAmount.ToString("N2"), Highlight = true }
+                new() { Label = $"Total {PersonalLedgerTitle}", Value = "₹" + KpTotalAmount.ToString("N2"), Highlight = true }
             };
 
             var headers = new List<string> { "Date", "Logged By", "Person Name", "Slip No", "Amount" };
@@ -1184,7 +1189,7 @@ public partial class DsmPersonalDebtorViewModel : ObservableObject, IDisposable
 
             var printData = new GenericGridPrintData
             {
-                Title = "Kandhare Petroleum Report",
+                Title = $"{PersonalLedgerTitle.ToUpperInvariant()} STATEMENT",
                 Subtitle = $"Date Range: {KpStartDate:dd-MMM-yyyy} to {KpEndDate:dd-MMM-yyyy}" + 
                            (string.IsNullOrWhiteSpace(KpSearchText) ? "" : $" (Filtered by: '{KpSearchText}')"),
                 SummaryCards = summaryCards,

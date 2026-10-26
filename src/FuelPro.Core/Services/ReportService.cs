@@ -62,6 +62,7 @@ public class ReportService : IReportService
         // 3. Cash Summary (Table B)
         dto.Cash1 = _aggregation.AggregateCash(entriesList, "Cash1");
         dto.Cash2 = _aggregation.AggregateCash(entriesList, "Cash2");
+        dto.Cash3 = _aggregation.AggregateCash(entriesList, "Cash3");
 
         // 4. Debtors (Table C)
         dto.CreditorRows = _aggregation.BuildCreditorRows(entriesList);
@@ -110,6 +111,8 @@ public class ReportService : IReportService
             }
         }
         dto.DebtorRepaymentsTotal = repaymentsList.Sum(r => r.Amount);
+        dto.DebtorRecoveriesTotal = repaymentsList.Where(r => !r.CreditorName.Contains("DSM Loss", StringComparison.OrdinalIgnoreCase)).Sum(r => r.Amount);
+        dto.DsmRecoveriesTotal = repaymentsList.Where(r => r.CreditorName.Contains("DSM Loss", StringComparison.OrdinalIgnoreCase)).Sum(r => r.Amount);
         foreach (var r in repaymentsList)
         {
             string mode = r.PaymentMode ?? "";
@@ -325,16 +328,29 @@ public class ReportService : IReportService
             catch { }
         }
 
-        var phType = allColTypes.FirstOrDefault(c => string.Equals(c.Code?.Replace("_", "")?.Replace(" ", ""), "PHONEPE", StringComparison.OrdinalIgnoreCase));
-        var ccType = allColTypes.FirstOrDefault(c => {
-            string nc = c.Code?.ToUpper().Replace("_", "").Replace(" ", "") ?? "";
-            return nc.Contains("PINELAB") || nc.Contains("CREDITCARD") || nc.Contains("CREDITDEBITCARD") || nc == "CARD";
-        });
-        var pcType = allColTypes.FirstOrDefault(c => {
-            string nc = c.Code?.ToUpper().Replace("_", "").Replace(" ", "") ?? "";
-            return nc.Contains("PETROCARD") || nc == "PETRO";
-        });
-        var cdType = allColTypes.FirstOrDefault(c => string.Equals(c.Code?.Replace("_", "")?.Replace(" ", ""), "CASHDEPOSIT", StringComparison.OrdinalIgnoreCase));
+        var phType = allColTypes.FirstOrDefault(c => c.IsActive && string.Equals(c.Code?.Replace("_", "")?.Replace(" ", ""), "PHONEPE", StringComparison.OrdinalIgnoreCase))
+            ?? allColTypes.FirstOrDefault(c => string.Equals(c.Code?.Replace("_", "")?.Replace(" ", ""), "PHONEPE", StringComparison.OrdinalIgnoreCase));
+
+        var ccType = allColTypes.FirstOrDefault(c => c.IsActive && (
+            (c.Code?.ToUpper().Replace("_", "").Replace(" ", "") ?? "").Contains("PINELAB") ||
+            (c.Code?.ToUpper().Replace("_", "").Replace(" ", "") ?? "").Contains("CREDITCARD") ||
+            (c.Code?.ToUpper().Replace("_", "").Replace(" ", "") ?? "").Contains("CREDITDEBITCARD") ||
+            (c.Code?.ToUpper().Replace("_", "").Replace(" ", "") ?? "") == "CARD"))
+            ?? allColTypes.FirstOrDefault(c => {
+                string nc = c.Code?.ToUpper().Replace("_", "").Replace(" ", "") ?? "";
+                return nc.Contains("PINELAB") || nc.Contains("CREDITCARD") || nc.Contains("CREDITDEBITCARD") || nc == "CARD";
+            });
+
+        var pcType = allColTypes.FirstOrDefault(c => c.IsActive && (
+            (c.Code?.ToUpper().Replace("_", "").Replace(" ", "") ?? "").Contains("PETROCARD") ||
+            (c.Code?.ToUpper().Replace("_", "").Replace(" ", "") ?? "") == "PETRO"))
+            ?? allColTypes.FirstOrDefault(c => {
+                string nc = c.Code?.ToUpper().Replace("_", "").Replace(" ", "") ?? "";
+                return nc.Contains("PETROCARD") || nc == "PETRO";
+            });
+
+        var cdType = allColTypes.FirstOrDefault(c => c.IsActive && string.Equals(c.Code?.Replace("_", "")?.Replace(" ", ""), "CASHDEPOSIT", StringComparison.OrdinalIgnoreCase))
+            ?? allColTypes.FirstOrDefault(c => string.Equals(c.Code?.Replace("_", "")?.Replace(" ", ""), "CASHDEPOSIT", StringComparison.OrdinalIgnoreCase));
 
         bool phActive = phType?.IsActive ?? (allColTypes.Count == 0);
         bool ccActive = ccType?.IsActive ?? (allColTypes.Count == 0);
@@ -366,24 +382,42 @@ public class ReportService : IReportService
             RecoveryAmount = dto.CashRepayments
         });
 
-        if (phActive)
+        if (dto.Cash3.GrandTotal > 0)
         {
             breakdownList.Add(new CollectionCategoryDto
             {
+                Category = "Cash 3",
+                Amount = dto.Cash3.GrandTotal,
+                BaseAmount = dto.Cash3.GrandTotal,
+                RecoveryAmount = 0
+            });
+        }
+
+        if (phActive)
+        {
+            double shiftPhonePe = summaryRows.Sum(r => r.PhonePeTotal);
+            if (shiftPhonePe == 0) shiftPhonePe = finalPhonePeMorning + finalPhonePeNight;
+
+            breakdownList.Add(new CollectionCategoryDto
+            {
                 Category = phType?.DisplayName ?? "PhonePe Direct",
-                Amount = finalPhonePeMorning + finalPhonePeNight,
-                BaseAmount = phonePeMorning + phonePeNight,
+                Amount = shiftPhonePe,
+                BaseAmount = shiftPhonePe,
                 RecoveryAmount = dto.PhonePeRepayments
             });
         }
 
         if (ccActive)
         {
+            double shiftCard = summaryRows.Sum(r => r.CreditCardTotal);
+            if (shiftCard == 0) shiftCard = summaryRows.Sum(r => r.PineLabsCard);
+            if (shiftCard == 0) shiftCard = finalCreditCardMorning + finalCreditCardNight + finalPhonePeCardMorning + finalPhonePeCardNight;
+
             breakdownList.Add(new CollectionCategoryDto
             {
                 Category = ccType?.DisplayName ?? "PineLabs Card",
-                Amount = finalCreditCardMorning + finalCreditCardNight + finalPhonePeCardMorning + finalPhonePeCardNight,
-                BaseAmount = creditCardMorning + creditCardNight + phonePeCardMorning + phonePeCardNight,
+                Amount = shiftCard,
+                BaseAmount = shiftCard,
                 RecoveryAmount = dto.CreditCardRepayments
             });
         }
@@ -400,9 +434,30 @@ public class ReportService : IReportService
         }
 
         // All other enabled dynamic collection types from Dev side (always show with 0 if no entries)
-        var builtInCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "PHONEPE", "CREDIT_CARD", "PINELAB_CARD", "PETROCARD", "CASH_DEPOSIT", "OTHERS", "OTHER" };
+        var builtInCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) 
+        { 
+            "PHONEPE", "PETROCARD", "CASH_DEPOSIT", "OTHERS", "OTHER" 
+        };
+        if (ccType != null)
+        {
+            builtInCodes.Add(ccType.Code);
+            builtInCodes.Add(ccType.Code.Replace("_", ""));
+        }
+        else
+        {
+            builtInCodes.Add("CREDIT_CARD");
+            builtInCodes.Add("CREDITCARD");
+        }
+
         var dynamicActiveTypes = allColTypes
-            .Where(t => t.IsActive && !builtInCodes.Contains(t.Code) && !string.Equals(t.Code?.Replace("_", ""), "OTHERS", StringComparison.OrdinalIgnoreCase) && !string.Equals(t.Code?.Replace("_", ""), "OTHER", StringComparison.OrdinalIgnoreCase))
+            .Where(t => t.IsActive 
+                && !builtInCodes.Contains(t.Code) 
+                && (ccType == null || !string.Equals(t.Code, ccType.Code, StringComparison.OrdinalIgnoreCase))
+                && (phType == null || !string.Equals(t.Code, phType.Code, StringComparison.OrdinalIgnoreCase))
+                && (pcType == null || !string.Equals(t.Code, pcType.Code, StringComparison.OrdinalIgnoreCase))
+                && (cdType == null || !string.Equals(t.Code, cdType.Code, StringComparison.OrdinalIgnoreCase))
+                && !string.Equals(t.Code?.Replace("_", ""), "OTHERS", StringComparison.OrdinalIgnoreCase) 
+                && !string.Equals(t.Code?.Replace("_", ""), "OTHER", StringComparison.OrdinalIgnoreCase))
             .OrderBy(t => t.DisplayOrder)
             .ToList();
 
@@ -417,6 +472,11 @@ public class ReportService : IReportService
                 .Where(i => string.Equals(i.CollectionTypeCode, t.Code, StringComparison.OrdinalIgnoreCase) ||
                             string.Equals(i.CollectionTypeCode?.Replace("_", "")?.Replace(" ", ""), cleanTCode, StringComparison.OrdinalIgnoreCase))
                 .Sum(x => x.Amount);
+
+            if (sum == 0 && (cleanTCode.Contains("PINELAB") || cleanTCode.Contains("CREDITCARD")))
+            {
+                sum = summaryRows.Sum(r => r.PineLabsCard);
+            }
 
             double dynamicRecovery = repaymentsList
                 .Where(r => string.Equals(r.PaymentMode, t.DisplayName, StringComparison.OrdinalIgnoreCase) ||
@@ -489,6 +549,30 @@ public class ReportService : IReportService
                 RecoveryAmount = 0,
                 Volume = testItem.VolumeLitres,
                 IsInformational = true
+            });
+        }
+
+        double totalReduction = entriesList.Sum(e => e.PaymentCollection?.CollectionReduction ?? 0);
+        var reductionRemarks = entriesList
+            .Where(e => !string.IsNullOrWhiteSpace(e.PaymentCollection?.CollectionReductionRemark))
+            .Select(e => e.PaymentCollection!.CollectionReductionRemark!.Trim())
+            .Distinct()
+            .ToList();
+        dto.CollectionReduction = totalReduction;
+        dto.CollectionReductionRemark = reductionRemarks.Count > 0 ? string.Join("; ", reductionRemarks) : null;
+
+        if (dto.CollectionReduction > 0)
+        {
+            string desc = string.IsNullOrWhiteSpace(dto.CollectionReductionRemark)
+                ? "Collection Reduction"
+                : $"Collection Reduction ({dto.CollectionReductionRemark})";
+            breakdownList.Add(new CollectionCategoryDto
+            {
+                Category = "Collection Reduction",
+                DescriptionWithBreakdown = desc,
+                Amount = -dto.CollectionReduction,
+                BaseAmount = -dto.CollectionReduction,
+                RecoveryAmount = 0
             });
         }
 
@@ -619,6 +703,7 @@ public class ReportService : IReportService
         // 3. Cash Summary (Table B)
         dto.Cash1 = _aggregation.AggregateCash(todayEntries, "Cash1");
         dto.Cash2 = _aggregation.AggregateCash(todayEntries, "Cash2");
+        dto.Cash3 = _aggregation.AggregateCash(todayEntries, "Cash3");
 
         // 4. Debtors (Table C)
         dto.CreditorRows = _aggregation.BuildCreditorRows(todayEntries);
@@ -644,6 +729,8 @@ public class ReportService : IReportService
             }
         }
         dto.DebtorRepaymentsTotal = repaymentsList.Sum(r => r.Amount);
+        dto.DebtorRecoveriesTotal = repaymentsList.Where(r => !r.CreditorName.Contains("DSM Loss", StringComparison.OrdinalIgnoreCase)).Sum(r => r.Amount);
+        dto.DsmRecoveriesTotal = repaymentsList.Where(r => r.CreditorName.Contains("DSM Loss", StringComparison.OrdinalIgnoreCase)).Sum(r => r.Amount);
         foreach (var r in repaymentsList)
         {
             string mode = r.PaymentMode ?? "";
@@ -854,16 +941,29 @@ public class ReportService : IReportService
             catch { }
         }
 
-        var phType = allColTypes.FirstOrDefault(c => string.Equals(c.Code?.Replace("_", "")?.Replace(" ", ""), "PHONEPE", StringComparison.OrdinalIgnoreCase));
-        var ccType = allColTypes.FirstOrDefault(c => {
-            string nc = c.Code?.ToUpper().Replace("_", "").Replace(" ", "") ?? "";
-            return nc.Contains("PINELAB") || nc.Contains("CREDITCARD") || nc.Contains("CREDITDEBITCARD") || nc == "CARD";
-        });
-        var pcType = allColTypes.FirstOrDefault(c => {
-            string nc = c.Code?.ToUpper().Replace("_", "").Replace(" ", "") ?? "";
-            return nc.Contains("PETROCARD") || nc == "PETRO";
-        });
-        var cdType = allColTypes.FirstOrDefault(c => string.Equals(c.Code?.Replace("_", "")?.Replace(" ", ""), "CASHDEPOSIT", StringComparison.OrdinalIgnoreCase));
+        var phType = allColTypes.FirstOrDefault(c => c.IsActive && string.Equals(c.Code?.Replace("_", "")?.Replace(" ", ""), "PHONEPE", StringComparison.OrdinalIgnoreCase))
+            ?? allColTypes.FirstOrDefault(c => string.Equals(c.Code?.Replace("_", "")?.Replace(" ", ""), "PHONEPE", StringComparison.OrdinalIgnoreCase));
+
+        var ccType = allColTypes.FirstOrDefault(c => c.IsActive && (
+            (c.Code?.ToUpper().Replace("_", "").Replace(" ", "") ?? "").Contains("PINELAB") ||
+            (c.Code?.ToUpper().Replace("_", "").Replace(" ", "") ?? "").Contains("CREDITCARD") ||
+            (c.Code?.ToUpper().Replace("_", "").Replace(" ", "") ?? "").Contains("CREDITDEBITCARD") ||
+            (c.Code?.ToUpper().Replace("_", "").Replace(" ", "") ?? "") == "CARD"))
+            ?? allColTypes.FirstOrDefault(c => {
+                string nc = c.Code?.ToUpper().Replace("_", "").Replace(" ", "") ?? "";
+                return nc.Contains("PINELAB") || nc.Contains("CREDITCARD") || nc.Contains("CREDITDEBITCARD") || nc == "CARD";
+            });
+
+        var pcType = allColTypes.FirstOrDefault(c => c.IsActive && (
+            (c.Code?.ToUpper().Replace("_", "").Replace(" ", "") ?? "").Contains("PETROCARD") ||
+            (c.Code?.ToUpper().Replace("_", "").Replace(" ", "") ?? "") == "PETRO"))
+            ?? allColTypes.FirstOrDefault(c => {
+                string nc = c.Code?.ToUpper().Replace("_", "").Replace(" ", "") ?? "";
+                return nc.Contains("PETROCARD") || nc == "PETRO";
+            });
+
+        var cdType = allColTypes.FirstOrDefault(c => c.IsActive && string.Equals(c.Code?.Replace("_", "")?.Replace(" ", ""), "CASHDEPOSIT", StringComparison.OrdinalIgnoreCase))
+            ?? allColTypes.FirstOrDefault(c => string.Equals(c.Code?.Replace("_", "")?.Replace(" ", ""), "CASHDEPOSIT", StringComparison.OrdinalIgnoreCase));
 
         bool phActive = phType?.IsActive ?? (allColTypes.Count == 0);
         bool ccActive = ccType?.IsActive ?? (allColTypes.Count == 0);
@@ -882,16 +982,27 @@ public class ReportService : IReportService
         }
         dayBreakdown.Add(new() { Category = "Cash In Hand", Amount = dto.Cash2.GrandTotal, BaseAmount = dto.Cash2.GrandTotal, RecoveryAmount = dto.CashRepayments });
 
+        if (dto.Cash3.GrandTotal > 0)
+        {
+            dayBreakdown.Add(new() { Category = "Cash 3", Amount = dto.Cash3.GrandTotal, BaseAmount = dto.Cash3.GrandTotal, RecoveryAmount = 0 });
+        }
+
         if (phActive)
         {
-            double phTotal = finalPhonePeMorning + finalPhonePeNight;
-            dayBreakdown.Add(new() { Category = phName, Amount = phTotal, BaseAmount = phonePeDirectMorning + phonePeDirectDay + phonePeDirectNight, RecoveryAmount = dto.PhonePeRepayments });
+            double phTotal = summaryRows.Sum(r => r.PhonePeTotal);
+            if (phTotal == 0) phTotal = finalPhonePeMorning + finalPhonePeNight;
+
+            dayBreakdown.Add(new() { Category = phName, Amount = phTotal, BaseAmount = phTotal, RecoveryAmount = dto.PhonePeRepayments });
         }
 
         if (ccActive)
         {
-            double ccTotal = finalCreditCardMorning + finalCreditCardNight;
-            dayBreakdown.Add(new() { Category = ccName, Amount = ccTotal, BaseAmount = pineLabsCardMorning + pineLabsCardDay + pineLabsCardNight, RecoveryAmount = dto.CreditCardRepayments });
+            double ccTotal = summaryRows.Sum(r => r.CreditCardPureTotal);
+            if (ccTotal == 0) ccTotal = summaryRows.Sum(r => r.PineLabsCard);
+            if (ccTotal == 0) ccTotal = summaryRows.Sum(r => r.CreditCardTotal);
+            if (ccTotal == 0) ccTotal = finalCreditCardMorning + finalCreditCardNight;
+
+            dayBreakdown.Add(new() { Category = ccName, Amount = ccTotal, BaseAmount = ccTotal, RecoveryAmount = dto.CreditCardRepayments });
         }
 
         if (pcActive)
@@ -901,15 +1012,35 @@ public class ReportService : IReportService
         }
 
         // All other enabled dynamic collection types from Dev side (always show with 0 if no entries)
-        var builtInCodesDay = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "PHONEPE", "CREDIT_CARD", "PINELAB_CARD", "PETROCARD", "CASH_DEPOSIT", "OTHERS", "OTHER" };
+        var builtInCodesDay = new HashSet<string>(StringComparer.OrdinalIgnoreCase) 
+        { 
+            "PHONEPE", "PETROCARD", "CASH_DEPOSIT", "OTHERS", "OTHER" 
+        };
+        if (ccType != null)
+        {
+            builtInCodesDay.Add(ccType.Code);
+            builtInCodesDay.Add(ccType.Code.Replace("_", ""));
+        }
+        else
+        {
+            builtInCodesDay.Add("CREDIT_CARD");
+            builtInCodesDay.Add("CREDITCARD");
+        }
 
         var dynamicActiveTypesDay = allColTypes
-            .Where(t => t.IsActive && !builtInCodesDay.Contains(t.Code) && !string.Equals(t.Code?.Replace("_", ""), "OTHERS", StringComparison.OrdinalIgnoreCase) && !string.Equals(t.Code?.Replace("_", ""), "OTHER", StringComparison.OrdinalIgnoreCase))
+            .Where(t => t.IsActive 
+                && !builtInCodesDay.Contains(t.Code) 
+                && (ccType == null || !string.Equals(t.Code, ccType.Code, StringComparison.OrdinalIgnoreCase))
+                && (phType == null || !string.Equals(t.Code, phType.Code, StringComparison.OrdinalIgnoreCase))
+                && (pcType == null || !string.Equals(t.Code, pcType.Code, StringComparison.OrdinalIgnoreCase))
+                && (cdType == null || !string.Equals(t.Code, cdType.Code, StringComparison.OrdinalIgnoreCase))
+                && !string.Equals(t.Code?.Replace("_", ""), "OTHERS", StringComparison.OrdinalIgnoreCase) 
+                && !string.Equals(t.Code?.Replace("_", ""), "OTHER", StringComparison.OrdinalIgnoreCase))
             .OrderBy(t => t.DisplayOrder)
             .ToList();
 
         var todayDynamicItems = todayEntries
-            .SelectMany(e => e.PaymentCollection?.Items ?? Enumerable.Empty<PaymentCollectionItem>())
+            .SelectMany(e => e.PaymentCollection?.GetAllItems() ?? Enumerable.Empty<PaymentCollectionItem>())
             .ToList();
 
         foreach (var t in dynamicActiveTypesDay)
@@ -919,6 +1050,11 @@ public class ReportService : IReportService
                 .Where(i => string.Equals(i.CollectionTypeCode, t.Code, StringComparison.OrdinalIgnoreCase) ||
                             string.Equals(i.CollectionTypeCode?.Replace("_", "")?.Replace(" ", ""), cleanTCode, StringComparison.OrdinalIgnoreCase))
                 .Sum(x => x.Amount);
+
+            if (sum == 0 && (cleanTCode.Contains("PINELAB") || cleanTCode.Contains("CREDITCARD")))
+            {
+                sum = summaryRows.Sum(r => r.PineLabsCard);
+            }
 
             double dynamicRecovery = repaymentsList
                 .Where(r => string.Equals(r.PaymentMode, t.DisplayName, StringComparison.OrdinalIgnoreCase) ||
@@ -986,6 +1122,30 @@ public class ReportService : IReportService
                 RecoveryAmount = 0,
                 Volume = testItem.VolumeLitres,
                 IsInformational = true
+            });
+        }
+
+        double totalDayReduction = todayEntries.Sum(e => e.PaymentCollection?.CollectionReduction ?? 0);
+        var dayReductionRemarks = todayEntries
+            .Where(e => !string.IsNullOrWhiteSpace(e.PaymentCollection?.CollectionReductionRemark))
+            .Select(e => e.PaymentCollection!.CollectionReductionRemark!.Trim())
+            .Distinct()
+            .ToList();
+        dto.CollectionReduction = totalDayReduction;
+        dto.CollectionReductionRemark = dayReductionRemarks.Count > 0 ? string.Join("; ", dayReductionRemarks) : null;
+
+        if (dto.CollectionReduction > 0)
+        {
+            string desc = string.IsNullOrWhiteSpace(dto.CollectionReductionRemark)
+                ? "Collection Reduction"
+                : $"Collection Reduction ({dto.CollectionReductionRemark})";
+            dayBreakdown.Add(new CollectionCategoryDto
+            {
+                Category = "Collection Reduction",
+                DescriptionWithBreakdown = desc,
+                Amount = -dto.CollectionReduction,
+                BaseAmount = -dto.CollectionReduction,
+                RecoveryAmount = 0
             });
         }
 
@@ -1097,6 +1257,10 @@ public class ReportService : IReportService
             ? e.CashDenominations.Where(c => c.CashType == "Cash2").Sum(c => c.TotalAmount)
             : 0;
 
+        double cash3 = e.CashDenominations != null && e.CashDenominations.Any(c => c.CashType == "Cash3")
+            ? e.CashDenominations.Where(c => c.CashType == "Cash3").Sum(c => c.TotalAmount)
+            : 0;
+
         double phM = e.PaymentCollection?.PhonePeMorning ?? 0;
         double phD = e.PaymentCollection?.PhonePeDay ?? 0;
         double phN = e.PaymentCollection?.PhonePeNight ?? 0;
@@ -1124,9 +1288,10 @@ public class ReportService : IReportService
         double dynamicColl = e.PaymentCollection?.DynamicItemsTotal ?? 0;
         double debits = e.DebitEntries?.Sum(d => d.Amount) ?? 0;
         double expenses = (e.Expenses?.Sum(x => x.Amount) ?? 0) + (e.KhandharePetroleumEntries?.Sum(kp => kp.Amount) ?? 0);
+        double reduction = e.PersonalDebtors?.Sum(p => p.Amount) ?? 0;
         double testing = e.TestingEntries?.Sum(t => t.Amount) ?? 0;
 
-        double totalCollection = cash1 + cash2 + phTotal + ppcTotal + ccTotal + petroTotal + dynamicColl + debits + expenses;
+        double totalCollection = cash1 + cash2 + cash3 + phTotal + ppcTotal + ccTotal + petroTotal + dynamicColl + debits + expenses - reduction;
         double netGrossSales = gs - testing;
         double mismatch = totalCollection - netGrossSales;
 

@@ -9,6 +9,7 @@ import {
   resolveFuelRate,
   type StationConfig,
   type OtpTransactionItem,
+  type ManualTidTransactionItem,
 } from "../lib/stationConfig";
 import {
   ArrowLeft,
@@ -21,6 +22,7 @@ import {
   Plus,
   KeyRound,
   Trash2,
+  CreditCard,
 } from "lucide-react";
 
 interface SubmitProps {
@@ -55,6 +57,14 @@ interface ExpenseRow {
   amount: number;
 }
 
+interface DebtorRepaymentRow {
+  debtorName: string;
+  paymentMode: string;
+  amount: number;
+  notes?: string;
+  dsmName: string;
+}
+
 export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   const { profile } = useAuth();
   const { syncing, saveDraft, submitToSupabase } = useSubmissionService();
@@ -63,6 +73,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
 
   // Form State — pump & shift come from manager assignment, DSM cannot change them
   const pumpId = profile?.AssignedPump ?? 0;
+  const connectedPumps = profile?.ConnectedPumps ?? [];
   const shiftType = profile?.AssignedShift ?? "A";
   const [shiftDate, setShiftDate] = useState(() => {
     if (profile?.AssignedDate) {
@@ -152,7 +163,33 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   const [cash1Denom200, setCash1Denom200] = useState<number>(0);
   const [cash1Denom100, setCash1Denom100] = useState<number>(0);
 
+  // Cash 3 (Final Cash) state
+  const [cash3Denom500, setCash3Denom500] = useState<number>(0);
+  const [cash3Denom200, setCash3Denom200] = useState<number>(0);
+  const [cash3Denom100, setCash3Denom100] = useState<number>(0);
+  const [cash3Denom50, setCash3Denom50] = useState<number>(0);
+  const [cash3Denom20, setCash3Denom20] = useState<number>(0);
+  const [cash3Denom10, setCash3Denom10] = useState<number>(0);
+  const [cash3Coins, setCash3Coins] = useState<number>(0);
+  const cash3Amount =
+    cash3Denom500 * 500 +
+    cash3Denom200 * 200 +
+    cash3Denom100 * 100 +
+    cash3Denom50 * 50 +
+    cash3Denom20 * 20 +
+    cash3Denom10 * 10 +
+    cash3Coins;
+
+  // Debtor Repayments state
+  const [debtorRepayments, setDebtorRepayments] = useState<DebtorRepaymentRow[]>([]);
+  const [newRepaymentDebtor, setNewRepaymentDebtor] = useState<string>("");
+  const [newRepaymentMode, setNewRepaymentMode] = useState<string>("Cash");
+  const [newRepaymentAmount, setNewRepaymentAmount] = useState<string>("");
+  const [newRepaymentNotes, setNewRepaymentNotes] = useState<string>("");
+
   const [others, setOthers] = useState(0);
+  const [collectionReduction, setCollectionReduction] = useState<number>(0);
+  const [collectionReductionRemark, setCollectionReductionRemark] = useState<string>("");
   const [expenseEntries, setExpenseEntries] = useState<ExpenseRow[]>([]);
   const [newExpenseDescription, setNewExpenseDescription] = useState("");
   const [newExpenseAmount, setNewExpenseAmount] = useState("");
@@ -280,6 +317,12 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     stationConfig?.features?.otpMachineTrackingEnabled ??
     (stationConfig?.features as any)?.otpMachineTracking
   );
+  const multiTidTransactionsEnabled = Boolean(
+    stationConfig?.features?.multiTidTransactionsEnabled ?? true
+  );
+  const cash3Enabled = Boolean(
+    stationConfig?.features?.cash3Enabled ?? false
+  );
   const splitMorningNightEnabled = Boolean(stationConfig?.features?.splitMorningNightEnabled);
 
   const cashDeposit = cashDenominationsEnabled
@@ -297,20 +340,100 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   >({});
 
   // Shared configuration-driven eligibility:
-  // Shared configuration-driven eligibility:
-  // Only collection types where both TID and Batch are enabled (hasTidBatch === true), isActive is true,
-  // and global otpMachineTrackingEnabled is true are eligible.
+  // Strictly filter OTP dropdown by developer settings: ct.hasOtp === true
   const eligibleOtpTypes = useMemo(() => {
     const list: { code: string; displayName: string }[] = [];
     if (otpMachineTrackingEnabled && stationConfig?.collectionTypes) {
       for (const ct of stationConfig.collectionTypes) {
-        if (ct.hasTidBatch && ct.isActive !== false) {
+        const isOtpEligible = Boolean(ct.hasOtp);
+        if (isOtpEligible && ct.isActive !== false) {
           list.push({ code: ct.code, displayName: ct.displayName || ct.code });
         }
       }
     }
     return list;
   }, [stationConfig?.collectionTypes, otpMachineTrackingEnabled]);
+
+  // Itemized Manual TID Transactions
+  const [manualTidTransactions, setManualTidTransactions] = useState<ManualTidTransactionItem[]>([]);
+  const [newManualTidType, setNewManualTidType] = useState<string>("");
+  const [newManualTidAmount, setNewManualTidAmount] = useState("");
+  const [newManualTid, setNewManualTid] = useState("");
+  const [newManualBatch, setNewManualBatch] = useState("");
+  const [newManualSlot, setNewManualSlot] = useState("General");
+  const [isCustomTid, setIsCustomTid] = useState(false);
+
+  // Configuration-driven TID eligibility: HasTidBatch = true
+  const eligibleTidTypes = useMemo(() => {
+    const list: { code: string; displayName: string }[] = [];
+    if (stationConfig?.collectionTypes) {
+      for (const ct of stationConfig.collectionTypes) {
+        if (Boolean(ct.hasTidBatch) && ct.isActive !== false) {
+          list.push({ code: ct.code, displayName: ct.displayName || ct.code });
+        }
+      }
+    }
+    return list;
+  }, [stationConfig?.collectionTypes]);
+
+  // Dynamically aggregate unique station TIDs for fast dropdown selection
+  const availableStationTids = useMemo(() => {
+    const set = new Set<string>();
+    [
+      phonePeTidMorning, phonePeTidDay, phonePeTidNight,
+      creditCardTidMorning, creditCardTidDay, creditCardTidNight,
+      petroCardTidMorning, petroCardTidDay, petroCardTidNight,
+    ].forEach((t) => { if (t && t.trim()) set.add(t.trim()); });
+
+    Object.values(dynamicValues).forEach((v) => {
+      if (v?.tid && v.tid.trim()) set.add(v.tid.trim());
+    });
+
+    machineTransactions.forEach((m) => {
+      if (m.tid && m.tid.trim()) set.add(m.tid.trim());
+    });
+
+    manualTidTransactions.forEach((m) => {
+      if (m.tid && m.tid.trim()) set.add(m.tid.trim());
+    });
+
+    return Array.from(set).filter(Boolean);
+  }, [
+    phonePeTidMorning, phonePeTidDay, phonePeTidNight,
+    creditCardTidMorning, creditCardTidDay, creditCardTidNight,
+    petroCardTidMorning, petroCardTidDay, petroCardTidNight,
+    dynamicValues, machineTransactions, manualTidTransactions
+  ]);
+
+  const getManualTidTotalForType = (code: string) =>
+    manualTidTransactions
+      .filter((t) => t.collectionTypeCode.toUpperCase() === code.toUpperCase())
+      .reduce((sum, t) => sum + (t.amount || 0), 0);
+
+  const addManualTidTransaction = () => {
+    const amt = parseFloat(newManualTidAmount);
+    if (!amt || amt <= 0) return;
+    const targetCode = newManualTidType || (eligibleTidTypes.length > 0 ? eligibleTidTypes[0].code : "");
+    if (!targetCode) return;
+    const effectiveSlot = newManualSlot || (shiftType === "B" ? "Day" : "Morning");
+    const newTx: ManualTidTransactionItem = {
+      id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : (Math.random().toString(36).substring(2, 9) + Date.now().toString(36)),
+      collectionTypeCode: targetCode.toUpperCase(),
+      amount: amt,
+      tid: newManualTid.trim(),
+      batch: newManualBatch.trim(),
+      slot: effectiveSlot,
+    };
+    setManualTidTransactions((prev) => [...prev, newTx]);
+    setNewManualTidAmount("");
+    setNewManualTid("");
+    setNewManualBatch("");
+    setIsCustomTid(false);
+  };
+
+  const removeManualTidTransaction = (id: string) => {
+    setManualTidTransactions((prev) => prev.filter((t) => t.id !== id));
+  };
 
   const personalLedgerName = stationConfig.features.personalLedgerName || "Personal Ledger";
 
@@ -529,6 +652,8 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       setNewDebtorSlip(parsed.newDebtorSlip ?? "");
       setCustomVehicle(parsed.customVehicle ?? false);
       setOthers(parsed.others ?? 0);
+      setCollectionReduction(parsed.collectionReduction ?? 0);
+      setCollectionReductionRemark(parsed.collectionReductionRemark ?? "");
       if (parsed.expenseEntries && Array.isArray(parsed.expenseEntries)) {
         setExpenseEntries(parsed.expenseEntries);
       } else if (parsed.expense && parsed.expense > 0) {
@@ -571,6 +696,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       setKhandhareEntries(parsed.khandhareEntries ?? []);
       setQrPayments(parsed.qrPayments ?? []);
       if (parsed.machineTransactions) setMachineTransactions(parsed.machineTransactions);
+      if (parsed.manualTidTransactions) setManualTidTransactions(parsed.manualTidTransactions);
       if (parsed.dynamicValues) setDynamicValues(parsed.dynamicValues);
       if (parsed.qrPayments && parsed.qrPayments.length > 0) {
         setShowCrossQrSection(true);
@@ -619,6 +745,8 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       newDebtorSlip,
       customVehicle,
       others,
+      collectionReduction,
+      collectionReductionRemark,
       expenseEntries,
       newExpenseDescription,
       newExpenseAmount,
@@ -657,6 +785,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       khandhareEntries,
       qrPayments,
       machineTransactions,
+      manualTidTransactions,
       dynamicValues,
       step,
       nozzleRows,
@@ -724,6 +853,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     khandhareEntries,
     qrPayments,
     machineTransactions,
+    manualTidTransactions,
     dynamicValues,
     step,
     nozzleRows,
@@ -1385,6 +1515,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     new Set([
       ...(stationConfig?.collectionTypes || []).map((c) => c.code),
       ...Object.keys(dynamicValues),
+      ...manualTidTransactions.map((t) => t.collectionTypeCode),
       ...machineTransactions.map((t) => t.collectionTypeCode),
     ])
   );
@@ -1392,12 +1523,15 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   const dynamicTotal = allDynamicTypeCodes.reduce((sum, code) => {
     const clean = code.toUpperCase().replace(/_/g, "");
     if (clean === "PHONEPE" || clean === "CREDITCARD" || clean === "PETROCARD" || clean === "CASHDEPOSIT" || clean === "OTHERS") return sum;
+    const ct = (stationConfig?.collectionTypes || []).find((c) => c.code.toUpperCase() === code.toUpperCase());
+    const isTidEligible = Boolean(ct?.hasTidBatch);
+    const manualTidSum = getManualTidTotalForType(code);
     const val = dynamicValues[code] || { amount: 0, tid: "", batch: "", otp: "" };
     const txTotal = getMachineTotalForType(code);
     const manualActive = isManualEnabled(code);
     const slotConf = getTypeSlotConfig(code);
     const isSlotAllowed = shiftType === "B" ? slotConf.enableDay : (slotConf.enableMorning || slotConf.enableNight);
-    const manualAmt = manualActive && isSlotAllowed ? (val.amount || 0) : 0;
+    const manualAmt = manualActive && isSlotAllowed ? (isTidEligible ? manualTidSum : (val.amount || 0)) : 0;
     const effAmt = otpMachineTrackingEnabled && txTotal > 0
       ? Math.max(manualAmt, txTotal)
       : manualAmt;
@@ -1446,13 +1580,15 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   const totalCollections =
     cash +
     cashDeposit +
+    (cash3Enabled ? cash3Amount : 0) +
     effectivePhonePeTotal +
     effectiveCreditCardTotal +
     effectivePetroCardTotal +
     qrTotal +
     creditTotal +
     totalExpenses +
-    dynamicTotal;
+    dynamicTotal -
+    collectionReduction;
   const mismatch = totalCollections - totalSalesLiability;
 
   // ── Validation ───────────────────────────────────────────────
@@ -1490,6 +1626,12 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   function validateCollections(): string[] {
     const errs: string[] = [];
     if (totalCollections < 0) errs.push("Total collections cannot be negative");
+    if (collectionReduction < 0) {
+      errs.push("Collection reduction amount cannot be negative.");
+    }
+    if (collectionReduction > 0 && (!collectionReductionRemark || !collectionReductionRemark.trim())) {
+      errs.push("Collection reduction remark is required when reduction amount is greater than 0.");
+    }
     if (Math.abs(mismatch) > 10000)
       errs.push(
         `Mismatch of ₹${mismatch.toFixed(2)} is unusually high. Please verify readings.`,
@@ -1817,49 +1959,47 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       }
     }
 
-    if (machineTransactions.length > 0) {
-      machineTransactions.forEach((tx) => {
-        cardSwipes.push({
-          mode: `${tx.collectionTypeCode} (${tx.slot})`,
+    const dynamicItemsPayload: any[] = [];
+
+    // 1. Ingest itemized manual TID transactions with their stable transactionId
+    manualTidTransactions.forEach((tx) => {
+      if (tx.amount > 0) {
+        dynamicItemsPayload.push({
+          transactionId: tx.id,
+          collectionTypeCode: tx.collectionTypeCode,
           amount: tx.amount,
-          tid: tx.tid,
-          batch: tx.batch,
-          otp: tx.otp,
+          tid: tx.tid || "",
+          batch: tx.batch || "",
+          slot: tx.slot || (shiftType === "B" ? "Day" : "Morning"),
+          otp: "",
         });
-      });
-    }
+      }
+    });
 
-    const connectedPumps = profile?.ConnectedPumps && profile.ConnectedPumps.length > 0
-      ? profile.ConnectedPumps
-      : (profile?.ConnectedPump ? [profile.ConnectedPump] : []);
+    // 2. Ingest ordinary non-TID dynamic collections from dynamicValues
+    const nonTidDynamicCodes = (stationConfig?.collectionTypes || [])
+      .filter((ct) => !ct.hasTidBatch && ct.isActive !== false)
+      .map((ct) => ct.code);
 
-    const allDynamicCodesForPayload = Array.from(
-      new Set([
-        ...Object.keys(dynamicValues),
-        ...machineTransactions.map((t) => t.collectionTypeCode),
-      ])
-    );
-
-    const dynamicItemsPayload = allDynamicCodesForPayload
-      .map((code) => {
-        const val = dynamicValues[code] || { amount: 0, tid: "", batch: "", otp: "" };
-        const slotConf = getTypeSlotConfig(code);
-        const isSlotAllowed = shiftType === "B" ? slotConf.enableDay : (slotConf.enableMorning || slotConf.enableNight);
-        const manualAmt = isManualEnabled(code) && isSlotAllowed ? (val.amount || 0) : 0;
-        const txTotal = getMachineTotalForType(code);
-        const effectiveAmt = otpMachineTrackingEnabled && txTotal > 0
-          ? Math.max(manualAmt, txTotal)
-          : manualAmt;
-        return {
+    nonTidDynamicCodes.forEach((code) => {
+      const clean = code.toUpperCase().replace(/_/g, "");
+      if (clean === "PHONEPE" || clean === "CREDITCARD" || clean === "PETROCARD" || clean === "CASHDEPOSIT" || clean === "OTHERS") return;
+      const val = dynamicValues[code] || { amount: 0, tid: "", batch: "", otp: "" };
+      const slotConf = getTypeSlotConfig(code);
+      const isSlotAllowed = shiftType === "B" ? slotConf.enableDay : (slotConf.enableMorning || slotConf.enableNight);
+      const manualAmt = isManualEnabled(code) && isSlotAllowed ? (val.amount || 0) : 0;
+      if (manualAmt > 0) {
+        dynamicItemsPayload.push({
+          transactionId: `manual-scalar-${code.toUpperCase()}`,
           collectionTypeCode: code,
-          amount: effectiveAmt,
-          tid: val.tid,
-          batch: val.batch,
+          amount: manualAmt,
+          tid: "",
+          batch: "",
           slot: shiftType === "B" ? "Day" : (slotConf.enableMorning ? "Morning" : "Night"),
-          otp: val.otp || "",
-        };
-      })
-      .filter((item) => item.amount > 0);
+          otp: "",
+        });
+      }
+    });
 
     const draftData = {
       pumpId,
@@ -1922,6 +2062,24 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         denom10,
         coins,
       },
+      cash3: cash3Amount,
+      cash3Amount: cash3Amount,
+      cash3Denominations: {
+        denom500: cash3Denom500,
+        denom200: cash3Denom200,
+        denom100: cash3Denom100,
+        denom50: cash3Denom50,
+        denom20: cash3Denom20,
+        denom10: cash3Denom10,
+        coins: cash3Coins,
+      },
+      debtorRepayments: debtorRepayments.map((r) => ({
+        debtorName: r.debtorName,
+        paymentMode: r.paymentMode,
+        amount: r.amount,
+        notes: r.notes || "",
+        dsmName: r.dsmName || profile?.FullName || "",
+      })),
       testingEntries: nozzleRows
         .filter((r) => (r.testing || 0) > 0)
         .map((r) => ({
@@ -1968,6 +2126,8 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           price: p.defaultSaleRate,
           total: (salesQuantities[p.id] || 0) * p.defaultSaleRate,
         })),
+      collectionReduction,
+      collectionReductionRemark,
     };
 
     try {
@@ -3476,84 +3636,317 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                     </div>
                   </div>
 
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: type.hasTidBatch
-                        ? "1.2fr 1fr 1fr"
-                        : "1fr",
-                      gap: "8px",
-                      opacity: manualActive ? 1 : 0.6,
-                    }}
-                  >
-                    <div className="field-group">
-                      <label className="field-label">Amount (₹)</label>
-                      <input
-                        type="number"
-                        className="field-input"
-                        step="0.01"
-                        min="0"
-                        placeholder="0.00"
-                        value={val.amount || ""}
-                        disabled={!manualActive}
-                        onChange={(e) => {
-                          const newAmt = parseFloat(e.target.value) || 0;
-                          setDynamicValues((prev) => ({
-                            ...prev,
-                            [type.code]: { ...val, amount: newAmt },
-                          }));
-                        }}
-                      />
+                  {type.hasTidBatch ? (
+                    <div
+                      style={{
+                        padding: "10px",
+                        backgroundColor: "rgba(30, 41, 59, 0.5)",
+                        borderRadius: "6px",
+                        border: "1px dashed #475569",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                      }}
+                    >
+                      <div>
+                        <span style={{ fontSize: "0.85rem", color: "#94a3b8" }}>
+                          Itemized Total ({manualTidTransactions.filter(t => t.collectionTypeCode.toUpperCase() === type.code.toUpperCase()).length} transactions):
+                        </span>
+                        <div style={{ fontSize: "1.1rem", fontWeight: "bold", color: "#38bdf8" }}>
+                          ₹{getManualTidTotalForType(type.code).toFixed(2)}
+                        </div>
+                      </div>
+                      <span style={{ fontSize: "0.75rem", color: "#64748b" }}>
+                        Managed in TID Transactions below
+                      </span>
                     </div>
-                    {type.hasTidBatch && (
-                      <>
-                        <div className="field-group">
-                          <label className="field-label">TID</label>
-                          <input
-                            type="text"
-                            className="field-input"
-                            placeholder="TID"
-                            value={val.tid}
-                            disabled={!manualActive}
-                            onChange={(e) =>
-                              setDynamicValues((prev) => ({
-                                ...prev,
-                                [type.code]: {
-                                  ...val,
-                                  tid: e.target.value,
-                                },
-                              }))
-                            }
-                          />
-                        </div>
-                        <div className="field-group">
-                          <label className="field-label">Batch</label>
-                          <input
-                            type="text"
-                            className="field-input"
-                            placeholder="Batch"
-                            value={val.batch}
-                            disabled={!manualActive}
-                            onChange={(e) =>
-                              setDynamicValues((prev) => ({
-                                ...prev,
-                                [type.code]: {
-                                  ...val,
-                                  batch: e.target.value,
-                                },
-                              }))
-                            }
-                          />
-                        </div>
-                      </>
-                    )}
-                  </div>
+                  ) : (
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr",
+                        gap: "8px",
+                        opacity: manualActive ? 1 : 0.6,
+                      }}
+                    >
+                      <div className="field-group">
+                        <label className="field-label">Amount (₹)</label>
+                        <input
+                          type="number"
+                          className="field-input"
+                          step="0.01"
+                          min="0"
+                          placeholder="0.00"
+                          value={val.amount || ""}
+                          disabled={!manualActive}
+                          onChange={(e) => {
+                            const newAmt = parseFloat(e.target.value) || 0;
+                            setDynamicValues((prev) => ({
+                              ...prev,
+                              [type.code]: { ...val, amount: newAmt },
+                            }));
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}
 
+          {/* Itemized Card & TID Transactions */}
+          {multiTidTransactionsEnabled && eligibleTidTypes.length > 0 && (
+            <div
+              className="nozzle-card"
+              style={{
+                marginBottom: "16px",
+                padding: "16px",
+                border: "1px solid rgba(56, 189, 248, 0.3)",
+                backgroundColor: "rgba(15, 23, 42, 0.6)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: "12px",
+                  borderBottom: "1px solid #334155",
+                  paddingBottom: "8px",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <CreditCard size={18} color="#38bdf8" />
+                  <h3 style={{ fontSize: "1rem", fontWeight: "bold", margin: 0, color: "#38bdf8" }}>
+                    Itemized Card &amp; TID Transactions
+                  </h3>
+                </div>
+                <span style={{ fontSize: "0.85rem", fontWeight: "bold", color: "#38bdf8" }}>
+                  Total: ₹{manualTidTransactions.reduce((sum, t) => sum + (t.amount || 0), 0).toFixed(2)} ({manualTidTransactions.length})
+                </span>
+              </div>
+
+              {/* Add New TID Transaction Form */}
+              <div
+                style={{
+                  padding: "12px",
+                  backgroundColor: "rgba(56, 189, 248, 0.05)",
+                  borderRadius: "8px",
+                  border: "1px solid rgba(56, 189, 248, 0.15)",
+                  marginBottom: "12px",
+                }}
+              >
+                <div style={{ fontSize: "0.8rem", fontWeight: 600, color: "#94a3b8", marginBottom: "8px" }}>
+                  Add Itemized TID Transaction
+                </div>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
+                    gap: "8px",
+                    marginBottom: "8px",
+                  }}
+                >
+                  <div className="field-group">
+                    <label className="field-label">Collection Method *</label>
+                    <select
+                      className="field-input"
+                      value={newManualTidType || (eligibleTidTypes.length > 0 ? eligibleTidTypes[0].code : "")}
+                      onChange={(e) => setNewManualTidType(e.target.value)}
+                    >
+                      {eligibleTidTypes.map((t) => (
+                        <option key={t.code} value={t.code}>
+                          {t.displayName}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="field-group">
+                    <label className="field-label">Slot</label>
+                    <select
+                      className="field-input"
+                      value={newManualSlot}
+                      onChange={(e) => setNewManualSlot(e.target.value)}
+                    >
+                      <option value="Morning">Morning</option>
+                      <option value="Day">Day</option>
+                      <option value="Night">Night</option>
+                      <option value="General">General</option>
+                    </select>
+                  </div>
+                  <div className="field-group">
+                    <label className="field-label">Amount (₹) *</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      className="field-input"
+                      placeholder="0.00"
+                      value={newManualTidAmount}
+                      onChange={(e) => setNewManualTidAmount(e.target.value)}
+                    />
+                  </div>
+                  <div className="field-group">
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                      <label className="field-label" style={{ margin: 0 }}>TID</label>
+                      {availableStationTids.length > 0 && (
+                        <button
+                          type="button"
+                          style={{
+                            background: "none",
+                            border: "none",
+                            color: "#38bdf8",
+                            fontSize: "0.72rem",
+                            cursor: "pointer",
+                            padding: "0 2px",
+                            textDecoration: "underline"
+                          }}
+                          onClick={() => {
+                            const next = !isCustomTid;
+                            setIsCustomTid(next);
+                            if (!next && availableStationTids.length > 0) {
+                              setNewManualTid(availableStationTids[0]);
+                            } else {
+                              setNewManualTid("");
+                            }
+                          }}
+                        >
+                          {isCustomTid ? "← Select TID" : "+ Custom TID"}
+                        </button>
+                      )}
+                    </div>
+                    {availableStationTids.length > 0 && !isCustomTid ? (
+                      <select
+                        className="field-input"
+                        value={newManualTid}
+                        onChange={(e) => {
+                          if (e.target.value === "__custom__") {
+                            setIsCustomTid(true);
+                            setNewManualTid("");
+                          } else {
+                            setNewManualTid(e.target.value);
+                          }
+                        }}
+                      >
+                        <option value="">Select Station TID...</option>
+                        {availableStationTids.map((tid) => (
+                          <option key={tid} value={tid}>
+                            {tid}
+                          </option>
+                        ))}
+                        <option value="__custom__">+ Enter Custom TID...</option>
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        className="field-input"
+                        placeholder="e.g. 5001"
+                        value={newManualTid}
+                        onChange={(e) => setNewManualTid(e.target.value)}
+                      />
+                    )}
+                  </div>
+                  <div className="field-group">
+                    <label className="field-label">Batch</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      placeholder="e.g. 101"
+                      value={newManualBatch}
+                      onChange={(e) => setNewManualBatch(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    style={{
+                      height: "36px",
+                      padding: "0 16px",
+                      fontSize: "0.85rem",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "6px",
+                    }}
+                    onClick={() => addManualTidTransaction()}
+                  >
+                    <Plus size={16} /> Add Transaction
+                  </button>
+                </div>
+              </div>
+
+              {/* Transactions Table / List */}
+              {manualTidTransactions.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "12px", color: "#64748b", fontSize: "0.85rem", fontStyle: "italic" }}>
+                  No itemized TID transactions added yet.
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                  {manualTidTransactions.map((tx) => (
+                    <div
+                      key={tx.id}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        padding: "8px 12px",
+                        backgroundColor: "rgba(30, 41, 59, 0.4)",
+                        borderRadius: "6px",
+                        border: "1px solid #334155",
+                      }}
+                    >
+                      <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          <span style={{ fontWeight: 600, color: "#f8fafc", fontSize: "0.9rem" }}>
+                            {eligibleTidTypes.find((t) => t.code === tx.collectionTypeCode)?.displayName || tx.collectionTypeCode}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: "0.75rem",
+                              backgroundColor: "#334155",
+                              color: "#94a3b8",
+                              padding: "1px 6px",
+                              borderRadius: "3px",
+                            }}
+                          >
+                            {tx.slot}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>
+                          TID: {tx.tid || "—"} | Batch: {tx.batch || "—"}
+                        </span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                        <span style={{ fontWeight: "bold", color: "#38bdf8", fontSize: "0.95rem" }}>
+                          ₹{Number(tx.amount || 0).toFixed(2)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => removeManualTidTransaction(tx.id)}
+                          style={{
+                            background: "transparent",
+                            border: "none",
+                            color: "#ef4444",
+                            cursor: "pointer",
+                            padding: "4px",
+                            display: "flex",
+                            alignItems: "center",
+                          }}
+                          title="Remove transaction"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Machine OTP Transactions (Dedicated Itemized Section) */}
-          {otpMachineTrackingEnabled && (
+          {otpMachineTrackingEnabled && eligibleOtpTypes.length > 0 && (
             <div
               className="nozzle-card"
               style={{
@@ -3699,7 +4092,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                     <tbody>
                       {machineTransactions.map((tx) => (
                         <tr key={tx.id} style={{ borderBottom: "1px solid #1e293b" }}>
-                          <td style={{ padding: "6px 8px", fontWeight: 600 }}>{tx.collectionTypeCode}</td>
+                          <td style={{ padding: "6px 8px", fontWeight: 600 }}>{eligibleOtpTypes.find((t) => t.code === tx.collectionTypeCode)?.displayName || tx.collectionTypeCode}</td>
                           <td style={{ padding: "6px 8px", color: "#94a3b8" }}>{tx.slot}</td>
                           <td style={{ padding: "6px 8px", color: "#38bdf8", fontWeight: 600 }}>₹{tx.amount.toFixed(2)}</td>
                           <td style={{ padding: "6px 8px" }}>
@@ -4046,6 +4439,189 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
             )}
           </div>
 
+          {/* Debtor Repayments (Collections / Recoveries) */}
+          <div
+            className="nozzle-card"
+            style={{ marginBottom: "16px", padding: "16px", border: "1px solid #10b981" }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: "12px",
+                borderBottom: "1px solid #334155",
+                paddingBottom: "6px",
+              }}
+            >
+              <h3
+                style={{
+                  fontSize: "1rem",
+                  fontWeight: "bold",
+                  margin: 0,
+                  color: "#10b981",
+                }}
+              >
+                Debtor Repayments (Recoveries)
+              </h3>
+              <span style={{ fontSize: "0.85rem", color: "#10b981", fontWeight: "bold" }}>
+                Total: ₹{debtorRepayments.reduce((sum, r) => sum + r.amount, 0).toFixed(2)}
+              </span>
+            </div>
+
+            <div className="field-row-2">
+              <div className="field-group">
+                <label className="field-label">Debtor Name *</label>
+                <select
+                  className="field-input"
+                  value={newRepaymentDebtor}
+                  onChange={(e) => setNewRepaymentDebtor(e.target.value)}
+                >
+                  <option value="">-- Select Debtor --</option>
+                  {creditorList.map((c) => (
+                    <option key={c.id} value={c.name}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field-group">
+                <label className="field-label">Payment Mode *</label>
+                <select
+                  className="field-input"
+                  value={newRepaymentMode}
+                  onChange={(e) => setNewRepaymentMode(e.target.value)}
+                >
+                  <option value="Cash">Cash</option>
+                  <option value="PhonePe">PhonePe</option>
+                  <option value="PineLab Card">PineLab Card</option>
+                  <option value="Credit Card">Credit Card</option>
+                  <option value="PetroCard">PetroCard</option>
+                  <option value="Bank Transfer">Bank Transfer</option>
+                  <option value="Cheque">Cheque</option>
+                  {(stationConfig?.collectionTypes || [])
+                    .filter((ct) => ct.isActive !== false)
+                    .map((ct) => (
+                      <option key={ct.code} value={ct.displayName || ct.code}>
+                        {ct.displayName || ct.code}
+                      </option>
+                    ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="field-row-2">
+              <div className="field-group">
+                <label className="field-label">Amount (₹) *</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className="field-input"
+                  placeholder="0.00"
+                  value={newRepaymentAmount}
+                  onChange={(e) => setNewRepaymentAmount(e.target.value)}
+                />
+              </div>
+              <div className="field-group">
+                <label className="field-label">DSM Name (Auto-bound)</label>
+                <input
+                  type="text"
+                  className="field-input"
+                  value={profile?.FullName || "DSM"}
+                  disabled
+                  style={{ opacity: 0.7 }}
+                />
+              </div>
+            </div>
+
+            <div className="field-group" style={{ marginBottom: "12px" }}>
+              <label className="field-label">Notes / Cheque / Ref (Optional)</label>
+              <input
+                type="text"
+                className="field-input"
+                placeholder="e.g. Chq #123456 or PhonePe Ref"
+                value={newRepaymentNotes}
+                onChange={(e) => setNewRepaymentNotes(e.target.value)}
+              />
+            </div>
+
+            <button
+              type="button"
+              className="btn-outline"
+              style={{ marginTop: "4px", width: "100%", padding: "8px", borderColor: "#10b981", color: "#10b981" }}
+              onClick={() => {
+                const amt = parseFloat(newRepaymentAmount);
+                if (!newRepaymentDebtor) {
+                  alert("Please select a debtor.");
+                  return;
+                }
+                if (!amt || amt <= 0) {
+                  alert("Please enter a valid repayment amount.");
+                  return;
+                }
+                setDebtorRepayments((prev) => [
+                  ...prev,
+                  {
+                    debtorName: newRepaymentDebtor,
+                    paymentMode: newRepaymentMode,
+                    amount: amt,
+                    notes: newRepaymentNotes.trim(),
+                    dsmName: profile?.FullName || "DSM",
+                  },
+                ]);
+                setNewRepaymentDebtor("");
+                setNewRepaymentAmount("");
+                setNewRepaymentNotes("");
+              }}
+            >
+              + Add Debtor Repayment
+            </button>
+
+            {debtorRepayments.length > 0 && (
+              <div className="debtor-entry-list" style={{ marginTop: "16px" }}>
+                {debtorRepayments.map((item, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      background: "#0f172a",
+                      padding: "8px 12px",
+                      borderRadius: "4px",
+                      marginBottom: "4px",
+                      fontSize: "0.85rem",
+                    }}
+                  >
+                    <div>
+                      <strong style={{ color: "#10b981" }}>{item.debtorName}</strong>: ₹{item.amount.toFixed(2)}
+                      <div style={{ color: "#94a3b8", fontSize: "0.78rem" }}>
+                        Mode: {item.paymentMode} | DSM: {item.dsmName} {item.notes ? `| Ref: ${item.notes}` : ""}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      style={{
+                        color: "#ef4444",
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        fontWeight: "bold",
+                        fontSize: "1rem",
+                      }}
+                      onClick={() => {
+                        setDebtorRepayments((prev) => prev.filter((_, i) => i !== idx));
+                      }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* 6. Expenses */}
           <div
             className="nozzle-card"
@@ -4203,6 +4779,56 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                 />
               </div>
             </div>
+          </div>
+
+          {/* Collection Reduction (Manual entry mode) */}
+          <div
+            className="nozzle-card"
+            style={{ marginBottom: "16px", padding: "16px", border: "1px solid #dc2626" }}
+          >
+            <h3
+              style={{
+                fontSize: "1rem",
+                fontWeight: "bold",
+                marginBottom: "12px",
+                borderBottom: "1px solid #334155",
+                paddingBottom: "6px",
+                color: "#ef4444",
+              }}
+            >
+              Collection Reduction (Deduction from Total)
+            </h3>
+            <div className="field-row-2">
+              <div className="field-group">
+                <label className="field-label">Reduction Amount (₹)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className="field-input"
+                  placeholder="0.00"
+                  value={collectionReduction || ""}
+                  onChange={(e) =>
+                    setCollectionReduction(Math.max(0, parseFloat(e.target.value) || 0))
+                  }
+                />
+              </div>
+              <div className="field-group">
+                <label className="field-label">Reduction Remark {collectionReduction > 0 ? "*" : ""}</label>
+                <input
+                  type="text"
+                  className="field-input"
+                  placeholder="Required if reduction > 0"
+                  value={collectionReductionRemark}
+                  onChange={(e) => setCollectionReductionRemark(e.target.value)}
+                />
+              </div>
+            </div>
+            {collectionReduction > 0 && (
+              <div style={{ fontSize: "0.85rem", color: "#f87171", marginTop: "4px" }}>
+                Deduction applied to canonical collections: -₹{collectionReduction.toFixed(2)}
+              </div>
+            )}
           </div>
 
           {/* 8. Cash 2 (Cash in Hand / Denominations) - AT THE END OF COLLECTIONS */}
@@ -4560,6 +5186,135 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
             </div>
           </div>
 
+          {/* Cash 3 - Final Cash (Denominations) */}
+          {cash3Enabled && (
+            <div
+              className="nozzle-card"
+              style={{ marginBottom: "16px", padding: "16px", border: "1px solid #06b6d4" }}
+            >
+              <h3
+                style={{
+                  fontSize: "1rem",
+                  fontWeight: "bold",
+                  marginBottom: "12px",
+                  borderBottom: "1px solid #334155",
+                  paddingBottom: "6px",
+                  color: "#06b6d4",
+                }}
+              >
+                Cash 3 (Final Cash) - Denominations
+              </h3>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: "10px 16px",
+                  marginBottom: "12px",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span style={{ width: "45px", fontWeight: "bold", fontSize: "0.9rem" }}>₹500 x</span>
+                  <input
+                    type="number"
+                    className="field-input"
+                    style={{ padding: "6px" }}
+                    value={cash3Denom500 || ""}
+                    min="0"
+                    onChange={(e) => setCash3Denom500(Math.max(0, parseInt(e.target.value) || 0))}
+                  />
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span style={{ width: "45px", fontWeight: "bold", fontSize: "0.9rem" }}>₹200 x</span>
+                  <input
+                    type="number"
+                    className="field-input"
+                    style={{ padding: "6px" }}
+                    value={cash3Denom200 || ""}
+                    min="0"
+                    onChange={(e) => setCash3Denom200(Math.max(0, parseInt(e.target.value) || 0))}
+                  />
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span style={{ width: "45px", fontWeight: "bold", fontSize: "0.9rem" }}>₹100 x</span>
+                  <input
+                    type="number"
+                    className="field-input"
+                    style={{ padding: "6px" }}
+                    value={cash3Denom100 || ""}
+                    min="0"
+                    onChange={(e) => setCash3Denom100(Math.max(0, parseInt(e.target.value) || 0))}
+                  />
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span style={{ width: "45px", fontWeight: "bold", fontSize: "0.9rem" }}>₹50 x</span>
+                  <input
+                    type="number"
+                    className="field-input"
+                    style={{ padding: "6px" }}
+                    value={cash3Denom50 || ""}
+                    min="0"
+                    onChange={(e) => setCash3Denom50(Math.max(0, parseInt(e.target.value) || 0))}
+                  />
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span style={{ width: "45px", fontWeight: "bold", fontSize: "0.9rem" }}>₹20 x</span>
+                  <input
+                    type="number"
+                    className="field-input"
+                    style={{ padding: "6px" }}
+                    value={cash3Denom20 || ""}
+                    min="0"
+                    onChange={(e) => setCash3Denom20(Math.max(0, parseInt(e.target.value) || 0))}
+                  />
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span style={{ width: "45px", fontWeight: "bold", fontSize: "0.9rem" }}>₹10 x</span>
+                  <input
+                    type="number"
+                    className="field-input"
+                    style={{ padding: "6px" }}
+                    value={cash3Denom10 || ""}
+                    min="0"
+                    onChange={(e) => setCash3Denom10(Math.max(0, parseInt(e.target.value) || 0))}
+                  />
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span style={{ width: "45px", fontWeight: "bold", fontSize: "0.9rem" }}>Coins</span>
+                  <input
+                    type="number"
+                    className="field-input"
+                    style={{ padding: "6px" }}
+                    value={cash3Coins || ""}
+                    min="0"
+                    onChange={(e) => setCash3Coins(Math.max(0, parseFloat(e.target.value) || 0))}
+                  />
+                </div>
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  borderTop: "1px solid #334155",
+                  paddingTop: "10px",
+                  marginTop: "10px",
+                  fontSize: "1rem",
+                  fontWeight: "bold",
+                  color: "#06b6d4",
+                }}
+              >
+                <span>Total Cash 3 (Final Cash):</span>
+                <span>
+                  ₹
+                  {cash3Amount.toLocaleString("en-IN", {
+                    minimumFractionDigits: 2,
+                  })}
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* ── SECTION 4: OIL & DEF PRODUCT SALES (IF AVAILABLE) ── */}
           {availableProducts.length > 0 && (
             <div
@@ -4773,6 +5528,17 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                 <span style={{ color: "#38bdf8" }}>
                   ₹
                   {dynamicTotal.toLocaleString("en-IN", {
+                    minimumFractionDigits: 2,
+                  })}
+                </span>
+              </div>
+            )}
+            {collectionReduction > 0 && (
+              <div className="mismatch-row">
+                <span style={{ color: "#ef4444" }}>Less: Collection Reduction {collectionReductionRemark ? `(${collectionReductionRemark})` : ""}</span>
+                <span style={{ color: "#ef4444" }}>
+                  -₹
+                  {collectionReduction.toLocaleString("en-IN", {
                     minimumFractionDigits: 2,
                   })}
                 </span>

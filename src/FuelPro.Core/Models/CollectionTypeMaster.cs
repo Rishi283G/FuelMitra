@@ -60,6 +60,25 @@ public class CollectionTypeMaster : ObservableObject
         set => SetProperty(ref _hasTidBatch, value);
     }
 
+    private bool? _hasOtp;
+    /// <summary>
+    /// Explicit override for OTP machine slip tracking eligibility.
+    /// If null, falls back to legacy HasTidBatch.
+    /// If false, explicitly disables OTP even when HasTidBatch is true.
+    /// </summary>
+    public bool? HasOtp
+    {
+        get => _hasOtp;
+        set => SetProperty(ref _hasOtp, value);
+    }
+
+    /// <summary>
+    /// Derived helper to determine if this collection type is OTP-eligible.
+    /// Strictly requires HasOtp == true (enabled from Developer settings).
+    /// </summary>
+    [NotMapped]
+    public bool IsOtpEligible => HasOtp == true;
+
     private int _displayOrder = 0;
     /// <summary>
     /// Display order in collection tables and grids.

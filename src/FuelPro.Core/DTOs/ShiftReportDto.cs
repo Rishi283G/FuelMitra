@@ -35,6 +35,7 @@ public class ShiftReportDto
     // Cash Summary (Table B)
     public CashAggregateDto Cash1 { get; set; } = new();
     public CashAggregateDto Cash2 { get; set; } = new();
+    public CashAggregateDto Cash3 { get; set; } = new();
 
     // Debtor Entries (Table C)
     public List<DebitRegisterRowDto> CreditorRows { get; set; } = new();
@@ -47,6 +48,10 @@ public class ShiftReportDto
     // Debtor Repayments
     public List<CreditorRepaymentPrintDto> DebtorRepayments { get; set; } = new();
     public double DebtorRepaymentsTotal { get; set; }
+    public double DebtorRecoveriesTotal { get; set; }
+    public double DsmRecoveriesTotal { get; set; }
+    public double CollectionReduction { get; set; }
+    public string? CollectionReductionRemark { get; set; }
     public double CashRepayments { get; set; }
     public double PhonePeRepayments { get; set; }
     public double CreditCardRepayments { get; set; }
@@ -110,6 +115,7 @@ public class DayReportDto
     // Cash Summary
     public CashAggregateDto Cash1 { get; set; } = new();
     public CashAggregateDto Cash2 { get; set; } = new();
+    public CashAggregateDto Cash3 { get; set; } = new();
 
     // Debtors (Table C)
     public List<DebitRegisterRowDto> CreditorRows { get; set; } = new();
@@ -122,6 +128,10 @@ public class DayReportDto
     // Debtor Repayments
     public List<CreditorRepaymentPrintDto> DebtorRepayments { get; set; } = new();
     public double DebtorRepaymentsTotal { get; set; }
+    public double DebtorRecoveriesTotal { get; set; }
+    public double DsmRecoveriesTotal { get; set; }
+    public double CollectionReduction { get; set; }
+    public string? CollectionReductionRemark { get; set; }
     public double CashRepayments { get; set; }
     public double PhonePeRepayments { get; set; }
     public double CreditCardRepayments { get; set; }
@@ -161,12 +171,14 @@ public class CollectionCategoryDto
     public double Volume { get; set; }
     public bool IsInformational { get; set; }
 
-    public string DescriptionWithBreakdown =>
-        Volume > 0
-            ? $"{Category} ({Volume:N2} Ltr)"
-            : (RecoveryAmount > 0 
-                ? $"{Category} (Fuel: ₹{BaseAmount:N2} | Recovery: ₹{RecoveryAmount:N2})"
-                : Category);
+    private string? _description;
+    public string DescriptionWithBreakdown
+    {
+        get => !string.IsNullOrWhiteSpace(_description)
+            ? _description
+            : (Volume > 0 ? $"{Category} ({Volume:N2} Ltr)" : Category);
+        set => _description = value;
+    }
 }
 
 public class RepaymentBreakdownDto

@@ -594,7 +594,9 @@ public partial class DsmPerformanceViewModel : ObservableObject
 
             var printData = new DebtorLedgerPrintData
             {
-                DebtorName = $"{SelectedPersonalSummary.DsmName} (DSM Personal Debtors)",
+                Title = "DSM PERSONAL LEDGER",
+                Subtitle = "Auto-compiled from DSM loss & shortage records",
+                DebtorName = SelectedPersonalSummary.DsmName,
                 DebtorPhone = "N/A",
                 StartDate = PersonalLedgerStartDate.ToString("dd-MMM-yyyy"),
                 EndDate = PersonalLedgerEndDate.ToString("dd-MMM-yyyy"),

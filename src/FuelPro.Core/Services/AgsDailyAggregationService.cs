@@ -52,19 +52,24 @@ public class AgsDailyAggregationService : IAgsDailyAggregationService
             .Where(r => GetFuelTypeSafe(r.PumpNumber, r.NozzleNumber, date) == "MS-II")
             .Sum(r => r.NetSaleLitres);
 
-        // Tank stock: Shift A opening (day opening) → Shift C closing (day closing)
-        var shiftA = active.FirstOrDefault(s => s.ShiftType == "A" || s.ShiftType == "I");
+        // Tank stock: Shift B opening (day opening) → Shift A closing (day closing)
+        // With provisional fallbacks for in-progress operational days
+        var shiftB = active.FirstOrDefault(s => s.ShiftType == "B" || s.ShiftType == "II");
         var shiftC = active.FirstOrDefault(s => s.ShiftType == "C" || s.ShiftType == "III");
+        var shiftA = active.FirstOrDefault(s => s.ShiftType == "A" || s.ShiftType == "I");
 
-        summary.HsdDayOpeningStock  = shiftA?.HsdOpeningStock ?? 0;
-        summary.MsIDayOpeningStock  = shiftA?.MsIOpeningStock ?? 0;
-        summary.MsIIDayOpeningStock = shiftA?.MsIIOpeningStock ?? 0;
+        var openingShift = shiftB ?? shiftC ?? shiftA;
+        var closingShift = shiftA ?? shiftC ?? shiftB;
 
-        summary.HsdDayClosingStock  = shiftC?.HsdClosingStock ?? 0;
-        summary.MsIDayClosingStock  = shiftC?.MsIClosingStock ?? 0;
-        summary.MsIIDayClosingStock = shiftC?.MsIIClosingStock ?? 0;
+        summary.HsdDayOpeningStock  = openingShift?.HsdOpeningStock ?? 0;
+        summary.MsIDayOpeningStock  = openingShift?.MsIOpeningStock ?? 0;
+        summary.MsIIDayOpeningStock = openingShift?.MsIIOpeningStock ?? 0;
 
-        // Per-shift breakdown JSON
+        summary.HsdDayClosingStock  = closingShift?.HsdClosingStock ?? 0;
+        summary.MsIDayClosingStock  = closingShift?.MsIClosingStock ?? 0;
+        summary.MsIIDayClosingStock = closingShift?.MsIIClosingStock ?? 0;
+
+        // Per-shift breakdown JSON (carries tank measurement provenance across synchronized clients)
         var breakdown = new Dictionary<string, object>();
         foreach (var shift in active)
         {
@@ -82,6 +87,26 @@ public class AgsDailyAggregationService : IAgsDailyAggregationService
                 msII = shift.TotalMsIILitres;
             }
 
+            var tankMeasurements = new Dictionary<string, object>();
+            if (shift.TankStocks != null && shift.TankStocks.Any())
+            {
+                foreach (var ts in shift.TankStocks)
+                {
+                    bool isAgsPdf = !string.IsNullOrEmpty(shift.PdfFileName) &&
+                                    shift.PdfFileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase);
+                    bool hasPhysical = ts.HasPhysicalDip || isAgsPdf || ts.ClosingDipMM > 0.001;
+                    string src = ts.DipSource ?? (isAgsPdf ? "AgsGauge" : (ts.ClosingDipMM > 0.001 ? "Manual" : "None"));
+
+                    tankMeasurements[ts.FuelType] = new
+                    {
+                        hasDip = hasPhysical,
+                        dipMm = ts.ClosingDipMM,
+                        measuredStock = hasPhysical ? (double?)ts.ClosingStockLitres : null,
+                        source = src
+                    };
+                }
+            }
+
             breakdown[shift.ShiftType] = new
             {
                 hsd   = hsd,
@@ -90,6 +115,7 @@ public class AgsDailyAggregationService : IAgsDailyAggregationService
                 total = hsd + msI + msII,
                 importedAt = shift.ImportedAt.ToString("hh:mm tt"),
                 importedBy = shift.ImportedBy,
+                tankMeasurements = tankMeasurements
             };
         }
         summary.ShiftBreakdownJson = JsonConvert.SerializeObject(breakdown);
@@ -99,6 +125,47 @@ public class AgsDailyAggregationService : IAgsDailyAggregationService
             active.Count);
 
         return summary;
+    }
+
+    public static TankMeasurementSyncDto? ParseTankMeasurement(string? breakdownJson, string? shiftType, string fuelType)
+    {
+        if (string.IsNullOrWhiteSpace(breakdownJson) || string.IsNullOrWhiteSpace(shiftType))
+            return null;
+
+        try
+        {
+            var dict = JsonConvert.DeserializeObject<Dictionary<string, Newtonsoft.Json.Linq.JObject>>(breakdownJson);
+            if (dict == null) return null;
+
+            var normShift = shiftType.Trim().ToUpperInvariant() switch
+            {
+                "I" or "SHIFT I" => "A",
+                "II" or "SHIFT II" => "B",
+                "III" or "SHIFT III" => "C",
+                var s => s
+            };
+
+            if (!dict.TryGetValue(normShift, out var shiftObj) || shiftObj == null)
+                return null;
+
+            var tmObj = shiftObj["tankMeasurements"] as Newtonsoft.Json.Linq.JObject;
+            if (tmObj == null) return null;
+
+            if (!tmObj.TryGetValue(fuelType, StringComparison.OrdinalIgnoreCase, out var tankToken) || tankToken is not Newtonsoft.Json.Linq.JObject tankData)
+                return null;
+
+            return new TankMeasurementSyncDto
+            {
+                HasDip = tankData.Value<bool>("hasDip"),
+                DipMm = tankData.Value<double>("dipMm"),
+                MeasuredStock = tankData["measuredStock"]?.Type != Newtonsoft.Json.Linq.JTokenType.Null ? tankData.Value<double?>("measuredStock") : null,
+                Source = tankData.Value<string>("source") ?? "None"
+            };
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     public AgsDailySummaryDto ToDto(AgsDailySummary summary, List<AgsShiftImport> shiftsForDay)

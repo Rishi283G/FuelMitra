@@ -6,8 +6,10 @@
 
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVisConverter"/>
+        <converters:InverseBoolToVisibilityConverter x:Key="InvBoolToVisConverter"/>
         <converters:NullToVisibilityConverter x:Key="NullToVisConverter"/>
         <converters:StringToVisibilityConverter x:Key="StringToVisConverter"/>
+        <converters:DifferenceColorConverter x:Key="DiffColorConverter"/>
     </UserControl.Resources>
 
     <Grid Margin="24,16">
@@ -18,79 +20,334 @@
         </Grid.RowDefinitions>
 
         <!-- Header -->
-        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,8">
-            <materialDesign:PackIcon Kind="DatabaseArrowDown" Width="28" Height="28"
-                                     Foreground="{DynamicResource MaterialDesign.Brush.Primary}"
-                                     VerticalAlignment="Center" Margin="0,0,10,0"/>
-            <TextBlock Text="Tank Stock History" FontSize="24" FontWeight="Bold" VerticalAlignment="Center"/>
-        </StackPanel>
-
-        <!-- Filters -->
-        <materialDesign:Card Grid.Row="1" Margin="0,4,0,16" Padding="12" UniformCornerRadius="8"
-                             materialDesign:ElevationAssist.Elevation="Dp1">
+        <Grid Grid.Row="0" Margin="0,0,0,12">
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <materialDesign:PackIcon Kind="DatabaseArrowDown" Width="30" Height="30"
+                                         Foreground="{DynamicResource MaterialDesign.Brush.Primary}"
+                                         VerticalAlignment="Center" Margin="0,0,10,0"/>
+                <StackPanel>
+                    <TextBlock Text="Tank Stock History &amp; Dip Variation" FontSize="22" FontWeight="Bold" VerticalAlignment="Center"/>
+                    <TextBlock Text="Operational stock continuity, physical dip measurements, and variance audit" FontSize="12" Opacity="0.6"/>
+                </StackPanel>
+            </StackPanel>
+        </Grid>
+
+        <!-- Filters & View Options -->
+        <materialDesign:Card Grid.Row="1" Margin="0,0,0,16" Padding="14,10" UniformCornerRadius="8"
+                             materialDesign:ElevationAssist.Elevation="Dp1">
+            <WrapPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <!-- View Mode Selection -->
+                <ComboBox ItemsSource="{Binding ViewModes}" SelectedItem="{Binding SelectedViewMode}"
+                          materialDesign:HintAssist.Hint="View Mode" Width="170" Margin="0,0,12,6"
+                          Style="{StaticResource MaterialDesignOutlinedComboBox}" Height="46"/>
+
+                <!-- Fuel Filter -->
+                <ComboBox ItemsSource="{Binding FuelFilters}" SelectedItem="{Binding SelectedFuelFilter}"
+                          materialDesign:HintAssist.Hint="Fuel Filter" Width="140" Margin="0,0,12,6"
+                          Style="{StaticResource MaterialDesignOutlinedComboBox}" Height="46"/>
+
+                <!-- Preset Selection -->
                 <ComboBox ItemsSource="{Binding Presets}" SelectedItem="{Binding SelectedPreset}"
-                          materialDesign:HintAssist.Hint="Quick Range" Width="140" Margin="0,0,12,0"
-                          Style="{StaticResource MaterialDesignOutlinedComboBox}" Height="48"/>
+                          materialDesign:HintAssist.Hint="Quick Range" Width="140" Margin="0,0,12,6"
+                          Style="{StaticResource MaterialDesignOutlinedComboBox}" Height="46"/>
+
+                <!-- Date Range -->
                 <DatePicker SelectedDate="{Binding StartDate}" materialDesign:HintAssist.Hint="From"
                             Style="{StaticResource MaterialDesignOutlinedDatePicker}"
-                            Width="140" Margin="0,0,8,0" Height="48"/>
+                            Width="130" Margin="0,0,8,6" Height="46"/>
                 <DatePicker SelectedDate="{Binding EndDate}" materialDesign:HintAssist.Hint="To"
                             Style="{StaticResource MaterialDesignOutlinedDatePicker}"
-                            Width="140" Margin="0,0,12,0" Height="48"/>
+                            Width="130" Margin="0,0,12,6" Height="46"/>
+
+                <!-- Refresh Button -->
                 <Button Content="Refresh" Command="{Binding LoadHistoryCommand}"
-                        Style="{StaticResource MaterialDesignOutlinedButton}" Height="48" Padding="12,0"/>
+                        Style="{StaticResource MaterialDesignRaisedButton}" Height="46" Padding="16,0" Margin="0,0,12,6"/>
+
                 <ProgressBar IsIndeterminate="{Binding IsLoading}"
                              Visibility="{Binding IsLoading, Converter={StaticResource BoolToVisConverter}}"
                              Style="{StaticResource MaterialDesignCircularProgressBar}"
-                             Width="28" Height="28" Margin="16,0,0,0"/>
-            </StackPanel>
+                             Width="28" Height="28" Margin="8,0,0,6" VerticalAlignment="Center"/>
+            </WrapPanel>
         </materialDesign:Card>
 
-        <!-- Status / DataGrid -->
+        <!-- Status / Content -->
         <Grid Grid.Row="2">
             <TextBlock Text="{Binding StatusMessage}"
                        HorizontalAlignment="Center" VerticalAlignment="Center"
-                       FontSize="14" Opacity="0.5"
+                       FontSize="15" Opacity="0.6"
                        Visibility="{Binding StatusMessage, Converter={StaticResource StringToVisConverter}}"/>
 
-            <DataGrid ItemsSource="{Binding HistoryRows}" AutoGenerateColumns="False"
-                      CanUserAddRows="False" IsReadOnly="True"
-                      Visibility="{Binding HasData, Converter={StaticResource BoolToVisConverter}}"
-                      materialDesign:DataGridAssist.CellPadding="8 6"
-                      HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
-                <DataGrid.Columns>
-                    <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat=dd-MMM-yyyy}" Width="100"/>
+            <!-- Grid Content when HasData -->
+            <Grid Visibility="{Binding HasData, Converter={StaticResource BoolToVisConverter}}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
 
-                    <!-- HSD -->
-                    <DataGridTextColumn Header="HSD Opening"   Binding="{Binding HsdOpening,   StringFormat=N2}" Width="100"/>
-                    <DataGridTextColumn Header="HSD Sale"      Binding="{Binding HsdSale,       StringFormat=N2}" Width="90"/>
-                    <DataGridTextColumn Header="HSD Purchased" Binding="{Binding HsdPurchased,  StringFormat=N2}" Width="110"/>
-                    <DataGridTextColumn Header="HSD Closing"   Binding="{Binding HsdClosing,    StringFormat=N2}" Width="100"/>
-                    <DataGridTextColumn Header="HSD Dip"       Binding="{Binding HsdDip,        StringFormat=N2}" Width="80"/>
+                <!-- 1. Daily Summary View Mode -->
+                <DataGrid Grid.Row="0" ItemsSource="{Binding DailyRows}" AutoGenerateColumns="False"
+                          CanUserAddRows="False" IsReadOnly="True"
+                          Visibility="{Binding IsDailySummaryMode, Converter={StaticResource BoolToVisConverter}}"
+                          materialDesign:DataGridAssist.CellPadding="10 8"
+                          HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat=dd-MMM-yyyy}" Width="110"/>
+                        <DataGridTextColumn Header="Fuel" Binding="{Binding FuelType}" FontWeight="SemiBold" Width="85"/>
+                        <DataGridTextColumn Header="Day Opening (B)" Binding="{Binding DayOpeningStock, StringFormat=N2}" Width="120"/>
+                        <DataGridTextColumn Header="Sales" Binding="{Binding DaySales, StringFormat=N2}" Width="100"/>
+                        <DataGridTextColumn Header="Testing" Binding="{Binding DayTesting, StringFormat=N2}" Width="90"/>
+                        <DataGridTextColumn Header="Receipts" Binding="{Binding DayReceipts, StringFormat=N2}" Width="100"/>
+                        <DataGridTextColumn Header="Book Stock" Binding="{Binding DayBookStock, StringFormat=N2}" FontWeight="SemiBold" Width="115"/>
+                        <DataGridTextColumn Header="Day Closing (A)" Binding="{Binding DayClosingStock, StringFormat=N2}" Width="120"/>
+                        
+                        <DataGridTemplateColumn Header="Physical Stock" Width="115">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding DayMeasuredStock, StringFormat=N2, TargetNullValue=—}" VerticalAlignment="Center"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
 
-                    <!-- MS-I -->
-                    <DataGridTextColumn Header="MS-I Opening"   Binding="{Binding MsIOpening,   StringFormat=N2}" Width="100"/>
-                    <DataGridTextColumn Header="MS-I Sale"      Binding="{Binding MsISale,       StringFormat=N2}" Width="90"/>
-                    <DataGridTextColumn Header="MS-I Purchased" Binding="{Binding MsIPurchased,  StringFormat=N2}" Width="110"/>
-                    <DataGridTextColumn Header="MS-I Closing"   Binding="{Binding MsIClosing,    StringFormat=N2}" Width="100"/>
-                    <DataGridTextColumn Header="MS-I Dip"       Binding="{Binding MsIDip,        StringFormat=N2}" Width="80"/>
+                        <DataGridTemplateColumn Header="Variance" Width="105">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding DayVariance, StringFormat={}{0:+0.00;-0.00;0.00}, TargetNullValue=—}" 
+                                               Foreground="{Binding DayVariance, Converter={StaticResource DiffColorConverter}}"
+                                               FontWeight="Bold" VerticalAlignment="Center"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
 
-                    <!-- MS-II -->
-                    <DataGridTextColumn Header="MS-II Opening"   Binding="{Binding MsIIOpening,   StringFormat=N2}" Width="100"/>
-                    <DataGridTextColumn Header="MS-II Sale"      Binding="{Binding MsIISale,       StringFormat=N2}" Width="90"/>
-                    <DataGridTextColumn Header="MS-II Purchased" Binding="{Binding MsIIPurchased,  StringFormat=N2}" Width="110"/>
-                    <DataGridTextColumn Header="MS-II Closing"   Binding="{Binding MsIIClosing,    StringFormat=N2}" Width="100"/>
-                    <DataGridTextColumn Header="MS-II Dip"       Binding="{Binding MsIIDip,        StringFormat=N2}" Width="80"/>
+                        <DataGridTextColumn Header="Unit" Binding="{Binding Unit}" Width="65"/>
 
-                    <!-- CNG -->
-                    <DataGridTextColumn Header="CNG Opening"   Binding="{Binding CngOpening,   StringFormat=N2}" Width="100"/>
-                    <DataGridTextColumn Header="CNG Sale"      Binding="{Binding CngSale,       StringFormat=N2}" Width="90"/>
-                    <DataGridTextColumn Header="CNG Purchased" Binding="{Binding CngPurchased,  StringFormat=N2}" Width="110"/>
-                    <DataGridTextColumn Header="CNG Closing"   Binding="{Binding CngClosing,    StringFormat=N2}" Width="100"/>
-                    <DataGridTextColumn Header="CNG Dip"       Binding="{Binding CngDip,        StringFormat=N2}" Width="80"/>
-                </DataGrid.Columns>
-            </DataGrid>
+                        <DataGridTemplateColumn Header="Status" Width="120">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Border CornerRadius="4" Padding="6,2" HorizontalAlignment="Left">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Background" Value="#E0E0E0"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Status}" Value="Complete">
+                                                        <Setter Property="Background" Value="#E8F5E9"/>
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding Status}" Value="Provisional">
+                                                        <Setter Property="Background" Value="#FFF8E1"/>
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding Status}" Value="Incomplete">
+                                                        <Setter Property="Background" Value="#FFEBEE"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                        <TextBlock Text="{Binding Status}" FontWeight="SemiBold" FontSize="11">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Foreground" Value="#424242"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Status}" Value="Complete">
+                                                            <Setter Property="Foreground" Value="#2E7D32"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Status}" Value="Provisional">
+                                                            <Setter Property="Foreground" Value="#F57F17"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Status}" Value="Incomplete">
+                                                            <Setter Property="Foreground" Value="#C62828"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </Border>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+
+                <!-- 2. Shift-Wise Detail View Mode -->
+                <DataGrid Grid.Row="0" ItemsSource="{Binding ShiftRows}" AutoGenerateColumns="False"
+                          CanUserAddRows="False" IsReadOnly="True"
+                          Visibility="{Binding IsShiftWiseMode, Converter={StaticResource BoolToVisConverter}}"
+                          materialDesign:DataGridAssist.CellPadding="8 6"
+                          HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Date" Binding="{Binding OperationalDate, StringFormat=dd-MMM-yyyy}" Width="105"/>
+                        <DataGridTextColumn Header="Shift" Binding="{Binding ShiftType}" FontWeight="Bold" Width="70"/>
+                        <DataGridTextColumn Header="Fuel / Tank" Binding="{Binding GroupName}" FontWeight="SemiBold" Width="105"/>
+                        <DataGridTextColumn Header="Opening" Binding="{Binding OpeningStock, StringFormat=N2}" Width="100"/>
+                        <DataGridTextColumn Header="Dispensed" Binding="{Binding FuelDispensed, StringFormat=N2}" Width="95"/>
+                        <DataGridTextColumn Header="Testing" Binding="{Binding TestingLitres, StringFormat=N2}" Width="80"/>
+                        <DataGridTextColumn Header="Receipts" Binding="{Binding Receipts, StringFormat=N2}" Width="90"/>
+                        <DataGridTextColumn Header="Book Stock" Binding="{Binding BookStock, StringFormat=N2}" FontWeight="SemiBold" Width="105"/>
+                        
+                        <DataGridTemplateColumn Header="Dip (mm)" Width="90">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding DipMm, StringFormat=N2}" VerticalAlignment="Center">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Unit}" Value="Kg">
+                                                        <Setter Property="Text" Value="N/A"/>
+                                                        <Setter Property="Opacity" Value="0.5"/>
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding HasPhysicalMeasurement}" Value="False">
+                                                        <Setter Property="Text" Value="—"/>
+                                                        <Setter Property="Opacity" Value="0.5"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+
+                        <DataGridTemplateColumn Header="Physical Stock" Width="110">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding MeasuredStock, StringFormat=N2, TargetNullValue=—}" VerticalAlignment="Center"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+
+                        <DataGridTemplateColumn Header="Variance" Width="100">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Variance, StringFormat={}{0:+0.00;-0.00;0.00}, TargetNullValue=—}" 
+                                               Foreground="{Binding Variance, Converter={StaticResource DiffColorConverter}}"
+                                               FontWeight="Bold" VerticalAlignment="Center"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+
+                        <DataGridTemplateColumn Header="Provenance" Width="95">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding MeasurementSource}" Opacity="0.8" VerticalAlignment="Center" FontSize="11"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+
+                        <DataGridTemplateColumn Header="Variance Status" Width="135">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Border CornerRadius="4" Padding="6,2" HorizontalAlignment="Left">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Background" Value="#F5F5F5"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding VarianceStatus}" Value="Balanced">
+                                                        <Setter Property="Background" Value="#E3F2FD"/>
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding VarianceStatus}" Value="Excess">
+                                                        <Setter Property="Background" Value="#E8F5E9"/>
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding VarianceStatus}" Value="Shortage">
+                                                        <Setter Property="Background" Value="#FFEBEE"/>
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding VarianceStatus}" Value="Dip Not Recorded">
+                                                        <Setter Property="Background" Value="#FFF8E1"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                        <TextBlock Text="{Binding VarianceStatus}" FontSize="11" FontWeight="SemiBold">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Foreground" Value="#616161"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding VarianceStatus}" Value="Balanced">
+                                                            <Setter Property="Foreground" Value="#1565C0"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding VarianceStatus}" Value="Excess">
+                                                            <Setter Property="Foreground" Value="#2E7D32"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding VarianceStatus}" Value="Shortage">
+                                                            <Setter Property="Foreground" Value="#C62828"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding VarianceStatus}" Value="Dip Not Recorded">
+                                                            <Setter Property="Foreground" Value="#E65100"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </Border>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+
+                        <DataGridTemplateColumn Header="Continuity" Width="130">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding ContinuityStatus}" FontSize="11" Opacity="0.75" VerticalAlignment="Center"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+
+                <!-- Shift Comparison Drawer / Bottom Info -->
+                <materialDesign:Card Grid.Row="1" Margin="0,12,0,0" Padding="12" UniformCornerRadius="8"
+                                     materialDesign:ElevationAssist.Elevation="Dp1"
+                                     Visibility="{Binding SelectedComparison, Converter={StaticResource NullToVisConverter}}">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,8">
+                            <materialDesign:PackIcon Kind="Compare" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBlock Text="Shift Sequence Comparison for " FontWeight="Bold" VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding SelectedComparison.Date, StringFormat=dd-MMM-yyyy}" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" VerticalAlignment="Center"/>
+                            <TextBlock Text=" (Shift B → Shift C → Shift A)" FontStyle="Italic" Opacity="0.7" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
+
+                        <ItemsControl Grid.Row="1" ItemsSource="{Binding SelectedComparison.Shifts}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel Orientation="Horizontal"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border BorderThickness="1" BorderBrush="#E0E0E0" CornerRadius="6" Margin="0,0,10,6" Padding="8,6" Background="#FAFAFA" Width="210">
+                                        <StackPanel>
+                                            <DockPanel LastChildFill="True">
+                                                <TextBlock Text="{Binding ShiftType, StringFormat='Shift {0}'}" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}"/>
+                                                <TextBlock Text="{Binding FuelType}" HorizontalAlignment="Right" FontWeight="SemiBold" Opacity="0.8"/>
+                                            </DockPanel>
+                                            <Separator Margin="0,4"/>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto"/>
+                                                    <RowDefinition Height="Auto"/>
+                                                    <RowDefinition Height="Auto"/>
+                                                    <RowDefinition Height="Auto"/>
+                                                </Grid.RowDefinitions>
+                                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Opening:" Opacity="0.7" FontSize="11"/>
+                                                <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding OpeningStock, StringFormat=N2}" FontSize="11"/>
+                                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Dispensed:" Opacity="0.7" FontSize="11"/>
+                                                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding FuelDispensed, StringFormat=N2}" FontSize="11"/>
+                                                <TextBlock Grid.Row="2" Grid.Column="0" Text="Book Stock:" Opacity="0.7" FontSize="11"/>
+                                                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding BookStock, StringFormat=N2}" FontSize="11"/>
+                                                <TextBlock Grid.Row="3" Grid.Column="0" Text="Physical Stock:" Opacity="0.7" FontSize="11"/>
+                                                <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding MeasuredStock, StringFormat=N2, TargetNullValue=—}" FontWeight="Bold" FontSize="11"/>
+                                            </Grid>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </Grid>
+                </materialDesign:Card>
+            </Grid>
         </Grid>
     </Grid>
 </UserControl>

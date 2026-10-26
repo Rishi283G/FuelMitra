@@ -509,6 +509,7 @@ public partial class App : Application
                     ""Batch"" TEXT NULL,
                     ""Slot"" TEXT NULL DEFAULT 'General',
                     ""Otp"" TEXT NULL,
+                    ""TransactionId"" TEXT NULL,
                     CONSTRAINT ""FK_PaymentCollectionItems_PaymentCollections_PaymentId"" FOREIGN KEY (""PaymentId"") REFERENCES ""PaymentCollections"" (""PaymentId"") ON DELETE CASCADE
                 );
                 CREATE INDEX IF NOT EXISTS ""IX_PaymentCollectionItems_PaymentId"" ON ""PaymentCollectionItems"" (""PaymentId"");
@@ -537,6 +538,7 @@ public partial class App : Application
         if (TableExists(connection, "PaymentCollectionItems"))
         {
             EnsureColumnExists(connection, "PaymentCollectionItems", "Otp", "ALTER TABLE PaymentCollectionItems ADD COLUMN Otp TEXT NULL;");
+            EnsureColumnExists(connection, "PaymentCollectionItems", "TransactionId", "ALTER TABLE PaymentCollectionItems ADD COLUMN TransactionId TEXT NULL;");
         }
 
         if (TableExists(connection, "TankDefinitions"))
@@ -549,6 +551,12 @@ public partial class App : Application
                 cmdCng.ExecuteNonQuery();
             }
             catch { }
+        }
+
+        if (TableExists(connection, "AgsTankStocks"))
+        {
+            EnsureColumnExists(connection, "AgsTankStocks", "HasPhysicalDip", "ALTER TABLE AgsTankStocks ADD COLUMN HasPhysicalDip INTEGER NOT NULL DEFAULT 0;");
+            EnsureColumnExists(connection, "AgsTankStocks", "DipSource", "ALTER TABLE AgsTankStocks ADD COLUMN DipSource TEXT NULL;");
         }
 
         // DsmPumpAssignments columns — must run before the guard since SyncValidationTest calls this
@@ -571,6 +579,11 @@ public partial class App : Application
             EnsureColumnExists(connection, "Settings", "AppFeatureSettingsJson", "ALTER TABLE Settings ADD COLUMN AppFeatureSettingsJson TEXT NULL;");
             EnsureColumnExists(connection, "Settings", "PumpMappingsJson", "ALTER TABLE Settings ADD COLUMN PumpMappingsJson TEXT NULL;");
             EnsureColumnExists(connection, "Settings", "PumpConnectionRulesJson", "ALTER TABLE Settings ADD COLUMN PumpConnectionRulesJson TEXT NULL;");
+            EnsureColumnExists(connection, "Settings", "StationSubtitle", "ALTER TABLE Settings ADD COLUMN StationSubtitle TEXT NULL;");
+            EnsureColumnExists(connection, "Settings", "StationAddress", "ALTER TABLE Settings ADD COLUMN StationAddress TEXT NULL;");
+            EnsureColumnExists(connection, "Settings", "StationContact", "ALTER TABLE Settings ADD COLUMN StationContact TEXT NULL;");
+            EnsureColumnExists(connection, "Settings", "OilCompany", "ALTER TABLE Settings ADD COLUMN OilCompany TEXT NULL;");
+            EnsureColumnExists(connection, "Settings", "CustomLogoPath", "ALTER TABLE Settings ADD COLUMN CustomLogoPath TEXT NULL;");
         }
 
         // ─── OpeningBalances Table & DsmPersonalDebtors EntryType (Independent of PaymentCollections) ─────
@@ -762,6 +775,9 @@ public partial class App : Application
         EnsureColumnExists(connection, "PaymentCollections", "PetroCardBatchMorning", "ALTER TABLE PaymentCollections ADD COLUMN PetroCardBatchMorning TEXT NULL");
         EnsureColumnExists(connection, "PaymentCollections", "PetroCardTidNight", "ALTER TABLE PaymentCollections ADD COLUMN PetroCardTidNight TEXT NULL");
         EnsureColumnExists(connection, "PaymentCollections", "PetroCardBatchNight", "ALTER TABLE PaymentCollections ADD COLUMN PetroCardBatchNight TEXT NULL");
+        EnsureColumnExists(connection, "PaymentCollections", "CollectionReduction", "ALTER TABLE PaymentCollections ADD COLUMN CollectionReduction REAL NOT NULL DEFAULT 0.0;");
+        EnsureColumnExists(connection, "PaymentCollections", "CollectionReductionRemark", "ALTER TABLE PaymentCollections ADD COLUMN CollectionReductionRemark TEXT NULL;");
+        EnsureColumnExists(connection, "CollectionTypes", "HasOtp", "ALTER TABLE CollectionTypes ADD COLUMN HasOtp INTEGER NULL;");
         EnsureColumnExists(connection, "Shifts", "CardSettlementPosTotal", "ALTER TABLE Shifts ADD COLUMN CardSettlementPosTotal REAL NOT NULL DEFAULT 0.0");
 
         // Cloud Sync: SyncChangeLogs Table

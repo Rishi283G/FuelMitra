@@ -1964,6 +1964,17 @@
                                                 </DataTemplate>
                                             </DataGridTemplateColumn.CellTemplate>
                                         </DataGridTemplateColumn>
+                                        <DataGridTemplateColumn Header="Requires OTP" Width="110">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <CheckBox IsChecked="{Binding HasOtp, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                              IsThreeState="True"
+                                                              ToolTip="Null: Inherit from TID/Batch; Checked: Force OTP; Unchecked: Disable OTP"
+                                                              HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                              Style="{StaticResource MaterialDesignCheckBox}"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
                                         <DataGridTemplateColumn Header="Active" Width="80">
                                             <DataGridTemplateColumn.CellTemplate>
                                                 <DataTemplate>

@@ -10,6 +10,8 @@ public class DsmCalculationResult
     public decimal TotalCreditors { get; set; }
     public decimal TotalExpenses { get; set; }
     public decimal TotalCollection { get; set; }
+    public decimal CollectionReduction { get; set; }
+    public string? CollectionReductionRemark { get; set; }
     public decimal Mismatch { get; set; }
     public bool IsBalanced { get; set; }
 

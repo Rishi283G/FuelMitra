@@ -51,9 +51,16 @@ public partial class DsmManagementViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool _isCreatingAccount;
     [ObservableProperty] private bool _isEditingUser;
     [ObservableProperty] private DsmUser? _editingUser;
+    [ObservableProperty] private string _editingEmployeeCode = "";
     [ObservableProperty] private string _editingFullName = "";
     [ObservableProperty] private string _editingMobileNumber = "";
     [ObservableProperty] private string _editingEmail = "";
+
+    // Password Editing (Locked by default, unlocked with Admin/Manager PIN)
+    [ObservableProperty] private bool _isPasswordEditUnlocked;
+    [ObservableProperty] private string _adminUnlockPin = "";
+    [ObservableProperty] private string _editingNewPassword = "";
+    [ObservableProperty] private string _passwordUnlockError = "";
 
     // Pump Assignments
     public ObservableCollection<DsmPumpAssignment> PumpAssignments { get; } = new();
@@ -138,14 +145,21 @@ public partial class DsmManagementViewModel : ObservableObject, IDisposable
         UpdateConnectedPumpOptions();
     }
 
-    partial void OnSelectedPumpIdChanged(int? value)
+    partial void OnSelectedDsmUserChanged(DsmUser? value)
     {
-        UpdateConnectedPumpOptions();
+        UpdateConnectedPumpOptions(clearSelection: true);
     }
 
-    public void UpdateConnectedPumpOptions()
+    partial void OnSelectedPumpIdChanged(int? value)
     {
-        var previouslySelected = ConnectedPumpOptions.Where(c => c.IsSelected).Select(c => c.PumpId).ToHashSet();
+        UpdateConnectedPumpOptions(clearSelection: true);
+    }
+
+    public void UpdateConnectedPumpOptions(bool clearSelection = false)
+    {
+        var previouslySelected = clearSelection
+            ? new HashSet<int>()
+            : ConnectedPumpOptions.Where(c => c.IsSelected).Select(c => c.PumpId).ToHashSet();
         ConnectedPumpOptions.Clear();
         if (SelectedPumpId.HasValue)
         {
@@ -156,7 +170,7 @@ public partial class DsmManagementViewModel : ObservableObject, IDisposable
                     ConnectedPumpOptions.Add(new ConnectedPumpOption
                     {
                         PumpId = p,
-                        IsSelected = previouslySelected.Contains(p)
+                        IsSelected = !clearSelection && previouslySelected.Contains(p)
                     });
                 }
             }
@@ -509,11 +523,16 @@ public partial class DsmManagementViewModel : ObservableObject, IDisposable
     {
         if (user == null) return;
         EditingUser = user;
+        EditingEmployeeCode = user.EmployeeCode ?? "";
         EditingFullName = user.FullName ?? "";
         EditingMobileNumber = user.MobileNumber ?? "";
         EditingEmail = user.Email ?? "";
         IsEditingUser = true;
         AccountStatusMessage = "";
+        IsPasswordEditUnlocked = false;
+        AdminUnlockPin = "";
+        EditingNewPassword = "";
+        PasswordUnlockError = "";
     }
 
     [RelayCommand]
@@ -521,15 +540,96 @@ public partial class DsmManagementViewModel : ObservableObject, IDisposable
     {
         IsEditingUser = false;
         EditingUser = null;
+        EditingEmployeeCode = "";
         EditingFullName = "";
         EditingMobileNumber = "";
         EditingEmail = "";
+        IsPasswordEditUnlocked = false;
+        AdminUnlockPin = "";
+        EditingNewPassword = "";
+        PasswordUnlockError = "";
+    }
+
+    [RelayCommand]
+    private async Task UnlockPasswordEditAsync()
+    {
+        PasswordUnlockError = "";
+        var pin = AdminUnlockPin?.Trim() ?? "";
+        if (string.IsNullOrWhiteSpace(pin))
+        {
+            PasswordUnlockError = "❌ Please enter Admin / Manager PIN.";
+            return;
+        }
+
+        try
+        {
+            using var context = _serviceProvider.GetRequiredService<FuelProDbContext>();
+            var activeUsers = await context.Users
+                .AsNoTracking()
+                .Where(u => u.IsActive)
+                .ToListAsync();
+
+            var eligibleUsers = activeUsers
+                .Where(u => u.Role == "Owner" || u.Role == "Admin" || u.Role == "Manager" || u.Role == "Developer" || u.IsDeveloper || u.IsOwner || u.IsManager)
+                .ToList();
+
+            bool isVerified = false;
+            foreach (var user in eligibleUsers)
+            {
+                if (!string.IsNullOrEmpty(user.PinHash) && BCrypt.Net.BCrypt.Verify(pin, user.PinHash))
+                {
+                    isVerified = true;
+                    break;
+                }
+            }
+
+            var authService = _serviceProvider.GetService<AuthService>();
+            if (!isVerified && authService?.CurrentUser != null && !string.IsNullOrEmpty(authService.CurrentUser.PinHash))
+            {
+                if (BCrypt.Net.BCrypt.Verify(pin, authService.CurrentUser.PinHash))
+                {
+                    isVerified = true;
+                }
+            }
+
+            if (isVerified)
+            {
+                IsPasswordEditUnlocked = true;
+                AdminUnlockPin = "";
+                PasswordUnlockError = "";
+            }
+            else
+            {
+                PasswordUnlockError = "❌ Invalid Admin / Manager PIN.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to verify admin PIN for password unlock");
+            PasswordUnlockError = $"❌ Verification error: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    private void RelockPasswordEdit()
+    {
+        IsPasswordEditUnlocked = false;
+        AdminUnlockPin = "";
+        EditingNewPassword = "";
+        PasswordUnlockError = "";
     }
 
     [RelayCommand]
     private async Task SaveUserEditAsync()
     {
         if (EditingUser == null) return;
+
+        var newEmpCode = EditingEmployeeCode?.Trim() ?? "";
+        if (string.IsNullOrWhiteSpace(newEmpCode))
+        {
+            AccountStatusMessage = "❌ Employee Code / ID is required.";
+            return;
+        }
 
         var newName = EditingFullName?.Trim() ?? "";
         if (string.IsNullOrWhiteSpace(newName))
@@ -540,8 +640,17 @@ public partial class DsmManagementViewModel : ObservableObject, IDisposable
 
         try
         {
-            AccountStatusMessage = "⏳ Updating DSM name...";
+            AccountStatusMessage = "⏳ Updating DSM profile...";
             using var context = _serviceProvider.GetRequiredService<FuelProDbContext>();
+
+            // Duplicate check for EmployeeCode among other active users (case-insensitive)
+            var empCodeDuplicate = await context.DsmUsers
+                .AnyAsync(u => u.DsmUserId != EditingUser.DsmUserId && u.EmployeeCode.ToLower() == newEmpCode.ToLower() && u.IsActive);
+            if (empCodeDuplicate)
+            {
+                AccountStatusMessage = $"❌ A DSM with Employee Code '{newEmpCode}' already exists.";
+                return;
+            }
 
             // Duplicate check among other active users
             var duplicateExists = await context.DsmUsers
@@ -556,6 +665,7 @@ public partial class DsmManagementViewModel : ObservableObject, IDisposable
             var dbUser = await context.DsmUsers.FirstOrDefaultAsync(u => u.DsmUserId == EditingUser.DsmUserId);
             if (dbUser != null)
             {
+                dbUser.EmployeeCode = newEmpCode;
                 dbUser.FullName = newName;
                 if (!string.IsNullOrWhiteSpace(EditingMobileNumber))
                 {
@@ -593,9 +703,44 @@ public partial class DsmManagementViewModel : ObservableObject, IDisposable
                 }
             }
 
+            // Update DSM Password in Supabase Auth if unlocked and a new password was provided
+            bool passwordChanged = false;
+            if (IsPasswordEditUnlocked && !string.IsNullOrWhiteSpace(EditingNewPassword))
+            {
+                var newPw = EditingNewPassword.Trim();
+                if (newPw.Length < 6)
+                {
+                    AccountStatusMessage = "❌ Password must be at least 6 characters.";
+                    return;
+                }
+
+                if (!string.IsNullOrWhiteSpace(EditingUser.AuthUserId))
+                {
+                    AccountStatusMessage = "⏳ Updating Supabase Auth password...";
+                    var pwResult = await _authAdminService.UpdateDsmAuthUserPasswordAsync(EditingUser.AuthUserId, newPw);
+                    if (!pwResult.Success)
+                    {
+                        AccountStatusMessage = $"❌ Password update failed: {pwResult.Error}";
+                        return;
+                    }
+                    passwordChanged = true;
+                }
+                else
+                {
+                    AccountStatusMessage = "❌ Cannot update password: No Supabase Auth ID linked.";
+                    return;
+                }
+            }
+
             IsEditingUser = false;
             EditingUser = null;
-            AccountStatusMessage = $"✅ DSM name updated to '{newName}'.";
+            IsPasswordEditUnlocked = false;
+            AdminUnlockPin = "";
+            EditingNewPassword = "";
+            PasswordUnlockError = "";
+            AccountStatusMessage = passwordChanged
+                ? $"✅ DSM profile and password updated for '{newName}'."
+                : $"✅ DSM profile updated for '{newName}'.";
             FuelPro.Core.Services.DsmEntryService.RaiseDsmProfileChanged();
             await LoadDataAsync();
         }

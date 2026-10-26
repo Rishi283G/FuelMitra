@@ -41,8 +41,14 @@ public class PrintService
 
     private string GetSerializedJsonWithLogoAndStationName(object data)
     {
-        // 1. Get station name
-        string stationName = "Mitali Service Station";
+        // 1. Get station profile dynamically from Settings
+        string stationName = "FuelPro Service Station";
+        string stationSubtitle = "";
+        string stationAddress = "";
+        string stationContact = "";
+        string oilCompany = "BPCL";
+        string? customLogoPath = null;
+
         try
         {
             var dbContext = App.Services?.GetService(typeof(FuelProDbContext)) as FuelProDbContext;
@@ -51,24 +57,55 @@ public class PrintService
                 var settings = dbContext.Settings.FirstOrDefault();
                 if (settings != null)
                 {
-                    stationName = settings.StationDisplayName;
+                    if (!string.IsNullOrWhiteSpace(settings.StationDisplayName)) stationName = settings.StationDisplayName;
+                    stationSubtitle = settings.StationSubtitle ?? "";
+                    stationAddress = settings.StationAddress ?? "";
+                    stationContact = settings.StationContact ?? "";
+                    if (!string.IsNullOrWhiteSpace(settings.OilCompany)) oilCompany = settings.OilCompany;
+                    customLogoPath = settings.CustomLogoPath;
                 }
             }
         }
         catch (Exception ex)
         {
-            _logger.Error(ex, "Failed to get station display name from DB for print");
+            _logger.Error(ex, "Failed to get station profile from DB for print");
         }
 
-        // 2. Get base64 logo (light logo by default for printing since templates use white background)
+        // 2. Get base64 logo (custom -> oil company logo -> default)
         string logoBase64 = "";
         try
         {
-            var logoPath = App.GetLogoPath(isDark: false);
-            if (!string.IsNullOrEmpty(logoPath) && File.Exists(logoPath))
+            string? logoFilePath = null;
+            if (!string.IsNullOrWhiteSpace(customLogoPath) && File.Exists(customLogoPath))
             {
-                var bytes = File.ReadAllBytes(logoPath);
-                var ext = Path.GetExtension(logoPath).TrimStart('.').ToLower();
+                logoFilePath = customLogoPath;
+            }
+            else
+            {
+                var exeDir = AppDomain.CurrentDomain.BaseDirectory;
+                // If BPCL, search for bpcl logo asset
+                if (string.Equals(oilCompany, "BPCL", StringComparison.OrdinalIgnoreCase))
+                {
+                    var bpclCandidates = new[]
+                    {
+                        Path.Combine(exeDir, "Resources", "Logos", "bpcl_logo.png"),
+                        Path.Combine(exeDir, "..", "..", "..", "..", "src", "FuelPro.UI", "Resources", "Logos", "bpcl_logo.png"),
+                        Path.Combine(exeDir, "bpcl_logo.png"),
+                        @"C:\Users\jadha\.gemini\antigravity-ide\brain\c97c57e8-a122-4e7b-8f04-aae2f2d08570\bpcl_logo_clean.png"
+                    };
+                    logoFilePath = bpclCandidates.FirstOrDefault(File.Exists);
+                }
+
+                if (string.IsNullOrEmpty(logoFilePath) || !File.Exists(logoFilePath))
+                {
+                    logoFilePath = App.GetLogoPath(isDark: false);
+                }
+            }
+
+            if (!string.IsNullOrEmpty(logoFilePath) && File.Exists(logoFilePath))
+            {
+                var bytes = File.ReadAllBytes(logoFilePath);
+                var ext = Path.GetExtension(logoFilePath).TrimStart('.').ToLower();
                 if (ext == "jpg") ext = "jpeg";
                 logoBase64 = $"data:image/{ext};base64,{Convert.ToBase64String(bytes)}";
             }
@@ -91,9 +128,14 @@ public class PrintService
                 dictionary[prop.Name] = prop.Value;
             }
 
-            // Inject or override
+            // Inject dynamic station details, logo and timestamp
             dictionary["stationName"] = stationName;
+            dictionary["stationSubtitle"] = stationSubtitle;
+            dictionary["stationAddress"] = stationAddress;
+            dictionary["stationContact"] = stationContact;
+            dictionary["oilCompany"] = oilCompany;
             dictionary["logo"] = logoBase64;
+            dictionary["generatedAt"] = DateTime.Now.ToString("dd MMM yyyy, hh:mm tt");
 
             var featureService = App.Services?.GetService<IFeatureToggleService>();
             if (featureService != null)
@@ -607,4 +649,56 @@ public class PrintService
                 "Print Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
+
+    private void PrintNamedTemplateHelper(string templateName, object data, string reportPrefix, string errorMessage)
+    {
+        try
+        {
+            var json = GetSerializedJsonWithLogoAndStationName(data);
+            var templateHtml = LoadNamedTemplate(templateName);
+
+            if (!templateHtml.Contains(MARKER))
+            {
+                MessageBox.Show($"{errorMessage} print template is outdated.",
+                    "Print Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            var finalHtml = templateHtml.Replace(MARKER, json);
+            var tempFile = Path.Combine(Path.GetTempPath(),
+                $"{reportPrefix}_{DateTime.Now:yyyyMMddHHmmss}.html");
+
+            File.WriteAllText(tempFile, finalHtml, Encoding.UTF8);
+            Process.Start(new ProcessStartInfo { FileName = tempFile, UseShellExecute = true });
+
+            Task.Delay(TimeSpan.FromMinutes(5)).ContinueWith(_ =>
+            {
+                try { if (File.Exists(tempFile)) File.Delete(tempFile); } catch { }
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "{ReportPrefix} failed", reportPrefix);
+            MessageBox.Show($"Print failed.\n\nError: {ex.Message}",
+                "Print Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    public void PrintCollectionSummary(object data) =>
+        PrintNamedTemplateHelper("CollectionSummaryPrintTemplate.html", data, "PyroSyncCollectionSummary", "Collection Summary");
+
+    public void PrintDailyPerformance(object data) =>
+        PrintNamedTemplateHelper("DailyPerformancePrintTemplate.html", data, "PyroSyncDailyPerformance", "Daily Performance");
+
+    public void PrintExpenseAnalysis(object data) =>
+        PrintNamedTemplateHelper("ExpenseAnalysisPrintTemplate.html", data, "PyroSyncExpenseAnalysis", "Expense Analysis");
+
+    public void PrintMonthlyPerformance(object data) =>
+        PrintNamedTemplateHelper("MonthlyPerformancePrintTemplate.html", data, "PyroSyncMonthlyPerformance", "Monthly Performance");
+
+    public void PrintPersonalLedger(object data) =>
+        PrintNamedTemplateHelper("PersonalLedgerPrintTemplate.html", data, "PyroSyncPersonalLedger", "Personal Ledger");
+
+    public void PrintPumpExpenses(object data) =>
+        PrintNamedTemplateHelper("PumpExpensesPrintTemplate.html", data, "PyroSyncPumpExpenses", "Pump Expenses");
 }

@@ -55,11 +55,20 @@ public static class SeedData
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE Settings ADD COLUMN AppFeatureSettingsJson TEXT NULL;"); } catch { }
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE Settings ADD COLUMN PumpMappingsJson TEXT NULL;"); } catch { }
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE Settings ADD COLUMN PumpConnectionRulesJson TEXT NULL;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE Settings ADD COLUMN StationSubtitle TEXT NULL;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE Settings ADD COLUMN StationAddress TEXT NULL;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE Settings ADD COLUMN StationContact TEXT NULL;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE Settings ADD COLUMN OilCompany TEXT NULL;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE Settings ADD COLUMN CustomLogoPath TEXT NULL;"); } catch { }
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE PaymentCollections ADD COLUMN DynamicItemsJson TEXT NULL;"); } catch { }
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE PaymentCollectionItems ADD COLUMN Otp TEXT NULL;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE PaymentCollectionItems ADD COLUMN TransactionId TEXT NULL;"); } catch { }
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE CollectionTypes ADD COLUMN EnableMorning INTEGER NOT NULL DEFAULT 1;"); } catch { }
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE CollectionTypes ADD COLUMN EnableDay INTEGER NOT NULL DEFAULT 1;"); } catch { }
         try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE CollectionTypes ADD COLUMN EnableNight INTEGER NOT NULL DEFAULT 1;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE CollectionTypes ADD COLUMN HasOtp INTEGER NULL;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE AgsTankStocks ADD COLUMN HasPhysicalDip INTEGER NOT NULL DEFAULT 0;"); } catch { }
+        try { await context.Database.ExecuteSqlRawAsync("ALTER TABLE AgsTankStocks ADD COLUMN DipSource TEXT NULL;"); } catch { }
 
 
         // Legacy dynamic columns added for database compatibility
@@ -583,6 +592,8 @@ public static class SeedData
                     Tid TEXT NULL,
                     Batch TEXT NULL,
                     Slot TEXT NULL DEFAULT 'General',
+                    Otp TEXT NULL,
+                    TransactionId TEXT NULL,
                     FOREIGN KEY (PaymentId) REFERENCES PaymentCollections (PaymentId) ON DELETE CASCADE
                 );
                 CREATE INDEX IF NOT EXISTS IX_PaymentCollectionItems_PaymentId ON PaymentCollectionItems (PaymentId);
@@ -653,22 +664,49 @@ public static class SeedData
             await context.SaveChangesAsync();
             Log.Information("Seeded default CollectionTypes including Pine Labs Card, SBI Redeem, Paytm, QR, Mobikwik");
         }
-        else if (!await context.CollectionTypes.AnyAsync(c => c.Code == "PINELABS_CARD"))
+        else
         {
-            var maxOrder = await context.CollectionTypes.MaxAsync(c => (int?)c.DisplayOrder) ?? 3;
-            context.CollectionTypes.Add(new CollectionTypeMaster
+            // Automated deduplication of collection types sharing the same normalized code
+            var existingTypes = await context.CollectionTypes.OrderBy(c => c.DisplayOrder).ToListAsync();
+            var seenNormalizedCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var duplicatesToRemove = new List<CollectionTypeMaster>();
+
+            foreach (var ct in existingTypes)
             {
-                Code = "PINELABS_CARD",
-                DisplayName = "Pine Labs Card",
-                Category = "Card",
-                HasTidBatch = true,
-                DisplayOrder = maxOrder + 1,
-                IsActive = true,
-                IsSystem = true,
-                CreatedAt = DateTime.Now
-            });
-            await context.SaveChangesAsync();
-            Log.Information("Seeded missing PINELABS_CARD collection type for existing station database");
+                var norm = PaymentCollection.NormalizeCollectionTypeCode(ct.Code);
+                var key = string.IsNullOrEmpty(norm) ? ct.Code.Trim().ToUpperInvariant() : norm;
+
+                if (!seenNormalizedCodes.Add(key))
+                {
+                    duplicatesToRemove.Add(ct);
+                }
+            }
+
+            if (duplicatesToRemove.Count > 0)
+            {
+                context.CollectionTypes.RemoveRange(duplicatesToRemove);
+                await context.SaveChangesAsync();
+                Log.Information("Deduplicated {Count} duplicate collection types from database: {Codes}",
+                    duplicatesToRemove.Count, string.Join(", ", duplicatesToRemove.Select(d => $"{d.Code} ({d.DisplayName})")));
+
+                // Update Settings.CollectionTypesJson
+                try
+                {
+                    var activeAfterDedup = await context.CollectionTypes.ToListAsync();
+                    var setting = await context.Settings.FirstOrDefaultAsync();
+                    if (setting != null)
+                    {
+                        setting.CollectionTypesJson = System.Text.Json.JsonSerializer.Serialize(activeAfterDedup);
+                        setting.LastUpdated = DateTime.Now;
+                        context.Entry(setting).State = EntityState.Modified;
+                        await context.SaveChangesAsync();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log.Warning(ex, "Failed to update Settings.CollectionTypesJson after collection deduplication");
+                }
+            }
         }
 
         // Seed default AppFeatureSettings
@@ -926,10 +964,38 @@ public static class SeedData
             };
             context.Settings.Add(defaultSettings);
         }
-        else if (string.IsNullOrWhiteSpace(settings.PumpStationName))
+        else
         {
-            settings.PumpStationName = "Mitali Service Station";
-            context.Entry(settings).State = EntityState.Modified;
+            bool modified = false;
+            if (string.IsNullOrWhiteSpace(settings.PumpStationName))
+            {
+                settings.PumpStationName = "Mitali Service Station";
+                modified = true;
+            }
+            if (string.IsNullOrWhiteSpace(settings.StationSubtitle))
+            {
+                settings.StationSubtitle = "(KANDHARE NANGADE SURVE GROUP)";
+                modified = true;
+            }
+            if (string.IsNullOrWhiteSpace(settings.StationAddress))
+            {
+                settings.StationAddress = "Gat No. 119/B Jamgaon, Taluka Mulshi, Dist - Pune. POST-Shere, Pin - 412 108.";
+                modified = true;
+            }
+            if (string.IsNullOrWhiteSpace(settings.StationContact))
+            {
+                settings.StationContact = "Tel. : 8975549999 / 9850846783 | Email : kandharepetroleum@gmail.com";
+                modified = true;
+            }
+            if (string.IsNullOrWhiteSpace(settings.OilCompany))
+            {
+                settings.OilCompany = "BPCL";
+                modified = true;
+            }
+            if (modified)
+            {
+                context.Entry(settings).State = EntityState.Modified;
+            }
         }
 
         // Seed default Supabase Sync configuration if not configured yet

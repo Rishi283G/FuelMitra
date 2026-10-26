@@ -5,13 +5,13 @@ namespace FuelPro.Core.Services;
 
 /// <summary>
 /// Implements the definitive 3-shift operational cycle for Mitali Service Station.
-/// Order per calendar day: Shift A -> Shift B -> Shift C.
-/// Continuity: C(D-1) -> A(D) -> B(D) -> C(D) -> A(D+1).
+/// Order per operational day D: Shift B -> Shift C -> Shift A.
+/// Continuity: A(D-1) -> B(D) -> C(D) -> A(D) -> B(D+1).
 /// </summary>
 public class ShiftCycleService : IShiftCycleService
 {
-    private static readonly string[] ThreeShifts = { "A", "B", "C" };
-    private static readonly string[] DisplayShifts = { "A", "B", "C" };
+    private static readonly string[] ThreeShifts = { "B", "C", "A" };
+    private static readonly string[] DisplayShifts = { "B", "C", "A" };
 
     public IReadOnlyList<string> GetShiftsForDate(DateTime date)
     {
@@ -28,10 +28,10 @@ public class ShiftCycleService : IShiftCycleService
         var norm = NormalizeShiftType(shiftType);
         return norm switch
         {
-            "A" => (date.Date.AddDays(-1), "C"),
-            "B" => (date.Date, "A"),
+            "B" => (date.Date.AddDays(-1), "A"),
             "C" => (date.Date, "B"),
-            _ => (date.Date.AddDays(-1), "C")
+            "A" => (date.Date, "C"),
+            _ => (date.Date.AddDays(-1), "A")
         };
     }
 
@@ -40,21 +40,21 @@ public class ShiftCycleService : IShiftCycleService
         var norm = NormalizeShiftType(shiftType);
         return norm switch
         {
-            "A" => (date.Date, "B"),
             "B" => (date.Date, "C"),
-            "C" => (date.Date.AddDays(1), "A"),
-            _ => (date.Date, "B")
+            "C" => (date.Date, "A"),
+            "A" => (date.Date.AddDays(1), "B"),
+            _ => (date.Date, "C")
         };
     }
 
     public string GetOpeningShiftForDate(DateTime date)
     {
-        return "A";
+        return "B";
     }
 
     public string GetClosingShiftForDate(DateTime date)
     {
-        return "C";
+        return "A";
     }
 
     public string NormalizeShiftType(string shiftType)

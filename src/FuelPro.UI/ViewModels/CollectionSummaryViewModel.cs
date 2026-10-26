@@ -375,7 +375,7 @@ public partial class CollectionSummaryViewModel : ObservableObject, IDisposable
                 ShowSignatures = true
             };
 
-            _printService.PrintGenericGrid(printData);
+            _printService.PrintCollectionSummary(printData);
         }
         catch (Exception ex)
         {

@@ -3,9 +3,9 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
-    <Version>1.3.49</Version>
-    <AssemblyVersion>1.3.49.0</AssemblyVersion>
-    <FileVersion>1.3.49.0</FileVersion>
+    <Version>1.3.56</Version>
+    <AssemblyVersion>1.3.56.0</AssemblyVersion>
+    <FileVersion>1.3.56.0</FileVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
@@ -103,6 +103,45 @@
     <EmbeddedResource Include="Printing\OwnerDashboardPrintTemplate.html">
       <LogicalName>FuelPro.UI.Printing.OwnerDashboardPrintTemplate.html</LogicalName>
     </EmbeddedResource>
+    <Content Include="Printing\CollectionSummaryPrintTemplate.html">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <EmbeddedResource Include="Printing\CollectionSummaryPrintTemplate.html">
+      <LogicalName>FuelPro.UI.Printing.CollectionSummaryPrintTemplate.html</LogicalName>
+    </EmbeddedResource>
+    <Content Include="Printing\DailyPerformancePrintTemplate.html">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <EmbeddedResource Include="Printing\DailyPerformancePrintTemplate.html">
+      <LogicalName>FuelPro.UI.Printing.DailyPerformancePrintTemplate.html</LogicalName>
+    </EmbeddedResource>
+    <Content Include="Printing\ExpenseAnalysisPrintTemplate.html">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <EmbeddedResource Include="Printing\ExpenseAnalysisPrintTemplate.html">
+      <LogicalName>FuelPro.UI.Printing.ExpenseAnalysisPrintTemplate.html</LogicalName>
+    </EmbeddedResource>
+    <Content Include="Printing\MonthlyPerformancePrintTemplate.html">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <EmbeddedResource Include="Printing\MonthlyPerformancePrintTemplate.html">
+      <LogicalName>FuelPro.UI.Printing.MonthlyPerformancePrintTemplate.html</LogicalName>
+    </EmbeddedResource>
+    <Content Include="Printing\PersonalLedgerPrintTemplate.html">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <EmbeddedResource Include="Printing\PersonalLedgerPrintTemplate.html">
+      <LogicalName>FuelPro.UI.Printing.PersonalLedgerPrintTemplate.html</LogicalName>
+    </EmbeddedResource>
+    <Content Include="Printing\PumpExpensesPrintTemplate.html">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <EmbeddedResource Include="Printing\PumpExpensesPrintTemplate.html">
+      <LogicalName>FuelPro.UI.Printing.PumpExpensesPrintTemplate.html</LogicalName>
+    </EmbeddedResource>
+    <Content Include="Resources\Logos\**\*.*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
   <ItemGroup>

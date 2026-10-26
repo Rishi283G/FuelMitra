@@ -4,6 +4,8 @@ export interface StationFeatureSettings {
   cashDenominationsEnabled: boolean;
   otpMachineTrackingEnabled: boolean;
   otpMachineTracking: boolean;
+  multiTidTransactionsEnabled: boolean;
+  cash3Enabled: boolean;
   splitMorningNightEnabled: boolean;
   personalLedgerEnabled: boolean;
   personalLedgerName: string;
@@ -14,6 +16,7 @@ export interface DynamicCollectionType {
   displayName: string;
   category: string;
   hasTidBatch: boolean;
+  hasOtp?: boolean | null;
   displayOrder: number;
   isActive: boolean;
   enableMorning: boolean;
@@ -40,6 +43,15 @@ export interface OtpTransactionItem {
   collectionTypeCode: string;
   amount: number;
   otp: string;
+  tid: string;
+  batch: string;
+  slot: string;
+}
+
+export interface ManualTidTransactionItem {
+  id: string;
+  collectionTypeCode: string;
+  amount: number;
   tid: string;
   batch: string;
   slot: string;
@@ -90,6 +102,8 @@ export function getDefaultStationConfig(stationId: string): StationConfig {
       cashDenominationsEnabled: false,
       otpMachineTrackingEnabled: false,
       otpMachineTracking: false,
+      multiTidTransactionsEnabled: true,
+      cash3Enabled: false,
       splitMorningNightEnabled: false,
       personalLedgerEnabled: true,
       personalLedgerName: 'Personal Ledger',
@@ -256,6 +270,19 @@ async function fetchAndCacheStationConfig(cleanId: string, cacheKey: string): Pr
               displayName: item.DisplayName || item.displayName || item.Code || '',
               category: item.Category || item.category || 'Online',
               hasTidBatch: Boolean(item.HasTidBatch ?? item.hasTidBatch),
+              hasOtp: (() => {
+                const raw = item.HasOtp !== undefined ? item.HasOtp : item.hasOtp;
+                if (raw === undefined || raw === null) return null;
+                if (typeof raw === 'boolean') return raw;
+                if (typeof raw === 'number') return raw !== 0;
+                if (typeof raw === 'string') {
+                  const s = raw.trim().toLowerCase();
+                  if (s === 'true' || s === '1' || s === 'yes') return true;
+                  if (s === 'false' || s === '0' || s === 'no') return false;
+                  if (s === 'null' || s === '') return null;
+                }
+                return null;
+              })(),
               displayOrder: Number(item.DisplayOrder ?? item.displayOrder ?? 0),
               isActive: item.IsActive !== false && item.isActive !== false,
               enableMorning: item.EnableMorning !== false && item.enableMorning !== false,
@@ -288,6 +315,8 @@ async function fetchAndCacheStationConfig(cleanId: string, cacheKey: string): Pr
 
     let cashDenominationsEnabled = false;
     let otpMachineTrackingEnabled = false;
+    let multiTidTransactionsEnabled = true;
+    let cash3Enabled = false;
     let splitMorningNightEnabled = false;
     let personalLedgerEnabled = true;
     let personalLedgerName = 'Personal Ledger';
@@ -305,6 +334,16 @@ async function fetchAndCacheStationConfig(cleanId: string, cacheKey: string): Pr
         normKey === 'otptracking'
       ) {
         otpMachineTrackingEnabled = isEnabled;
+      } else if (
+        normKey === 'operationsmultitidtransactions' ||
+        normKey === 'multitidtransactions'
+      ) {
+        multiTidTransactionsEnabled = isEnabled;
+      } else if (
+        normKey === 'operationscash3' ||
+        normKey === 'cash3'
+      ) {
+        cash3Enabled = isEnabled;
       } else if (normKey === 'collectionusemorningnight' || normKey === 'usemorningnight') {
         splitMorningNightEnabled = isEnabled;
       } else if (normKey === 'operationspersonalledger' || normKey === 'personalledger') {
@@ -429,6 +468,8 @@ async function fetchAndCacheStationConfig(cleanId: string, cacheKey: string): Pr
         cashDenominationsEnabled,
         otpMachineTrackingEnabled,
         otpMachineTracking: otpMachineTrackingEnabled,
+        multiTidTransactionsEnabled,
+        cash3Enabled,
         splitMorningNightEnabled,
         personalLedgerEnabled,
         personalLedgerName,

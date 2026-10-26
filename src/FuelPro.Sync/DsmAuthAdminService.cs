@@ -213,4 +213,52 @@ public class DsmAuthAdminService
             return Result.Fail($"Error deleting Auth user: {ex.Message}");
         }
     }
+
+    /// <summary>
+    /// Updates a user's password in Supabase Auth via the Admin API.
+    /// </summary>
+    public async Task<Result> UpdateDsmAuthUserPasswordAsync(string authUserId, string newPassword)
+    {
+        try
+        {
+            var settings = await _syncConfigService.GetSettingsAsync();
+            if (string.IsNullOrEmpty(settings.SupabaseUrl) || string.IsNullOrEmpty(settings.SupabaseServiceRoleKey))
+            {
+                return Result.Fail("Supabase URL or Service Role Key is not configured.");
+            }
+
+            var requestUrl = $"{settings.SupabaseUrl.TrimEnd('/')}/auth/v1/admin/users/{authUserId}";
+            var request = new HttpRequestMessage(HttpMethod.Put, requestUrl);
+
+            request.Headers.Add("apikey", settings.SupabaseServiceRoleKey);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", settings.SupabaseServiceRoleKey);
+
+            var payload = new
+            {
+                password = newPassword
+            };
+
+            var jsonBody = JsonConvert.SerializeObject(payload);
+            request.Content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
+
+            _logger.Information("Updating Supabase Auth password for {AuthUserId}", authUserId);
+            var response = await _client.SendAsync(request);
+            if (response.IsSuccessStatusCode)
+            {
+                _logger.Information("Successfully updated Supabase Auth password for {AuthUserId}", authUserId);
+                return Result.Ok();
+            }
+            else
+            {
+                var error = await response.Content.ReadAsStringAsync();
+                _logger.Error("Failed to update password for {AuthUserId} in Supabase Auth (Status: {StatusCode}): {Error}", authUserId, response.StatusCode, error);
+                return Result.Fail($"Failed to update Supabase Auth password: {response.StatusCode}");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Exception updating password for {AuthUserId}", authUserId);
+            return Result.Fail($"Error updating Auth password: {ex.Message}");
+        }
+    }
 }

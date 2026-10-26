@@ -4,282 +4,804 @@
     <meta charset="UTF-8">
     <title>Monthly Profit & Loss Statement</title>
     <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            margin: 20px;
-            color: #333;
-            font-size: 14px;
-            line-height: 1.5;
-        }
-        .header {
-            text-align: center;
-            border-bottom: 2px solid #00695C;
-            padding-bottom: 12px;
-            margin-bottom: 20px;
-        }
-        .header h1 {
+        * {
+            box-sizing: border-box;
             margin: 0;
-            color: #00695C;
-            font-size: 24px;
+            padding: 0;
         }
-        .header p {
-            margin: 4px 0 0 0;
-            font-size: 14px;
-            opacity: 0.8;
+        body {
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
+            color: #1e293b;
+            background-color: #f8fafc;
+            padding: 24px;
+            font-size: 12px;
+            line-height: 1.45;
         }
-        .meta-info {
+        .statement-container {
+            max-width: 960px;
+            margin: 0 auto;
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 24px 28px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        }
+
+        /* Top Header */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding-bottom: 16px;
+            border-bottom: 2px solid #0f2b48;
+            margin-bottom: 16px;
+        }
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .logo-img {
+            max-height: 52px;
+            max-width: 140px;
+            object-fit: contain;
+        }
+        .station-details h1 {
+            font-size: 20px;
+            font-weight: 800;
+            color: #0f2b48;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            line-height: 1.2;
+        }
+        .station-details .subtitle {
+            font-size: 12px;
+            font-weight: 600;
+            color: #0284c7;
+            margin-top: 2px;
+        }
+        .station-details .meta {
+            font-size: 11px;
+            color: #64748b;
+            margin-top: 2px;
+        }
+        .oil-company-badge {
+            background: #0f2b48;
+            color: #ffffff;
+            font-weight: 700;
+            font-size: 11px;
+            padding: 4px 10px;
+            border-radius: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            text-align: right;
+            align-self: flex-start;
+        }
+
+        /* Ribbon */
+        .ribbon {
+            background: #0f2b48;
+            color: #ffffff;
+            padding: 8px 14px;
+            border-radius: 6px;
             display: flex;
             justify-content: space-between;
-            margin-bottom: 20px;
-            font-weight: 500;
+            align-items: center;
+            margin-bottom: 18px;
         }
+        .ribbon-title {
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+        .ribbon-period {
+            font-size: 12px;
+            font-weight: 600;
+            color: #38bdf8;
+        }
+        .ribbon-generated {
+            font-size: 11px;
+            color: #cbd5e1;
+        }
+
+        /* KPI Cards */
+        .kpi-row {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 10px;
+            margin-bottom: 22px;
+        }
+        .kpi-card {
+            background: #f1f5f9;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            padding: 10px;
+            text-align: center;
+        }
+        .kpi-card.highlight {
+            background: #ecfdf5;
+            border-color: #a7f3d0;
+        }
+        .kpi-card.highlight-danger {
+            background: #fef2f2;
+            border-color: #fecaca;
+        }
+        .kpi-label {
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: #64748b;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+        .kpi-value {
+            font-size: 15px;
+            font-weight: 800;
+            color: #0f2b48;
+        }
+        .kpi-card.highlight .kpi-value {
+            color: #047857;
+        }
+        .kpi-card.highlight-danger .kpi-value {
+            color: #b91c1c;
+        }
+
+        /* Section Headings */
+        .section-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: #e2e8f0;
+            padding: 6px 12px;
+            border-radius: 4px;
+            margin-top: 18px;
+            margin-bottom: 8px;
+            border-left: 4px solid #0f2b48;
+        }
+        .section-header h2 {
+            font-size: 12px;
+            font-weight: 700;
+            color: #0f2b48;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+        }
+        .section-header .section-badge {
+            font-size: 11px;
+            font-weight: 700;
+            color: #0369a1;
+        }
+
+        /* Tables */
         table {
             width: 100%;
             border-collapse: collapse;
-            margin-bottom: 24px;
+            margin-bottom: 14px;
+            font-size: 11px;
+            page-break-inside: avoid;
         }
         th, td {
-            border: 1px solid #ddd;
-            padding: 8px 12px;
+            border: 1px solid #cbd5e1;
+            padding: 6px 8px;
             text-align: left;
         }
         th {
-            background-color: #f2f2f2;
+            background: #1e3a5f;
+            color: #ffffff;
             font-weight: 600;
-            color: #444;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        tbody tr:nth-child(even) {
+            background: #f8fafc;
         }
         .text-right {
             text-align: right;
         }
-        .section-title {
-            font-size: 16px;
+        .text-center {
+            text-align: center;
+        }
+        .text-bold {
             font-weight: 700;
-            color: #00695C;
-            margin-top: 20px;
-            margin-bottom: 8px;
-            border-bottom: 1px solid #00695C;
-            padding-bottom: 4px;
         }
-        .total-row {
-            font-weight: bold;
-            background-color: #e8f5e9;
+        .row-total {
+            background: #e2e8f0 !important;
+            font-weight: 800;
+            color: #0f2b48;
         }
-        .expense-row {
-            background-color: #fafafa;
+        .profit-pos {
+            color: #047857;
+            font-weight: 700;
         }
-        .summary-card {
-            background-color: #f5f5f5;
-            border-left: 4px solid #00695C;
+        .profit-neg {
+            color: #b91c1c;
+            font-weight: 700;
+        }
+
+        /* Summary Card (Section 7) */
+        .summary-card-wrapper {
+            background: #ffffff;
+            border: 2px solid #0f2b48;
+            border-radius: 6px;
             padding: 16px;
-            margin-top: 24px;
+            margin-top: 14px;
+            margin-bottom: 20px;
+            page-break-inside: avoid;
+        }
+        .summary-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .summary-col h3 {
+            font-size: 12px;
+            font-weight: 700;
+            color: #0f2b48;
+            border-bottom: 1px solid #cbd5e1;
+            padding-bottom: 4px;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+        }
+        .summary-line {
+            display: flex;
+            justify-content: space-between;
+            padding: 4px 0;
+            font-size: 11px;
+            border-bottom: 1px dashed #e2e8f0;
+        }
+        .summary-line.subtotal {
+            font-weight: 700;
+            border-top: 1px solid #cbd5e1;
+            border-bottom: 1px solid #cbd5e1;
+            padding: 6px 0;
+            background: #f8fafc;
+        }
+        .net-profit-banner {
+            grid-column: 1 / -1;
+            background: #0f2b48;
+            color: #ffffff;
+            border-radius: 6px;
+            padding: 12px 18px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 12px;
+        }
+        .net-profit-banner.loss {
+            background: #991b1b;
+        }
+        .net-profit-title {
+            font-size: 13px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .net-profit-amount {
+            font-size: 20px;
+            font-weight: 800;
+        }
+
+        /* Expense Category Pills */
+        .cat-pills-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        .cat-pill {
+            background: #e2e8f0;
             border-radius: 4px;
+            padding: 4px 8px;
+            font-size: 10.5px;
+            display: flex;
+            gap: 6px;
         }
-        .summary-card table {
-            margin-bottom: 0;
-            border: none;
+        .cat-pill-name {
+            color: #334155;
+            font-weight: 600;
         }
-        .summary-card td {
-            border: none;
-            padding: 6px 12px;
+        .cat-pill-val {
+            color: #0f2b48;
+            font-weight: 700;
         }
-        .net-profit {
-            font-size: 18px;
-            font-weight: bold;
-            color: #2e7d32;
+
+        /* Signatures */
+        .signatures-section {
+            margin-top: 28px;
+            display: flex;
+            justify-content: space-between;
+            padding: 0 20px;
+            page-break-inside: avoid;
         }
-        .net-loss {
-            font-size: 18px;
-            font-weight: bold;
-            color: #c62828;
+        .signature-box {
+            width: 220px;
+            text-align: center;
+        }
+        .signature-line {
+            border-top: 1px solid #334155;
+            margin-bottom: 4px;
+        }
+        .signature-title {
+            font-size: 11px;
+            font-weight: 700;
+            color: #0f2b48;
+            text-transform: uppercase;
+        }
+        .signature-subtitle {
+            font-size: 10px;
+            color: #64748b;
+        }
+
+        /* Footer */
+        .report-footer {
+            margin-top: 24px;
+            padding-top: 10px;
+            border-top: 1px solid #e2e8f0;
+            display: flex;
+            justify-content: space-between;
+            font-size: 10px;
+            color: #94a3b8;
+        }
+
+        /* Print Button */
+        .no-print {
+            text-align: center;
+            margin-bottom: 16px;
         }
         .print-btn {
-            display: block;
-            width: 120px;
-            margin: 20px auto;
-            padding: 10px;
-            text-align: center;
-            background-color: #00695C;
-            color: white;
-            font-weight: bold;
+            background: #0f2b48;
+            color: #ffffff;
             border: none;
+            padding: 8px 20px;
+            font-size: 13px;
+            font-weight: 600;
             border-radius: 4px;
             cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
+        .print-btn:hover {
+            background: #1e3a5f;
+        }
+
         @media print {
-            .print-btn {
-                display: none;
+            .no-print {
+                display: none !important;
+            }
+            body {
+                background: #ffffff;
+                padding: 0;
+                font-size: 11px;
+            }
+            .statement-container {
+                border: none;
+                box-shadow: none;
+                padding: 0;
+                max-width: 100%;
             }
             @page {
                 size: A4 portrait;
-                margin: 0;
+                margin: 10mm 12mm;
             }
-            body {
-                margin: 1.6cm;
-                font-size: 12px;
+            th {
+                background-color: #1e3a5f !important;
+                color: #ffffff !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            .ribbon {
+                background-color: #0f2b48 !important;
+                color: #ffffff !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            .net-profit-banner {
+                background-color: #0f2b48 !important;
+                color: #ffffff !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            .net-profit-banner.loss {
+                background-color: #991b1b !important;
+                color: #ffffff !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            .row-total {
+                background-color: #e2e8f0 !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            .section-header {
+                background-color: #e2e8f0 !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
             }
         }
     </style>
     <script>
-        // Data will be injected here as JSON
         const data = /* INJECT_JSON_HERE */{};
 
         function formatCurrency(val) {
-            return "₹" + Number(val).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        }
-
-        function formatLitres(val) {
-            return Number(val).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " L";
-        }
-
-        function formatKg(val) {
-            return Number(val).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " Kg";
+            const num = Number(val || 0);
+            return (num < 0 ? "-" : "") + "₹" + Math.abs(num).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         }
 
         function formatQty(val) {
-            return Number(val).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            return Number(val || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         }
 
-        function renderData() {
-            if (!data || !data.startDate) return;
+        function renderReport() {
+            if (!data) return;
 
-            document.getElementById('stationName').innerText = data.stationName || "Mitali Service Station";
-            document.getElementById('dateRange').innerText = `${data.startDate} to ${data.endDate}`;
+            // Station Details
+            document.getElementById('stationName').innerText = (data.stationName || "FuelPro Station").toUpperCase();
+            
+            const subEl = document.getElementById('stationSubtitle');
+            if (subEl) {
+                if (data.stationSubtitle && data.stationSubtitle.trim()) {
+                    subEl.innerText = data.stationSubtitle.trim();
+                    subEl.style.display = 'block';
+                } else {
+                    subEl.style.display = 'none';
+                }
+            }
+            
+            const metaParts = [];
+            if (data.stationAddress && data.stationAddress.trim()) metaParts.push(data.stationAddress.trim());
+            if (data.stationContact && data.stationContact.trim()) metaParts.push("Contact: " + data.stationContact.trim());
+            document.getElementById('stationMeta').innerText = metaParts.join(" | ");
 
-            // Fuel Table
+            const oilCompanyEl = document.getElementById('oilCompany');
+            if (data.oilCompany && data.oilCompany.trim()) {
+                oilCompanyEl.innerText = data.oilCompany.trim();
+                oilCompanyEl.style.display = 'block';
+            } else {
+                oilCompanyEl.style.display = 'none';
+            }
+
+            if (data.logo) {
+                const logoImg = document.getElementById('stationLogo');
+                logoImg.src = data.logo;
+                logoImg.style.display = 'block';
+            }
+
+            // Ribbon
+            document.getElementById('ribbonPeriod').innerText = `${data.startDate || ""} to ${data.endDate || ""}`;
+            document.getElementById('ribbonGenerated').innerText = "Generated: " + (data.generatedAt || new Date().toLocaleString('en-IN'));
+
+            // Top KPI Cards
+            const grossFuel = data.fuelProfit ? (data.fuelProfit.totalFuelProfit || 0) : 0;
+            const grossOil = (data.oilProfit ? (data.oilProfit.totalProfit || 0) : 0) + (data.defProfit ? (data.defProfit.totalProfit || 0) : 0);
+            const opExp = data.totalExpenses || 0;
+            const pumpExp = data.totalPumpExpenses || 0;
+            const netProf = data.netProfit || 0;
+
+            document.getElementById('kpiGrossFuel').innerText = formatCurrency(grossFuel);
+            document.getElementById('kpiGrossOil').innerText = formatCurrency(grossOil);
+            document.getElementById('kpiOpExpenses').innerText = formatCurrency(opExp);
+            document.getElementById('kpiPumpExpenses').innerText = formatCurrency(pumpExp);
+            
+            const netCard = document.getElementById('kpiNetCard');
+            const netVal = document.getElementById('kpiNetProfit');
+            netVal.innerText = formatCurrency(netProf);
+            if (netProf >= 0) {
+                netCard.className = 'kpi-card highlight';
+            } else {
+                netCard.className = 'kpi-card highlight-danger';
+            }
+
+            // SECTION 1: Gross Revenue from Fuel Margins
             const fuelBody = document.getElementById('fuelBody');
-            fuelBody.innerHTML = `
-                <tr>
-                    <td>Diesel</td>
-                    <td class="text-right">${formatLitres(data.fuelProfit.hsdLitres)}</td>
-                    <td class="text-right">₹${data.fuelProfit.hsdMargin.toFixed(2)}</td>
-                    <td class="text-right">${formatCurrency(data.fuelProfit.hsdProfit)}</td>
-                </tr>
-                <tr>
-                    <td>Petrol</td>
-                    <td class="text-right">${formatLitres(data.fuelProfit.msILitres)}</td>
-                    <td class="text-right">₹${data.fuelProfit.msIMargin.toFixed(2)}</td>
-                    <td class="text-right">${formatCurrency(data.fuelProfit.msIProfit)}</td>
-                </tr>
-                <tr>
-                    <td>Power</td>
-                    <td class="text-right">${formatLitres(data.fuelProfit.msIILitres)}</td>
-                    <td class="text-right">₹${data.fuelProfit.msIIMargin.toFixed(2)}</td>
-                    <td class="text-right">${formatCurrency(data.fuelProfit.msIIProfit)}</td>
-                </tr>
-                <tr>
-                    <td>CNG</td>
-                    <td class="text-right">${formatKg(data.fuelProfit.cngLitres || 0)}</td>
-                    <td class="text-right">₹${(data.fuelProfit.cngMargin || 0).toFixed(2)}</td>
-                    <td class="text-right">${formatCurrency(data.fuelProfit.cngProfit || 0)}</td>
-                </tr>
-                <tr class="total-row">
-                    <td>Total Fuel</td>
-                    <td class="text-right">${formatQty(data.fuelProfit.totalLitres)} (Qty)</td>
+            let fuelRows = '';
+            let sumTotalSale = 0, sumTesting = 0, sumActualSale = 0, sumFuelProfit = 0;
+
+            if (data.fuelBreakdown && data.fuelBreakdown.length > 0) {
+                data.fuelBreakdown.forEach(f => {
+                    sumTotalSale += f.totalSale || 0;
+                    sumTesting += f.testing || 0;
+                    sumActualSale += f.actualSale || 0;
+                    sumFuelProfit += f.profit || 0;
+
+                    fuelRows += `
+                        <tr>
+                            <td class="text-bold">${f.name}</td>
+                            <td class="text-right">${formatQty(f.totalSale)}</td>
+                            <td class="text-right">${formatQty(f.testing)}</td>
+                            <td class="text-right text-bold">${formatQty(f.actualSale)}</td>
+                            <td class="text-right">₹${Number(f.margin || 0).toFixed(2)}</td>
+                            <td class="text-right profit-pos">${formatCurrency(f.profit)}</td>
+                        </tr>
+                    `;
+                });
+            } else if (data.fuelProfit) {
+                const fp = data.fuelProfit;
+                sumFuelProfit = fp.totalFuelProfit || 0;
+                sumTotalSale = fp.totalLitres || 0;
+                sumActualSale = fp.totalLitres || 0;
+
+                const fuels = [
+                    { name: 'Diesel (HSD)', litres: fp.hsdLitres, margin: fp.hsdMargin, profit: fp.hsdProfit },
+                    { name: 'Petrol (MS-I)', litres: fp.msILitres, margin: fp.msIMargin, profit: fp.msIProfit },
+                    { name: 'Speed (MS-II)', litres: fp.msIILitres, margin: fp.msIIMargin, profit: fp.msIIProfit },
+                    { name: 'CNG', litres: fp.cngLitres, margin: fp.cngMargin, profit: fp.cngProfit }
+                ];
+                fuels.forEach(f => {
+                    fuelRows += `
+                        <tr>
+                            <td class="text-bold">${f.name}</td>
+                            <td class="text-right">${formatQty(f.litres)}</td>
+                            <td class="text-right">0.00</td>
+                            <td class="text-right text-bold">${formatQty(f.litres)}</td>
+                            <td class="text-right">₹${Number(f.margin || 0).toFixed(2)}</td>
+                            <td class="text-right profit-pos">${formatCurrency(f.profit)}</td>
+                        </tr>
+                    `;
+                });
+            }
+
+            fuelRows += `
+                <tr class="row-total">
+                    <td>TOTAL FUEL MARGIN REVENUE</td>
+                    <td class="text-right">${formatQty(sumTotalSale)}</td>
+                    <td class="text-right">${formatQty(sumTesting)}</td>
+                    <td class="text-right">${formatQty(sumActualSale)}</td>
                     <td class="text-right">-</td>
-                    <td class="text-right">${formatCurrency(data.fuelProfit.totalFuelProfit)}</td>
+                    <td class="text-right">${formatCurrency(sumFuelProfit)}</td>
                 </tr>
             `;
+            fuelBody.innerHTML = fuelRows;
 
-            // Oil & DEF Table
-            const inventoryBody = document.getElementById('inventoryBody');
-            inventoryBody.innerHTML = `
-                <tr>
-                    <td>Lube Oil</td>
-                    <td class="text-right">${formatQty(data.oilProfit.openingStock)}</td>
-                    <td class="text-right">${formatQty(data.oilProfit.closingStock)}</td>
-                    <td class="text-right">${formatQty(data.oilProfit.salesQuantity)}</td>
-                    <td class="text-right">₹${data.oilProfit.averagePurchasePrice.toFixed(2)}</td>
-                    <td class="text-right">₹${data.oilProfit.salePrice.toFixed(2)}</td>
-                    <td class="text-right" style="font-weight: 600;">${formatCurrency(data.oilProfit.totalProfit)}</td>
-                </tr>
-                <tr>
-                    <td>DEF (AdBlue)</td>
-                    <td class="text-right">${formatQty(data.defProfit.openingStock)}</td>
-                    <td class="text-right">${formatQty(data.defProfit.closingStock)}</td>
-                    <td class="text-right">${formatQty(data.defProfit.salesQuantity)}</td>
-                    <td class="text-right">₹${data.defProfit.averagePurchasePrice.toFixed(2)}</td>
-                    <td class="text-right">₹${data.defProfit.salePrice.toFixed(2)}</td>
-                    <td class="text-right" style="font-weight: 600;">${formatCurrency(data.defProfit.totalProfit)}</td>
-                </tr>
-                <tr class="total-row">
-                    <td colspan="6">Total Oil & DEF Profit</td>
-                    <td class="text-right">${formatCurrency(data.oilProfit.totalProfit + data.defProfit.totalProfit)}</td>
+            // SECTION 2: Lube Oil & DEF Stock Profits
+            const lubeBody = document.getElementById('lubeBody');
+            let lubeRows = '';
+            let sumLubeProfit = 0;
+
+            const lubeItems = data.oilDefBreakdown && data.oilDefBreakdown.length > 0 ? data.oilDefBreakdown : [
+                {
+                    productType: 'Lube Oil',
+                    openingStock: data.oilProfit?.openingStock || 0,
+                    closingStock: data.oilProfit?.closingStock || 0,
+                    qtySold: data.oilProfit?.salesQuantity || 0,
+                    avgCost: data.oilProfit?.averagePurchasePrice || 0,
+                    avgSale: data.oilProfit?.salePrice || 0,
+                    profit: data.oilProfit?.totalProfit || 0
+                },
+                {
+                    productType: 'DEF (AdBlue)',
+                    openingStock: data.defProfit?.openingStock || 0,
+                    closingStock: data.defProfit?.closingStock || 0,
+                    qtySold: data.defProfit?.salesQuantity || 0,
+                    avgCost: data.defProfit?.averagePurchasePrice || 0,
+                    avgSale: data.defProfit?.salePrice || 0,
+                    profit: data.defProfit?.totalProfit || 0
+                }
+            ];
+
+            lubeItems.forEach(item => {
+                sumLubeProfit += item.profit || 0;
+                lubeRows += `
+                    <tr>
+                        <td class="text-bold">${item.productType}</td>
+                        <td class="text-right">${formatQty(item.openingStock)}</td>
+                        <td class="text-right">${formatQty(item.closingStock)}</td>
+                        <td class="text-right text-bold">${formatQty(item.qtySold)}</td>
+                        <td class="text-right">₹${Number(item.avgCost || 0).toFixed(2)}</td>
+                        <td class="text-right">₹${Number(item.avgSale || 0).toFixed(2)}</td>
+                        <td class="text-right profit-pos">${formatCurrency(item.profit)}</td>
+                    </tr>
+                `;
+            });
+
+            lubeRows += `
+                <tr class="row-total">
+                    <td colspan="6">TOTAL LUBE OIL & DEF PROFIT</td>
+                    <td class="text-right">${formatCurrency(sumLubeProfit)}</td>
                 </tr>
             `;
+            lubeBody.innerHTML = lubeRows;
 
-            // Expenses Table
-            const expenseBody = document.getElementById('expenseBody');
-            let expensesHtml = '';
+            // SECTION 3: Fuel Owner Margin Summary
+            const marginBody = document.getElementById('marginBody');
+            let marginRows = '';
+            const margins = data.fuelBreakdown && data.fuelBreakdown.length > 0 ? data.fuelBreakdown : [
+                { name: 'Diesel (HSD)', avgSaleRate: 0, margin: data.fuelProfit?.hsdMargin, profit: data.fuelProfit?.hsdProfit },
+                { name: 'Petrol (MS-I)', avgSaleRate: 0, margin: data.fuelProfit?.msIMargin, profit: data.fuelProfit?.msIProfit },
+                { name: 'Speed (MS-II)', avgSaleRate: 0, margin: data.fuelProfit?.msIIMargin, profit: data.fuelProfit?.msIIProfit },
+                { name: 'CNG', avgSaleRate: 0, margin: data.fuelProfit?.cngMargin, profit: data.fuelProfit?.cngProfit }
+            ];
+
+            margins.forEach(m => {
+                const saleRateStr = m.avgSaleRate ? `₹${Number(m.avgSaleRate).toFixed(2)}` : "-";
+                const purRateStr = m.avgPurchaseRate ? `₹${Number(m.avgPurchaseRate).toFixed(2)}` : "-";
+                marginRows += `
+                    <tr>
+                        <td class="text-bold">${m.name}</td>
+                        <td class="text-right">${saleRateStr}</td>
+                        <td class="text-right">${purRateStr}</td>
+                        <td class="text-right text-bold">₹${Number(m.margin || 0).toFixed(2)}</td>
+                        <td class="text-right profit-pos">${formatCurrency(m.profit)}</td>
+                    </tr>
+                `;
+            });
+            marginRows += `
+                <tr class="row-total">
+                    <td colspan="4">TOTAL MARGIN PROFIT</td>
+                    <td class="text-right">${formatCurrency(sumFuelProfit)}</td>
+                </tr>
+            `;
+            marginBody.innerHTML = marginRows;
+
+            // SECTION 4: Operating Expenses & Shift-Wise Details
+            const catPills = document.getElementById('catPillsContainer');
             if (data.expenses && data.expenses.length > 0) {
-                data.expenses.forEach(exp => {
-                    expensesHtml += `
-                        <tr class="expense-row">
-                            <td>${exp.category}</td>
-                            <td class="text-right">${formatCurrency(exp.amount)}</td>
+                let pillsHtml = '';
+                data.expenses.forEach(e => {
+                    pillsHtml += `
+                        <div class="cat-pill">
+                            <span class="cat-pill-name">${e.category}:</span>
+                            <span class="cat-pill-val">${formatCurrency(e.amount)}</span>
+                        </div>
+                    `;
+                });
+                catPills.innerHTML = pillsHtml;
+                catPills.style.display = 'flex';
+            } else {
+                catPills.style.display = 'none';
+            }
+
+            const expBody = document.getElementById('expenseBody');
+            let expRows = '';
+            let sumExpenses = 0;
+
+            if (data.detailedExpenses && data.detailedExpenses.length > 0) {
+                data.detailedExpenses.forEach(d => {
+                    sumExpenses += d.amount || 0;
+                    expRows += `
+                        <tr>
+                            <td>${d.date || "-"}</td>
+                            <td>${d.shift || "-"}</td>
+                            <td>${d.dsm || "-"}</td>
+                            <td>${d.particulars || "-"}</td>
+                            <td class="text-right text-bold">${formatCurrency(d.amount)}</td>
+                        </tr>
+                    `;
+                });
+            } else if (data.expenses && data.expenses.length > 0) {
+                data.expenses.forEach(e => {
+                    sumExpenses += e.amount || 0;
+                    expRows += `
+                        <tr>
+                            <td>-</td>
+                            <td>Shift Level</td>
+                            <td>Station</td>
+                            <td>${e.category}</td>
+                            <td class="text-right text-bold">${formatCurrency(e.amount)}</td>
                         </tr>
                     `;
                 });
             } else {
-                expensesHtml += `<tr><td colspan="2" style="text-align: center; opacity: 0.6;">No operational expenses recorded in range.</td></tr>`;
+                expRows += `<tr><td colspan="5" class="text-center" style="color: #94a3b8; padding: 12px;">No operational expenses recorded.</td></tr>`;
             }
-            expensesHtml += `
-                <tr class="total-row">
-                    <td>Total Operational Expenses</td>
-                    <td class="text-right">${formatCurrency(data.totalExpenses)}</td>
+
+            expRows += `
+                <tr class="row-total">
+                    <td colspan="4">TOTAL OPERATING EXPENSES</td>
+                    <td class="text-right">${formatCurrency(data.totalExpenses || sumExpenses)}</td>
                 </tr>
             `;
-            expenseBody.innerHTML = expensesHtml;
+            expBody.innerHTML = expRows;
 
-            // Summary Block
-            document.getElementById('grossProfitText').innerText = formatCurrency(data.grossProfit);
-            document.getElementById('operatingExpensesText').innerText = formatCurrency(data.totalExpenses);
-            document.getElementById('dsmSalariesText').innerText = formatCurrency(data.totalDsmSalaries);
-            document.getElementById('pumpExpensesText').innerText = "-" + formatCurrency(data.totalPumpExpenses || 0);
+            // SECTION 5: Kandhare Petroleum / Personal Ledger (Drawings)
+            const kpBody = document.getElementById('kpBody');
+            let kpRows = '';
+            let sumKp = 0;
+
+            if (data.kpEntries && data.kpEntries.length > 0) {
+                data.kpEntries.forEach(kp => {
+                    sumKp += kp.amount || 0;
+                    kpRows += `
+                        <tr>
+                            <td>${kp.date || "-"}</td>
+                            <td>${kp.dsmName || "-"}</td>
+                            <td>${kp.name || "-"}</td>
+                            <td>${kp.slipNumber || "-"}</td>
+                            <td>${kp.vehicleNumber || "-"}</td>
+                            <td class="text-right text-bold">${formatCurrency(kp.amount)}</td>
+                        </tr>
+                    `;
+                });
+                kpRows += `
+                    <tr class="row-total">
+                        <td colspan="5">TOTAL PERSONAL LEDGER (DRAWINGS)</td>
+                        <td class="text-right">${formatCurrency(sumKp)}</td>
+                    </tr>
+                `;
+            } else {
+                kpRows = `<tr><td colspan="6" class="text-center" style="color: #94a3b8; padding: 10px;">No personal ledger entries in period.</td></tr>`;
+            }
+            kpBody.innerHTML = kpRows;
+
+            // SECTION 6: Owner Pump Expenses
+            const pumpBody = document.getElementById('pumpBody');
+            let pumpRows = '';
+            let sumPump = 0;
+
+            const pumpItems = data.pumpExpensesList && data.pumpExpensesList.length > 0 ? data.pumpExpensesList : [
+                { category: 'Station Rent / Lease', particulars: 'Monthly site rent overhead', amount: data.pumpRent },
+                { category: 'Staff Salaries', particulars: 'Station staff remuneration', amount: data.pumpSalary },
+                { category: 'Trip Sheet Loss', particulars: 'Transit shortage variances', amount: data.pumpTripSheetLoss },
+                { category: 'DSM Shortages', particulars: 'Shift cash discrepancies', amount: data.pumpDsmShort },
+                { category: 'Banking Charges', particulars: 'EDC rental & MDR charges', amount: data.pumpBankingExpenses },
+                { category: 'BPCL Portal Expenses', particulars: 'Portal subscriptions & automation', amount: data.pumpBpclPortalExpenses },
+                { category: 'Generator Fuel & Travel', particulars: 'Conveyance & DG diesel', amount: data.pumpUsedFuel },
+                { category: 'Bulk Oil Purchases', particulars: 'Direct inventory procurement', amount: data.pumpOilPurchase },
+                { category: 'Repairs & Maintenance', particulars: 'Dispensers & forecourt upkeep', amount: data.pumpRepairsAndMaintenance },
+                { category: 'Electricity & Utilities', particulars: 'Forecourt & canopy power bill', amount: data.pumpElectricity },
+                { category: 'Office Expenses', particulars: 'Stationery & administrative', amount: data.pumpOfficeExpenses },
+                { category: 'Printing Expense', particulars: 'Rolls & paper consumables', amount: data.pumpPrintingExpense },
+                { category: 'Other Miscellaneous', particulars: 'Dealer miscellaneous expenses', amount: data.pumpOtherAmount }
+            ];
+
+            pumpItems.forEach(item => {
+                const amt = Number(item.amount || 0);
+                sumPump += amt;
+                pumpRows += `
+                    <tr>
+                        <td class="text-bold">${item.category}</td>
+                        <td>${item.particulars || "-"}</td>
+                        <td class="text-right ${amt > 0 ? 'text-bold' : ''}">${formatCurrency(amt)}</td>
+                    </tr>
+                `;
+            });
+
+            pumpRows += `
+                <tr class="row-total">
+                    <td colspan="2">TOTAL OWNER PUMP OVERHEADS</td>
+                    <td class="text-right">${formatCurrency(data.totalPumpExpenses || sumPump)}</td>
+                </tr>
+            `;
+            pumpBody.innerHTML = pumpRows;
+
+            // SECTION 7: Comprehensive Financial Summary Statement
+            const totalGrossProfit = grossFuel + grossOil;
+            document.getElementById('sumFuelProfit').innerText = formatCurrency(grossFuel);
+            document.getElementById('sumOilProfit').innerText = formatCurrency(grossOil);
+            document.getElementById('sumGrossProfit').innerText = formatCurrency(totalGrossProfit);
+
+            document.getElementById('sumOperatingExpenses').innerText = "-" + formatCurrency(opExp);
+            document.getElementById('sumDsmSalaries').innerText = "-" + formatCurrency(data.totalDsmSalaries || 0);
+            
+            const totalKpDrawings = data.totalKpDrawings || sumKp;
+            document.getElementById('sumKpDrawings').innerText = "-" + formatCurrency(totalKpDrawings);
+            document.getElementById('sumPumpExpenses').innerText = "-" + formatCurrency(data.totalPumpExpenses || sumPump);
 
             const mismatchVal = data.totalMismatch || 0;
-            const mismatchEl = document.getElementById('mismatchText');
+            const mismatchEl = document.getElementById('sumMismatch');
             mismatchEl.innerText = (mismatchVal >= 0 ? "+" : "") + formatCurrency(mismatchVal);
             if (mismatchVal >= 0) {
-                mismatchEl.style.color = '#2e7d32';
+                mismatchEl.style.color = '#047857';
             } else {
-                mismatchEl.style.color = '#c62828';
+                mismatchEl.style.color = '#b91c1c';
             }
 
-            // Pump Expenses Block
-            const pumpExpenseBody = document.getElementById('pumpExpenseBody');
-            pumpExpenseBody.innerHTML = `
-                <tr><td>Rent</td><td class="text-right">${formatCurrency(data.pumpRent || 0)}</td></tr>
-                <tr><td>Staff Salary</td><td class="text-right">${formatCurrency(data.pumpSalary || 0)}</td></tr>
-                <tr><td>Trip Sheet Loss</td><td class="text-right">${formatCurrency(data.pumpTripSheetLoss || 0)}</td></tr>
-                <tr><td>DSM Short</td><td class="text-right">${formatCurrency(data.pumpDsmShort || 0)}</td></tr>
-                <tr><td>Banking Expenses</td><td class="text-right">${formatCurrency(data.pumpBankingExpenses || 0)}</td></tr>
-                <tr><td>BPCL Portal Expenses</td><td class="text-right">${formatCurrency(data.pumpBpclPortalExpenses || 0)}</td></tr>
-                <tr><td>Used Fuel</td><td class="text-right">${formatCurrency(data.pumpUsedFuel || 0)}</td></tr>
-                <tr><td>Oil Purchase</td><td class="text-right">${formatCurrency(data.pumpOilPurchase || 0)}</td></tr>
-                <tr class="total-row">
-                    <td>Total Owner Pump Expenses</td>
-                    <td class="text-right">${formatCurrency(data.totalPumpExpenses || 0)}</td>
-                </tr>
-            `;
-            
-            const netProfitCell = document.getElementById('netProfitText');
-            netProfitCell.innerText = formatCurrency(data.netProfit);
-            if (data.netProfit >= 0) {
-                netProfitCell.className = 'net-profit text-right';
+            const netOperatingProfit = data.netProfit || 0;
+            const banner = document.getElementById('netProfitBanner');
+            const netTitle = document.getElementById('netProfitTitle');
+            const netAmount = document.getElementById('netProfitAmount');
+
+            netAmount.innerText = formatCurrency(netOperatingProfit);
+            if (netOperatingProfit >= 0) {
+                banner.className = 'net-profit-banner';
+                netTitle.innerText = 'NET OPERATING PROFIT (SURPLUS)';
             } else {
-                netProfitCell.className = 'net-loss text-right';
-            }
-            if (data.logo) {
-                const logoImg = document.getElementById('logo');
-                if (logoImg) {
-                    logoImg.src = data.logo;
-                    logoImg.style.display = 'block';
-                }
+                banner.className = 'net-profit-banner loss';
+                netTitle.innerText = 'NET OPERATING LOSS (DEFICIT)';
             }
         }
 
         window.onload = function() {
-            renderData();
+            renderReport();
         };
 
         function printDoc() {
@@ -288,103 +810,261 @@
     </script>
 </head>
 <body>
-    <button class="print-btn" onclick="printDoc()">Print Report</button>
-    <div class="header">
-        <div style="display: flex; align-items: center; justify-content: center; gap: 15px;">
-            <img id="logo" style="display: none; height: 50px;" src="" alt="logo" />
-            <h1 id="stationName">Mitali Service Station</h1>
-        </div>
-        <p>Monthly Profit & Loss Statement</p>
-        <p id="dateRange">01-Jun-2026 to 30-Jun-2026</p>
+    <div class="no-print">
+        <button class="print-btn" onclick="printDoc()">🖨️ Print Statement</button>
     </div>
 
-    <div class="section-title">1. Gross Revenue from Fuel Margins</div>
-    <table>
-        <thead>
-            <tr>
-                <th>Fuel Product</th>
-                <th class="text-right">Volume Sold</th>
-                <th class="text-right">Avg Margin/Litre</th>
-                <th class="text-right">Profit generated</th>
-            </tr>
-        </thead>
-        <tbody id="fuelBody">
-            <!-- Row data injected -->
-        </tbody>
-    </table>
+    <div class="statement-container">
+        <!-- Top Header -->
+        <div class="header">
+            <div class="header-left">
+                <img id="stationLogo" class="logo-img" style="display: none;" src="" alt="Station Logo" />
+                <div class="station-details">
+                    <h1 id="stationName">FuelPro Station</h1>
+                    <div class="subtitle" id="stationSubtitle" style="display: none;"></div>
+                    <div class="meta" id="stationMeta" style="display: none;"></div>
+                </div>
+            </div>
+            <div class="oil-company-badge" id="oilCompany">BPCL</div>
+        </div>
 
-    <div class="section-title">2. Lube Oil & DEF Stock Profits</div>
-    <table>
-        <thead>
-            <tr>
-                <th>Product Type</th>
-                <th class="text-right">Opening Stock</th>
-                <th class="text-right">Closing Stock</th>
-                <th class="text-right">Qty Sold</th>
-                <th class="text-right">Avg Cost Price</th>
-                <th class="text-right">Avg Sale Price</th>
-                <th class="text-right">Profit generated</th>
-            </tr>
-        </thead>
-        <tbody id="inventoryBody">
-            <!-- Row data injected -->
-        </tbody>
-    </table>
+        <!-- Ribbon -->
+        <div class="ribbon">
+            <div class="ribbon-title">Monthly Profit & Loss Statement</div>
+            <div class="ribbon-period" id="ribbonPeriod">01-Jun-2026 to 30-Jun-2026</div>
+            <div class="ribbon-generated" id="ribbonGenerated">Generated: 24-Oct-2026</div>
+        </div>
 
-    <div class="section-title">3. Operating Expenses Log</div>
-    <table>
-        <thead>
-            <tr>
-                <th>Expense Description</th>
-                <th class="text-right">Amount</th>
-            </tr>
-        </thead>
-        <tbody id="expenseBody">
-            <!-- Row data injected -->
-        </tbody>
-    </table>
+        <!-- Top KPI Metric Cards -->
+        <div class="kpi-row">
+            <div class="kpi-card">
+                <div class="kpi-label">Fuel Margins</div>
+                <div class="kpi-value" id="kpiGrossFuel">₹0.00</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Lube & DEF Profit</div>
+                <div class="kpi-value" id="kpiGrossOil">₹0.00</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Operating Expenses</div>
+                <div class="kpi-value" id="kpiOpExpenses">₹0.00</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Pump Overheads</div>
+                <div class="kpi-value" id="kpiPumpExpenses">₹0.00</div>
+            </div>
+            <div class="kpi-card highlight" id="kpiNetCard">
+                <div class="kpi-label">Net Operating P&L</div>
+                <div class="kpi-value" id="kpiNetProfit">₹0.00</div>
+            </div>
+        </div>
 
-    <div class="section-title">4. Owner Pump Expenses (Deductions)</div>
-    <table>
-        <thead>
-            <tr>
-                <th>Expense Category</th>
-                <th class="text-right">Amount</th>
-            </tr>
-        </thead>
-        <tbody id="pumpExpenseBody">
-            <!-- Row data injected -->
-        </tbody>
-    </table>
-
-    <div class="section-title">5. Financial Summary</div>
-    <div class="summary-card">
+        <!-- Section 1: Fuel Margins -->
+        <div class="section-header">
+            <h2>1. Gross Revenue from Fuel Margins</h2>
+            <span class="section-badge">Dispenser Volumes &amp; Unit Margins</span>
+        </div>
         <table>
-            <tr>
-                <td style="font-weight: 600;">Total Gross Profit (Fuel + Oil/DEF):</td>
-                <td class="text-right" id="grossProfitText" style="font-weight: 600;">₹0.00</td>
-            </tr>
-            <tr>
-                <td style="color: #c62828;">Less: Total Operating Expenses:</td>
-                <td class="text-right" id="operatingExpensesText" style="color: #c62828;">-₹0.00</td>
-            </tr>
-            <tr>
-                <td style="color: #7b1fa2;">Less: Total DSM Salaries Cost:</td>
-                <td class="text-right" id="dsmSalariesText" style="color: #7b1fa2;">-₹0.00</td>
-            </tr>
-            <tr>
-                <td style="color: #c62828;">Less: Total Owner Pump Expenses:</td>
-                <td class="text-right" id="pumpExpensesText" style="color: #c62828;">-₹0.00</td>
-            </tr>
-            <tr>
-                <td>Net Mismatch (Excess/Shortage):</td>
-                <td class="text-right" id="mismatchText" style="font-weight: 500;">₹0.00</td>
-            </tr>
-            <tr style="border-top: 2px solid #00695C; font-size: 16px;">
-                <td style="font-weight: bold; padding-top: 10px;">Net Operating Profit / Loss:</td>
-                <td class="text-right" id="netProfitText" style="font-weight: bold; padding-top: 10px;">₹0.00</td>
-            </tr>
+            <thead>
+                <tr>
+                    <th>Tank / Fuel Product</th>
+                    <th class="text-right">Total Sale (L/Kg)</th>
+                    <th class="text-right">Testing (Ltr)</th>
+                    <th class="text-right">Actual Sale (L/Kg)</th>
+                    <th class="text-right">Margin / Unit</th>
+                    <th class="text-right">Total Profit</th>
+                </tr>
+            </thead>
+            <tbody id="fuelBody">
+                <!-- Injected via script -->
+            </tbody>
         </table>
+
+        <!-- Section 2: Lube Oil & DEF -->
+        <div class="section-header">
+            <h2>2. Lube Oil &amp; DEF Stock Profits</h2>
+            <span class="section-badge">Inventory Sales &amp; Cost Margins</span>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Product Type</th>
+                    <th class="text-right">Opening Stock</th>
+                    <th class="text-right">Closing Stock</th>
+                    <th class="text-right">Qty Sold</th>
+                    <th class="text-right">Avg Cost</th>
+                    <th class="text-right">Avg Sale Rate</th>
+                    <th class="text-right">Profit Generated</th>
+                </tr>
+            </thead>
+            <tbody id="lubeBody">
+                <!-- Injected via script -->
+            </tbody>
+        </table>
+
+        <!-- Section 3: Owner Margin Summary -->
+        <div class="section-header">
+            <h2>3. Fuel Owner Margin Summary</h2>
+            <span class="section-badge">Billing Rates &amp; Unit Margins</span>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Fuel Product</th>
+                    <th class="text-right">Avg Sale Rate</th>
+                    <th class="text-right">Avg Purchase Rate</th>
+                    <th class="text-right">Margin Per Unit</th>
+                    <th class="text-right">Total Margin Profit</th>
+                </tr>
+            </thead>
+            <tbody id="marginBody">
+                <!-- Injected via script -->
+            </tbody>
+        </table>
+
+        <!-- Section 4: Operating Expenses & Shift-Wise Details -->
+        <div class="section-header">
+            <h2>4. Operating Expenses &amp; Shift-Wise Details</h2>
+            <span class="section-badge">Direct Forecourt Deductions</span>
+        </div>
+        <div class="cat-pills-container" id="catPillsContainer" style="display: none;">
+            <!-- Category Pills injected -->
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Shift</th>
+                    <th>DSM / Issuer</th>
+                    <th>Expense Particulars</th>
+                    <th class="text-right">Amount</th>
+                </tr>
+            </thead>
+            <tbody id="expenseBody">
+                <!-- Injected via script -->
+            </tbody>
+        </table>
+
+        <!-- Section 5: Kandhare Petroleum / Personal Ledger -->
+        <div class="section-header">
+            <h2>5. Kandhare Petroleum / Personal Ledger</h2>
+            <span class="section-badge">Dealer Personal Drawings / Transfers</span>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>DSM / Issuer</th>
+                    <th>Particulars / Account</th>
+                    <th>Slip No</th>
+                    <th>Vehicle No</th>
+                    <th class="text-right">Amount</th>
+                </tr>
+            </thead>
+            <tbody id="kpBody">
+                <!-- Injected via script -->
+            </tbody>
+        </table>
+
+        <!-- Section 6: Owner Pump Expenses -->
+        <div class="section-header">
+            <h2>6. Owner Pump Expenses (Pump Overheads)</h2>
+            <span class="section-badge">Monthly Station Operational Overheads</span>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Expense Category</th>
+                    <th>Particulars / Description</th>
+                    <th class="text-right">Amount</th>
+                </tr>
+            </thead>
+            <tbody id="pumpBody">
+                <!-- Injected via script -->
+            </tbody>
+        </table>
+
+        <!-- Section 7: Comprehensive Financial Summary Statement -->
+        <div class="section-header">
+            <h2>7. Comprehensive Financial Summary Statement</h2>
+            <span class="section-badge">Final Net Operating Audit</span>
+        </div>
+        <div class="summary-card-wrapper">
+            <div class="summary-grid">
+                <!-- Left Column: Business Gross Inflows -->
+                <div class="summary-col">
+                    <h3>A. Gross Operating Revenues</h3>
+                    <div class="summary-line">
+                        <span>Fuel Margin Gross Profit</span>
+                        <span id="sumFuelProfit" class="text-bold">₹0.00</span>
+                    </div>
+                    <div class="summary-line">
+                        <span>Lube Oil &amp; DEF Profit</span>
+                        <span id="sumOilProfit" class="text-bold">₹0.00</span>
+                    </div>
+                    <div class="summary-line subtotal">
+                        <span style="color: #047857;">TOTAL GROSS BUSINESS PROFIT</span>
+                        <span id="sumGrossProfit" style="color: #047857; font-weight: 800;">₹0.00</span>
+                    </div>
+                </div>
+
+                <!-- Right Column: Operating & Overhead Deductions -->
+                <div class="summary-col">
+                    <h3>B. Operating &amp; Station Deductions</h3>
+                    <div class="summary-line">
+                        <span style="color: #b91c1c;">Less: Direct Forecourt Expenses</span>
+                        <span id="sumOperatingExpenses" style="color: #b91c1c; font-weight: 600;">-₹0.00</span>
+                    </div>
+                    <div class="summary-line">
+                        <span style="color: #b91c1c;">Less: DSM Staff Salaries Cost</span>
+                        <span id="sumDsmSalaries" style="color: #b91c1c; font-weight: 600;">-₹0.00</span>
+                    </div>
+                    <div class="summary-line">
+                        <span style="color: #b91c1c;">Less: Personal Ledger Drawings</span>
+                        <span id="sumKpDrawings" style="color: #b91c1c; font-weight: 600;">-₹0.00</span>
+                    </div>
+                    <div class="summary-line">
+                        <span style="color: #b91c1c;">Less: Owner Pump Overheads</span>
+                        <span id="sumPumpExpenses" style="color: #b91c1c; font-weight: 600;">-₹0.00</span>
+                    </div>
+                    <div class="summary-line">
+                        <span>Net Collection Mismatch (Excess/Shortage)</span>
+                        <span id="sumMismatch" style="font-weight: 600;">₹0.00</span>
+                    </div>
+                </div>
+
+                <!-- Final Net Operating Profit Banner -->
+                <div class="net-profit-banner" id="netProfitBanner">
+                    <div class="net-profit-title" id="netProfitTitle">NET OPERATING PROFIT</div>
+                    <div class="net-profit-amount" id="netProfitAmount">₹0.00</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Official Authentication Signatures -->
+        <div class="signatures-section">
+            <div class="signature-box">
+                <div class="signature-line"></div>
+                <div class="signature-title">Prepared By</div>
+                <div class="signature-subtitle">DSM In-Charge / Manager</div>
+            </div>
+            <div class="signature-box">
+                <div class="signature-line"></div>
+                <div class="signature-title">Verified By</div>
+                <div class="signature-subtitle">Accountant / Auditor</div>
+            </div>
+            <div class="signature-box">
+                <div class="signature-line"></div>
+                <div class="signature-title">Approved By</div>
+                <div class="signature-subtitle">Dealer / Authorized Signatory</div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="report-footer">
+            <span>PyroSync FuelPro System • Official Financial Statement</span>
+            <span>All amounts in INR (₹) • Valid without physical seal if digitally authenticated</span>
+        </div>
     </div>
 </body>
 </html>

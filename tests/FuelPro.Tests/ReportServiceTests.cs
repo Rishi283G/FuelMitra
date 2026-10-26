@@ -6,6 +6,7 @@ using FuelPro.Core.DTOs;
 using FuelPro.Core.Models;
 using FuelPro.Core.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace FuelPro.Tests;
@@ -473,4 +474,287 @@ public class ReportServiceTests : IDisposable
         Assert.Equal("—", dtoNoOpening.AutomaticStockDisplay);
         Assert.Equal("—", dtoNoOpening.StockVarianceDisplay);
     }
+
+    [Fact]
+    public void PineLabsCard_And_PhonePe_ItemCollections_ReflectedInDsmSummaryAndReconciliation()
+    {
+        var date = new DateTime(2026, 9, 15);
+        var entry = new DsmEntry
+        {
+            DsmEntryId = 1,
+            DsmName = "Santosh",
+            PumpId = 1,
+            GrossSales = 5000,
+            Shift = new Shift { ShiftDate = date, ShiftType = "A" },
+            NozzleReadings = new List<NozzleReading>
+            {
+                new() { NozzleNumber = 1, FuelType = "MS-I", SaleLitres = 50, Amount = 5000, Rate = 100 }
+            },
+            PaymentCollection = new PaymentCollection
+            {
+                Items = new List<PaymentCollectionItem>
+                {
+                    new() { CollectionTypeCode = "PINELABS_CARD", Amount = 3000, Slot = "Morning" },
+                    new() { CollectionTypeCode = "PHONEPE", Amount = 2000, Slot = "Morning" }
+                }
+            }
+        };
+
+        var entries = new List<DsmEntry> { entry };
+
+        // 1. Verify ShiftAggregationService.BuildDsmSummaryRows
+        var summaryRows = _aggregation.BuildDsmSummaryRows(entries);
+        Assert.Single(summaryRows);
+        var row = summaryRows[0];
+        Assert.Equal(3000, row.PineLabsCard);
+        Assert.Equal(3000, row.CreditCardTotal);
+        Assert.Equal(2000, row.PhonePeTotal);
+        Assert.Equal(0, row.DynamicCollectionsTotal);
+        Assert.Equal(5000, row.TotalCollection);
+        Assert.Equal(0, row.Difference);
+
+        // 2. Verify Shift Report
+        var shiftReport = _sut.CalculateShiftReport(
+            date, "A", entries,
+            new List<Expense>(), new List<ShiftOtherCash>(), new List<CreditorRepayment>(),
+            100, 100, 100, 100,
+            new BusinessDayTidSheet(), new BusinessDayTidSheet(),
+            "Mitali Service Station");
+
+        Assert.Equal(5000, shiftReport.TotalFuelAmount);
+        Assert.Equal(5000, shiftReport.ExpectedCollection);
+        Assert.Equal(5000, shiftReport.ActualCollection);
+        Assert.Equal(0, shiftReport.Difference);
+        Assert.True(shiftReport.IsBalanced);
+
+        var cardCategoriesShift = shiftReport.CollectionBreakdown
+            .Where(c => c.Category.Contains("PineLab", StringComparison.OrdinalIgnoreCase) || c.Category.Contains("Credit", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        Assert.Single(cardCategoriesShift);
+        Assert.Equal(3000, cardCategoriesShift[0].Amount);
+
+        var phonePeCategoriesShift = shiftReport.CollectionBreakdown
+            .Where(c => c.Category.Contains("PhonePe", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        Assert.Single(phonePeCategoriesShift);
+        Assert.Equal(2000, phonePeCategoriesShift[0].Amount);
+
+        // 3. Verify Day Report
+        var dayReport = _sut.CalculateDayReport(
+            date, date, entries,
+            new List<Expense>(), new List<CreditorRepayment>(),
+            100, 100, 100, 100,
+            "Mitali Service Station");
+
+        Assert.Equal(5000, dayReport.ExpectedCollection);
+        Assert.Equal(5000, dayReport.ActualCollection);
+        Assert.Equal(0, dayReport.Difference);
+        Assert.True(dayReport.IsBalanced);
+
+        var cardCategoriesDay = dayReport.CollectionBreakdown
+            .Where(c => c.Category.Contains("PineLab", StringComparison.OrdinalIgnoreCase) || c.Category.Contains("Credit", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        Assert.Single(cardCategoriesDay);
+        Assert.Equal(3000, cardCategoriesDay[0].Amount);
+
+        var phonePeCategoriesDay = dayReport.CollectionBreakdown
+            .Where(c => c.Category.Contains("PhonePe", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        Assert.Single(phonePeCategoriesDay);
+        Assert.Equal(2000, phonePeCategoriesDay[0].Amount);
+    }
+
+    [Fact]
+    public void CalculateShiftReport_And_DayReport_WithActiveCollectionTypeService_PineLabsCardNeverDuplicated()
+    {
+        var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
+        var types = new List<CollectionTypeMaster>
+        {
+            new() { CollectionTypeId = 1, Code = "PINELABS_CARD", DisplayName = "PineLabs Card", IsActive = true, DisplayOrder = 1 },
+            new() { CollectionTypeId = 2, Code = "PHONEPE", DisplayName = "PhonePe Direct", IsActive = true, DisplayOrder = 2 },
+            new() { CollectionTypeId = 3, Code = "PETROCARD", DisplayName = "PetroCard", IsActive = true, DisplayOrder = 3 },
+            new() { CollectionTypeId = 4, Code = "CASH_DEPOSIT", DisplayName = "Cash Deposit", IsActive = true, DisplayOrder = 4 },
+            new() { CollectionTypeId = 5, Code = "SBI_REDEEM", DisplayName = "SBI Redeem", IsActive = true, DisplayOrder = 5 }
+        };
+        services.AddSingleton<ICollectionTypeService>(new StubCollectionTypeService(types));
+        var sp = services.BuildServiceProvider();
+
+        var sutWithSp = new ReportService(_aggregation, sp);
+
+        var date = new DateTime(2026, 9, 15);
+        var entry = new DsmEntry
+        {
+            DsmEntryId = 1,
+            DsmName = "Santosh",
+            PumpId = 1,
+            GrossSales = 5000,
+            Shift = new Shift { ShiftDate = date, ShiftType = "A" },
+            NozzleReadings = new List<NozzleReading>
+            {
+                new() { NozzleNumber = 1, FuelType = "MS-I", SaleLitres = 50, Amount = 5000, Rate = 100 }
+            },
+            PaymentCollection = new PaymentCollection
+            {
+                Items = new List<PaymentCollectionItem>
+                {
+                    new() { CollectionTypeCode = "PINELABS_CARD", Amount = 2000, Slot = "Morning" },
+                    new() { CollectionTypeCode = "PHONEPE", Amount = 1500, Slot = "Morning" },
+                    new() { CollectionTypeCode = "SBI_REDEEM", Amount = 500, Slot = "Morning" }
+                }
+            },
+            CashDenominations = new List<CashDenomination>
+            {
+                new() { CashType = "Cash2", TotalAmount = 1000 }
+            }
+        };
+
+        var entries = new List<DsmEntry> { entry };
+
+        // Test Shift Report
+        var shiftReport = sutWithSp.CalculateShiftReport(
+            date, "A", entries,
+            new List<Expense>(), new List<ShiftOtherCash>(), new List<CreditorRepayment>(),
+            100, 100, 100, 100,
+            new BusinessDayTidSheet(), new BusinessDayTidSheet(),
+            "Mitali Service Station");
+
+        Assert.Single(shiftReport.CollectionBreakdown.Where(c => c.Category.Contains("PineLab", StringComparison.OrdinalIgnoreCase)));
+        Assert.Single(shiftReport.CollectionBreakdown.Where(c => c.Category.Contains("PhonePe", StringComparison.OrdinalIgnoreCase)));
+        Assert.Single(shiftReport.CollectionBreakdown.Where(c => c.Category.Contains("SBI", StringComparison.OrdinalIgnoreCase)));
+        Assert.Equal(2000, shiftReport.CollectionBreakdown.First(c => c.Category.Contains("PineLab", StringComparison.OrdinalIgnoreCase)).Amount);
+        Assert.Equal(1500, shiftReport.CollectionBreakdown.First(c => c.Category.Contains("PhonePe", StringComparison.OrdinalIgnoreCase)).Amount);
+        Assert.Equal(500, shiftReport.CollectionBreakdown.First(c => c.Category.Contains("SBI", StringComparison.OrdinalIgnoreCase)).Amount);
+        Assert.Equal(5000, shiftReport.ActualCollection);
+        Assert.Equal(5000, shiftReport.ExpectedCollection);
+        Assert.Equal(0, shiftReport.Difference);
+        Assert.True(shiftReport.IsBalanced);
+
+        // Test Day Report
+        var dayReport = sutWithSp.CalculateDayReport(
+            date, date, entries,
+            new List<Expense>(), new List<CreditorRepayment>(),
+            100, 100, 100, 100,
+            "Mitali Service Station");
+
+        Assert.Single(dayReport.CollectionBreakdown.Where(c => c.Category.Contains("PineLab", StringComparison.OrdinalIgnoreCase)));
+        Assert.Single(dayReport.CollectionBreakdown.Where(c => c.Category.Contains("PhonePe", StringComparison.OrdinalIgnoreCase)));
+        Assert.Single(dayReport.CollectionBreakdown.Where(c => c.Category.Contains("SBI", StringComparison.OrdinalIgnoreCase)));
+        Assert.Equal(2000, dayReport.CollectionBreakdown.First(c => c.Category.Contains("PineLab", StringComparison.OrdinalIgnoreCase)).Amount);
+        Assert.Equal(1500, dayReport.CollectionBreakdown.First(c => c.Category.Contains("PhonePe", StringComparison.OrdinalIgnoreCase)).Amount);
+        Assert.Equal(500, dayReport.CollectionBreakdown.First(c => c.Category.Contains("SBI", StringComparison.OrdinalIgnoreCase)).Amount);
+        Assert.Equal(5000, dayReport.ActualCollection);
+        Assert.Equal(5000, dayReport.ExpectedCollection);
+        Assert.Equal(0, dayReport.Difference);
+        Assert.True(dayReport.IsBalanced);
+    }
+
+    [Fact]
+    public void DsmSummaryRowDto_GetAmount_ReturnsPineLabsCard_ForVariousPineLabAliases()
+    {
+        var row = new DsmSummaryRowDto
+        {
+            CreditCard = 0,
+            PineLabsCard = 1850,
+            PhonePe = 1200,
+            CashDeposit = 500,
+            CashInHand = 450,
+            GrossSales = 4000
+        };
+
+        Assert.Equal(1850, row.GetAmount("PINELABCARD"));
+        Assert.Equal(1850, row.GetAmount("PINELABS"));
+        Assert.Equal(1850, row.GetAmount("PINELABSCARD"));
+        Assert.Equal(1850, row.GetAmount("PINELABS_CARD"));
+        Assert.Equal(1850, row.GetAmount("CREDITCARD"));
+        Assert.Equal(1200, row.GetAmount("PHONEPE"));
+        Assert.Equal(4000, row.TotalCollection);
+        Assert.Equal(0, row.Difference);
+        Assert.Equal(0, row.Mismatch);
+    }
+
+    [Fact]
+    public void CalculateShiftReport_And_DayReport_WhenCreditCardInactiveAndPineLabsCardActive_IncludesPineLabsCardInActualCollectionAndBalances()
+    {
+        var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
+        var types = new List<CollectionTypeMaster>
+        {
+            new() { CollectionTypeId = 1, Code = "CASH_DEPOSIT", DisplayName = "Cash Deposit", IsActive = true, DisplayOrder = 1 },
+            new() { CollectionTypeId = 2, Code = "CREDIT_CARD", DisplayName = "Credit / Debit Card", IsActive = false, DisplayOrder = 2 },
+            new() { CollectionTypeId = 3, Code = "PHONEPE", DisplayName = "PhonePe Direct", IsActive = true, DisplayOrder = 3 },
+            new() { CollectionTypeId = 4, Code = "PINELABS_CARD", DisplayName = "Pine Labs Card", IsActive = true, DisplayOrder = 4 }
+        };
+        services.AddSingleton<ICollectionTypeService>(new StubCollectionTypeService(types));
+        var sp = services.BuildServiceProvider();
+
+        var sutWithSp = new ReportService(_aggregation, sp);
+
+        var date = new DateTime(2026, 10, 25);
+        var entry = new DsmEntry
+        {
+            DsmEntryId = 10,
+            DsmName = "Santosh",
+            PumpId = 1,
+            GrossSales = 5000,
+            Shift = new Shift { ShiftDate = date, ShiftType = "A" },
+            NozzleReadings = new List<NozzleReading>
+            {
+                new() { NozzleNumber = 1, FuelType = "MS-I", SaleLitres = 50, Amount = 5000, Rate = 100 }
+            },
+            PaymentCollection = new PaymentCollection
+            {
+                Items = new List<PaymentCollectionItem>
+                {
+                    new() { CollectionTypeCode = "PINELABS_CARD", Amount = 3000, Slot = "Morning" },
+                    new() { CollectionTypeCode = "PHONEPE", Amount = 2000, Slot = "Morning" }
+                }
+            }
+        };
+
+        var entries = new List<DsmEntry> { entry };
+
+        // Test Shift Report
+        var shiftReport = sutWithSp.CalculateShiftReport(
+            date, "A", entries,
+            new List<Expense>(), new List<ShiftOtherCash>(), new List<CreditorRepayment>(),
+            100, 100, 100, 100,
+            new BusinessDayTidSheet(), new BusinessDayTidSheet(),
+            "Mitali Service Station");
+
+        var shiftPineCard = shiftReport.CollectionBreakdown.FirstOrDefault(c => c.Category.Contains("Pine", StringComparison.OrdinalIgnoreCase));
+        Assert.NotNull(shiftPineCard);
+        Assert.Equal(3000, shiftPineCard.Amount);
+        Assert.Equal(5000, shiftReport.ActualCollection);
+        Assert.Equal(5000, shiftReport.ExpectedCollection);
+        Assert.Equal(0, shiftReport.Difference);
+        Assert.True(shiftReport.IsBalanced);
+
+        // Test Day Report
+        var dayReport = sutWithSp.CalculateDayReport(
+            date, date, entries,
+            new List<Expense>(), new List<CreditorRepayment>(),
+            100, 100, 100, 100,
+            "Mitali Service Station");
+
+        var dayPineCard = dayReport.CollectionBreakdown.FirstOrDefault(c => c.Category.Contains("Pine", StringComparison.OrdinalIgnoreCase));
+        Assert.NotNull(dayPineCard);
+        Assert.Equal(3000, dayPineCard.Amount);
+        Assert.Equal(5000, dayReport.ActualCollection);
+        Assert.Equal(5000, dayReport.ExpectedCollection);
+        Assert.Equal(0, dayReport.Difference);
+        Assert.True(dayReport.IsBalanced);
+    }
+
+    private class StubCollectionTypeService : ICollectionTypeService
+    {
+        private readonly List<CollectionTypeMaster> _types;
+        public StubCollectionTypeService(List<CollectionTypeMaster> types) => _types = types;
+        public event Action? CollectionTypesChanged;
+        public void NotifyCollectionTypesChanged() => CollectionTypesChanged?.Invoke();
+        public Task<List<CollectionTypeMaster>> GetActiveCollectionTypesAsync() => Task.FromResult(_types.Where(t => t.IsActive).ToList());
+        public Task<List<CollectionTypeMaster>> GetAllCollectionTypesAsync() => Task.FromResult(_types.ToList());
+        public Task<bool> SaveCollectionTypeAsync(CollectionTypeMaster item) => Task.FromResult(true);
+        public Task<bool> DeleteCollectionTypeAsync(int collectionTypeId) => Task.FromResult(true);
+        public Task<bool> UpdateDisplayOrdersAsync(IEnumerable<(int Id, int Order)> orders) => Task.FromResult(true);
+    }
 }
+

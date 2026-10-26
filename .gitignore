@@ -56,6 +56,10 @@ scratch_*
 *.jpeg
 *.png
 *.jpg
+!src/FuelPro.UI/Resources/**
 
 # Forensic and local database copies
 forensic_investigation/
+*.db
+*.db-shm
+*.db-wal

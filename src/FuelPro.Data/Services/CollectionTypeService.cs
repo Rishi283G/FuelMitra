@@ -76,6 +76,7 @@ public class CollectionTypeService : ICollectionTypeService
                     existing.DisplayName = item.DisplayName;
                     existing.Category = item.Category;
                     existing.HasTidBatch = item.HasTidBatch;
+                    existing.HasOtp = item.HasOtp;
                     existing.DisplayOrder = item.DisplayOrder;
                     existing.IsActive = item.IsActive;
                     db.Entry(existing).State = EntityState.Modified;

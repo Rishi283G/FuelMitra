@@ -89,11 +89,13 @@ public class ShiftAggregationService : IShiftAggregationService
                 var primaryCashDenoms = entry.CashDenominations ?? new List<CashDenomination>();
                 var cash1 = primaryCashDenoms.Where(c => c.CashType == "Cash1").Sum(c => c.TotalAmount);
                 var cash2 = primaryCashDenoms.Where(c => c.CashType == "Cash2").Sum(c => c.TotalAmount);
-                if (cash1 == 0 && cash2 == 0 && connectedSlaves.Any(s => s.CashDenominations != null && s.CashDenominations.Count > 0))
+                var cash3 = primaryCashDenoms.Where(c => c.CashType == "Cash3").Sum(c => c.TotalAmount);
+                if (cash1 == 0 && cash2 == 0 && cash3 == 0 && connectedSlaves.Any(s => s.CashDenominations != null && s.CashDenominations.Count > 0))
                 {
                     var slaveCashDenoms = connectedSlaves.SelectMany(s => s.CashDenominations ?? new List<CashDenomination>()).ToList();
                     cash1 = slaveCashDenoms.Where(c => c.CashType == "Cash1").Sum(c => c.TotalAmount);
                     cash2 = slaveCashDenoms.Where(c => c.CashType == "Cash2").Sum(c => c.TotalAmount);
+                    cash3 = slaveCashDenoms.Where(c => c.CashType == "Cash3").Sum(c => c.TotalAmount);
                 }
 
                 var debSum = entry.DebitEntries?.Sum(d => d.Amount) ?? 0;
@@ -213,16 +215,97 @@ public class ShiftAggregationService : IShiftAggregationService
 
                 var allItems = p1?.GetAllItems()?.ToList() ?? new List<PaymentCollectionItem>();
 
+                // Also check items if scalar PhonePe was 0
+                double phonePeFromItems = allItems
+                    .Where(i => PaymentCollection.NormalizeCollectionTypeCode(i.CollectionTypeCode) == "PHONEPE")
+                    .Sum(i => i.Amount);
+                if (ph == 0 && phM == 0 && phD == 0 && phN == 0 && phonePeFromItems > 0)
+                {
+                    ph = phonePeFromItems;
+                    if (isDay) { finalPhD = phonePeFromItems; finalPh = phonePeFromItems; }
+                    else if (isShiftC) { finalPhN = phonePeFromItems; finalPh = phonePeFromItems; }
+                    else { finalPhM = phonePeFromItems; finalPh = phonePeFromItems; }
+                }
+
+                // PineLabs Card detection from items
+                static bool IsPineLabsCardItem(PaymentCollectionItem item)
+                {
+                    if (string.IsNullOrWhiteSpace(item.CollectionTypeCode)) return false;
+                    var norm = PaymentCollection.NormalizeCollectionTypeCode(item.CollectionTypeCode);
+                    if (norm is "PINELABS_CARD") return true;
+                    string clean = item.CollectionTypeCode.ToUpperInvariant().Replace("_", "").Replace(" ", "");
+                    return clean.Contains("PINELAB");
+                }
+
+                var pineLabsItems = allItems.Where(IsPineLabsCardItem).ToList();
+                double pineLabsM = pineLabsItems.Where(i => i.Slot == "Morning" || (isShiftA && string.IsNullOrWhiteSpace(i.Slot))).Sum(i => i.Amount);
+                double pineLabsD = pineLabsItems.Where(i => i.Slot == "Day" || (isDay && string.IsNullOrWhiteSpace(i.Slot))).Sum(i => i.Amount);
+                double pineLabsN = pineLabsItems.Where(i => i.Slot == "Night" || (isShiftC && string.IsNullOrWhiteSpace(i.Slot))).Sum(i => i.Amount);
+                double pineLabsTotal = pineLabsItems.Sum(i => i.Amount);
+
+                // If credit card was entered in items instead of scalar
+                double ccFromItems = allItems
+                    .Where(i => PaymentCollection.NormalizeCollectionTypeCode(i.CollectionTypeCode) == "CREDIT_CARD"
+                                || (i.CollectionTypeCode?.ToUpperInvariant().Replace("_", "").Replace(" ", "").Contains("CREDITCARD") ?? false))
+                    .Sum(i => i.Amount);
+                if (finalCc == 0 && ccFromItems > 0)
+                {
+                    if (isDay) { finalCcD = ccFromItems; finalCc = ccFromItems; }
+                    else if (isShiftC) { finalCcN = ccFromItems; finalCc = ccFromItems; }
+                    else { finalCcM = ccFromItems; finalCc = ccFromItems; }
+                }
+
+                if (finalCc == 0 && pineLabsTotal > 0)
+                {
+                    if (isDay)
+                    {
+                        finalCcD = (pineLabsD > 0 ? pineLabsD : pineLabsTotal);
+                        finalCcM = 0; finalCcN = 0;
+                        finalCc = pineLabsTotal;
+                    }
+                    else if (isShiftC)
+                    {
+                        finalCcN = (pineLabsN > 0 ? pineLabsN : pineLabsTotal);
+                        finalCcM = 0; finalCcD = 0;
+                        finalCc = pineLabsTotal;
+                    }
+                    else
+                    {
+                        finalCcM = (pineLabsM > 0 ? pineLabsM : (pineLabsN == 0 ? pineLabsTotal : 0));
+                        finalCcN = pineLabsN;
+                        finalCcD = 0;
+                        finalCc = pineLabsTotal;
+                    }
+                }
+
                 double sbiRedeem = allItems.Where(i => string.Equals(i.CollectionTypeCode?.Replace("_", "")?.Replace(" ", ""), "SBIREDEEM", StringComparison.OrdinalIgnoreCase)).Sum(i => i.Amount);
                 double paytm = allItems.Where(i => string.Equals(i.CollectionTypeCode, "PAYTM", StringComparison.OrdinalIgnoreCase)).Sum(i => i.Amount);
                 double qrPayment = allItems.Where(i => string.Equals(i.CollectionTypeCode, "QR", StringComparison.OrdinalIgnoreCase) || string.Equals(i.CollectionTypeCode?.Replace("_", "")?.Replace(" ", ""), "QRONLINE", StringComparison.OrdinalIgnoreCase)).Sum(i => i.Amount);
                 double mobikwik = allItems.Where(i => string.Equals(i.CollectionTypeCode, "MOBIKWIK", StringComparison.OrdinalIgnoreCase) || string.Equals(i.CollectionTypeCode, "MOBIKWICK", StringComparison.OrdinalIgnoreCase)).Sum(i => i.Amount);
-                var dynamicOnlyItems = allItems.Where(i => !PaymentCollection.IsStandardCollectionCode(i.CollectionTypeCode)).ToList();
+                bool pineLabsIsMainCard = (finalCc == pineLabsTotal && ccFromItems == 0 && (p1?.CreditCardMorning ?? 0) == 0 && (p1?.CreditCardNight ?? 0) == 0 && (p1?.CreditCardDay ?? 0) == 0 && (p1?.CreditCard ?? 0) == 0);
+
+                var dynamicOnlyItems = allItems
+                    .Where(i => !PaymentCollection.IsStandardCollectionCode(i.CollectionTypeCode) 
+                                && PaymentCollection.NormalizeCollectionTypeCode(i.CollectionTypeCode) != "PHONEPE"
+                                && PaymentCollection.NormalizeCollectionTypeCode(i.CollectionTypeCode) != "CREDIT_CARD"
+                                && (!pineLabsIsMainCard || !IsPineLabsCardItem(i)))
+                    .ToList();
                 double dynTotal = dynamicOnlyItems.Sum(i => i.Amount);
 
                 var dynDict = dynamicOnlyItems
                     .GroupBy(i => i.CollectionTypeCode, StringComparer.OrdinalIgnoreCase)
                     .ToDictionary(g => g.Key, g => g.Sum(x => x.Amount), StringComparer.OrdinalIgnoreCase);
+
+                if (!pineLabsIsMainCard && pineLabsTotal > 0 && !dynDict.ContainsKey("PINELABS_CARD"))
+                {
+                    dynDict["PINELABS_CARD"] = pineLabsTotal;
+                }
+
+                if (cash2 == 0 && entry.TotalInDirect > 0)
+                {
+                    double directNonCash = (cash1 > 0 ? cash1 : (p1?.CashDeposit ?? 0)) + cash3 + finalPh + (finalCc + finalPpc) + finalPetro + dynDict.Values.Sum();
+                    cash2 = Math.Max(0, (double)entry.TotalInDirect - directNonCash);
+                }
 
                 rows.Add(new DsmSummaryRowDto
                 {
@@ -244,12 +327,13 @@ public class ShiftAggregationService : IShiftAggregationService
                     CreditCardMorning = finalCcM,
                     CreditCardDay = finalCcD,
                     CreditCardNight = finalCcN,
+                    PineLabsCard = pineLabsTotal > 0 ? pineLabsTotal : (finalCc > 0 ? finalCc : 0),
                     PetroCard = finalPetro,
                     PetroCardMorning = finalPetroM,
                     PetroCardDay = finalPetroD,
                     PetroCardNight = finalPetroN,
                     Others = p1?.Others ?? 0,
-                    DynamicCollectionsTotal = dynTotal,
+                    DynamicCollectionsTotal = dynDict.Values.Sum(),
                     DynamicCollections = dynDict,
                     SbiRedeem = sbiRedeem,
                     Paytm = paytm,
@@ -260,6 +344,10 @@ public class ShiftAggregationService : IShiftAggregationService
                     Expenses = totalExpenses,
                     Testing = totalTesting,
                     CashInHand = cash2,
+                    Cash3 = cash3,
+                    CollectionReduction = p1?.CollectionReduction ?? 0,
+                    StoredTotalCollection = entry.TotalCollection > 0 ? (double)entry.TotalCollection : (double?)null,
+                    StoredMismatch = (entry.TotalCollection > 0 || entry.Mismatch != 0) ? (double)entry.Mismatch : (double?)null,
                     GrossSales = grossSales
                 });
             }
@@ -305,6 +393,7 @@ public class ShiftAggregationService : IShiftAggregationService
             CreditCardMorning = rows.Sum(r => r.CreditCardMorning),
             CreditCardDay = rows.Sum(r => r.CreditCardDay),
             CreditCardNight = rows.Sum(r => r.CreditCardNight),
+            PineLabsCard = rows.Sum(r => r.PineLabsCard),
             PetroCard = rows.Sum(r => r.PetroCardTotal),
             PetroCardMorning = rows.Sum(r => r.PetroCardMorning),
             PetroCardDay = rows.Sum(r => r.PetroCardDay),
@@ -321,6 +410,8 @@ public class ShiftAggregationService : IShiftAggregationService
             Expenses = rows.Sum(r => r.Expenses),
             Testing = rows.Sum(r => r.Testing),
             CashInHand = rows.Sum(r => r.CashInHand),
+            Cash3 = rows.Sum(r => r.Cash3),
+            CollectionReduction = rows.Sum(r => r.CollectionReduction),
             GrossSales = rows.Sum(r => r.GrossSales)
         };
     }
@@ -349,6 +440,8 @@ public class ShiftAggregationService : IShiftAggregationService
                 double grossSales = g.Sum(r => r.GrossSales);
                 double cashDeposit = g.Sum(r => r.CashDeposit);
                 double cashInHand = g.Sum(r => r.CashInHand);
+                double cash3 = g.Sum(r => r.Cash3);
+                double collectionReduction = g.Sum(r => r.CollectionReduction);
                 double phonePe = g.Sum(r => r.PhonePeTotal);
                 double phonePeCard = g.Sum(r => r.PhonePeCardTotal);
                 double creditCard = g.Sum(r => r.CreditCardPureTotal);
@@ -372,8 +465,12 @@ public class ShiftAggregationService : IShiftAggregationService
                 }
 
                 double netGrossSales = grossSales - testing;
-                double totalCollection = cashDeposit + cashInHand + phonePe + phonePeCard + creditCard + petroCard + dynamicTotal + debit + expenses;
-                double mismatch = totalCollection - netGrossSales;
+                double totalCollection = g.Any(r => r.StoredTotalCollection.HasValue && r.StoredTotalCollection.Value > 0)
+                    ? g.Sum(r => r.TotalCollection)
+                    : (cashDeposit + cashInHand + cash3 + phonePe + phonePeCard + creditCard + petroCard + dynamicTotal + debit + expenses - collectionReduction);
+                double mismatch = g.Any(r => r.StoredMismatch.HasValue)
+                    ? g.Sum(r => r.Mismatch)
+                    : (totalCollection - netGrossSales);
 
                 return new DsmShiftTotalDto
                 {
@@ -385,6 +482,8 @@ public class ShiftAggregationService : IShiftAggregationService
                     TotalCollection = totalCollection,
                     CashDeposit = cashDeposit,
                     CashInHand = cashInHand,
+                    Cash3 = cash3,
+                    CollectionReduction = collectionReduction,
                     Others = others,
                     PhonePe = phonePe,
                     PhonePeCard = phonePeCard,

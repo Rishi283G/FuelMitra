@@ -114,7 +114,13 @@ public class DifferenceColorConverter : IValueConverter
 public class BoolToVisibilityConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
-        => value is true ? Visibility.Visible : Visibility.Collapsed;
+    {
+        if (value is bool b) return b ? Visibility.Visible : Visibility.Collapsed;
+        if (value is int i) return i > 0 ? Visibility.Visible : Visibility.Collapsed;
+        if (value is long l) return l > 0 ? Visibility.Visible : Visibility.Collapsed;
+        if (value is double d) return d > 0 ? Visibility.Visible : Visibility.Collapsed;
+        return Visibility.Collapsed;
+    }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
         => value is Visibility.Visible;
@@ -126,7 +132,13 @@ public class BoolToVisibilityConverter : IValueConverter
 public class InverseBoolToVisibilityConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
-        => value is true ? Visibility.Collapsed : Visibility.Visible;
+    {
+        if (value is bool b) return b ? Visibility.Collapsed : Visibility.Visible;
+        if (value is int i) return i > 0 ? Visibility.Collapsed : Visibility.Visible;
+        if (value is long l) return l > 0 ? Visibility.Collapsed : Visibility.Visible;
+        if (value is double d) return d > 0 ? Visibility.Collapsed : Visibility.Visible;
+        return Visibility.Visible;
+    }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
         => value is Visibility.Collapsed;

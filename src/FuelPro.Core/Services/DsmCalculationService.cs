@@ -17,12 +17,15 @@ public class DsmCalculationService : IDsmCalculationService
 
             var totalInDirect = dsm.PaymentCollection.PhonePe + dsm.PaymentCollection.CreditCard
                 + dsm.PaymentCollection.CashDeposit + dsm.PaymentCollection.PhysicalCash
+                + dsm.PaymentCollection.Cash3
                 + dsm.PaymentCollection.PetroCard + dsm.PaymentCollection.DynamicPayments;
             var totalCreditors = dsm.DebitEntries.Sum(x => x.Amount);
             var totalExpenses = dsm.Expenses.Sum(x => x.Amount);
+            var reduction = dsm.PaymentCollection.CollectionReduction;
 
-            // Canonical Option B: Testing is excluded from TotalCollection
-            var totalCollection = totalInDirect + totalCreditors + totalExpenses;
+            // Canonical Option B: Testing is excluded from TotalCollection.
+            // CollectionReduction is deducted exactly once from the canonical total collections.
+            var totalCollection = totalInDirect + totalCreditors + totalExpenses - reduction;
             var mismatch = totalCollection - netGrossSales;
 
             return new DsmCalculationResult
@@ -33,6 +36,8 @@ public class DsmCalculationService : IDsmCalculationService
                 TotalInDirect = totalInDirect,
                 TotalCreditors = totalCreditors,
                 TotalExpenses = totalExpenses,
+                CollectionReduction = reduction,
+                CollectionReductionRemark = dsm.PaymentCollection.CollectionReductionRemark,
                 TotalCollection = totalCollection,
                 Mismatch = mismatch,
                 IsBalanced = mismatch == 0m

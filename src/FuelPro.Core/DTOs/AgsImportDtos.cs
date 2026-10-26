@@ -27,6 +27,8 @@ public class AgsTankStockDto
     public double ClosingStockLitres { get; set; }
     public double FuelDispensedLitres => OpeningStockLitres - ClosingStockLitres;
     public double ReceiptLitres { get; set; }
+    public bool HasPhysicalDip { get; set; }
+    public string? DipSource { get; set; }
 }
 
 public class AgsShiftSummaryDto
@@ -152,4 +154,70 @@ public class ImportWarning
         ImportWarningSeverity.Warning => "⚠️",
         _                             => "ℹ️"
     };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Stage 4: Tank Stock History & Measurement Provenance DTOs
+// ─────────────────────────────────────────────────────────────────────────────
+
+public class TankMeasurementSyncDto
+{
+    public bool HasDip { get; set; }
+    public double DipMm { get; set; }
+    public double? MeasuredStock { get; set; }
+    public string Source { get; set; } = "None"; // "AgsGauge", "Manual", "None"
+
+    public bool HasMeasurement => HasDip || MeasuredStock.HasValue;
+    public double DipMM => DipMm;
+}
+
+public class TankShiftHistoryItemDto
+{
+    public DateTime OperationalDate { get; set; }
+    public string ShiftType { get; set; } = string.Empty;
+    public string FuelType { get; set; } = string.Empty;
+    public string TankName { get; set; } = string.Empty;
+    public string GroupName => !string.IsNullOrWhiteSpace(TankName) ? TankName : FuelType;
+    public double OpeningStock { get; set; }
+    public double FuelDispensed { get; set; }
+    public double TestingLitres { get; set; }
+    public double Receipts { get; set; }
+    public double BookStock { get; set; }
+    public double DipMm { get; set; }
+    public double? MeasuredStock { get; set; }
+    public double? Variance { get; set; }
+    public bool HasPhysicalMeasurement { get; set; }
+    public string MeasurementSource { get; set; } = "None"; // "AgsGauge", "Manual", "None"
+    public string VarianceStatus { get; set; } = "NotRecorded"; // "Excess", "Shortage", "Balanced", "NotRecorded", "Incomplete", "Provisional"
+    public string ContinuityStatus { get; set; } = "DirectPredecessor"; // "DirectPredecessor", "Reconstructed", "Incomplete", "Provisional"
+    public string Unit { get; set; } = "L"; // "L" or "Kg"
+}
+
+public class TankDailyHistoryItemDto
+{
+    public DateTime Date { get; set; }
+    public string FuelType { get; set; } = string.Empty;
+    public double DayOpeningStock { get; set; }
+    public double DaySales { get; set; }
+    public double DayTesting { get; set; }
+    public double DayReceipts { get; set; }
+    public double DayBookStock { get; set; }
+    public double DayClosingStock { get; set; }
+    public double? DayMeasuredStock { get; set; }
+    public double? DayVariance { get; set; }
+    public string Status { get; set; } = "Complete"; // "Complete", "Provisional", "Incomplete"
+    public string Unit { get; set; } = "L";
+}
+
+public class TankDateComparisonDto
+{
+    public DateTime Date { get; set; }
+    public List<TankShiftHistoryItemDto> Shifts { get; set; } = new();
+}
+
+public class TankStockHistoryResultDto
+{
+    public List<TankShiftHistoryItemDto> ShiftRows { get; set; } = new();
+    public List<TankDailyHistoryItemDto> DailyRows { get; set; } = new();
+    public List<TankDateComparisonDto> DateComparisons { get; set; } = new();
 }

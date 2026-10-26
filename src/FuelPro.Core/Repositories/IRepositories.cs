@@ -1,4 +1,5 @@
 using FuelPro.Core.Common;
+using FuelPro.Core.DTOs;
 using FuelPro.Core.Models;
 using FuelPro.Core.Models.AGS;
 
@@ -189,6 +190,7 @@ public interface ITankDailyStockRepository
     Task<Result<List<TankDailyStock>>> GetByDateRangeAsync(DateTime startDate, DateTime endDate);
     Task<Result<List<TankDailyStock>>> GetByDateAsync(DateTime date);
     Task<Result<TankDailyStock>> UpsertAsync(TankDailyStock stock);
+    Task<Result<TankStockHistoryResultDto>> GetDetailedHistoryAsync(DateTime startDate, DateTime endDate, string? fuelFilter = null);
 }
 
 public interface IOpeningBalanceRepository

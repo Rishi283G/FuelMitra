@@ -2,141 +2,259 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Oil & DEF Inventory Summary Report</title>
+    <title>Oil &amp; DEF Inventory &amp; Profit Report</title>
     <style>
-        * {
-            box-sizing: border-box;
-        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            margin: 20px;
-            color: #212529;
-            font-size: 13px;
-            line-height: 1.4;
-            background: #fff;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: #ffffff;
+            color: #0f172a;
+            padding: 24px 32px;
+            font-size: 12px;
+            line-height: 1.45;
         }
-        .header {
+        .no-print-bar {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 12px;
+        }
+        .btn-print {
+            background-color: #0b4d8c;
+            color: #ffffff;
+            border: none;
+            padding: 8px 18px;
+            font-size: 13px;
+            font-weight: 600;
+            border-radius: 6px;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.12);
+        }
+        .btn-print:hover { background-color: #083764; }
+
+        /* HEADER */
+        .station-header {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+            padding-bottom: 14px;
+            border-bottom: 2px solid #0284c7;
+        }
+        .station-logo {
+            height: 65px;
+            max-width: 85px;
+            object-fit: contain;
+        }
+        .station-details {
             text-align: center;
-            border-bottom: 2px solid #00796B;
-            padding-bottom: 12px;
-            margin-bottom: 18px;
+            flex: 1;
         }
-        .header h1 {
-            margin: 0;
-            color: #00796B;
+        .station-name {
             font-size: 22px;
+            font-weight: 800;
+            color: #0b4d8c;
+            letter-spacing: 0.5px;
+        }
+        .station-subtitle {
+            font-size: 11.5px;
             font-weight: 700;
+            color: #0284c7;
+            margin-top: 1px;
+            letter-spacing: 0.6px;
         }
-        .header p {
-            margin: 3px 0 0 0;
-            font-size: 13px;
-            opacity: 0.85;
+        .station-address {
+            font-size: 11px;
+            color: #334155;
+            margin-top: 3px;
         }
+        .station-contact {
+            font-size: 11px;
+            font-weight: 600;
+            color: #0f172a;
+            margin-top: 2px;
+        }
+
+        /* SUB-RIBBON */
+        .sub-ribbon {
+            margin-top: 12px;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            padding: 9px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .badge-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: #e0f2fe;
+            color: #0369a1;
+            border: 1px solid #bae6fd;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-weight: 700;
+            font-size: 12px;
+        }
+        .period-text { font-weight: 700; font-size: 12px; color: #1e293b; }
+        .generated-text { font-size: 11px; color: #64748b; }
+
+        /* SECTION HEADER */
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13.5px;
+            font-weight: 800;
+            color: #0f172a;
+            margin-top: 20px;
+            margin-bottom: 8px;
+        }
+        .section-bar {
+            width: 4px;
+            height: 16px;
+            background-color: #0284c7;
+            border-radius: 2px;
+        }
+
+        /* TABLES */
         table {
             width: 100%;
             border-collapse: collapse;
-            margin-bottom: 20px;
-            font-size: 12px;
+            font-size: 11px;
+            margin-bottom: 12px;
         }
-        th, td {
-            border: 1px solid #dcdcdc;
-            padding: 6px 9px;
-            text-align: left;
-        }
-        th {
-            background-color: #f0f7f5;
-            font-weight: 600;
-            color: #004d40;
-            font-size: 11.5px;
-            text-transform: uppercase;
-            letter-spacing: 0.3px;
-        }
-        .text-right {
-            text-align: right;
-        }
-        .text-center {
-            text-align: center;
-        }
-        .section-title {
-            font-size: 14px;
+        thead th {
+            background-color: #0b2a63;
+            color: #ffffff;
             font-weight: 700;
-            color: #00796B;
-            margin-top: 18px;
-            margin-bottom: 6px;
-            border-bottom: 1.5px solid #00796B;
-            padding-bottom: 3px;
+            font-size: 10px;
             text-transform: uppercase;
             letter-spacing: 0.5px;
+            padding: 8px 10px;
+            text-align: right;
+            border: 1px solid #081d45;
         }
-        .total-row td {
-            font-weight: bold;
-            background-color: #e8f5e9;
-            border-top: 1.5px solid #81c784;
-            color: #1b5e20;
+        thead th:first-child { text-align: left; }
+
+        tbody td {
+            padding: 8px 10px;
+            border: 1px solid #e2e8f0;
+            text-align: right;
+            color: #1e293b;
+            vertical-align: middle;
         }
-        .adj-negative {
-            color: #c62828;
-            font-weight: 600;
-        }
-        .adj-positive {
-            color: #2e7d32;
-            font-weight: 600;
-        }
-        .adj-zero {
-            opacity: 0.5;
-        }
-        .print-btn {
+        tbody td:first-child { text-align: left; font-weight: 600; }
+        tbody tr:nth-child(even) { background-color: #f8fafc; }
+
+        .unit-sub {
             display: block;
-            width: 140px;
-            margin: 0 auto 16px auto;
-            padding: 8px 16px;
-            text-align: center;
-            background-color: #00796B;
-            color: white;
-            font-weight: bold;
-            font-size: 13px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
+            font-size: 9.5px;
+            color: #64748b;
+            font-weight: normal;
         }
-        .print-btn:hover {
-            background-color: #004d40;
+
+        tfoot td {
+            background-color: #e8eff8;
+            border: 1px solid #cbd5e1;
+            padding: 8px 10px;
+            font-weight: 800;
+            font-size: 11.5px;
+            text-align: right;
+            color: #0b2a63;
         }
-        .summary-container {
-            display: flex;
-            gap: 20px;
+        tfoot td:first-child { text-align: left; }
+        .profit-green { color: #16a34a !important; }
+
+        /* COMBINED SUMMARY BOXES */
+        .combined-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
             margin-top: 10px;
+            margin-bottom: 30px;
         }
-        .summary-box {
-            flex: 1;
+        .combined-card {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            overflow: hidden;
         }
+        .combined-header {
+            background: #f1f5f9;
+            padding: 8px 14px;
+            font-weight: 800;
+            font-size: 12px;
+            color: #1e293b;
+            border-bottom: 1px solid #e2e8f0;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .combined-table {
+            width: 100%;
+            margin-bottom: 0;
+            font-size: 11.5px;
+        }
+        .combined-table td {
+            border: none;
+            border-bottom: 1px solid #f1f5f9;
+            padding: 9px 14px;
+        }
+        .combined-table tr:last-child td {
+            border-top: 1.5px solid #cbd5e1;
+            border-bottom: none;
+            font-weight: 800;
+            font-size: 12px;
+            background: #f8fafc;
+        }
+
+        /* SIGNATURES */
+        .signatures-area {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 40px;
+            padding: 0 50px;
+        }
+        .sig-box {
+            text-align: center;
+            width: 220px;
+            border-top: 1.5px solid #64748b;
+            padding-top: 6px;
+            font-size: 11.5px;
+            font-weight: 600;
+            color: #475569;
+        }
+
+        /* FOOTER */
+        .report-footer {
+            margin-top: 24px;
+            text-align: right;
+            font-size: 10.5px;
+            color: #94a3b8;
+        }
+
+        /* PRINT STYLES */
         @media print {
-            .print-btn {
-                display: none !important;
+            .no-print-bar { display: none !important; }
+            body {
+                padding: 10mm 12mm;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
             }
             @page {
                 size: A4 portrait;
-                margin: 10mm;
-            }
-            body {
                 margin: 0;
-                font-size: 11px;
             }
-            th, td {
-                padding: 4px 6px;
-                font-size: 10.5px;
+            thead th {
+                background-color: #0b2a63 !important;
+                color: #ffffff !important;
             }
-            .section-title {
-                font-size: 12.5px;
-                margin-top: 12px;
+            tfoot td {
+                background-color: #e8eff8 !important;
             }
-            .summary-container {
-                display: flex;
-                gap: 15px;
-            }
-            tr {
-                page-break-inside: avoid;
-            }
+            tr { page-break-inside: avoid; }
         }
     </style>
     <script>
@@ -147,296 +265,420 @@
             return "₹" + Number(val).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         }
 
-        function formatQty(val, unit) {
+        function formatQty(val) {
             if (val === undefined || val === null || isNaN(val)) val = 0;
-            const formatted = Number(val).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-            return unit ? `${formatted} ${unit}` : formatted;
-        }
-
-        function formatAdjQty(val, unit) {
-            if (val === undefined || val === null || isNaN(val)) val = 0;
-            const formatted = Number(val).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-            const sign = val > 0 ? "+" : "";
-            const cls = val < 0 ? "adj-negative" : (val > 0 ? "adj-positive" : "adj-zero");
-            const unitText = unit ? ` ${unit}` : "";
-            return `<span class="${cls}">${sign}${formatted}${unitText}</span>`;
+            return Number(val).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         }
 
         function renderData() {
-            if (!data || !data.startDate) return;
+            if (!data) return;
 
-            document.getElementById('stationName').innerText = data.stationName || "Mitali Service Station";
-            document.getElementById('dateRange').innerText = `${data.startDate} to ${data.endDate}`;
+            document.getElementById('stationName').innerText = (data.stationName || "FUELPRO SERVICE STATION").toUpperCase();
 
-            if (data.logo) {
-                const logoImg = document.getElementById('logo');
-                if (logoImg) {
-                    logoImg.src = data.logo;
-                    logoImg.style.display = 'block';
+            const subEl = document.getElementById('stationSubtitle');
+            if (subEl) {
+                if (data.stationSubtitle && data.stationSubtitle.trim()) {
+                    subEl.innerText = data.stationSubtitle.trim();
+                    subEl.style.display = 'block';
+                } else {
+                    subEl.style.display = 'none';
                 }
             }
 
-            // 1. Oil Products
-            const oilBody = document.getElementById('oilBody');
+            const addrEl = document.getElementById('stationAddress');
+            if (addrEl) {
+                if (data.stationAddress && data.stationAddress.trim()) {
+                    addrEl.innerText = data.stationAddress.trim();
+                    addrEl.style.display = 'block';
+                } else {
+                    addrEl.style.display = 'none';
+                }
+            }
+
+            const contactEl = document.getElementById('stationContact');
+            if (contactEl) {
+                if (data.stationContact && data.stationContact.trim()) {
+                    contactEl.innerText = data.stationContact.trim();
+                    contactEl.style.display = 'block';
+                } else {
+                    contactEl.style.display = 'none';
+                }
+            }
+
+            if (data.logo) {
+                const img = document.getElementById('companyLogo');
+                img.src = data.logo;
+                img.style.display = 'block';
+            }
+
+            document.getElementById('periodText').innerText = `Period: ${data.startDate || '—'} to ${data.endDate || '—'}`;
+            document.getElementById('generatedAt').innerText = `Generated: ${data.generatedAt || new Date().toLocaleString()}`;
+
+            // 1. Oil Products Table
+            const oilTbody = document.getElementById('oilTableBody');
             let oilHtml = '';
+            let oilTotOpen = 0, oilTotPurch = 0, oilTotSold = 0, oilTotClose = 0, oilTotCost = 0, oilTotVal = 0, oilTotProfit = 0;
+
             if (data.oilProducts && data.oilProducts.length > 0) {
-                data.oilProducts.forEach(item => {
+                data.oilProducts.forEach(p => {
+                    const u = p.unit || '';
+                    oilTotOpen += Number(p.openingStock || 0);
+                    oilTotPurch += Number(p.purchasedQty || 0);
+                    oilTotSold += Number(p.soldQty || 0);
+                    oilTotClose += Number(p.closingStock || 0);
+                    oilTotCost += Number(p.purchaseValue || 0);
+                    oilTotVal += Number(p.salesValue || 0);
+                    oilTotProfit += Number(p.profit || 0);
+
                     oilHtml += `
                         <tr>
-                            <td><strong>${item.productName}</strong></td>
-                            <td class="text-right">${formatQty(item.openingStock, item.unit)}</td>
-                            <td class="text-right">${formatQty(item.purchasedQty, item.unit)}</td>
-                            <td class="text-right">${formatQty(item.soldQty, item.unit)}</td>
-                            <td class="text-right">${formatAdjQty(item.adjustedQty, item.unit)}</td>
-                            <td class="text-right" style="font-weight: 600;">${formatQty(item.closingStock, item.unit)}</td>
-                            <td class="text-right">${formatCurrency(item.purchaseValue)}</td>
-                            <td class="text-right">${formatCurrency(item.salesValue)}</td>
-                            <td class="text-right" style="font-weight: 600; color: #2e7d32;">${formatCurrency(item.profit)}</td>
+                            <td>${p.productName || '—'}</td>
+                            <td>${formatQty(p.openingStock)}<span class="unit-sub">${u}</span></td>
+                            <td>${formatQty(p.purchasedQty)}<span class="unit-sub">${u}</span></td>
+                            <td>${formatQty(p.soldQty)}<span class="unit-sub">${u}</span></td>
+                            <td>${formatQty(p.closingStock)}<span class="unit-sub">${u}</span></td>
+                            <td>${formatCurrency(p.purchaseValue)}</td>
+                            <td>${formatCurrency(p.salesValue)}</td>
+                            <td class="profit-green" style="font-weight:700;">${formatCurrency(p.profit)}</td>
                         </tr>
                     `;
                 });
             } else {
-                oilHtml += `<tr><td colspan="9" style="text-align: center; opacity: 0.6; padding: 10px;">No Oil data available.</td></tr>`;
+                oilHtml = `<tr><td colspan="8" class="text-center" style="padding: 16px; color:#64748b;">No lube oil products recorded.</td></tr>`;
             }
-            const oilSum = data.oilSummary || {};
-            oilHtml += `
-                <tr class="total-row">
-                    <td>Total Oil Summary</td>
-                    <td class="text-right">${formatQty(oilSum.openingStock)}</td>
-                    <td class="text-right">${formatQty(oilSum.purchasedQty)}</td>
-                    <td class="text-right">${formatQty(oilSum.soldQty)}</td>
-                    <td class="text-right">${formatAdjQty(oilSum.adjustedQty)}</td>
-                    <td class="text-right">${formatQty(oilSum.closingStock)}</td>
-                    <td class="text-right">${formatCurrency(oilSum.purchaseValue)}</td>
-                    <td class="text-right">${formatCurrency(oilSum.salesValue)}</td>
-                    <td class="text-right">${formatCurrency(oilSum.profit)}</td>
-                </tr>
-            `;
-            oilBody.innerHTML = oilHtml;
+            oilTbody.innerHTML = oilHtml;
 
-            // 2. DEF Products
-            const defBody = document.getElementById('defBody');
+            // Oil Subtotal Footer
+            document.getElementById('oilSumOpen').innerText = formatQty(data.oilSummary ? data.oilSummary.openingStock : oilTotOpen);
+            document.getElementById('oilSumPurch').innerText = formatQty(data.oilSummary ? data.oilSummary.purchasedQty : oilTotPurch);
+            document.getElementById('oilSumSold').innerText = formatQty(data.oilSummary ? data.oilSummary.soldQty : oilTotSold);
+            document.getElementById('oilSumClose').innerText = formatQty(data.oilSummary ? data.oilSummary.closingStock : oilTotClose);
+            document.getElementById('oilSumCost').innerText = formatCurrency(data.oilSummary ? data.oilSummary.purchaseValue : oilTotCost);
+            document.getElementById('oilSumVal').innerText = formatCurrency(data.oilSummary ? data.oilSummary.salesValue : oilTotVal);
+            document.getElementById('oilSumProfit').innerText = formatCurrency(data.oilSummary ? data.oilSummary.profit : oilTotProfit);
+
+            // 2. DEF Products Table
+            const defTbody = document.getElementById('defTableBody');
             let defHtml = '';
+            let defTotOpen = 0, defTotPurch = 0, defTotSold = 0, defTotClose = 0, defTotCost = 0, defTotVal = 0, defTotProfit = 0;
+
             if (data.defProducts && data.defProducts.length > 0) {
-                data.defProducts.forEach(item => {
+                data.defProducts.forEach(p => {
+                    const u = p.unit || '';
+                    defTotOpen += Number(p.openingStock || 0);
+                    defTotPurch += Number(p.purchasedQty || 0);
+                    defTotSold += Number(p.soldQty || 0);
+                    defTotClose += Number(p.closingStock || 0);
+                    defTotCost += Number(p.purchaseValue || 0);
+                    defTotVal += Number(p.salesValue || 0);
+                    defTotProfit += Number(p.profit || 0);
+
                     defHtml += `
                         <tr>
-                            <td><strong>${item.productName}</strong></td>
-                            <td class="text-right">${formatQty(item.openingStock, item.unit)}</td>
-                            <td class="text-right">${formatQty(item.purchasedQty, item.unit)}</td>
-                            <td class="text-right">${formatQty(item.soldQty, item.unit)}</td>
-                            <td class="text-right">${formatAdjQty(item.adjustedQty, item.unit)}</td>
-                            <td class="text-right" style="font-weight: 600;">${formatQty(item.closingStock, item.unit)}</td>
-                            <td class="text-right">${formatCurrency(item.purchaseValue)}</td>
-                            <td class="text-right">${formatCurrency(item.salesValue)}</td>
-                            <td class="text-right" style="font-weight: 600; color: #2e7d32;">${formatCurrency(item.profit)}</td>
+                            <td>${p.productName || '—'}</td>
+                            <td>${formatQty(p.openingStock)}<span class="unit-sub">${u}</span></td>
+                            <td>${formatQty(p.purchasedQty)}<span class="unit-sub">${u}</span></td>
+                            <td>${formatQty(p.soldQty)}<span class="unit-sub">${u}</span></td>
+                            <td>${formatQty(p.closingStock)}<span class="unit-sub">${u}</span></td>
+                            <td>${formatCurrency(p.purchaseValue)}</td>
+                            <td>${formatCurrency(p.salesValue)}</td>
+                            <td class="profit-green" style="font-weight:700;">${formatCurrency(p.profit)}</td>
                         </tr>
                     `;
                 });
             } else {
-                defHtml += `<tr><td colspan="9" style="text-align: center; opacity: 0.6; padding: 10px;">No DEF data available.</td></tr>`;
+                defHtml = `<tr><td colspan="8" class="text-center" style="padding: 16px; color:#64748b;">No DEF products recorded.</td></tr>`;
             }
-            const defSum = data.defSummary || {};
-            defHtml += `
-                <tr class="total-row">
-                    <td>Total DEF Summary</td>
-                    <td class="text-right">${formatQty(defSum.openingStock)}</td>
-                    <td class="text-right">${formatQty(defSum.purchasedQty)}</td>
-                    <td class="text-right">${formatQty(defSum.soldQty)}</td>
-                    <td class="text-right">${formatAdjQty(defSum.adjustedQty)}</td>
-                    <td class="text-right">${formatQty(defSum.closingStock)}</td>
-                    <td class="text-right">${formatCurrency(defSum.purchaseValue)}</td>
-                    <td class="text-right">${formatCurrency(defSum.salesValue)}</td>
-                    <td class="text-right">${formatCurrency(defSum.profit)}</td>
-                </tr>
-            `;
-            defBody.innerHTML = defHtml;
+            defTbody.innerHTML = defHtml;
 
-            // 3. Stock Adjustments Table
-            const adjBody = document.getElementById('adjustmentBody');
-            let adjHtml = '';
-            if (data.adjustments && data.adjustments.length > 0) {
-                data.adjustments.forEach(item => {
-                    adjHtml += `
+            // DEF Subtotal Footer
+            document.getElementById('defSumOpen').innerText = formatQty(data.defSummary ? data.defSummary.openingStock : defTotOpen);
+            document.getElementById('defSumPurch').innerText = formatQty(data.defSummary ? data.defSummary.purchasedQty : defTotPurch);
+            document.getElementById('defSumSold').innerText = formatQty(data.defSummary ? data.defSummary.soldQty : defTotSold);
+            document.getElementById('defSumClose').innerText = formatQty(data.defSummary ? data.defSummary.closingStock : defTotClose);
+            document.getElementById('defSumCost').innerText = formatCurrency(data.defSummary ? data.defSummary.purchaseValue : defTotCost);
+            document.getElementById('defSumVal').innerText = formatCurrency(data.defSummary ? data.defSummary.salesValue : defTotVal);
+            document.getElementById('defSumProfit').innerText = formatCurrency(data.defSummary ? data.defSummary.profit : defTotProfit);
+
+            // 3. Combined Operations Summary
+            const oilSales = data.oilSummary ? Number(data.oilSummary.salesValue || 0) : oilTotVal;
+            const defSales = data.defSummary ? Number(data.defSummary.salesValue || 0) : defTotVal;
+            const combinedSales = oilSales + defSales;
+
+            const oilProf = data.oilSummary ? Number(data.oilSummary.profit || 0) : oilTotProfit;
+            const defProf = data.defSummary ? Number(data.defSummary.profit || 0) : defTotProfit;
+            const combinedProf = oilProf + defProf;
+
+            document.getElementById('totOilSales').innerText = formatCurrency(oilSales);
+            document.getElementById('totDefSales').innerText = formatCurrency(defSales);
+            document.getElementById('totCombinedSales').innerText = formatCurrency(combinedSales);
+
+            document.getElementById('totOilProfit').innerText = formatCurrency(oilProf);
+            document.getElementById('totDefProfit').innerText = formatCurrency(defProf);
+            document.getElementById('totCombinedProfit').innerText = formatCurrency(combinedProf);
+
+            // 4. Date-Wise Sales Transaction Log
+            const salesTbody = document.getElementById('salesTableBody');
+            let salesHtml = '';
+            let totalSalesQty = 0, totalSalesAmt = 0;
+            if (data.salesTransactions && data.salesTransactions.length > 0) {
+                data.salesTransactions.forEach(s => {
+                    totalSalesQty += Number(s.soldQty || 0);
+                    totalSalesAmt += Number(s.totalAmount || 0);
+                    salesHtml += `
                         <tr>
-                            <td>${item.date}</td>
-                            <td><strong>${item.productName}</strong></td>
-                            <td>${item.category || '—'}</td>
-                            <td class="text-right">${formatAdjQty(item.adjustmentQty, item.unit)}</td>
-                            <td class="text-right">${formatQty(item.remainingStock, item.unit)}</td>
-                            <td>${item.type || '—'}</td>
-                            <td>${item.remarks || '—'}</td>
+                            <td>${s.date}</td>
+                            <td>${s.productName || '—'}</td>
+                            <td>${s.category || '—'}</td>
+                            <td class="text-right">${formatQty(s.soldQty)}</td>
+                            <td class="text-right">${formatCurrency(s.rate)}</td>
+                            <td class="text-right" style="font-weight:700;">${formatCurrency(s.totalAmount)}</td>
                         </tr>
                     `;
                 });
             } else {
-                adjHtml += `<tr><td colspan="7" style="text-align: center; opacity: 0.6; padding: 10px;">No stock adjustments recorded for this period.</td></tr>`;
+                salesHtml = `<tr><td colspan="6" class="text-center" style="padding: 16px; color:#64748b;">No sales transactions recorded in this period.</td></tr>`;
             }
-            adjBody.innerHTML = adjHtml;
+            if (salesTbody) salesTbody.innerHTML = salesHtml;
+            const salesTotQtyEl = document.getElementById('salesTotQty');
+            if (salesTotQtyEl) salesTotQtyEl.innerText = formatQty(totalSalesQty);
+            const salesTotAmtEl = document.getElementById('salesTotAmt');
+            if (salesTotAmtEl) salesTotAmtEl.innerText = formatCurrency(totalSalesAmt);
 
-            // 4. Combined Operations Summary
-            const oilSales = oilSum.salesValue || 0;
-            const defSales = defSum.salesValue || 0;
-            const totalSales = oilSales + defSales;
-
-            const oilProfit = oilSum.profit || 0;
-            const defProfit = defSum.profit || 0;
-            const totalGrossProfit = oilProfit + defProfit;
-
-            const adjLoss = data.totalAdjustmentLoss || 0;
-            const netCombinedProfit = totalGrossProfit - adjLoss;
-
-            document.getElementById('combinedOilSales').innerText = formatCurrency(oilSales);
-            document.getElementById('combinedDefSales').innerText = formatCurrency(defSales);
-            document.getElementById('combinedTotalSales').innerText = formatCurrency(totalSales);
-
-            document.getElementById('combinedOilProfit').innerText = formatCurrency(oilProfit);
-            document.getElementById('combinedDefProfit').innerText = formatCurrency(defProfit);
-            document.getElementById('combinedGrossProfit').innerText = formatCurrency(totalGrossProfit);
-            document.getElementById('combinedAdjLoss').innerText = formatCurrency(adjLoss);
-            document.getElementById('combinedNetProfit').innerText = formatCurrency(netCombinedProfit);
+            // 5. Date-Wise Purchase Transaction Log
+            const purchTbody = document.getElementById('purchTableBody');
+            let purchHtml = '';
+            let totalPurchQty = 0, totalPurchAmt = 0;
+            if (data.purchaseTransactions && data.purchaseTransactions.length > 0) {
+                data.purchaseTransactions.forEach(p => {
+                    totalPurchQty += Number(p.purchasedQty || 0);
+                    totalPurchAmt += Number(p.totalCost || 0);
+                    purchHtml += `
+                        <tr>
+                            <td>${p.date}</td>
+                            <td>${p.productName || '—'}</td>
+                            <td>${p.supplier || '—'}</td>
+                            <td class="text-center">${p.invoiceNo || '—'}</td>
+                            <td class="text-right">${formatQty(p.purchasedQty)}</td>
+                            <td class="text-right">${formatCurrency(p.unitPrice)}</td>
+                            <td class="text-right" style="font-weight:700;">${formatCurrency(p.totalCost)}</td>
+                        </tr>
+                    `;
+                });
+            } else {
+                purchHtml = `<tr><td colspan="7" class="text-center" style="padding: 16px; color:#64748b;">No purchase transactions recorded in this period.</td></tr>`;
+            }
+            if (purchTbody) purchTbody.innerHTML = purchHtml;
+            const purchTotQtyEl = document.getElementById('purchTotQty');
+            if (purchTotQtyEl) purchTotQtyEl.innerText = formatQty(totalPurchQty);
+            const purchTotAmtEl = document.getElementById('purchTotAmt');
+            if (purchTotAmtEl) purchTotAmtEl.innerText = formatCurrency(totalPurchAmt);
         }
 
-        window.onload = function() {
-            renderData();
-        };
-
-        function printDoc() {
-            window.print();
-        }
+        window.onload = renderData;
     </script>
 </head>
 <body>
-    <button class="print-btn" onclick="printDoc()">&#128424; Print Report</button>
-    
-    <div class="header">
-        <div style="display: flex; align-items: center; justify-content: center; gap: 15px;">
-            <img id="logo" style="display: none; height: 48px;" src="" alt="logo" />
-            <h1 id="stationName">Mitali Service Station</h1>
-        </div>
-        <p style="font-weight: 600; color: #00796B;">Oil & DEF Inventory & Profit Summary Report</p>
-        <p id="dateRange" style="font-weight: 500;">01-Jun-2026 to 30-Jun-2026</p>
+    <div class="no-print-bar">
+        <button class="btn-print" onclick="window.print()">&#128424; Print Report / PDF</button>
     </div>
 
-    <!-- Section 1: Oil -->
-    <div class="section-title">1. Lube Oil Products Summary</div>
+    <!-- STATION HEADER -->
+    <div class="station-header">
+        <img id="companyLogo" class="station-logo" style="display: none;" alt="Company Logo" />
+        <div class="station-details">
+            <div class="station-name" id="stationName">FuelPro Station</div>
+            <div class="station-subtitle" id="stationSubtitle" style="display:none;"></div>
+            <div class="station-address" id="stationAddress" style="display:none;"></div>
+            <div class="station-contact" id="stationContact" style="display:none;"></div>
+        </div>
+    </div>
+
+    <!-- SUB-RIBBON -->
+    <div class="sub-ribbon">
+        <div class="badge-pill">
+            <span>🛢️</span>
+            <span>Oil &amp; DEF Inventory &amp; Profit Report</span>
+        </div>
+        <div class="period-text" id="periodText">Period: 01-Oct-2026 to 23-Oct-2026</div>
+        <div class="generated-text" id="generatedAt">Generated: 23 Oct 2026, 11:42 pm</div>
+    </div>
+
+    <!-- SECTION 1: LUBE OIL PRODUCTS -->
+    <div class="section-header">
+        <div class="section-bar"></div>
+        <span>1. Lube Oil Products Summary</span>
+    </div>
     <table>
         <thead>
             <tr>
-                <th>Product Name</th>
-                <th class="text-right">Opening Stock</th>
-                <th class="text-right">Purchased Qty</th>
-                <th class="text-right">Sold Qty</th>
-                <th class="text-right">Adj. Stock</th>
-                <th class="text-right">Closing Stock</th>
-                <th class="text-right">Purchase Cost</th>
-                <th class="text-right">Sales Value</th>
-                <th class="text-right">Gross Profit</th>
+                <th style="width: 20%;">Product Name</th>
+                <th style="width: 11%;">Opening Stock</th>
+                <th style="width: 11%;">Purchased Qty</th>
+                <th style="width: 11%;">Sold Qty</th>
+                <th style="width: 11%;">Closing Stock</th>
+                <th style="width: 12%;">Purchase Cost</th>
+                <th style="width: 12%;">Sales Value</th>
+                <th style="width: 12%;">Gross Profit</th>
             </tr>
         </thead>
-        <tbody id="oilBody">
-            <!-- Row data injected -->
+        <tbody id="oilTableBody">
         </tbody>
+        <tfoot>
+            <tr>
+                <td>Total Oil Summary</td>
+                <td id="oilSumOpen">0.00</td>
+                <td id="oilSumPurch">0.00</td>
+                <td id="oilSumSold">0.00</td>
+                <td id="oilSumClose">0.00</td>
+                <td id="oilSumCost">₹0.00</td>
+                <td id="oilSumVal">₹0.00</td>
+                <td id="oilSumProfit" class="profit-green">₹0.00</td>
+            </tr>
+        </tfoot>
     </table>
 
-    <!-- Section 2: DEF -->
-    <div class="section-title">2. DEF Products Summary</div>
+    <!-- SECTION 2: DEF PRODUCTS -->
+    <div class="section-header">
+        <div class="section-bar"></div>
+        <span>2. DEF (AdBlue) Products Summary</span>
+    </div>
     <table>
         <thead>
             <tr>
-                <th>Product Name</th>
-                <th class="text-right">Opening Stock</th>
-                <th class="text-right">Purchased Qty</th>
-                <th class="text-right">Sold Qty</th>
-                <th class="text-right">Adj. Stock</th>
-                <th class="text-right">Closing Stock</th>
-                <th class="text-right">Purchase Cost</th>
-                <th class="text-right">Sales Value</th>
-                <th class="text-right">Gross Profit</th>
+                <th style="width: 20%;">Product Name</th>
+                <th style="width: 11%;">Opening Stock</th>
+                <th style="width: 11%;">Purchased Qty</th>
+                <th style="width: 11%;">Sold Qty</th>
+                <th style="width: 11%;">Closing Stock</th>
+                <th style="width: 12%;">Purchase Cost</th>
+                <th style="width: 12%;">Sales Value</th>
+                <th style="width: 12%;">Gross Profit</th>
             </tr>
         </thead>
-        <tbody id="defBody">
-            <!-- Row data injected -->
+        <tbody id="defTableBody">
         </tbody>
-    </table>
-
-    <!-- Section 3: Stock Adjustments -->
-    <div class="section-title">3. Stock Adjustments & Loss Entries</div>
-    <table>
-        <thead>
+        <tfoot>
             <tr>
-                <th style="width: 140px;">Date &amp; Time</th>
-                <th>Product Name</th>
-                <th style="width: 80px;">Category</th>
-                <th class="text-right" style="width: 100px;">Adj. Qty</th>
-                <th class="text-right" style="width: 110px;">Stock After</th>
-                <th style="width: 160px;">Reason / Type</th>
-                <th>Remarks</th>
+                <td>Total DEF Summary</td>
+                <td id="defSumOpen">0.00</td>
+                <td id="defSumPurch">0.00</td>
+                <td id="defSumSold">0.00</td>
+                <td id="defSumClose">0.00</td>
+                <td id="defSumCost">₹0.00</td>
+                <td id="defSumVal">₹0.00</td>
+                <td id="defSumProfit" class="profit-green">₹0.00</td>
             </tr>
-        </thead>
-        <tbody id="adjustmentBody">
-            <!-- Adjustment rows injected -->
-        </tbody>
+        </tfoot>
     </table>
 
-    <!-- Section 4: Combined Operations Summary -->
-    <div class="section-title">4. Combined Operations & Profit Summary</div>
-    <div class="summary-container">
-        <div class="summary-box">
-            <table>
-                <thead>
-                    <tr>
-                        <th colspan="2">Revenue Summary</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td>Total Oil Sales Revenue:</td>
-                        <td class="text-right" id="combinedOilSales">₹0.00</td>
-                    </tr>
-                    <tr>
-                        <td>Total DEF Sales Revenue:</td>
-                        <td class="text-right" id="combinedDefSales">₹0.00</td>
-                    </tr>
-                    <tr class="total-row">
-                        <td>Total Combined Sales:</td>
-                        <td class="text-right" id="combinedTotalSales">₹0.00</td>
-                    </tr>
-                </tbody>
+    <!-- SECTION 3: COMBINED OPERATIONS SUMMARY -->
+    <div class="section-header">
+        <div class="section-bar"></div>
+        <span>3. Combined Operations Summary</span>
+    </div>
+    <div class="combined-grid">
+        <div class="combined-card">
+            <div class="combined-header">📊 Sales Revenue Summary</div>
+            <table class="combined-table">
+                <tr>
+                    <td>Total Oil Sales Revenue:</td>
+                    <td class="text-right" id="totOilSales">₹0.00</td>
+                </tr>
+                <tr>
+                    <td>Total DEF Sales Revenue:</td>
+                    <td class="text-right" id="totDefSales">₹0.00</td>
+                </tr>
+                <tr>
+                    <td>Total Combined Revenue:</td>
+                    <td class="text-right" id="totCombinedSales">₹0.00</td>
+                </tr>
             </table>
         </div>
-
-        <div class="summary-box">
-            <table>
-                <thead>
-                    <tr>
-                        <th colspan="2">Profit & Loss Summary</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td>Total Oil Profit:</td>
-                        <td class="text-right" id="combinedOilProfit">₹0.00</td>
-                    </tr>
-                    <tr>
-                        <td>Total DEF Profit:</td>
-                        <td class="text-right" id="combinedDefProfit">₹0.00</td>
-                    </tr>
-                    <tr style="font-weight: 600; background-color: #f5f5f5;">
-                        <td>Total Gross Profit:</td>
-                        <td class="text-right" id="combinedGrossProfit">₹0.00</td>
-                    </tr>
-                    <tr>
-                        <td style="color: #c62828;">Estimated Adjustment Loss:</td>
-                        <td class="text-right" id="combinedAdjLoss" style="color: #c62828; font-weight: 600;">₹0.00</td>
-                    </tr>
-                    <tr class="total-row" style="background-color: #d0f8ce;">
-                        <td style="color: #1b5e20;">Net Combined Profit:</td>
-                        <td class="text-right" id="combinedNetProfit" style="color: #1b5e20;">₹0.00</td>
-                    </tr>
-                </tbody>
+        <div class="combined-card">
+            <div class="combined-header">💰 Profit Summary</div>
+            <table class="combined-table">
+                <tr>
+                    <td>Total Oil Profit:</td>
+                    <td class="text-right" id="totOilProfit">₹0.00</td>
+                </tr>
+                <tr>
+                    <td>Total DEF Profit:</td>
+                    <td class="text-right" id="totDefProfit">₹0.00</td>
+                </tr>
+                <tr>
+                    <td>Total Combined Profit:</td>
+                    <td class="text-right profit-green" id="totCombinedProfit">₹0.00</td>
+                </tr>
             </table>
         </div>
+    </div>
+
+    <!-- SECTION 4: DATE-WISE SALES TRANSACTIONS -->
+    <div class="section-header" style="margin-top: 24px;">
+        <div class="section-bar"></div>
+        <span>4. Date-Wise Sales Transactions Log (Sequential)</span>
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th style="width: 15%;">Date</th>
+                <th style="width: 30%;">Product Name</th>
+                <th style="width: 15%;">Category</th>
+                <th style="width: 12%;" class="text-right">Qty Sold</th>
+                <th style="width: 13%;" class="text-right">Rate</th>
+                <th style="width: 15%;" class="text-right">Total Amount</th>
+            </tr>
+        </thead>
+        <tbody id="salesTableBody">
+        </tbody>
+        <tfoot>
+            <tr>
+                <td colspan="3">Total Sales Log</td>
+                <td id="salesTotQty" class="text-right">0.00</td>
+                <td></td>
+                <td id="salesTotAmt" class="text-right profit-green">₹0.00</td>
+            </tr>
+        </tfoot>
+    </table>
+
+    <!-- SECTION 5: DATE-WISE PURCHASE TRANSACTIONS -->
+    <div class="section-header" style="margin-top: 24px;">
+        <div class="section-bar"></div>
+        <span>5. Date-Wise Purchase Transactions Log (Sequential)</span>
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th style="width: 14%;">Date</th>
+                <th style="width: 26%;">Product Name</th>
+                <th style="width: 16%;">Supplier</th>
+                <th style="width: 10%;" class="text-center">Invoice #</th>
+                <th style="width: 10%;" class="text-right">Qty</th>
+                <th style="width: 11%;" class="text-right">Unit Price</th>
+                <th style="width: 13%;" class="text-right">Total Cost</th>
+            </tr>
+        </thead>
+        <tbody id="purchTableBody">
+        </tbody>
+        <tfoot>
+            <tr>
+                <td colspan="4">Total Purchase Log</td>
+                <td id="purchTotQty" class="text-right">0.00</td>
+                <td></td>
+                <td id="purchTotAmt" class="text-right">₹0.00</td>
+            </tr>
+        </tfoot>
+    </table>
+
+    <!-- SIGNATURES -->
+    <div class="signatures-area">
+        <div class="sig-box">Manager Signature</div>
+        <div class="sig-box">Owner / Authorized Signatory</div>
+    </div>
+
+    <div class="report-footer">
+        FuelPro Automation Platform • Official Inventory &amp; Profit Record
     </div>
 </body>
 </html>

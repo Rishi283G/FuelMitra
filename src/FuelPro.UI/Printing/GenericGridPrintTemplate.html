@@ -4,101 +4,166 @@
     <meta charset="UTF-8">
     <title>Report Statement</title>
     <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            margin: 25px;
-            color: #333;
-            font-size: 14px;
-            line-height: 1.5;
-        }
-        .header {
-            text-align: center;
-            border-bottom: 2px solid #00695C;
-            padding-bottom: 12px;
-            margin-bottom: 20px;
-        }
-        .header h1 {
+        * {
+            box-sizing: border-box;
             margin: 0;
-            color: #00695C;
-            font-size: 24px;
-            font-weight: 700;
+            padding: 0;
         }
-        .header p {
-            margin: 4px 0 0 0;
-            font-size: 13px;
-            opacity: 0.8;
+        body {
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
+            color: #1e293b;
+            background-color: #f8fafc;
+            padding: 24px;
+            font-size: 12px;
+            line-height: 1.45;
+        }
+        .report-container {
+            max-width: 960px;
+            margin: 0 auto;
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 24px 28px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        }
+
+        /* Top Header */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding-bottom: 16px;
+            border-bottom: 2px solid #0f2b48;
+            margin-bottom: 16px;
+        }
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .logo-img {
+            max-height: 52px;
+            max-width: 140px;
+            object-fit: contain;
+        }
+        .station-details h1 {
+            font-size: 20px;
+            font-weight: 800;
+            color: #0f2b48;
+            text-transform: uppercase;
             letter-spacing: 0.5px;
+            line-height: 1.2;
         }
-        .meta-info-container {
+        .station-details .subtitle {
+            font-size: 12px;
+            font-weight: 600;
+            color: #0284c7;
+            margin-top: 2px;
+        }
+        .station-details .meta {
+            font-size: 11px;
+            color: #64748b;
+            margin-top: 2px;
+        }
+        .oil-company-badge {
+            background: #0f2b48;
+            color: #ffffff;
+            font-weight: 700;
+            font-size: 11px;
+            padding: 4px 10px;
+            border-radius: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            text-align: right;
+            align-self: flex-start;
+        }
+
+        /* Ribbon */
+        .ribbon {
+            background: #0f2b48;
+            color: #ffffff;
+            padding: 8px 14px;
+            border-radius: 6px;
             display: flex;
             justify-content: space-between;
-            background-color: #F8F9FA;
-            padding: 12px 18px;
-            border-radius: 6px;
-            margin-bottom: 20px;
-            border: 1px solid #E9ECEF;
+            align-items: center;
+            margin-bottom: 18px;
         }
-        .meta-group h3 {
-            margin: 0 0 4px 0;
-            font-size: 14px;
-            color: #00695C;
-        }
-        .meta-group p {
-            margin: 0;
+        .ribbon-title {
             font-size: 13px;
-            font-weight: 600;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
         }
+        .ribbon-subtitle {
+            font-size: 12px;
+            font-weight: 600;
+            color: #38bdf8;
+        }
+        .ribbon-generated {
+            font-size: 11px;
+            color: #cbd5e1;
+        }
+
+        /* KPI Cards */
         .kpi-container {
             display: flex;
             flex-wrap: wrap;
-            gap: 15px;
-            margin-bottom: 24px;
+            gap: 12px;
+            margin-bottom: 20px;
         }
         .kpi-card {
             flex: 1;
-            min-width: 150px;
-            background-color: #FFFFFF;
-            border: 1px solid #DEE2E6;
+            min-width: 140px;
+            background: #f1f5f9;
+            border: 1px solid #e2e8f0;
             border-radius: 6px;
-            padding: 12px;
+            padding: 10px 14px;
             text-align: center;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
         }
         .kpi-card.highlight {
-            background-color: #E0F2F1;
-            border-color: #00897B;
+            background: #ecfdf5;
+            border-color: #a7f3d0;
         }
         .kpi-label {
-            font-size: 11px;
+            font-size: 10px;
+            font-weight: 700;
             text-transform: uppercase;
+            color: #64748b;
             letter-spacing: 0.5px;
-            color: #6C757D;
             margin-bottom: 4px;
-            font-weight: 600;
         }
         .kpi-value {
-            font-size: 18px;
-            font-weight: 700;
-            color: #212529;
+            font-size: 16px;
+            font-weight: 800;
+            color: #0f2b48;
         }
         .kpi-card.highlight .kpi-value {
-            color: #00796B;
+            color: #047857;
         }
+
+        /* Table */
         table {
             width: 100%;
             border-collapse: collapse;
-            margin-bottom: 30px;
+            margin-bottom: 24px;
+            font-size: 11px;
         }
         th, td {
-            border: 1px solid #DEE2E6;
-            padding: 10px 12px;
+            border: 1px solid #cbd5e1;
+            padding: 7px 10px;
             text-align: left;
         }
         th {
-            background-color: #00695C;
-            color: #FFFFFF;
+            background: #1e3a5f;
+            color: #ffffff;
             font-weight: 600;
-            font-size: 13px;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        tbody tr:nth-child(even) {
+            background: #f8fafc;
         }
         .text-right {
             text-align: right;
@@ -107,67 +172,105 @@
             text-align: center;
         }
         .text-bold {
-            font-weight: bold;
+            font-weight: 700;
         }
-        .print-btn {
-            display: block;
-            width: 140px;
-            margin: 10px auto 20px auto;
-            padding: 10px 16px;
-            text-align: center;
-            background-color: #00695C;
-            color: white;
-            font-weight: bold;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            transition: background-color 0.2s;
+        .row-total {
+            background: #e2e8f0 !important;
+            font-weight: 800;
+            color: #0f2b48;
         }
-        .print-btn:hover {
-            background-color: #004D40;
-        }
+
+        /* Signatures */
         .signatures {
-            margin-top: 60px;
+            margin-top: 36px;
             display: flex;
             justify-content: space-between;
             padding: 0 30px;
+            page-break-inside: avoid;
+        }
+        .signature-box {
+            width: 200px;
+            text-align: center;
         }
         .signature-line {
-            width: 200px;
-            border-top: 1px solid #333;
-            text-align: center;
-            padding-top: 6px;
-            font-size: 12px;
-            font-weight: 600;
+            border-top: 1px solid #334155;
+            margin-bottom: 4px;
         }
+        .signature-title {
+            font-size: 11px;
+            font-weight: 700;
+            color: #0f2b48;
+            text-transform: uppercase;
+        }
+        .signature-subtitle {
+            font-size: 10px;
+            color: #64748b;
+        }
+
+        /* Footer */
+        .report-footer {
+            margin-top: 24px;
+            padding-top: 10px;
+            border-top: 1px solid #e2e8f0;
+            display: flex;
+            justify-content: space-between;
+            font-size: 10px;
+            color: #94a3b8;
+        }
+
+        /* Print Button */
+        .no-print {
+            text-align: center;
+            margin-bottom: 16px;
+        }
+        .print-btn {
+            background: #0f2b48;
+            color: #ffffff;
+            border: none;
+            padding: 8px 20px;
+            font-size: 13px;
+            font-weight: 600;
+            border-radius: 4px;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .print-btn:hover {
+            background: #1e3a5f;
+        }
+
         @media print {
-            .print-btn {
-                display: none;
+            .no-print {
+                display: none !important;
+            }
+            body {
+                background: #ffffff;
+                padding: 0;
+                font-size: 11px;
+            }
+            .report-container {
+                border: none;
+                box-shadow: none;
+                padding: 0;
+                max-width: 100%;
             }
             @page {
                 size: A4 portrait;
-                margin: 0;
-            }
-            body {
-                margin: 1.6cm;
-                font-size: 12px;
-            }
-            .meta-info-container {
-                background-color: transparent !important;
-                border: 1px solid #CCC;
-            }
-            .kpi-card {
-                border: 1px solid #CCC !important;
-                box-shadow: none !important;
-            }
-            .kpi-card.highlight {
-                background-color: #E8F5E9 !important;
+                margin: 10mm 12mm;
             }
             th {
-                background-color: #00695C !important;
-                color: #FFFFFF !important;
+                background-color: #1e3a5f !important;
+                color: #ffffff !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            .ribbon {
+                background-color: #0f2b48 !important;
+                color: #ffffff !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            .row-total {
+                background-color: #e2e8f0 !important;
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
             }
@@ -179,12 +282,44 @@
         function renderData() {
             if (!data) return;
 
-            document.getElementById('stationName').innerText = data.stationName || "Mitali Service Station";
-            document.getElementById('reportTitle').innerText = data.title || "Report Statement";
-            document.getElementById('subtitleText').innerText = data.subtitle || "";
-            document.getElementById('generatedDate').innerText = "Generated: " + new Date().toLocaleDateString('en-IN', {day: '2-digit', month: 'short', year: 'numeric'});
+            // Station Profile
+            document.getElementById('stationName').innerText = (data.stationName || "FuelPro Station").toUpperCase();
+            
+            const subEl = document.getElementById('stationSubtitle');
+            if (subEl) {
+                if (data.stationSubtitle && data.stationSubtitle.trim()) {
+                    subEl.innerText = data.stationSubtitle.trim();
+                    subEl.style.display = 'block';
+                } else {
+                    subEl.style.display = 'none';
+                }
+            }
 
-            // Render KPI cards
+            const metaParts = [];
+            if (data.stationAddress && data.stationAddress.trim()) metaParts.push(data.stationAddress.trim());
+            if (data.stationContact && data.stationContact.trim()) metaParts.push("Contact: " + data.stationContact.trim());
+            document.getElementById('stationMeta').innerText = metaParts.join(" | ");
+
+            const oilCompanyEl = document.getElementById('oilCompany');
+            if (data.oilCompany && data.oilCompany.trim()) {
+                oilCompanyEl.innerText = data.oilCompany.trim();
+                oilCompanyEl.style.display = 'block';
+            } else {
+                oilCompanyEl.style.display = 'none';
+            }
+
+            if (data.logo) {
+                const logoImg = document.getElementById('stationLogo');
+                logoImg.src = data.logo;
+                logoImg.style.display = 'block';
+            }
+
+            // Ribbon
+            document.getElementById('reportTitle').innerText = data.title || "Report Statement";
+            document.getElementById('subtitleText').innerText = data.subtitle || "Summary Ledger";
+            document.getElementById('generatedDate').innerText = "Generated: " + (data.generatedAt || new Date().toLocaleString('en-IN'));
+
+            // KPI Cards
             const kpiContainer = document.getElementById('kpiContainer');
             if (data.summaryCards && data.summaryCards.length > 0) {
                 let kpiHtml = '';
@@ -203,7 +338,7 @@
                 kpiContainer.style.display = 'none';
             }
 
-            // Render Table headers
+            // Headers
             const tableHead = document.getElementById('tableHead');
             let headerHtml = '<tr>';
             if (data.headers && data.headers.length > 0) {
@@ -214,20 +349,22 @@
             headerHtml += '</tr>';
             tableHead.innerHTML = headerHtml;
 
-            // Render Table body
+            // Rows
             const tableBody = document.getElementById('tableBody');
             let bodyHtml = '';
             if (data.rows && data.rows.length > 0) {
                 data.rows.forEach(row => {
-                    bodyHtml += '<tr>';
-                    row.forEach((cell, cellIdx) => {
+                    const isTotal = row[0] && (row[0].toLowerCase().includes("total") || row[0].toLowerCase().includes("summary"));
+                    const rowClass = isTotal ? "row-total" : "";
+
+                    bodyHtml += `<tr class="${rowClass}">`;
+                    row.forEach((cell) => {
                         let cellClass = "";
-                        // If cell represents currency or number, align it right. If it contains "₹" or "%", align right.
-                        if (cell && (cell.startsWith("₹") || cell.endsWith("%") || cell.startsWith("-₹") || (!isNaN(cell.replace(/,/g, '')) && cell.trim() !== ""))) {
+                        const cellStr = String(cell || "").trim();
+                        if (cellStr.startsWith("₹") || cellStr.endsWith("%") || cellStr.startsWith("-₹") || (!isNaN(cellStr.replace(/,/g, '')) && cellStr !== "")) {
                             cellClass = "text-right";
                         }
-                        // Bold total row or header column if needed
-                        if (row[0] && (row[0].toLowerCase().includes("total") || row[0].toLowerCase().includes("summary"))) {
+                        if (isTotal) {
                             cellClass += " text-bold";
                         }
                         bodyHtml += `<td class="${cellClass}">${cell || ""}</td>`;
@@ -235,26 +372,17 @@
                     bodyHtml += '</tr>';
                 });
             } else {
-                let colCount = data.headers ? data.headers.length : 1;
-                bodyHtml += `<tr><td colspan="${colCount}" class="text-center" style="opacity: 0.6; padding: 20px;">No records found.</td></tr>`;
+                const colCount = data.headers ? data.headers.length : 1;
+                bodyHtml += `<tr><td colspan="${colCount}" class="text-center" style="color: #94a3b8; padding: 20px;">No records found.</td></tr>`;
             }
             tableBody.innerHTML = bodyHtml;
 
-            // Render signatures
+            // Signatures
             const signaturesDiv = document.getElementById('signatures');
             if (data.showSignatures) {
                 signaturesDiv.style.display = 'flex';
             } else {
                 signaturesDiv.style.display = 'none';
-            }
-
-            // Render logo
-            if (data.logo) {
-                const logoImg = document.getElementById('logo');
-                if (logoImg) {
-                    logoImg.src = data.logo;
-                    logoImg.style.display = 'block';
-                }
             }
         }
 
@@ -268,43 +396,65 @@
     </script>
 </head>
 <body>
-    <button class="print-btn" onclick="printDoc()">Print Report</button>
-    
-    <div class="header">
-        <div style="display: flex; align-items: center; justify-content: center; gap: 15px;">
-            <img id="logo" style="display: none; height: 50px;" src="" alt="logo" />
-            <h1 id="stationName">Mitali Service Station</h1>
-        </div>
-        <p id="reportTitle">Report Statement</p>
+    <div class="no-print">
+        <button class="print-btn" onclick="printDoc()">🖨️ Print Report</button>
     </div>
 
-    <div class="meta-info-container">
-        <div class="meta-group">
-            <h3 style="color: #00695C;">Report Context</h3>
-            <p id="subtitleText">All details listed below</p>
+    <div class="report-container">
+        <!-- Top Header -->
+        <div class="header">
+            <div class="header-left">
+                <img id="stationLogo" class="logo-img" style="display: none;" src="" alt="Station Logo" />
+                <div class="station-details">
+                    <h1 id="stationName">FuelPro Station</h1>
+                    <div class="subtitle" id="stationSubtitle" style="display: none;"></div>
+                    <div class="meta" id="stationMeta" style="display: none;"></div>
+                </div>
+            </div>
+            <div class="oil-company-badge" id="oilCompany">BPCL</div>
         </div>
-        <div class="meta-group" style="text-align: right;">
-            <h3 style="color: #00695C;">Timestamp</h3>
-            <p id="generatedDate">Generated: 21-Jun-2026</p>
+
+        <!-- Ribbon -->
+        <div class="ribbon">
+            <div class="ribbon-title" id="reportTitle">Report Statement</div>
+            <div class="ribbon-subtitle" id="subtitleText">All details listed below</div>
+            <div class="ribbon-generated" id="generatedDate">Generated: 24-Oct-2026</div>
         </div>
-    </div>
 
-    <div class="kpi-container" id="kpiContainer">
-        <!-- Dynamic cards -->
-    </div>
+        <!-- KPI Container -->
+        <div class="kpi-container" id="kpiContainer" style="display: none;">
+            <!-- Dynamic cards -->
+        </div>
 
-    <table>
-        <thead id="tableHead">
-            <!-- Dynamic header row -->
-        </thead>
-        <tbody id="tableBody">
-            <!-- Dynamic data rows -->
-        </tbody>
-    </table>
+        <!-- Table -->
+        <table>
+            <thead id="tableHead">
+                <!-- Dynamic header row -->
+            </thead>
+            <tbody id="tableBody">
+                <!-- Dynamic data rows -->
+            </tbody>
+        </table>
 
-    <div class="signatures" id="signatures" style="display: none;">
-        <div class="signature-line">Manager Signature</div>
-        <div class="signature-line">Owner Signature</div>
+        <!-- Signatures -->
+        <div class="signatures" id="signatures" style="display: none;">
+            <div class="signature-box">
+                <div class="signature-line"></div>
+                <div class="signature-title">Manager Signature</div>
+                <div class="signature-subtitle">Forecourt In-Charge</div>
+            </div>
+            <div class="signature-box">
+                <div class="signature-line"></div>
+                <div class="signature-title">Owner Signature</div>
+                <div class="signature-subtitle">Authorized Signatory</div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="report-footer">
+            <span>PyroSync FuelPro System • Official Report Statement</span>
+            <span>Valid without physical seal if digitally authenticated</span>
+        </div>
     </div>
 </body>
 </html>
