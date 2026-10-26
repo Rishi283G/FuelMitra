@@ -457,7 +457,7 @@ function renderData(){
     return c.isActive && excludeNorms.indexOf(normColCode(c.code)) < 0; 
   });
 
-  var hasCash3 = (d.cash3 && ((d.cash3.grandTotal || 0) > 0 || (d.cash3.total || 0) > 0 || (d.cash3.cashDepositTotal || 0) > 0)) ||
+  var hasCash3 = (d.isCash3Enabled !== false) || (d.cash3 && ((d.cash3.grandTotal || 0) > 0 || (d.cash3.total || 0) > 0 || (d.cash3.cashDepositTotal || 0) > 0)) ||
                  (d.dsmSummaryRows || []).some(function(r) { return (getVal(r, 'cash3') || 0) > 0; });
 
   var thHtml = '<tr><th>DSM Name</th><th>Pump</th>';

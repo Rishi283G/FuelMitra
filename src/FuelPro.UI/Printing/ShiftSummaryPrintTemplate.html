@@ -126,6 +126,33 @@
     </tfoot>
   </table>
 
+  <!-- Shift Cumulative Fuel Sales -->
+  <div id="cumSection" style="display: none; margin-top: 14px; margin-bottom: 14px;">
+    <div style="font-size: 11px; font-weight: 700; color: #1B5E20; text-transform: uppercase; margin-bottom: 4px; letter-spacing: .5px;">
+      ⛽ Shift Cumulative Fuel Sales (All Dispenser Units)
+    </div>
+    <table id="cumTable">
+      <thead>
+        <tr>
+          <th>Fuel Type</th>
+          <th class="num">Nozzles</th>
+          <th class="num">Total Sale</th>
+          <th class="num">Rate (₹)</th>
+          <th class="num">Total Amount (₹)</th>
+        </tr>
+      </thead>
+      <tbody id="cumBody"></tbody>
+      <tfoot>
+        <tr class="total-row">
+          <td colspan="2" style="text-align:right; font-weight:700;">TOTALS</td>
+          <td class="num" id="cumTotalLitres"></td>
+          <td></td>
+          <td class="num" id="cumTotalAmount"></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+
   <!-- Summary boxes -->
   <div class="summary-box">
     <div class="sum-item">
@@ -155,6 +182,7 @@
 <script>
 const data = /* INJECT_JSON_HERE */{};
 const INR = (n) => '₹' + (+(n||0)).toLocaleString('en-IN', {minimumFractionDigits:2,maximumFractionDigits:2});
+const NUM = (n, d=2) => (+(n||0)).toLocaleString('en-IN', {minimumFractionDigits:d,maximumFractionDigits:d});
 
 const station = data.stationName || 'FuelPro Service Station';
 document.title = station + ' — Shift Summary Report';
@@ -215,6 +243,31 @@ document.getElementById('totalCollection').textContent = INR(data.totalCollectio
 const tm = data.totalMismatch || 0;
 const tmc = tm > 0.005 ? 'mismatch-pos' : tm < -0.005 ? 'mismatch-neg' : 'mismatch-zero';
 document.getElementById('totalMismatch').innerHTML = `<span class="${tmc}">${INR(tm)}</span>`;
+
+// Render Cumulative Fuel Sales if present
+if (data.cumulativeFuelSales && data.cumulativeFuelSales.length > 0) {
+  document.getElementById('cumSection').style.display = 'block';
+  const cb = document.getElementById('cumBody');
+  let cumLitres = 0;
+  let cumAmount = 0;
+  data.cumulativeFuelSales.forEach(c => {
+    const litres = Number(c.totalLitres != null ? c.totalLitres : (c.saleLitres != null ? c.saleLitres : 0));
+    const amt = Number(c.totalAmount != null ? c.totalAmount : (c.amount != null ? c.amount : 0));
+    const rate = Number(c.rate || 0);
+    const unit = (c.fuelType && c.fuelType.toUpperCase().includes('CNG')) ? ' Kg' : ' L';
+    cumLitres += litres;
+    cumAmount += amt;
+    cb.innerHTML += `<tr>
+      <td style="font-weight:600;">${c.fuelType || ''}</td>
+      <td class="num">${c.nozzleCount || '—'}</td>
+      <td class="num">${NUM(litres, 2) + unit}</td>
+      <td class="num">${INR(rate)}</td>
+      <td class="num" style="font-weight:600;">${INR(amt)}</td>
+    </tr>`;
+  });
+  document.getElementById('cumTotalLitres').textContent = NUM(cumLitres, 2);
+  document.getElementById('cumTotalAmount').textContent = INR(cumAmount);
+}
 
 document.getElementById('boxSales').textContent = INR(data.totalSales);
 document.getElementById('boxCollection').textContent = INR(data.totalCollection);

@@ -243,40 +243,63 @@
 
     <!-- Right Column: Cash Denomination & Expenses -->
     <div>
-      <!-- SECTION 4: Cash in Hand (Denomination) -->
+      <!-- SECTION 4: Cash Denominations (Cash 1, Cash 2, Cash 3) -->
       <div class="section">
-        <div class="section-title">💵 Section 4 — Cash in Hand (Denomination)</div>
-        <p class="denom-note">Qty × Denomination = Amount</p>
-        <table id="denomTable">
-          <thead>
-            <tr><th>Denomination</th><th>Qty</th><th class="num">Amount (₹)</th></tr>
-          </thead>
-          <tbody id="denomBody"></tbody>
-          <tfoot>
-            <tr class="grand-total-row">
-              <td colspan="2" style="text-align:right;">Total Cash in Hand</td>
-              <td class="num" id="cashTotal"></td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
+        <div class="section-title">💵 Section 4 — Cash Denominations</div>
+        
+        <!-- Cash 1 & Cash 2 Side-by-Side (500, 200, 100) -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 6px;">
+          <!-- Cash 1 Table -->
+          <div>
+            <div style="font-weight: 700; font-size: 10px; color: #1565C0; margin-bottom: 2px;">Cash 1 (Bank / Advance)</div>
+            <table id="cash1Table">
+              <thead><tr><th>Denom</th><th>Qty</th><th class="num">Amount (₹)</th></tr></thead>
+              <tbody id="cash1Body"></tbody>
+              <tfoot>
+                <tr class="total-row">
+                  <td colspan="2" style="text-align:right; font-weight:700;">Total Cash 1</td>
+                  <td class="num" id="cash1Total"></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
 
-      <!-- SECTION 4B: Cash 3 (Final Cash) Denomination -->
-      <div class="section" id="cash3Section" style="display: none;">
-        <div class="section-title">💵 Section 4B — Cash 3 (Final Cash)</div>
-        <p class="denom-note">Qty × Denomination = Amount</p>
-        <table id="cash3Table">
-          <thead>
-            <tr><th>Denomination</th><th>Qty</th><th class="num">Amount (₹)</th></tr>
-          </thead>
-          <tbody id="cash3Body"></tbody>
-          <tfoot>
-            <tr class="grand-total-row">
-              <td colspan="2" style="text-align:right;">Total Final Cash</td>
-              <td class="num" id="cash3Total"></td>
-            </tr>
-          </tfoot>
-        </table>
+          <!-- Cash 2 Table -->
+          <div>
+            <div style="font-weight: 700; font-size: 10px; color: #1565C0; margin-bottom: 2px;">Cash 2 (Cash in Hand)</div>
+            <table id="cash2Table">
+              <thead><tr><th>Denom</th><th>Qty</th><th class="num">Amount (₹)</th></tr></thead>
+              <tbody id="cash2Body"></tbody>
+              <tfoot>
+                <tr class="total-row">
+                  <td colspan="2" style="text-align:right; font-weight:700;">Total Cash 2</td>
+                  <td class="num" id="cash2Total"></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+
+        <!-- Cash 3 Table (Whole Denomination: 500, 200, 100, 50, 20, 10, Coins) -->
+        <div id="cash3Section" style="margin-bottom: 6px;">
+          <div style="font-weight: 700; font-size: 10px; color: #1565C0; margin-bottom: 2px;">Cash 3 (Final Cash — Full Denomination)</div>
+          <table id="cash3Table">
+            <thead><tr><th>Denomination</th><th>Qty</th><th class="num">Amount (₹)</th></tr></thead>
+            <tbody id="cash3Body"></tbody>
+            <tfoot>
+              <tr class="total-row">
+                <td colspan="2" style="text-align:right; font-weight:700;">Total Cash 3</td>
+                <td class="num" id="cash3Total"></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        <!-- All Cash Grand Total Banner -->
+        <div style="display: flex; justify-content: space-between; align-items: center; background: #E8F5E9; border: 1.5px solid #2E7D32; border-radius: 4px; padding: 4px 8px; font-weight: 700; margin-bottom: 4px;">
+          <span style="font-size: 10px; color: #1B5E20;">Total Cash (Cash 1 + Cash 2 + Cash 3)</span>
+          <span style="font-size: 12px; color: #1B5E20;" id="allCashGrandTotal">₹0.00</span>
+        </div>
       </div>
 
       <!-- SECTION 6: Expenses -->
@@ -313,17 +336,17 @@
     </table>
   </div>
 
-  <!-- SECTION 8: Personal Debtors -->
+  <!-- SECTION 8: Debtor Repayments / Recoveries -->
   <div class="section" id="personalDebtorSection" style="display:none;">
-    <div class="section-title">👤 Section 8 — DSM Personal Debtors</div>
+    <div class="section-title">👤 Section 8 — Debtor Repayments / Recoveries</div>
     <table>
       <thead>
-        <tr><th>#</th><th>Fuel</th><th>Method</th><th>Remarks</th><th class="num">Amount (₹)</th></tr>
+        <tr><th>#</th><th>Debtor Name</th><th>Method</th><th>Remarks</th><th class="num">Amount (₹)</th></tr>
       </thead>
       <tbody id="personalDebtorBody"></tbody>
       <tfoot>
         <tr class="total-row">
-          <td colspan="4" style="text-align:right;">Total Personal Debtors</td>
+          <td colspan="4" style="text-align:right;">Total Repayments</td>
           <td class="num" id="personalDebtorTotal"></td>
         </tr>
       </tfoot>
@@ -438,14 +461,18 @@ if (data.cumulativeFuelSales && data.cumulativeFuelSales.length > 0) {
   let cumLitres = 0;
   let cumAmount = 0;
   data.cumulativeFuelSales.forEach(c => {
-    cumLitres += (c.saleLitres || 0);
-    cumAmount += (c.amount || 0);
+    const litres = Number(c.totalLitres != null ? c.totalLitres : (c.saleLitres != null ? c.saleLitres : 0));
+    const amt = Number(c.totalAmount != null ? c.totalAmount : (c.amount != null ? c.amount : 0));
+    const rate = Number(c.rate || 0);
+    const unit = (c.fuelType && c.fuelType.toUpperCase().includes('CNG')) ? ' Kg' : ' L';
+    cumLitres += litres;
+    cumAmount += amt;
     cb.innerHTML += `<tr>
       <td style="font-weight:600;">${c.fuelType || ''}</td>
       <td class="num">${c.nozzleCount || '—'}</td>
-      <td class="num">${NUM(c.saleLitres, 2)}</td>
-      <td class="num">${INR(c.rate)}</td>
-      <td class="num" style="font-weight:600;">${INR(c.amount)}</td>
+      <td class="num">${NUM(litres, 2) + unit}</td>
+      <td class="num">${INR(rate)}</td>
+      <td class="num" style="font-weight:600;">${INR(amt)}</td>
     </tr>`;
   });
   document.getElementById('cumTotalLitres').textContent = NUM(cumLitres, 2);
@@ -482,9 +509,6 @@ if (petroVal > 0) {
   }
 });
 
-if (p.cashDeposit > 0) payRows.push({ label: 'Cash 1 (Advance Cash)', val: p.cashDeposit });
-if (p.cash3 > 0) payRows.push({ label: 'Cash 3 (Final Cash)', val: p.cash3 });
-if (p.bankDeposit > 0 && p.bankDeposit !== p.cashDeposit) payRows.push({ label: 'Bank Deposit', val: p.bankDeposit });
 if (p.others > 0) payRows.push({ label: 'Others', val: p.others });
 
 payRows.filter(r => r.val > 0).forEach(r => {
@@ -503,50 +527,67 @@ payRows.filter(r => r.val > 0).forEach(r => {
 payHtml += `</div><div class="payment-row payment-total" style="padding: 4px 6px;"><span class="payment-label">Total Digital Payments</span><span class="payment-value">${INR(p.totalDigital)}</span></div>`;
 document.getElementById('paymentBlock').innerHTML = payHtml;
 
-// Section 4 — Cash Denomination (Cash 2 - Middle Cash)
-const cd = data.cashDenom || {};
-const db = document.getElementById('denomBody');
-const denomRows = [
-  ['₹500', cd.qty500, cd.amt500],
-  ['₹200', cd.qty200, cd.amt200],
-  ['₹100', cd.qty100, cd.amt100],
-  ['₹50',  cd.qty50,  cd.amt50],
-  ['₹20',  cd.qty20,  cd.amt20],
-  ['₹10',  cd.qty10,  cd.amt10],
+// Section 4A — Cash 1 (500, 200, 100)
+const c1 = data.cash1Denom || {};
+const c1b = document.getElementById('cash1Body');
+const c1Rows = [
+  ['₹500', c1.qty500, c1.amt500 || ((c1.qty500||0)*500)],
+  ['₹200', c1.qty200, c1.amt200 || ((c1.qty200||0)*200)],
+  ['₹100', c1.qty100, c1.amt100 || ((c1.qty100||0)*100)],
 ];
-denomRows.forEach(([label, qty, amt]) => {
+c1Rows.forEach(([label, qty, amt]) => {
+  c1b.innerHTML += `<tr><td>${label}</td><td class="num">${qty||0}</td><td class="num">${INR(amt||0)}</td></tr>`;
+});
+const c1Tot = c1.total != null ? c1.total : ((c1.qty500||0)*500 + (c1.qty200||0)*200 + (c1.qty100||0)*100);
+document.getElementById('cash1Total').textContent = INR(c1Tot);
+
+// Section 4B — Cash 2 (500, 200, 100)
+const c2 = data.cashDenom || data.cash2Denom || {};
+const c2b = document.getElementById('cash2Body');
+const c2Rows = [
+  ['₹500', c2.qty500, c2.amt500 || ((c2.qty500||0)*500)],
+  ['₹200', c2.qty200, c2.amt200 || ((c2.qty200||0)*200)],
+  ['₹100', c2.qty100, c2.amt100 || ((c2.qty100||0)*100)],
+];
+c2Rows.forEach(([label, qty, amt]) => {
+  c2b.innerHTML += `<tr><td>${label}</td><td class="num">${qty||0}</td><td class="num">${INR(amt||0)}</td></tr>`;
+});
+const c2Extra = [
+  ['₹50', c2.qty50, c2.amt50 || ((c2.qty50||0)*50)],
+  ['₹20', c2.qty20, c2.amt20 || ((c2.qty20||0)*20)],
+  ['₹10', c2.qty10, c2.amt10 || ((c2.qty10||0)*10)],
+];
+c2Extra.forEach(([label, qty, amt]) => {
   if ((qty||0) > 0 || (amt||0) > 0) {
-    db.innerHTML += `<tr><td>${label}</td><td class="num">${qty||0}</td><td class="num">${INR(amt)}</td></tr>`;
+    c2b.innerHTML += `<tr><td>${label}</td><td class="num">${qty||0}</td><td class="num">${INR(amt||0)}</td></tr>`;
   }
 });
-if ((cd.coins||0) > 0) {
-  db.innerHTML += `<tr><td>Coins</td><td class="num">—</td><td class="num">${INR(cd.coins)}</td></tr>`;
+if ((c2.coins||0) > 0) {
+  c2b.innerHTML += `<tr><td>Coins</td><td class="num">—</td><td class="num">${INR(c2.coins)}</td></tr>`;
 }
-document.getElementById('cashTotal').textContent = INR(cd.total);
+const c2Tot = c2.total != null ? c2.total : 0;
+document.getElementById('cash2Total').textContent = INR(c2Tot);
 
-// Section 4B — Cash 3 Denomination (Final Cash)
-const c3d = data.cash3Denom;
-if (c3d && (c3d.total > 0 || (p && p.cash3 > 0))) {
-  document.getElementById('cash3Section').style.display = 'block';
-  const c3b = document.getElementById('cash3Body');
-  const c3Rows = [
-    ['₹500', c3d.qty500, c3d.amt500],
-    ['₹200', c3d.qty200, c3d.amt200],
-    ['₹100', c3d.qty100, c3d.amt100],
-    ['₹50',  c3d.qty50,  c3d.amt50],
-    ['₹20',  c3d.qty20,  c3d.amt20],
-    ['₹10',  c3d.qty10,  c3d.amt10],
-  ];
-  c3Rows.forEach(([label, qty, amt]) => {
-    if ((qty||0) > 0 || (amt||0) > 0) {
-      c3b.innerHTML += `<tr><td>${label}</td><td class="num">${qty||0}</td><td class="num">${INR(amt)}</td></tr>`;
-    }
-  });
-  if ((c3d.coins||0) > 0) {
-    c3b.innerHTML += `<tr><td>Coins</td><td class="num">—</td><td class="num">${INR(c3d.coins)}</td></tr>`;
-  }
-  document.getElementById('cash3Total').textContent = INR(c3d.total || p.cash3 || 0);
-}
+// Section 4C — Cash 3 (Whole denomination: 500, 200, 100, 50, 20, 10, Coins)
+const c3 = data.cash3Denom || {};
+const c3b = document.getElementById('cash3Body');
+const c3Rows = [
+  ['₹500', c3.qty500, c3.amt500 || ((c3.qty500||0)*500)],
+  ['₹200', c3.qty200, c3.amt200 || ((c3.qty200||0)*200)],
+  ['₹100', c3.qty100, c3.amt100 || ((c3.qty100||0)*100)],
+  ['₹50',  c3.qty50,  c3.amt50  || ((c3.qty50||0)*50)],
+  ['₹20',  c3.qty20,  c3.amt20  || ((c3.qty20||0)*20)],
+  ['₹10',  c3.qty10,  c3.amt10  || ((c3.qty10||0)*10)],
+];
+c3Rows.forEach(([label, qty, amt]) => {
+  c3b.innerHTML += `<tr><td>${label}</td><td class="num">${qty||0}</td><td class="num">${INR(amt||0)}</td></tr>`;
+});
+c3b.innerHTML += `<tr><td>Coins</td><td class="num">—</td><td class="num">${INR(c3.coins || 0)}</td></tr>`;
+const c3Tot = c3.total != null ? c3.total : (p.cash3 || 0);
+document.getElementById('cash3Total').textContent = INR(c3Tot);
+
+const allCashGrandTotal = c1Tot + c2Tot + c3Tot;
+document.getElementById('allCashGrandTotal').textContent = INR(allCashGrandTotal);
 
 // Section 5 — Debtors
 const crb = document.getElementById('creditorBody');
@@ -571,53 +612,73 @@ const teb = document.getElementById('testingBody');
 });
 document.getElementById('testingTotal').textContent = INR(data.totalTesting);
 
-// Section 8 — Personal Debtors
-const pds = data.personalDebtors || [];
+// Section 8 — Debtor Repayments / Recoveries
+const pds = data.personalDebtors || data.debtorRepayments || [];
 if (pds.length > 0) {
   document.getElementById('personalDebtorSection').style.display = '';
   const pdb = document.getElementById('personalDebtorBody');
+  pdb.innerHTML = '';
   pds.forEach((pd, idx) => {
-    let methodInfo = pd.paymentMethod;
+    let methodInfo = pd.paymentMethod || 'Cash';
     if (pd.paymentMethod !== 'Cash' && pd.cardTid) {
       methodInfo += ` (TID: ${pd.cardTid}, Batch: ${pd.cardBatch || '—'})`;
     }
+    const dName = pd.debtorName || pd.fuelProduct || '—';
     pdb.innerHTML += `<tr>
-      <td class="num">${idx}</td>
-      <td>${pd.fuelProduct || '—'}</td>
+      <td class="num">${idx + 1}</td>
+      <td>${dName}</td>
       <td>${methodInfo}</td>
       <td>${pd.remarks || '—'}</td>
       <td class="num">${INR(pd.amount)}</td>
     </tr>`;
   });
-  document.getElementById('personalDebtorTotal').textContent = INR(data.totalPersonalDebtors);
+  document.getElementById('personalDebtorTotal').textContent = INR(data.totalPersonalDebtors || pds.reduce((s,x)=>s+(x.amount||0),0));
 }
 
 // Section 9 — Reconciliation
 const rc = data.reconciliation || {};
 const reb = document.getElementById('reconBody');
-const reconLines = [
-  ['Gross Sales', rc.grossSales, false],
-  ['Total Digital Payments', (data.payments||{}).totalDigital, false],
-  ['Cash in Hand (Cash 2)', rc.cash, false],
-];
-if (p.cash3 > 0 || (data.cash3Denom && data.cash3Denom.total > 0)) {
-  reconLines.push(['Final Cash (Cash 3)', (p.cash3 || (data.cash3Denom ? data.cash3Denom.total : 0)), false]);
-}
-reconLines.push(
-  ['Debtors', rc.creditors, false],
-  ['Testing', rc.testing, false],
-  ['Expenses', rc.expenses, false],
-  ['Total Collection', rc.totalCollection, false]
-);
-reconLines.forEach(([label, val, highlight]) => {
-  reb.innerHTML += `<tr class="${highlight?'grand-total-row':'total-row'}">
-    <td style="font-weight:600">${label}</td>
-    <td class="num">${INR(val)}</td>
+reb.innerHTML = '';
+
+if (data.collectionBreakdown && data.collectionBreakdown.length > 0) {
+  data.collectionBreakdown.forEach((c) => {
+    const isInfo = Boolean(c.isInformational);
+    reb.innerHTML += `<tr class="total-row">
+      <td style="font-weight:600">${c.descriptionWithBreakdown || c.category}${isInfo ? ' (Info)' : ''}</td>
+      <td class="num">${INR(c.amount)}</td>
+    </tr>`;
+  });
+  reb.innerHTML += `<tr class="grand-total-row" style="background:#E8F5E9">
+    <td style="font-weight:700">Total Collection</td>
+    <td class="num" style="font-weight:700">${INR(rc.totalCollection)}</td>
   </tr>`;
-});
+  reb.innerHTML += `<tr class="total-row">
+    <td style="font-weight:600">Expected Gross Sale</td>
+    <td class="num">${INR(rc.grossSales)}</td>
+  </tr>`;
+} else {
+  const reconLines = [
+    ['Gross Sales', rc.grossSales, false],
+    ['Total Digital Payments', (data.payments||{}).totalDigital, false],
+    ['Cash 1 (Bank / Advance)', c1Tot, false],
+    ['Cash 2 (Cash in Hand)', c2Tot, false],
+    ['Cash 3 (Final Cash)', c3Tot, false],
+    ['Debtors', rc.creditors, false],
+    ['Testing', rc.testing, false],
+    ['Expenses', rc.expenses, false],
+    ['Total Collection', rc.totalCollection, true]
+  ];
+  reconLines.forEach(([label, val, highlight]) => {
+    reb.innerHTML += `<tr class="${highlight?'grand-total-row':'total-row'}">
+      <td style="font-weight:600">${label}</td>
+      <td class="num">${INR(val)}</td>
+    </tr>`;
+  });
+}
+
 // Mismatch — highlighted
 const mis = rc.mismatch || 0;
-const misClass = mis > 0.005 ? 'mismatch-pos' : mis < -0.005 ? 'mismatch-neg' : 'mismatch-zero';
+const misClass = Math.abs(mis) < 0.005 ? 'mismatch-zero' : mis > 0 ? 'mismatch-pos' : 'mismatch-neg';
 reb.innerHTML += `<tr class="mismatch-row" style="background:#FFF9C4">
   <td style="font-weight:800;font-size:12px;">⚠️ Mismatch (Collection − Sales)</td>
   <td class="num"><span class="${misClass}">${INR(mis)}</span></td>

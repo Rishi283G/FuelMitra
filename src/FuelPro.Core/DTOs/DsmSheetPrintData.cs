@@ -25,8 +25,11 @@ public class DsmSheetPrintData
     // Section 3 — Payment Collection
     public DsmPaymentPrintBlock Payments { get; set; } = new();
 
-    // Section 4 — Cash Denomination Summary
-    public DsmCashDenomPrintBlock CashDenom { get; set; } = new();
+    // Section 4 — Cash Denomination Summary (Cash 1, Cash 2, Cash 3)
+    public DsmCashDenomPrintBlock Cash1Denom { get; set; } = new();
+    public DsmCashDenomPrintBlock CashDenom { get; set; } = new(); // Cash 2 (Cash in Hand)
+    public DsmCashDenomPrintBlock Cash2Denom => CashDenom;
+    public double TotalCash => (Cash1Denom?.Total ?? 0) + (CashDenom?.Total ?? 0) + (Cash3Denom?.Total ?? 0);
 
     // Section 5 — Creditors
     public List<DsmCreditorPrintRow> Creditors { get; set; } = new();
@@ -46,6 +49,7 @@ public class DsmSheetPrintData
     // Section 9 — Personal Debtors
     public List<DsmPersonalDebtorPrintRow> PersonalDebtors { get; set; } = new();
     public double TotalPersonalDebtors { get; set; }
+    public List<CollectionCategoryDto> CollectionBreakdown { get; set; } = new();
 
     public string ConnectedPumpsDisplay { get; set; } = string.Empty;
     public List<FuelTypeReadingSummary> CumulativeFuelSales { get; set; } = new();
@@ -54,6 +58,7 @@ public class DsmSheetPrintData
 
 public class DsmPersonalDebtorPrintRow
 {
+    public string DebtorName  { get; set; } = string.Empty;
     public string FuelProduct { get; set; } = string.Empty;
     public string Remarks     { get; set; } = string.Empty;
     public string PaymentMethod { get; set; } = string.Empty;

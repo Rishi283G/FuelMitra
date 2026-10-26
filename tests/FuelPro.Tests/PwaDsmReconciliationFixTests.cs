@@ -1479,9 +1479,11 @@ public class PwaDsmReconciliationFixTests : IDisposable
         while (queueVm.IsLoadingDetails) await Task.Delay(50);
 
         // Verification in Approval Queue:
-        // Must NOT be doubled!
-        Assert.Equal(250.0, queueVm.UpiAmount);
-        Assert.Equal(200.0, queueVm.PetroCardAmount);
+        // Amounts added in OTP transactions must strictly appear under OTP transactions table, not in manual scalar boxes!
+        Assert.Equal(0.0, queueVm.UpiAmount);
+        Assert.Equal(0.0, queueVm.PetroCardAmount);
+        Assert.Contains(queueVm.CardSwipeDetails, c => c.Mode == "PHONEPE" && Math.Abs(c.Amount - 250.0) < 0.01);
+        Assert.Equal(200.0, queueVm.CardSwipeDetails.Where(c => c.Mode == "PETROCARD").Sum(c => c.Amount), precision: 2);
         Assert.Equal(350.0, queueVm.PineLabsAmount);
 
         var paytmBadge = queueVm.DynamicCollectionSummaries.FirstOrDefault(s => s.Code == "PAYTM");
@@ -1654,6 +1656,168 @@ public class PwaDsmReconciliationFixTests : IDisposable
         Assert.Equal(100.0, queueVm.SubmissionExpenses[0].Amount);
         Assert.Single(queueVm.KhandhareEntries);
         Assert.Equal(200.0, queueVm.KhandhareEntries[0].Amount);
+    }
+
+    [Fact]
+    public void Test_PwaManualAmountEntry_ForTidEligibleType_CalculatesTotalAsManualPlusTidPlusOtp()
+    {
+        var row = new DynamicCollectionEntryRow
+        {
+            Code = "PAYTM",
+            DisplayName = "Paytm",
+            Category = "Online",
+            HasTidBatch = true,
+            ManualAmount = 250.0,
+            TidAmount = 500.0,
+            OtpAmount = 150.0
+        };
+
+        row.RecalculateTotal();
+
+        Assert.Equal(900.0, row.Amount);
+        Assert.True(row.HasTidOrOtp);
+        Assert.Contains("TID: ₹500.00", row.SummaryDisplay);
+        Assert.Contains("OTP: ₹150.00", row.SummaryDisplay);
+        Assert.Contains("Total: ₹900.00", row.SummaryDisplay);
+    }
+
+    [Fact]
+    public void Test_ConnectedPumpIds_EmptyArray_DoesNotFallBackToScalar()
+    {
+        var metadataWithEmptyArray = JsonConvert.SerializeObject(new
+        {
+            connectedPumpIds = new int[] { },
+            connectedPumpId = 2
+        });
+
+        var submission = new DsmPendingSubmission
+        {
+            PumpId = 1,
+            MetadataJson = metadataWithEmptyArray
+        };
+
+        Assert.Empty(submission.ConnectedPumpIds);
+        Assert.Null(submission.ConnectedPumpId);
+    }
+
+    [Fact]
+    public void Test_ConnectedPumpIds_ExplicitMultiPump_PreservesConnectedPump()
+    {
+        var metadataWithConnectedPump = JsonConvert.SerializeObject(new
+        {
+            connectedPumpIds = new int[] { 2 },
+            connectedPumpId = 2
+        });
+
+        var submission = new DsmPendingSubmission
+        {
+            PumpId = 1,
+            MetadataJson = metadataWithConnectedPump
+        };
+
+        Assert.Single(submission.ConnectedPumpIds);
+        Assert.Equal(2, submission.ConnectedPumpIds[0]);
+        Assert.Equal(2, submission.ConnectedPumpId);
+    }
+
+    [Fact]
+    public async Task Test_PwaDynamicItems_Partitioning_And_Aggregation_Parity()
+    {
+        var queueVm = _serviceProvider.GetRequiredService<DsmApprovalQueueViewModel>();
+
+        var metadata = new
+        {
+            formatVersion = 3,
+            dynamicItems = new[]
+            {
+                new { transactionId = "manual-scalar-PAYTM", collectionTypeCode = "PAYTM", amount = 500.0, tid = "", batch = "", otp = "" },
+                new { transactionId = "tid-tx-1", collectionTypeCode = "PAYTM", amount = 700.0, tid = "T123", batch = "B456", otp = "" },
+                new { transactionId = "otp-tx-1", collectionTypeCode = "PAYTM", amount = 300.0, tid = "", batch = "", otp = "987654" }
+            },
+            cardSwipeDetails = new[]
+            {
+                new { mode = "PAYTM", amount = 300.0, otp = "987654", tid = "", batch = "" }
+            },
+            connectedPumpIds = new int[] { },
+            connectedPumpId = 2
+        };
+
+        var submission = new DsmPendingSubmission
+        {
+            Id = Guid.NewGuid(),
+            DsmName = "Test Attendant",
+            PumpId = 1,
+            ShiftDate = DateTime.Today,
+            ShiftType = "A",
+            SubmittedAt = DateTime.UtcNow,
+            MetadataJson = JsonConvert.SerializeObject(metadata)
+        };
+
+        queueVm.SelectedSubmission = submission;
+        await Task.Delay(100);
+        while (queueVm.IsLoadingDetails) await Task.Delay(50);
+
+        // Verify clean partitioning
+        var paytmRow = queueVm.DynamicCollections.FirstOrDefault(d => d.Code == "PAYTM");
+        Assert.NotNull(paytmRow);
+        Assert.Equal(500.0, paytmRow.ManualAmount);
+        Assert.Equal(700.0, paytmRow.TidAmount);
+        Assert.Equal(300.0, paytmRow.OtpAmount);
+        Assert.Equal(1500.0, paytmRow.Amount);
+
+        // Verify TID transactions list has exactly the TID item
+        Assert.Contains(queueVm.ManualTidTransactions, t => t.Amount == 700.0 && t.Tid == "T123");
+
+        // Verify OTP transactions list has exactly the OTP item
+        Assert.Contains(queueVm.CardSwipeDetails, c => c.Amount == 300.0 && c.Otp == "987654");
+
+        // Single-pump connected pump is empty
+        Assert.Empty(submission.ConnectedPumpIds);
+        Assert.Null(submission.ConnectedPumpId);
+    }
+
+    [Fact]
+    public void Test_DsmSummaryPrint_IncludesCollectionBreakdown_And_DebtorRepayment()
+    {
+        var printData = new DsmSheetPrintData
+        {
+            DsmName = "Test Attendant",
+            Date = "26/10/2026",
+            Shift = "A",
+            CollectionBreakdown = new List<CollectionCategoryDto>
+            {
+                new() { Category = "Cash 1 (Deposit)", Amount = 1000.0 },
+                new() { Category = "Paytm", Amount = 1500.0 },
+                new() { Category = "Mobikwik", Amount = 500.0 }
+            },
+            PersonalDebtors = new List<DsmPersonalDebtorPrintRow>
+            {
+                new() { DebtorName = "John Doe", Amount = 2000.0, PaymentMethod = "Cash", Remarks = "Settled" }
+            }
+        };
+
+        Assert.Equal(3, printData.CollectionBreakdown.Count);
+        Assert.Equal(1500.0, printData.CollectionBreakdown.First(c => c.Category == "Paytm").Amount);
+        Assert.Single(printData.PersonalDebtors);
+        Assert.Equal("John Doe", printData.PersonalDebtors[0].DebtorName);
+        Assert.Equal(2000.0, printData.PersonalDebtors[0].Amount);
+
+        // Calculation Service invariant: Dynamic payments aggregate properly and debtor repayments remain excluded from TotalCollection
+        var calcService = new DsmCalculationService();
+        var dto = new DsmEntryDto
+        {
+            NozzleReadings = new List<NozzleReadingDto> { new() { Amount = 5000m } },
+            PaymentCollection = new PaymentCollectionDto
+            {
+                PhysicalCash = 3000m,
+                DynamicPayments = 2000m
+            }
+        };
+
+        var result = calcService.Calculate(dto);
+        // TotalCollection strictly equals pure fuel collections (3000 + 2000 = 5000)
+        Assert.Equal(5000m, result.TotalCollection);
+        Assert.Equal(0m, result.Mismatch);
     }
 }
 

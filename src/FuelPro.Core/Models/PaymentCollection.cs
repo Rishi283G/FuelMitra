@@ -144,7 +144,7 @@ public class PaymentCollection
             clean = clean.Substring(0, parenIdx).Trim();
         }
 
-        var test = clean.Replace("_", "").Replace(" ", "");
+        var test = clean.Replace("_", "").Replace(" ", "").Replace("/", "");
         if (test.EndsWith("Morning", StringComparison.OrdinalIgnoreCase) && test.Length > 7)
             test = test[..^7];
         else if (test.EndsWith("Night", StringComparison.OrdinalIgnoreCase) && test.Length > 5)
@@ -180,7 +180,18 @@ public class PaymentCollection
         if (test.Equals("OTHERS", StringComparison.OrdinalIgnoreCase))
             return "OTHERS";
 
-        return clean;
+        if (test.Equals("SBIREDEEM", StringComparison.OrdinalIgnoreCase))
+            return "SBI_REDEEM";
+        if (test.Equals("QR", StringComparison.OrdinalIgnoreCase) 
+            || test.Equals("QRONLINE", StringComparison.OrdinalIgnoreCase) 
+            || test.StartsWith("QRONLINE", StringComparison.OrdinalIgnoreCase))
+            return "QR";
+        if (test.Equals("PAYTM", StringComparison.OrdinalIgnoreCase))
+            return "PAYTM";
+        if (test.Equals("MOBIKWIK", StringComparison.OrdinalIgnoreCase))
+            return "MOBIKWIK";
+
+        return clean.ToUpperInvariant().Replace(" ", "_");
     }
 
     /// <summary>

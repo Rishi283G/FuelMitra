@@ -250,8 +250,10 @@ public class FuelTypeReadingSummary
     public string FuelTypeLabel => FuelPro.Core.Common.FuelTypeExtensions.ToFriendlyLabel(FuelType);
     public int NozzleCount { get; set; }
     public double TotalLitres { get; set; }
+    public double SaleLitres => TotalLitres;
     public double Rate { get; set; }
     public double TotalAmount { get; set; }
+    public double Amount => TotalAmount;
     public bool IsCng => string.Equals(FuelType, "CNG", System.StringComparison.OrdinalIgnoreCase);
     public string Unit => IsCng ? "Kg" : "L";
     public string DisplayText => $"{TotalLitres:N2} {Unit} × ₹{Rate:N2} = ₹{TotalAmount:N2}";

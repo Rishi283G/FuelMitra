@@ -73,7 +73,9 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
 
   // Form State — pump & shift come from manager assignment, DSM cannot change them
   const pumpId = profile?.AssignedPump ?? 0;
-  const connectedPumps = profile?.ConnectedPumps ?? [];
+  const connectedPumps = Array.isArray(profile?.ConnectedPumps)
+    ? profile.ConnectedPumps
+    : (profile?.ConnectedPump ? [profile.ConnectedPump] : []);
   const shiftType = profile?.AssignedShift ?? "A";
   const [shiftDate, setShiftDate] = useState(() => {
     if (profile?.AssignedDate) {
@@ -1057,7 +1059,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       let cngRate = latestConfig.cngRate || 85.0;
 
       // We load nozzles of both the primary and all connected pumps (deduplicated)
-      const connectedPumps = profile?.ConnectedPumps && profile.ConnectedPumps.length > 0
+      const connectedPumps = Array.isArray(profile?.ConnectedPumps)
         ? profile.ConnectedPumps
         : (profile?.ConnectedPump ? [profile.ConnectedPump] : []);
 
@@ -1492,24 +1494,28 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         ? ((petroCardSlotConf.enableMorning ? petroCardMorning : 0) + (petroCardSlotConf.enableNight ? petroCardNight : 0))
         : (petroCardMorning || 0);
 
+  const phonePeTidTotal = getManualTidTotalForType("PHONEPE");
+  const cardTidTotal = getManualTidTotalForType("CREDIT_CARD");
+  const petroTidTotal = getManualTidTotalForType("PETROCARD");
+
   const phonePeTxTotal = getMachineTotalForType("PHONEPE");
   const cardTxTotal = getMachineTotalForType("CREDIT_CARD");
   const petroTxTotal = getMachineTotalForType("PETROCARD");
 
   const effectivePhonePeTotal =
-    otpMachineTrackingEnabled && phonePeTxTotal > 0
-      ? Math.max(isManualEnabled("PHONEPE") ? phonePeManualAmt : 0, phonePeTxTotal)
-      : (isManualEnabled("PHONEPE") ? phonePeManualAmt : 0);
+    (isManualEnabled("PHONEPE") ? phonePeManualAmt : 0) +
+    phonePeTidTotal +
+    (otpMachineTrackingEnabled ? phonePeTxTotal : 0);
 
   const effectiveCreditCardTotal =
-    otpMachineTrackingEnabled && cardTxTotal > 0
-      ? Math.max(isManualEnabled("CREDIT_CARD") ? creditCardManualAmt : 0, cardTxTotal)
-      : (isManualEnabled("CREDIT_CARD") ? creditCardManualAmt : 0);
+    (isManualEnabled("CREDIT_CARD") ? creditCardManualAmt : 0) +
+    cardTidTotal +
+    (otpMachineTrackingEnabled ? cardTxTotal : 0);
 
   const effectivePetroCardTotal =
-    otpMachineTrackingEnabled && petroTxTotal > 0
-      ? Math.max(isManualEnabled("PETROCARD") ? petroCardManualAmt : 0, petroTxTotal)
-      : (isManualEnabled("PETROCARD") ? petroCardManualAmt : 0);
+    (isManualEnabled("PETROCARD") ? petroCardManualAmt : 0) +
+    petroTidTotal +
+    (otpMachineTrackingEnabled ? petroTxTotal : 0);
 
   const allDynamicTypeCodes = Array.from(
     new Set([
@@ -1520,35 +1526,24 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     ])
   );
 
-  const dynamicTotal = allDynamicTypeCodes.reduce((sum, code) => {
-    const clean = code.toUpperCase().replace(/_/g, "");
-    if (clean === "PHONEPE" || clean === "CREDITCARD" || clean === "PETROCARD" || clean === "CASHDEPOSIT" || clean === "OTHERS") return sum;
+  const getDynamicTypeEffectiveTotal = (code: string) => {
     const ct = (stationConfig?.collectionTypes || []).find((c) => c.code.toUpperCase() === code.toUpperCase());
     const isTidEligible = Boolean(ct?.hasTidBatch);
-    const manualTidSum = getManualTidTotalForType(code);
+    const manualTidSum = isTidEligible && multiTidTransactionsEnabled ? getManualTidTotalForType(code) : 0;
     const val = dynamicValues[code] || { amount: 0, tid: "", batch: "", otp: "" };
-    const txTotal = getMachineTotalForType(code);
-    const manualActive = isManualEnabled(code);
-    const slotConf = getTypeSlotConfig(code);
-    const isSlotAllowed = shiftType === "B" ? slotConf.enableDay : (slotConf.enableMorning || slotConf.enableNight);
-    const manualAmt = manualActive && isSlotAllowed ? (isTidEligible ? manualTidSum : (val.amount || 0)) : 0;
-    const effAmt = otpMachineTrackingEnabled && txTotal > 0
-      ? Math.max(manualAmt, txTotal)
-      : manualAmt;
-    return sum + effAmt;
-  }, 0);
-
-  const getDynamicTypeEffectiveTotal = (code: string) => {
-    const val = dynamicValues[code] || { amount: 0, tid: "", batch: "", otp: "" };
-    const txTotal = getMachineTotalForType(code);
+    const txTotal = otpMachineTrackingEnabled ? getMachineTotalForType(code) : 0;
     const manualActive = isManualEnabled(code);
     const slotConf = getTypeSlotConfig(code);
     const isSlotAllowed = shiftType === "B" ? slotConf.enableDay : (slotConf.enableMorning || slotConf.enableNight);
     const manualAmt = manualActive && isSlotAllowed ? (val.amount || 0) : 0;
-    return otpMachineTrackingEnabled && txTotal > 0
-      ? Math.max(manualAmt, txTotal)
-      : manualAmt;
+    return manualAmt + manualTidSum + txTotal;
   };
+
+  const dynamicTotal = allDynamicTypeCodes.reduce((sum, code) => {
+    const clean = code.toUpperCase().replace(/_/g, "");
+    if (clean === "PHONEPE" || clean === "CREDITCARD" || clean === "PETROCARD" || clean === "CASHDEPOSIT" || clean === "OTHERS") return sum;
+    return sum + getDynamicTypeEffectiveTotal(code);
+  }, 0);
 
   const creditTotal = debtorEntries.reduce((sum, d) => sum + d.amount, 0);
   const totalTesting = nozzleRows.reduce(
@@ -1976,12 +1971,12 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       }
     });
 
-    // 2. Ingest ordinary non-TID dynamic collections from dynamicValues
-    const nonTidDynamicCodes = (stationConfig?.collectionTypes || [])
-      .filter((ct) => !ct.hasTidBatch && ct.isActive !== false)
+    // 2. Ingest manual dynamic collection amounts from dynamicValues
+    const activeDynamicCodes = (stationConfig?.collectionTypes || [])
+      .filter((ct) => ct.isActive !== false)
       .map((ct) => ct.code);
 
-    nonTidDynamicCodes.forEach((code) => {
+    activeDynamicCodes.forEach((code) => {
       const clean = code.toUpperCase().replace(/_/g, "");
       if (clean === "PHONEPE" || clean === "CREDITCARD" || clean === "PETROCARD" || clean === "CASHDEPOSIT" || clean === "OTHERS") return;
       const val = dynamicValues[code] || { amount: 0, tid: "", batch: "", otp: "" };
@@ -2003,7 +1998,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
 
     const draftData = {
       pumpId,
-      connectedPumpId: connectedPumps.length > 0 ? connectedPumps[0] : (profile?.ConnectedPump || null),
+      connectedPumpId: connectedPumps.length > 0 ? connectedPumps[0] : null,
       connectedPumpIds: connectedPumps,
       shiftDate,
       shiftType: shiftType as "A" | "B" | "C",
@@ -2014,9 +2009,9 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         ({ rowId: _r, isOpeningReadOnly, ...rest }) => rest,
       ),
       cash,
-      upi: effectivePhonePeTotal,
-      card: effectiveCreditCardTotal,
-      petroCard: effectivePetroCardTotal,
+      upi: isManualEnabled("PHONEPE") ? phonePeManualAmt : 0,
+      card: isManualEnabled("CREDIT_CARD") ? creditCardManualAmt : 0,
+      petroCard: isManualEnabled("PETROCARD") ? petroCardManualAmt : 0,
       cashDeposit,
       others,
       credit: creditTotal,
@@ -2226,7 +2221,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
               >
                 Pump {pumpId}
                 {(() => {
-                  const cPumps = profile?.ConnectedPumps && profile.ConnectedPumps.length > 0
+                  const cPumps = Array.isArray(profile?.ConnectedPumps)
                     ? profile.ConnectedPumps
                     : (profile?.ConnectedPump ? [profile.ConnectedPump] : []);
                   return cPumps.length > 0
@@ -2235,7 +2230,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                 })()}
               </div>
               {(() => {
-                const cPumps = profile?.ConnectedPumps && profile.ConnectedPumps.length > 0
+                const cPumps = Array.isArray(profile?.ConnectedPumps)
                   ? profile.ConnectedPumps
                   : (profile?.ConnectedPump ? [profile.ConnectedPump] : []);
                 return cPumps.length > 0 ? (
@@ -3636,9 +3631,39 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                     </div>
                   </div>
 
-                  {type.hasTidBatch ? (
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr",
+                      gap: "8px",
+                      opacity: manualActive ? 1 : 0.6,
+                    }}
+                  >
+                    <div className="field-group">
+                      <label className="field-label">Manual Amount (₹)</label>
+                      <input
+                        type="number"
+                        className="field-input"
+                        step="0.01"
+                        min="0"
+                        placeholder="0.00"
+                        value={val.amount || ""}
+                        disabled={!manualActive}
+                        onChange={(e) => {
+                          const newAmt = parseFloat(e.target.value) || 0;
+                          setDynamicValues((prev) => ({
+                            ...prev,
+                            [type.code]: { ...val, amount: newAmt },
+                          }));
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {type.hasTidBatch && (
                     <div
                       style={{
+                        marginTop: "8px",
                         padding: "10px",
                         backgroundColor: "rgba(30, 41, 59, 0.5)",
                         borderRadius: "6px",
@@ -3650,43 +3675,19 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                     >
                       <div>
                         <span style={{ fontSize: "0.85rem", color: "#94a3b8" }}>
-                          Itemized Total ({manualTidTransactions.filter(t => t.collectionTypeCode.toUpperCase() === type.code.toUpperCase()).length} transactions):
+                          Itemized TID Total ({manualTidTransactions.filter(t => t.collectionTypeCode.toUpperCase() === type.code.toUpperCase()).length} txs):
                         </span>
-                        <div style={{ fontSize: "1.1rem", fontWeight: "bold", color: "#38bdf8" }}>
+                        <div style={{ fontSize: "1rem", fontWeight: "bold", color: "#38bdf8" }}>
                           ₹{getManualTidTotalForType(type.code).toFixed(2)}
                         </div>
                       </div>
-                      <span style={{ fontSize: "0.75rem", color: "#64748b" }}>
-                        Managed in TID Transactions below
-                      </span>
-                    </div>
-                  ) : (
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "1fr",
-                        gap: "8px",
-                        opacity: manualActive ? 1 : 0.6,
-                      }}
-                    >
-                      <div className="field-group">
-                        <label className="field-label">Amount (₹)</label>
-                        <input
-                          type="number"
-                          className="field-input"
-                          step="0.01"
-                          min="0"
-                          placeholder="0.00"
-                          value={val.amount || ""}
-                          disabled={!manualActive}
-                          onChange={(e) => {
-                            const newAmt = parseFloat(e.target.value) || 0;
-                            setDynamicValues((prev) => ({
-                              ...prev,
-                              [type.code]: { ...val, amount: newAmt },
-                            }));
-                          }}
-                        />
+                      <div style={{ textAlign: "right" }}>
+                        <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>
+                          Type Total:
+                        </span>
+                        <div style={{ fontSize: "1.1rem", fontWeight: "bold", color: "#4ade80" }}>
+                          ₹{getDynamicTypeEffectiveTotal(type.code).toFixed(2)}
+                        </div>
                       </div>
                     </div>
                   )}

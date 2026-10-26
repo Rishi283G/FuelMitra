@@ -546,13 +546,12 @@
                                                                     <ColumnDefinition Width="*"/>
                                                                     <ColumnDefinition Width="Auto"/>
                                                                 </Grid.ColumnDefinitions>
-                                                                <TextBox Grid.Column="0" Text="{Binding Amount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,0,0,0"
-                                                                         materialDesign:HintAssist.Hint="Amount (&#x20B9;)" materialDesign:HintAssist.IsFloating="True"
-                                                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"
-                                                                         IsReadOnly="{Binding HasTidBatch}"/>
-                                                                <Border Grid.Column="1" Visibility="{Binding HasTidBatch, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                                                <TextBox Grid.Column="0" Text="{Binding ManualAmount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,0,0,0"
+                                                                         materialDesign:HintAssist.Hint="Manual Amount (&#x20B9;)" materialDesign:HintAssist.IsFloating="True"
+                                                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                                                                <Border Grid.Column="1" Visibility="{Binding HasTidOrOtp, Converter={StaticResource BooleanToVisibilityConverter}}"
                                                                         Background="#0D6A1B9A" BorderBrush="#266A1B9A" BorderThickness="1" CornerRadius="4" Padding="8,4" VerticalAlignment="Center" Margin="6,0,0,0">
-                                                                    <TextBlock Text="Itemized in Card &amp; TID Table below" FontSize="11" Foreground="#6A1B9A" VerticalAlignment="Center"/>
+                                                                    <TextBlock Text="{Binding SummaryDisplay}" FontSize="11" Foreground="#6A1B9A" VerticalAlignment="Center"/>
                                                                 </Border>
                                                             </Grid>
                                                         </StackPanel>
@@ -1020,74 +1019,8 @@
                                                  Text="{Binding Cash2.Denom100, Converter={StaticResource DenomAmountConv}, ConverterParameter=100, Mode=OneWay, StringFormat=N2}"/>
                                     </Grid>
 
-                                    <!-- &#x20B9;50 -->
-                                    <Grid Margin="0,2">
-                                        <Grid.ColumnDefinitions><ColumnDefinition Width="90"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                        <Border Background="#E3F2FD" CornerRadius="4" Padding="6,4" Grid.Column="0" Margin="0,0,4,0">
-                                            <TextBlock Text="&#x20B9; 50" FontWeight="SemiBold" FontSize="12" HorizontalAlignment="Center"/>
-                                        </Border>
-                                        <TextBox Grid.Column="1" Margin="0,0,4,0"
-                                                 Text="{Binding Cash2.Denom50, UpdateSourceTrigger=LostFocus}"
-                                                 IsReadOnly="{Binding IsReadOnlyMode}"
-                                                 materialDesign:HintAssist.Hint="Qty" materialDesign:HintAssist.IsFloating="True"
-                                                 Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
-                                        <TextBox Grid.Column="2" IsReadOnly="True" Focusable="False"
-                                                 Background="#F5F5F5" Foreground="#1976D2" FontWeight="Bold"
-                                                 Style="{StaticResource MaterialDesignOutlinedTextBox}"
-                                                 materialDesign:HintAssist.Hint="Amount" materialDesign:HintAssist.IsFloating="True"
-                                                 Text="{Binding Cash2.Denom50, Converter={StaticResource DenomAmountConv}, ConverterParameter=50, Mode=OneWay, StringFormat=N2}"/>
-                                    </Grid>
 
-                                    <!-- &#x20B9;20 -->
-                                    <Grid Margin="0,2">
-                                        <Grid.ColumnDefinitions><ColumnDefinition Width="90"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                        <Border Background="#E3F2FD" CornerRadius="4" Padding="6,4" Grid.Column="0" Margin="0,0,4,0">
-                                            <TextBlock Text="&#x20B9; 20" FontWeight="SemiBold" FontSize="12" HorizontalAlignment="Center"/>
-                                        </Border>
-                                        <TextBox Grid.Column="1" Margin="0,0,4,0"
-                                                 Text="{Binding Cash2.Denom20, UpdateSourceTrigger=LostFocus}"
-                                                 IsReadOnly="{Binding IsReadOnlyMode}"
-                                                 materialDesign:HintAssist.Hint="Qty" materialDesign:HintAssist.IsFloating="True"
-                                                 Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
-                                        <TextBox Grid.Column="2" IsReadOnly="True" Focusable="False"
-                                                 Background="#F5F5F5" Foreground="#1976D2" FontWeight="Bold"
-                                                 Style="{StaticResource MaterialDesignOutlinedTextBox}"
-                                                 materialDesign:HintAssist.Hint="Amount" materialDesign:HintAssist.IsFloating="True"
-                                                 Text="{Binding Cash2.Denom20, Converter={StaticResource DenomAmountConv}, ConverterParameter=20, Mode=OneWay, StringFormat=N2}"/>
-                                    </Grid>
 
-                                    <!-- &#x20B9;10 -->
-                                    <Grid Margin="0,2">
-                                        <Grid.ColumnDefinitions><ColumnDefinition Width="90"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                        <Border Background="#E3F2FD" CornerRadius="4" Padding="6,4" Grid.Column="0" Margin="0,0,4,0">
-                                            <TextBlock Text="&#x20B9; 10" FontWeight="SemiBold" FontSize="12" HorizontalAlignment="Center"/>
-                                        </Border>
-                                        <TextBox Grid.Column="1" Margin="0,0,4,0"
-                                                 Text="{Binding Cash2.Denom10, UpdateSourceTrigger=LostFocus}"
-                                                 IsReadOnly="{Binding IsReadOnlyMode}"
-                                                 materialDesign:HintAssist.Hint="Qty" materialDesign:HintAssist.IsFloating="True"
-                                                 Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
-                                        <TextBox Grid.Column="2" IsReadOnly="True" Focusable="False"
-                                                 Background="#F5F5F5" Foreground="#1976D2" FontWeight="Bold"
-                                                 Style="{StaticResource MaterialDesignOutlinedTextBox}"
-                                                 materialDesign:HintAssist.Hint="Amount" materialDesign:HintAssist.IsFloating="True"
-                                                 Text="{Binding Cash2.Denom10, Converter={StaticResource DenomAmountConv}, ConverterParameter=10, Mode=OneWay, StringFormat=N2}"/>
-                                    </Grid>
-
-                                    <!-- Coins -->
-                                    <Grid Margin="0,2">
-                                        <Grid.ColumnDefinitions><ColumnDefinition Width="90"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                        <Border Background="#FFF9C4" CornerRadius="4" Padding="6,4" Grid.Column="0" Margin="0,0,4,0">
-                                            <TextBlock Text="Coins" FontWeight="SemiBold" FontSize="12" HorizontalAlignment="Center"/>
-                                        </Border>
-                                        <TextBlock Grid.Column="1" Text="(direct &#x20B9; value)" FontSize="11" Foreground="#777"
-                                                   VerticalAlignment="Center" HorizontalAlignment="Center"/>
-                                        <TextBox Grid.Column="2"
-                                                 Text="{Binding Cash2.Coins, UpdateSourceTrigger=LostFocus, StringFormat=F2}"
-                                                 IsReadOnly="{Binding IsReadOnlyMode}"
-                                                 materialDesign:HintAssist.Hint="Coin Amount" materialDesign:HintAssist.IsFloating="True"
-                                                 Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
-                                    </Grid>
 
                                     <!-- Total Cash in Hand -->
                                     <Border Background="#E8F5E9" CornerRadius="8" Padding="12,8" Margin="0,10,0,0">
@@ -1310,22 +1243,6 @@
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
-
-                                    <!-- General Expense Notes & Direct Amount -->
-                                    <Grid Margin="0,2,0,0">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="120"/>
-                                        </Grid.ColumnDefinitions>
-                                        <TextBox Grid.Column="0" Text="{Binding ExpenseNotes, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,6,0"
-                                                 IsReadOnly="{Binding IsReadOnlyMode}"
-                                                 materialDesign:HintAssist.Hint="Expense Notes / Remarks" materialDesign:HintAssist.IsFloating="True"
-                                                 Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
-                                        <TextBox Grid.Column="1" Text="{Binding ExpenseAmount, UpdateSourceTrigger=LostFocus, StringFormat=F2}"
-                                                 IsReadOnly="{Binding IsReadOnlyMode}"
-                                                 materialDesign:HintAssist.Hint="Expense (&#x20B9;)" materialDesign:HintAssist.IsFloating="True"
-                                                 Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
-                                    </Grid>
                                 </StackPanel>
                             </materialDesign:Card>
 

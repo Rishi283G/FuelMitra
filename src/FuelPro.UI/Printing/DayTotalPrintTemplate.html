@@ -422,7 +422,7 @@ function renderData(){
     return c.isActive && excludeNorms.indexOf(normColCode(c.code)) < 0; 
   });
 
-  var hasCash3 = (d.cash3 && (d.cash3.grandTotal > 0 || d.cash3.total > 0 || d.cash3.cashDepositTotal > 0)) ||
+  var hasCash3 = (d.isCash3Enabled !== false) || (d.cash3 && (d.cash3.grandTotal > 0 || d.cash3.total > 0 || d.cash3.cashDepositTotal > 0)) ||
                  (d.dsmSummaryRows || []).some(function(r) { return (getVal(r, 'cash3') || 0) > 0; });
   var activeBuiltInCount = (isPhActive ? 1 : 0) + (isCcActive ? 1 : 0) + (isPcActive ? 1 : 0);
   var totalColSpan = 11 + activeBuiltInCount + dynActiveTypes.length + (hasCash3 ? 1 : 0);

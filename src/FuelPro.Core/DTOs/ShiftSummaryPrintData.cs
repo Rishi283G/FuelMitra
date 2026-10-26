@@ -11,6 +11,7 @@ public class ShiftSummaryPrintData
     public string PrintedAt   { get; set; } = string.Empty;
 
     public List<ShiftSummaryDsmRow> Rows { get; set; } = new();
+    public List<FuelTypeReadingSummary> CumulativeFuelSales { get; set; } = new();
 
     public double TotalSales      { get; set; }
     public double TotalCollection { get; set; }

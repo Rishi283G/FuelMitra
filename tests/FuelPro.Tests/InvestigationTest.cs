@@ -25,7 +25,7 @@ public class InvestigationTest
         _output = output;
     }
 
-    [Fact]
+    [Fact(Skip = "Diagnostic investigation test only")]
     public async Task InspectMitaliDatabase()
     {
         var dbPath = @"D:\Projects\Pump_Automation\Clients\Mitali_Service_Station\forensic_investigation\DISPOSABLE_WORKING_CLONE\fuelPro.db";
