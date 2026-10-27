@@ -471,7 +471,7 @@
                                     <StackPanel>
                                         <!-- PhonePe UPI -->
                                         <Border BorderBrush="{DynamicResource MaterialDesign.Brush.Divider}" BorderThickness="1" CornerRadius="6" Padding="12,8" Margin="0,0,0,8" Background="{DynamicResource MaterialDesign.Brush.Card.Background}"
-                                                Visibility="{Binding PhonePeIsActive, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                Visibility="{Binding IsPhonePeScalarVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
                                             <StackPanel>
                                                 <TextBlock FontWeight="Bold" FontSize="12" Opacity="0.9" Margin="0,0,0,6">
                                                     <Run Text="{Binding PhonePeDisplayName, Mode=OneWay}" Foreground="{DynamicResource MaterialDesign.Brush.Primary.Dark}"/>
@@ -493,7 +493,7 @@
 
                                         <!-- Credit Card (Only visible when active in settings) -->
                                         <Border BorderBrush="{DynamicResource MaterialDesign.Brush.Divider}" BorderThickness="1" CornerRadius="6" Padding="12,8" Margin="0,0,0,8" Background="{DynamicResource MaterialDesign.Brush.Card.Background}"
-                                                Visibility="{Binding CreditCardIsActive, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                Visibility="{Binding IsCreditCardScalarVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
                                             <StackPanel>
                                                 <TextBlock FontWeight="Bold" FontSize="12" Opacity="0.9" Margin="0,0,0,6">
                                                     <Run Text="{Binding CreditCardDisplayName, Mode=OneWay}" Foreground="{DynamicResource MaterialDesign.Brush.Primary.Dark}"/>
@@ -513,7 +513,7 @@
 
                                         <!-- Petro Card -->
                                         <Border BorderBrush="{DynamicResource MaterialDesign.Brush.Divider}" BorderThickness="1" CornerRadius="6" Padding="12,8" Margin="0,0,0,8" Background="{DynamicResource MaterialDesign.Brush.Card.Background}"
-                                                Visibility="{Binding PetroCardIsActive, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                Visibility="{Binding IsPetroCardScalarVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
                                             <StackPanel>
                                                 <TextBlock FontWeight="Bold" FontSize="12" Opacity="0.9" Margin="0,0,0,6">
                                                     <Run Text="{Binding PetroCardDisplayName, Mode=OneWay}" Foreground="{DynamicResource MaterialDesign.Brush.Primary.Dark}"/>
@@ -528,6 +528,66 @@
                                                          materialDesign:HintAssist.Hint="Night (&#x20B9;)" materialDesign:HintAssist.IsFloating="True"
                                                          Visibility="{Binding IsPetroCardSplitEnabled, Converter={StaticResource BooleanToVisibilityConverter}}"
                                                          Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- Manual Collection Amounts (Active dynamic types with TID=false and OTP=false) -->
+                                        <Border Background="#0D2E7D32" BorderBrush="#262E7D32" BorderThickness="1" CornerRadius="6" Padding="12,8" Margin="0,0,0,8"
+                                                Visibility="{Binding HasManualCollections, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                            <StackPanel>
+                                                <DockPanel LastChildFill="False" Margin="0,0,0,6">
+                                                    <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                                                        <materialDesign:PackIcon Kind="CashMultiple" Width="16" Height="16" Foreground="#2E7D32" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                                        <TextBlock Text="Manual Collection Amounts (Direct Entry)" FontWeight="SemiBold" FontSize="12" Foreground="#2E7D32" VerticalAlignment="Center"/>
+                                                    </StackPanel>
+                                                </DockPanel>
+
+                                                <ItemsControl ItemsSource="{Binding ManualCollections}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Grid Margin="0,3,0,3">
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="2*"/>
+                                                                    <ColumnDefinition Width="3*"/>
+                                                                </Grid.ColumnDefinitions>
+                                                                <TextBlock Grid.Column="0" Text="{Binding DisplayName}" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource MaterialDesign.Brush.Primary.Dark}"/>
+                                                                <TextBox Grid.Column="1" Text="{Binding Amount, UpdateSourceTrigger=LostFocus, StringFormat=F2}"
+                                                                         IsReadOnly="{Binding DataContext.IsReadOnlyMode, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                         materialDesign:HintAssist.Hint="Amount (&#x20B9;)" materialDesign:HintAssist.IsFloating="True"
+                                                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                                                            </Grid>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- Collection-Type Live Aggregates (Live sum of TID + OTP) -->
+                                        <Border Background="#0DFF6F00" BorderBrush="#26FF6F00" BorderThickness="1" CornerRadius="6" Padding="12,8" Margin="0,0,0,8"
+                                                Visibility="{Binding HasCollectionTypeTotals, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                            <StackPanel>
+                                                <DockPanel LastChildFill="False" Margin="0,0,0,6">
+                                                    <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                                                        <materialDesign:PackIcon Kind="CalculatorVariantOutline" Width="16" Height="16" Foreground="#E65100" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                                        <TextBlock Text="Collection-Type Live Totals (TID + OTP)" FontWeight="SemiBold" FontSize="12" Foreground="#E65100" VerticalAlignment="Center"/>
+                                                    </StackPanel>
+                                                </DockPanel>
+
+                                                <ItemsControl ItemsSource="{Binding CollectionTypeTotals}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Border BorderBrush="{DynamicResource MaterialDesign.Brush.Divider}" BorderThickness="0,0,0,1" Padding="4,4" Margin="0,1">
+                                                                <DockPanel LastChildFill="True">
+                                                                    <TextBlock DockPanel.Dock="Right" Text="{Binding TotalAmount, StringFormat='&#x20B9;{0:N2}'}" FontWeight="Bold" FontSize="12" Foreground="#E65100" VerticalAlignment="Center"/>
+                                                                    <StackPanel Orientation="Vertical">
+                                                                        <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" FontSize="12" Foreground="{DynamicResource MaterialDesign.Brush.Foreground}"/>
+                                                                        <TextBlock Text="{Binding BreakdownDisplay}" FontSize="10" Foreground="#666666" Margin="0,1,0,0"/>
+                                                                    </StackPanel>
+                                                                </DockPanel>
+                                                            </Border>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
                                             </StackPanel>
                                         </Border>
 

@@ -734,6 +734,8 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
             {
                 if (tx == null || string.IsNullOrWhiteSpace(tx.CollectionTypeCode)) continue;
                 var norm = PaymentCollection.NormalizeCollectionTypeCode(tx.CollectionTypeCode);
+                var master = _cachedAllCollectionTypes?.FirstOrDefault(c => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(c.Code), norm, StringComparison.OrdinalIgnoreCase));
+                if (master != null && master.IsManualOnly) continue;
                 var key = string.IsNullOrEmpty(norm) ? tx.CollectionTypeCode.Trim().ToUpperInvariant() : norm;
                 if (seenNormalized.Add(key))
                 {
@@ -863,6 +865,8 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
         {
             if (tx == null || string.IsNullOrWhiteSpace(tx.CollectionTypeCode)) continue;
             var norm = PaymentCollection.NormalizeCollectionTypeCode(tx.CollectionTypeCode);
+            var master = _cachedAllCollectionTypes?.FirstOrDefault(m => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(m.Code), norm, StringComparison.OrdinalIgnoreCase));
+            if (master != null && master.IsManualOnly) continue;
             var key = string.IsNullOrEmpty(norm) ? tx.CollectionTypeCode.Trim().ToUpperInvariant() : norm;
             if (seenNormalized.Add(key))
             {
@@ -1318,10 +1322,10 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
                     new() { Code = "CREDIT_CARD", DisplayName = "Credit / Debit Card", Category = "Card", HasTidBatch = true, DisplayOrder = 2, IsActive = true, IsSystem = true, CreatedAt = now },
                     new() { Code = "PETROCARD", DisplayName = "PetroCard", Category = "Card", HasTidBatch = true, DisplayOrder = 3, IsActive = true, IsSystem = true, CreatedAt = now },
                     new() { Code = "PINELABS_CARD", DisplayName = "Pine Labs Card", Category = "Card", HasTidBatch = true, DisplayOrder = 4, IsActive = true, IsSystem = true, CreatedAt = now },
-                    new() { Code = "SBI_REDEEM", DisplayName = "SBI Redeem", Category = "Card", HasTidBatch = true, DisplayOrder = 5, IsActive = true, IsSystem = false, CreatedAt = now },
-                    new() { Code = "PAYTM", DisplayName = "Paytm", Category = "Online", HasTidBatch = true, DisplayOrder = 6, IsActive = true, IsSystem = false, CreatedAt = now },
-                    new() { Code = "QR", DisplayName = "QR / Online", Category = "Online", HasTidBatch = true, DisplayOrder = 7, IsActive = true, IsSystem = false, CreatedAt = now },
-                    new() { Code = "MOBIKWIK", DisplayName = "Mobikwik", Category = "Online", HasTidBatch = true, DisplayOrder = 8, IsActive = true, IsSystem = false, CreatedAt = now },
+                    new() { Code = "SBI_REDEEM", DisplayName = "SBI Redeem", Category = "Card", HasTidBatch = false, DisplayOrder = 5, IsActive = true, IsSystem = false, CreatedAt = now },
+                    new() { Code = "PAYTM", DisplayName = "Paytm", Category = "Online", HasTidBatch = false, DisplayOrder = 6, IsActive = true, IsSystem = false, CreatedAt = now },
+                    new() { Code = "QR", DisplayName = "QR / Online", Category = "Online", HasTidBatch = false, DisplayOrder = 7, IsActive = true, IsSystem = false, CreatedAt = now },
+                    new() { Code = "MOBIKWIK", DisplayName = "Mobikwik", Category = "Online", HasTidBatch = false, DisplayOrder = 8, IsActive = true, IsSystem = false, CreatedAt = now },
                     new() { Code = "CASH_DEPOSIT", DisplayName = "Cash Deposit (Bank)", Category = "Cash", HasTidBatch = false, DisplayOrder = 9, IsActive = true, IsSystem = true, CreatedAt = now },
                     new() { Code = "OTHERS", DisplayName = "Other Online / UPI", Category = "Other", HasTidBatch = false, DisplayOrder = 10, IsActive = true, IsSystem = true, CreatedAt = now }
                 };
@@ -1471,6 +1475,7 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
 
             var targetTypes = allTypes
                 .Where(x => !matchedCodes.Contains(x.Code))
+                .Where(x => !x.IsManualOnly)
                 .Where(x => (x.IsActive && IsEnabledForCurrentShift(x)) || existingItems.Any(item => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(item.CollectionTypeCode), PaymentCollection.NormalizeCollectionTypeCode(x.Code), StringComparison.OrdinalIgnoreCase) && item.Amount > 0))
                 .OrderBy(x => x.DisplayOrder)
                 .ToList();
@@ -1604,7 +1609,7 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
             // Synchronize Manual-only Collections (Active types where both TID and OTP are disabled)
             var manualTypes = allTypes
                 .Where(x => !matchedCodes.Contains(x.Code))
-                .Where(x => !x.HasTidBatch && !x.IsOtpEligible)
+                .Where(x => x.IsManualOnly)
                 .Where(x => (x.IsActive && IsEnabledForCurrentShift(x)) || existingItems.Any(item => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(item.CollectionTypeCode), PaymentCollection.NormalizeCollectionTypeCode(x.Code), StringComparison.OrdinalIgnoreCase) && item.Amount > 0))
                 .OrderBy(x => x.DisplayOrder)
                 .ToList();
@@ -1614,8 +1619,8 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
                 var normCode = PaymentCollection.NormalizeCollectionTypeCode(item.CollectionTypeCode);
                 var master = allTypes.FirstOrDefault(m => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(m.Code), normCode, StringComparison.OrdinalIgnoreCase));
                 bool isManual = master != null 
-                    ? (!master.HasTidBatch && !master.IsOtpEligible)
-                    : (item.TransactionId != null && item.TransactionId.StartsWith("manual-scalar-", StringComparison.OrdinalIgnoreCase));
+                    ? master.IsManualOnly
+                    : ((item.TransactionId != null && item.TransactionId.StartsWith("manual-scalar-", StringComparison.OrdinalIgnoreCase)) || (string.IsNullOrWhiteSpace(item.Tid) && string.IsNullOrWhiteSpace(item.Batch)));
                 if (isManual && !manualTypes.Any(t => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(t.Code), normCode, StringComparison.OrdinalIgnoreCase)))
                 {
                     manualTypes.Add(new CollectionTypeMaster
@@ -1697,6 +1702,8 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
                         if (!string.IsNullOrWhiteSpace(item.Otp))
                         {
                             var normType = PaymentCollection.NormalizeCollectionTypeCode(item.CollectionTypeCode);
+                            var master = allTypes.FirstOrDefault(m => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(m.Code), normType, StringComparison.OrdinalIgnoreCase));
+                            if (master != null && master.IsManualOnly) continue;
                             var slot = !string.IsNullOrWhiteSpace(item.Slot) ? item.Slot : PaymentCollection.ExtractSlotFromMode(item.CollectionTypeCode, "General");
                             var (sharedTid, sharedBatch) = GetSharedTidBatch(normType, slot);
                             OtpTransactions.Add(new DsmOtpTransactionRow
@@ -1719,8 +1726,11 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
                         {
                             var normType = PaymentCollection.NormalizeCollectionTypeCode(item.CollectionTypeCode);
                             var master = allTypes.FirstOrDefault(m => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(m.Code), normType, StringComparison.OrdinalIgnoreCase));
+                            bool isManualOnly = master != null && master.IsManualOnly;
                             bool isExplicitManualScalar = !string.IsNullOrWhiteSpace(item.TransactionId) && item.TransactionId.StartsWith("manual-scalar-", StringComparison.OrdinalIgnoreCase);
-                            bool isTidItem = !isExplicitManualScalar || (master != null && master.HasTidBatch);
+                            bool hasTidOrBatch = !string.IsNullOrWhiteSpace(item.Tid) || !string.IsNullOrWhiteSpace(item.Batch);
+                            bool isTidItem = !isManualOnly && !isExplicitManualScalar && (master == null || master.HasTidBatch) &&
+                                (hasTidOrBatch || string.Equals(normType, "PINELABS_CARD", StringComparison.OrdinalIgnoreCase));
 
                             if (isTidItem && (!PaymentCollection.IsStandardCollectionCode(normType) || normType is "PHONEPE" or "PETROCARD" or "CREDIT_CARD"))
                             {

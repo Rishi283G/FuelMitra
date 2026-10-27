@@ -57,6 +57,18 @@ export interface ManualTidTransactionItem {
   slot: string;
 }
 
+export function isOtpEligibleType(ct: DynamicCollectionType): boolean {
+  return ct.hasOtp !== undefined && ct.hasOtp !== null ? Boolean(ct.hasOtp) : Boolean(ct.hasTidBatch);
+}
+
+export function isTidEligibleType(ct: DynamicCollectionType): boolean {
+  return Boolean(ct.hasTidBatch);
+}
+
+export function isManualOnlyType(ct: DynamicCollectionType): boolean {
+  return !isTidEligibleType(ct) && !isOtpEligibleType(ct);
+}
+
 export function getDefaultCollectionTypes(): DynamicCollectionType[] {
   return [
     {

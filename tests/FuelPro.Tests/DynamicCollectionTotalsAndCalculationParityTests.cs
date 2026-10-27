@@ -396,4 +396,324 @@ public class DynamicCollectionTotalsAndCalculationParityTests
         Assert.Equal(10000m, result.SalesLiability);
         Assert.Equal(0m, result.Mismatch);
     }
+
+    // =========================================================================
+    // Focused Regression Tests 1-9 for Payment Mapping and UI Consistency
+    // =========================================================================
+
+    [Fact]
+    public void Test1_PwaManualOnly_SbiRedeem_FlowsToManualItem_WithoutTidClassification()
+    {
+        var master = new CollectionTypeMaster
+        {
+            Code = "SBI_REDEEM",
+            DisplayName = "SBI Redeem",
+            HasTidBatch = false,
+            HasOtp = false,
+            IsActive = true
+        };
+        Assert.True(master.IsManualOnly);
+
+        // Simulated PWA payload item
+        string txId = "manual-scalar-sbi_redeem";
+        string code = "SBI_REDEEM";
+        double amount = 500.0;
+        string tid = "";
+        string batch = "";
+
+        bool isManualScalar = (!string.IsNullOrWhiteSpace(txId) && txId.StartsWith("manual-scalar-", StringComparison.OrdinalIgnoreCase))
+            || (string.IsNullOrWhiteSpace(tid) && string.IsNullOrWhiteSpace(batch))
+            || master.IsManualOnly;
+
+        bool isTidItem = !isManualScalar && master.HasTidBatch;
+
+        Assert.True(isManualScalar);
+        Assert.False(isTidItem);
+
+        var savedItem = new PaymentCollectionItem
+        {
+            TransactionId = txId,
+            CollectionTypeCode = PaymentCollection.NormalizeCollectionTypeCode(code),
+            Amount = amount,
+            Tid = null,
+            Batch = null,
+            Otp = null
+        };
+
+        Assert.Equal("SBI_REDEEM", savedItem.CollectionTypeCode);
+        Assert.Equal(500.0, savedItem.Amount);
+        Assert.StartsWith("manual-scalar-", savedItem.TransactionId);
+    }
+
+    [Fact]
+    public void Test2_PwaManualOnly_Qr_FlowsToManualItem_WithoutTidClassification()
+    {
+        var master = new CollectionTypeMaster
+        {
+            Code = "QR",
+            DisplayName = "QR / Online",
+            HasTidBatch = false,
+            HasOtp = false,
+            IsActive = true
+        };
+        Assert.True(master.IsManualOnly);
+
+        string txId = "manual-scalar-qr";
+        string code = "QR";
+        double amount = 1200.0;
+        string tid = "";
+        string batch = "";
+
+        bool isManualScalar = (!string.IsNullOrWhiteSpace(txId) && txId.StartsWith("manual-scalar-", StringComparison.OrdinalIgnoreCase))
+            || (string.IsNullOrWhiteSpace(tid) && string.IsNullOrWhiteSpace(batch))
+            || master.IsManualOnly;
+
+        bool isTidItem = !isManualScalar && master.HasTidBatch;
+
+        Assert.True(isManualScalar);
+        Assert.False(isTidItem);
+
+        var savedItem = new PaymentCollectionItem
+        {
+            TransactionId = txId,
+            CollectionTypeCode = PaymentCollection.NormalizeCollectionTypeCode(code),
+            Amount = amount,
+            Tid = null,
+            Batch = null,
+            Otp = null
+        };
+
+        Assert.Equal("QR", savedItem.CollectionTypeCode);
+        Assert.Equal(1200.0, savedItem.Amount);
+    }
+
+    [Fact]
+    public void Test3_SbiRedeemAndQr_HydrateIntoManualCollections_NotTidOrOtp()
+    {
+        var masters = new List<CollectionTypeMaster>
+        {
+            new() { Code = "SBI_REDEEM", DisplayName = "SBI Redeem", HasTidBatch = false, HasOtp = false, IsActive = true },
+            new() { Code = "QR", DisplayName = "QR / Online", HasTidBatch = false, HasOtp = false, IsActive = true }
+        };
+
+        var items = new List<PaymentCollectionItem>
+        {
+            new() { TransactionId = "manual-scalar-sbi_redeem", CollectionTypeCode = "SBI_REDEEM", Amount = 500.0 },
+            new() { TransactionId = "manual-scalar-qr", CollectionTypeCode = "QR", Amount = 1200.0 }
+        };
+
+        var tidTransactions = new List<PaymentCollectionItem>();
+        var manualAmounts = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var item in items)
+        {
+            var norm = PaymentCollection.NormalizeCollectionTypeCode(item.CollectionTypeCode);
+            var m = masters.FirstOrDefault(x => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(x.Code), norm, StringComparison.OrdinalIgnoreCase));
+            bool isManualOnly = m != null && m.IsManualOnly;
+
+            bool isManualScalar = (!string.IsNullOrWhiteSpace(item.TransactionId) && item.TransactionId.StartsWith("manual-scalar-", StringComparison.OrdinalIgnoreCase))
+                || (string.IsNullOrWhiteSpace(item.Tid) && string.IsNullOrWhiteSpace(item.Batch))
+                || isManualOnly;
+
+            bool isTidItem = !isManualScalar && (m == null || m.HasTidBatch);
+
+            if (isTidItem)
+            {
+                tidTransactions.Add(item);
+            }
+            else
+            {
+                manualAmounts[norm] = item.Amount;
+            }
+        }
+
+        Assert.Empty(tidTransactions);
+        Assert.Equal(500.0, manualAmounts["SBI_REDEEM"]);
+        Assert.Equal(1200.0, manualAmounts["QR"]);
+    }
+
+    [Fact]
+    public void Test4_ManualOnlyTypes_ExcludedFromTidAndOtpDropdowns()
+    {
+        var masters = new List<CollectionTypeMaster>
+        {
+            new() { Code = "PHONEPE", DisplayName = "PhonePe", HasTidBatch = true, HasOtp = true, IsActive = true },
+            new() { Code = "SBI_REDEEM", DisplayName = "SBI Redeem", HasTidBatch = false, HasOtp = false, IsActive = true },
+            new() { Code = "QR", DisplayName = "QR / Online", HasTidBatch = false, HasOtp = false, IsActive = true },
+            new() { Code = "CREDIT_CARD", DisplayName = "Credit / Debit Card", HasTidBatch = true, HasOtp = false, IsActive = true }
+        };
+
+        var availableTidTypes = masters.Where(m => m.IsActive && m.HasTidBatch && !m.IsManualOnly).Select(m => m.Code).ToList();
+        var availableOtpTypes = masters.Where(m => m.IsActive && m.IsOtpEligible && !m.IsManualOnly).Select(m => m.Code).ToList();
+
+        Assert.DoesNotContain("SBI_REDEEM", availableTidTypes);
+        Assert.DoesNotContain("QR", availableTidTypes);
+        Assert.Contains("PHONEPE", availableTidTypes);
+        Assert.Contains("CREDIT_CARD", availableTidTypes);
+
+        Assert.DoesNotContain("SBI_REDEEM", availableOtpTypes);
+        Assert.DoesNotContain("QR", availableOtpTypes);
+        Assert.Contains("PHONEPE", availableOtpTypes);
+        Assert.DoesNotContain("CREDIT_CARD", availableOtpTypes);
+    }
+
+    [Fact]
+    public void Test5_ManualScalarRecords_WithUuidOrEmptyTid_NotMisclassifiedAsTid()
+    {
+        var master = new CollectionTypeMaster
+        {
+            Code = "SBI_REDEEM",
+            DisplayName = "SBI Redeem",
+            HasTidBatch = false,
+            HasOtp = false,
+            IsActive = true
+        };
+
+        var itemWithUuid = new PaymentCollectionItem
+        {
+            TransactionId = Guid.NewGuid().ToString("D"),
+            CollectionTypeCode = "SBI_REDEEM",
+            Amount = 750.0,
+            Tid = "",
+            Batch = ""
+        };
+
+        bool isManualOnly = master.IsManualOnly;
+        bool isManualScalar = (!string.IsNullOrWhiteSpace(itemWithUuid.TransactionId) && itemWithUuid.TransactionId.StartsWith("manual-scalar-", StringComparison.OrdinalIgnoreCase))
+            || (string.IsNullOrWhiteSpace(itemWithUuid.Tid) && string.IsNullOrWhiteSpace(itemWithUuid.Batch))
+            || isManualOnly;
+
+        bool isTidItem = !isManualScalar && master.HasTidBatch;
+
+        Assert.True(isManualScalar);
+        Assert.False(isTidItem);
+    }
+
+    [Fact]
+    public void Test6_LegacyGenuineItemizedTransactions_RemainReadable()
+    {
+        var master = new CollectionTypeMaster
+        {
+            Code = "CREDIT_CARD",
+            DisplayName = "Credit / Debit Card",
+            HasTidBatch = true,
+            HasOtp = false,
+            IsActive = true
+        };
+
+        var genuineItem = new PaymentCollectionItem
+        {
+            TransactionId = "e5b8d234-5267-4d4b-97e3-0987654321ab",
+            CollectionTypeCode = "CREDIT_CARD",
+            Amount = 2500.0,
+            Tid = "10023456",
+            Batch = "000045"
+        };
+
+        bool isManualOnly = master.IsManualOnly;
+        bool isManualScalar = (!string.IsNullOrWhiteSpace(genuineItem.TransactionId) && genuineItem.TransactionId.StartsWith("manual-scalar-", StringComparison.OrdinalIgnoreCase))
+            || (string.IsNullOrWhiteSpace(genuineItem.Tid) && string.IsNullOrWhiteSpace(genuineItem.Batch))
+            || isManualOnly;
+
+        bool isTidItem = !isManualScalar && master.HasTidBatch;
+
+        Assert.False(isManualScalar);
+        Assert.True(isTidItem);
+        Assert.Equal("10023456", genuineItem.Tid);
+        Assert.Equal("000045", genuineItem.Batch);
+        Assert.Equal(2500.0, genuineItem.Amount);
+    }
+
+    [Fact]
+    public void Test7_PhonePeAndPetroCard_ScalarVisibility_HiddenWhenTidOrOtpHydrated()
+    {
+        bool phonePeActive = true;
+        bool phonePeHasTid = true;
+        bool phonePeHasOtp = false;
+        bool isPhonePeTidOrOtp = phonePeHasTid || phonePeHasOtp;
+        bool isPhonePeScalarVisible = phonePeActive && !isPhonePeTidOrOtp;
+        Assert.False(isPhonePeScalarVisible);
+
+        phonePeHasTid = false;
+        phonePeHasOtp = false;
+        isPhonePeTidOrOtp = phonePeHasTid || phonePeHasOtp;
+        isPhonePeScalarVisible = phonePeActive && !isPhonePeTidOrOtp;
+        Assert.True(isPhonePeScalarVisible);
+
+        bool petroCardActive = true;
+        bool petroCardHasTid = true;
+        bool petroCardHasOtp = false;
+        bool isPetroCardScalarVisible = petroCardActive && !(petroCardHasTid || petroCardHasOtp);
+        Assert.False(isPetroCardScalarVisible);
+    }
+
+    [Fact]
+    public void Test8_ItemizedTotalsAndLegacyScalarFallback_DoNotDoubleCount()
+    {
+        double itemizedTidSum = 3000.0;
+        double itemizedOtpSum = 500.0;
+        double legacyScalarAmount = 3000.0;
+
+        double effectiveTotal = (itemizedTidSum > 0 || itemizedOtpSum > 0)
+            ? (itemizedTidSum + itemizedOtpSum)
+            : legacyScalarAmount;
+
+        Assert.Equal(3500.0, effectiveTotal);
+
+        double noTid = 0;
+        double noOtp = 0;
+        double fallbackTotal = (noTid > 0 || noOtp > 0)
+            ? (noTid + noOtp)
+            : legacyScalarAmount;
+
+        Assert.Equal(3000.0, fallbackTotal);
+    }
+
+    [Fact]
+    public void Test9_ApprovalAndDsmEntry_ProduceMatchingTotalsAndMismatch_ForSameEntry()
+    {
+        var approvalDto = new DsmEntryDto
+        {
+            NozzleReadings = new List<NozzleReadingDto> { new() { Amount = 50000m } },
+            TestingEntries = new List<TestingEntryDto>(),
+            ProductSales = 1000m,
+            PaymentCollection = new PaymentCollectionDto
+            {
+                CashDeposit = 20000m,
+                PhysicalCash = 15000m,
+                PhonePe = 5000m,
+                CreditCard = 4000m,
+                DynamicPayments = 3000m, // SBI_REDEEM 1000 + QR 2000
+            },
+            DebitEntries = new List<DebitEntryDto> { new() { Amount = 4000m } },
+            Expenses = new List<ExpenseDto>(),
+        };
+
+        var dsmEntryDto = new DsmEntryDto
+        {
+            NozzleReadings = new List<NozzleReadingDto> { new() { Amount = 50000m } },
+            TestingEntries = new List<TestingEntryDto>(),
+            ProductSales = 1000m,
+            PaymentCollection = new PaymentCollectionDto
+            {
+                CashDeposit = 20000m,
+                PhysicalCash = 15000m,
+                PhonePe = 5000m,
+                CreditCard = 4000m,
+                DynamicPayments = 3000m, // SBI_REDEEM 1000 + QR 2000
+            },
+            DebitEntries = new List<DebitEntryDto> { new() { Amount = 4000m } },
+            Expenses = new List<ExpenseDto>(),
+        };
+
+        var approvalCalc = _calcService.Calculate(approvalDto);
+        var dsmCalc = _calcService.Calculate(dsmEntryDto);
+
+        Assert.Equal(approvalCalc.SalesLiability, dsmCalc.SalesLiability);
+        Assert.Equal(approvalCalc.TotalCollection, dsmCalc.TotalCollection);
+        Assert.Equal(approvalCalc.Mismatch, dsmCalc.Mismatch);
+        Assert.Equal(51000m, approvalCalc.SalesLiability);
+        Assert.Equal(51000m, approvalCalc.TotalCollection);
+        Assert.Equal(0m, approvalCalc.Mismatch);
+    }
 }

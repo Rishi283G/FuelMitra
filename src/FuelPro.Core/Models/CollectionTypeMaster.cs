@@ -79,6 +79,13 @@ public class CollectionTypeMaster : ObservableObject
     [NotMapped]
     public bool IsOtpEligible => HasOtp ?? HasTidBatch;
 
+    /// <summary>
+    /// Derived helper to determine if this collection type is manual-only (both TID and OTP disabled).
+    /// Contract: HasTidBatch == false && !(HasOtp ?? HasTidBatch)
+    /// </summary>
+    [NotMapped]
+    public bool IsManualOnly => !HasTidBatch && !IsOtpEligible;
+
     private int _displayOrder = 0;
     /// <summary>
     /// Display order in collection tables and grids.

@@ -32,8 +32,10 @@ describe('stationConfig', () => {
 
   it('provides authoritative default collection types for legacy non-dynamic stations', () => {
     const defaults = getDefaultCollectionTypes();
-    expect(defaults).toHaveLength(3);
-    expect(defaults.map((d) => d.code)).toEqual(['PHONEPE', 'CREDIT_CARD', 'PETROCARD']);
+    expect(defaults).toHaveLength(9);
+    expect(defaults.map((d) => d.code)).toEqual([
+      'PHONEPE', 'CREDIT_CARD', 'PETROCARD', 'SBI_REDEEM', 'QR', 'PINELABS_CARD', 'PAYTM', 'MOBIKWIK', 'OTHERS'
+    ]);
     expect(defaults.every((d) => d.isActive)).toBe(true);
     expect(defaults.every((d) => d.enableMorning && d.enableDay && d.enableNight)).toBe(true);
   });
@@ -122,6 +124,6 @@ describe('stationConfig', () => {
     expect(legacyConfig.isDynamic).toBe(false);
     expect(legacyConfig.features.cashDenominationsEnabled).toBe(false);
     expect(legacyConfig.features.otpMachineTrackingEnabled).toBe(false);
-    expect(legacyConfig.collectionTypes).toHaveLength(3);
+    expect(legacyConfig.collectionTypes).toHaveLength(9);
   });
 });

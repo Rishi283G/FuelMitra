@@ -7,6 +7,9 @@ import {
   fetchStationConfig,
   getDefaultStationConfig,
   resolveFuelRate,
+  isOtpEligibleType,
+  isTidEligibleType,
+  isManualOnlyType,
   type StationConfig,
   type OtpTransactionItem,
   type ManualTidTransactionItem,
@@ -340,14 +343,12 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     Record<string, { amount: number; tid: string; batch: string; otp?: string }>
   >({});
 
-  // Configuration-driven Manual-only eligibility: HasTidBatch == false && HasOtp == false
+  // Configuration-driven Manual-only eligibility: HasTidBatch == false && !(HasOtp ?? HasTidBatch)
   const manualOnlyTypes = useMemo(() => {
     const list: { code: string; displayName: string }[] = [];
     if (stationConfig?.collectionTypes) {
       for (const ct of stationConfig.collectionTypes) {
-        const isOtpEligible = ct.hasOtp !== undefined && ct.hasOtp !== null ? Boolean(ct.hasOtp) : Boolean(ct.hasTidBatch);
-        const isTidEligible = Boolean(ct.hasTidBatch);
-        if (!isTidEligible && !isOtpEligible && ct.isActive !== false) {
+        if (isManualOnlyType(ct) && ct.isActive !== false) {
           list.push({ code: ct.code, displayName: ct.displayName || ct.code });
         }
       }
@@ -359,19 +360,16 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   const isTidOrOtpEnabledForType = (code: string) => {
     const ct = (stationConfig?.collectionTypes || []).find((c) => c.code.toUpperCase() === code.toUpperCase());
     if (!ct) return true; // Default built-ins (PETROCARD, CREDIT_CARD, PHONEPE) default to TID/OTP enabled
-    const isTid = Boolean(ct.hasTidBatch);
-    const isOtp = ct.hasOtp !== undefined && ct.hasOtp !== null ? Boolean(ct.hasOtp) : Boolean(ct.hasTidBatch);
-    return isTid || isOtp;
+    return isTidEligibleType(ct) || isOtpEligibleType(ct);
   };
 
   // Shared configuration-driven eligibility:
-  // Strictly filter OTP dropdown by developer settings: ct.hasOtp === true
+  // Strictly filter OTP dropdown by developer settings: ct.hasOtp === true, strictly excluding manual-only
   const eligibleOtpTypes = useMemo(() => {
     const list: { code: string; displayName: string }[] = [];
     if (otpMachineTrackingEnabled && stationConfig?.collectionTypes) {
       for (const ct of stationConfig.collectionTypes) {
-        const isOtpEligible = ct.hasOtp !== undefined && ct.hasOtp !== null ? Boolean(ct.hasOtp) : Boolean(ct.hasTidBatch);
-        if (isOtpEligible && ct.isActive !== false) {
+        if (isOtpEligibleType(ct) && !isManualOnlyType(ct) && ct.isActive !== false) {
           list.push({ code: ct.code, displayName: ct.displayName || ct.code });
         }
       }
@@ -388,12 +386,12 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   const [newManualSlot, setNewManualSlot] = useState("General");
   const [isCustomTid, setIsCustomTid] = useState(false);
 
-  // Configuration-driven TID eligibility: HasTidBatch = true
+  // Configuration-driven TID eligibility: HasTidBatch = true, strictly excluding manual-only
   const eligibleTidTypes = useMemo(() => {
     const list: { code: string; displayName: string }[] = [];
     if (stationConfig?.collectionTypes) {
       for (const ct of stationConfig.collectionTypes) {
-        if (Boolean(ct.hasTidBatch) && ct.isActive !== false) {
+        if (isTidEligibleType(ct) && !isManualOnlyType(ct) && ct.isActive !== false) {
           list.push({ code: ct.code, displayName: ct.displayName || ct.code });
         }
       }
@@ -750,29 +748,61 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       setSalesQuantities(parsed.salesQuantities ?? {});
       setKhandhareEntries(parsed.khandhareEntries ?? []);
       setQrPayments(parsed.qrPayments ?? []);
-      if (parsed.machineTransactions) setMachineTransactions(parsed.machineTransactions);
-      if (parsed.manualDynamicAmounts) setManualDynamicAmounts(parsed.manualDynamicAmounts);
-      const restoredTids: ManualTidTransactionItem[] = parsed.manualTidTransactions ? [...parsed.manualTidTransactions] : [];
+      const restoredManualAmounts: Record<string, number> = { ...(parsed.manualDynamicAmounts || {}) };
+      const rawMachine = parsed.machineTransactions || [];
+      const cleanMachine = rawMachine.filter((m: any) => {
+        const mCode = m.collectionTypeCode?.toUpperCase();
+        const ct = (stationConfig?.collectionTypes || []).find((c) => c.code.toUpperCase() === mCode);
+        return !ct || !isManualOnlyType(ct);
+      });
+      setMachineTransactions(cleanMachine);
+
+      const rawTids: ManualTidTransactionItem[] = parsed.manualTidTransactions ? [...parsed.manualTidTransactions] : [];
+      const cleanedTids: ManualTidTransactionItem[] = [];
+
+      rawTids.forEach((t) => {
+        const tCode = t.collectionTypeCode.toUpperCase();
+        const ct = (stationConfig?.collectionTypes || []).find((c) => c.code.toUpperCase() === tCode);
+        const isManual = (t.id && t.id.startsWith("manual-scalar-")) || (ct && isManualOnlyType(ct));
+        if (isManual) {
+          if (!restoredManualAmounts[tCode] && t.amount > 0) {
+            restoredManualAmounts[tCode] = t.amount;
+          }
+        } else {
+          cleanedTids.push(t);
+        }
+      });
+
       if (parsed.dynamicValues) {
         Object.entries(parsed.dynamicValues).forEach(([code, val]: [string, any]) => {
           const amt = Number(val?.amount) || 0;
           if (amt > 0) {
-            const hasTid = restoredTids.some((t) => t.collectionTypeCode.toUpperCase() === code.toUpperCase());
-            const hasOtp = (parsed.machineTransactions || []).some((m: any) => m.collectionTypeCode?.toUpperCase() === code.toUpperCase());
-            if (!hasTid && !hasOtp) {
-              restoredTids.push({
-                id: `legacy-${code}-${Date.now()}`,
-                collectionTypeCode: code,
-                amount: amt,
-                tid: val?.tid || "",
-                batch: val?.batch || "",
-                slot: val?.slot || (parsed.shiftType === "B" ? "Day" : "Morning"),
-              });
+            const uCode = code.toUpperCase();
+            const ct = (stationConfig?.collectionTypes || []).find((c) => c.code.toUpperCase() === uCode);
+            if (ct && isManualOnlyType(ct)) {
+              if (!restoredManualAmounts[uCode]) {
+                restoredManualAmounts[uCode] = amt;
+              }
+            } else {
+              const hasTid = cleanedTids.some((t) => t.collectionTypeCode.toUpperCase() === uCode);
+              const hasOtp = cleanMachine.some((m: any) => m.collectionTypeCode?.toUpperCase() === uCode);
+              if (!hasTid && !hasOtp) {
+                cleanedTids.push({
+                  id: `legacy-${code}-${Date.now()}`,
+                  collectionTypeCode: code,
+                  amount: amt,
+                  tid: val?.tid || "",
+                  batch: val?.batch || "",
+                  slot: val?.slot || (parsed.shiftType === "B" ? "Day" : "Morning"),
+                });
+              }
             }
           }
         });
       }
-      setManualTidTransactions(restoredTids);
+
+      setManualDynamicAmounts(restoredManualAmounts);
+      setManualTidTransactions(cleanedTids);
       setDynamicValues({});
       if (parsed.qrPayments && parsed.qrPayments.length > 0) {
         setShowCrossQrSection(true);
@@ -861,7 +891,10 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       khandhareEntries,
       qrPayments,
       machineTransactions,
-      manualTidTransactions,
+      manualTidTransactions: manualTidTransactions.filter((tx) => {
+        const ct = (stationConfig?.collectionTypes || []).find((c) => c.code.toUpperCase() === tx.collectionTypeCode.toUpperCase());
+        return !ct || !isManualOnlyType(ct);
+      }),
       manualDynamicAmounts,
       dynamicValues,
       step,
@@ -2034,8 +2067,10 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
 
     const dynamicItemsPayload: any[] = [];
 
-    // 1. Ingest itemized manual TID transactions with their stable transactionId
+    // 1. Ingest itemized manual TID transactions with their stable transactionId (strictly excluding manual-only types)
     manualTidTransactions.forEach((tx) => {
+      const ct = (stationConfig?.collectionTypes || []).find((c) => c.code.toUpperCase() === tx.collectionTypeCode.toUpperCase());
+      if (ct && isManualOnlyType(ct)) return;
       if (tx.amount > 0) {
         dynamicItemsPayload.push({
           transactionId: tx.id,

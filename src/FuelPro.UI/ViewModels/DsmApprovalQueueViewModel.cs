@@ -270,6 +270,53 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
     private readonly IFeatureToggleService? _featureToggleService;
     private readonly ICollectionTypeService? _collectionTypeService;
     private List<CollectionTypeMaster>? _availableCollectionTypes;
+
+    private List<CollectionTypeMaster> GetCollectionTypesSnapshot()
+    {
+        if (_availableCollectionTypes != null && _availableCollectionTypes.Count > 0)
+            return _availableCollectionTypes;
+
+        var now = DateTime.Now;
+        _availableCollectionTypes = new List<CollectionTypeMaster>
+        {
+            new() { Code = "PHONEPE", DisplayName = "PhonePe", Category = "Online", HasTidBatch = true, DisplayOrder = 1, IsActive = true, IsSystem = true, CreatedAt = now },
+            new() { Code = "CREDIT_CARD", DisplayName = "Credit / Debit Card", Category = "Card", HasTidBatch = true, DisplayOrder = 2, IsActive = false, IsSystem = true, CreatedAt = now },
+            new() { Code = "PETROCARD", DisplayName = "PetroCard", Category = "Card", HasTidBatch = true, DisplayOrder = 3, IsActive = true, IsSystem = true, CreatedAt = now },
+            new() { Code = "PINELABS_CARD", DisplayName = "Pine Labs Card", Category = "Card", HasTidBatch = true, DisplayOrder = 4, IsActive = true, IsSystem = true, CreatedAt = now },
+            new() { Code = "SBI_REDEEM", DisplayName = "SBI Redeem", Category = "Card", HasTidBatch = false, DisplayOrder = 5, IsActive = true, IsSystem = false, CreatedAt = now },
+            new() { Code = "PAYTM", DisplayName = "Paytm", Category = "Online", HasTidBatch = false, DisplayOrder = 6, IsActive = true, IsSystem = false, CreatedAt = now },
+            new() { Code = "QR", DisplayName = "QR / Online", Category = "Online", HasTidBatch = false, DisplayOrder = 7, IsActive = true, IsSystem = false, CreatedAt = now },
+            new() { Code = "MOBIKWIK", DisplayName = "Mobikwik", Category = "Online", HasTidBatch = false, DisplayOrder = 8, IsActive = true, IsSystem = false, CreatedAt = now },
+            new() { Code = "CASH_DEPOSIT", DisplayName = "Cash Deposit (Bank)", Category = "Cash", HasTidBatch = false, DisplayOrder = 9, IsActive = true, IsSystem = true, CreatedAt = now },
+            new() { Code = "OTHERS", DisplayName = "Other Online / UPI", Category = "Other", HasTidBatch = false, DisplayOrder = 10, IsActive = true, IsSystem = true, CreatedAt = now }
+        };
+        return _availableCollectionTypes;
+    }
+
+    private async Task EnsureAvailableCollectionTypesAsync()
+    {
+        if (_availableCollectionTypes != null && _availableCollectionTypes.Count > 0)
+            return;
+
+        try
+        {
+            if (_collectionTypeService != null)
+            {
+                var types = await _collectionTypeService.GetAllCollectionTypesAsync();
+                if (types != null && types.Count > 0)
+                {
+                    _availableCollectionTypes = types;
+                    return;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning(ex, "Failed to load collection types from collection type service, using fallback snapshot");
+        }
+
+        GetCollectionTypesSnapshot();
+    }
     private readonly IShiftCycleService _shiftCycleService;
     private readonly Action? _featureChangedHandler;
     private readonly ILogger _logger = Log.ForContext<DsmApprovalQueueViewModel>();
@@ -494,21 +541,32 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
 
     [ObservableProperty] private string _phonePeDisplayName = "PhonePe";
     [ObservableProperty] private bool _phonePeHasTidBatch = true;
+    [ObservableProperty] private bool _phonePeHasOtp;
     [ObservableProperty] private bool _phonePeIsActive = true;
     [ObservableProperty] private bool _phonePeEnableMorning = true;
     [ObservableProperty] private bool _phonePeEnableNight = true;
 
     [ObservableProperty] private string _creditCardDisplayName = "Credit / Debit Card";
     [ObservableProperty] private bool _creditCardHasTidBatch = true;
+    [ObservableProperty] private bool _creditCardHasOtp;
     [ObservableProperty] private bool _creditCardIsActive;
     [ObservableProperty] private bool _creditCardEnableMorning = true;
     [ObservableProperty] private bool _creditCardEnableNight = true;
 
     [ObservableProperty] private string _petroCardDisplayName = "PetroCard";
     [ObservableProperty] private bool _petroCardHasTidBatch = true;
+    [ObservableProperty] private bool _petroCardHasOtp;
     [ObservableProperty] private bool _petroCardIsActive = true;
     [ObservableProperty] private bool _petroCardEnableMorning = true;
     [ObservableProperty] private bool _petroCardEnableNight = true;
+
+    public bool IsPhonePeTidOrOtp => PhonePeHasTidBatch || PhonePeHasOtp;
+    public bool IsCreditCardTidOrOtp => CreditCardHasTidBatch || CreditCardHasOtp;
+    public bool IsPetroCardTidOrOtp => PetroCardHasTidBatch || PetroCardHasOtp;
+
+    public bool IsPhonePeScalarVisible => PhonePeIsActive && !IsPhonePeTidOrOtp;
+    public bool IsCreditCardScalarVisible => CreditCardIsActive && !IsCreditCardTidOrOtp;
+    public bool IsPetroCardScalarVisible => PetroCardIsActive && !IsPetroCardTidOrOtp;
 
     public bool IsNightShift => IsThreeShiftMode 
         ? string.Equals(_shiftCycleService?.NormalizeShiftType(SelectedSubmission?.ShiftType), "C", StringComparison.OrdinalIgnoreCase)
@@ -532,6 +590,75 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
     public ObservableCollection<DynamicCollectionEntryRow> DynamicCollections { get; } = new();
     [ObservableProperty] private bool _hasAmbiguousLegacyDuplicates;
     [ObservableProperty] private string _legacyDuplicateAdvisoryMessage = "";
+    public void UpdateCollectionTypeTotals()
+    {
+        var totals = new List<CollectionTypeTotalDto>();
+        var candidateCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var tx in ManualTidTransactions)
+        {
+            if (!string.IsNullOrWhiteSpace(tx.Mode))
+            {
+                candidateCodes.Add(PaymentCollection.NormalizeCollectionTypeCode(tx.Mode));
+            }
+        }
+        foreach (var tx in CardSwipeDetails.Where(c => !string.IsNullOrWhiteSpace(c.Otp)))
+        {
+            if (!string.IsNullOrWhiteSpace(tx.Mode))
+            {
+                candidateCodes.Add(PaymentCollection.NormalizeCollectionTypeCode(tx.Mode));
+            }
+        }
+
+        if (_availableCollectionTypes != null)
+        {
+            foreach (var c in _availableCollectionTypes.Where(m => (m.HasTidBatch || m.IsOtpEligible) && m.IsActive))
+            {
+                candidateCodes.Add(PaymentCollection.NormalizeCollectionTypeCode(c.Code));
+            }
+        }
+
+        foreach (var code in candidateCodes)
+        {
+            double tidSum = ManualTidTransactions
+                .Where(t => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(t.Mode), code, StringComparison.OrdinalIgnoreCase))
+                .Sum(t => t.Amount);
+
+            double otpSum = CardSwipeDetails
+                .Where(t => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(t.Mode), code, StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(t.Otp))
+                .Sum(t => t.Amount);
+
+            if (tidSum > 0 || otpSum > 0)
+            {
+                var master = _availableCollectionTypes?.FirstOrDefault(m => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(m.Code), code, StringComparison.OrdinalIgnoreCase));
+                string displayName = master?.DisplayName ?? (code switch
+                {
+                    "PHONEPE" => "PhonePe",
+                    "CREDIT_CARD" => "Credit / Debit Card",
+                    "PETROCARD" => "PetroCard",
+                    "PINELABS_CARD" => "Pine Labs Card",
+                    _ => code.Replace("_", " ")
+                });
+
+                totals.Add(new CollectionTypeTotalDto
+                {
+                    Code = code,
+                    DisplayName = displayName,
+                    TidAmount = tidSum,
+                    OtpAmount = otpSum,
+                    ManualAmount = 0
+                });
+            }
+        }
+
+        CollectionTypeTotals.Clear();
+        foreach (var item in totals)
+        {
+            CollectionTypeTotals.Add(item);
+        }
+        OnPropertyChanged(nameof(HasCollectionTypeTotals));
+    }
+
     public ObservableCollection<DsmPersonalDebtor> PersonalDebtors { get; } = new();
     public ObservableCollection<KhandharePetroleumEntry> KhandhareEntries { get; } = new();
     public ObservableCollection<DsmQrPaymentEntry> QrPayments { get; } = new();
@@ -539,6 +666,10 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
     public ObservableCollection<Expense> SubmissionExpenses { get; } = new();
     public ObservableCollection<DynamicCollectionSummaryDto> DynamicCollectionSummaries { get; } = new();
     public bool HasDynamicSummaries => DynamicCollectionSummaries.Count > 0;
+    public ObservableCollection<ManualCollectionEntryRow> ManualCollections { get; } = new();
+    public bool HasManualCollections => ManualCollections.Count > 0;
+    public ObservableCollection<CollectionTypeTotalDto> CollectionTypeTotals { get; } = new();
+    public bool HasCollectionTypeTotals => CollectionTypeTotals.Count > 0;
 
     private readonly Dictionary<string, double> _dynamicManualAmounts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _dynamicManualTids = new(StringComparer.OrdinalIgnoreCase);
@@ -997,6 +1128,9 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
 
         try
         {
+            await EnsureAvailableCollectionTypesAsync();
+            var allTypes = _availableCollectionTypes ?? GetCollectionTypesSnapshot();
+
             // 1. Fetch readings from Supabase
             var readingsResult = await _supabaseService.FetchSubmissionReadingsAsync(submission.Id);
             if (!readingsResult.Success)
@@ -1354,25 +1488,43 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                                 if (mtAmt <= 0) continue;
 
                                 string normMtCode = PaymentCollection.NormalizeCollectionTypeCode(mtCode);
-                                string dispMode = ResolveCollectionTypeDisplayName(mtCode);
+                                var master = allTypes.FirstOrDefault(m => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(m.Code), normMtCode, StringComparison.OrdinalIgnoreCase));
+                                bool isManualOnly = master != null && master.IsManualOnly;
+                                bool isManualScalar = (!string.IsNullOrWhiteSpace(mtTxId) && mtTxId.StartsWith("manual-scalar-", StringComparison.OrdinalIgnoreCase))
+                                    || (string.IsNullOrWhiteSpace(mtTid) && string.IsNullOrWhiteSpace(mtBatch))
+                                    || isManualOnly;
 
-                                if (!ManualTidTransactions.Any(m =>
-                                    (!string.IsNullOrWhiteSpace(mtTxId) && string.Equals(m.TransactionId, mtTxId, StringComparison.OrdinalIgnoreCase))
-                                    || (string.Equals(PaymentCollection.NormalizeCollectionTypeCode(m.Mode), normMtCode, StringComparison.OrdinalIgnoreCase)
-                                        && Math.Abs(m.Amount - mtAmt) < 0.001
-                                        && string.Equals(m.Tid, mtTid, StringComparison.OrdinalIgnoreCase)
-                                        && string.Equals(m.Batch, mtBatch, StringComparison.OrdinalIgnoreCase))))
+                                if (isManualScalar)
                                 {
-                                    ManualTidTransactions.Add(new DsmCardSwipeRow
+                                    if (!_dynamicManualAmounts.ContainsKey(normMtCode))
                                     {
-                                        Mode = dispMode,
-                                        Amount = mtAmt,
-                                        Tid = mtTid,
-                                        Batch = mtBatch,
-                                        Slot = mtSlot,
-                                        TransactionId = !string.IsNullOrWhiteSpace(mtTxId) ? mtTxId : Guid.NewGuid().ToString("D"),
-                                        OnRowChanged = RecalculateTotals
-                                    });
+                                        _dynamicManualAmounts[normMtCode] = mtAmt;
+                                        _dynamicManualTids[normMtCode] = mtTid;
+                                        _dynamicManualBatches[normMtCode] = mtBatch;
+                                        _dynamicManualSlots[normMtCode] = mtSlot;
+                                    }
+                                }
+                                else
+                                {
+                                    string dispMode = ResolveCollectionTypeDisplayName(mtCode);
+                                    if (!ManualTidTransactions.Any(m =>
+                                        (!string.IsNullOrWhiteSpace(mtTxId) && string.Equals(m.TransactionId, mtTxId, StringComparison.OrdinalIgnoreCase))
+                                        || (string.Equals(PaymentCollection.NormalizeCollectionTypeCode(m.Mode), normMtCode, StringComparison.OrdinalIgnoreCase)
+                                            && Math.Abs(m.Amount - mtAmt) < 0.001
+                                            && string.Equals(m.Tid, mtTid, StringComparison.OrdinalIgnoreCase)
+                                            && string.Equals(m.Batch, mtBatch, StringComparison.OrdinalIgnoreCase))))
+                                    {
+                                        ManualTidTransactions.Add(new DsmCardSwipeRow
+                                        {
+                                            Mode = dispMode,
+                                            Amount = mtAmt,
+                                            Tid = mtTid,
+                                            Batch = mtBatch,
+                                            Slot = mtSlot,
+                                            TransactionId = !string.IsNullOrWhiteSpace(mtTxId) ? mtTxId : Guid.NewGuid().ToString("D"),
+                                            OnRowChanged = RecalculateTotals
+                                        });
+                                    }
                                 }
                             }
                         }
@@ -1462,9 +1614,12 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                                     }
                                     else
                                     {
+                                        var master = allTypes.FirstOrDefault(m => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(m.Code), normDCode, StringComparison.OrdinalIgnoreCase));
+                                        bool isManualOnly = master != null && master.IsManualOnly;
                                         bool isManualScalar = (!string.IsNullOrWhiteSpace(dTxId) && dTxId.StartsWith("manual-scalar-", StringComparison.OrdinalIgnoreCase))
-                                            || (string.IsNullOrWhiteSpace(dTid) && string.IsNullOrWhiteSpace(dBatch));
-                                        bool isTidItem = !isManualScalar;
+                                            || (string.IsNullOrWhiteSpace(dTid) && string.IsNullOrWhiteSpace(dBatch))
+                                            || isManualOnly;
+                                        bool isTidItem = !isManualScalar && (master == null || master.HasTidBatch);
                                         if (isTidItem)
                                         {
                                             string dispMode = ResolveCollectionTypeDisplayName(dCode);
@@ -2135,6 +2290,19 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
         TotalLitres = NozzleReadings.Sum(r => r.SaleLitres);
         UpdateFuelTypeSummaries();
 
+        foreach (var mRow in ManualCollections)
+        {
+            var norm = PaymentCollection.NormalizeCollectionTypeCode(mRow.Code);
+            if (mRow.Amount.HasValue && mRow.Amount.Value > 0)
+            {
+                _dynamicManualAmounts[norm] = mRow.Amount.Value;
+            }
+            else
+            {
+                _dynamicManualAmounts.Remove(norm);
+            }
+        }
+
         // Keep CreditAmount in sync when itemized DebtorEntries exist with non-zero amounts
         if (DebtorEntries.Count > 0)
         {
@@ -2356,6 +2524,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
         TotalPaymentIn = (double)calc.TotalInDirect;
         double totalSalesLiability = (double)calc.SalesLiability;
         MismatchAmount = (double)calc.Mismatch;
+        UpdateCollectionTypeTotals();
 
         double rawShortage = MismatchAmount < 0 ? Math.Abs(MismatchAmount) : 0;
         double dsmLossAmount = rawShortage; // No tolerance: full shortage is DSM loss
@@ -2458,14 +2627,15 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                     new() { Code = "CREDIT_CARD", DisplayName = "Credit / Debit Card", Category = "Card", HasTidBatch = true, DisplayOrder = 2, IsActive = false, IsSystem = true, CreatedAt = now },
                     new() { Code = "PETROCARD", DisplayName = "PetroCard", Category = "Card", HasTidBatch = true, DisplayOrder = 3, IsActive = true, IsSystem = true, CreatedAt = now },
                     new() { Code = "PINELABS_CARD", DisplayName = "Pine Labs Card", Category = "Card", HasTidBatch = true, DisplayOrder = 4, IsActive = true, IsSystem = true, CreatedAt = now },
-                    new() { Code = "SBI_REDEEM", DisplayName = "SBI Redeem", Category = "Card", HasTidBatch = true, DisplayOrder = 5, IsActive = true, IsSystem = false, CreatedAt = now },
-                    new() { Code = "PAYTM", DisplayName = "Paytm", Category = "Online", HasTidBatch = true, DisplayOrder = 6, IsActive = true, IsSystem = false, CreatedAt = now },
-                    new() { Code = "QR", DisplayName = "QR / Online", Category = "Online", HasTidBatch = true, DisplayOrder = 7, IsActive = true, IsSystem = false, CreatedAt = now },
-                    new() { Code = "MOBIKWIK", DisplayName = "Mobikwik", Category = "Online", HasTidBatch = true, DisplayOrder = 8, IsActive = true, IsSystem = false, CreatedAt = now },
+                    new() { Code = "SBI_REDEEM", DisplayName = "SBI Redeem", Category = "Card", HasTidBatch = false, DisplayOrder = 5, IsActive = true, IsSystem = false, CreatedAt = now },
+                    new() { Code = "PAYTM", DisplayName = "Paytm", Category = "Online", HasTidBatch = false, DisplayOrder = 6, IsActive = true, IsSystem = false, CreatedAt = now },
+                    new() { Code = "QR", DisplayName = "QR / Online", Category = "Online", HasTidBatch = false, DisplayOrder = 7, IsActive = true, IsSystem = false, CreatedAt = now },
+                    new() { Code = "MOBIKWIK", DisplayName = "Mobikwik", Category = "Online", HasTidBatch = false, DisplayOrder = 8, IsActive = true, IsSystem = false, CreatedAt = now },
                     new() { Code = "CASH_DEPOSIT", DisplayName = "Cash Deposit (Bank)", Category = "Cash", HasTidBatch = false, DisplayOrder = 9, IsActive = true, IsSystem = true, CreatedAt = now },
                     new() { Code = "OTHERS", DisplayName = "Other Online / UPI", Category = "Other", HasTidBatch = false, DisplayOrder = 10, IsActive = true, IsSystem = true, CreatedAt = now }
                 };
             }
+            _availableCollectionTypes = allTypes;
 
             bool IsEnabledForCurrentShift(CollectionTypeMaster type)
             {
@@ -2485,6 +2655,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
             {
                 PhonePeDisplayName = ph.DisplayName;
                 PhonePeHasTidBatch = ph.HasTidBatch;
+                PhonePeHasOtp = ph.IsOtpEligible;
                 PhonePeIsActive = (ph.IsActive && IsEnabledForCurrentShift(ph)) || hasHistoricalPhonePe;
                 PhonePeEnableMorning = ph.EnableMorning;
                 PhonePeEnableNight = ph.EnableNight;
@@ -2507,6 +2678,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
             {
                 CreditCardDisplayName = cc.DisplayName;
                 CreditCardHasTidBatch = cc.HasTidBatch;
+                CreditCardHasOtp = cc.IsOtpEligible;
                 CreditCardIsActive = (cc.IsActive && IsEnabledForCurrentShift(cc)) || hasHistoricalCreditCard;
                 CreditCardEnableMorning = cc.EnableMorning;
                 CreditCardEnableNight = cc.EnableNight;
@@ -2528,6 +2700,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
             {
                 PetroCardDisplayName = pc.DisplayName;
                 PetroCardHasTidBatch = pc.HasTidBatch;
+                PetroCardHasOtp = pc.IsOtpEligible;
                 PetroCardIsActive = (pc.IsActive && IsEnabledForCurrentShift(pc)) || hasHistoricalPetroCard;
                 PetroCardEnableMorning = pc.EnableMorning;
                 PetroCardEnableNight = pc.EnableNight;
@@ -2543,19 +2716,28 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
 
             OnPropertyChanged(nameof(PhonePeDisplayName));
             OnPropertyChanged(nameof(PhonePeHasTidBatch));
+            OnPropertyChanged(nameof(PhonePeHasOtp));
             OnPropertyChanged(nameof(PhonePeIsActive));
+            OnPropertyChanged(nameof(IsPhonePeTidOrOtp));
+            OnPropertyChanged(nameof(IsPhonePeScalarVisible));
             OnPropertyChanged(nameof(IsPhonePeSplitEnabled));
             OnPropertyChanged(nameof(PhonePeMorningLabel));
 
             OnPropertyChanged(nameof(CreditCardDisplayName));
             OnPropertyChanged(nameof(CreditCardHasTidBatch));
+            OnPropertyChanged(nameof(CreditCardHasOtp));
             OnPropertyChanged(nameof(CreditCardIsActive));
+            OnPropertyChanged(nameof(IsCreditCardTidOrOtp));
+            OnPropertyChanged(nameof(IsCreditCardScalarVisible));
             OnPropertyChanged(nameof(IsCreditCardSplitEnabled));
             OnPropertyChanged(nameof(CreditCardMorningLabel));
 
             OnPropertyChanged(nameof(PetroCardDisplayName));
             OnPropertyChanged(nameof(PetroCardHasTidBatch));
+            OnPropertyChanged(nameof(PetroCardHasOtp));
             OnPropertyChanged(nameof(PetroCardIsActive));
+            OnPropertyChanged(nameof(IsPetroCardTidOrOtp));
+            OnPropertyChanged(nameof(IsPetroCardScalarVisible));
             OnPropertyChanged(nameof(IsPetroCardSplitEnabled));
             OnPropertyChanged(nameof(PetroCardMorningLabel));
 
@@ -2580,6 +2762,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
 
             var targetTypes = allTypes
                 .Where(x => !matchedCodes.Contains(x.Code))
+                .Where(x => !x.IsManualOnly)
                 .Where(x => (x.IsActive && IsEnabledForCurrentShift(x)) || allDynamicCodes.Contains(PaymentCollection.NormalizeCollectionTypeCode(x.Code)))
                 .OrderBy(x => x.DisplayOrder)
                 .ToList();
@@ -2649,6 +2832,93 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                     }
                 });
             }
+
+            // Synchronize Manual-only Collections (Active types where both TID and OTP are disabled)
+            var manualTypes = allTypes
+                .Where(x => !matchedCodes.Contains(x.Code))
+                .Where(x => x.IsManualOnly)
+                .Where(x => (x.IsActive && IsEnabledForCurrentShift(x)) || _dynamicManualAmounts.ContainsKey(PaymentCollection.NormalizeCollectionTypeCode(x.Code)))
+                .OrderBy(x => x.DisplayOrder)
+                .ToList();
+
+            foreach (var kvp in _dynamicManualAmounts)
+            {
+                var normCode = PaymentCollection.NormalizeCollectionTypeCode(kvp.Key);
+                if (kvp.Value > 0 && !PaymentCollection.IsStandardCollectionCode(normCode))
+                {
+                    var master = allTypes.FirstOrDefault(m => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(m.Code), normCode, StringComparison.OrdinalIgnoreCase));
+                    bool isManual = master != null ? master.IsManualOnly : true;
+                    if (isManual && !manualTypes.Any(t => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(t.Code), normCode, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        manualTypes.Add(new CollectionTypeMaster
+                        {
+                            Code = normCode,
+                            DisplayName = master?.DisplayName ?? normCode.Replace("_", " "),
+                            Category = master?.Category ?? "Other",
+                            HasTidBatch = false,
+                            HasOtp = false,
+                            IsActive = false
+                        });
+                    }
+                }
+            }
+
+            var distinctManualTypes = new List<CollectionTypeMaster>();
+            var seenManualCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var t in manualTypes)
+            {
+                var norm = PaymentCollection.NormalizeCollectionTypeCode(t.Code);
+                if (seenManualCodes.Add(norm))
+                {
+                    distinctManualTypes.Add(t);
+                }
+            }
+            manualTypes = distinctManualTypes;
+
+            for (int i = ManualCollections.Count - 1; i >= 0; i--)
+            {
+                var row = ManualCollections[i];
+                bool isTarget = manualTypes.Any(t => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(t.Code), PaymentCollection.NormalizeCollectionTypeCode(row.Code), StringComparison.OrdinalIgnoreCase));
+                if (!isTarget)
+                {
+                    ManualCollections.RemoveAt(i);
+                }
+            }
+
+            for (int i = 0; i < manualTypes.Count; i++)
+            {
+                var t = manualTypes[i];
+                var norm = PaymentCollection.NormalizeCollectionTypeCode(t.Code);
+                var existingRow = ManualCollections.FirstOrDefault(m => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(m.Code), norm, StringComparison.OrdinalIgnoreCase));
+                double manualAmt = _dynamicManualAmounts.TryGetValue(norm, out var mVal) ? mVal : 0;
+
+                if (existingRow != null)
+                {
+                    existingRow.DisplayName = t.DisplayName;
+                    existingRow.Category = t.Category;
+                    existingRow.Amount = manualAmt > 0 ? manualAmt : (double?)null;
+                }
+                else
+                {
+                    var newRow = new ManualCollectionEntryRow
+                    {
+                        Code = t.Code,
+                        DisplayName = t.DisplayName,
+                        Category = t.Category,
+                        Amount = manualAmt > 0 ? manualAmt : (double?)null
+                    };
+                    newRow.OnValueChangedAction = () =>
+                    {
+                        if (newRow.Amount.HasValue && newRow.Amount.Value > 0)
+                            _dynamicManualAmounts[norm] = newRow.Amount.Value;
+                        else
+                            _dynamicManualAmounts.Remove(norm);
+                        RecalculateTotals();
+                    };
+                    ManualCollections.Insert(Math.Min(i, ManualCollections.Count), newRow);
+                }
+            }
+            OnPropertyChanged(nameof(HasManualCollections));
         }
         catch (Exception ex)
         {
@@ -3516,6 +3786,8 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                 {
                     typeCode = mode;
                 }
+                var swipeMaster = _availableCollectionTypes?.FirstOrDefault(m => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(m.Code), typeCode, StringComparison.OrdinalIgnoreCase));
+                if (swipeMaster != null && swipeMaster.IsManualOnly) continue;
 
                 payment.Items.Add(new PaymentCollectionItem
                 {
@@ -3528,21 +3800,44 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                 });
             }
 
-            // Ingest itemized TID transactions
+            // Ingest itemized TID transactions (excluding manual-only types)
             if (ManualTidTransactions.Count > 0)
             {
                 foreach (var tx in ManualTidTransactions)
                 {
                     if (tx.Amount <= 0) continue;
+                    var normCode = PaymentCollection.NormalizeCollectionTypeCode(tx.Mode);
+                    var master = _availableCollectionTypes?.FirstOrDefault(m => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(m.Code), normCode, StringComparison.OrdinalIgnoreCase));
+                    if (master != null && master.IsManualOnly) continue;
+
                     payment.Items.Add(new PaymentCollectionItem
                     {
                         TransactionId = string.IsNullOrWhiteSpace(tx.TransactionId) ? Guid.NewGuid().ToString("D") : tx.TransactionId,
-                        CollectionTypeCode = PaymentCollection.NormalizeCollectionTypeCode(tx.Mode),
+                        CollectionTypeCode = normCode,
                         Amount = tx.Amount,
                         Tid = tx.Tid,
                         Batch = tx.Batch,
                         Slot = string.IsNullOrWhiteSpace(tx.Slot) ? defaultSlot : tx.Slot,
                         Otp = ""
+                    });
+                }
+            }
+
+            // Ingest ManualCollections
+            foreach (var manual in ManualCollections)
+            {
+                if ((manual.Amount ?? 0) > 0)
+                {
+                    var normCode = PaymentCollection.NormalizeCollectionTypeCode(manual.Code);
+                    payment.Items.Add(new PaymentCollectionItem
+                    {
+                        TransactionId = $"manual-scalar-{normCode.ToLowerInvariant()}",
+                        CollectionTypeCode = normCode,
+                        Amount = manual.Amount.Value,
+                        Tid = null,
+                        Batch = null,
+                        Slot = defaultSlot,
+                        Otp = null
                     });
                 }
             }
@@ -4895,10 +5190,14 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                             ?? nonOtpItems.FirstOrDefault()
                             ?? matchingItems.FirstOrDefault();
 
-                        var genuineTidItems = nonOtpItems.Where(i => !i.IsSyntheticSummary && (
+                        var allTypes = GetCollectionTypesSnapshot();
+                        var master = allTypes.FirstOrDefault(m => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(m.Code), normCode, StringComparison.OrdinalIgnoreCase));
+                        bool isManualOnly = master != null && master.IsManualOnly;
+
+                        var genuineTidItems = isManualOnly ? new List<PaymentCollectionItem>() : nonOtpItems.Where(i => !i.IsSyntheticSummary && (
                             !string.IsNullOrWhiteSpace(i.Tid) ||
                             !string.IsNullOrWhiteSpace(i.Batch) ||
-                            (!string.IsNullOrWhiteSpace(i.TransactionId) && !i.TransactionId.StartsWith("manual-scalar-", StringComparison.OrdinalIgnoreCase) && !i.TransactionId.StartsWith("manual-", StringComparison.OrdinalIgnoreCase))
+                            string.Equals(normCode, "PINELABS_CARD", StringComparison.OrdinalIgnoreCase)
                         )).ToList();
 
                         var scalarManualItems = nonOtpItems.Where(i => !i.IsSyntheticSummary && !genuineTidItems.Contains(i)).ToList();

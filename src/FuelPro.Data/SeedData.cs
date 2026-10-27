@@ -654,10 +654,10 @@ public static class SeedData
                 new CollectionTypeMaster { Code = "CREDIT_CARD", DisplayName = "Credit / Debit Card", Category = "Card", HasTidBatch = true, DisplayOrder = 2, IsActive = true, IsSystem = true, CreatedAt = now },
                 new CollectionTypeMaster { Code = "PETROCARD", DisplayName = "PetroCard", Category = "Card", HasTidBatch = true, DisplayOrder = 3, IsActive = true, IsSystem = true, CreatedAt = now },
                 new CollectionTypeMaster { Code = "PINELABS_CARD", DisplayName = "Pine Labs Card", Category = "Card", HasTidBatch = true, DisplayOrder = 4, IsActive = true, IsSystem = true, CreatedAt = now },
-                new CollectionTypeMaster { Code = "SBI_REDEEM", DisplayName = "SBI Redeem", Category = "Card", HasTidBatch = true, DisplayOrder = 5, IsActive = true, IsSystem = false, CreatedAt = now },
-                new CollectionTypeMaster { Code = "PAYTM", DisplayName = "Paytm", Category = "Online", HasTidBatch = true, DisplayOrder = 6, IsActive = true, IsSystem = false, CreatedAt = now },
-                new CollectionTypeMaster { Code = "QR", DisplayName = "QR / Online", Category = "Online", HasTidBatch = true, DisplayOrder = 7, IsActive = true, IsSystem = false, CreatedAt = now },
-                new CollectionTypeMaster { Code = "MOBIKWIK", DisplayName = "Mobikwik", Category = "Online", HasTidBatch = true, DisplayOrder = 8, IsActive = true, IsSystem = false, CreatedAt = now },
+                new CollectionTypeMaster { Code = "SBI_REDEEM", DisplayName = "SBI Redeem", Category = "Card", HasTidBatch = false, DisplayOrder = 5, IsActive = true, IsSystem = false, CreatedAt = now },
+                new CollectionTypeMaster { Code = "PAYTM", DisplayName = "Paytm", Category = "Online", HasTidBatch = false, DisplayOrder = 6, IsActive = true, IsSystem = false, CreatedAt = now },
+                new CollectionTypeMaster { Code = "QR", DisplayName = "QR / Online", Category = "Online", HasTidBatch = false, DisplayOrder = 7, IsActive = true, IsSystem = false, CreatedAt = now },
+                new CollectionTypeMaster { Code = "MOBIKWIK", DisplayName = "Mobikwik", Category = "Online", HasTidBatch = false, DisplayOrder = 8, IsActive = true, IsSystem = false, CreatedAt = now },
                 new CollectionTypeMaster { Code = "CASH_DEPOSIT", DisplayName = "Cash Deposit (Bank)", Category = "Cash", HasTidBatch = false, DisplayOrder = 9, IsActive = true, IsSystem = true, CreatedAt = now },
                 new CollectionTypeMaster { Code = "OTHERS", DisplayName = "Other Online / UPI", Category = "Other", HasTidBatch = false, DisplayOrder = 10, IsActive = true, IsSystem = true, CreatedAt = now }
             );
