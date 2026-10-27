@@ -213,7 +213,7 @@ public partial class CashDenomRow : ObservableObject
     private void RecalcTotal()
     {
         double sum;
-        if (CashType == "Cash1")
+        if (CashType is "Cash1" or "Cash2")
         {
             sum = (Denom500 ?? 0) * 500.0 + (Denom200 ?? 0) * 200.0 + (Denom100 ?? 0) * 100.0;
         }
@@ -1468,7 +1468,6 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
             if (cc != null) matchedCodes.Add(cc.Code);
             if (pc != null) matchedCodes.Add(pc.Code);
             matchedCodes.Add("CASH_DEPOSIT");
-            matchedCodes.Add("OTHERS");
 
             var targetTypes = allTypes
                 .Where(x => !matchedCodes.Contains(x.Code))
@@ -2768,6 +2767,27 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
                 }
             }
 
+            foreach (var dyn in DynamicCollections)
+            {
+                var normCode = PaymentCollection.NormalizeCollectionTypeCode(dyn.Code);
+                if (PaymentCollection.IsStandardCollectionCode(normCode)) continue;
+
+                double manualAmt = dyn.ManualAmount ?? ((dyn.Amount ?? 0) - dyn.TidAmount - dyn.OtpAmount);
+                if (manualAmt > 0 && !payment.Items.Any(i => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(i.CollectionTypeCode), normCode, StringComparison.OrdinalIgnoreCase) && string.IsNullOrWhiteSpace(i.Tid) && string.IsNullOrWhiteSpace(i.Batch) && string.IsNullOrWhiteSpace(i.Otp)))
+                {
+                    payment.Items.Add(new PaymentCollectionItem
+                    {
+                        TransactionId = $"manual-scalar-{normCode.ToLowerInvariant()}",
+                        CollectionTypeCode = normCode,
+                        Amount = manualAmt,
+                        Tid = null,
+                        Batch = null,
+                        Slot = "General",
+                        Otp = null
+                    });
+                }
+            }
+
             if (payment.Items.Count > 0)
             {
                 payment.DynamicItemsJson = Newtonsoft.Json.JsonConvert.SerializeObject(payment.Items.Select(i => new
@@ -2809,10 +2829,10 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
                 }).ToList();
 
             var qrModels = QrPayments
-                .Where(q => !string.IsNullOrWhiteSpace(q.TargetDsmName) && (q.Amount ?? 0) > 0)
+                .Where(q => (q.Amount ?? 0) > 0)
                 .Select(q => new DsmQrPaymentEntry
                 {
-                    TargetDsmName = q.TargetDsmName,
+                    TargetDsmName = !string.IsNullOrWhiteSpace(q.TargetDsmName) ? q.TargetDsmName.Trim() : "General QR",
                     Amount = q.Amount ?? 0,
                     Tid = q.Tid,
                     Batch = q.Batch,
@@ -3967,20 +3987,38 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
         decimal creditCardScalar = (decimal)((CreditCardMorning ?? 0) + (IsCreditCardSplitEnabled ? (CreditCardNight ?? 0) : 0));
         decimal petroCardScalar = (decimal)((PetroCardMorning ?? 0) + (IsPetroCardSplitEnabled ? (PetroCardNight ?? 0) : 0));
 
-        decimal effectivePhonePe = (IsPhonePeTidOrOtp ? (phonePeFromTid + phOtpSum) : phonePeScalar) + qrSum;
-        decimal effectiveCreditCard = IsCreditCardTidOrOtp ? (ccFromTid + ccOtpSum) : creditCardScalar;
-        decimal effectivePetroCard = IsPetroCardTidOrOtp ? (petroCardFromTid + pcOtpSum) : petroCardScalar;
+        decimal phonePeItemized = phonePeFromTid + phOtpSum;
+        decimal ccItemized = ccFromTid + ccOtpSum;
+        decimal pcItemized = petroCardFromTid + pcOtpSum;
 
-        decimal dynamicPayments = (decimal)(
-            TidTransactions.Where(t => !PaymentCollection.IsStandardCollectionCode(t.CollectionTypeCode)).Sum(t => t.Amount)
-            + OtpTransactions.Where(t => !PaymentCollection.IsStandardCollectionCode(t.CollectionTypeCode)).Sum(t => t.Amount)
-            + ManualCollections.Sum(m => m.Amount ?? 0)
-        );
-        if (dynamicPayments == 0 && DynamicCollections.Count > 0)
+        decimal effectivePhonePe = ((IsPhonePeTidOrOtp || phonePeItemized > 0) ? (phonePeItemized > 0 ? phonePeItemized : phonePeScalar) : phonePeScalar) + qrSum;
+        decimal effectiveCreditCard = (IsCreditCardTidOrOtp || ccItemized > 0) ? (ccItemized > 0 ? ccItemized : creditCardScalar) : creditCardScalar;
+        decimal effectivePetroCard = (IsPetroCardTidOrOtp || pcItemized > 0) ? (pcItemized > 0 ? pcItemized : petroCardScalar) : petroCardScalar;
+
+        var allDynamicTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var t in TidTransactions.Where(t => !PaymentCollection.IsStandardCollectionCode(t.CollectionTypeCode)))
+            allDynamicTypes.Add(PaymentCollection.NormalizeCollectionTypeCode(t.CollectionTypeCode));
+        foreach (var t in OtpTransactions.Where(t => !PaymentCollection.IsStandardCollectionCode(t.CollectionTypeCode)))
+            allDynamicTypes.Add(PaymentCollection.NormalizeCollectionTypeCode(t.CollectionTypeCode));
+        foreach (var d in DynamicCollections.Where(d => !PaymentCollection.IsStandardCollectionCode(d.Code)))
+            allDynamicTypes.Add(PaymentCollection.NormalizeCollectionTypeCode(d.Code));
+        foreach (var m in ManualCollections.Where(m => !PaymentCollection.IsStandardCollectionCode(m.Code)))
+            allDynamicTypes.Add(PaymentCollection.NormalizeCollectionTypeCode(m.Code));
+
+        decimal dynamicPayments = 0;
+        foreach (var normCode in allDynamicTypes)
         {
-            dynamicPayments = (decimal)DynamicCollections
-                .Where(d => !PaymentCollection.IsStandardCollectionCode(d.Code))
-                .Sum(d => d.Amount ?? 0);
+            decimal tidSum = (decimal)TidTransactions.Where(t => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(t.CollectionTypeCode), normCode, StringComparison.OrdinalIgnoreCase)).Sum(t => t.Amount);
+            decimal otpSum = (decimal)OtpTransactions.Where(t => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(t.CollectionTypeCode), normCode, StringComparison.OrdinalIgnoreCase)).Sum(t => t.Amount);
+            decimal manualSum = (decimal)ManualCollections.Where(m => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(m.Code), normCode, StringComparison.OrdinalIgnoreCase)).Sum(m => m.Amount ?? 0);
+            decimal dynRowAmt = (decimal)(DynamicCollections.FirstOrDefault(d => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(d.Code), normCode, StringComparison.OrdinalIgnoreCase))?.Amount ?? 0);
+
+            decimal typeTotal = tidSum + otpSum + manualSum;
+            if (typeTotal == 0 && dynRowAmt > 0)
+            {
+                typeTotal = dynRowAmt;
+            }
+            dynamicPayments += typeTotal;
         }
 
         return new DsmEntryDto
@@ -4326,11 +4364,11 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
         var breakdownList = new List<CollectionCategoryDto>();
         if (Cash1.TotalAmount > 0)
         {
-            breakdownList.Add(new CollectionCategoryDto { Category = "Cash Deposit", Amount = Cash1.TotalAmount, BaseAmount = Cash1.TotalAmount });
+            breakdownList.Add(new CollectionCategoryDto { Category = "Cash 1", Amount = Cash1.TotalAmount, BaseAmount = Cash1.TotalAmount });
         }
         if (Cash2.TotalAmount > 0)
         {
-            breakdownList.Add(new CollectionCategoryDto { Category = "Cash in Hand", Amount = Cash2.TotalAmount, BaseAmount = Cash2.TotalAmount });
+            breakdownList.Add(new CollectionCategoryDto { Category = "Cash 2", Amount = Cash2.TotalAmount, BaseAmount = Cash2.TotalAmount });
         }
         if (Cash3.TotalAmount > 0)
         {

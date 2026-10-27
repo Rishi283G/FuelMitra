@@ -303,7 +303,9 @@ public class DsmSummaryRowDto
         if (clean.Equals("CASHINHAND", StringComparison.OrdinalIgnoreCase) || clean.Equals("HANDCASH", StringComparison.OrdinalIgnoreCase) || clean.Equals("CASH2", StringComparison.OrdinalIgnoreCase))
             return CashInHand;
         if (clean.Equals("OTHERS", StringComparison.OrdinalIgnoreCase) || clean.Equals("OTHER", StringComparison.OrdinalIgnoreCase))
-            return Others;
+        {
+            if (Others > 0) return Others;
+        }
         if (clean.Equals("DEBIT", StringComparison.OrdinalIgnoreCase) || clean.Equals("DEBTORS", StringComparison.OrdinalIgnoreCase))
             return Debit;
         if (clean.Equals("EXPENSES", StringComparison.OrdinalIgnoreCase))
@@ -549,7 +551,9 @@ public class DsmShiftTotalDto
         if (clean.Equals("CASHINHAND", StringComparison.OrdinalIgnoreCase) || clean.Equals("HANDCASH", StringComparison.OrdinalIgnoreCase) || clean.Equals("CASH2", StringComparison.OrdinalIgnoreCase))
             return CashInHand;
         if (clean.Equals("OTHERS", StringComparison.OrdinalIgnoreCase) || clean.Equals("OTHER", StringComparison.OrdinalIgnoreCase))
-            return Others;
+        {
+            if (Others > 0) return Others;
+        }
         if (clean.Equals("DEBIT", StringComparison.OrdinalIgnoreCase) || clean.Equals("DEBTORS", StringComparison.OrdinalIgnoreCase))
             return Debit;
         if (clean.Equals("EXPENSES", StringComparison.OrdinalIgnoreCase))

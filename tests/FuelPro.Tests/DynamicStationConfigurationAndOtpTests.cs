@@ -28,7 +28,7 @@ public class DynamicStationConfigurationAndOtpTests
     [InlineData("CASH_DEPOSIT", true)]
     [InlineData("CashDeposit", true)]
     [InlineData("CASH1", true)]
-    [InlineData("OTHERS", true)]
+    [InlineData("OTHERS", false)]
     [InlineData("SBI_REDEEM", false)]
     [InlineData("PAYTM", false)]
     [InlineData("HP_PAY", false)]

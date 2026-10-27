@@ -25,7 +25,7 @@ public class InvestigationTest
         _output = output;
     }
 
-    [Fact(Skip = "Diagnostic investigation test only")]
+    [Fact(Skip = "Diagnostic forensic exploration only")]
     public async Task InspectMitaliDatabase()
     {
         var dbPath = @"D:\Projects\Pump_Automation\Clients\Mitali_Service_Station\forensic_investigation\DISPOSABLE_WORKING_CLONE\fuelPro.db";
@@ -36,11 +36,58 @@ public class InvestigationTest
         _output.WriteLine("=== COLLECTION TYPES ===");
         using (var cmd = conn.CreateCommand())
         {
-            cmd.CommandText = "SELECT CollectionTypeId, Code, DisplayName, Category, HasTidBatch, HasOtp, IsActive, DisplayOrder FROM CollectionTypes ORDER BY DisplayOrder;";
+            cmd.CommandText = "SELECT * FROM CollectionTypes;";
             using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
-                _output.WriteLine($"{reader["CollectionTypeId"]} | Code: '{reader["Code"]}' | Name: '{reader["DisplayName"]}' | HasTidBatch: {reader["HasTidBatch"]} | HasOtp: {reader["HasOtp"]} | IsActive: {reader["IsActive"]}");
+                var row = "";
+                for (int i = 0; i < reader.FieldCount; i++) row += $"{reader.GetName(i)}: {reader.GetValue(i)} | ";
+                _output.WriteLine(row);
+            }
+        }
+
+        // 1b. Check PaymentCollectionItems & QrPayments
+        _output.WriteLine("\n=== PAYMENT COLLECTION ITEMS PRAGMA ===");
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = "PRAGMA table_info('PaymentCollectionItems');";
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                _output.WriteLine($"Col: {reader["name"]} ({reader["type"]})");
+            }
+        }
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = "SELECT * FROM PaymentCollectionItems LIMIT 5;";
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var row = "";
+                for (int i = 0; i < reader.FieldCount; i++) row += $"{reader.GetName(i)}: {reader.GetValue(i)} | ";
+                _output.WriteLine(row);
+            }
+        }
+
+        _output.WriteLine("\n=== DSM QR PAYMENTS ===");
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = "SELECT Id, DsmEntryId, DsmName, TargetDsmName, Date, Amount, Tid, Batch, Slot FROM DsmQrPayments ORDER BY Id DESC LIMIT 20;";
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                _output.WriteLine($"Id: {reader["Id"]} | EntryId: {reader["DsmEntryId"]} | Dsm: '{reader["DsmName"]}' | Target: '{reader["TargetDsmName"]}' | Amt: {reader["Amount"]} | Tid: '{reader["Tid"]}' | Batch: '{reader["Batch"]}'");
+            }
+        }
+
+        _output.WriteLine("\n=== RECENT PAYMENT COLLECTIONS ===");
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = "SELECT PaymentId, DsmEntryId, PhonePeMorning, CreditCardMorning, CashDeposit, Others, DynamicItemsJson FROM PaymentCollections ORDER BY PaymentId DESC LIMIT 10;";
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                _output.WriteLine($"PaymentId: {reader["PaymentId"]} | EntryId: {reader["DsmEntryId"]} | PhM: {reader["PhonePeMorning"]} | CCM: {reader["CreditCardMorning"]} | Dep: {reader["CashDeposit"]} | Oth: {reader["Others"]} | DynJson: {reader["DynamicItemsJson"]}");
             }
         }
 

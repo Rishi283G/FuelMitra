@@ -436,7 +436,7 @@ public class ReportService : IReportService
         // All other enabled dynamic collection types from Dev side (always show with 0 if no entries)
         var builtInCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) 
         { 
-            "PHONEPE", "PETROCARD", "CASH_DEPOSIT", "OTHERS", "OTHER" 
+            "PHONEPE", "PETROCARD", "CASH_DEPOSIT" 
         };
         if (ccType != null)
         {
@@ -455,9 +455,7 @@ public class ReportService : IReportService
                 && (ccType == null || !string.Equals(t.Code, ccType.Code, StringComparison.OrdinalIgnoreCase))
                 && (phType == null || !string.Equals(t.Code, phType.Code, StringComparison.OrdinalIgnoreCase))
                 && (pcType == null || !string.Equals(t.Code, pcType.Code, StringComparison.OrdinalIgnoreCase))
-                && (cdType == null || !string.Equals(t.Code, cdType.Code, StringComparison.OrdinalIgnoreCase))
-                && !string.Equals(t.Code?.Replace("_", ""), "OTHERS", StringComparison.OrdinalIgnoreCase) 
-                && !string.Equals(t.Code?.Replace("_", ""), "OTHER", StringComparison.OrdinalIgnoreCase))
+                && (cdType == null || !string.Equals(t.Code, cdType.Code, StringComparison.OrdinalIgnoreCase)))
             .OrderBy(t => t.DisplayOrder)
             .ToList();
 
@@ -505,9 +503,9 @@ public class ReportService : IReportService
             });
         }
 
-        // Include Others (for record purpose only)
+        // Include legacy Others (for record purpose only if not active as a dynamic collection)
         double totalOthers = entriesList.Sum(e => e.PaymentCollection?.Others ?? 0);
-        if (totalOthers > 0 || allColTypes.Any(t => (string.Equals(t.Code?.Replace("_", ""), "OTHERS", StringComparison.OrdinalIgnoreCase) || string.Equals(t.Code?.Replace("_", ""), "OTHER", StringComparison.OrdinalIgnoreCase)) && t.IsActive))
+        if (totalOthers > 0 && !allColTypes.Any(t => (string.Equals(t.Code?.Replace("_", ""), "OTHERS", StringComparison.OrdinalIgnoreCase) || string.Equals(t.Code?.Replace("_", ""), "OTHER", StringComparison.OrdinalIgnoreCase)) && t.IsActive))
         {
             var othType = allColTypes.FirstOrDefault(t => string.Equals(t.Code?.Replace("_", ""), "OTHERS", StringComparison.OrdinalIgnoreCase) || string.Equals(t.Code?.Replace("_", ""), "OTHER", StringComparison.OrdinalIgnoreCase));
             breakdownList.Add(new CollectionCategoryDto
@@ -1014,7 +1012,7 @@ public class ReportService : IReportService
         // All other enabled dynamic collection types from Dev side (always show with 0 if no entries)
         var builtInCodesDay = new HashSet<string>(StringComparer.OrdinalIgnoreCase) 
         { 
-            "PHONEPE", "PETROCARD", "CASH_DEPOSIT", "OTHERS", "OTHER" 
+            "PHONEPE", "PETROCARD", "CASH_DEPOSIT" 
         };
         if (ccType != null)
         {
@@ -1033,9 +1031,7 @@ public class ReportService : IReportService
                 && (ccType == null || !string.Equals(t.Code, ccType.Code, StringComparison.OrdinalIgnoreCase))
                 && (phType == null || !string.Equals(t.Code, phType.Code, StringComparison.OrdinalIgnoreCase))
                 && (pcType == null || !string.Equals(t.Code, pcType.Code, StringComparison.OrdinalIgnoreCase))
-                && (cdType == null || !string.Equals(t.Code, cdType.Code, StringComparison.OrdinalIgnoreCase))
-                && !string.Equals(t.Code?.Replace("_", ""), "OTHERS", StringComparison.OrdinalIgnoreCase) 
-                && !string.Equals(t.Code?.Replace("_", ""), "OTHER", StringComparison.OrdinalIgnoreCase))
+                && (cdType == null || !string.Equals(t.Code, cdType.Code, StringComparison.OrdinalIgnoreCase)))
             .OrderBy(t => t.DisplayOrder)
             .ToList();
 
@@ -1083,9 +1079,9 @@ public class ReportService : IReportService
             });
         }
 
-        // Include Others (for record purpose only)
+        // Include legacy Others (for record purpose only if not active as a dynamic collection)
         double totalDayOthers = todayEntries.Sum(e => e.PaymentCollection?.Others ?? 0);
-        if (totalDayOthers > 0 || allColTypes.Any(t => (string.Equals(t.Code?.Replace("_", ""), "OTHERS", StringComparison.OrdinalIgnoreCase) || string.Equals(t.Code?.Replace("_", ""), "OTHER", StringComparison.OrdinalIgnoreCase)) && t.IsActive))
+        if (totalDayOthers > 0 && !allColTypes.Any(t => (string.Equals(t.Code?.Replace("_", ""), "OTHERS", StringComparison.OrdinalIgnoreCase) || string.Equals(t.Code?.Replace("_", ""), "OTHER", StringComparison.OrdinalIgnoreCase)) && t.IsActive))
         {
             var othType = allColTypes.FirstOrDefault(t => string.Equals(t.Code?.Replace("_", ""), "OTHERS", StringComparison.OrdinalIgnoreCase) || string.Equals(t.Code?.Replace("_", ""), "OTHER", StringComparison.OrdinalIgnoreCase));
             dayBreakdown.Add(new CollectionCategoryDto

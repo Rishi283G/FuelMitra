@@ -669,19 +669,9 @@ public class DsmEntryService
         var cash2Total = entry.CashDenominations.Where(c => c.CashType == "Cash2").Sum(c => c.TotalAmount);
         var cash3Total = entry.CashDenominations.Where(c => c.CashType == "Cash3").Sum(c => c.TotalAmount);
 
-        var phonePe = (decimal)((entry.PaymentCollection?.PhonePeMorning ?? 0)
-                               + (entry.PaymentCollection?.PhonePeDay ?? 0)
-                               + (entry.PaymentCollection?.PhonePeNight ?? 0)
-                               + (entry.PaymentCollection?.PhonePeCardMorning ?? 0)
-                               + (entry.PaymentCollection?.PhonePeCardDay ?? 0)
-                               + (entry.PaymentCollection?.PhonePeCardNight ?? 0)
-                               + (entry.QrPayments?.Sum(q => q.Amount) ?? 0));
-        var creditCard = (decimal)((entry.PaymentCollection?.CreditCardMorning ?? 0)
-                               + (entry.PaymentCollection?.CreditCardDay ?? 0)
-                               + (entry.PaymentCollection?.CreditCardNight ?? 0));
-        var petroCard = (decimal)((entry.PaymentCollection?.PetroCardMorning ?? 0)
-                               + (entry.PaymentCollection?.PetroCardDay ?? 0)
-                               + (entry.PaymentCollection?.PetroCardNight ?? 0));
+        var phonePe = (decimal)((entry.PaymentCollection?.PhonePe ?? 0) + (entry.QrPayments?.Sum(q => q.Amount) ?? 0));
+        var creditCard = (decimal)(entry.PaymentCollection?.CreditCard ?? 0);
+        var petroCard = (decimal)(entry.PaymentCollection?.PetroCard ?? 0);
         var cashDeposit = (decimal)(cash1Total > 0 ? cash1Total : (entry.PaymentCollection?.CashDeposit ?? 0));
         var cash3 = (decimal)cash3Total;
         var dynamicPayments = (decimal)(entry.PaymentCollection?.DynamicItemsTotal ?? 0);

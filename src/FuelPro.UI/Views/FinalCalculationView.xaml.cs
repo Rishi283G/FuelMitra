@@ -47,8 +47,6 @@ public partial class FinalCalculationView : UserControl
                 !string.Equals(c.Code?.Replace("_", ""), "CASHDEPOSIT", StringComparison.OrdinalIgnoreCase) &&
                 !string.Equals(c.Code?.Replace("_", ""), "CASHINHAND", StringComparison.OrdinalIgnoreCase) &&
                 !string.Equals(c.Code?.Replace("_", ""), "BANKCASH", StringComparison.OrdinalIgnoreCase) &&
-                !string.Equals(c.Code?.Replace("_", ""), "OTHERS", StringComparison.OrdinalIgnoreCase) &&
-                !string.Equals(c.Code?.Replace("_", ""), "OTHER", StringComparison.OrdinalIgnoreCase) &&
                 !string.Equals(c.Category, "Cash", StringComparison.OrdinalIgnoreCase) &&
                 !c.DisplayName.Contains("Cash", StringComparison.OrdinalIgnoreCase);
 

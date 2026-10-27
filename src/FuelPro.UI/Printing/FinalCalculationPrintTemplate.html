@@ -448,7 +448,7 @@ function renderData(){
   var ccTitle = ccObj ? ccObj.displayName : 'PineLab Card';
   var pcTitle = pcObj ? pcObj.displayName : 'PetroCard';
 
-  var excludeNorms = ['PHONEPE', 'PINELAB', 'PINELABS', 'PINELABCARD', 'CREDITCARD', 'CREDITDEBITCARD', 'CARD', 'PETROCARD', 'PETRO', 'CASHDEPOSIT', 'CASHINHAND', 'CASH3', 'FINALCASH', 'OTHERS'];
+  var excludeNorms = ['PHONEPE', 'PINELAB', 'PINELABS', 'PINELABCARD', 'CREDITCARD', 'CREDITDEBITCARD', 'CARD', 'PETROCARD', 'PETRO', 'CASHDEPOSIT', 'CASHINHAND', 'CASH3', 'FINALCASH'];
   if (phObj) excludeNorms.push(normColCode(phObj.code));
   if (ccObj) excludeNorms.push(normColCode(ccObj.code));
   if (pcObj) excludeNorms.push(normColCode(pcObj.code));

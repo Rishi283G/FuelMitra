@@ -22,7 +22,16 @@ public class PaymentCollection
     public double PhonePeDay { get; set; }
     public double PhonePeNight { get; set; }
     [NotMapped]
-    public double CreditCard => CreditCardMorning + CreditCardDay + CreditCardNight;
+    public double CreditCard
+    {
+        get
+        {
+            double scalar = CreditCardMorning + CreditCardDay + CreditCardNight;
+            if (scalar > 0) return scalar;
+            var items = GetAllItems().Where(i => NormalizeCollectionTypeCode(i.CollectionTypeCode) == "CREDIT_CARD").ToList();
+            return items.Count > 0 ? items.Sum(i => i.Amount) : 0;
+        }
+    }
 
     public double CreditCardMorning { get; set; }
     public double CreditCardDay { get; set; }
@@ -127,7 +136,7 @@ public class PaymentCollection
     {
         if (string.IsNullOrWhiteSpace(code)) return false;
         var normalized = NormalizeCollectionTypeCode(code);
-        return normalized is "PHONEPE" or "PHONEPE_CARD" or "CREDIT_CARD" or "PETROCARD" or "CASH_DEPOSIT" or "OTHERS";
+        return normalized is "PHONEPE" or "PHONEPE_CARD" or "CREDIT_CARD" or "PETROCARD" or "CASH_DEPOSIT";
     }
 
     /// <summary>

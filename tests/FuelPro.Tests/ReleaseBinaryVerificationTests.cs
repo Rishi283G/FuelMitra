@@ -20,6 +20,7 @@ public class ReleaseBinaryVerificationTests
         var coreDllPath = Path.Combine(repoRoot, "publish_output", "FuelPro.Core.dll");
         string[] candidateNames =
         [
+            "PyroSync_Setup_v1.3.57.exe",
             "PyroSync_Setup_v1.3.56.exe",
             "PyroSync_Setup_v1.3.55.exe",
             "PyroSync_Setup_v1.3.54.exe",
@@ -44,7 +45,7 @@ public class ReleaseBinaryVerificationTests
         Assert.True(File.Exists(installerPath), $"Installer missing in installer_output: {installerPath}");
 
         var uiVer = FileVersionInfo.GetVersionInfo(uiDllPath);
-        Assert.True(uiVer.FileVersion == "1.3.56.0" || uiVer.FileVersion == "1.3.55.0" || uiVer.FileVersion == "1.3.54.0" || uiVer.FileVersion == "1.3.53.0" || uiVer.FileVersion == "1.3.52.0" || uiVer.FileVersion == "1.3.51.0" || uiVer.FileVersion == "1.3.50.0" || uiVer.FileVersion == "1.3.49.0" || uiVer.FileVersion == "1.3.48.0" || uiVer.FileVersion == "1.3.47.0" || uiVer.FileVersion == "1.3.46.0" || uiVer.FileVersion == "1.3.45.0" || uiVer.FileVersion == "1.3.44.0" || uiVer.FileVersion == "1.3.43.0", $"Unexpected FileVersion: {uiVer.FileVersion}");
+        Assert.True(uiVer.FileVersion == "1.3.57.0" || uiVer.FileVersion == "1.3.56.0" || uiVer.FileVersion == "1.3.55.0" || uiVer.FileVersion == "1.3.54.0" || uiVer.FileVersion == "1.3.53.0" || uiVer.FileVersion == "1.3.52.0" || uiVer.FileVersion == "1.3.51.0" || uiVer.FileVersion == "1.3.50.0" || uiVer.FileVersion == "1.3.49.0" || uiVer.FileVersion == "1.3.48.0" || uiVer.FileVersion == "1.3.47.0" || uiVer.FileVersion == "1.3.46.0" || uiVer.FileVersion == "1.3.45.0" || uiVer.FileVersion == "1.3.44.0" || uiVer.FileVersion == "1.3.43.0", $"Unexpected FileVersion: {uiVer.FileVersion}");
 
         var installerFileInfo = new FileInfo(installerPath);
         Assert.True(installerFileInfo.Length > 50_000_000, "Installer size seems too small");

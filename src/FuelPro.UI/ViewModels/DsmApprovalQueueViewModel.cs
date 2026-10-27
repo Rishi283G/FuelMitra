@@ -1462,7 +1462,8 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                                     }
                                     else
                                     {
-                                        bool isManualScalar = !string.IsNullOrWhiteSpace(dTxId) && dTxId.StartsWith("manual-scalar-", StringComparison.OrdinalIgnoreCase);
+                                        bool isManualScalar = (!string.IsNullOrWhiteSpace(dTxId) && dTxId.StartsWith("manual-scalar-", StringComparison.OrdinalIgnoreCase))
+                                            || (string.IsNullOrWhiteSpace(dTid) && string.IsNullOrWhiteSpace(dBatch));
                                         bool isTidItem = !isManualScalar;
                                         if (isTidItem)
                                         {
@@ -1502,6 +1503,10 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                                                     _dynamicManualTids[normDCode] = dTid ?? "";
                                                     _dynamicManualBatches[normDCode] = dBatch ?? "";
                                                     _dynamicManualSlots[normDCode] = dSlot ?? "General";
+                                                    if (normDCode == "OTHERS")
+                                                    {
+                                                        OthersAmount = 0;
+                                                    }
                                                 }
                                             }
                                         }
@@ -1911,12 +1916,13 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                                 string batch = (qr.batch ?? qr.Batch ?? string.Empty).ToString();
                                 string slot = (qr.slot ?? qr.Slot ?? string.Empty).ToString();
 
-                                if (amount > 0 && !string.IsNullOrWhiteSpace(targetDsm))
+                                if (amount > 0)
                                 {
+                                    string effectiveTarget = string.IsNullOrWhiteSpace(targetDsm) ? "General QR" : targetDsm.Trim();
                                     QrPayments.Add(new DsmQrPaymentEntry
                                     {
                                         DsmName = submission.DsmName,
-                                        TargetDsmName = targetDsm,
+                                        TargetDsmName = effectiveTarget,
                                         Date = submission.ShiftDate,
                                         Amount = amount,
                                         Tid = string.IsNullOrWhiteSpace(tid) ? null : tid,
@@ -2210,7 +2216,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
             var dynMatch = DynamicCollections.FirstOrDefault(d => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(d.Code), normCode, StringComparison.OrdinalIgnoreCase));
             string displayName = !string.IsNullOrWhiteSpace(dynMatch?.DisplayName)
                 ? dynMatch.DisplayName
-                : (normCode == "PINELABS_CARD" ? "Pine Labs Card" : normCode.Replace("_", " "));
+                : ResolveCollectionTypeDisplayName(normCode);
 
             summaries.Add(new DynamicCollectionSummaryDto
             {
@@ -2291,17 +2297,25 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
             .Where(c => PaymentCollection.NormalizeCollectionTypeCode(c.Mode) == "PHONEPE" && !string.IsNullOrWhiteSpace(c.Otp))
             .Sum(c => c.Amount);
 
+        double itemizedPhonePe = phTidSum + phOtpSum;
+        double itemizedCreditCard = ccTidSum + ccOtpSum;
+        double itemizedPetroCard = pcTidSum + pcOtpSum;
+
+        double effectivePhonePe = (itemizedPhonePe > 0 ? itemizedPhonePe : UpiAmount) + QrPayments.Sum(q => q.Amount);
+        double effectiveCreditCard = itemizedCreditCard > 0 ? itemizedCreditCard : CardAmount;
+        double effectivePetroCard = itemizedPetroCard > 0 ? itemizedPetroCard : PetroCardAmount;
+
         var dto = new FuelPro.Core.DTOs.DsmEntryDto
         {
             NozzleReadings = NozzleReadings.Select(n => new FuelPro.Core.DTOs.NozzleReadingDto { Amount = (decimal)n.Amount }).ToList(),
             PaymentCollection = new FuelPro.Core.DTOs.PaymentCollectionDto
             {
-                PhonePe = (decimal)(UpiAmount + phTidSum + phOtpSum + QrPayments.Sum(q => q.Amount)),
-                CreditCard = (decimal)(CardAmount + ccTidSum + ccOtpSum),
+                PhonePe = (decimal)effectivePhonePe,
+                CreditCard = (decimal)effectiveCreditCard,
                 CashDeposit = (decimal)CashDepositAmount,
                 PhysicalCash = (decimal)CashAmount,
                 Cash3 = (decimal)Cash3.TotalAmount,
-                PetroCard = (decimal)(PetroCardAmount + pcTidSum + pcOtpSum),
+                PetroCard = (decimal)effectivePetroCard,
                 Others = (decimal)OthersAmount,
                 DynamicPayments = (decimal)dynamicTotal,
                 CollectionReduction = (decimal)CollectionReductionAmount,
@@ -2551,7 +2565,6 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
             if (cc != null) matchedCodes.Add(cc.Code);
             if (pc != null) matchedCodes.Add(pc.Code);
             matchedCodes.Add("CASH_DEPOSIT");
-            matchedCodes.Add("OTHERS");
 
             var allDynamicCodes = new HashSet<string>(_dynamicManualAmounts.Keys, StringComparer.OrdinalIgnoreCase);
             foreach (var c in CardSwipeDetails)
@@ -4739,7 +4752,27 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                 }
 
                 QrPayments.Clear();
-                if (!string.IsNullOrEmpty(approvedSub.MetadataJson))
+                if (entry.QrPayments != null && entry.QrPayments.Count > 0)
+                {
+                    foreach (var qr in entry.QrPayments)
+                    {
+                        if (qr.Amount > 0)
+                        {
+                            string effectiveTarget = string.IsNullOrWhiteSpace(qr.TargetDsmName) ? "General QR" : qr.TargetDsmName.Trim();
+                            QrPayments.Add(new DsmQrPaymentEntry
+                            {
+                                DsmName = !string.IsNullOrWhiteSpace(qr.DsmName) ? qr.DsmName : entry.DsmName,
+                                TargetDsmName = effectiveTarget,
+                                Date = qr.Date != default ? qr.Date : approvedSub.ShiftDate,
+                                Amount = qr.Amount,
+                                Tid = string.IsNullOrWhiteSpace(qr.Tid) ? null : qr.Tid,
+                                Batch = string.IsNullOrWhiteSpace(qr.Batch) ? null : qr.Batch,
+                                Slot = string.IsNullOrWhiteSpace(qr.Slot) ? null : qr.Slot
+                            });
+                        }
+                    }
+                }
+                else if (!string.IsNullOrEmpty(approvedSub.MetadataJson))
                 {
                     try
                     {
@@ -4755,12 +4788,13 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                                 string batch = (qr.batch ?? qr.Batch ?? string.Empty).ToString();
                                 string slot = (qr.slot ?? qr.Slot ?? string.Empty).ToString();
 
-                                if (amount > 0 && !string.IsNullOrWhiteSpace(targetDsm))
+                                if (amount > 0)
                                 {
+                                    string effectiveTarget = string.IsNullOrWhiteSpace(targetDsm) ? "General QR" : targetDsm.Trim();
                                     QrPayments.Add(new DsmQrPaymentEntry
                                     {
                                         DsmName = entry.DsmName,
-                                        TargetDsmName = targetDsm,
+                                        TargetDsmName = effectiveTarget,
                                         Date = approvedSub.ShiftDate,
                                         Amount = amount,
                                         Tid = string.IsNullOrWhiteSpace(tid) ? null : tid,
@@ -4861,15 +4895,22 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                             ?? nonOtpItems.FirstOrDefault()
                             ?? matchingItems.FirstOrDefault();
 
-                        bool hasTidItems = nonOtpItems.Any(i => !string.IsNullOrWhiteSpace(i.Tid) || !string.IsNullOrWhiteSpace(i.Batch) || !string.IsNullOrWhiteSpace(i.TransactionId));
-                        if (hasTidItems)
+                        var genuineTidItems = nonOtpItems.Where(i => !i.IsSyntheticSummary && (
+                            !string.IsNullOrWhiteSpace(i.Tid) ||
+                            !string.IsNullOrWhiteSpace(i.Batch) ||
+                            (!string.IsNullOrWhiteSpace(i.TransactionId) && !i.TransactionId.StartsWith("manual-scalar-", StringComparison.OrdinalIgnoreCase) && !i.TransactionId.StartsWith("manual-", StringComparison.OrdinalIgnoreCase))
+                        )).ToList();
+
+                        var scalarManualItems = nonOtpItems.Where(i => !i.IsSyntheticSummary && !genuineTidItems.Contains(i)).ToList();
+
+                        if (genuineTidItems.Count > 0)
                         {
-                            foreach (var item in nonOtpItems.Where(i => !i.IsSyntheticSummary))
+                            foreach (var item in genuineTidItems)
                             {
                                 string mode = item.CollectionTypeCode;
                                 ManualTidTransactions.Add(new DsmCardSwipeRow
                                 {
-                                    Mode = mode,
+                                    Mode = ResolveCollectionTypeDisplayName(mode),
                                     Amount = item.Amount,
                                     Tid = item.Tid ?? "",
                                     Batch = item.Batch ?? "",
@@ -4879,12 +4920,15 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                                 });
                             }
                         }
-                        else if (manualPortion > 0)
+
+                        double remainingManualPortion = scalarManualItems.Sum(i => i.Amount);
+                        if (!isSingleAggregateHeader && remainingManualPortion > 0)
                         {
-                            _dynamicManualAmounts[normCode] = manualPortion;
-                            _dynamicManualTids[normCode] = firstManual?.Tid ?? "";
-                            _dynamicManualBatches[normCode] = firstManual?.Batch ?? "";
-                            _dynamicManualSlots[normCode] = firstManual?.Slot ?? "General";
+                            var firstScalar = scalarManualItems.FirstOrDefault();
+                            _dynamicManualAmounts[normCode] = remainingManualPortion;
+                            _dynamicManualTids[normCode] = firstScalar?.Tid ?? "";
+                            _dynamicManualBatches[normCode] = firstScalar?.Batch ?? "";
+                            _dynamicManualSlots[normCode] = firstScalar?.Slot ?? "General";
                         }
 
                         // Add OTP items to CardSwipeDetails

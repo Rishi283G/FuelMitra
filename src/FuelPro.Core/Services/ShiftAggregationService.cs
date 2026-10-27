@@ -754,8 +754,7 @@ public class ShiftAggregationService : IShiftAggregationService
                 !string.Equals(k.Key?.Replace("_", "").Replace(" ", ""), "CASHDEPOSIT", StringComparison.OrdinalIgnoreCase) &&
                 !string.Equals(k.Key?.Replace("_", "").Replace(" ", ""), "BANKCASH", StringComparison.OrdinalIgnoreCase) &&
                 !string.Equals(k.Key?.Replace("_", "").Replace(" ", ""), "CASHINHAND", StringComparison.OrdinalIgnoreCase) &&
-                !string.Equals(k.Key?.Replace("_", "").Replace(" ", ""), "OTHERS", StringComparison.OrdinalIgnoreCase) &&
-                !string.Equals(k.Key?.Replace("_", "").Replace(" ", ""), "OTHER", StringComparison.OrdinalIgnoreCase)))
+                !(others > 0 && (string.Equals(k.Key?.Replace("_", "").Replace(" ", ""), "OTHERS", StringComparison.OrdinalIgnoreCase) || string.Equals(k.Key?.Replace("_", "").Replace(" ", ""), "OTHER", StringComparison.OrdinalIgnoreCase)))))
             {
                 rows.Add(new ReconciliationRowDto
                 {

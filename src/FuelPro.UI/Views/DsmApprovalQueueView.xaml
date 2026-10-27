@@ -647,7 +647,7 @@
                                             </Grid.ColumnDefinitions>
                                             <TextBox Grid.Column="0" Text="{Binding CashDepositAmount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="0,0,6,0"
                                                      IsReadOnly="{Binding IsReadOnlyMode}"
-                                                     materialDesign:HintAssist.Hint="Cash Deposit (Cash 1)" materialDesign:HintAssist.IsFloating="True"
+                                                     materialDesign:HintAssist.Hint="Cash 1" materialDesign:HintAssist.IsFloating="True"
                                                      Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
                                             <TextBox Grid.Column="1" Text="{Binding OthersAmount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" Margin="6,0,0,0"
                                                      IsReadOnly="{Binding IsReadOnlyMode}"
@@ -934,13 +934,13 @@
                                 </StackPanel>
                             </materialDesign:Card>
 
-                            <!-- Cash 2 (Cash in Hand) — Denomination Table -->
+                            <!-- Cash 2 — Denomination Table -->
                             <materialDesign:Card Padding="20" UniformCornerRadius="12" Margin="0,0,0,12"
                                                  materialDesign:ElevationAssist.Elevation="Dp3">
                                 <StackPanel>
                                     <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
                                         <materialDesign:PackIcon Kind="CashMultiple" Width="18" Height="18" Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                        <TextBlock Text="Cash in Hand" FontSize="16" FontWeight="SemiBold"
+                                        <TextBlock Text="Cash 2" FontSize="16" FontWeight="SemiBold"
                                                    Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}" VerticalAlignment="Center"/>
                                     </StackPanel>
 
@@ -1013,11 +1013,11 @@
 
 
 
-                                    <!-- Total Cash in Hand -->
+                                    <!-- Total Cash 2 -->
                                     <Border Background="#E8F5E9" CornerRadius="8" Padding="12,8" Margin="0,10,0,0">
                                         <Grid>
                                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                            <TextBlock Text="Total Cash in Hand" FontSize="13" FontWeight="Bold" Foreground="#2E7D32" VerticalAlignment="Center"/>
+                                            <TextBlock Text="Total Cash 2" FontSize="13" FontWeight="Bold" Foreground="#2E7D32" VerticalAlignment="Center"/>
                                             <TextBlock Grid.Column="1" FontSize="16" FontWeight="Bold" Foreground="#1B5E20">
                                                 <Run Text="&#x20B9;"/><Run Text="{Binding Cash2.TotalAmount, Mode=OneWay, StringFormat=N2}"/>
                                             </TextBlock>
@@ -1026,14 +1026,14 @@
                                 </StackPanel>
                             </materialDesign:Card>
 
-                            <!-- Cash 3 (Final Cash) — Denomination Table -->
+                            <!-- Cash 3 — Denomination Table -->
                             <materialDesign:Card Padding="20" UniformCornerRadius="12" Margin="0,0,0,12"
                                                  materialDesign:ElevationAssist.Elevation="Dp3"
                                                  Visibility="{Binding IsCash3Enabled, Converter={StaticResource BooleanToVisibilityConverter}}">
                                 <StackPanel>
                                     <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
                                         <materialDesign:PackIcon Kind="CashCheck" Width="18" Height="18" Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                        <TextBlock Text="Cash 3 (Final Cash)" FontSize="16" FontWeight="SemiBold"
+                                        <TextBlock Text="Cash 3" FontSize="16" FontWeight="SemiBold"
                                                    Foreground="{DynamicResource MaterialDesign.Brush.Primary.Light}" VerticalAlignment="Center"/>
                                     </StackPanel>
 

@@ -125,11 +125,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   const cash =
     denom500 * 500 +
     denom200 * 200 +
-    denom100 * 100 +
-    denom50 * 50 +
-    denom20 * 20 +
-    denom10 * 10 +
-    coins;
+    denom100 * 100;
 
   // Creditors & Vehicles dropdown states
   const [creditorList, setCreditorList] = useState<
@@ -358,6 +354,15 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     }
     return list;
   }, [stationConfig?.collectionTypes]);
+
+  // Configuration-driven eligibility for TID and/or OTP
+  const isTidOrOtpEnabledForType = (code: string) => {
+    const ct = (stationConfig?.collectionTypes || []).find((c) => c.code.toUpperCase() === code.toUpperCase());
+    if (!ct) return true; // Default built-ins (PETROCARD, CREDIT_CARD, PHONEPE) default to TID/OTP enabled
+    const isTid = Boolean(ct.hasTidBatch);
+    const isOtp = ct.hasOtp !== undefined && ct.hasOtp !== null ? Boolean(ct.hasOtp) : Boolean(ct.hasTidBatch);
+    return isTid || isOtp;
+  };
 
   // Shared configuration-driven eligibility:
   // Strictly filter OTP dropdown by developer settings: ct.hasOtp === true
@@ -1573,20 +1578,20 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   const cardTxTotal = getMachineTotalForType("CREDIT_CARD");
   const petroTxTotal = getMachineTotalForType("PETROCARD");
 
-  const effectivePhonePeTotal =
-    (isManualEnabled("PHONEPE") ? phonePeManualAmt : 0) +
-    phonePeTidTotal +
-    (otpMachineTrackingEnabled ? phonePeTxTotal : 0);
+  const phonePeItemizedTotal = phonePeTidTotal + (otpMachineTrackingEnabled ? phonePeTxTotal : 0);
+  const effectivePhonePeTotal = phonePeItemizedTotal > 0
+    ? phonePeItemizedTotal
+    : (isManualEnabled("PHONEPE") ? phonePeManualAmt : 0);
 
-  const effectiveCreditCardTotal =
-    (isManualEnabled("CREDIT_CARD") ? creditCardManualAmt : 0) +
-    cardTidTotal +
-    (otpMachineTrackingEnabled ? cardTxTotal : 0);
+  const cardItemizedTotal = cardTidTotal + (otpMachineTrackingEnabled ? cardTxTotal : 0);
+  const effectiveCreditCardTotal = cardItemizedTotal > 0
+    ? cardItemizedTotal
+    : (isManualEnabled("CREDIT_CARD") ? creditCardManualAmt : 0);
 
-  const effectivePetroCardTotal =
-    (isManualEnabled("PETROCARD") ? petroCardManualAmt : 0) +
-    petroTidTotal +
-    (otpMachineTrackingEnabled ? petroTxTotal : 0);
+  const petroItemizedTotal = petroTidTotal + (otpMachineTrackingEnabled ? petroTxTotal : 0);
+  const effectivePetroCardTotal = petroItemizedTotal > 0
+    ? petroItemizedTotal
+    : (isManualEnabled("PETROCARD") ? petroCardManualAmt : 0);
 
   const allDynamicTypeCodes = Array.from(
     new Set([
@@ -1612,7 +1617,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
 
   const dynamicTotal = allDynamicTypeCodes.reduce((sum, code) => {
     const clean = code.toUpperCase().replace(/_/g, "");
-    if (clean === "PHONEPE" || clean === "CREDITCARD" || clean === "PETROCARD" || clean === "CASHDEPOSIT" || clean === "OTHERS") return sum;
+    if (clean === "PHONEPE" || clean === "CREDITCARD" || clean === "PETROCARD" || clean === "CASHDEPOSIT") return sum;
     return sum + getDynamicTypeEffectiveTotal(code);
   }, 0);
 
@@ -1802,12 +1807,14 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     setValidationErrors([]);
 
     submittingRef.current = true;
-    setIsSubmitting(true);
+    const phonePeHasItemized = getManualTidTotalForType("PHONEPE") + getMachineTotalForType("PHONEPE") > 0;
+    const cardHasItemized = getManualTidTotalForType("CREDIT_CARD") + getMachineTotalForType("CREDIT_CARD") > 0;
+    const petroHasItemized = getManualTidTotalForType("PETROCARD") + getMachineTotalForType("PETROCARD") > 0;
 
     const cardSwipes = [];
     const settlementsList = [];
     if (shiftType === "B") {
-      if (isManualEnabled("PHONEPE") && phonePeSlotConf.enableDay && phonePeDay > 0) {
+      if ((!isTidOrOtpEnabledForType("PHONEPE") || !phonePeHasItemized) && isManualEnabled("PHONEPE") && phonePeSlotConf.enableDay && phonePeDay > 0) {
         cardSwipes.push({
           mode: "PhonePe Day",
           amount: phonePeDay,
@@ -1824,7 +1831,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           operationalShift: "B",
         });
       }
-      if (isManualEnabled("CREDIT_CARD") && creditCardSlotConf.enableDay && creditCardDay > 0) {
+      if ((!isTidOrOtpEnabledForType("CREDIT_CARD") || !cardHasItemized) && isManualEnabled("CREDIT_CARD") && creditCardSlotConf.enableDay && creditCardDay > 0) {
         cardSwipes.push({
           mode: "Credit Card Day",
           amount: creditCardDay,
@@ -1841,7 +1848,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           operationalShift: "B",
         });
       }
-      if (isManualEnabled("PETROCARD") && petroCardSlotConf.enableDay && petroCardDay > 0) {
+      if ((!isTidOrOtpEnabledForType("PETROCARD") || !petroHasItemized) && isManualEnabled("PETROCARD") && petroCardSlotConf.enableDay && petroCardDay > 0) {
         cardSwipes.push({
           mode: "PetroCard Day",
           amount: petroCardDay,
@@ -1859,7 +1866,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         });
       }
     } else {
-      if (isManualEnabled("PHONEPE")) {
+      if ((!isTidOrOtpEnabledForType("PHONEPE") || !phonePeHasItemized) && isManualEnabled("PHONEPE")) {
         if (isSplitEnabledForType("PHONEPE")) {
           if (phonePeSlotConf.enableMorning && phonePeMorning > 0) {
             cardSwipes.push({
@@ -1914,7 +1921,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         }
       }
 
-      if (isManualEnabled("CREDIT_CARD")) {
+      if ((!isTidOrOtpEnabledForType("CREDIT_CARD") || !cardHasItemized) && isManualEnabled("CREDIT_CARD")) {
         if (isSplitEnabledForType("CREDIT_CARD")) {
           if (creditCardSlotConf.enableMorning && creditCardMorning > 0) {
             cardSwipes.push({
@@ -1969,7 +1976,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         }
       }
 
-      if (isManualEnabled("PETROCARD")) {
+      if ((!isTidOrOtpEnabledForType("PETROCARD") || !petroHasItemized) && isManualEnabled("PETROCARD")) {
         if (isSplitEnabledForType("PETROCARD")) {
           if (petroCardSlotConf.enableMorning && petroCardMorning > 0) {
             cardSwipes.push({
@@ -2071,11 +2078,11 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         ({ rowId: _r, isOpeningReadOnly, ...rest }) => rest,
       ),
       cash,
-      upi: isManualEnabled("PHONEPE") ? phonePeManualAmt : 0,
-      card: isManualEnabled("CREDIT_CARD") ? creditCardManualAmt : 0,
-      petroCard: isManualEnabled("PETROCARD") ? petroCardManualAmt : 0,
+      upi: (isTidOrOtpEnabledForType("PHONEPE") && phonePeHasItemized) ? 0 : (isManualEnabled("PHONEPE") ? phonePeManualAmt : 0),
+      card: (isTidOrOtpEnabledForType("CREDIT_CARD") && cardHasItemized) ? 0 : (isManualEnabled("CREDIT_CARD") ? creditCardManualAmt : 0),
+      petroCard: (isTidOrOtpEnabledForType("PETROCARD") && petroHasItemized) ? 0 : (isManualEnabled("PETROCARD") ? petroCardManualAmt : 0),
       cashDeposit,
-      others,
+      others: 0,
       credit: creditTotal,
       expense,
       expenseNotes,
@@ -2096,7 +2103,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       personalDebtors: [],
       khandhareEntries,
       qrPayments: qrPayments.map((q) => ({
-        targetDsmName: q.targetDsmName,
+        targetDsmName: q.targetDsmName && q.targetDsmName.trim() ? q.targetDsmName.trim() : "General QR",
         amount: q.amount,
         tid: q.tid,
         batch: q.batch,
@@ -2116,10 +2123,10 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         denom500,
         denom200,
         denom100,
-        denom50,
-        denom20,
-        denom10,
-        coins,
+        denom50: 0,
+        denom20: 0,
+        denom10: 0,
+        coins: 0,
       },
       cash3: cash3Amount,
       cash3Amount: cash3Amount,
@@ -2147,33 +2154,33 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           amount: r.testing || 0,
           pumpId: r.pumpId || pumpId,
         })),
-      phonePeMorning,
-      phonePeTidMorning,
-      phonePeBatchMorning,
-      phonePeDay,
-      phonePeTidDay,
-      phonePeBatchDay,
-      phonePeNight,
-      phonePeTidNight,
-      phonePeBatchNight,
-      creditCardMorning,
-      creditCardTidMorning,
-      creditCardBatchMorning,
-      creditCardDay,
-      creditCardTidDay,
-      creditCardBatchDay,
-      creditCardNight,
-      creditCardTidNight,
-      creditCardBatchNight,
-      petroCardMorning,
-      petroCardTidMorning,
-      petroCardBatchMorning,
-      petroCardDay,
-      petroCardTidDay,
-      petroCardBatchDay,
-      petroCardNight,
-      petroCardTidNight,
-      petroCardBatchNight,
+      phonePeMorning: (isTidOrOtpEnabledForType("PHONEPE") && phonePeHasItemized) ? 0 : phonePeMorning,
+      phonePeTidMorning: (isTidOrOtpEnabledForType("PHONEPE") && phonePeHasItemized) ? "" : phonePeTidMorning,
+      phonePeBatchMorning: (isTidOrOtpEnabledForType("PHONEPE") && phonePeHasItemized) ? "" : phonePeBatchMorning,
+      phonePeDay: (isTidOrOtpEnabledForType("PHONEPE") && phonePeHasItemized) ? 0 : phonePeDay,
+      phonePeTidDay: (isTidOrOtpEnabledForType("PHONEPE") && phonePeHasItemized) ? "" : phonePeTidDay,
+      phonePeBatchDay: (isTidOrOtpEnabledForType("PHONEPE") && phonePeHasItemized) ? "" : phonePeBatchDay,
+      phonePeNight: (isTidOrOtpEnabledForType("PHONEPE") && phonePeHasItemized) ? 0 : phonePeNight,
+      phonePeTidNight: (isTidOrOtpEnabledForType("PHONEPE") && phonePeHasItemized) ? "" : phonePeTidNight,
+      phonePeBatchNight: (isTidOrOtpEnabledForType("PHONEPE") && phonePeHasItemized) ? "" : phonePeBatchNight,
+      creditCardMorning: (isTidOrOtpEnabledForType("CREDIT_CARD") && cardHasItemized) ? 0 : creditCardMorning,
+      creditCardTidMorning: (isTidOrOtpEnabledForType("CREDIT_CARD") && cardHasItemized) ? "" : creditCardTidMorning,
+      creditCardBatchMorning: (isTidOrOtpEnabledForType("CREDIT_CARD") && cardHasItemized) ? "" : creditCardBatchMorning,
+      creditCardDay: (isTidOrOtpEnabledForType("CREDIT_CARD") && cardHasItemized) ? 0 : creditCardDay,
+      creditCardTidDay: (isTidOrOtpEnabledForType("CREDIT_CARD") && cardHasItemized) ? "" : creditCardTidDay,
+      creditCardBatchDay: (isTidOrOtpEnabledForType("CREDIT_CARD") && cardHasItemized) ? "" : creditCardBatchDay,
+      creditCardNight: (isTidOrOtpEnabledForType("CREDIT_CARD") && cardHasItemized) ? 0 : creditCardNight,
+      creditCardTidNight: (isTidOrOtpEnabledForType("CREDIT_CARD") && cardHasItemized) ? "" : creditCardTidNight,
+      creditCardBatchNight: (isTidOrOtpEnabledForType("CREDIT_CARD") && cardHasItemized) ? "" : creditCardBatchNight,
+      petroCardMorning: (isTidOrOtpEnabledForType("PETROCARD") && petroHasItemized) ? 0 : petroCardMorning,
+      petroCardTidMorning: (isTidOrOtpEnabledForType("PETROCARD") && petroHasItemized) ? "" : petroCardTidMorning,
+      petroCardBatchMorning: (isTidOrOtpEnabledForType("PETROCARD") && petroHasItemized) ? "" : petroCardBatchMorning,
+      petroCardDay: (isTidOrOtpEnabledForType("PETROCARD") && petroHasItemized) ? 0 : petroCardDay,
+      petroCardTidDay: (isTidOrOtpEnabledForType("PETROCARD") && petroHasItemized) ? "" : petroCardTidDay,
+      petroCardBatchDay: (isTidOrOtpEnabledForType("PETROCARD") && petroHasItemized) ? "" : petroCardBatchDay,
+      petroCardNight: (isTidOrOtpEnabledForType("PETROCARD") && petroHasItemized) ? 0 : petroCardNight,
+      petroCardTidNight: (isTidOrOtpEnabledForType("PETROCARD") && petroHasItemized) ? "" : petroCardTidNight,
+      petroCardBatchNight: (isTidOrOtpEnabledForType("PETROCARD") && petroHasItemized) ? "" : petroCardBatchNight,
       oilDefSales: availableProducts
         .filter((p) => (salesQuantities[p.id] || 0) > 0)
         .map((p) => ({
@@ -2613,7 +2620,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           </h2>
 
           {/* 1. Petro Card */}
-          {(isTypeActive("PETROCARD") || effectivePetroCardTotal > 0 || petroCardDay > 0 || petroCardMorning > 0 || petroCardNight > 0) && (
+          {(!isTidOrOtpEnabledForType("PETROCARD") && (isTypeActive("PETROCARD") || effectivePetroCardTotal > 0 || petroCardDay > 0 || petroCardMorning > 0 || petroCardNight > 0)) && (
           <div
             className="nozzle-card"
             style={{ marginBottom: "16px", padding: "16px" }}
@@ -2857,7 +2864,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           )}
 
           {/* 2. Credit Card */}
-          {(isTypeActive("CREDIT_CARD") || effectiveCreditCardTotal > 0 || creditCardDay > 0 || creditCardMorning > 0 || creditCardNight > 0) && (
+          {(!isTidOrOtpEnabledForType("CREDIT_CARD") && (isTypeActive("CREDIT_CARD") || effectiveCreditCardTotal > 0 || creditCardDay > 0 || creditCardMorning > 0 || creditCardNight > 0)) && (
           <div
             className="nozzle-card"
             style={{ marginBottom: "16px", padding: "16px" }}
@@ -3095,7 +3102,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           )}
 
           {/* 3. PhonePe */}
-          {(isTypeActive("PHONEPE") || effectivePhonePeTotal > 0 || phonePeDay > 0 || phonePeMorning > 0 || phonePeNight > 0 || qrTotal > 0) && (
+          {(!isTidOrOtpEnabledForType("PHONEPE") && (isTypeActive("PHONEPE") || effectivePhonePeTotal > 0 || phonePeDay > 0 || phonePeMorning > 0 || phonePeNight > 0)) && (
           <div
             className="nozzle-card"
             style={{ marginBottom: "16px", padding: "16px" }}
@@ -3331,278 +3338,286 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                 </div>
               </div>
             )}
+          </div>
+          )}
 
-            {/* Cross-DSM QR Code Option Attached to PhonePe (Hidden/Collapsible) */}
-            <div style={{ marginTop: "12px", borderTop: "1px dashed rgba(148, 163, 184, 0.2)", paddingTop: "10px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <button
-                  type="button"
-                  onClick={() => setShowCrossQrSection(!showCrossQrSection)}
-                  style={{
-                    background: "transparent",
-                    border: "1px solid rgba(16, 185, 129, 0.4)",
-                    borderRadius: "6px",
-                    padding: "6px 12px",
-                    color: showCrossQrSection ? "#10b981" : "#94a3b8",
-                    fontSize: "0.8rem",
-                    cursor: "pointer",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    fontWeight: "500",
-                    transition: "all 0.2s ease",
-                  }}
-                >
-                  <span style={{ fontSize: "0.75rem" }}>{showCrossQrSection ? "▼" : "▶"}</span>
-                  <span>📱 Paid on another DSM's QR Code?</span>
-                  {qrPayments.length > 0 && (
-                    <span
-                      style={{
-                        marginLeft: "6px",
-                        backgroundColor: "#10b981",
-                        color: "#0f172a",
-                        borderRadius: "10px",
-                        padding: "1px 7px",
-                        fontSize: "0.72rem",
-                        fontWeight: "bold",
-                      }}
-                    >
-                      {qrPayments.length} Added (₹{qrTotal.toFixed(2)})
-                    </span>
-                  )}
-                </button>
-              </div>
+          {/* 3b. Cross-DSM QR Code Entry (Independent Card) */}
+          <div
+            className="nozzle-card"
+            style={{ marginBottom: "16px", padding: "16px" }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <button
+                type="button"
+                onClick={() => setShowCrossQrSection(!showCrossQrSection)}
+                style={{
+                  background: "transparent",
+                  border: "1px solid rgba(16, 185, 129, 0.4)",
+                  borderRadius: "6px",
+                  padding: "6px 12px",
+                  color: showCrossQrSection ? "#10b981" : "#94a3b8",
+                  fontSize: "0.8rem",
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  fontWeight: "500",
+                  transition: "all 0.2s ease",
+                }}
+              >
+                <span style={{ fontSize: "0.75rem" }}>{showCrossQrSection ? "▼" : "▶"}</span>
+                <span>📱 Paid on another DSM's QR Code?</span>
+                {qrPayments.length > 0 && (
+                  <span
+                    style={{
+                      marginLeft: "6px",
+                      backgroundColor: "#10b981",
+                      color: "#0f172a",
+                      borderRadius: "10px",
+                      padding: "1px 7px",
+                      fontSize: "0.72rem",
+                      fontWeight: "bold",
+                    }}
+                  >
+                    {qrPayments.length} Added (₹{qrTotal.toFixed(2)})
+                  </span>
+                )}
+              </button>
+              {qrTotal > 0 && (
+                <span style={{ fontSize: "0.85rem", color: "#10b981", fontWeight: 600 }}>
+                  Total: ₹{qrTotal.toFixed(2)}
+                </span>
+              )}
+            </div>
 
-              {showCrossQrSection && (
+            {showCrossQrSection && (
+              <div
+                style={{
+                  marginTop: "10px",
+                  padding: "12px",
+                  backgroundColor: "rgba(16, 185, 129, 0.06)",
+                  borderRadius: "8px",
+                  border: "1px solid rgba(16, 185, 129, 0.2)",
+                }}
+              >
                 <div
                   style={{
-                    marginTop: "10px",
-                    padding: "12px",
-                    backgroundColor: "rgba(16, 185, 129, 0.06)",
-                    borderRadius: "8px",
-                    border: "1px solid rgba(16, 185, 129, 0.2)",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    marginBottom: "10px",
                   }}
                 >
+                  <span
+                    style={{
+                      fontSize: "0.85rem",
+                      fontWeight: "bold",
+                      color: "#10b981",
+                    }}
+                  >
+                    📱 Cross-DSM QR Entry
+                  </span>
+                  <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>
+                    (Record payment received on another DSM's QR)
+                  </span>
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1.2fr 1fr",
+                    gap: "8px",
+                    marginBottom: "8px",
+                  }}
+                >
+                  <div className="field-group">
+                    <label className="field-label">Paid on DSM's QR</label>
+                    <select
+                      className="field-input"
+                      value={newQrTargetDsm}
+                      onChange={(e) => setNewQrTargetDsm(e.target.value)}
+                    >
+                      <option value="">-- Select DSM --</option>
+                      {dsmUsersList.map((u) => (
+                        <option key={u.id} value={u.fullName}>
+                          {u.fullName}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="field-group">
+                    <label className="field-label">Amount (₹)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      className="field-input"
+                      placeholder="0.00"
+                      value={newQrAmount}
+                      onChange={(e) => setNewQrAmount(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr 80px",
+                    gap: "8px",
+                    marginBottom: "8px",
+                  }}
+                >
+                  <div className="field-group">
+                    <label className="field-label">TID (Optional)</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      placeholder="TID"
+                      value={newQrTid}
+                      onChange={(e) => setNewQrTid(e.target.value)}
+                    />
+                  </div>
+                  <div className="field-group">
+                    <label className="field-label">Batch (Optional)</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      placeholder="Batch"
+                      value={newQrBatch}
+                      onChange={(e) => setNewQrBatch(e.target.value)}
+                    />
+                  </div>
                   <div
                     style={{
                       display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      marginBottom: "10px",
+                      alignItems: "flex-end",
                     }}
                   >
-                    <span
+                    <button
+                      type="button"
+                      className="btn btn-primary"
                       style={{
+                        height: "38px",
+                        width: "100%",
+                        padding: "0",
+                        fontSize: "0.85rem",
+                      }}
+                      onClick={() => {
+                        const amt = parseFloat(newQrAmount);
+                        if (!newQrTargetDsm) {
+                          alert("Please select the DSM whose QR was scanned.");
+                          return;
+                        }
+                        if (isNaN(amt) || amt <= 0) {
+                          alert("Please enter a valid QR payment amount.");
+                          return;
+                        }
+                        setQrPayments((prev) => [
+                          ...prev,
+                          {
+                            targetDsmName: newQrTargetDsm,
+                            amount: amt,
+                            tid: newQrTid.trim() || undefined,
+                            batch: newQrBatch.trim() || undefined,
+                            slot: shiftType === "B" ? "Day" : "Morning",
+                          },
+                        ]);
+                        setNewQrTargetDsm("");
+                        setNewQrAmount("");
+                        setNewQrTid("");
+                        setNewQrBatch("");
+                      }}
+                    >
+                      + Add
+                    </button>
+                  </div>
+                </div>
+
+                {/* List of Added QR Payments */}
+                {qrPayments.length > 0 && (
+                  <div style={{ marginTop: "10px" }}>
+                    <table
+                      style={{
+                        width: "100%",
+                        fontSize: "0.8rem",
+                        borderCollapse: "collapse",
+                      }}
+                    >
+                      <thead>
+                        <tr
+                          style={{
+                            borderBottom: "1px solid #334155",
+                            textAlign: "left",
+                            color: "#94a3b8",
+                          }}
+                        >
+                          <th style={{ padding: "4px" }}>DSM QR</th>
+                          <th style={{ padding: "4px" }}>Amount</th>
+                          <th style={{ padding: "4px" }}>TID/Batch</th>
+                          <th style={{ padding: "4px", width: "30px" }}></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {qrPayments.map((item, idx) => (
+                          <tr
+                            key={idx}
+                            style={{ borderBottom: "1px solid #1e293b" }}
+                          >
+                            <td style={{ padding: "6px 4px", fontWeight: "500" }}>
+                              {item.targetDsmName}
+                            </td>
+                            <td
+                              style={{
+                                padding: "6px 4px",
+                                color: "#10b981",
+                                fontWeight: "bold",
+                              }}
+                            >
+                              ₹{item.amount.toFixed(2)}
+                            </td>
+                            <td style={{ padding: "6px 4px", color: "#64748b" }}>
+                              {item.tid ? `TID: ${item.tid}` : ""}
+                              {item.batch ? ` B:${item.batch}` : ""}
+                            </td>
+                            <td style={{ padding: "6px 4px" }}>
+                              <button
+                                type="button"
+                                style={{
+                                  background: "none",
+                                  border: "none",
+                                  color: "#ef4444",
+                                  cursor: "pointer",
+                                  fontSize: "1rem",
+                                }}
+                                onClick={() =>
+                                  setQrPayments((prev) =>
+                                    prev.filter((_, i) => i !== idx),
+                                  )
+                                }
+                              >
+                                ✕
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <div
+                      style={{
+                        textAlign: "right",
                         fontSize: "0.85rem",
                         fontWeight: "bold",
                         color: "#10b981",
+                        marginTop: "6px",
                       }}
                     >
-                      📱 Cross-DSM QR Entry
-                    </span>
-                    <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>
-                      (Record payment received on another DSM's QR)
-                    </span>
-                  </div>
-
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1.2fr 1fr",
-                      gap: "8px",
-                      marginBottom: "8px",
-                    }}
-                  >
-                    <div className="field-group">
-                      <label className="field-label">Paid on DSM's QR</label>
-                      <select
-                        className="field-input"
-                        value={newQrTargetDsm}
-                        onChange={(e) => setNewQrTargetDsm(e.target.value)}
-                      >
-                        <option value="">-- Select DSM --</option>
-                        {dsmUsersList.map((u) => (
-                          <option key={u.id} value={u.fullName}>
-                            {u.fullName}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="field-group">
-                      <label className="field-label">Amount (₹)</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        className="field-input"
-                        placeholder="0.00"
-                        value={newQrAmount}
-                        onChange={(e) => setNewQrAmount(e.target.value)}
-                      />
+                      Cross-DSM Total: ₹{qrTotal.toFixed(2)}
                     </div>
                   </div>
-
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr 1fr 80px",
-                      gap: "8px",
-                      marginBottom: "8px",
-                    }}
-                  >
-                    <div className="field-group">
-                      <label className="field-label">TID (Optional)</label>
-                      <input
-                        type="text"
-                        className="field-input"
-                        placeholder="TID"
-                        value={newQrTid}
-                        onChange={(e) => setNewQrTid(e.target.value)}
-                      />
-                    </div>
-                    <div className="field-group">
-                      <label className="field-label">Batch (Optional)</label>
-                      <input
-                        type="text"
-                        className="field-input"
-                        placeholder="Batch"
-                        value={newQrBatch}
-                        onChange={(e) => setNewQrBatch(e.target.value)}
-                      />
-                    </div>
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "flex-end",
-                      }}
-                    >
-                      <button
-                        type="button"
-                        className="btn btn-primary"
-                        style={{
-                          height: "38px",
-                          width: "100%",
-                          padding: "0",
-                          fontSize: "0.85rem",
-                        }}
-                        onClick={() => {
-                          const amt = parseFloat(newQrAmount);
-                          if (!newQrTargetDsm) {
-                            alert("Please select the DSM whose QR was scanned.");
-                            return;
-                          }
-                          if (isNaN(amt) || amt <= 0) {
-                            alert("Please enter a valid QR payment amount.");
-                            return;
-                          }
-                          setQrPayments((prev) => [
-                            ...prev,
-                            {
-                              targetDsmName: newQrTargetDsm,
-                              amount: amt,
-                              tid: newQrTid.trim() || undefined,
-                              batch: newQrBatch.trim() || undefined,
-                              slot: shiftType === "B" ? "Day" : "Morning",
-                            },
-                          ]);
-                          setNewQrTargetDsm("");
-                          setNewQrAmount("");
-                          setNewQrTid("");
-                          setNewQrBatch("");
-                        }}
-                      >
-                        + Add
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* List of Added QR Payments */}
-                  {qrPayments.length > 0 && (
-                    <div style={{ marginTop: "10px" }}>
-                      <table
-                        style={{
-                          width: "100%",
-                          fontSize: "0.8rem",
-                          borderCollapse: "collapse",
-                        }}
-                      >
-                        <thead>
-                          <tr
-                            style={{
-                              borderBottom: "1px solid #334155",
-                              textAlign: "left",
-                              color: "#94a3b8",
-                            }}
-                          >
-                            <th style={{ padding: "4px" }}>DSM QR</th>
-                            <th style={{ padding: "4px" }}>Amount</th>
-                            <th style={{ padding: "4px" }}>TID/Batch</th>
-                            <th style={{ padding: "4px", width: "30px" }}></th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {qrPayments.map((item, idx) => (
-                            <tr
-                              key={idx}
-                              style={{ borderBottom: "1px solid #1e293b" }}
-                            >
-                              <td style={{ padding: "6px 4px", fontWeight: "500" }}>
-                                {item.targetDsmName}
-                              </td>
-                              <td
-                                style={{
-                                  padding: "6px 4px",
-                                  color: "#10b981",
-                                  fontWeight: "bold",
-                                }}
-                              >
-                                ₹{item.amount.toFixed(2)}
-                              </td>
-                              <td style={{ padding: "6px 4px", color: "#64748b" }}>
-                                {item.tid ? `TID: ${item.tid}` : ""}
-                                {item.batch ? ` B:${item.batch}` : ""}
-                              </td>
-                              <td style={{ padding: "6px 4px" }}>
-                                <button
-                                  type="button"
-                                  style={{
-                                    background: "none",
-                                    border: "none",
-                                    color: "#ef4444",
-                                    cursor: "pointer",
-                                    fontSize: "1rem",
-                                  }}
-                                  onClick={() =>
-                                    setQrPayments((prev) =>
-                                      prev.filter((_, i) => i !== idx),
-                                    )
-                                  }
-                                >
-                                  ✕
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                      <div
-                        style={{
-                          textAlign: "right",
-                          fontSize: "0.85rem",
-                          fontWeight: "bold",
-                          color: "#10b981",
-                          marginTop: "6px",
-                        }}
-                      >
-                        Cross-DSM Total: ₹{qrTotal.toFixed(2)}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            )}
           </div>
-          )}
 
           {/* Manual Collection Amounts (Direct Entry for Active Types without TID or OTP) */}
           {manualOnlyTypes.length > 0 && (
@@ -3632,36 +3647,44 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                   </h3>
                 </div>
                 <span style={{ fontSize: "0.85rem", fontWeight: "bold", color: "#f59e0b" }}>
-                  Total: ₹{manualOnlyTypes.reduce((sum, t) => sum + (manualDynamicAmounts[t.code] || 0), 0).toFixed(2)}
+                  Combined Manual Total: ₹{manualOnlyTypes.reduce((sum, t) => sum + (manualDynamicAmounts[t.code] || 0), 0).toFixed(2)}
                 </span>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "12px" }}>
-                {manualOnlyTypes.map((t) => (
-                  <div key={t.code} style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                    <label style={{ fontSize: "0.8rem", color: "#94a3b8", fontWeight: 600 }}>
-                      {t.displayName}
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      className="form-input"
-                      placeholder="0.00"
-                      value={manualDynamicAmounts[t.code] !== undefined ? manualDynamicAmounts[t.code] : ""}
-                      onChange={(e) => {
-                        const val = parseFloat(e.target.value) || 0;
-                        setManualDynamicAmounts((prev) => ({ ...prev, [t.code]: val }));
-                      }}
-                      style={{
-                        padding: "8px 12px",
-                        backgroundColor: "#0f172a",
-                        border: "1px solid #334155",
-                        borderRadius: "6px",
-                        color: "#fff",
-                      }}
-                    />
-                  </div>
-                ))}
+                {manualOnlyTypes.map((t) => {
+                  const typeAmt = manualDynamicAmounts[t.code] || 0;
+                  return (
+                    <div key={t.code} style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <label style={{ fontSize: "0.8rem", color: "#94a3b8", fontWeight: 600 }}>
+                          {t.displayName}
+                        </label>
+                        <span style={{ fontSize: "0.78rem", color: typeAmt > 0 ? "#f59e0b" : "#64748b", fontWeight: 600 }}>
+                          ₹{typeAmt.toFixed(2)}
+                        </span>
+                      </div>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        className="form-input"
+                        placeholder="0.00"
+                        value={manualDynamicAmounts[t.code] !== undefined && manualDynamicAmounts[t.code] !== 0 ? manualDynamicAmounts[t.code] : ""}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0;
+                          setManualDynamicAmounts((prev) => ({ ...prev, [t.code]: val }));
+                        }}
+                        style={{
+                          padding: "8px 12px",
+                          backgroundColor: "#0f172a",
+                          border: "1px solid #334155",
+                          borderRadius: "6px",
+                          color: "#fff",
+                        }}
+                      />
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -4183,12 +4206,12 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                 paddingBottom: "6px",
               }}
             >
-              Cash Deposit (Cash 1)
+              Cash 1
             </h3>
             {cashDenominationsEnabled ? (
               <div style={{ marginBottom: "8px" }}>
                 <div style={{ fontSize: "0.85rem", color: "#94a3b8", marginBottom: "8px" }}>
-                  Enter note count for Cash 1 deposit (₹500, ₹200, ₹100):
+                  Enter note count for Cash 1 (₹500, ₹200, ₹100):
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px" }}>
                   <div className="field-group">
@@ -4237,7 +4260,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
               </div>
             ) : (
               <div className="field-group" style={{ marginBottom: "8px" }}>
-                <label className="field-label">Total Cash 1 Deposit Amount (₹)</label>
+                <label className="field-label">Total Cash 1 Amount (₹)</label>
                 <input
                   type="number"
                   step="0.01"
@@ -4261,7 +4284,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                 color: "#10b981",
               }}
             >
-              <span>Total Cash Deposit:</span>
+              <span>Total Cash 1:</span>
               <span>
                 ₹
                 {cashDeposit.toLocaleString("en-IN", {
@@ -5029,13 +5052,13 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                 paddingBottom: "6px",
               }}
             >
-              Cash 2 - Cash in Hand (Denominations)
+              Cash 2 (Denominations)
             </h3>
 
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "1fr 1fr",
+                gridTemplateColumns: "1fr 1fr 1fr",
                 gap: "10px 16px",
                 marginBottom: "12px",
               }}
@@ -5109,98 +5132,6 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                   }
                 />
               </div>
-              <div
-                style={{ display: "flex", alignItems: "center", gap: "8px" }}
-              >
-                <span
-                  style={{
-                    width: "45px",
-                    fontWeight: "bold",
-                    fontSize: "0.9rem",
-                  }}
-                >
-                  ₹50 x
-                </span>
-                <input
-                  type="number"
-                  className="field-input"
-                  style={{ padding: "6px" }}
-                  value={denom50 || ""}
-                  min="0"
-                  onChange={(e) =>
-                    setDenom50(Math.max(0, parseInt(e.target.value) || 0))
-                  }
-                />
-              </div>
-              <div
-                style={{ display: "flex", alignItems: "center", gap: "8px" }}
-              >
-                <span
-                  style={{
-                    width: "45px",
-                    fontWeight: "bold",
-                    fontSize: "0.9rem",
-                  }}
-                >
-                  ₹20 x
-                </span>
-                <input
-                  type="number"
-                  className="field-input"
-                  style={{ padding: "6px" }}
-                  value={denom20 || ""}
-                  min="0"
-                  onChange={(e) =>
-                    setDenom20(Math.max(0, parseInt(e.target.value) || 0))
-                  }
-                />
-              </div>
-              <div
-                style={{ display: "flex", alignItems: "center", gap: "8px" }}
-              >
-                <span
-                  style={{
-                    width: "45px",
-                    fontWeight: "bold",
-                    fontSize: "0.9rem",
-                  }}
-                >
-                  ₹10 x
-                </span>
-                <input
-                  type="number"
-                  className="field-input"
-                  style={{ padding: "6px" }}
-                  value={denom10 || ""}
-                  min="0"
-                  onChange={(e) =>
-                    setDenom10(Math.max(0, parseInt(e.target.value) || 0))
-                  }
-                />
-              </div>
-              <div
-                style={{ display: "flex", alignItems: "center", gap: "8px" }}
-              >
-                <span
-                  style={{
-                    width: "45px",
-                    fontWeight: "bold",
-                    fontSize: "0.9rem",
-                  }}
-                >
-                  Coins
-                </span>
-                <input
-                  type="number"
-                  className="field-input"
-                  style={{ padding: "6px" }}
-                  value={coins || ""}
-                  min="0"
-                  onChange={(e) =>
-                    setCoins(Math.max(0, parseFloat(e.target.value) || 0))
-                  }
-                />
-              </div>
             </div>
 
             <div
@@ -5215,7 +5146,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                 color: "#10b981",
               }}
             >
-              <span>Total Cash in Hand (Cash 2):</span>
+              <span>Total Cash 2:</span>
               <span>
                 ₹
                 {cash.toLocaleString("en-IN", {
@@ -5241,7 +5172,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                   color: "#06b6d4",
                 }}
               >
-                Cash 3 (Final Cash) - Denominations
+                Cash 3 (Denominations)
               </h3>
 
               <div
@@ -5343,7 +5274,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                   color: "#06b6d4",
                 }}
               >
-                <span>Total Cash 3 (Final Cash):</span>
+                <span>Total Cash 3:</span>
                 <span>
                   ₹
                   {cash3Amount.toLocaleString("en-IN", {
