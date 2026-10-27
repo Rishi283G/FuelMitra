@@ -583,7 +583,7 @@ public class ReportService : IReportService
         dto.ActualCollection = dto.CollectionBreakdown.Where(c => c.Category != "DSM Short" && !c.IsInformational && !c.Category.EndsWith("Testing", StringComparison.OrdinalIgnoreCase) && !string.Equals(c.Category, "Others", StringComparison.OrdinalIgnoreCase) && !string.Equals(c.Category, "Other", StringComparison.OrdinalIgnoreCase)).Sum(c => c.Amount);
         dto.ExpectedCollection = dto.DsrTotalFuelAmount + dto.OilDefSalesTotal;
         double rawDiff = dto.ActualCollection - dto.ExpectedCollection;
-        dto.Difference = rawDiff < -0.01 ? -dto.TotalDsmShort : (rawDiff > 0.01 ? rawDiff : 0);
+        dto.Difference = Math.Abs(rawDiff) < 0.005 ? 0 : rawDiff;
         dto.IsBalanced = Math.Abs(dto.Difference) < 0.01;
         dto.BalancedStatus = dto.IsBalanced ? "Balanced" : (dto.Difference < 0 ? "Short" : "Excess");
 
@@ -1160,7 +1160,7 @@ public class ReportService : IReportService
         dto.ActualCollection = dto.CollectionBreakdown.Where(c => c.Category != "DSM Short" && !c.IsInformational && !c.Category.EndsWith("Testing", StringComparison.OrdinalIgnoreCase) && !string.Equals(c.Category, "Others", StringComparison.OrdinalIgnoreCase) && !string.Equals(c.Category, "Other", StringComparison.OrdinalIgnoreCase)).Sum(c => c.Amount);
         dto.ExpectedCollection = dto.DsrTotalFuelAmount + dto.OilDefSalesTotal;
         double rawDiff = dto.ActualCollection - dto.ExpectedCollection;
-        dto.Difference = rawDiff < -0.01 ? -dto.TotalDsmShort : (rawDiff > 0.01 ? rawDiff : 0);
+        dto.Difference = Math.Abs(rawDiff) < 0.005 ? 0 : rawDiff;
         dto.IsBalanced = Math.Abs(dto.Difference) < 0.01;
         dto.BalancedStatus = dto.IsBalanced ? "Balanced" : (dto.Difference < 0 ? "Short" : "Excess");
 
@@ -1284,11 +1284,11 @@ public class ReportService : IReportService
         double dynamicColl = e.PaymentCollection?.DynamicItemsTotal ?? 0;
         double debits = e.DebitEntries?.Sum(d => d.Amount) ?? 0;
         double expenses = (e.Expenses?.Sum(x => x.Amount) ?? 0) + (e.KhandharePetroleumEntries?.Sum(kp => kp.Amount) ?? 0);
-        double reduction = e.PersonalDebtors?.Sum(p => p.Amount) ?? 0;
+        double reduction = e.PaymentCollection?.CollectionReduction ?? 0;
         double testing = e.TestingEntries?.Sum(t => t.Amount) ?? 0;
 
         double totalCollection = cash1 + cash2 + cash3 + phTotal + ppcTotal + ccTotal + petroTotal + dynamicColl + debits + expenses - reduction;
-        double netGrossSales = gs - testing;
+        double netGrossSales = (e.NetGrossSales > 0) ? (double)e.NetGrossSales : (gs - testing);
         double mismatch = totalCollection - netGrossSales;
 
         return (gs, totalCollection, mismatch);

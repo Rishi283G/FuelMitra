@@ -758,6 +758,7 @@
                                             <DataGridTextColumn Header="Debtor Name" Binding="{Binding DebtorName}" Width="2*"/>
                                             <DataGridTextColumn Header="Vehicle No." Binding="{Binding VehicleNumber}" Width="*"/>
                                             <DataGridTextColumn Header="Slip No." Binding="{Binding SlipNumber}" Width="*"/>
+                                            <DataGridTextColumn Header="Remarks" Binding="{Binding Remarks}" Width="*"/>
                                             <DataGridTextColumn Header="Time" Binding="{Binding EntryTime}" Width="75"/>
                                             <DataGridTemplateColumn Header="Amount (&#x20B9;)" Width="110">
                                                 <DataGridTemplateColumn.CellTemplate>

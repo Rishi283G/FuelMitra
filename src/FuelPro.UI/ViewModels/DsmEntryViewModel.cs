@@ -1664,7 +1664,7 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
                 var norm = PaymentCollection.NormalizeCollectionTypeCode(t.Code);
                 var existingRow = ManualCollections.FirstOrDefault(m => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(m.Code), norm, StringComparison.OrdinalIgnoreCase));
                 var matchingItems = existingItems.Where(item => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(item.CollectionTypeCode), norm, StringComparison.OrdinalIgnoreCase)).ToList();
-                double manualAmt = matchingItems.Where(item => !item.IsSyntheticSummary).Sum(item => item.Amount);
+                double manualAmt = matchingItems.Where(item => !item.IsSyntheticSummary && string.IsNullOrWhiteSpace(item.Otp) && string.IsNullOrWhiteSpace(item.Tid) && string.IsNullOrWhiteSpace(item.Batch)).Sum(item => item.Amount);
 
                 if (existingRow != null)
                 {
@@ -1702,8 +1702,6 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
                         if (!string.IsNullOrWhiteSpace(item.Otp))
                         {
                             var normType = PaymentCollection.NormalizeCollectionTypeCode(item.CollectionTypeCode);
-                            var master = allTypes.FirstOrDefault(m => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(m.Code), normType, StringComparison.OrdinalIgnoreCase));
-                            if (master != null && master.IsManualOnly) continue;
                             var slot = !string.IsNullOrWhiteSpace(item.Slot) ? item.Slot : PaymentCollection.ExtractSlotFromMode(item.CollectionTypeCode, "General");
                             var (sharedTid, sharedBatch) = GetSharedTidBatch(normType, slot);
                             OtpTransactions.Add(new DsmOtpTransactionRow
@@ -1729,7 +1727,7 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
                             bool isManualOnly = master != null && master.IsManualOnly;
                             bool isExplicitManualScalar = !string.IsNullOrWhiteSpace(item.TransactionId) && item.TransactionId.StartsWith("manual-scalar-", StringComparison.OrdinalIgnoreCase);
                             bool hasTidOrBatch = !string.IsNullOrWhiteSpace(item.Tid) || !string.IsNullOrWhiteSpace(item.Batch);
-                            bool isTidItem = !isManualOnly && !isExplicitManualScalar && (master == null || master.HasTidBatch) &&
+                            bool isTidItem = !isExplicitManualScalar &&
                                 (hasTidOrBatch || string.Equals(normType, "PINELABS_CARD", StringComparison.OrdinalIgnoreCase));
 
                             if (isTidItem && (!PaymentCollection.IsStandardCollectionCode(normType) || normType is "PHONEPE" or "PETROCARD" or "CREDIT_CARD"))
@@ -2990,6 +2988,10 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
             row.Batch = null;
             row.Otp = null;
             row.RecalculateTotal();
+        }
+        foreach (var m in ManualCollections)
+        {
+            m.Amount = null;
         }
         if (DynamicCollections.Count == 0)
         {

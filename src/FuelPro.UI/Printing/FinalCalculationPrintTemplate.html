@@ -99,7 +99,7 @@ hr.div{border:none;border-top:1px solid #e4ecf2;margin:0 24px}
   td{padding:2px 2px;font-size:8.5px}
   .tr-total td{font-size:8.5px}
   #tDsm{width:100%!important;table-layout:auto!important}
-  .dsm-summary-table th, .dsm-summary-table td, #tDsm th, #tDsm td{padding:2px 1.5px!important;font-size:7.5px!important;white-space:nowrap!important}
+  .dsm-summary-table th, .dsm-summary-table td, #tDsm th, #tDsm td{padding:2.5px 2px!important;font-size:8.5px!important;white-space:nowrap!important}
   .dsm-summary-table th{white-space:normal!important;line-height:1.1!important}
   .dsm-summary-table th.col-others, .dsm-summary-table td.col-others{width:28px!important;max-width:30px!important;padding:2px 0.5px!important}
   .dsm-summary-table th.col-short, .dsm-summary-table td.col-short{min-width:55px!important}
@@ -406,7 +406,7 @@ function renderData(){
   }
 
   var totalL = d.totalFuelLitres || 0;
-  var diff = (d.difference !== undefined && d.difference !== null && hasOilInBreakdown) ? d.difference : (recTotal - expTarget);
+  var diff = (d.difference !== undefined && d.difference !== null) ? d.difference : (recTotal - expTarget);
 
   document.getElementById('sGross').textContent=inrZ(grossFuel);
   document.getElementById('sCollect').textContent=inrZ(recTotal);
@@ -831,7 +831,7 @@ function renderData(){
   if (oilDefTot > 0 && expectedSale < grossFuel) {
     expectedSale = grossFuel;
   }
-  var diff = (d.difference !== undefined && d.difference !== null && hasOilInBreakdown) ? d.difference : (recTotal - expectedSale);
+  var diff = (d.difference !== undefined && d.difference !== null) ? d.difference : (recTotal - expectedSale);
   document.getElementById('rTotal').textContent=inrZ(recTotal);
   document.getElementById('rGross').textContent=inrZ(expectedSale);
   var dCell=document.getElementById('rDiff');

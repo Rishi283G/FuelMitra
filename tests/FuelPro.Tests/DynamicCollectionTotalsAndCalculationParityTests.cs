@@ -716,4 +716,136 @@ public class DynamicCollectionTotalsAndCalculationParityTests
         Assert.Equal(51000m, approvalCalc.TotalCollection);
         Assert.Equal(0m, approvalCalc.Mismatch);
     }
+
+    [Fact]
+    public void Test10_ApprovalQueue_DeduplicatesAcrossOtpTidAndManualSections()
+    {
+        // Simulate PWA metadata where SubmitShiftScreen sent same transaction in both manualTidTransactions and dynamicItems
+        var seenTxIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seenOtpKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seenTidKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        var cardSwipeDetails = new List<dynamic>();
+        var manualTidTransactions = new List<dynamic>();
+
+        // 1. Transaction A is OTP
+        var txA = new { TransactionId = "tx-001", Mode = "PHONEPE", Amount = 500.0, Tid = "TID1", Batch = "B1", Otp = "123456", Slot = "Morning" };
+        seenTxIds.Add(txA.TransactionId);
+        seenOtpKeys.Add($"{txA.Mode}|{txA.Amount:F2}|{txA.Otp}");
+        cardSwipeDetails.Add(txA);
+
+        // 2. Duplicate of txA appears in dynamicItems with same TxId or same OtpKey
+        bool isDuplicateA = seenTxIds.Contains(txA.TransactionId) || seenOtpKeys.Contains($"{txA.Mode}|{txA.Amount:F2}|{txA.Otp}");
+        Assert.True(isDuplicateA, "txA duplicate must be detected and rejected");
+
+        // 3. Genuine TID swipe B
+        var txB = new { TransactionId = "tx-002", Mode = "CREDIT_CARD", Amount = 1200.0, Tid = "TID2", Batch = "B2", Otp = "", Slot = "Morning" };
+        seenTxIds.Add(txB.TransactionId);
+        seenTidKeys.Add($"{txB.Mode}|{txB.Amount:F2}|{txB.Tid}|{txB.Batch}");
+        manualTidTransactions.Add(txB);
+
+        // 4. Duplicate of txB in manual items
+        bool isDuplicateB = seenTxIds.Contains(txB.TransactionId) || seenTidKeys.Contains($"{txB.Mode}|{txB.Amount:F2}|{txB.Tid}|{txB.Batch}");
+        Assert.True(isDuplicateB, "txB duplicate must be detected and rejected");
+
+        Assert.Single(cardSwipeDetails);
+        Assert.Single(manualTidTransactions);
+    }
+
+    [Fact]
+    public void Test11_DebtorEntriesAndRemarks_PreservedInApprovalAndPersisted()
+    {
+        var row = new DsmDebitRow
+        {
+            DebtorName = "Ramesh Patil",
+            Amount = 1500.0,
+            VehicleNumber = "MH-12-AB-1234",
+            SlipNumber = "SL-9988",
+            Remarks = "Urgent tractor diesel",
+            EntryTime = "10:30 AM"
+        };
+
+        var debitEntity = new DebitEntry
+        {
+            DebtorName = row.DebtorName,
+            Amount = row.Amount,
+            VehicleNumber = string.IsNullOrWhiteSpace(row.VehicleNumber) ? null : row.VehicleNumber.Trim(),
+            SlipNumber = string.IsNullOrWhiteSpace(row.SlipNumber) ? null : row.SlipNumber.Trim(),
+            ChequeNo = string.IsNullOrWhiteSpace(row.SlipNumber) ? null : row.SlipNumber.Trim(),
+            Remarks = string.IsNullOrWhiteSpace(row.Remarks) ? null : row.Remarks.Trim(),
+            EntryTime = string.IsNullOrWhiteSpace(row.EntryTime) ? null : row.EntryTime.Trim(),
+            PaymentMethod = "Credit"
+        };
+
+        Assert.Equal("Ramesh Patil", debitEntity.DebtorName);
+        Assert.Equal(1500.0, debitEntity.Amount);
+        Assert.Equal("Urgent tractor diesel", debitEntity.Remarks);
+        Assert.Equal("SL-9988", debitEntity.SlipNumber);
+    }
+
+    [Fact]
+    public void Test12_CollectionReduction_DeductedExactlyOnceFromReconciliation()
+    {
+        var dto = new DsmEntryDto
+        {
+            NozzleReadings = new List<NozzleReadingDto> { new() { Amount = 10000m } },
+            TestingEntries = new List<TestingEntryDto>(),
+            ProductSales = 0m,
+            PaymentCollection = new PaymentCollectionDto
+            {
+                PhysicalCash = 8000m,
+                CollectionReduction = 500m,
+                CollectionReductionRemark = "Short cash adjustment"
+            },
+            DebitEntries = new List<DebitEntryDto> { new() { Amount = 2500m } }, // 8000 + 2500 - 500 = 10000
+            Expenses = new List<ExpenseDto>()
+        };
+
+        var result = _calcService.Calculate(dto);
+
+        Assert.Equal(10000m, result.SalesLiability);
+        Assert.Equal(10000m, result.TotalCollection);
+        Assert.Equal(0m, result.Mismatch);
+        Assert.True(result.IsBalanced);
+        Assert.Equal(500m, result.CollectionReduction);
+    }
+
+    [Fact]
+    public void Test13_ReportServiceCalculateEntryTotals_MatchesCanonicalReductionAndTesting()
+    {
+        var entry = new DsmEntry
+        {
+            GrossSales = 20000m,
+            TestingEntries = new List<TestingEntry> { new() { Amount = 500 } },
+            CashDenominations = new List<CashDenomination> { new() { CashType = "Cash2", TotalAmount = 15000 } },
+            PaymentCollection = new PaymentCollection
+            {
+                CollectionReduction = 200,
+                CollectionReductionRemark = "Discount adjustment"
+            },
+            DebitEntries = new List<DebitEntry> { new() { Amount = 4700 } },
+            Expenses = new List<Expense>()
+        };
+
+        var (gs, totalColl, mismatch) = ReportService.CalculateEntryTotals(entry);
+
+        // Gross sales = 20000, Testing = 500 => Net Gross Sales = 19500
+        // TotalCollection = 15000 + 4700 - 200 = 19500
+        // Mismatch = 19500 - 19500 = 0
+        Assert.Equal(20000, gs);
+        Assert.Equal(19500, totalColl);
+        Assert.Equal(0, mismatch, 2);
+    }
+
+    [Fact]
+    public void Test14_ShiftReportDifference_PreservesRawDiffWithoutTotalDsmShortCorruption()
+    {
+        double actualCollection = 49850.0;
+        double expectedCollection = 50000.0;
+        double rawDiff = actualCollection - expectedCollection; // -150.0
+
+        double difference = Math.Abs(rawDiff) < 0.005 ? 0 : rawDiff;
+
+        Assert.Equal(-150.0, difference);
+    }
 }

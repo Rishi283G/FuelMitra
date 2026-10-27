@@ -190,6 +190,7 @@ public partial class DsmDebitRow : ObservableObject
     [ObservableProperty] private string? _vehicleNumber;
     [ObservableProperty] private string? _slipNumber;
     [ObservableProperty] private string? _entryTime;
+    [ObservableProperty] private string? _remarks;
 
     partial void OnAmountChanged(double value) => OnRowChanged?.Invoke();
     partial void OnDebtorNameChanged(string value) => OnRowChanged?.Invoke();
@@ -1311,13 +1312,39 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                             Cash3.Coins = Convert.ToInt32((object?)metadata.cash3Amount);
                         }
 
-                        if (metadata.collectionReduction != null)
+                        if (metadata is Newtonsoft.Json.Linq.JObject mJobRed)
                         {
-                            CollectionReductionAmount = Convert.ToDouble((object?)metadata.collectionReduction);
+                            var redVal = mJobRed["collectionReduction"] ?? mJobRed["collection_reduction"] ?? mJobRed["Collections"]?["collectionReduction"];
+                            if (redVal != null) CollectionReductionAmount = (double)redVal;
+                            var redRem = mJobRed["collectionReductionRemark"] ?? mJobRed["collection_reduction_remark"] ?? mJobRed["Collections"]?["collectionReductionRemark"];
+                            if (redRem != null) CollectionReductionRemark = (string?)redRem;
                         }
-                        if (metadata.collectionReductionRemark != null)
+                        else
                         {
-                            CollectionReductionRemark = (string?)metadata.collectionReductionRemark;
+                            try { if (metadata.collectionReduction != null) CollectionReductionAmount = Convert.ToDouble((object?)metadata.collectionReduction); } catch {}
+                            try { if (metadata.collectionReductionRemark != null) CollectionReductionRemark = (string?)metadata.collectionReductionRemark; } catch {}
+                        }
+
+                        if (CollectionReductionAmount == 0 && coll != null)
+                        {
+                            if (coll is IDictionary<string, object> cDict)
+                            {
+                                if (cDict.TryGetValue("CollectionReduction", out var cr) || cDict.TryGetValue("collection_reduction", out cr) || cDict.TryGetValue("collectionReduction", out cr))
+                                {
+                                    if (cr != null) CollectionReductionAmount = Convert.ToDouble(cr);
+                                }
+                                if (cDict.TryGetValue("CollectionReductionRemark", out var crr) || cDict.TryGetValue("collection_reduction_remark", out crr) || cDict.TryGetValue("collectionReductionRemark", out crr))
+                                {
+                                    if (crr != null) CollectionReductionRemark = Convert.ToString(crr);
+                                }
+                            }
+                            else if (coll is Newtonsoft.Json.Linq.JObject cJob)
+                            {
+                                var cr = cJob["CollectionReduction"] ?? cJob["collection_reduction"] ?? cJob["collectionReduction"];
+                                if (cr != null) CollectionReductionAmount = (double)cr;
+                                var crr = cJob["CollectionReductionRemark"] ?? cJob["collection_reduction_remark"] ?? cJob["collectionReductionRemark"];
+                                if (crr != null) CollectionReductionRemark = (string?)crr;
+                            }
                         }
 
                         IsCash3Enabled = (_featureToggleService?.IsFeatureEnabled("Operations_Cash3", true) ?? true) || Cash3.TotalAmount > 0;
@@ -1341,20 +1368,55 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                         {
                             CashAmount = Convert.ToDouble((object?)coll.Cash);
                         }
-                        if (metadata.debtorEntries != null)
+
+                        Newtonsoft.Json.Linq.JToken? debtorToken = null;
+                        if (metadata is Newtonsoft.Json.Linq.JObject mJobDeb)
                         {
-                            foreach (var dbEntry in metadata.debtorEntries)
+                            debtorToken = mJobDeb["debtorEntries"] ?? mJobDeb["debitEntries"] ?? mJobDeb["debtors"];
+                        }
+                        if (debtorToken != null)
+                        {
+                            foreach (var dbEntry in debtorToken)
                             {
-                                DebtorEntries.Add(new DsmDebitRow
+                                double dAmt = (double)(dbEntry["amount"] ?? dbEntry["Amount"] ?? 0.0);
+                                string dName = (string?)(dbEntry["debtorName"] ?? dbEntry["debtor_name"] ?? dbEntry["DebtorName"] ?? dbEntry["name"] ?? dbEntry["Name"] ?? "") ?? "";
+                                if (dAmt > 0 || !string.IsNullOrWhiteSpace(dName))
                                 {
-                                    DebtorName = (string?)(dbEntry.debtorName ?? dbEntry.debtor_name ?? dbEntry.name ?? ""),
-                                    Amount = (double)(dbEntry.amount ?? 0.0),
-                                    VehicleNumber = (string?)(dbEntry.vehicleNumber ?? dbEntry.vehicle_number ?? dbEntry.vehicleNo ?? dbEntry.vehicle ?? ""),
-                                    SlipNumber = (string?)(dbEntry.slipNumber ?? dbEntry.slip_number ?? dbEntry.slipNo ?? dbEntry.slip ?? ""),
-                                    EntryTime = (string?)(dbEntry.time ?? dbEntry.entryTime ?? ""),
-                                    OnRowChanged = RecalculateTotals
-                                });
+                                    DebtorEntries.Add(new DsmDebitRow
+                                    {
+                                        DebtorName = dName,
+                                        Amount = dAmt,
+                                        VehicleNumber = (string?)(dbEntry["vehicleNumber"] ?? dbEntry["vehicle_number"] ?? dbEntry["VehicleNumber"] ?? dbEntry["vehicleNo"] ?? dbEntry["vehicle"] ?? ""),
+                                        SlipNumber = (string?)(dbEntry["slipNumber"] ?? dbEntry["slip_number"] ?? dbEntry["SlipNumber"] ?? dbEntry["slipNo"] ?? dbEntry["slip"] ?? ""),
+                                        EntryTime = (string?)(dbEntry["time"] ?? dbEntry["Time"] ?? dbEntry["entryTime"] ?? dbEntry["EntryTime"] ?? ""),
+                                        Remarks = (string?)(dbEntry["remarks"] ?? dbEntry["Remarks"] ?? dbEntry["notes"] ?? dbEntry["Notes"] ?? ""),
+                                        OnRowChanged = RecalculateTotals
+                                    });
+                                }
                             }
+                        }
+                        else
+                        {
+                            try
+                            {
+                                if (metadata.debtorEntries != null)
+                                {
+                                    foreach (var dbEntry in metadata.debtorEntries)
+                                    {
+                                        DebtorEntries.Add(new DsmDebitRow
+                                        {
+                                            DebtorName = (string?)(dbEntry.debtorName ?? dbEntry.debtor_name ?? dbEntry.name ?? "") ?? "",
+                                            Amount = Convert.ToDouble((object?)(dbEntry.amount ?? 0.0)),
+                                            VehicleNumber = (string?)(dbEntry.vehicleNumber ?? dbEntry.vehicle_number ?? dbEntry.vehicleNo ?? dbEntry.vehicle ?? ""),
+                                            SlipNumber = (string?)(dbEntry.slipNumber ?? dbEntry.slip_number ?? dbEntry.slipNo ?? dbEntry.slip ?? ""),
+                                            EntryTime = (string?)(dbEntry.time ?? dbEntry.entryTime ?? ""),
+                                            Remarks = (string?)(dbEntry.remarks ?? dbEntry.Remarks ?? dbEntry.notes ?? dbEntry.Notes ?? ""),
+                                            OnRowChanged = RecalculateTotals
+                                        });
+                                    }
+                                }
+                            }
+                            catch {}
                         }
 
                         if (metadata.debtorRepayments != null)
@@ -1491,8 +1553,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                                 var master = allTypes.FirstOrDefault(m => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(m.Code), normMtCode, StringComparison.OrdinalIgnoreCase));
                                 bool isManualOnly = master != null && master.IsManualOnly;
                                 bool isManualScalar = (!string.IsNullOrWhiteSpace(mtTxId) && mtTxId.StartsWith("manual-scalar-", StringComparison.OrdinalIgnoreCase))
-                                    || (string.IsNullOrWhiteSpace(mtTid) && string.IsNullOrWhiteSpace(mtBatch))
-                                    || isManualOnly;
+                                    || (string.IsNullOrWhiteSpace(mtTid) && string.IsNullOrWhiteSpace(mtBatch));
 
                                 if (isManualScalar)
                                 {
@@ -1617,9 +1678,8 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                                         var master = allTypes.FirstOrDefault(m => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(m.Code), normDCode, StringComparison.OrdinalIgnoreCase));
                                         bool isManualOnly = master != null && master.IsManualOnly;
                                         bool isManualScalar = (!string.IsNullOrWhiteSpace(dTxId) && dTxId.StartsWith("manual-scalar-", StringComparison.OrdinalIgnoreCase))
-                                            || (string.IsNullOrWhiteSpace(dTid) && string.IsNullOrWhiteSpace(dBatch))
-                                            || isManualOnly;
-                                        bool isTidItem = !isManualScalar && (master == null || master.HasTidBatch);
+                                            || (string.IsNullOrWhiteSpace(dTid) && string.IsNullOrWhiteSpace(dBatch));
+                                        bool isTidItem = !isManualScalar;
                                         if (isTidItem)
                                         {
                                             string dispMode = ResolveCollectionTypeDisplayName(dCode);
@@ -2414,7 +2474,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
             double otpAmt = CardSwipeDetails
                 .Where(c => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(c.Mode), norm, StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(c.Otp))
                 .Sum(c => c.Amount);
-            double total = itemizedTidAmt + otpAmt;
+            double total = (itemizedTidAmt > 0 || otpAmt > 0) ? (itemizedTidAmt + otpAmt) : manualScalarAmt;
 
             dynRow.ManualAmount = manualScalarAmt > 0 ? manualScalarAmt : null;
             dynRow.OtpAmount = otpAmt;
@@ -2610,7 +2670,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
         }
     }
 
-    private async Task PopulateCollectionTypesAndDynamicCollectionsAsync(DsmPendingSubmission submission)
+    private async Task PopulateCollectionTypesAndDynamicCollectionsAsync(DsmPendingSubmission? submission = null)
     {
         try
         {
@@ -3943,6 +4003,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                     VehicleNumber = string.IsNullOrWhiteSpace(dbEntry.VehicleNumber) ? null : dbEntry.VehicleNumber.Trim(),
                     SlipNumber = string.IsNullOrWhiteSpace(dbEntry.SlipNumber) ? null : dbEntry.SlipNumber.Trim(),
                     ChequeNo = string.IsNullOrWhiteSpace(dbEntry.SlipNumber) ? null : dbEntry.SlipNumber.Trim(),
+                    Remarks = string.IsNullOrWhiteSpace(dbEntry.Remarks) ? null : dbEntry.Remarks.Trim(),
                     EntryTime = string.IsNullOrWhiteSpace(dbEntry.EntryTime) ? null : dbEntry.EntryTime.Trim(),
                     PaymentMethod = "Credit"
                 });
@@ -4231,7 +4292,26 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                 var originalData = new
                 {
                     Readings = NozzleReadings.Select(r => new { r.NozzleId, r.OpeningReading, r.ClosingReading, r.Rate }),
-                    Collections = new { Cash = CashAmount, UPI = UpiAmount, Card = CardAmount, Credit = CreditAmount, Expense = ExpenseAmount, ExpenseNotes },
+                    Collections = new
+                    {
+                        Cash = CashAmount,
+                        UPI = UpiAmount,
+                        Card = CardAmount,
+                        Credit = CreditAmount,
+                        Expense = ExpenseAmount,
+                        ExpenseNotes,
+                        CollectionReduction = CollectionReductionAmount,
+                        CollectionReductionRemark = CollectionReductionRemark
+                    },
+                    debtorEntries = DebtorEntries.Select(d => new
+                    {
+                        d.DebtorName,
+                        d.Amount,
+                        d.VehicleNumber,
+                        d.SlipNumber,
+                        d.Remarks,
+                        d.EntryTime
+                    }),
                     khandhareEntries = KhandhareEntries.Select(k => new { k.Name, k.VehicleNumber, k.SlipNumber, k.Amount }),
                     debtorRepayments = DebtorRepayments.Select(r => new { r.DebtorName, r.Amount, r.PaymentMode, r.Notes })
                 };
@@ -4937,6 +5017,55 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
 
             NozzleReadings.Clear();
             DebtorEntries.Clear();
+            if (entry?.DebitEntries != null && entry.DebitEntries.Count > 0)
+            {
+                foreach (var d in entry.DebitEntries)
+                {
+                    DebtorEntries.Add(new DsmDebitRow
+                    {
+                        DebtorName = d.DebtorName ?? string.Empty,
+                        Amount = d.Amount,
+                        VehicleNumber = d.VehicleNumber,
+                        SlipNumber = d.SlipNumber,
+                        Remarks = d.Remarks,
+                        EntryTime = d.EntryTime
+                    });
+                }
+            }
+            else if (!string.IsNullOrEmpty(approvedSub.MetadataJson))
+            {
+                try
+                {
+                    var metadata = JsonConvert.DeserializeObject<dynamic>(approvedSub.MetadataJson);
+                    var rawDebtors = metadata?.debtorEntries ?? metadata?.debitEntries ?? metadata?.debtors;
+                    if (rawDebtors != null)
+                    {
+                        foreach (var d in rawDebtors)
+                        {
+                            string name = (d.debtorName ?? d.DebtorName ?? d.name ?? d.Name ?? string.Empty).ToString();
+                            double amount = Convert.ToDouble((object?)(d.amount ?? d.Amount ?? 0.0));
+                            string vehicle = (d.vehicleNumber ?? d.VehicleNumber ?? string.Empty).ToString();
+                            string slip = (d.slipNumber ?? d.SlipNumber ?? string.Empty).ToString();
+                            string remarks = (d.remarks ?? d.Remarks ?? string.Empty).ToString();
+                            string time = (d.entryTime ?? d.EntryTime ?? string.Empty).ToString();
+
+                            if (!string.IsNullOrWhiteSpace(name) || amount > 0)
+                            {
+                                DebtorEntries.Add(new DsmDebitRow
+                                {
+                                    DebtorName = name,
+                                    Amount = amount,
+                                    VehicleNumber = string.IsNullOrWhiteSpace(vehicle) ? null : vehicle.Trim(),
+                                    SlipNumber = string.IsNullOrWhiteSpace(slip) ? null : slip.Trim(),
+                                    Remarks = string.IsNullOrWhiteSpace(remarks) ? null : remarks.Trim(),
+                                    EntryTime = string.IsNullOrWhiteSpace(time) ? null : time.Trim()
+                                });
+                            }
+                        }
+                    }
+                }
+                catch {}
+            }
             CardSwipeDetails.Clear();
             SubmissionTestingEntries.Clear();
             OilDefSales.Clear();
@@ -5153,6 +5282,28 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                     CashDepositAmount = cash1Total > 0 ? cash1Total : pc.CashDeposit;
                     CollectionReductionAmount = pc.CollectionReduction;
                     CollectionReductionRemark = pc.CollectionReductionRemark;
+                    if ((CollectionReductionAmount == null || CollectionReductionAmount == 0) && !string.IsNullOrEmpty(approvedSub.MetadataJson))
+                    {
+                        try
+                        {
+                            var meta = JsonConvert.DeserializeObject<dynamic>(approvedSub.MetadataJson);
+                            var redVal = meta?.collectionReduction ?? meta?.collection_reduction ?? meta?.Collections?.collectionReduction;
+                            if (redVal != null)
+                            {
+                                double rAmt = Convert.ToDouble((object)redVal);
+                                if (rAmt > 0)
+                                {
+                                    CollectionReductionAmount = rAmt;
+                                }
+                            }
+                            var redRem = meta?.collectionReductionRemark ?? meta?.collection_reduction_remark ?? meta?.Collections?.collectionReductionRemark;
+                            if (redRem != null && string.IsNullOrWhiteSpace(CollectionReductionRemark))
+                            {
+                                CollectionReductionRemark = redRem.ToString();
+                            }
+                        }
+                        catch {}
+                    }
                     OthersAmount = pc.Others;
                     CreditAmount = (double)entry.TotalCreditors;
                     ExpenseAmount = entry.Expenses.Sum(e => e.Amount);
@@ -5194,7 +5345,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                         var master = allTypes.FirstOrDefault(m => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(m.Code), normCode, StringComparison.OrdinalIgnoreCase));
                         bool isManualOnly = master != null && master.IsManualOnly;
 
-                        var genuineTidItems = isManualOnly ? new List<PaymentCollectionItem>() : nonOtpItems.Where(i => !i.IsSyntheticSummary && (
+                        var genuineTidItems = nonOtpItems.Where(i => !i.IsSyntheticSummary && (
                             !string.IsNullOrWhiteSpace(i.Tid) ||
                             !string.IsNullOrWhiteSpace(i.Batch) ||
                             string.Equals(normCode, "PINELABS_CARD", StringComparison.OrdinalIgnoreCase)
@@ -5359,6 +5510,24 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
 
                     CleanupRedundantTotals(appMeta, null);
                 }
+                else if (!string.IsNullOrEmpty(approvedSub.MetadataJson))
+                {
+                    try
+                    {
+                        var meta = JsonConvert.DeserializeObject<dynamic>(approvedSub.MetadataJson);
+                        var redVal = meta?.collectionReduction ?? meta?.collection_reduction ?? meta?.Collections?.collectionReduction;
+                        if (redVal != null)
+                        {
+                            CollectionReductionAmount = Convert.ToDouble((object)redVal);
+                        }
+                        var redRem = meta?.collectionReductionRemark ?? meta?.collection_reduction_remark ?? meta?.Collections?.collectionReductionRemark;
+                        if (redRem != null)
+                        {
+                            CollectionReductionRemark = redRem.ToString();
+                        }
+                    }
+                    catch {}
+                }
 
                 foreach (var t in entry.TestingEntries)
                 {
@@ -5395,6 +5564,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                 catch {}
             }
 
+            await PopulateCollectionTypesAndDynamicCollectionsAsync();
             RecalculateTotals();
 
             TimelineLogs.Add(new DsmTimelineLog { Title = "Submitted on PWA", Timestamp = approvedSub.SubmittedTimeDisplay, Description = $"DSM '{approvedSub.DsmName}' completed shift entry on mobile app.", IsCompleted = true });
