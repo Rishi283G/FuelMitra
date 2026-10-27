@@ -9,6 +9,7 @@ public class DsmEntryDto
     public List<ExpenseDto> Expenses { get; set; } = new();
     public List<TestingEntryDto> TestingEntries { get; set; } = new();
     public List<CashDenominationDto> CashDenominations { get; set; } = new();
+    public decimal ProductSales { get; set; } = 0m;
 }
 
 public class NozzleReadingDto

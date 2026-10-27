@@ -207,9 +207,24 @@ public partial class DsmCardSwipeRow : ObservableObject
     [ObservableProperty] private string? _slot;
     public bool IsSyntheticSummary { get; set; }
 
+    public string TidDisplay
+    {
+        get => string.IsNullOrWhiteSpace(Tid) ? "—" : Tid;
+        set
+        {
+            Tid = value == "—" ? string.Empty : value;
+            OnPropertyChanged(nameof(TidDisplay));
+        }
+    }
+
     partial void OnAmountChanged(double value) => OnRowChanged?.Invoke();
     partial void OnModeChanged(string value) => OnRowChanged?.Invoke();
     partial void OnOtpChanged(string value) => OnRowChanged?.Invoke();
+    partial void OnTidChanged(string value)
+    {
+        OnPropertyChanged(nameof(TidDisplay));
+        OnRowChanged?.Invoke();
+    }
 }
 
 public partial class DynamicCollectionSummaryDto : ObservableObject
@@ -1262,6 +1277,27 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                             catch {}
                         }
 
+                        if (metadata?.manualDynamicAmounts != null)
+                        {
+                            try
+                            {
+                                var mdaJson = JsonConvert.SerializeObject(metadata.manualDynamicAmounts);
+                                var mdaDict = JsonConvert.DeserializeObject<Dictionary<string, double>>(mdaJson);
+                                if (mdaDict != null)
+                                {
+                                    foreach (var kvp in mdaDict)
+                                    {
+                                        string normCode = PaymentCollection.NormalizeCollectionTypeCode(kvp.Key);
+                                        if (kvp.Value > 0)
+                                        {
+                                            _dynamicManualAmounts[normCode] = kvp.Value;
+                                        }
+                                    }
+                                }
+                            }
+                            catch {}
+                        }
+
                         int formatVersion = 0;
                         if (metadata.formatVersion != null)
                         {
@@ -2161,7 +2197,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                 .Where(c => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(c.Mode), normCode, StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(c.Otp))
                 .Sum(c => c.Amount);
 
-            double effectiveCodeTotal = itemizedTidAmt + otpAmt;
+            double effectiveCodeTotal = (itemizedTidAmt + otpAmt > 0) ? (itemizedTidAmt + otpAmt) : manualScalarAmt;
             if (effectiveCodeTotal <= 0) continue;
 
             dynamicTotal += effectiveCodeTotal;
@@ -2297,14 +2333,15 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
             }).ToList()
         };
 
+        TotalOilDefSales = OilDefSales.Sum(s => s.Total);
+        dto.ProductSales = (decimal)TotalOilDefSales;
         var calc = _dsmCalculationService.Calculate(dto);
         TotalTestingAmount = (double)calc.TotalTesting;
         NetFuelSales = (double)calc.NetGrossSales;
-        TotalOilDefSales = OilDefSales.Sum(s => s.Total);
         TotalCollections = (double)calc.TotalCollection;
         TotalPaymentIn = (double)calc.TotalInDirect;
-        double totalSalesLiability = NetFuelSales + TotalOilDefSales;
-        MismatchAmount = TotalCollections - totalSalesLiability;
+        double totalSalesLiability = (double)calc.SalesLiability;
+        MismatchAmount = (double)calc.Mismatch;
 
         double rawShortage = MismatchAmount < 0 ? Math.Abs(MismatchAmount) : 0;
         double dsmLossAmount = rawShortage; // No tolerance: full shortage is DSM loss

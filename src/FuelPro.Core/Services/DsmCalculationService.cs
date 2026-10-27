@@ -26,13 +26,16 @@ public class DsmCalculationService : IDsmCalculationService
             // Canonical Option B: Testing is excluded from TotalCollection.
             // CollectionReduction is deducted exactly once from the canonical total collections.
             var totalCollection = totalInDirect + totalCreditors + totalExpenses - reduction;
-            var mismatch = totalCollection - netGrossSales;
+            var salesLiability = netGrossSales + dsm.ProductSales;
+            var mismatch = totalCollection - salesLiability;
 
             return new DsmCalculationResult
             {
                 GrossSales = grossSales,
                 TotalTesting = totalTesting,
                 NetGrossSales = netGrossSales,
+                ProductSales = dsm.ProductSales,
+                SalesLiability = salesLiability,
                 TotalInDirect = totalInDirect,
                 TotalCreditors = totalCreditors,
                 TotalExpenses = totalExpenses,

@@ -104,7 +104,8 @@ export function useSubmissionService() {
         petroCardNight: (draft as any).petroCardNight ?? 0,
         petroCardTidNight: (draft as any).petroCardTidNight || "",
         petroCardBatchNight: (draft as any).petroCardBatchNight || "",
-        dynamicCollectionValues: (draft as any).dynamicCollectionValues || {}
+        dynamicCollectionValues: (draft as any).dynamicCollectionValues || {},
+        manualDynamicAmounts: (draft as any).manualDynamicAmounts || {}
       };
 
       if (isUpdate) {

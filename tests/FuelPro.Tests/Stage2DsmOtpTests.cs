@@ -314,7 +314,7 @@ public class Stage2DsmOtpTests
             HasOtp = true
         };
 
-        Assert.False(legacyWithTid.IsOtpEligible, "Null HasOtp must be excluded from OTP dropdown.");
+        Assert.True(legacyWithTid.IsOtpEligible, "Null HasOtp with TID must fall back to HasTidBatch.");
         Assert.False(legacyWithoutTid.IsOtpEligible, "Null HasOtp without TID must be excluded.");
         Assert.True(explicitWithOtp.IsOtpEligible, "Explicit HasOtp = true must be eligible.");
     }
@@ -413,9 +413,9 @@ public class Stage2DsmOtpTests
             bool desktopEligible = master.IsActive && master.IsOtpEligible;
 
             // PWA JS simulation:
-            // const isOtpEligible = Boolean(ct.hasOtp);
+            // const isOtpEligible = ct.hasOtp !== undefined && ct.hasOtp !== null ? Boolean(ct.hasOtp) : Boolean(ct.hasTidBatch);
             // eligible = isOtpEligible && ct.isActive !== false;
-            bool pwaOtpEligible = hasOtp == true;
+            bool pwaOtpEligible = hasOtp ?? hasTid;
             bool pwaEligible = pwaOtpEligible && isActive;
 
             Assert.Equal(desktopEligible, pwaEligible);

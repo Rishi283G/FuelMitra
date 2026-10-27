@@ -568,7 +568,7 @@
                                                           HeadersVisibility="Column" GridLinesVisibility="Horizontal" materialDesign:DataGridAssist.CellPadding="8 4" materialDesign:DataGridAssist.ColumnHeaderPadding="8 4">
                                                     <DataGrid.Columns>
                                                         <DataGridTextColumn Header="Collection Method" Binding="{Binding Mode}" MinWidth="150" Width="160"/>
-                                                        <DataGridTextColumn Header="TID" Binding="{Binding Tid}" Width="90"/>
+                                                        <DataGridTextColumn Header="TID" Binding="{Binding TidDisplay}" Width="90"/>
                                                         <DataGridTextColumn Header="Batch" Binding="{Binding Batch}" Width="90"/>
                                                         <DataGridTextColumn Header="Slot" Binding="{Binding Slot}" Width="85"/>
                                                         <DataGridTextColumn Header="Slip No. / OTP" Binding="{Binding Otp}" Width="110"/>
@@ -1463,3 +1463,4 @@
         </Grid>
     </Grid>
 </UserControl>
+

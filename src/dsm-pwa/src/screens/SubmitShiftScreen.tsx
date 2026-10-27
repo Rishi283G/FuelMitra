@@ -23,6 +23,7 @@ import {
   KeyRound,
   Trash2,
   CreditCard,
+  TrendingUp,
 } from "lucide-react";
 
 interface SubmitProps {
@@ -337,9 +338,26 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   const [newTxAmount, setNewTxAmount] = useState("");
   const [newTxOtp, setNewTxOtp] = useState("");
   const [newTxSlot, setNewTxSlot] = useState("General");
+  const [newTxTid, setNewTxTid] = useState("");
+  const [manualDynamicAmounts, setManualDynamicAmounts] = useState<Record<string, number>>({});
   const [dynamicValues, setDynamicValues] = useState<
     Record<string, { amount: number; tid: string; batch: string; otp?: string }>
   >({});
+
+  // Configuration-driven Manual-only eligibility: HasTidBatch == false && HasOtp == false
+  const manualOnlyTypes = useMemo(() => {
+    const list: { code: string; displayName: string }[] = [];
+    if (stationConfig?.collectionTypes) {
+      for (const ct of stationConfig.collectionTypes) {
+        const isOtpEligible = ct.hasOtp !== undefined && ct.hasOtp !== null ? Boolean(ct.hasOtp) : Boolean(ct.hasTidBatch);
+        const isTidEligible = Boolean(ct.hasTidBatch);
+        if (!isTidEligible && !isOtpEligible && ct.isActive !== false) {
+          list.push({ code: ct.code, displayName: ct.displayName || ct.code });
+        }
+      }
+    }
+    return list;
+  }, [stationConfig?.collectionTypes]);
 
   // Shared configuration-driven eligibility:
   // Strictly filter OTP dropdown by developer settings: ct.hasOtp === true
@@ -447,6 +465,35 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   const getMachineTotalForType = (code: string) =>
     getTransactionsForType(code).reduce((sum, t) => sum + (t.amount || 0), 0);
 
+  // Live aggregate totals (TID + OTP) for collection types that have TID or OTP enabled
+  const collectionTypeTotals = useMemo(() => {
+    const list: { code: string; displayName: string; tidAmount: number; otpAmount: number; total: number }[] = [];
+    const seen = new Set<string>();
+
+    const allCandidateCodes = [
+      ...eligibleTidTypes.map((t) => t.code),
+      ...eligibleOtpTypes.map((t) => t.code),
+      ...manualTidTransactions.map((t) => t.collectionTypeCode),
+      ...machineTransactions.map((t) => t.collectionTypeCode),
+    ];
+
+    allCandidateCodes.forEach((rawCode) => {
+      const code = rawCode.toUpperCase();
+      if (seen.has(code)) return;
+      seen.add(code);
+      const ct = (stationConfig?.collectionTypes || []).find((c) => c.code.toUpperCase() === code);
+      const displayName = ct?.displayName || (code === "PHONEPE" ? "PhonePe" : code === "CREDIT_CARD" ? "Credit / Debit Card" : code === "PETROCARD" ? "PetroCard" : code.replace(/_/g, " "));
+      const tidAmount = getManualTidTotalForType(code);
+      const otpAmount = getMachineTotalForType(code);
+      const total = tidAmount + otpAmount;
+      if (total > 0) {
+        list.push({ code, displayName, tidAmount, otpAmount, total });
+      }
+    });
+
+    return list;
+  }, [eligibleTidTypes, eligibleOtpTypes, manualTidTransactions, machineTransactions, stationConfig?.collectionTypes]);
+
   // Per-collection-type Manual Entry Toggles & Slot Enforcement
   const [manualEntryToggles, setManualEntryToggles] = useState<Record<string, boolean>>({});
 
@@ -546,7 +593,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       collectionTypeCode: targetCode.toUpperCase(),
       amount: amt,
       otp: otp,
-      tid: tid || "",
+      tid: newTxTid.trim() || tid || "",
       batch: batch || "",
       slot: effectiveSlot,
     };
@@ -555,6 +602,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     syncParentCollectionTotal(targetCode, updated);
     setNewTxAmount("");
     setNewTxOtp("");
+    setNewTxTid("");
   };
 
   const removeMachineTransaction = (id: string) => {
@@ -698,6 +746,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       setKhandhareEntries(parsed.khandhareEntries ?? []);
       setQrPayments(parsed.qrPayments ?? []);
       if (parsed.machineTransactions) setMachineTransactions(parsed.machineTransactions);
+      if (parsed.manualDynamicAmounts) setManualDynamicAmounts(parsed.manualDynamicAmounts);
       const restoredTids: ManualTidTransactionItem[] = parsed.manualTidTransactions ? [...parsed.manualTidTransactions] : [];
       if (parsed.dynamicValues) {
         Object.entries(parsed.dynamicValues).forEach(([code, val]: [string, any]) => {
@@ -808,6 +857,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       qrPayments,
       machineTransactions,
       manualTidTransactions,
+      manualDynamicAmounts,
       dynamicValues,
       step,
       nozzleRows,
@@ -876,6 +926,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     qrPayments,
     machineTransactions,
     manualTidTransactions,
+    manualDynamicAmounts,
     dynamicValues,
     step,
     nozzleRows,
@@ -1541,6 +1592,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     new Set([
       ...(stationConfig?.collectionTypes || []).map((c) => c.code),
       ...Object.keys(dynamicValues),
+      ...Object.keys(manualDynamicAmounts),
       ...manualTidTransactions.map((t) => t.collectionTypeCode),
       ...machineTransactions.map((t) => t.collectionTypeCode),
     ])
@@ -1549,6 +1601,10 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   const getDynamicTypeEffectiveTotal = (code: string) => {
     const ct = (stationConfig?.collectionTypes || []).find((c) => c.code.toUpperCase() === code.toUpperCase());
     const isTidEligible = Boolean(ct?.hasTidBatch);
+    const isOtpEligible = ct?.hasOtp !== undefined && ct?.hasOtp !== null ? Boolean(ct.hasOtp) : Boolean(ct?.hasTidBatch);
+    if (!isTidEligible && !isOtpEligible) {
+      return manualDynamicAmounts[code] || 0;
+    }
     const manualTidSum = isTidEligible && multiTidTransactionsEnabled ? getManualTidTotalForType(code) : 0;
     const txTotal = otpMachineTrackingEnabled ? getMachineTotalForType(code) : 0;
     return manualTidSum + txTotal;
@@ -1986,6 +2042,22 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       }
     });
 
+    // 2. Ingest manual-only scalar dynamic collection amounts
+    manualOnlyTypes.forEach((t) => {
+      const amt = manualDynamicAmounts[t.code] || 0;
+      if (amt > 0) {
+        dynamicItemsPayload.push({
+          transactionId: `manual-scalar-${t.code.toLowerCase()}`,
+          collectionTypeCode: t.code,
+          amount: amt,
+          tid: "",
+          batch: "",
+          slot: shiftType === "B" ? "Day" : "Morning",
+          otp: "",
+        });
+      }
+    });
+
     const draftData = {
       pumpId,
       connectedPumpId: connectedPumps.length > 0 ? connectedPumps[0] : null,
@@ -2016,6 +2088,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       cardSwipeDetails: cardSwipes,
       machineTransactions,
       manualTidTransactions,
+      manualDynamicAmounts,
       dynamicItems: dynamicItemsPayload,
       dynamicCollectionValues: dynamicValues,
       settlements: settlementsList,
@@ -3531,7 +3604,126 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           </div>
           )}
 
+          {/* Manual Collection Amounts (Direct Entry for Active Types without TID or OTP) */}
+          {manualOnlyTypes.length > 0 && (
+            <div
+              className="nozzle-card"
+              style={{
+                marginBottom: "16px",
+                padding: "16px",
+                border: "1px solid rgba(245, 158, 11, 0.3)",
+                backgroundColor: "rgba(15, 23, 42, 0.6)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: "12px",
+                  borderBottom: "1px solid #334155",
+                  paddingBottom: "8px",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <CreditCard size={18} color="#f59e0b" />
+                  <h3 style={{ fontSize: "1rem", fontWeight: "bold", margin: 0, color: "#f59e0b" }}>
+                    Manual Collection Amounts (Direct Entry)
+                  </h3>
+                </div>
+                <span style={{ fontSize: "0.85rem", fontWeight: "bold", color: "#f59e0b" }}>
+                  Total: ₹{manualOnlyTypes.reduce((sum, t) => sum + (manualDynamicAmounts[t.code] || 0), 0).toFixed(2)}
+                </span>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "12px" }}>
+                {manualOnlyTypes.map((t) => (
+                  <div key={t.code} style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                    <label style={{ fontSize: "0.8rem", color: "#94a3b8", fontWeight: 600 }}>
+                      {t.displayName}
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      className="form-input"
+                      placeholder="0.00"
+                      value={manualDynamicAmounts[t.code] !== undefined ? manualDynamicAmounts[t.code] : ""}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value) || 0;
+                        setManualDynamicAmounts((prev) => ({ ...prev, [t.code]: val }));
+                      }}
+                      style={{
+                        padding: "8px 12px",
+                        backgroundColor: "#0f172a",
+                        border: "1px solid #334155",
+                        borderRadius: "6px",
+                        color: "#fff",
+                      }}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
+          {/* Collection-Type Live Aggregate Totals (TID + OTP) */}
+          {collectionTypeTotals.length > 0 && (
+            <div
+              className="nozzle-card"
+              style={{
+                marginBottom: "16px",
+                padding: "14px",
+                backgroundColor: "rgba(15, 23, 42, 0.6)",
+                border: "1px solid rgba(56, 189, 248, 0.3)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: "8px",
+                  borderBottom: "1px solid #334155",
+                  paddingBottom: "6px",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <TrendingUp size={16} color="#38bdf8" />
+                  <span style={{ fontSize: "0.88rem", fontWeight: 700, color: "#38bdf8" }}>
+                    Collection-Type Live Totals (TID + OTP)
+                  </span>
+                </div>
+                <span style={{ fontSize: "0.88rem", fontWeight: 700, color: "#10b981" }}>
+                  ₹{collectionTypeTotals.reduce((s, c) => s + c.total, 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                {collectionTypeTotals.map((item) => (
+                  <div
+                    key={item.code}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      fontSize: "0.82rem",
+                      padding: "4px 0",
+                      borderBottom: "1px dashed rgba(255, 255, 255, 0.08)",
+                    }}
+                  >
+                    <div>
+                      <span style={{ fontWeight: 600, color: "#f8fafc" }}>{item.displayName}</span>
+                      <span style={{ color: "#64748b", marginLeft: "6px", fontSize: "0.75rem" }}>
+                        (TID: ₹{item.tidAmount.toFixed(2)} | Slip: ₹{item.otpAmount.toFixed(2)})
+                      </span>
+                    </div>
+                    <span style={{ fontWeight: 700, color: "#38bdf8" }}>
+                      ₹{item.total.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Itemized Card & TID Transactions */}
           {multiTidTransactionsEnabled && eligibleTidTypes.length > 0 && (
@@ -3869,6 +4061,16 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                     </select>
                   </div>
                   <div className="field-group">
+                    <label className="field-label">TID</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      placeholder="Optional TID"
+                      value={newTxTid}
+                      onChange={(e) => setNewTxTid(e.target.value)}
+                    />
+                  </div>
+                  <div className="field-group">
                     <label className="field-label">Amount (₹) *</label>
                     <input
                       type="number"
@@ -3922,9 +4124,9 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                       <tr style={{ borderBottom: "1px solid #334155", color: "#94a3b8", textAlign: "left" }}>
                         <th style={{ padding: "6px 8px" }}>Method</th>
                         <th style={{ padding: "6px 8px" }}>Slot</th>
+                        <th style={{ padding: "6px 8px" }}>TID</th>
                         <th style={{ padding: "6px 8px" }}>Amount (₹)</th>
                         <th style={{ padding: "6px 8px" }}>Slip No.</th>
-                        <th style={{ padding: "6px 8px" }}>TID / Batch</th>
                         <th style={{ padding: "6px 8px", width: "40px" }}></th>
                       </tr>
                     </thead>
@@ -3933,14 +4135,12 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                         <tr key={tx.id} style={{ borderBottom: "1px solid #1e293b" }}>
                           <td style={{ padding: "6px 8px", fontWeight: 600 }}>{eligibleOtpTypes.find((t) => t.code === tx.collectionTypeCode)?.displayName || tx.collectionTypeCode}</td>
                           <td style={{ padding: "6px 8px", color: "#94a3b8" }}>{tx.slot}</td>
+                          <td style={{ padding: "6px 8px", color: tx.tid ? "#94a3b8" : "#64748b", fontFamily: "monospace" }}>{tx.tid || "—"}</td>
                           <td style={{ padding: "6px 8px", color: "#38bdf8", fontWeight: 600 }}>₹{tx.amount.toFixed(2)}</td>
                           <td style={{ padding: "6px 8px" }}>
                             <span style={{ backgroundColor: "rgba(56, 189, 248, 0.15)", color: "#38bdf8", padding: "2px 6px", borderRadius: "4px", fontSize: "0.75rem", fontFamily: "monospace" }}>
                               {tx.otp}
                             </span>
-                          </td>
-                          <td style={{ padding: "6px 8px", color: "#64748b", fontSize: "0.75rem" }}>
-                            {tx.tid ? `TID: ${tx.tid}` : ""}{tx.tid && tx.batch ? " | " : ""}{tx.batch ? `B: ${tx.batch}` : ""}
                           </td>
                           <td style={{ padding: "6px 8px", textAlign: "right" }}>
                             <button
@@ -5356,6 +5556,17 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                 <span>
                   ₹
                   {grandProductSales.toLocaleString("en-IN", {
+                    minimumFractionDigits: 2,
+                  })}
+                </span>
+              </div>
+            )}
+            {grandProductSales > 0 && (
+              <div className="mismatch-row">
+                <span style={{ fontWeight: 600, color: "#f8fafc" }}>Sales Liability</span>
+                <span style={{ fontWeight: 600, color: "#f8fafc" }}>
+                  ₹
+                  {totalSalesLiability.toLocaleString("en-IN", {
                     minimumFractionDigits: 2,
                   })}
                 </span>

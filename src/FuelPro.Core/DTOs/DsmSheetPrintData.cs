@@ -100,6 +100,7 @@ public class DsmPaymentPrintBlock
     public string PetroCardTid        { get; set; } = string.Empty;
     public string PetroCardBatch      { get; set; } = string.Empty;
 
+    public List<CollectionTypeTotalDto> CollectionTypeTotals { get; set; } = new();
     public List<DsmPaymentItemPrintRow> Items { get; set; } = new();
 }
 
@@ -111,6 +112,7 @@ public class DsmPaymentItemPrintRow
     public string Tid { get; set; } = string.Empty;
     public string Batch { get; set; } = string.Empty;
     public string Slot { get; set; } = string.Empty;
+    public string Otp { get; set; } = string.Empty;
 }
 
 /// <summary>

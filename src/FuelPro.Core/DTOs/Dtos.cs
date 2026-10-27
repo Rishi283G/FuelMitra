@@ -569,3 +569,21 @@ public class DsmShiftTotalDto
 
     public double this[string codeOrName] => GetAmount(codeOrName);
 }
+
+/// <summary>
+/// Live aggregate total and breakdown for a collection type (combining TID, OTP, and Manual amounts).
+/// </summary>
+public class CollectionTypeTotalDto
+{
+    public string Code { get; set; } = string.Empty;
+    public string DisplayName { get; set; } = string.Empty;
+    public double TidAmount { get; set; }
+    public double OtpAmount { get; set; }
+    public double ManualAmount { get; set; }
+    public double TotalAmount => TidAmount + OtpAmount + ManualAmount;
+    public bool HasTidOrOtp => TidAmount > 0 || OtpAmount > 0;
+    public string BreakdownDisplay => TidAmount > 0 && OtpAmount > 0
+        ? $"TID: ₹{TidAmount:N2} + OTP: ₹{OtpAmount:N2} = ₹{TotalAmount:N2}"
+        : (TidAmount > 0 ? $"TID: ₹{TidAmount:N2}" : (OtpAmount > 0 ? $"OTP: ₹{OtpAmount:N2}" : $"₹{TotalAmount:N2}"));
+}
+

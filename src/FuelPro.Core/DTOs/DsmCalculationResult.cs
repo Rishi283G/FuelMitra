@@ -6,6 +6,8 @@ public class DsmCalculationResult
     public decimal MeterGrossSales { get => GrossSales; set => GrossSales = value; }
     public decimal TotalTesting { get; set; }
     public decimal NetGrossSales { get; set; }
+    public decimal ProductSales { get; set; }
+    public decimal SalesLiability { get; set; }
     public decimal TotalInDirect { get; set; }
     public decimal TotalCreditors { get; set; }
     public decimal TotalExpenses { get; set; }

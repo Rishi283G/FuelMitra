@@ -505,7 +505,7 @@ if (petroVal > 0) {
 // Dynamic Custom Collections
 (p.items || []).forEach(function(item) {
   if (item.amount > 0) {
-    payRows.push({ label: item.displayName || item.collectionTypeCode, val: item.amount, tid: item.tid, batch: item.batch });
+    payRows.push({ label: item.displayName || item.collectionTypeCode, val: item.amount, tid: item.tid, batch: item.batch, otp: item.otp });
   }
 });
 
@@ -513,8 +513,13 @@ if (p.others > 0) payRows.push({ label: 'Others', val: p.others });
 
 payRows.filter(r => r.val > 0).forEach(r => {
   let details = '';
-  if (r.tid) {
-    details = `<span style="font-size: 8.5px; color: #666; display: block; margin-top: 1px; font-weight: normal;">TID: ${r.tid}${r.batch ? ` | Batch: ${r.batch}` : ''}</span>`;
+  if (r.tid || r.otp) {
+    let parts = [];
+    if (r.tid) parts.push(`TID: ${r.tid}`);
+    else if (r.otp) parts.push(`TID: —`);
+    if (r.batch) parts.push(`Batch: ${r.batch}`);
+    if (r.otp) parts.push(`Slip: ${r.otp}`);
+    details = `<span style="font-size: 8.5px; color: #666; display: block; margin-top: 1px; font-weight: normal;">${parts.join(' | ')}</span>`;
   }
   payHtml += `<div class="payment-row" style="flex-direction: column; align-items: stretch; height: auto; padding: 4px 6px;">
     <div style="display: flex; justify-content: space-between;">
@@ -524,6 +529,20 @@ payRows.filter(r => r.val > 0).forEach(r => {
     ${details}
   </div>`;
 });
+
+// Collection-Type Totals (TID + OTP)
+if (p.collectionTypeTotals && p.collectionTypeTotals.length > 0) {
+  payHtml += `<div style="margin-top: 6px; border-top: 1px dashed #90CAF9; padding-top: 4px; background: #F4F9FF; padding: 4px 6px; border-radius: 4px;">`;
+  payHtml += `<div style="font-size: 9px; font-weight: 700; color: #1565C0; margin-bottom: 3px;">COLLECTION-TYPE TOTALS (TID + OTP)</div>`;
+  p.collectionTypeTotals.forEach(function(ct) {
+    payHtml += `<div style="display: flex; justify-content: space-between; font-size: 8.5px; padding: 1px 0;">`;
+    payHtml += `<span><b>${ct.displayName || ct.code}</b> <span style="color: #666;">(${ct.breakdownDisplay || ('TID: ' + INR(ct.tidAmount) + ' | Slip: ' + INR(ct.otpAmount))})</span></span>`;
+    payHtml += `<span style="font-weight: 700; color: #1565C0;">${INR(ct.totalAmount)}</span>`;
+    payHtml += `</div>`;
+  });
+  payHtml += `</div>`;
+}
+
 payHtml += `</div><div class="payment-row payment-total" style="padding: 4px 6px;"><span class="payment-label">Total Digital Payments</span><span class="payment-value">${INR(p.totalDigital)}</span></div>`;
 document.getElementById('paymentBlock').innerHTML = payHtml;
 
