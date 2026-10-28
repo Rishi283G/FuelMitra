@@ -1568,6 +1568,14 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                                 else
                                 {
                                     string dispMode = ResolveCollectionTypeDisplayName(mtCode);
+                                    // Cross-section check: If already represented in OTP CardSwipeDetails, do not duplicate in ManualTidTransactions
+                                    bool inOtp = CardSwipeDetails.Any(c =>
+                                        (!string.IsNullOrWhiteSpace(c.TransactionId) && !string.IsNullOrWhiteSpace(mtTxId) && string.Equals(c.TransactionId, mtTxId, StringComparison.OrdinalIgnoreCase))
+                                        || (!string.IsNullOrWhiteSpace(c.Otp) && string.Equals(PaymentCollection.NormalizeCollectionTypeCode(c.Mode), normMtCode, StringComparison.OrdinalIgnoreCase) && Math.Abs(c.Amount - mtAmt) < 0.001
+                                            && !string.IsNullOrWhiteSpace(c.Tid) && string.Equals(c.Tid.Trim(), (mtTid ?? "").Trim(), StringComparison.OrdinalIgnoreCase)
+                                            && !string.IsNullOrWhiteSpace(c.Batch) && string.Equals(c.Batch.Trim(), (mtBatch ?? "").Trim(), StringComparison.OrdinalIgnoreCase)));
+                                    if (inOtp) continue;
+
                                     if (!ManualTidTransactions.Any(m =>
                                         (!string.IsNullOrWhiteSpace(mtTxId) && string.Equals(m.TransactionId, mtTxId, StringComparison.OrdinalIgnoreCase))
                                         || (string.Equals(PaymentCollection.NormalizeCollectionTypeCode(m.Mode), normMtCode, StringComparison.OrdinalIgnoreCase)
@@ -1686,6 +1694,14 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                                             string cleanTid = dTid ?? "";
                                             string cleanBatch = dBatch ?? "";
                                             string cleanSlot = dSlot ?? "General";
+                                            // Cross-section check: If already represented in OTP CardSwipeDetails, do not duplicate in ManualTidTransactions
+                                            bool inOtp = CardSwipeDetails.Any(c =>
+                                                (!string.IsNullOrWhiteSpace(c.TransactionId) && !string.IsNullOrWhiteSpace(dTxId) && string.Equals(c.TransactionId, dTxId, StringComparison.OrdinalIgnoreCase))
+                                                || (!string.IsNullOrWhiteSpace(c.Otp) && string.Equals(PaymentCollection.NormalizeCollectionTypeCode(c.Mode), normDCode, StringComparison.OrdinalIgnoreCase) && Math.Abs(c.Amount - dAmt) < 0.001
+                                                    && !string.IsNullOrWhiteSpace(c.Tid) && string.Equals(c.Tid.Trim(), cleanTid.Trim(), StringComparison.OrdinalIgnoreCase)
+                                                    && !string.IsNullOrWhiteSpace(c.Batch) && string.Equals(c.Batch.Trim(), cleanBatch.Trim(), StringComparison.OrdinalIgnoreCase)));
+                                            if (inOtp) continue;
+
                                             bool exists = ManualTidTransactions.Any(m =>
                                                 (!string.IsNullOrWhiteSpace(dTxId) && string.Equals(m.TransactionId, dTxId, StringComparison.OrdinalIgnoreCase))
                                                 || (string.Equals(m.Mode, dispMode, StringComparison.OrdinalIgnoreCase) &&
@@ -1888,6 +1904,14 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
 
                                     if (isTidItem)
                                     {
+                                        // Cross-section check: If already represented in OTP CardSwipeDetails, do not duplicate in ManualTidTransactions
+                                        bool inOtp = CardSwipeDetails.Any(c =>
+                                            (!string.IsNullOrWhiteSpace(c.TransactionId) && !string.IsNullOrWhiteSpace(cand.TxId) && string.Equals(c.TransactionId, cand.TxId, StringComparison.OrdinalIgnoreCase))
+                                            || (!string.IsNullOrWhiteSpace(c.Otp) && string.Equals(PaymentCollection.NormalizeCollectionTypeCode(c.Mode), normCode, StringComparison.OrdinalIgnoreCase) && Math.Abs(c.Amount - effectiveAmount) < 0.01
+                                                && !string.IsNullOrWhiteSpace(c.Tid) && string.Equals(c.Tid.Trim(), cand.Tid.Trim(), StringComparison.OrdinalIgnoreCase)
+                                                && !string.IsNullOrWhiteSpace(c.Batch) && string.Equals(c.Batch.Trim(), cand.Batch.Trim(), StringComparison.OrdinalIgnoreCase)));
+                                        if (inOtp) continue;
+
                                         // Identity-aware legacy duplicate resolution rules:
                                         // 1. Matching, reliable TransactionIds: Count one logical transaction once.
                                         // 2. Different, reliable TransactionIds: Preserve both transactions.
@@ -2442,6 +2466,13 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
             }
 
             var dynMatch = DynamicCollections.FirstOrDefault(d => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(d.Code), normCode, StringComparison.OrdinalIgnoreCase));
+            bool isManualOnly = ManualCollections.Any(m => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(m.Code), normCode, StringComparison.OrdinalIgnoreCase));
+            if (isManualOnly)
+            {
+                // Manual-only collections (e.g. SBI Redeem, QR) are displayed in ManualCollections section; do not duplicate in summary cards
+                continue;
+            }
+
             string displayName = !string.IsNullOrWhiteSpace(dynMatch?.DisplayName)
                 ? dynMatch.DisplayName
                 : ResolveCollectionTypeDisplayName(normCode);

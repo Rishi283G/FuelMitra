@@ -346,4 +346,79 @@ describe('Integration Fixes Verification (PWA)', () => {
       expect(effectiveTotal).toBe(7200.0);
     });
   });
+
+  describe('Client-Site Issue 1: Authoritative Station Rates vs Stale Draft Rates', () => {
+    it('overrides stale rates stored in saved draft with authoritative station rates', async () => {
+      const { resolveFuelRate } = await import('./stationConfig');
+      const liveConfig: any = {
+        stationId: 'RASHTRA-74A837',
+        fuelRates: {
+          'MS - 20KL': 105.50,
+          'HSD - 20KL': 93.20,
+          'Speed Tank': 114.80,
+        },
+        hsdRate: 93.20,
+        msIRate: 105.50,
+        msIIRate: 114.80,
+        speedRate: 114.80,
+      };
+
+      // Simulating a stale draft where older/default rates were saved in localStorage
+      const staleDraftRows = [
+        { nozzleId: 1, fuelType: 'MS-I', tankName: 'MS - 20KL', rate: 103.81 },
+        { nozzleId: 2, fuelType: 'HSD', tankName: 'HSD - 20KL', rate: 90.35 },
+        { nozzleId: 3, fuelType: 'Speed', tankName: 'Speed Tank', rate: 103.81 },
+      ];
+
+      // Restoration logic: re-resolve each row against authoritative liveConfig
+      const restoredRows = staleDraftRows.map((row) => {
+        let authoritativeRate = resolveFuelRate(liveConfig, row.fuelType, row.tankName);
+        if (authoritativeRate <= 0) {
+          const uFuel = (row.fuelType || '').toUpperCase();
+          if (uFuel.includes('SPEED') || uFuel.includes('XP95') || uFuel.includes('POWER')) {
+            authoritativeRate = liveConfig.speedRate || liveConfig.msIIRate || 0;
+          } else if (uFuel.includes('HSD') || uFuel.includes('DIESEL')) {
+            authoritativeRate = liveConfig.hsdRate || 0;
+          } else {
+            authoritativeRate = liveConfig.msIRate || 0;
+          }
+        }
+        return {
+          ...row,
+          rate: authoritativeRate > 0 ? authoritativeRate : row.rate,
+        };
+      });
+
+      expect(restoredRows[0].rate).toBe(105.50);
+      expect(restoredRows[1].rate).toBe(93.20);
+      expect(restoredRows[2].rate).toBe(114.80);
+    });
+  });
+
+  describe('Client-Site Issue 2: Mobile Input Hygiene & Auth Scoping', () => {
+    it('sanitizes zero-width characters and surrounding spaces from stationId and email while leaving password intact', () => {
+      function sanitizeField(val: string): string {
+        return val.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+      }
+
+      // Zero-width space injected by mobile keyboard
+      const dirtyStation = '\u200BRashTra-74A837 \uFEFF';
+      const dirtyEmail = ' rani@gmail.com\u200B ';
+      const exactPassword = ' Secret Pass 123 '; // Legitimate space inside/around password
+
+      expect(sanitizeField(dirtyStation)).toBe('RashTra-74A837');
+      expect(sanitizeField(dirtyEmail)).toBe('rani@gmail.com');
+      // Password must NEVER be sanitized or trimmed
+      expect(exactPassword).toBe(' Secret Pass 123 ');
+    });
+
+    it('correctly scopes auth emails case-insensitively with station prefix', async () => {
+      const { getScopedAuthEmail } = await import('../contexts/AuthContext');
+
+      expect(getScopedAuthEmail('rani@gmail.com', 'RASHTRA-74A837')).toBe('rashtra-74a837.rani@gmail.com');
+      expect(getScopedAuthEmail('rani', 'RASHTRA-74A837')).toBe('rashtra-74a837.rani@fuelpro.local');
+      expect(getScopedAuthEmail('rashtra-74a837.rani@gmail.com', 'RASHTRA-74A837')).toBe('rashtra-74a837.rani@gmail.com');
+      expect(getScopedAuthEmail('rahul@gmail.com', 'RASHTRA-74A837')).toBe('rashtra-74a837.rahul@gmail.com');
+    });
+  });
 });

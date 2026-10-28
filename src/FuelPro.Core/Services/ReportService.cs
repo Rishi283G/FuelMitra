@@ -243,6 +243,13 @@ public class ReportService : IReportService
         dto.PetroCardMorning = petroCardMorning;
         dto.PetroCardNight = petroCardNight;
 
+        double shiftPetroTotal = summaryRows.Sum(r => r.PetroCardTotal);
+        if (petroCard == 0 && shiftPetroTotal > 0)
+        {
+            petroCard = shiftPetroTotal;
+            dto.PetroCardMorning = summaryRows.Sum(r => r.PetroCardMorning);
+            dto.PetroCardNight = summaryRows.Sum(r => r.PetroCardNight);
+        }
 
         // Debtor repayments excluded from operational sales totals per client specification
         double finalCashDeposit = dto.Cash1.GrandTotal;
@@ -858,6 +865,14 @@ public class ReportService : IReportService
         double finalCreditCardMorning = pineLabsCardMorning + pineLabsCardDay;
         double finalCreditCardNight = pineLabsCardNight;
         double finalPetroCard = petroCardMorning + petroCardDay + petroCardNight;
+        double dayPetroTotal = summaryRows.Sum(r => r.PetroCardTotal);
+        if (finalPetroCard == 0 && dayPetroTotal > 0)
+        {
+            finalPetroCard = dayPetroTotal;
+            petroCardMorning = summaryRows.Sum(r => r.PetroCardMorning);
+            petroCardDay = summaryRows.Sum(r => r.PetroCardDay);
+            petroCardNight = summaryRows.Sum(r => r.PetroCardNight);
+        }
         dto.PetroCardMorning = petroCardMorning + petroCardDay;
         dto.PetroCardNight = petroCardNight;
 
@@ -1006,7 +1021,10 @@ public class ReportService : IReportService
         if (pcActive)
         {
             double pcTotal = dto.PetroCardMorning + dto.PetroCardNight;
-            dayBreakdown.Add(new() { Category = pcName, Amount = pcTotal, BaseAmount = petroCardMorning + petroCardDay + petroCardNight, RecoveryAmount = dto.PetroCardRepayments });
+            if (pcTotal == 0) pcTotal = summaryRows.Sum(r => r.PetroCardTotal);
+            double basePc = petroCardMorning + petroCardDay + petroCardNight;
+            if (basePc == 0) basePc = pcTotal;
+            dayBreakdown.Add(new() { Category = pcName, Amount = pcTotal, BaseAmount = basePc, RecoveryAmount = dto.PetroCardRepayments });
         }
 
         // All other enabled dynamic collection types from Dev side (always show with 0 if no entries)

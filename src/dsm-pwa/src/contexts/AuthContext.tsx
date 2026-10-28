@@ -215,21 +215,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [profile?.id, profile?.StationId]);
 
   async function login(email: string, password: string, stationId?: string): Promise<string | null> {
-    const effectiveStationId = stationId || localStorage.getItem('current_station_id') || localStorage.getItem('last_station_id') || '';
-    const rawEmail = email.trim();
+    const effectiveStationId = (stationId || localStorage.getItem('current_station_id') || localStorage.getItem('last_station_id') || '').trim();
+    const rawEmail = (email || '').replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
     const scopedEmail = getScopedAuthEmail(rawEmail, effectiveStationId);
+
+    // Redacted diagnostic metadata logging (strictly no passwords or credentials)
+    console.info('[AUTH] SignIn attempt:', {
+      hasStation: Boolean(effectiveStationId),
+      hasAtSymbol: rawEmail.includes('@'),
+      scopedLen: scopedEmail.length,
+      pwLen: (password || '').length
+    });
 
     let authRes = await supabase.auth.signInWithPassword({ email: scopedEmail, password });
 
-    // Fallback: If scoped email login failed, try the exact raw email if it contains '@'
-    if (authRes.error && rawEmail.includes('@') && scopedEmail !== rawEmail.toLowerCase()) {
-      const fallbackRes = await supabase.auth.signInWithPassword({ email: rawEmail, password });
-      if (!fallbackRes.error) {
-        authRes = fallbackRes;
+    // Fallback: If scoped email login failed, try standard fallback candidates without modifying password
+    if (authRes.error) {
+      const candidates: string[] = [];
+      if (rawEmail.includes('@') && rawEmail.toLowerCase() !== scopedEmail) {
+        candidates.push(rawEmail.toLowerCase());
+      } else if (!rawEmail.includes('@')) {
+        const unscopedLocal = `${rawEmail.toLowerCase()}@fuelpro.local`;
+        if (unscopedLocal !== scopedEmail) {
+          candidates.push(unscopedLocal);
+        }
+      }
+
+      for (const cand of candidates) {
+        const fallbackRes = await supabase.auth.signInWithPassword({ email: cand, password });
+        if (!fallbackRes.error) {
+          authRes = fallbackRes;
+          break;
+        }
       }
     }
 
-    if (authRes.error) return authRes.error.message;
+    if (authRes.error) {
+      console.warn('[AUTH] SignIn failed:', { error: authRes.error.message });
+      return authRes.error.message;
+    }
 
     if (effectiveStationId) {
       localStorage.setItem('current_station_id', effectiveStationId);

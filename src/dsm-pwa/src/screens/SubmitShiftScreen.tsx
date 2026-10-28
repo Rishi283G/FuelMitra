@@ -814,9 +814,24 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         parsed.nozzleRows.forEach((row: any) => {
           if (row.nozzleId && !seenIds.has(row.nozzleId)) {
             seenIds.add(row.nozzleId);
+            // Authoritative station-specific rate must override stale draft rates
+            let authoritativeRate = resolveFuelRate(stationConfig, row.fuelType, row.tankName);
+            if (authoritativeRate <= 0) {
+              const uFuel = (row.fuelType || '').toUpperCase();
+              if (uFuel.includes('SPEED') || uFuel.includes('XP95') || uFuel.includes('POWER')) {
+                authoritativeRate = stationConfig?.speedRate || stationConfig?.msIIRate || 0;
+              } else if (uFuel.includes('HSD') || uFuel.includes('DIESEL')) {
+                authoritativeRate = stationConfig?.hsdRate || 0;
+              } else if (uFuel.includes('CNG')) {
+                authoritativeRate = stationConfig?.cngRate || 0;
+              } else {
+                authoritativeRate = stationConfig?.msIRate || 0;
+              }
+            }
             uniqueNozzleRows.push({
               ...row,
               rowId: uniqueNozzleRows.length + 1,
+              rate: authoritativeRate > 0 ? authoritativeRate : (Number(row.rate) || 0),
             });
           }
         });
@@ -1194,9 +1209,29 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           pmQuery = pmQuery.eq("station_id", station);
         }
 
-        const pmRes = await pmQuery.order("NozzleNumber", { ascending: true });
+        let pmRes = await pmQuery.order("NozzleNumber", { ascending: true });
         nozzleConfig = pmRes.data;
         nozzleErr = pmRes.error;
+
+        // If no mappings returned and station was specified, retry case-insensitively
+        if ((!nozzleConfig || nozzleConfig.length === 0) && station) {
+          try {
+            let retryPm = supabase
+              .from("PumpMappings")
+              .select("NozzleNumber, FuelType, PumpId, TankName")
+              .in("PumpId", pumpsToFetch)
+              .eq("IsActive", true);
+            retryPm = typeof (retryPm as any).ilike === "function"
+              ? (retryPm as any).ilike("station_id", station)
+              : retryPm.eq("station_id", station.toLowerCase());
+            const retryRes = await retryPm.order("NozzleNumber", { ascending: true });
+            if (retryRes.data && retryRes.data.length > 0) {
+              nozzleConfig = retryRes.data;
+              nozzleErr = null;
+            }
+          } catch {}
+        }
+
         if (nozzleErr) {
           let retryQuery = supabase
             .from("PumpMappings")
@@ -1437,14 +1472,16 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         console.warn("Failed to fetch from IndexedDB drafts:", e);
       }
 
-      // Save verified openings and rates to localStorage cache for offline persistence
+      // Save verified openings and rates to localStorage cache for offline persistence only when valid station is loaded
       try {
         localStorage.setItem(openingsCacheKey, JSON.stringify(prevClosings));
-        const ratesCacheKey = `nozzle_rates_${station || "default"}`;
-        localStorage.setItem(
-          ratesCacheKey,
-          JSON.stringify({ hsd: hsdRate, msI: msIRate, msII: msIIRate, cng: cngRate, perNozzle: nozzleRates })
-        );
+        if (station && station.trim() !== "" && station.trim().toLowerCase() !== "default" && latestConfig && latestConfig.stationId) {
+          const ratesCacheKey = `nozzle_rates_${station.trim().toLowerCase()}`;
+          localStorage.setItem(
+            ratesCacheKey,
+            JSON.stringify({ hsd: hsdRate, msI: msIRate, msII: msIIRate, cng: cngRate, perNozzle: nozzleRates })
+          );
+        }
       } catch {}
 
       // Read existing draft readings from localStorage to avoid overwriting typed values on refresh or app minimize
@@ -2101,6 +2138,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     });
 
     const draftData = {
+      formatVersion: 3,
       pumpId,
       connectedPumpId: connectedPumps.length > 0 ? connectedPumps[0] : null,
       connectedPumpIds: connectedPumps,

@@ -494,7 +494,16 @@ function renderData(){
         cc = (getVal(r, 'creditCard')||0) + (getVal(r, 'creditCardMorning')||0) + (getVal(r, 'creditCardNight')||0) + (getVal(r, 'creditCardDay')||0) + (getVal(r, 'phonePeCard')||0) + (getVal(r, 'phonePeCardMorning')||0) + (getVal(r, 'phonePeCardNight')||0) + (getVal(r, 'phonePeCardDay')||0) + pineVal;
       }
     }
-    var pc = getVal(r, 'petroCardTotal') || (getVal(r, 'petroCardMorning')||0) + (getVal(r, 'petroCardNight')||0) + (getVal(r, 'petroCardDay')||0) + (getVal(r, 'petroCard')||0);
+    var pc = getVal(r, 'petroCardTotal');
+    if (pc === undefined || pc === null || isNaN(pc) || pc === 0) {
+      var dynM = getVal(r, 'dynamicCollections') || {};
+      var petroVal = dynM['PETROCARD'] || dynM['PETRO'] || 0;
+      if (pc === 0 && petroVal > 0) {
+        pc = petroVal;
+      } else if (pc === undefined || pc === null || isNaN(pc)) {
+        pc = (getVal(r, 'petroCard')||0) + (getVal(r, 'petroCardMorning')||0) + (getVal(r, 'petroCardNight')||0) + (getVal(r, 'petroCardDay')||0) + petroVal;
+      }
+    }
 
     var deb = getVal(r, 'debit') || 0;
     var exp = getVal(r, 'expenses') || 0;

@@ -158,7 +158,7 @@ public class ShiftAggregationService : IShiftAggregationService
                 double petroM = p1?.PetroCardMorning ?? 0;
                 double petroD = p1?.PetroCardDay ?? 0;
                 double petroN = p1?.PetroCardNight ?? 0;
-                double petro = p1?.PetroCard ?? 0;
+                double petro = petroM + petroD + petroN;
 
                 double finalPhM, finalPhD, finalPhN, finalPh;
                 double finalPpcM, finalPpcD, finalPpcN, finalPpc;
@@ -275,6 +275,55 @@ public class ShiftAggregationService : IShiftAggregationService
                         finalCcN = pineLabsN;
                         finalCcD = 0;
                         finalCc = pineLabsTotal;
+                    }
+                }
+
+                // PetroCard detection from items
+                static bool IsPetroCardItem(PaymentCollectionItem item)
+                {
+                    if (string.IsNullOrWhiteSpace(item.CollectionTypeCode)) return false;
+                    var norm = PaymentCollection.NormalizeCollectionTypeCode(item.CollectionTypeCode);
+                    if (norm is "PETROCARD") return true;
+                    string clean = item.CollectionTypeCode.ToUpperInvariant().Replace("_", "").Replace(" ", "");
+                    return clean.Contains("PETROCARD") || clean == "PETRO";
+                }
+
+                var petroCardItems = allItems.Where(IsPetroCardItem).ToList();
+                double petroItemsM = petroCardItems.Where(i => i.Slot == "Morning" || (isShiftA && string.IsNullOrWhiteSpace(i.Slot))).Sum(i => i.Amount);
+                double petroItemsD = petroCardItems.Where(i => i.Slot == "Day" || (isDay && string.IsNullOrWhiteSpace(i.Slot))).Sum(i => i.Amount);
+                double petroItemsN = petroCardItems.Where(i => i.Slot == "Night" || (isShiftC && string.IsNullOrWhiteSpace(i.Slot))).Sum(i => i.Amount);
+                double petroItemsTotal = petroCardItems.Sum(i => i.Amount);
+
+                if (finalPetro == 0 && petroItemsTotal > 0)
+                {
+                    if (isDay)
+                    {
+                        finalPetroD = (petroItemsD > 0 ? petroItemsD : petroItemsTotal);
+                        finalPetroM = 0; finalPetroN = 0;
+                        finalPetro = petroItemsTotal;
+                    }
+                    else if (isShiftC)
+                    {
+                        finalPetroN = (petroItemsN > 0 ? petroItemsN : petroItemsTotal);
+                        finalPetroM = 0; finalPetroD = 0;
+                        finalPetro = petroItemsTotal;
+                    }
+                    else
+                    {
+                        finalPetroM = (petroItemsM > 0 ? petroItemsM : (petroItemsN == 0 ? petroItemsTotal : 0));
+                        finalPetroN = petroItemsN;
+                        finalPetroD = 0;
+                        finalPetro = petroItemsTotal;
+                    }
+                }
+                else if (petroItemsTotal > 0 && petroItemsTotal > finalPetro)
+                {
+                    if (isDay) { finalPetroD = petroItemsTotal; finalPetro = petroItemsTotal; }
+                    else if (isShiftC) { finalPetroN = petroItemsTotal; finalPetro = petroItemsTotal; }
+                    else
+                    {
+                        finalPetroM = petroItemsM > 0 ? petroItemsM : (finalPetroM + (petroItemsTotal - finalPetro));
+                        finalPetro = petroItemsTotal;
                     }
                 }
 

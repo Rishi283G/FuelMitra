@@ -11,11 +11,18 @@ export default function LoginScreen() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  function sanitizeField(val: string): string {
+    return val.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
     setLoading(true);
-    const err = await login(email.trim(), password, stationId.trim());
+    const cleanStationId = sanitizeField(stationId);
+    const cleanEmail = sanitizeField(email);
+    // Preserve the exact password entered without blind trimming
+    const err = await login(cleanEmail, password, cleanStationId);
     setLoading(false);
     if (err) setError(err);
   }
@@ -60,6 +67,9 @@ export default function LoginScreen() {
               placeholder="e.g. Kandhare_Petroleum"
               required
               autoComplete="organization"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
             />
           </div>
 
@@ -74,6 +84,9 @@ export default function LoginScreen() {
               placeholder="Username or email"
               required
               autoComplete="username"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
             />
           </div>
 
@@ -89,6 +102,9 @@ export default function LoginScreen() {
                 placeholder="••••••••"
                 required
                 autoComplete="current-password"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
               />
               <button
                 type="button"
