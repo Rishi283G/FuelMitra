@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
 import { supabase, type DsmUserProfile } from '../lib/supabase';
 import type { User } from '@supabase/supabase-js';
 import { resetStationData } from '../lib/stationReset';
@@ -266,12 +266,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await supabase.auth.signOut();
   }
 
-  async function refreshProfile(): Promise<void> {
+  const refreshProfile = useCallback(async (): Promise<void> => {
     if (user) {
       const p = await fetchProfile(user.id);
       setProfile(p);
     }
-  }
+  }, [user?.id]);
 
   return (
     <AuthContext.Provider value={{ user, profile, loading, isResetting, login, logout, refreshProfile }}>

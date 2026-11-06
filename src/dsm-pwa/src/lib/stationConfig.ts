@@ -200,8 +200,8 @@ export function getDefaultStationConfig(stationId: string): StationConfig {
     fuelRates: {},
     hsdRate: 90.35,
     msIRate: 103.81,
-    msIIRate: 103.81,
-    speedRate: 103.81,
+    msIIRate: 0,
+    speedRate: 0,
     cngRate: 85.0,
   };
 }
@@ -536,8 +536,8 @@ async function fetchAndCacheStationConfig(cleanId: string, cacheKey: string): Pr
     // Authoritative rate resolution: dynamic fuelRates map takes precedence over scalar columns, which take precedence over hardcoded defaults
     const hsdRate = hsdFromMap ?? (rawHsd && Number(rawHsd) > 0 ? Number(rawHsd) : 90.35);
     const msIRate = msIFromMap ?? (rawMsI && Number(rawMsI) > 0 ? Number(rawMsI) : 103.81);
-    const msIIRate = msIIFromMap ?? (rawMsII && Number(rawMsII) > 0 ? Number(rawMsII) : (speedFromMap ?? msIRate));
-    const speedRate = speedFromMap ?? (rawSpeed && Number(rawSpeed) > 0 ? Number(rawSpeed) : msIIRate);
+    const msIIRate = msIIFromMap ?? (rawMsII && Number(rawMsII) > 0 ? Number(rawMsII) : (speedFromMap ?? 0));
+    const speedRate = speedFromMap ?? (rawSpeed && Number(rawSpeed) > 0 ? Number(rawSpeed) : (rawMsII && Number(rawMsII) > 0 ? Number(rawMsII) : 0));
     const cngRate = cngFromMap ?? (rawCng && Number(rawCng) > 0 ? Number(rawCng) : 85.0);
 
     // Normalize canonical keys into fuelRates map for direct lookup

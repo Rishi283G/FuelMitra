@@ -8,6 +8,7 @@ vi.mock('./db', () => {
   const mockTable = () => ({
     clear: vi.fn().mockResolvedValue(undefined),
     put: vi.fn().mockResolvedValue(undefined),
+    toArray: vi.fn().mockResolvedValue([]),
   });
   return {
     db: {
@@ -26,33 +27,44 @@ vi.mock('./db', () => {
 vi.mock('./supabase', () => {
   const mockFrom = vi.fn().mockImplementation((table) => {
     if (table === 'ProductMasters') {
-      return {
+      const builder: any = {
         select: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockResolvedValue({
-          data: [
-            { Id: 1, ProductName: 'Petrol MS', Category: 'Oil', Unit: 'Litres', DefaultSaleRate: 103.8 },
-            { Id: 2, ProductName: 'Diesel HSD', Category: 'Oil', Unit: 'Litres', DefaultSaleRate: 90.3 }
-          ],
-          error: null
-        })
+        eq: vi.fn().mockImplementation(() => builder),
+        order: vi.fn().mockImplementation(() => builder),
+        then: (resolve: any) =>
+          resolve({
+            data: [
+              { local_id: 1, Id: 1, ProductName: 'Petrol MS', Category: 'Oil', Unit: 'Litres', DefaultSaleRate: 103.8 },
+              { local_id: 2, Id: 2, ProductName: 'Diesel HSD', Category: 'Oil', Unit: 'Litres', DefaultSaleRate: 90.3 }
+            ],
+            error: null
+          })
       };
+      return builder;
     }
     if (table === 'OilDefDailyLogs') {
-      return {
+      const builder: any = {
         select: vi.fn().mockReturnThis(),
-        order: vi.fn().mockResolvedValue({
-          data: [
-            { ProductId: 1, RemainingStock: 5000, LogDate: '2026-07-12' },
-            { ProductId: 2, RemainingStock: 8000, LogDate: '2026-07-12' }
-          ],
-          error: null
-        })
+        eq: vi.fn().mockImplementation(() => builder),
+        order: vi.fn().mockImplementation(() => builder),
+        then: (resolve: any) =>
+          resolve({
+            data: [
+              { ProductId: 1, RemainingStock: 5000, LogDate: '2026-07-12' },
+              { ProductId: 2, RemainingStock: 8000, LogDate: '2026-07-12' }
+            ],
+            error: null
+          })
       };
+      return builder;
     }
-    return {
+    const defaultBuilder: any = {
       select: vi.fn().mockReturnThis(),
-      eq: vi.fn().mockResolvedValue({ data: [], error: null })
+      eq: vi.fn().mockImplementation(() => defaultBuilder),
+      order: vi.fn().mockImplementation(() => defaultBuilder),
+      then: (resolve: any) => resolve({ data: [], error: null })
     };
+    return defaultBuilder;
   });
 
   return {

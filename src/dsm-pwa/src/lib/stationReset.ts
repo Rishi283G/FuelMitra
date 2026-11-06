@@ -1,12 +1,11 @@
 import { db } from './db';
-import { supabase } from './supabase';
+import { syncProductListAndStockDirect } from './productSync';
 
 export async function resetStationData(newStationId: string): Promise<void> {
-  // 1. Clear IndexedDB (Dexie)
+  // 1. Clear IndexedDB submission & draft records (station-specific)
+  // Local products and stock caches are preserved until validated new data is ready for atomic replacement
   await db.drafts.clear();
   await db.submissions.clear();
-  await db.products.clear();
-  await db.stockBalances.clear();
 
   // 2. Clear station-specific localStorage (do NOT clear Supabase auth tokens or device ID)
   localStorage.removeItem('cached_creditors');
@@ -23,48 +22,8 @@ export async function resetStationData(newStationId: string): Promise<void> {
     }
   }
 
-  // 5. Perform initial synchronization for products and stock
-  const { data: products } = await supabase
-    .from('ProductMasters')
-    .select('Id, ProductName, Category, Unit, DefaultSaleRate')
-    .eq('IsActive', true);
-
-  const { data: logs } = await supabase
-    .from('OilDefDailyLogs')
-    .select('ProductId, RemainingStock, LogDate')
-    .order('LogDate', { ascending: false });
-
-  const latestStocks: Record<number, number> = {};
-  if (logs) {
-    for (const log of logs) {
-      const prodId = log.ProductId;
-      if (latestStocks[prodId] === undefined) {
-        latestStocks[prodId] = log.RemainingStock || 0;
-      }
-    }
-  }
-
-  await db.transaction('rw', db.products, db.stockBalances, async () => {
-    await db.products.clear();
-    await db.stockBalances.clear();
-
-    if (products) {
-      for (const p of products) {
-        await db.products.put({
-          id: p.Id,
-          productName: p.ProductName,
-          category: p.Category,
-          unit: p.Unit,
-          defaultSaleRate: p.DefaultSaleRate
-        });
-
-        await db.stockBalances.put({
-          productId: p.Id,
-          remainingStock: latestStocks[p.Id] || 0
-        });
-      }
-    }
-  });
+  // 5. Perform initial synchronization for products and stock scoped to newStationId
+  await syncProductListAndStockDirect(newStationId);
 
   // 6. Persist new Station ID
   localStorage.setItem('current_station_id', newStationId);

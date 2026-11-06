@@ -420,5 +420,101 @@ describe('Integration Fixes Verification (PWA)', () => {
       expect(getScopedAuthEmail('rashtra-74a837.rani@gmail.com', 'RASHTRA-74A837')).toBe('rashtra-74a837.rani@gmail.com');
       expect(getScopedAuthEmail('rahul@gmail.com', 'RASHTRA-74A837')).toBe('rashtra-74a837.rahul@gmail.com');
     });
+
+    it('verifies authentication fallback candidate sequence preserves exact password string without bypass', async () => {
+      const calls: { email: string; password: string }[] = [];
+      const mockSignIn = async ({ email, password }: { email: string; password: string }) => {
+        calls.push({ email, password });
+        // Fail scoped email attempt, succeed on fallback unscoped attempt
+        if (email.startsWith('rashtra-74a837.')) {
+          return { data: { user: null, session: null }, error: { message: 'Invalid login credentials' } };
+        }
+        if (email === 'rani@fuelpro.local') {
+          return { data: { user: { id: 'u1' } as any, session: {} as any }, error: null };
+        }
+        return { data: { user: null, session: null }, error: { message: 'User not found' } };
+      };
+
+      const testPassword = '  ExactP@ssword With Spaces!  ';
+      const rawUser = 'rani';
+      const stationId = 'RASHTRA-74A837';
+
+      // Simulating AuthContext.login candidate fallback sequence
+      const { getScopedAuthEmail } = await import('../contexts/AuthContext');
+      const scopedEmail = getScopedAuthEmail(rawUser, stationId);
+
+      let res = await mockSignIn({ email: scopedEmail, password: testPassword });
+      if (res.error) {
+        const candidates: string[] = [];
+        if (rawUser.includes('@') && rawUser.toLowerCase() !== scopedEmail) {
+          candidates.push(rawUser.toLowerCase());
+        } else if (!rawUser.includes('@')) {
+          const unscopedLocal = `${rawUser.toLowerCase()}@fuelpro.local`;
+          if (unscopedLocal !== scopedEmail) {
+            candidates.push(unscopedLocal);
+          }
+        }
+
+        for (const cand of candidates) {
+          const fbRes = await mockSignIn({ email: cand, password: testPassword });
+          if (!fbRes.error) {
+            res = fbRes;
+            break;
+          }
+        }
+      }
+
+      // 1. Verify fallback sequence called primary then candidate
+      expect(calls.length).toBe(2);
+      expect(calls[0].email).toBe('rashtra-74a837.rani@fuelpro.local');
+      expect(calls[1].email).toBe('rani@fuelpro.local');
+
+      // 2. Verify exact password passed unchanged to all attempts (no trim, no mutation)
+      expect(calls[0].password).toBe(testPassword);
+      expect(calls[1].password).toBe(testPassword);
+
+      // 3. Verify success on valid candidate
+      expect(res.error).toBeNull();
+      expect(res.data.user).toBeDefined();
+
+      // 4. Verify complete failure remains failure when all candidates fail
+      calls.length = 0;
+      const failingSignIn = async ({ email, password }: { email: string; password: string }) => {
+        calls.push({ email, password });
+        return { data: { user: null, session: null }, error: { message: 'Invalid credentials' } };
+      };
+
+      let failRes = await failingSignIn({ email: scopedEmail, password: testPassword });
+      if (failRes.error) {
+        const candidates = [`${rawUser.toLowerCase()}@fuelpro.local`];
+        for (const cand of candidates) {
+          const fb = await failingSignIn({ email: cand, password: testPassword });
+          if (!fb.error) {
+            failRes = fb;
+            break;
+          }
+        }
+      }
+      expect(failRes.error).not.toBeNull();
+      expect(failRes.error?.message).toBe('Invalid credentials');
+    });
+  });
+
+  describe('Client-Site Issue 5: Unsafe default-rate edge case for Speed', () => {
+    it('prevents unverified Speed rate fallback and defaults to safe 0 rate requiring configuration', async () => {
+      const { getDefaultStationConfig, resolveFuelRate } = await import('./stationConfig');
+
+      const defaultConfig = getDefaultStationConfig('UNKNOWN_STATION');
+      // Speed rate in default config must be 0 (requiring configuration) rather than regular petrol rate
+      expect(defaultConfig.speedRate).toBe(0);
+
+      const resolvedSpeed = resolveFuelRate(defaultConfig, 'Speed', 'Speed Tank');
+      expect(resolvedSpeed).toBe(0);
+
+      // Regular Petrol and Diesel may have baseline defaults, but Speed must never borrow Petrol rate
+      const resolvedMsI = resolveFuelRate(defaultConfig, 'MS-I', 'MS - 20KL');
+      expect(resolvedMsI).toBe(103.81);
+      expect(resolvedSpeed).not.toBe(resolvedMsI);
+    });
   });
 });

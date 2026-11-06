@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { db, type DraftSubmission } from '../lib/db';
 import { v4 as uuidv4 } from 'uuid';
+import { syncProductListAndStockDirect } from '../lib/productSync';
 
 export function useSubmissionService() {
   const [syncing, setSyncing] = useState(false);
@@ -318,59 +319,8 @@ export function useSubmissionService() {
     };
   }, []);
   
-  const syncProductListAndStock = useCallback(async () => {
-    if (!navigator.onLine) return;
-    try {
-      // 1. Fetch active products
-      const { data: products, error: pErr } = await supabase
-        .from('ProductMasters')
-        .select('Id, ProductName, Category, Unit, DefaultSaleRate')
-        .eq('IsActive', true);
-      
-      if (pErr) throw pErr;
-
-      // 2. Fetch latest stock balances (remaining stock from OilDefDailyLogs)
-      const { data: logs, error: lErr } = await supabase
-        .from('OilDefDailyLogs')
-        .select('ProductId, RemainingStock, LogDate')
-        .order('LogDate', { ascending: false });
-
-      if (lErr) throw lErr;
-
-      const latestStocks: Record<number, number> = {};
-      if (logs) {
-        for (const log of logs) {
-          const prodId = log.ProductId;
-          if (latestStocks[prodId] === undefined) {
-            latestStocks[prodId] = log.RemainingStock || 0;
-          }
-        }
-      }
-
-      await db.transaction('rw', db.products, db.stockBalances, async () => {
-        await db.products.clear();
-        await db.stockBalances.clear();
-
-        if (products) {
-          for (const p of products) {
-            await db.products.put({
-              id: p.Id,
-              productName: p.ProductName,
-              category: p.Category,
-              unit: p.Unit,
-              defaultSaleRate: p.DefaultSaleRate
-            });
-
-            await db.stockBalances.put({
-              productId: p.Id,
-              remainingStock: latestStocks[p.Id] || 0
-            });
-          }
-        }
-      });
-    } catch (err) {
-      console.error('Failed to sync product list and stock:', err);
-    }
+  const syncProductListAndStock = useCallback(async (stationIdOverride?: string) => {
+    await syncProductListAndStockDirect(stationIdOverride);
   }, []);
 
   return { syncing, saveDraft, submitToSupabase, retryQueuedDrafts, fetchSubmissionHistory, fetchSubmissionDetails, syncProductListAndStock };

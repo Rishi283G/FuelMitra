@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { supabase } from "../lib/supabase";
 import type { DsmNotification } from "../lib/supabase";
@@ -43,13 +43,26 @@ export default function DashboardScreen({ onNavigate }: DashboardProps) {
   const [lastDetails, setLastDetails] = useState<any>(null);
   const [lastDetailsLoading, setLastDetailsLoading] = useState(false);
 
+  // Identity ref and retry controls to prevent recursive re-fetch loops and safely retry on failure
+  const lastRefreshedIdentityRef = useRef<string | null>(null);
+  const refreshRetryCountRef = useRef<number>(0);
+  const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const handleRefresh = async () => {
     try {
       setIsRefreshing(true);
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+        refreshTimeoutRef.current = null;
+      }
+      refreshRetryCountRef.current = 0;
       await refreshProfile();
-      await syncProductListAndStock();
+      await syncProductListAndStock(profile?.StationId);
+      if (profile) {
+        lastRefreshedIdentityRef.current = `${profile.id}:${profile.StationId || ''}`;
+      }
     } catch (e) {
-      console.error(e);
+      console.error("Manual refresh failed:", e);
     } finally {
       setIsRefreshing(false);
     }
@@ -74,7 +87,7 @@ export default function DashboardScreen({ onNavigate }: DashboardProps) {
       setOnline(true);
       if (profile) {
         retryQueuedDrafts(profile.id, profile.StationId).catch(console.error);
-        syncProductListAndStock().catch(console.error);
+        syncProductListAndStock(profile.StationId).catch(console.error);
         refreshProfile().catch(console.error);
       }
     };
@@ -85,35 +98,57 @@ export default function DashboardScreen({ onNavigate }: DashboardProps) {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
     };
-  }, [profile, retryQueuedDrafts, syncProductListAndStock, refreshProfile]);
+  }, [profile?.id, profile?.StationId, retryQueuedDrafts, syncProductListAndStock, refreshProfile]);
 
   useEffect(() => {
     if (!profile) return;
+    const identityKey = `${profile.id}:${profile.StationId || ''}`;
+    if (lastRefreshedIdentityRef.current === identityKey) return;
 
     let active = true;
-    (async () => {
+
+    const executeRefresh = async () => {
       setIsRefreshing(true);
       try {
         await refreshProfile();
         if (!active) return;
-        await syncProductListAndStock();
+        await syncProductListAndStock(profile.StationId);
+        if (!active) return;
+
+        // Successfully completed for this identity and station assignment
+        lastRefreshedIdentityRef.current = identityKey;
+        refreshRetryCountRef.current = 0;
       } catch (e) {
         console.error("Failed to refresh DSM assignment on dashboard load:", e);
+        // Do not permanently mark as refreshed on failure
+        // Retry with bounded backoff (max 3 retries: 2s, 4s, 8s)
+        if (active && refreshRetryCountRef.current < 3) {
+          refreshRetryCountRef.current += 1;
+          const delay = Math.min(1000 * Math.pow(2, refreshRetryCountRef.current), 8000);
+          refreshTimeoutRef.current = setTimeout(() => {
+            if (active) {
+              executeRefresh();
+            }
+          }, delay);
+        }
       } finally {
         if (active) setIsRefreshing(false);
       }
-    })();
+    };
+
+    executeRefresh();
 
     return () => {
       active = false;
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+        refreshTimeoutRef.current = null;
+      }
     };
-  }, [profile, refreshProfile, syncProductListAndStock]);
+  }, [profile?.id, profile?.StationId, refreshProfile, syncProductListAndStock]);
 
   useEffect(() => {
     if (!profile) return;
-
-    // Sync product list and stock levels
-    syncProductListAndStock();
 
     // Fetch unread notifications
     supabase
@@ -146,9 +181,10 @@ export default function DashboardScreen({ onNavigate }: DashboardProps) {
         }
       });
 
-    // Real-time subscription for notifications
+    // Real-time subscription for notifications with user-scoped channel name
+    const channelName = `dsm-notifications-${profile.id}`;
     const channel = supabase
-      .channel("dsm-notifications")
+      .channel(channelName)
       .on(
         "postgres_changes",
         {
@@ -166,7 +202,7 @@ export default function DashboardScreen({ onNavigate }: DashboardProps) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [profile]);
+  }, [profile?.id, profile?.StationId]);
 
   async function markAllRead() {
     if (!profile) return;
