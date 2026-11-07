@@ -19,6 +19,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { useSubmissionService } from "../hooks/useSubmissionService";
+import { formatYMDForDisplay } from "../lib/dateUtils";
 
 interface DashboardProps {
   onNavigate: (screen: "submit" | "history") => void;
@@ -347,10 +348,10 @@ export default function DashboardScreen({ onNavigate }: DashboardProps) {
               <div style={{ flex: 1 }}>
                 <p className="status-label">Last submission</p>
                 <p className="status-value">
-                  {new Date(recentStatus.shiftDate).toLocaleDateString(
-                    "en-IN",
-                    { day: "numeric", month: "short" },
-                  )}{" "}
+                  {formatYMDForDisplay(recentStatus.shiftDate, {
+                    day: "numeric",
+                    month: "short",
+                  })}{" "}
                   · Shift {recentStatus.shiftType} ·{" "}
                   <span
                     className={`status-text status-${recentStatus.status.toLowerCase()}`}
@@ -454,7 +455,7 @@ export default function DashboardScreen({ onNavigate }: DashboardProps) {
                 <span className="modal-title">Last Submission Details</span>
                 {recentStatus && (
                   <p style={{ fontSize: "0.75rem", color: "#94a3b8", margin: 0 }}>
-                    My submitted sheet for Shift {recentStatus.shiftType} ({new Date(recentStatus.shiftDate).toLocaleDateString("en-IN", { day: "numeric", month: "short" })})
+                    My submitted sheet for Shift {recentStatus.shiftType} ({formatYMDForDisplay(recentStatus.shiftDate, { day: "numeric", month: "short" })})
                   </p>
                 )}
               </div>

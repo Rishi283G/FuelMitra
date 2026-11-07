@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useSubmissionService } from '../hooks/useSubmissionService';
+import { formatYMDForDisplay } from '../lib/dateUtils';
 import { ArrowLeft, CheckCircle2, XCircle, Clock, RefreshCw, Loader2 } from 'lucide-react';
 
 interface HistoryProps {
@@ -168,9 +169,7 @@ export default function HistoryScreen({ onBack }: HistoryProps) {
                 </p>
 
                 <p className="history-card-date">
-                  {new Date(entry.ShiftDate).toLocaleDateString('en-IN', {
-                    day: 'numeric', month: 'long', year: 'numeric'
-                  })}
+                  {formatYMDForDisplay(entry.ShiftDate)}
                 </p>
               </div>
               {statusBadge(entry.Status)}

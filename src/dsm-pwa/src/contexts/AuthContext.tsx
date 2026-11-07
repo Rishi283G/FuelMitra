@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState, useRef, useCallb
 import { supabase, type DsmUserProfile } from '../lib/supabase';
 import type { User } from '@supabase/supabase-js';
 import { resetStationData } from '../lib/stationReset';
+import { selectLatestActiveAssignment } from '../lib/dateUtils';
 
 export function getScopedAuthEmail(inputEmailOrUsername: string, stationId: string): string {
   if (!inputEmailOrUsername) return '';
@@ -50,19 +51,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const { data, error } = await supabase
         .from('DsmUsers')
-        .select('SyncGuid, EmployeeCode, FullName, MobileNumber, station_id, DsmPumpAssignments(PumpId, ConnectedPumpId, ConnectedPumpIdsJson, ShiftType, AssignedDate, IsActive)')
+        .select('SyncGuid, EmployeeCode, FullName, MobileNumber, station_id, DsmPumpAssignments(PumpId, ConnectedPumpId, ConnectedPumpIdsJson, ShiftType, AssignedDate, IsActive, station_id, local_id, SyncGuid)')
         .eq('AuthUserId', authUserId)
         .eq('IsActive', true)
         .single();
 
       if (error || !data) return null;
 
-      const activeAssignments = (data.DsmPumpAssignments as any[])?.filter(
-        (a: any) => a.IsActive === true
-      );
-      const activeAssignment = activeAssignments && activeAssignments.length > 0
-        ? activeAssignments.sort((a: any, b: any) => new Date(b.AssignedDate).getTime() - new Date(a.AssignedDate).getTime())[0]
-        : null;
+      const rawAssignments = data.DsmPumpAssignments as any[];
+      const activeAssignment = selectLatestActiveAssignment(rawAssignments, data.station_id);
 
       let connectedPumps: number[] = [];
       if (activeAssignment?.ConnectedPumpIdsJson) {

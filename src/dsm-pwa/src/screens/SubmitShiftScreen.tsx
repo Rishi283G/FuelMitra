@@ -3,6 +3,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useSubmissionService } from "../hooks/useSubmissionService";
 import { db, type DraftNozzleReading } from "../lib/db";
 import { supabase } from "../lib/supabase";
+import { parseAssignmentDateToYMD, getTodayYMD, formatYMDForDisplay } from "../lib/dateUtils";
 import {
   fetchStationConfig,
   getDefaultStationConfig,
@@ -82,37 +83,15 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     : (profile?.ConnectedPump ? [profile.ConnectedPump] : []);
   const shiftType = profile?.AssignedShift ?? "A";
   const [shiftDate, setShiftDate] = useState(() => {
-    if (profile?.AssignedDate) {
-      try {
-        const d = new Date(profile.AssignedDate);
-        const year = d.getFullYear();
-        const month = String(d.getMonth() + 1).padStart(2, "0");
-        const day = String(d.getDate()).padStart(2, "0");
-        return `${year}-${month}-${day}`;
-      } catch (e) {
-        console.error(e);
-      }
-    }
-    const d = new Date();
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
+    return parseAssignmentDateToYMD(profile?.AssignedDate) || getTodayYMD();
   });
 
   useEffect(() => {
-    if (profile?.AssignedDate) {
-      try {
-        const d = new Date(profile.AssignedDate);
-        const year = d.getFullYear();
-        const month = String(d.getMonth() + 1).padStart(2, "0");
-        const day = String(d.getDate()).padStart(2, "0");
-        setShiftDate(`${year}-${month}-${day}`);
-      } catch (e) {
-        console.error(e);
-      }
+    const parsed = parseAssignmentDateToYMD(profile?.AssignedDate);
+    if (parsed) {
+      setShiftDate(parsed);
     }
-  }, [profile]);
+  }, [profile?.AssignedDate]);
 
   const [notes, setNotes] = useState("");
   const [nozzleRows, setNozzleRows] = useState<NozzleRow[]>([]);
@@ -2428,11 +2407,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                 borderRadius: "0.375rem",
               }}
             >
-              {new Date(shiftDate + "T00:00:00").toLocaleDateString("en-IN", {
-                day: "numeric",
-                month: "long",
-                year: "numeric",
-              })}
+              {formatYMDForDisplay(shiftDate)}
             </div>
           </div>
 
