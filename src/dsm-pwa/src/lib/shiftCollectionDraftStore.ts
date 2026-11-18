@@ -282,3 +282,37 @@ export function clearShiftCollectionsDraftIfMatching(
     });
   });
 }
+
+/**
+ * Unconditionally clears the shift collections draft for the given key.
+ * Used for explicit user-initiated draft reset.
+ * Serialized through enqueueWrite to prevent racing with in-flight saves.
+ */
+export function clearShiftCollectionsDraft(key: string): Promise<void> {
+  return enqueueWrite(async () => {
+    if (!key) return;
+    const db = await openCollectionsDB();
+
+    return new Promise((resolve, reject) => {
+      try {
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        store.delete(key);
+
+        tx.oncomplete = () => {
+          resolve();
+        };
+
+        tx.onerror = () => {
+          reject(tx.error || new Error(`Clear transaction failed for key ${key}`));
+        };
+
+        tx.onabort = () => {
+          reject(tx.error || new Error(`Clear transaction aborted for key ${key}`));
+        };
+      } catch (err) {
+        reject(err);
+      }
+    });
+  });
+}

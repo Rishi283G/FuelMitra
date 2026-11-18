@@ -20,8 +20,10 @@ import {
   getShiftCollectionsDraft,
   saveShiftCollectionsDraft,
   clearShiftCollectionsDraftIfMatching,
+  clearShiftCollectionsDraft,
   type ShiftCollectionsDraft,
 } from "../lib/shiftCollectionDraftStore";
+import { isUnambiguousStationDraft } from "../lib/draftCompatibility";
 import {
   ArrowLeft,
   Send,
@@ -236,7 +238,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
 
   // Dynamic Station Configuration
   const [stationConfig, setStationConfig] = useState<StationConfig>(() => {
-    const initialStation = (profile?.StationId || "").trim();
+    const initialStation = (profile?.StationId || (profile as any)?.station_id || "").trim();
     if (typeof localStorage !== "undefined" && initialStation) {
       try {
         const cacheKey = `station_config_${initialStation.toLowerCase()}`;
@@ -253,13 +255,13 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   });
 
   useEffect(() => {
-    const stId = profile?.StationId?.trim();
+    const stId = (profile?.StationId || (profile as any)?.station_id || "").trim();
     if (stId) {
       fetchStationConfig(stId).then((cfg) => {
         setStationConfig(cfg);
       });
     }
-  }, [profile?.StationId]);
+  }, [profile?.StationId, (profile as any)?.station_id]);
 
   // Whenever stationConfig updates with authoritative rates, propagate to existing nozzle rows immediately
   useEffect(() => {
@@ -637,14 +639,17 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   const [online, setOnline] = useState(navigator.onLine);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
 
+  const profileStationId = (profile?.StationId || "").trim();
+  const rawProfileStationId = ((profile as any)?.station_id || "").trim();
+  const activeStationId = profileStationId || rawProfileStationId;
+  const activePumpId = pumpId || (profile?.AssignedPump ?? 0);
+
   const draftStorageKey = profile
-    ? `dsm-shift-draft:${profile.StationId}:${profile.AssignedDate}:${profile.AssignedPump}:${profile.AssignedShift}`
+    ? `dsm-shift-draft:${activeStationId}:${profile.AssignedDate}:${profile.AssignedPump}:${profile.AssignedShift}`
     : undefined;
 
   // Stable authenticated DSM identifier: profile.id (SyncGuid) or profile.AuthUserId (UUID), NEVER FullName alone (Safeguard 1)
   const stableDsmId = (profile?.id || profile?.AuthUserId || "").trim();
-  const activeStationId = (profile?.StationId || "").trim();
-  const activePumpId = pumpId || (profile?.AssignedPump ?? 0);
 
   const collectionsStorageKey = useMemo(() => {
     return buildShiftCollectionsKey(
@@ -657,10 +662,39 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   }, [activeStationId, stableDsmId, shiftDate, shiftType, activePumpId]);
 
   const [storageWarning, setStorageWarning] = useState<string | null>(null);
+  const [showClearDraftModal, setShowClearDraftModal] = useState(false);
+  const [isClearingDraft, setIsClearingDraft] = useState(false);
+  const [clearDraftNotice, setClearDraftNotice] = useState<string | null>(null);
+  const isClearingRef = useRef(false);
   const collectionsHydratedRef = useRef(false);
   const activeCollectionsKeyRef = useRef<string | null>(null);
   const collectionsReadCounterRef = useRef(0);
   const latestSavedVersionRef = useRef(0);
+
+  const handleConfirmClearCollections = async () => {
+    if (!collectionsStorageKey) {
+      setShowClearDraftModal(false);
+      return;
+    }
+    setIsClearingDraft(true);
+    setClearDraftNotice(null);
+    try {
+      isClearingRef.current = true;
+      await clearShiftCollectionsDraft(collectionsStorageKey);
+      setDebtorEntries([]);
+      setMachineTransactions([]);
+      latestSavedVersionRef.current++;
+      setShowClearDraftModal(false);
+      setClearDraftNotice("Local debtor and OTP draft entries cleared.");
+      setTimeout(() => setClearDraftNotice(null), 4000);
+    } catch (err: any) {
+      console.error("Failed to clear local collections draft:", err);
+      setStorageWarning("Warning: Failed to clear local collections draft from browser storage.");
+    } finally {
+      isClearingRef.current = false;
+      setIsClearingDraft(false);
+    }
+  };
 
   useEffect(() => {
     const on = () => setOnline(true);
@@ -890,8 +924,14 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
 
   // 2. Persist debtor entries and machine OTP transactions to isolated IndexedDB
   useEffect(() => {
-    // CRITICAL: Prevent hydration from overwriting previously stored data with empty initial state! (Safeguards 6 & 9)
-    if (!collectionsHydratedRef.current || !collectionsStorageKey) {
+    // CRITICAL: Prevent hydration or in-progress clearing from overwriting stored data or resurrecting cleared drafts
+    if (!collectionsHydratedRef.current || !collectionsStorageKey || isClearingRef.current) {
+      return;
+    }
+
+    const hasDebtors = debtorEntries.length > 0;
+    const hasMachine = machineTransactions.length > 0;
+    if (!hasDebtors && !hasMachine) {
       return;
     }
 
@@ -1524,19 +1564,39 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         if (missingAfterSteps12.length > 0 && station) {
           let localDrafts: any[] = [];
           try {
-            // STRICT STATION ISOLATION:
-            // Use indexed query on stationId to guarantee drafts belong solely to active authenticated station.
-            // Legacy drafts without stationId are unindexed and quarantined.
+            // STRICT STATION ISOLATION & LEGACY MULTI-FACTOR COMPATIBILITY:
+            // 1. Try indexed Dexie v5 query on stationId first
             localDrafts = await db.drafts
               .where('stationId')
               .equals(station)
               .filter((d: any) => pumpsToFetch.includes(d.pumpId))
               .toArray();
+
+            // 2. If no indexed drafts found, check legacy unindexed drafts with multi-factor proof of ownership
+            if (localDrafts.length === 0) {
+              const allDrafts = await db.drafts.toArray();
+              localDrafts = allDrafts.filter((d: any) =>
+                isUnambiguousStationDraft(
+                  d,
+                  station,
+                  stationConfig?.stationName || profile?.StationName,
+                  pumpsToFetch,
+                  nozzleIds
+                )
+              );
+            }
           } catch {
             try {
-              localDrafts = await db.drafts
-                .filter((d: any) => d.stationId === station && pumpsToFetch.includes(d.pumpId))
-                .toArray();
+              const allDrafts = await db.drafts.toArray();
+              localDrafts = allDrafts.filter((d: any) =>
+                isUnambiguousStationDraft(
+                  d,
+                  station,
+                  stationConfig?.stationName || profile?.StationName,
+                  pumpsToFetch,
+                  nozzleIds
+                )
+              );
             } catch {
               localDrafts = [];
             }
@@ -2230,9 +2290,23 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       }
     });
 
-    const activeStation = profile?.StationId ? profile.StationId.trim() : "";
+    const profileStation = (profile?.StationId || "").trim();
+    const rawProfileStation = ((profile as any)?.station_id || "").trim();
+    if (profileStation && rawProfileStation && profileStation.toLowerCase() !== rawProfileStation.toLowerCase()) {
+      setError("Cannot submit shift: Conflicting station identity detected in session. Please sign out and sign in again.");
+      setIsSubmitting(false);
+      submittingRef.current = false;
+      return;
+    }
+    const activeStation = profileStation || rawProfileStation;
     if (!activeStation) {
       setError("Cannot submit shift: Missing authenticated station identity. Please sign out and sign in again.");
+      setIsSubmitting(false);
+      submittingRef.current = false;
+      return;
+    }
+    if (stationConfig?.stationId && stationConfig.stationId.trim().toLowerCase() !== activeStation.toLowerCase()) {
+      setError("Cannot submit shift: Station identity mismatch between session and station configuration. Please refresh and try again.");
       setIsSubmitting(false);
       submittingRef.current = false;
       return;
@@ -4215,9 +4289,32 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                     Machine Slip Number Transactions
                   </h3>
                 </div>
-                <span style={{ fontSize: "0.85rem", fontWeight: "bold", color: "#38bdf8" }}>
-                  Total: ₹{machineTransactions.reduce((sum, t) => sum + (t.amount || 0), 0).toFixed(2)} ({machineTransactions.length})
-                </span>
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  {(machineTransactions.length > 0 || debtorEntries.length > 0) && (
+                    <button
+                      type="button"
+                      style={{
+                        backgroundColor: "transparent",
+                        border: "1px solid #ef4444",
+                        color: "#f87171",
+                        fontSize: "0.75rem",
+                        padding: "3px 8px",
+                        borderRadius: "4px",
+                        cursor: "pointer",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "4px",
+                      }}
+                      onClick={() => setShowClearDraftModal(true)}
+                    >
+                      <Trash2 size={13} />
+                      Clear Draft
+                    </button>
+                  )}
+                  <span style={{ fontSize: "0.85rem", fontWeight: "bold", color: "#38bdf8" }}>
+                    Total: ₹{machineTransactions.reduce((sum, t) => sum + (t.amount || 0), 0).toFixed(2)} ({machineTransactions.length})
+                  </span>
+                </div>
               </div>
 
               {/* Add New Transaction Form */}
@@ -4488,17 +4585,66 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
             className="nozzle-card"
             style={{ marginBottom: "16px", padding: "16px" }}
           >
-            <h3
+            <div
               style={{
-                fontSize: "1rem",
-                fontWeight: "bold",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
                 marginBottom: "12px",
                 borderBottom: "1px solid #334155",
                 paddingBottom: "6px",
               }}
             >
-              Debtors Register (Credit Sales)
-            </h3>
+              <h3
+                style={{
+                  fontSize: "1rem",
+                  fontWeight: "bold",
+                  margin: 0,
+                }}
+              >
+                Debtors Register (Credit Sales)
+              </h3>
+              {(debtorEntries.length > 0 || machineTransactions.length > 0) && (
+                <button
+                  type="button"
+                  style={{
+                    backgroundColor: "transparent",
+                    border: "1px solid #ef4444",
+                    color: "#f87171",
+                    fontSize: "0.75rem",
+                    padding: "3px 8px",
+                    borderRadius: "4px",
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "4px",
+                  }}
+                  onClick={() => setShowClearDraftModal(true)}
+                >
+                  <Trash2 size={13} />
+                  Clear Collections Draft
+                </button>
+              )}
+            </div>
+            {clearDraftNotice && (
+              <div
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: "4px",
+                  backgroundColor: "rgba(16, 185, 129, 0.15)",
+                  border: "1px solid #10b981",
+                  color: "#6ee7b7",
+                  fontSize: "0.85rem",
+                  marginBottom: "12px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
+              >
+                <CheckCircle2 size={16} />
+                <span>{clearDraftNotice}</span>
+              </div>
+            )}
             <div className="field-row-2">
               <div className="field-group">
                 <label className="field-label">Debtor Name</label>
@@ -5807,6 +5953,103 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
             </button>
           </div>
         </div>
+
+        {showClearDraftModal && (
+          <div
+            className="modal-overlay"
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: "rgba(0,0,0,0.7)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 1000,
+              padding: "16px",
+            }}
+            onClick={() => !isClearingDraft && setShowClearDraftModal(false)}
+          >
+            <div
+              className="modal-content"
+              style={{
+                backgroundColor: "#1e293b",
+                borderRadius: "8px",
+                padding: "20px",
+                maxWidth: "420px",
+                width: "100%",
+                boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.5)",
+                border: "1px solid #334155",
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "14px" }}>
+                <div style={{ backgroundColor: "rgba(239, 68, 68, 0.2)", padding: "8px", borderRadius: "50%", color: "#ef4444" }}>
+                  <AlertTriangle size={24} />
+                </div>
+                <h3 style={{ margin: 0, fontSize: "1.1rem", fontWeight: "bold", color: "#f8fafc" }}>
+                  Clear Collections Draft?
+                </h3>
+              </div>
+              <p style={{ fontSize: "0.88rem", color: "#cbd5e1", lineHeight: 1.5, marginBottom: "16px" }}>
+                This will permanently remove saved <strong>Debtor entries</strong> ({debtorEntries.length}) and <strong>Machine OTP swipes</strong> ({machineTransactions.length}) for this active shift draft.
+              </p>
+              <p style={{ fontSize: "0.8rem", color: "#94a3b8", marginBottom: "20px" }}>
+                Nozzle readings, cash denominations, expenses, and submitted records are preserved.
+              </p>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{
+                    padding: "8px 16px",
+                    borderRadius: "6px",
+                    border: "1px solid #475569",
+                    backgroundColor: "transparent",
+                    color: "#cbd5e1",
+                    cursor: "pointer",
+                  }}
+                  disabled={isClearingDraft}
+                  onClick={() => setShowClearDraftModal(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-danger"
+                  style={{
+                    padding: "8px 16px",
+                    borderRadius: "6px",
+                    backgroundColor: "#ef4444",
+                    color: "#fff",
+                    border: "none",
+                    fontWeight: "bold",
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                  disabled={isClearingDraft}
+                  onClick={handleConfirmClearCollections}
+                >
+                  {isClearingDraft ? (
+                    <>
+                      <Loader2 size={16} className="spin" />
+                      Clearing...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 size={16} />
+                      Clear Draft
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );

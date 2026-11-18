@@ -26,6 +26,7 @@ export interface SettlementEntry {
 export interface DraftSubmission {
   id?: number; // auto-increment local key
   draftId: string; // client-generated uuid
+  stationId?: string; // authoritative station identity (optional on legacy pre-v1.3.64 drafts)
   pumpId: number;
   shiftDate: string;    // YYYY-MM-DD
   shiftType: 'A' | 'B' | 'C';
@@ -93,6 +94,7 @@ export interface CachedStock {
 export interface CachedSubmission {
   id?: number;
   remoteId: string;
+  stationId?: string; // authoritative station identity
   pumpId: number;
   shiftDate: string;
   shiftType: string;
@@ -136,6 +138,19 @@ export class DsmDatabase extends Dexie {
       submissions: '++id, remoteId, pumpId, status, shiftDate',
       products: 'id, productName, category',
       stockBalances: 'productId'
+    });
+
+    // Version 5 to support stationId multi-tenant isolation in drafts and submissions
+    this.version(5).stores({
+      drafts: '++id, draftId, stationId, [stationId+pumpId], pumpId, status, shiftDate',
+      submissions: '++id, remoteId, stationId, [stationId+pumpId], pumpId, status, shiftDate',
+      products: 'id, productName, category',
+      stockBalances: 'productId'
+    }).upgrade(async (_tx) => {
+      // Non-destructive upgrade:
+      // Existing drafts and submissions are preserved without modification.
+      // Unscoped legacy drafts retain undefined stationId and remain safely quarantined
+      // from station-aware queries (which require a valid stationId key).
     });
   }
 }
