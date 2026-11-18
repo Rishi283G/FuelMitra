@@ -16,6 +16,13 @@ import {
   type ManualTidTransactionItem,
 } from "../lib/stationConfig";
 import {
+  buildShiftCollectionsKey,
+  getShiftCollectionsDraft,
+  saveShiftCollectionsDraft,
+  clearShiftCollectionsDraftIfMatching,
+  type ShiftCollectionsDraft,
+} from "../lib/shiftCollectionDraftStore";
+import {
   ArrowLeft,
   Send,
   AlertTriangle,
@@ -229,16 +236,10 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
 
   // Dynamic Station Configuration
   const [stationConfig, setStationConfig] = useState<StationConfig>(() => {
-    const initialStation =
-      profile?.StationId ||
-      (profile as any)?.station_id ||
-      (typeof localStorage !== "undefined"
-        ? localStorage.getItem("current_station_id") || localStorage.getItem("fuelpro_station_id")
-        : "") ||
-      "";
+    const initialStation = (profile?.StationId || "").trim();
     if (typeof localStorage !== "undefined" && initialStation) {
       try {
-        const cacheKey = `station_config_${initialStation.trim().toLowerCase()}`;
+        const cacheKey = `station_config_${initialStation.toLowerCase()}`;
         const cached = localStorage.getItem(cacheKey);
         if (cached) {
           const parsed = JSON.parse(cached);
@@ -252,17 +253,13 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   });
 
   useEffect(() => {
-    const stId =
-      profile?.StationId ||
-      (profile as any)?.station_id ||
-      localStorage.getItem("current_station_id") ||
-      localStorage.getItem("fuelpro_station_id");
+    const stId = profile?.StationId?.trim();
     if (stId) {
       fetchStationConfig(stId).then((cfg) => {
         setStationConfig(cfg);
       });
     }
-  }, [profile?.StationId, (profile as any)?.station_id]);
+  }, [profile?.StationId]);
 
   // Whenever stationConfig updates with authoritative rates, propagate to existing nozzle rows immediately
   useEffect(() => {
@@ -644,6 +641,27 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     ? `dsm-shift-draft:${profile.StationId}:${profile.AssignedDate}:${profile.AssignedPump}:${profile.AssignedShift}`
     : undefined;
 
+  // Stable authenticated DSM identifier: profile.id (SyncGuid) or profile.AuthUserId (UUID), NEVER FullName alone (Safeguard 1)
+  const stableDsmId = (profile?.id || profile?.AuthUserId || "").trim();
+  const activeStationId = (profile?.StationId || "").trim();
+  const activePumpId = pumpId || (profile?.AssignedPump ?? 0);
+
+  const collectionsStorageKey = useMemo(() => {
+    return buildShiftCollectionsKey(
+      activeStationId,
+      stableDsmId,
+      shiftDate,
+      shiftType,
+      activePumpId
+    );
+  }, [activeStationId, stableDsmId, shiftDate, shiftType, activePumpId]);
+
+  const [storageWarning, setStorageWarning] = useState<string | null>(null);
+  const collectionsHydratedRef = useRef(false);
+  const activeCollectionsKeyRef = useRef<string | null>(null);
+  const collectionsReadCounterRef = useRef(0);
+  const latestSavedVersionRef = useRef(0);
+
   useEffect(() => {
     const on = () => setOnline(true);
     const off = () => setOnline(false);
@@ -722,7 +740,9 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       setPetroCardNight(parsed.petroCardNight ?? 0);
       setPetroCardTidNight(parsed.petroCardTidNight ?? "");
       setPetroCardBatchNight(parsed.petroCardBatchNight ?? "");
-      setDebtorEntries(parsed.debtorEntries ?? []);
+      if (parsed.debtorEntries && Array.isArray(parsed.debtorEntries) && parsed.debtorEntries.length > 0) {
+        setDebtorEntries(parsed.debtorEntries);
+      }
       setCardSwipeDetails(parsed.cardSwipeDetails ?? []);
       setSalesQuantities(parsed.salesQuantities ?? {});
       setKhandhareEntries(parsed.khandhareEntries ?? []);
@@ -734,7 +754,9 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         const ct = (stationConfig?.collectionTypes || []).find((c) => c.code.toUpperCase() === mCode);
         return !ct || !isManualOnlyType(ct);
       });
-      setMachineTransactions(cleanMachine);
+      if (cleanMachine && cleanMachine.length > 0) {
+        setMachineTransactions(cleanMachine);
+      }
 
       const rawTids: ManualTidTransactionItem[] = parsed.manualTidTransactions ? [...parsed.manualTidTransactions] : [];
       const cleanedTids: ManualTidTransactionItem[] = [];
@@ -820,6 +842,82 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       console.error("Failed to restore draft:", err);
     }
   }, [profile, draftStorageKey]);
+
+  // ── IndexedDB Shift Collections Persistence (Debtor entries & Machine OTP transactions) ──
+
+  // 1. Asynchronously restore debtor and OTP collections from isolated IndexedDB
+  useEffect(() => {
+    activeCollectionsKeyRef.current = collectionsStorageKey;
+
+    if (!collectionsStorageKey) {
+      collectionsHydratedRef.current = false;
+      return;
+    }
+
+    const targetKey = collectionsStorageKey;
+    const readId = ++collectionsReadCounterRef.current;
+    collectionsHydratedRef.current = false;
+
+    getShiftCollectionsDraft(targetKey)
+      .then((savedDraft) => {
+        // Protect against stale hydration if key changed while read was pending (Safeguard 5)
+        if (activeCollectionsKeyRef.current !== targetKey || collectionsReadCounterRef.current !== readId) {
+          return;
+        }
+
+        if (savedDraft) {
+          if (Array.isArray(savedDraft.debtorEntries)) {
+            setDebtorEntries(savedDraft.debtorEntries);
+          }
+          if (Array.isArray(savedDraft.machineTransactions)) {
+            setMachineTransactions(savedDraft.machineTransactions);
+          }
+          latestSavedVersionRef.current = typeof savedDraft.version === "number" ? savedDraft.version : 0;
+        }
+
+        collectionsHydratedRef.current = true;
+        setStorageWarning(null);
+      })
+      .catch((err) => {
+        if (activeCollectionsKeyRef.current !== targetKey || collectionsReadCounterRef.current !== readId) {
+          return;
+        }
+        console.error("Failed to load shift collections from IndexedDB:", err);
+        collectionsHydratedRef.current = true;
+        setStorageWarning("Warning: Could not read local debtor/OTP draft from browser storage.");
+      });
+  }, [collectionsStorageKey]);
+
+  // 2. Persist debtor entries and machine OTP transactions to isolated IndexedDB
+  useEffect(() => {
+    // CRITICAL: Prevent hydration from overwriting previously stored data with empty initial state! (Safeguards 6 & 9)
+    if (!collectionsHydratedRef.current || !collectionsStorageKey) {
+      return;
+    }
+
+    const versionToSave = ++latestSavedVersionRef.current;
+    const draftRecord: ShiftCollectionsDraft = {
+      key: collectionsStorageKey,
+      stationId: activeStationId,
+      dsmId: stableDsmId,
+      shiftDate,
+      shiftType,
+      pumpId: activePumpId,
+      debtorEntries,
+      machineTransactions,
+      version: versionToSave,
+      updatedAt: new Date().toISOString(),
+    };
+
+    saveShiftCollectionsDraft(draftRecord)
+      .then(() => {
+        setStorageWarning(null);
+      })
+      .catch((err) => {
+        console.error("Failed to persist shift collections to IndexedDB:", err);
+        setStorageWarning("Warning: Failed to save debtor / OTP entries locally. Browser storage may be full or disabled.");
+      });
+  }, [collectionsStorageKey, activeStationId, stableDsmId, shiftDate, shiftType, activePumpId, debtorEntries, machineTransactions]);
 
   useEffect(() => {
     if (!profile || !draftStorageKey) return;
@@ -1139,11 +1237,11 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     setNozzleError("");
 
     try {
-      const station =
-        profile?.StationId ||
-        localStorage.getItem("current_station_id") ||
-        localStorage.getItem("fuelpro_station_id") ||
-        "";
+      const station = profile?.StationId ? profile.StationId.trim() : "";
+      if (!station) {
+        setNozzleLoading(false);
+        return;
+      }
 
       // 1. Fetch rates authoritatively from station configuration
       let latestConfig = stationConfig;
@@ -1315,14 +1413,18 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         });
       } catch {}
 
-      const openingsCacheKey = `nozzle_openings_v2_${station || "default"}`;
+      const openingsCacheKey = (station && station.toLowerCase() !== "default")
+        ? `nozzle_openings_v2_${station}`
+        : "";
       let cachedOpenings: Record<number, number> = {};
-      try {
-        const cachedOpeningsStr = localStorage.getItem(openingsCacheKey);
-        if (cachedOpeningsStr) {
-          cachedOpenings = JSON.parse(cachedOpeningsStr);
-        }
-      } catch {}
+      if (openingsCacheKey) {
+        try {
+          const cachedOpeningsStr = localStorage.getItem(openingsCacheKey);
+          if (cachedOpeningsStr) {
+            cachedOpenings = JSON.parse(cachedOpeningsStr);
+          }
+        } catch {}
+      }
 
       let queriedSuccessfully = false;
 
@@ -1419,26 +1521,36 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         const missingAfterSteps12 = nozzleIds.filter(
           (nId) => prevClosings[nId] === undefined,
         );
-        if (missingAfterSteps12.length > 0) {
+        if (missingAfterSteps12.length > 0 && station) {
           let localDrafts: any[] = [];
           try {
+            // STRICT STATION ISOLATION:
+            // Use indexed query on stationId to guarantee drafts belong solely to active authenticated station.
+            // Legacy drafts without stationId are unindexed and quarantined.
             localDrafts = await db.drafts
+              .where('stationId')
+              .equals(station)
               .filter((d: any) => pumpsToFetch.includes(d.pumpId))
               .toArray();
           } catch {
-            localDrafts = await db.drafts.toArray();
+            try {
+              localDrafts = await db.drafts
+                .filter((d: any) => d.stationId === station && pumpsToFetch.includes(d.pumpId))
+                .toArray();
+            } catch {
+              localDrafts = [];
+            }
           }
 
           if (localDrafts && localDrafts.length > 0) {
             const sortedDrafts = localDrafts
-              .filter((d: any) => pumpsToFetch.includes(d.pumpId))
               .sort(
                 (a, b) =>
                   (b.shiftDate || "").localeCompare(a.shiftDate || "") ||
                   (b.createdAt || "").localeCompare(a.createdAt || ""),
               );
             const mostRecentDraft = sortedDrafts[0];
-            if (mostRecentDraft?.nozzleReadings) {
+            if (mostRecentDraft?.nozzleReadings && Array.isArray(mostRecentDraft.nozzleReadings)) {
               mostRecentDraft.nozzleReadings.forEach((nr: any) => {
                 if (nr.closingReading > 0 && prevClosings[nr.nozzleId] === undefined) {
                   prevClosings[nr.nozzleId] = Number(nr.closingReading);
@@ -1453,9 +1565,11 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
 
       // Save verified openings and rates to localStorage cache for offline persistence only when valid station is loaded
       try {
-        localStorage.setItem(openingsCacheKey, JSON.stringify(prevClosings));
-        if (station && station.trim() !== "" && station.trim().toLowerCase() !== "default" && latestConfig && latestConfig.stationId) {
-          const ratesCacheKey = `nozzle_rates_${station.trim().toLowerCase()}`;
+        if (openingsCacheKey && Object.keys(prevClosings).length > 0) {
+          localStorage.setItem(openingsCacheKey, JSON.stringify(prevClosings));
+        }
+        if (station && station.toLowerCase() !== "default" && latestConfig && latestConfig.stationId) {
+          const ratesCacheKey = `nozzle_rates_${station.toLowerCase()}`;
           localStorage.setItem(
             ratesCacheKey,
             JSON.stringify({ hsd: hsdRate, msI: msIRate, msII: msIIRate, cng: cngRate, perNozzle: nozzleRates })
@@ -2116,8 +2230,17 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       }
     });
 
+    const activeStation = profile?.StationId ? profile.StationId.trim() : "";
+    if (!activeStation) {
+      setError("Cannot submit shift: Missing authenticated station identity. Please sign out and sign in again.");
+      setIsSubmitting(false);
+      submittingRef.current = false;
+      return;
+    }
+
     const draftData = {
       formatVersion: 3,
+      stationId: activeStation,
       pumpId,
       connectedPumpId: connectedPumps.length > 0 ? connectedPumps[0] : null,
       connectedPumpIds: connectedPumps,
@@ -2248,13 +2371,24 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       collectionReductionRemark,
     };
 
+    const submittedCollectionsVersion = latestSavedVersionRef.current;
+
     try {
       if (!online) {
         const saved = await saveDraft({
           ...draftData,
           status: "queued",
         } as Parameters<typeof saveDraft>[0]);
-        if (saved) setSuccess(true);
+        if (saved) {
+          setSuccess(true);
+          if (collectionsStorageKey) {
+            try {
+              await clearShiftCollectionsDraftIfMatching(collectionsStorageKey, submittedCollectionsVersion);
+            } catch (clearErr) {
+              console.warn("Failed to clear local collections draft after queued save:", clearErr);
+            }
+          }
+        }
         return;
       }
 
@@ -2264,12 +2398,19 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       const err = await submitToSupabase(
         savedDraft,
         profile.id,
-        profile.StationId,
+        activeStation,
       );
       if (err) {
         setError(err);
       } else {
         setSuccess(true);
+        if (collectionsStorageKey) {
+          try {
+            await clearShiftCollectionsDraftIfMatching(collectionsStorageKey, submittedCollectionsVersion);
+          } catch (clearErr) {
+            console.warn("Failed to clear local collections draft after submission:", clearErr);
+          }
+        }
       }
     } catch (e: any) {
       setError(e?.message || "An unexpected error occurred during submission.");
@@ -5618,6 +5759,13 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                   <li key={i}>{e}</li>
                 ))}
               </ul>
+            </div>
+          )}
+
+          {storageWarning && (
+            <div className="alert-error" role="alert" style={{ marginBottom: "16px", backgroundColor: "rgba(239, 68, 68, 0.15)", borderColor: "#ef4444", color: "#fca5a5" }}>
+              <AlertTriangle size={16} />
+              <span>{storageWarning}</span>
             </div>
           )}
 
