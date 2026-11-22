@@ -335,17 +335,47 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     Record<string, { amount: number; tid: string; batch: string; otp?: string }>
   >({});
 
+  const isPineLabsCode = (code: string) => {
+    const clean = (code || "").toUpperCase().replace(/_/g, "").replace(/\s+/g, "");
+    return clean === "PINELABSCARD" || clean === "PINELABCARD" || clean === "PINELABS" || clean === "CREDITCARD" || clean === "CREDITDEBITCARD";
+  };
+
+  const pineLabsConfig = useMemo(() => {
+    if (!stationConfig?.collectionTypes) return null;
+    return stationConfig.collectionTypes.find((c) => isPineLabsCode(c.code)) || null;
+  }, [stationConfig?.collectionTypes]);
+
+  const isPineLabsTidEnabled = pineLabsConfig ? Boolean(pineLabsConfig.hasTidBatch) : true;
+  const isPineLabsActive = pineLabsConfig ? pineLabsConfig.isActive !== false : (isTypeActive("CREDIT_CARD") || isTypeActive("PINELABS_CARD"));
+  const pineLabsDisplayName = pineLabsConfig?.displayName || "Pine Labs Card";
+
   // Configuration-driven Manual-only eligibility:
   // Active dynamic types without TID/OTP, OR active card/digital types when multi-TID tracking is disabled
   const manualOnlyTypes = useMemo(() => {
     const list: { code: string; displayName: string }[] = [];
+    const seenCodes = new Set<string>();
     if (stationConfig?.collectionTypes) {
       for (const ct of stationConfig.collectionTypes) {
         if (ct.isActive === false) continue;
         const clean = ct.code.toUpperCase().replace(/_/g, "");
-        if (clean === "PETROCARD" || clean === "CREDITCARD" || clean === "PHONEPE" || clean === "CASHDEPOSIT") continue;
+        if (clean === "PETROCARD" || clean === "PHONEPE" || clean === "CASHDEPOSIT") continue;
+
+        if (isPineLabsCode(ct.code)) {
+          if (!isTidEligibleType(ct)) {
+            const aliasKey = "PINELABS_CARD_ALIAS";
+            if (!seenCodes.has(aliasKey)) {
+              seenCodes.add(aliasKey);
+              list.push({ code: ct.code, displayName: ct.displayName || "Pine Labs Card" });
+            }
+          }
+          continue;
+        }
+
         if (isManualOnlyType(ct) || !multiTidTransactionsEnabled) {
-          list.push({ code: ct.code, displayName: ct.displayName || ct.code });
+          if (!seenCodes.has(ct.code.toUpperCase())) {
+            seenCodes.add(ct.code.toUpperCase());
+            list.push({ code: ct.code, displayName: ct.displayName || ct.code });
+          }
         }
       }
     }
@@ -354,7 +384,10 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
 
   // Configuration-driven eligibility for TID and/or OTP
   const isTidOrOtpEnabledForType = (code: string) => {
-    const ct = (stationConfig?.collectionTypes || []).find((c) => c.code.toUpperCase() === code.toUpperCase());
+    const isPine = isPineLabsCode(code);
+    const ct = (stationConfig?.collectionTypes || []).find((c) =>
+      isPine ? isPineLabsCode(c.code) : c.code.toUpperCase() === code.toUpperCase()
+    );
     if (!ct) return true; // Default built-ins (PETROCARD, CREDIT_CARD, PHONEPE) default to TID/OTP enabled
     return isTidEligibleType(ct) || isOtpEligibleType(ct);
   };
@@ -363,10 +396,16 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   // Strictly filter OTP dropdown by developer settings: ct.hasOtp === true, strictly excluding manual-only
   const eligibleOtpTypes = useMemo(() => {
     const list: { code: string; displayName: string }[] = [];
+    const seen = new Set<string>();
     if (otpMachineTrackingEnabled && stationConfig?.collectionTypes) {
       for (const ct of stationConfig.collectionTypes) {
         if (isOtpEligibleType(ct) && !isManualOnlyType(ct) && ct.isActive !== false) {
-          list.push({ code: ct.code, displayName: ct.displayName || ct.code });
+          const isPine = isPineLabsCode(ct.code);
+          const dedupeKey = isPine ? "PINELABS_CARD_ALIAS" : ct.code.toUpperCase();
+          if (!seen.has(dedupeKey)) {
+            seen.add(dedupeKey);
+            list.push({ code: ct.code, displayName: isPine ? (ct.displayName || "Pine Labs Card") : (ct.displayName || ct.code) });
+          }
         }
       }
     }
@@ -385,10 +424,16 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   // Configuration-driven TID eligibility: HasTidBatch = true, strictly excluding manual-only
   const eligibleTidTypes = useMemo(() => {
     const list: { code: string; displayName: string }[] = [];
+    const seen = new Set<string>();
     if (stationConfig?.collectionTypes) {
       for (const ct of stationConfig.collectionTypes) {
         if (isTidEligibleType(ct) && !isManualOnlyType(ct) && ct.isActive !== false) {
-          list.push({ code: ct.code, displayName: ct.displayName || ct.code });
+          const isPine = isPineLabsCode(ct.code);
+          const dedupeKey = isPine ? "PINELABS_CARD_ALIAS" : ct.code.toUpperCase();
+          if (!seen.has(dedupeKey)) {
+            seen.add(dedupeKey);
+            list.push({ code: ct.code, displayName: isPine ? (ct.displayName || "Pine Labs Card") : (ct.displayName || ct.code) });
+          }
         }
       }
     }
@@ -512,18 +557,18 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
 
   function isTypeActive(typeCode: string): boolean {
     if (!stationConfig?.collectionTypes) return true;
-    const clean = (typeCode || "").toUpperCase().replace(/_/g, "").replace(/\s+/g, "");
-    const ct = stationConfig.collectionTypes.find(
-      (c) => c.code.toUpperCase().replace(/_/g, "").replace(/\s+/g, "") === clean
+    const isPine = isPineLabsCode(typeCode);
+    const ct = stationConfig.collectionTypes.find((c) =>
+      isPine ? isPineLabsCode(c.code) : c.code.toUpperCase().replace(/_/g, "").replace(/\s+/g, "") === (typeCode || "").toUpperCase().replace(/_/g, "").replace(/\s+/g, "")
     );
     if (!ct) return false;
     return ct.isActive !== false;
   }
 
   function getTypeSlotConfig(code: string) {
-    const clean = (code || "").toUpperCase().replace(/_/g, "").replace(/\s+/g, "");
-    const conf = stationConfig?.collectionTypes?.find(
-      (c) => c.code.toUpperCase().replace(/_/g, "").replace(/\s+/g, "") === clean
+    const isPine = isPineLabsCode(code);
+    const conf = stationConfig?.collectionTypes?.find((c) =>
+      isPine ? isPineLabsCode(c.code) : c.code.toUpperCase().replace(/_/g, "").replace(/\s+/g, "") === (code || "").toUpperCase().replace(/_/g, "").replace(/\s+/g, "")
     );
     if (!conf) {
       return { enableMorning: true, enableDay: true, enableNight: true };
@@ -1858,7 +1903,10 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
 
   const dynamicTotal = allDynamicTypeCodes.reduce((sum, code) => {
     const clean = code.toUpperCase().replace(/_/g, "");
-    if (clean === "PHONEPE" || clean === "CREDITCARD" || clean === "PETROCARD" || clean === "CASHDEPOSIT") return sum;
+    if (clean === "PHONEPE" || clean === "PETROCARD" || clean === "CASHDEPOSIT") return sum;
+    if (clean === "CREDITCARD" || clean === "CREDITDEBITCARD" || clean === "PINELABSCARD" || clean === "PINELABCARD" || clean === "PINELABS") {
+      if (isPineLabsTidEnabled) return sum;
+    }
     return sum + getDynamicTypeEffectiveTotal(code);
   }, 0);
 
@@ -3147,7 +3195,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           )}
 
           {/* 2. Credit Card / Pine Labs Card */}
-          {((isTypeActive("CREDIT_CARD") || isTypeActive("PINELABS_CARD")) || effectiveCreditCardTotal > 0 || creditCardDay > 0 || creditCardMorning > 0 || creditCardNight > 0) && (
+          {((isPineLabsActive && isPineLabsTidEnabled) || (isPineLabsTidEnabled && (effectiveCreditCardTotal > 0 || creditCardDay > 0 || creditCardMorning > 0 || creditCardNight > 0))) && (
           <div
             className="nozzle-card"
             style={{ marginBottom: "16px", padding: "16px" }}
@@ -3170,9 +3218,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                     margin: 0,
                   }}
                 >
-                  {(stationConfig?.collectionTypes || []).find((c) => c.code === "CREDIT_CARD" && c.isActive !== false)?.displayName ||
-                   (stationConfig?.collectionTypes || []).find((c) => c.code === "PINELABS_CARD" && c.isActive !== false)?.displayName ||
-                   "Credit Card (Card)"}
+                  {pineLabsDisplayName}
                 </h3>
                 <span style={{ fontSize: "0.8rem", color: "#38bdf8", fontWeight: 600 }}>
                   Total: ₹{effectiveCreditCardTotal.toFixed(2)}

@@ -368,7 +368,18 @@ async function fetchAndCacheStationConfig(cleanId: string, cacheKey: string): Pr
               code: (item.Code || item.code || '').trim().toUpperCase(),
               displayName: item.DisplayName || item.displayName || item.Code || '',
               category: item.Category || item.category || 'Online',
-              hasTidBatch: Boolean(item.HasTidBatch ?? item.hasTidBatch),
+              hasTidBatch: (() => {
+                const raw = item.HasTidBatch !== undefined ? item.HasTidBatch : item.hasTidBatch;
+                if (raw === undefined || raw === null) return true;
+                if (typeof raw === 'boolean') return raw;
+                if (typeof raw === 'number') return raw !== 0;
+                if (typeof raw === 'string') {
+                  const s = raw.trim().toLowerCase();
+                  if (s === 'true' || s === '1' || s === 'yes') return true;
+                  if (s === 'false' || s === '0' || s === 'no') return false;
+                }
+                return Boolean(raw);
+              })(),
               hasOtp: (() => {
                 const raw = item.HasOtp !== undefined ? item.HasOtp : item.hasOtp;
                 if (raw === undefined || raw === null) {
