@@ -2,6 +2,12 @@ import { supabase } from './supabase';
 
 export interface StationFeatureSettings {
   cashDenominationsEnabled: boolean;
+  cash1Enabled?: boolean;
+  cash2Enabled?: boolean;
+  cash1DenominationsEnabled?: boolean;
+  cash2DenominationsEnabled?: boolean;
+  debtorRepaymentEnabled?: boolean;
+  collectionReductionEnabled?: boolean;
   otpMachineTrackingEnabled: boolean;
   otpMachineTracking: boolean;
   multiTidTransactionsEnabled: boolean;
@@ -76,7 +82,7 @@ export function getDefaultCollectionTypes(): DynamicCollectionType[] {
       displayName: 'PhonePe',
       category: 'Online',
       hasTidBatch: true,
-      hasOtp: null,
+      hasOtp: false,
       displayOrder: 1,
       isActive: true,
       enableMorning: true,
@@ -187,6 +193,12 @@ export function getDefaultStationConfig(stationId: string): StationConfig {
     stationId: stationId || '',
     features: {
       cashDenominationsEnabled: false,
+      cash1Enabled: true,
+      cash2Enabled: true,
+      cash1DenominationsEnabled: false,
+      cash2DenominationsEnabled: true,
+      debtorRepaymentEnabled: true,
+      collectionReductionEnabled: true,
       otpMachineTrackingEnabled: false,
       otpMachineTracking: false,
       multiTidTransactionsEnabled: true,
@@ -359,7 +371,11 @@ async function fetchAndCacheStationConfig(cleanId: string, cacheKey: string): Pr
               hasTidBatch: Boolean(item.HasTidBatch ?? item.hasTidBatch),
               hasOtp: (() => {
                 const raw = item.HasOtp !== undefined ? item.HasOtp : item.hasOtp;
-                if (raw === undefined || raw === null) return null;
+                if (raw === undefined || raw === null) {
+                  const code = (item.Code || item.code || '').trim().toUpperCase();
+                  if (code === 'PHONEPE') return false;
+                  return null;
+                }
                 if (typeof raw === 'boolean') return raw;
                 if (typeof raw === 'number') return raw !== 0;
                 if (typeof raw === 'string') {
@@ -401,6 +417,13 @@ async function fetchAndCacheStationConfig(cleanId: string, cacheKey: string): Pr
     }
 
     let cashDenominationsEnabled = false;
+    let cash1Enabled = true;
+    let cash2Enabled = true;
+    let cash1DenominationsEnabled = false;
+    let cash1DenomExplicit = false;
+    let cash2DenominationsEnabled = true;
+    let debtorRepaymentEnabled = true;
+    let collectionReductionEnabled = true;
     let otpMachineTrackingEnabled = false;
     let multiTidTransactionsEnabled = true;
     let cash3Enabled = false;
@@ -412,8 +435,24 @@ async function fetchAndCacheStationConfig(cleanId: string, cacheKey: string): Pr
       const normKey = normalizeFeatureKey(itemKey);
       const isEnabled = parseExplicitBoolean(itemVal, false);
 
-      if (normKey === 'operationscashdenominations' || normKey === 'cashdenominations') {
+      if (normKey === 'operationscash1' || normKey === 'cash1') {
+        cash1Enabled = isEnabled;
+      } else if (normKey === 'operationscash2' || normKey === 'cash2') {
+        cash2Enabled = isEnabled;
+      } else if (normKey === 'operationscash1denominations' || normKey === 'cash1denominations') {
+        cash1DenominationsEnabled = isEnabled;
+        cash1DenomExplicit = true;
+      } else if (normKey === 'operationscash2denominations' || normKey === 'cash2denominations') {
+        cash2DenominationsEnabled = isEnabled;
+      } else if (normKey === 'operationsdebtorrepayment' || normKey === 'debtorrepayment') {
+        debtorRepaymentEnabled = isEnabled;
+      } else if (normKey === 'operationscollectionreduction' || normKey === 'collectionreduction') {
+        collectionReductionEnabled = isEnabled;
+      } else if (normKey === 'operationscashdenominations' || normKey === 'cashdenominations') {
         cashDenominationsEnabled = isEnabled;
+        if (!cash1DenomExplicit) {
+          cash1DenominationsEnabled = isEnabled;
+        }
       } else if (
         normKey === 'operationsotpmachinetracking' ||
         normKey === 'otpmachinetracking' ||
@@ -553,6 +592,12 @@ async function fetchAndCacheStationConfig(cleanId: string, cacheKey: string): Pr
       stationName,
       features: {
         cashDenominationsEnabled,
+        cash1Enabled,
+        cash2Enabled,
+        cash1DenominationsEnabled,
+        cash2DenominationsEnabled,
+        debtorRepaymentEnabled,
+        collectionReductionEnabled,
         otpMachineTrackingEnabled,
         otpMachineTracking: otpMachineTrackingEnabled,
         multiTidTransactionsEnabled,

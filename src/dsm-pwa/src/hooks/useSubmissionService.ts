@@ -8,12 +8,21 @@ export function useSubmissionService() {
   const [syncing, setSyncing] = useState(false);
 
   const saveDraft = useCallback(async (
-    draft: Omit<DraftSubmission, 'id' | 'draftId' | 'createdAt' | 'status'> & { status?: DraftSubmission['status'] }
+    draft: Omit<DraftSubmission, 'id' | 'draftId' | 'createdAt' | 'status'> & {
+      status?: DraftSubmission['status'];
+      stationId: string;
+      draftId?: string;
+      createdAt?: string;
+    }
   ) => {
+    if (!draft.stationId || typeof draft.stationId !== 'string' || draft.stationId.trim() === '') {
+      throw new Error('Cannot save draft: Missing or invalid station identity.');
+    }
     const record: DraftSubmission = {
       ...draft,
-      draftId: (draft as any).draftId || uuidv4(),
-      createdAt: (draft as any).createdAt || new Date().toISOString(),
+      stationId: draft.stationId.trim(),
+      draftId: draft.draftId || uuidv4(),
+      createdAt: draft.createdAt || new Date().toISOString(),
       status: draft.status || 'draft',
     };
     const id = await db.drafts.add(record);
@@ -28,13 +37,24 @@ export function useSubmissionService() {
   ): Promise<string | null> => {
     setSyncing(true);
     try {
+      const cleanStation = (stationId || '').trim();
+      if (!cleanStation) {
+        return 'Submission failed: Missing authenticated station identity.';
+      }
+      const draftStation = (draft.stationId || '').trim();
+      if (!draftStation) {
+        return 'Submission rejected: Draft missing station identity.';
+      }
+      if (draftStation !== cleanStation) {
+        return `Submission rejected: Draft station mismatch (${draftStation} vs ${cleanStation}).`;
+      }
       // 1. Check if there is already an existing Pending submission for this shift & pump & user (deduplication)
       let existingId: string | null = null;
       try {
         const { data: existingSubmissions } = await supabase
           .from('DsmSubmissions')
           .select('Id')
-          .eq('StationId', stationId)
+          .eq('StationId', cleanStation)
           .eq('DsmUserId', dsmUserId)
           .eq('PumpId', draft.pumpId)
           .eq('ShiftDate', draft.shiftDate)
@@ -55,7 +75,7 @@ export function useSubmissionService() {
       const metadataPayload = {
         formatVersion: 3,
         stationName: (draft as any).stationName || null,
-        stationId: stationId || null,
+        stationId: cleanStation,
         personalLedgerName: (draft as any).personalLedgerName || null,
         cardSwipeDetails: draft.cardSwipeDetails || [],
         machineTransactions: (draft as any).machineTransactions || [],
@@ -132,7 +152,7 @@ export function useSubmissionService() {
         const { error: subError } = await supabase.from('DsmSubmissions').insert({
           Id: submissionId,
           DsmUserId: dsmUserId,
-          StationId: stationId,
+          StationId: cleanStation,
           PumpId: draft.pumpId,
           ShiftDate: draft.shiftDate,
           ShiftType: draft.shiftType,
@@ -215,11 +235,12 @@ export function useSubmissionService() {
         await db.drafts.where('draftId').equals(draft.draftId).modify({ status: 'submitted' });
       }
 
-      // 5. Cache the submission in IndexedDB for history view (upsert)
+      // 5. Cache the submission in IndexedDB for history view (upsert with stationId)
       try {
         const existingCached = await db.submissions.where('remoteId').equals(submissionId).first();
         if (existingCached?.id) {
           await db.submissions.update(existingCached.id, {
+            stationId: cleanStation,
             pumpId: draft.pumpId,
             shiftDate: draft.shiftDate,
             shiftType: draft.shiftType,
@@ -230,6 +251,7 @@ export function useSubmissionService() {
         } else {
           await db.submissions.add({
             remoteId: submissionId,
+            stationId: cleanStation,
             pumpId: draft.pumpId,
             shiftDate: draft.shiftDate,
             shiftType: draft.shiftType,
@@ -253,7 +275,22 @@ export function useSubmissionService() {
   }, []);
 
   const retryQueuedDrafts = useCallback(async (dsmUserId: string, stationId: string) => {
-    const queued = await db.drafts.where('status').equals('queued').toArray();
+    if (!stationId || stationId.trim() === '') return;
+    const cleanStation = stationId.trim();
+
+    // Use station-aware indexed query: only queued drafts explicitly belonging to active station
+    let queued: DraftSubmission[] = [];
+    try {
+      queued = await db.drafts
+        .where('stationId').equals(cleanStation)
+        .filter((d: any) => d.status === 'queued')
+        .toArray();
+    } catch {
+      queued = await db.drafts
+        .filter((d: any) => d.stationId === cleanStation && d.status === 'queued')
+        .toArray();
+    }
+
     if (queued.length === 0) return;
 
     // Temporarily mark as in-flight draft to prevent parallel triggers
@@ -264,7 +301,7 @@ export function useSubmissionService() {
     }
 
     for (const draft of queued) {
-      const err = await submitToSupabase(draft, dsmUserId, stationId);
+      const err = await submitToSupabase(draft, dsmUserId, cleanStation);
       if (err) {
         if (draft.id) {
           await db.drafts.update(draft.id, { status: 'failed', errorMessage: err });
@@ -273,10 +310,16 @@ export function useSubmissionService() {
     }
   }, [submitToSupabase]);
 
-  const fetchSubmissionHistory = useCallback(async (dsmUserId: string, authUserId?: string) => {
+  const fetchSubmissionHistory = useCallback(async (dsmUserId: string, authUserId?: string, stationId?: string) => {
+    const cleanStation = (stationId || '').trim();
+    if (!cleanStation) {
+      return [];
+    }
+
     let query = supabase
       .from('DsmSubmissions')
-      .select('Id, PumpId, ShiftDate, ShiftType, Status, SubmittedAt, RejectionReason, ApprovedAt, Metadata');
+      .select('Id, PumpId, ShiftDate, ShiftType, Status, SubmittedAt, RejectionReason, ApprovedAt, Metadata')
+      .eq('StationId', cleanStation);
 
     if (authUserId && authUserId !== dsmUserId) {
       query = query.or(`DsmUserId.eq.${dsmUserId},DsmUserId.eq.${authUserId}`);

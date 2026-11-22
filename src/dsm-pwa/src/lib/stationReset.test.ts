@@ -116,9 +116,9 @@ describe('Station Identity Isolation Audit Tests', () => {
     // WHEN: Logging in and triggering reset/sync for Station A
     await resetStationData('STATION_A');
 
-    // THEN: Dexie databases are cleared
-    expect(db.drafts.clear).toHaveBeenCalled();
-    expect(db.submissions.clear).toHaveBeenCalled();
+    // THEN: Offline drafts and submissions are preserved (not cleared)
+    expect(db.drafts.clear).not.toHaveBeenCalled();
+    expect(db.submissions.clear).not.toHaveBeenCalled();
     expect(db.products.clear).toHaveBeenCalled();
     expect(db.stockBalances.clear).toHaveBeenCalled();
 
@@ -139,12 +139,15 @@ describe('Station Identity Isolation Audit Tests', () => {
     localStorageMock['dsm_device_id'] = 'DEVICE_UUID';
     localStorageMock['cached_creditors'] = JSON.stringify([{ id: 1, name: 'Alice' }]);
 
+    // AND: SW caches have a static shell cache and a dynamic data cache
+    cachesMock.keys = vi.fn().mockResolvedValue(['pyrosync-dsm-v1.4', 'dynamic-station-data']);
+
     // WHEN: Switching to STATION_B
     await resetStationData('STATION_B');
 
-    // THEN: IndexedDB is completely wiped
-    expect(db.drafts.clear).toHaveBeenCalled();
-    expect(db.submissions.clear).toHaveBeenCalled();
+    // THEN: IndexedDB drafts and submissions are preserved to prevent offline work loss
+    expect(db.drafts.clear).not.toHaveBeenCalled();
+    expect(db.submissions.clear).not.toHaveBeenCalled();
     expect(db.products.clear).toHaveBeenCalled();
     expect(db.stockBalances.clear).toHaveBeenCalled();
 
@@ -152,11 +155,11 @@ describe('Station Identity Isolation Audit Tests', () => {
     expect(localStorageMock['dsm_device_id']).toBe('DEVICE_UUID');
     expect(localStorageMock['cached_creditors']).toBeUndefined();
 
-    // AND: Session storage and SW caches are fully wiped
+    // AND: Static app shell cache is preserved while non-shell cache is deleted
     expect(sessionStorage.clear).toHaveBeenCalled();
     expect(cachesMock.keys).toHaveBeenCalled();
-    expect(cachesMock.delete).toHaveBeenCalledWith('cache-v1');
-    expect(cachesMock.delete).toHaveBeenCalledWith('cache-v2');
+    expect(cachesMock.delete).not.toHaveBeenCalledWith('pyrosync-dsm-v1.4');
+    expect(cachesMock.delete).toHaveBeenCalledWith('dynamic-station-data');
 
     // AND: Sync imports the new station data and persists STATION_B
     expect(localStorageMock['current_station_id']).toBe('STATION_B');

@@ -113,10 +113,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   const [denom20, setDenom20] = useState<number>(0);
   const [denom10, setDenom10] = useState<number>(0);
   const [coins, setCoins] = useState<number>(0);
-  const cash =
-    denom500 * 500 +
-    denom200 * 200 +
-    denom100 * 100;
+  const [cash2ScalarAmount, setCash2ScalarAmount] = useState<number>(0);
 
   // Creditors & Vehicles dropdown states
   const [creditorList, setCreditorList] = useState<
@@ -292,7 +289,16 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     });
   }, [stationConfig]);
 
-  const cashDenominationsEnabled = Boolean(stationConfig?.features?.cashDenominationsEnabled);
+  const cash1Enabled = Boolean(stationConfig?.features?.cash1Enabled ?? true);
+  const cash2Enabled = Boolean(stationConfig?.features?.cash2Enabled ?? true);
+  const cash1DenominationsEnabled = Boolean(
+    stationConfig?.features?.cash1DenominationsEnabled ??
+    stationConfig?.features?.cashDenominationsEnabled ??
+    false
+  );
+  const cash2DenominationsEnabled = Boolean(stationConfig?.features?.cash2DenominationsEnabled ?? true);
+  const debtorRepaymentEnabled = Boolean(stationConfig?.features?.debtorRepaymentEnabled ?? true);
+  const collectionReductionEnabled = Boolean(stationConfig?.features?.collectionReductionEnabled ?? true);
   const otpMachineTrackingEnabled = Boolean(
     stationConfig?.features?.otpMachineTrackingEnabled ??
     (stationConfig?.features as any)?.otpMachineTracking
@@ -305,9 +311,17 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   );
   const splitMorningNightEnabled = Boolean(stationConfig?.features?.splitMorningNightEnabled);
 
-  const cashDeposit = cashDenominationsEnabled
+  const cashDeposit = !cash1Enabled
+    ? 0
+    : cash1DenominationsEnabled
     ? (cash1Denom500 * 500 + cash1Denom200 * 200 + cash1Denom100 * 100)
     : cash1Amount;
+
+  const cash = !cash2Enabled
+    ? 0
+    : cash2DenominationsEnabled
+    ? (denom500 * 500 + denom200 * 200 + denom100 * 100)
+    : cash2ScalarAmount;
 
   // Machine OTP Transactions & Dynamic Collections
   const [machineTransactions, setMachineTransactions] = useState<OtpTransactionItem[]>([]);
@@ -321,18 +335,22 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     Record<string, { amount: number; tid: string; batch: string; otp?: string }>
   >({});
 
-  // Configuration-driven Manual-only eligibility: HasTidBatch == false && !(HasOtp ?? HasTidBatch)
+  // Configuration-driven Manual-only eligibility:
+  // Active dynamic types without TID/OTP, OR active card/digital types when multi-TID tracking is disabled
   const manualOnlyTypes = useMemo(() => {
     const list: { code: string; displayName: string }[] = [];
     if (stationConfig?.collectionTypes) {
       for (const ct of stationConfig.collectionTypes) {
-        if (isManualOnlyType(ct) && ct.isActive !== false) {
+        if (ct.isActive === false) continue;
+        const clean = ct.code.toUpperCase().replace(/_/g, "");
+        if (clean === "PETROCARD" || clean === "CREDITCARD" || clean === "PHONEPE" || clean === "CASHDEPOSIT") continue;
+        if (isManualOnlyType(ct) || !multiTidTransactionsEnabled) {
           list.push({ code: ct.code, displayName: ct.displayName || ct.code });
         }
       }
     }
     return list;
-  }, [stationConfig?.collectionTypes]);
+  }, [stationConfig?.collectionTypes, multiTidTransactionsEnabled]);
 
   // Configuration-driven eligibility for TID and/or OTP
   const isTidOrOtpEnabledForType = (code: string) => {
@@ -1829,13 +1847,13 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   const getDynamicTypeEffectiveTotal = (code: string) => {
     const ct = (stationConfig?.collectionTypes || []).find((c) => c.code.toUpperCase() === code.toUpperCase());
     const isTidEligible = Boolean(ct?.hasTidBatch);
-    const isOtpEligible = ct?.hasOtp !== undefined && ct?.hasOtp !== null ? Boolean(ct.hasOtp) : Boolean(ct?.hasTidBatch);
-    if (!isTidEligible && !isOtpEligible) {
-      return manualDynamicAmounts[code] || 0;
-    }
     const manualTidSum = isTidEligible && multiTidTransactionsEnabled ? getManualTidTotalForType(code) : 0;
     const txTotal = otpMachineTrackingEnabled ? getMachineTotalForType(code) : 0;
-    return manualTidSum + txTotal;
+    const itemizedTotal = manualTidSum + txTotal;
+    if (itemizedTotal > 0) {
+      return itemizedTotal;
+    }
+    return manualDynamicAmounts[code] || 0;
   };
 
   const dynamicTotal = allDynamicTypeCodes.reduce((sum, code) => {
@@ -2274,8 +2292,10 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       }
     });
 
-    // 2. Ingest manual-only scalar dynamic collection amounts
+    // 2. Ingest manual scalar dynamic collection amounts (when itemized swipes are 0)
     manualOnlyTypes.forEach((t) => {
+      const itemizedForType = (getManualTidTotalForType(t.code) || 0) + (getMachineTotalForType(t.code) || 0);
+      if (itemizedForType > 0) return;
       const amt = manualDynamicAmounts[t.code] || 0;
       if (amt > 0) {
         dynamicItemsPayload.push({
@@ -2883,7 +2903,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           </h2>
 
           {/* 1. Petro Card */}
-          {(!isTidOrOtpEnabledForType("PETROCARD") && (isTypeActive("PETROCARD") || effectivePetroCardTotal > 0 || petroCardDay > 0 || petroCardMorning > 0 || petroCardNight > 0)) && (
+          {(isTypeActive("PETROCARD") || effectivePetroCardTotal > 0 || petroCardDay > 0 || petroCardMorning > 0 || petroCardNight > 0) && (
           <div
             className="nozzle-card"
             style={{ marginBottom: "16px", padding: "16px" }}
@@ -3126,8 +3146,8 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           </div>
           )}
 
-          {/* 2. Credit Card */}
-          {(!isTidOrOtpEnabledForType("CREDIT_CARD") && (isTypeActive("CREDIT_CARD") || effectiveCreditCardTotal > 0 || creditCardDay > 0 || creditCardMorning > 0 || creditCardNight > 0)) && (
+          {/* 2. Credit Card / Pine Labs Card */}
+          {((isTypeActive("CREDIT_CARD") || isTypeActive("PINELABS_CARD")) || effectiveCreditCardTotal > 0 || creditCardDay > 0 || creditCardMorning > 0 || creditCardNight > 0) && (
           <div
             className="nozzle-card"
             style={{ marginBottom: "16px", padding: "16px" }}
@@ -3150,7 +3170,9 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                     margin: 0,
                   }}
                 >
-                  Credit Card (Card)
+                  {(stationConfig?.collectionTypes || []).find((c) => c.code === "CREDIT_CARD" && c.isActive !== false)?.displayName ||
+                   (stationConfig?.collectionTypes || []).find((c) => c.code === "PINELABS_CARD" && c.isActive !== false)?.displayName ||
+                   "Credit Card (Card)"}
                 </h3>
                 <span style={{ fontSize: "0.8rem", color: "#38bdf8", fontWeight: 600 }}>
                   Total: ₹{effectiveCreditCardTotal.toFixed(2)}
@@ -3365,7 +3387,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           )}
 
           {/* 3. PhonePe */}
-          {(!isTidOrOtpEnabledForType("PHONEPE") && (isTypeActive("PHONEPE") || effectivePhonePeTotal > 0 || phonePeDay > 0 || phonePeMorning > 0 || phonePeNight > 0)) && (
+          {(isTypeActive("PHONEPE") || effectivePhonePeTotal > 0 || phonePeDay > 0 || phonePeMorning > 0 || phonePeNight > 0) && (
           <div
             className="nozzle-card"
             style={{ marginBottom: "16px", padding: "16px" }}
@@ -4479,6 +4501,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           )}
 
           {/* 4. Cash Deposit (Cash 1) */}
+          {cash1Enabled && (
           <div
             className="nozzle-card"
             style={{ marginBottom: "16px", padding: "16px" }}
@@ -4494,7 +4517,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
             >
               Cash 1
             </h3>
-            {cashDenominationsEnabled ? (
+            {cash1DenominationsEnabled ? (
               <div style={{ marginBottom: "8px" }}>
                 <div style={{ fontSize: "0.85rem", color: "#94a3b8", marginBottom: "8px" }}>
                   Enter note count for Cash 1 (₹500, ₹200, ₹100):
@@ -4579,6 +4602,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
               </span>
             </div>
           </div>
+          )}
 
           {/* 5. Debtors Register */}
           <div
@@ -4837,6 +4861,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           </div>
 
           {/* Debtor Repayments (Collections / Recoveries) */}
+          {debtorRepaymentEnabled && (
           <div
             className="nozzle-card"
             style={{ marginBottom: "16px", padding: "16px", border: "1px solid #10b981" }}
@@ -4890,10 +4915,6 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                   onChange={(e) => setNewRepaymentMode(e.target.value)}
                 >
                   <option value="Cash">Cash</option>
-                  <option value="PhonePe">PhonePe</option>
-                  <option value="PineLab Card">PineLab Card</option>
-                  <option value="Credit Card">Credit Card</option>
-                  <option value="PetroCard">PetroCard</option>
                   <option value="Bank Transfer">Bank Transfer</option>
                   <option value="Cheque">Cheque</option>
                   {(stationConfig?.collectionTypes || [])
@@ -5018,6 +5039,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
               </div>
             )}
           </div>
+          )}
 
           {/* 6. Expenses */}
           <div
@@ -5179,6 +5201,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           </div>
 
           {/* Collection Reduction (Manual entry mode) */}
+          {collectionReductionEnabled && (
           <div
             className="nozzle-card"
             style={{ marginBottom: "16px", padding: "16px", border: "1px solid #dc2626" }}
@@ -5227,6 +5250,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
               </div>
             )}
           </div>
+          )}
 
           {/* 8. Cash 2 (Cash in Hand / Denominations) - AT THE END OF COLLECTIONS */}
           {/* ── SECTION 3: PERSONAL LEDGER ── */}
@@ -5374,6 +5398,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
             </>
           )}
 
+          {cash2Enabled && (
           <div
             className="nozzle-card"
             style={{ marginBottom: "16px", padding: "16px" }}
@@ -5387,9 +5412,10 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                 paddingBottom: "6px",
               }}
             >
-              Cash 2 (Denominations)
+              Cash 2
             </h3>
 
+            {cash2DenominationsEnabled ? (
             <div
               style={{
                 display: "grid",
@@ -5468,6 +5494,20 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                 />
               </div>
             </div>
+            ) : (
+              <div className="field-group" style={{ marginBottom: "12px" }}>
+                <label className="field-label">Total Cash 2 Amount (₹)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className="field-input"
+                  placeholder="Enter Cash 2 Amount (₹)"
+                  value={cash2ScalarAmount || ""}
+                  onChange={(e) => setCash2ScalarAmount(Math.max(0, parseFloat(e.target.value) || 0))}
+                />
+              </div>
+            )}
 
             <div
               style={{
@@ -5490,6 +5530,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
               </span>
             </div>
           </div>
+          )}
 
           {/* Cash 3 - Final Cash (Denominations) */}
           {cash3Enabled && (

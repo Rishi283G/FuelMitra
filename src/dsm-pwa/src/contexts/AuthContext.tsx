@@ -252,14 +252,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return authRes.error.message;
     }
 
+    // Authoritative station identity is established only from validated user profile.
+    // Store last_station_id solely as an input hint for the login screen.
     if (effectiveStationId) {
-      localStorage.setItem('current_station_id', effectiveStationId);
       localStorage.setItem('last_station_id', effectiveStationId);
     }
     return null;
   }
 
   async function logout(): Promise<void> {
+    setProfile(null);
+    setUser(null);
+    sessionStorage.clear();
     await supabase.auth.signOut();
   }
 
