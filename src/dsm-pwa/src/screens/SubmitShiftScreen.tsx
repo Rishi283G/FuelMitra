@@ -8,6 +8,7 @@ import {
   fetchStationConfig,
   getDefaultStationConfig,
   resolveFuelRate,
+  resolvePhonePeVisibility,
   isOtpEligibleType,
   isTidEligibleType,
   isManualOnlyType,
@@ -348,6 +349,15 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   const isPineLabsTidEnabled = pineLabsConfig ? Boolean(pineLabsConfig.hasTidBatch) : true;
   const isPineLabsActive = pineLabsConfig ? pineLabsConfig.isActive !== false : (isTypeActive("CREDIT_CARD") || isTypeActive("PINELABS_CARD"));
   const pineLabsDisplayName = pineLabsConfig?.displayName || "Pine Labs Card";
+
+  const phonePeConfig = useMemo(() => {
+    if (!stationConfig?.collectionTypes) return null;
+    return stationConfig.collectionTypes.find((c) => c.code.toUpperCase() === "PHONEPE") || null;
+  }, [stationConfig?.collectionTypes]);
+
+  const { isPhonePeTidVisible, isPhonePeBatchVisible, phonePeGridColumns } = useMemo(() => {
+    return resolvePhonePeVisibility(stationConfig?.features, phonePeConfig);
+  }, [stationConfig?.features, phonePeConfig]);
 
   // Configuration-driven Manual-only eligibility:
   // Active dynamic types without TID/OTP, OR active card/digital types when multi-TID tracking is disabled
@@ -2002,12 +2012,14 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       amt: number,
       tid: string,
       batch: string,
+      requireTid = true,
+      requireBatch = true,
     ) => {
       if (amt > 0) {
-        if (!tid || !tid.trim()) {
+        if (requireTid && (!tid || !tid.trim())) {
           errs.push(`${label}: TID is required when amount is greater than 0.`);
         }
-        if (!batch || !batch.trim()) {
+        if (requireBatch && (!batch || !batch.trim())) {
           errs.push(
             `${label}: Batch number is required when amount is greater than 0.`,
           );
@@ -2016,7 +2028,14 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
     };
 
     if (shiftType === "B") {
-      checkSlot("PhonePe (Day)", phonePeDay, phonePeTidDay, phonePeBatchDay);
+      checkSlot(
+        "PhonePe (Day)",
+        phonePeDay,
+        phonePeTidDay,
+        phonePeBatchDay,
+        isPhonePeTidVisible,
+        isPhonePeBatchVisible,
+      );
       checkSlot(
         "PineLabs Credit Card (Day)",
         creditCardDay,
@@ -2035,12 +2054,16 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         phonePeMorning,
         phonePeTidMorning,
         phonePeBatchMorning,
+        isPhonePeTidVisible,
+        isPhonePeBatchVisible,
       );
       checkSlot(
         "PhonePe (Night)",
         phonePeNight,
         phonePeTidNight,
         phonePeBatchNight,
+        isPhonePeTidVisible,
+        isPhonePeBatchVisible,
       );
       checkSlot(
         "PineLabs Credit Card (Morning)",
@@ -3491,7 +3514,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "1.2fr 1fr 1fr",
+                    gridTemplateColumns: phonePeGridColumns,
                     gap: "8px",
                     opacity: isManualEnabled("PHONEPE") ? 1 : 0.6,
                   }}
@@ -3508,28 +3531,32 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                       onChange={(e) => setPhonePeDay(Number(e.target.value))}
                     />
                   </div>
-                  <div className="field-group">
-                    <label className="field-label">TID</label>
-                    <input
-                      type="text"
-                      className="field-input"
-                      placeholder="TID"
-                      value={phonePeTidDay}
-                      disabled={!isManualEnabled("PHONEPE")}
-                      onChange={(e) => setPhonePeTidDay(e.target.value)}
-                    />
-                  </div>
-                  <div className="field-group">
-                    <label className="field-label">Batch</label>
-                    <input
-                      type="text"
-                      className="field-input"
-                      placeholder="Batch"
-                      value={phonePeBatchDay}
-                      disabled={!isManualEnabled("PHONEPE")}
-                      onChange={(e) => setPhonePeBatchDay(e.target.value)}
-                    />
-                  </div>
+                  {isPhonePeTidVisible && (
+                    <div className="field-group">
+                      <label className="field-label">TID</label>
+                      <input
+                        type="text"
+                        className="field-input"
+                        placeholder="TID"
+                        value={phonePeTidDay}
+                        disabled={!isManualEnabled("PHONEPE")}
+                        onChange={(e) => setPhonePeTidDay(e.target.value)}
+                      />
+                    </div>
+                  )}
+                  {isPhonePeBatchVisible && (
+                    <div className="field-group">
+                      <label className="field-label">Batch</label>
+                      <input
+                        type="text"
+                        className="field-input"
+                        placeholder="Batch"
+                        value={phonePeBatchDay}
+                        disabled={!isManualEnabled("PHONEPE")}
+                        onChange={(e) => setPhonePeBatchDay(e.target.value)}
+                      />
+                    </div>
+                  )}
                 </div>
               )
             ) : isSplitEnabledForType("PHONEPE") ? (
@@ -3537,7 +3564,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "1.2fr 1fr 1fr",
+                    gridTemplateColumns: phonePeGridColumns,
                     gap: "8px",
                     marginBottom: "10px",
                     opacity: isManualEnabled("PHONEPE") ? 1 : 0.6,
@@ -3557,33 +3584,37 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                       }
                     />
                   </div>
-                  <div className="field-group">
-                    <label className="field-label">TID</label>
-                    <input
-                      type="text"
-                      className="field-input"
-                      placeholder="TID"
-                      value={phonePeTidMorning}
-                      disabled={!isManualEnabled("PHONEPE")}
-                      onChange={(e) => setPhonePeTidMorning(e.target.value)}
-                    />
-                  </div>
-                  <div className="field-group">
-                    <label className="field-label">Batch</label>
-                    <input
-                      type="text"
-                      className="field-input"
-                      placeholder="Batch"
-                      value={phonePeBatchMorning}
-                      disabled={!isManualEnabled("PHONEPE")}
-                      onChange={(e) => setPhonePeBatchMorning(e.target.value)}
-                    />
-                  </div>
+                  {isPhonePeTidVisible && (
+                    <div className="field-group">
+                      <label className="field-label">TID</label>
+                      <input
+                        type="text"
+                        className="field-input"
+                        placeholder="TID"
+                        value={phonePeTidMorning}
+                        disabled={!isManualEnabled("PHONEPE")}
+                        onChange={(e) => setPhonePeTidMorning(e.target.value)}
+                      />
+                    </div>
+                  )}
+                  {isPhonePeBatchVisible && (
+                    <div className="field-group">
+                      <label className="field-label">Batch</label>
+                      <input
+                        type="text"
+                        className="field-input"
+                        placeholder="Batch"
+                        value={phonePeBatchMorning}
+                        disabled={!isManualEnabled("PHONEPE")}
+                        onChange={(e) => setPhonePeBatchMorning(e.target.value)}
+                      />
+                    </div>
+                  )}
                 </div>
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "1.2fr 1fr 1fr",
+                    gridTemplateColumns: phonePeGridColumns,
                     gap: "8px",
                     opacity: isManualEnabled("PHONEPE") ? 1 : 0.6,
                   }}
@@ -3600,35 +3631,39 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                       onChange={(e) => setPhonePeNight(Number(e.target.value))}
                     />
                   </div>
-                  <div className="field-group">
-                    <label className="field-label">TID</label>
-                    <input
-                      type="text"
-                      className="field-input"
-                      placeholder="TID"
-                      value={phonePeTidNight}
-                      disabled={!isManualEnabled("PHONEPE")}
-                      onChange={(e) => setPhonePeTidNight(e.target.value)}
-                    />
-                  </div>
-                  <div className="field-group">
-                    <label className="field-label">Batch</label>
-                    <input
-                      type="text"
-                      className="field-input"
-                      placeholder="Batch"
-                      value={phonePeBatchNight}
-                      disabled={!isManualEnabled("PHONEPE")}
-                      onChange={(e) => setPhonePeBatchNight(e.target.value)}
-                    />
-                  </div>
+                  {isPhonePeTidVisible && (
+                    <div className="field-group">
+                      <label className="field-label">TID</label>
+                      <input
+                        type="text"
+                        className="field-input"
+                        placeholder="TID"
+                        value={phonePeTidNight}
+                        disabled={!isManualEnabled("PHONEPE")}
+                        onChange={(e) => setPhonePeTidNight(e.target.value)}
+                      />
+                    </div>
+                  )}
+                  {isPhonePeBatchVisible && (
+                    <div className="field-group">
+                      <label className="field-label">Batch</label>
+                      <input
+                        type="text"
+                        className="field-input"
+                        placeholder="Batch"
+                        value={phonePeBatchNight}
+                        disabled={!isManualEnabled("PHONEPE")}
+                        onChange={(e) => setPhonePeBatchNight(e.target.value)}
+                      />
+                    </div>
+                  )}
                 </div>
               </>
             ) : (
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "1.2fr 1fr 1fr",
+                  gridTemplateColumns: phonePeGridColumns,
                   gap: "8px",
                   opacity: isManualEnabled("PHONEPE") ? 1 : 0.6,
                 }}
@@ -3645,28 +3680,32 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                     onChange={(e) => setPhonePeMorning(Number(e.target.value))}
                   />
                 </div>
-                <div className="field-group">
-                  <label className="field-label">TID</label>
-                  <input
-                    type="text"
-                    className="field-input"
-                    placeholder="TID"
-                    value={phonePeTidMorning}
-                    disabled={!isManualEnabled("PHONEPE")}
-                    onChange={(e) => setPhonePeTidMorning(e.target.value)}
-                  />
-                </div>
-                <div className="field-group">
-                  <label className="field-label">Batch</label>
-                  <input
-                    type="text"
-                    className="field-input"
-                    placeholder="Batch"
-                    value={phonePeBatchMorning}
-                    disabled={!isManualEnabled("PHONEPE")}
-                    onChange={(e) => setPhonePeBatchMorning(e.target.value)}
-                  />
-                </div>
+                {isPhonePeTidVisible && (
+                  <div className="field-group">
+                    <label className="field-label">TID</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      placeholder="TID"
+                      value={phonePeTidMorning}
+                      disabled={!isManualEnabled("PHONEPE")}
+                      onChange={(e) => setPhonePeTidMorning(e.target.value)}
+                    />
+                  </div>
+                )}
+                {isPhonePeBatchVisible && (
+                  <div className="field-group">
+                    <label className="field-label">Batch</label>
+                    <input
+                      type="text"
+                      className="field-input"
+                      placeholder="Batch"
+                      value={phonePeBatchMorning}
+                      disabled={!isManualEnabled("PHONEPE")}
+                      onChange={(e) => setPhonePeBatchMorning(e.target.value)}
+                    />
+                  </div>
+                )}
               </div>
             )}
           </div>

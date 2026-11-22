@@ -15,6 +15,8 @@ export interface StationFeatureSettings {
   splitMorningNightEnabled: boolean;
   personalLedgerEnabled: boolean;
   personalLedgerName: string;
+  phonePeTidEnabled?: boolean;
+  phonePeBatchEnabled?: boolean;
 }
 
 export interface DynamicCollectionType {
@@ -22,6 +24,8 @@ export interface DynamicCollectionType {
   displayName: string;
   category: string;
   hasTidBatch: boolean;
+  hasTid?: boolean;
+  hasBatch?: boolean;
   hasOtp?: boolean | null;
   displayOrder: number;
   isActive: boolean;
@@ -68,11 +72,67 @@ export function isOtpEligibleType(ct: DynamicCollectionType): boolean {
 }
 
 export function isTidEligibleType(ct: DynamicCollectionType): boolean {
+  if (ct.hasTid !== undefined) return Boolean(ct.hasTid);
   return Boolean(ct.hasTidBatch);
 }
 
 export function isManualOnlyType(ct: DynamicCollectionType): boolean {
   return !isTidEligibleType(ct) && !isOtpEligibleType(ct);
+}
+
+export function parseOptionalExplicitBoolean(val: any): boolean | undefined {
+  if (val === undefined || val === null) return undefined;
+  if (typeof val === 'boolean') return val;
+  if (typeof val === 'number') {
+    if (val === 0) return false;
+    if (val === 1) return true;
+    return val !== 0;
+  }
+  if (typeof val === 'string') {
+    const s = val.trim().toLowerCase();
+    if (!s) return undefined;
+    if (s === 'false' || s === '0' || s === 'no' || s === 'disabled') return false;
+    if (s === 'true' || s === '1' || s === 'yes' || s === 'enabled') return true;
+  }
+  return undefined;
+}
+
+export function resolvePhonePeVisibility(
+  features?: Partial<StationFeatureSettings> | null,
+  phonePeConfig?: Partial<DynamicCollectionType> | null
+): { isPhonePeTidVisible: boolean; isPhonePeBatchVisible: boolean; phonePeGridColumns: string } {
+  const isPhonePeTidVisible = (() => {
+    if (features?.phonePeTidEnabled !== undefined && features.phonePeTidEnabled !== null) {
+      return Boolean(features.phonePeTidEnabled);
+    }
+    if (phonePeConfig?.hasTid !== undefined && phonePeConfig.hasTid !== null) {
+      return Boolean(phonePeConfig.hasTid);
+    }
+    if (phonePeConfig?.hasTidBatch !== undefined && phonePeConfig.hasTidBatch !== null) {
+      return Boolean(phonePeConfig.hasTidBatch);
+    }
+    return false;
+  })();
+
+  const isPhonePeBatchVisible = (() => {
+    if (features?.phonePeBatchEnabled !== undefined && features.phonePeBatchEnabled !== null) {
+      return Boolean(features.phonePeBatchEnabled);
+    }
+    if (phonePeConfig?.hasBatch !== undefined && phonePeConfig.hasBatch !== null) {
+      return Boolean(phonePeConfig.hasBatch);
+    }
+    if (phonePeConfig?.hasTidBatch !== undefined && phonePeConfig.hasTidBatch !== null) {
+      return Boolean(phonePeConfig.hasTidBatch);
+    }
+    return false;
+  })();
+
+  const phonePeGridColumns =
+    isPhonePeTidVisible && isPhonePeBatchVisible
+      ? '1.2fr 1fr 1fr'
+      : (isPhonePeTidVisible || isPhonePeBatchVisible ? '1.2fr 1fr' : '1fr');
+
+  return { isPhonePeTidVisible, isPhonePeBatchVisible, phonePeGridColumns };
 }
 
 export function getDefaultCollectionTypes(): DynamicCollectionType[] {
@@ -81,7 +141,9 @@ export function getDefaultCollectionTypes(): DynamicCollectionType[] {
       code: 'PHONEPE',
       displayName: 'PhonePe',
       category: 'Online',
-      hasTidBatch: true,
+      hasTidBatch: false,
+      hasTid: false,
+      hasBatch: false,
       hasOtp: false,
       displayOrder: 1,
       isActive: true,
@@ -206,6 +268,8 @@ export function getDefaultStationConfig(stationId: string): StationConfig {
       splitMorningNightEnabled: false,
       personalLedgerEnabled: true,
       personalLedgerName: 'Personal Ledger',
+      phonePeTidEnabled: undefined,
+      phonePeBatchEnabled: undefined,
     },
     collectionTypes: getDefaultCollectionTypes(),
     isDynamic: false,
@@ -364,45 +428,53 @@ async function fetchAndCacheStationConfig(cleanId: string, cacheKey: string): Pr
         if (Array.isArray(parsed) && parsed.length > 0) {
           hasAuthoritativeCollectionTypes = true;
           collectionTypes = parsed
-            .map((item: any) => ({
-              code: (item.Code || item.code || '').trim().toUpperCase(),
-              displayName: item.DisplayName || item.displayName || item.Code || '',
-              category: item.Category || item.category || 'Online',
-              hasTidBatch: (() => {
-                const raw = item.HasTidBatch !== undefined ? item.HasTidBatch : item.hasTidBatch;
-                if (raw === undefined || raw === null) return true;
-                if (typeof raw === 'boolean') return raw;
-                if (typeof raw === 'number') return raw !== 0;
-                if (typeof raw === 'string') {
-                  const s = raw.trim().toLowerCase();
-                  if (s === 'true' || s === '1' || s === 'yes') return true;
-                  if (s === 'false' || s === '0' || s === 'no') return false;
-                }
-                return Boolean(raw);
-              })(),
-              hasOtp: (() => {
-                const raw = item.HasOtp !== undefined ? item.HasOtp : item.hasOtp;
-                if (raw === undefined || raw === null) {
-                  const code = (item.Code || item.code || '').trim().toUpperCase();
-                  if (code === 'PHONEPE') return false;
+            .map((item: any) => {
+              const code = (item.Code || item.code || '').trim().toUpperCase();
+              const rawTidBatch = item.HasTidBatch !== undefined ? item.HasTidBatch : item.hasTidBatch;
+              const explicitTidBatch = parseOptionalExplicitBoolean(rawTidBatch);
+
+              const rawTid = item.HasTid ?? item.hasTid ?? item.EnableTid ?? item.enableTid ?? item.TidEnabled ?? item.tidEnabled ?? item.ShowTid ?? item.showTid;
+              const explicitTid = parseOptionalExplicitBoolean(rawTid);
+
+              const rawBatch = item.HasBatch ?? item.hasBatch ?? item.EnableBatch ?? item.enableBatch ?? item.BatchEnabled ?? item.batchEnabled ?? item.ShowBatch ?? item.showBatch;
+              const explicitBatch = parseOptionalExplicitBoolean(rawBatch);
+
+              // Normalize hasTidBatch:
+              // For PhonePe: default to false if omitted/null per desktop SeedData.cs
+              // For other types: preserve existing default true
+              const defaultTidBatch = code === 'PHONEPE' ? false : true;
+              const hasTidBatch = explicitTidBatch !== undefined ? explicitTidBatch : defaultTidBatch;
+
+              return {
+                code,
+                displayName: item.DisplayName || item.displayName || item.Code || '',
+                category: item.Category || item.category || 'Online',
+                hasTidBatch,
+                hasTid: explicitTid,
+                hasBatch: explicitBatch,
+                hasOtp: (() => {
+                  const raw = item.HasOtp !== undefined ? item.HasOtp : item.hasOtp;
+                  if (raw === undefined || raw === null) {
+                    if (code === 'PHONEPE') return false;
+                    return null;
+                  }
+                  if (typeof raw === 'boolean') return raw;
+                  if (typeof raw === 'number') return raw !== 0;
+                  if (typeof raw === 'string') {
+                    const s = raw.trim().toLowerCase();
+                    if (s === 'true' || s === '1' || s === 'yes') return true;
+                    if (s === 'false' || s === '0' || s === 'no') return false;
+                    if (s === 'null' || s === '') return null;
+                  }
                   return null;
-                }
-                if (typeof raw === 'boolean') return raw;
-                if (typeof raw === 'number') return raw !== 0;
-                if (typeof raw === 'string') {
-                  const s = raw.trim().toLowerCase();
-                  if (s === 'true' || s === '1' || s === 'yes') return true;
-                  if (s === 'false' || s === '0' || s === 'no') return false;
-                  if (s === 'null' || s === '') return null;
-                }
-                return null;
-              })(),
-              displayOrder: Number(item.DisplayOrder ?? item.displayOrder ?? 0),
-              isActive: item.IsActive !== false && item.isActive !== false,
-              enableMorning: item.EnableMorning !== false && item.enableMorning !== false,
-              enableDay: item.EnableDay !== false && item.enableDay !== false,
-              enableNight: item.EnableNight !== false && item.enableNight !== false,
-            }))
+                })(),
+                displayOrder: Number(item.DisplayOrder ?? item.displayOrder ?? 0),
+                isActive: item.IsActive !== false && item.isActive !== false,
+                enableMorning: item.EnableMorning !== false && item.enableMorning !== false,
+                enableDay: item.EnableDay !== false && item.enableDay !== false,
+                enableNight: item.EnableNight !== false && item.enableNight !== false,
+              };
+            })
             .filter((c: DynamicCollectionType) => c.code)
             .sort((a: DynamicCollectionType, b: DynamicCollectionType) => a.displayOrder - b.displayOrder);
         }
@@ -441,12 +513,37 @@ async function fetchAndCacheStationConfig(cleanId: string, cacheKey: string): Pr
     let splitMorningNightEnabled = false;
     let personalLedgerEnabled = true;
     let personalLedgerName = 'Personal Ledger';
+    let phonePeTidEnabled: boolean | undefined = undefined;
+    let phonePeBatchEnabled: boolean | undefined = undefined;
 
     function applyFeatureItem(itemKey: string, itemVal: any, itemDisplayName?: string) {
       const normKey = normalizeFeatureKey(itemKey);
       const isEnabled = parseExplicitBoolean(itemVal, false);
+      const explicitOpt = parseOptionalExplicitBoolean(itemVal);
 
-      if (normKey === 'operationscash1' || normKey === 'cash1') {
+      if (
+        normKey === 'operationsphonepetid' ||
+        normKey === 'phonepetid' ||
+        normKey === 'phonepetidenabled' ||
+        normKey === 'operationsphonepetidenabled' ||
+        normKey === 'phonepetidvisible' ||
+        normKey === 'operationsphonepetidvisible'
+      ) {
+        if (explicitOpt !== undefined) {
+          phonePeTidEnabled = explicitOpt;
+        }
+      } else if (
+        normKey === 'operationsphonepebatch' ||
+        normKey === 'phonepebatch' ||
+        normKey === 'phonepebatchenabled' ||
+        normKey === 'operationsphonepebatchenabled' ||
+        normKey === 'phonepebatchvisible' ||
+        normKey === 'operationsphonepebatchvisible'
+      ) {
+        if (explicitOpt !== undefined) {
+          phonePeBatchEnabled = explicitOpt;
+        }
+      } else if (normKey === 'operationscash1' || normKey === 'cash1') {
         cash1Enabled = isEnabled;
       } else if (normKey === 'operationscash2' || normKey === 'cash2') {
         cash2Enabled = isEnabled;
@@ -616,6 +713,8 @@ async function fetchAndCacheStationConfig(cleanId: string, cacheKey: string): Pr
         splitMorningNightEnabled,
         personalLedgerEnabled,
         personalLedgerName,
+        phonePeTidEnabled,
+        phonePeBatchEnabled,
       },
       collectionTypes: hasAuthoritativeCollectionTypes ? collectionTypes : getDefaultCollectionTypes(),
       isDynamic: hasAuthoritativeCollectionTypes,
