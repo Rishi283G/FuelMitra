@@ -7,7 +7,9 @@ import { parseAssignmentDateToYMD, getTodayYMD, formatYMDForDisplay } from "../l
 import {
   fetchStationConfig,
   getDefaultStationConfig,
-  resolveFuelRate,
+  sanitizeCachedStationConfig,
+  validateNozzleRateResolution,
+  reconcileNozzleRowRates,
   resolvePhonePeVisibility,
   isOtpEligibleType,
   isTidEligibleType,
@@ -48,6 +50,7 @@ interface NozzleRow extends DraftNozzleReading {
   rowId: number;
   isOpeningReadOnly?: boolean;
   tankName?: string;
+  rateError?: string;
 }
 
 
@@ -244,7 +247,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         if (cached) {
           const parsed = JSON.parse(cached);
           if (parsed && (parsed.stationId === initialStation || !parsed.stationId)) {
-            return parsed;
+            return sanitizeCachedStationConfig(parsed, initialStation);
           }
         }
       } catch {}
@@ -265,28 +268,8 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
   useEffect(() => {
     if (!stationConfig || nozzleRows.length === 0) return;
     setNozzleRows((prevRows) => {
-      let changed = false;
-      const updated = prevRows.map((row) => {
-        let newRate = resolveFuelRate(stationConfig, row.fuelType, row.tankName);
-        if (newRate <= 0) {
-          const uFuel = (row.fuelType || '').toUpperCase();
-          if (uFuel.includes('SPEED') || uFuel.includes('XP95') || uFuel.includes('POWER')) {
-            newRate = stationConfig?.speedRate || stationConfig?.msIIRate || 0;
-          } else if (uFuel.includes('HSD') || uFuel.includes('DIESEL')) {
-            newRate = stationConfig?.hsdRate || 0;
-          } else if (uFuel.includes('CNG')) {
-            newRate = stationConfig?.cngRate || 0;
-          } else {
-            newRate = stationConfig?.msIRate || 0;
-          }
-        }
-        if (newRate > 0 && Math.abs(newRate - row.rate) > 0.0001) {
-          changed = true;
-          return { ...row, rate: newRate };
-        }
-        return row;
-      });
-      return changed ? updated : prevRows;
+      const { rows, changed } = reconcileNozzleRowRates(prevRows, stationConfig);
+      return changed ? rows : prevRows;
     });
   }, [stationConfig]);
 
@@ -923,23 +906,12 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           if (row.nozzleId && !seenIds.has(row.nozzleId)) {
             seenIds.add(row.nozzleId);
             // Authoritative station-specific rate must override stale draft rates
-            let authoritativeRate = resolveFuelRate(stationConfig, row.fuelType, row.tankName);
-            if (authoritativeRate <= 0) {
-              const uFuel = (row.fuelType || '').toUpperCase();
-              if (uFuel.includes('SPEED') || uFuel.includes('XP95') || uFuel.includes('POWER')) {
-                authoritativeRate = stationConfig?.speedRate || stationConfig?.msIIRate || 0;
-              } else if (uFuel.includes('HSD') || uFuel.includes('DIESEL')) {
-                authoritativeRate = stationConfig?.hsdRate || 0;
-              } else if (uFuel.includes('CNG')) {
-                authoritativeRate = stationConfig?.cngRate || 0;
-              } else {
-                authoritativeRate = stationConfig?.msIRate || 0;
-              }
-            }
+            const res = validateNozzleRateResolution(stationConfig, row.fuelType, row.tankName);
             uniqueNozzleRows.push({
               ...row,
               rowId: uniqueNozzleRows.length + 1,
-              rate: authoritativeRate > 0 ? authoritativeRate : (Number(row.rate) || 0),
+              rate: res.rate > 0 ? res.rate : 0,
+              rateError: res.error,
             });
           }
         });
@@ -1370,6 +1342,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
       let hsdRate = latestConfig.hsdRate || 90.35;
       let msIRate = latestConfig.msIRate || 103.81;
       let msIIRate = latestConfig.msIIRate || 103.81;
+      let speedRate = latestConfig.speedRate || 0;
       let cngRate = latestConfig.cngRate || 85.0;
 
       // We load nozzles of both the primary and all connected pumps (deduplicated)
@@ -1705,7 +1678,16 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
           const ratesCacheKey = `nozzle_rates_${station.toLowerCase()}`;
           localStorage.setItem(
             ratesCacheKey,
-            JSON.stringify({ hsd: hsdRate, msI: msIRate, msII: msIIRate, cng: cngRate, perNozzle: nozzleRates })
+            JSON.stringify({
+              cacheSchemaVersion: 2,
+              schemaVersion: 2,
+              hsd: hsdRate,
+              msI: msIRate,
+              msII: msIIRate,
+              ...(latestConfig.speedVerified ? { speed: speedRate } : {}),
+              cng: cngRate,
+              perNozzle: nozzleRates
+            })
           );
         }
       } catch {}
@@ -1740,19 +1722,8 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         currentRows.forEach((r) => currentMap.set(r.nozzleId, r));
 
         return configRows.map((n, index) => {
-          let rate = resolveFuelRate(latestConfig, n.fuelType, n.tankName);
-          if (rate <= 0) {
-            const uFuel = (n.fuelType || '').toUpperCase();
-            if (uFuel.includes('SPEED') || uFuel.includes('XP95') || uFuel.includes('POWER')) {
-              rate = latestConfig?.speedRate || latestConfig?.msIIRate || 0;
-            } else if (uFuel.includes('HSD') || uFuel.includes('DIESEL')) {
-              rate = latestConfig?.hsdRate || 0;
-            } else if (uFuel.includes('CNG')) {
-              rate = latestConfig?.cngRate || 0;
-            } else {
-              rate = latestConfig?.msIRate || 0;
-            }
-          }
+          const rateResolution = validateNozzleRateResolution(latestConfig, n.fuelType, n.tankName);
+          const rate = rateResolution.rate;
 
           const prevClosing = prevClosings[n.nozzleId] || 0;
           const existingRow = currentMap.get(n.nozzleId);
@@ -1785,6 +1756,7 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
             openingReading: opening,
             closingReading: closing,
             rate,
+            rateError: rateResolution.error,
             isOpeningReadOnly: prevClosing > 0,
             pumpId: n.pumpId,
             testing,
@@ -1987,8 +1959,16 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
         );
       if (open < 0 || close < 0 || test < 0)
         errs.push(`Nozzle ${r.nozzleId}: Negative values are not allowed`);
-      if (rate <= 0)
+      if (r.rateError) {
+        errs.push(`Nozzle ${r.nozzleId} (${r.fuelType}): ${r.rateError}`);
+      } else if (rate <= 0) {
         errs.push(`Nozzle ${r.nozzleId} (${r.fuelType}): Valid fuel rate is required. Please verify station settings.`);
+      }
+      const isSpeed = (r.fuelType || '').toUpperCase().includes('SPEED') || (r.tankName || '').toUpperCase().includes('SPEED');
+      const hasNetSale = salesLtrs > test;
+      if (isSpeed && hasNetSale && !stationConfig?.speedVerified) {
+        errs.push(`Nozzle ${r.nozzleId} (${r.fuelType}): SPEED nozzle rate could not be verified from station configuration. Please connect to the internet or contact manager.`);
+      }
     });
     return errs;
   }
@@ -2914,9 +2894,9 @@ export default function SubmitShiftScreen({ onBack }: SubmitProps) {
                     Testing cannot exceed dispensed fuel
                   </div>
                 )}
-                {Number(row.rate) <= 0 && (
+                {(Number(row.rate) <= 0 || Boolean(row.rateError)) && (
                   <div style={{ color: "#ef4444", fontSize: "0.75rem", marginTop: "-4px", marginBottom: "6px" }}>
-                    No valid fuel rate configured. Please contact manager.
+                    {row.rateError || "No valid fuel rate configured. Please contact manager."}
                   </div>
                 )}
                 <div

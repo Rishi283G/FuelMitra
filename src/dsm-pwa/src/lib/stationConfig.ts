@@ -41,11 +41,16 @@ export interface StationConfig {
   collectionTypes: DynamicCollectionType[];
   isDynamic: boolean;
   fuelRates?: Record<string, number>;
+  tankRates?: Record<string, number>;
+  tankFuelTypes?: Record<string, string>;
+  fuelTypeRates?: Record<string, number>;
   hsdRate?: number;
   msIRate?: number;
   msIIRate?: number;
   speedRate?: number;
   cngRate?: number;
+  cacheSchemaVersion?: number;
+  speedVerified?: boolean;
 }
 
 export interface OtpTransactionItem {
@@ -274,12 +279,97 @@ export function getDefaultStationConfig(stationId: string): StationConfig {
     collectionTypes: getDefaultCollectionTypes(),
     isDynamic: false,
     fuelRates: {},
+    tankRates: {},
+    tankFuelTypes: {},
+    fuelTypeRates: {},
     hsdRate: 90.35,
     msIRate: 103.81,
     msIIRate: 0,
     speedRate: 0,
     cngRate: 85.0,
+    cacheSchemaVersion: 2,
+    speedVerified: false,
   };
+}
+
+export function normalizeFuelProductFamily(value: string): string {
+  const u = (value || '').trim().toUpperCase();
+  if (!u) return '';
+  if (u.includes('SPEED')) return 'SPEED';
+  if (u.includes('XP95') || u.includes('XP-95')) return 'XP95';
+  if (u.includes('POWER')) return 'POWER';
+  if (u.includes('MS-II') || u.includes('MS2') || u.includes('MS_II') || u.includes('20KL II')) return 'MS-II';
+  if (u.includes('HSD') || u.includes('DIESEL')) return 'HSD';
+  if (u.includes('CNG')) return 'CNG';
+  if (u.includes('MS-I') || u.includes('MS1') || u === 'MS' || u.includes('MS ') || u.includes('MS-') || u.includes('PETROL')) return 'MS-I';
+  return u;
+}
+
+export function sanitizeCachedStationConfig(raw: any, fallbackStationId = ''): StationConfig {
+  if (!raw || typeof raw !== 'object') {
+    return getDefaultStationConfig(fallbackStationId);
+  }
+
+  const parsed: StationConfig = {
+    ...getDefaultStationConfig(raw.stationId || fallbackStationId),
+    ...raw,
+    fuelRates: raw.fuelRates && typeof raw.fuelRates === 'object' ? { ...raw.fuelRates } : {},
+    tankRates: raw.tankRates && typeof raw.tankRates === 'object' ? { ...raw.tankRates } : {},
+    tankFuelTypes: raw.tankFuelTypes && typeof raw.tankFuelTypes === 'object' ? { ...raw.tankFuelTypes } : {},
+    fuelTypeRates: raw.fuelTypeRates && typeof raw.fuelTypeRates === 'object' ? { ...raw.fuelTypeRates } : {},
+  };
+
+  const hasVerifiedSpeedProvenance =
+    parsed.cacheSchemaVersion === 2 &&
+    parsed.speedVerified === true &&
+    typeof parsed.speedRate === 'number' &&
+    parsed.speedRate > 0;
+
+  if (!hasVerifiedSpeedProvenance) {
+    parsed.speedVerified = false;
+    parsed.speedRate = 0;
+
+    if (parsed.fuelRates) {
+      for (const k of Object.keys(parsed.fuelRates)) {
+        if (k.toUpperCase().includes('SPEED')) {
+          delete parsed.fuelRates[k];
+        }
+      }
+    }
+    if (parsed.fuelTypeRates) {
+      for (const k of Object.keys(parsed.fuelTypeRates)) {
+        if (k.toUpperCase().includes('SPEED')) {
+          delete parsed.fuelTypeRates[k];
+        }
+      }
+    }
+    if (parsed.tankRates) {
+      for (const k of Object.keys(parsed.tankRates)) {
+        const tankFuel = parsed.tankFuelTypes?.[k] || parsed.tankFuelTypes?.[k.toUpperCase()] || '';
+        if (k.toUpperCase().includes('SPEED') || tankFuel.toUpperCase().includes('SPEED')) {
+          delete parsed.tankRates[k];
+        }
+      }
+    }
+  }
+
+  return parsed;
+}
+
+export function sanitizeNozzleRatesCache(
+  raw: any,
+  stationConfig?: StationConfig | null
+): Record<string, any> | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const copy = { ...raw };
+  const isVerified =
+    copy.cacheSchemaVersion === 2 &&
+    (!stationConfig || stationConfig.speedVerified === true);
+
+  if (!isVerified) {
+    delete copy.speed;
+  }
+  return copy;
 }
 
 export async function fetchStationConfig(stationId: string): Promise<StationConfig> {
@@ -291,7 +381,7 @@ export async function fetchStationConfig(stationId: string): Promise<StationConf
   const cacheKey = `station_config_${cleanId.toLowerCase()}`;
 
   // If online, fetch fresh configuration from Supabase to ensure updated slot and type settings propagate immediately
-  if (typeof navigator === 'undefined' || navigator.onLine) {
+  if (typeof navigator === 'undefined' || navigator.onLine !== false) {
     try {
       const fresh = await fetchAndCacheStationConfig(cleanId, cacheKey);
       return fresh;
@@ -306,7 +396,7 @@ export async function fetchStationConfig(stationId: string): Promise<StationConf
     if (cached) {
       const parsed = JSON.parse(cached);
       if (parsed && parsed.stationId === cleanId) {
-        return parsed;
+        return sanitizeCachedStationConfig(parsed, cleanId);
       }
     }
   } catch {}
@@ -375,7 +465,7 @@ async function fetchAndCacheStationConfig(cleanId: string, cacheKey: string): Pr
         if (cached) {
           const parsed = JSON.parse(cached);
           if (parsed && parsed.stationId === cleanId) {
-            return parsed;
+            return sanitizeCachedStationConfig(parsed, cleanId);
           }
         }
       } catch {}
@@ -405,6 +495,11 @@ async function fetchAndCacheStationConfig(cleanId: string, cacheKey: string): Pr
       data.FuelRatesJson ??
       data.fuel_rates_json ??
       data.fuelratesjson;
+
+    const tankDefinitionsRaw =
+      data.TankDefinitionsJson ??
+      data.tank_definitions_json ??
+      data.tankdefinitionsjson;
 
     const rawHsd = data.HsdRate ?? data.hsd_rate ?? data.hsdrate;
     const rawMsI = data.MsIRate ?? data.ms_i_rate ?? data.ms_irate ?? data.msirate;
@@ -661,7 +756,52 @@ async function fetchAndCacheStationConfig(cleanId: string, cacheKey: string): Pr
       }
     }
 
-    const rawSpeed = data.SpeedRate ?? data.speed_rate ?? data.speedrate;
+    // ── Parse Canonical TankDefinitionsJson ──
+    let tankRates: Record<string, number> = {};
+    let tankFuelTypes: Record<string, string> = {};
+    let fuelTypeCandidateMap: Record<string, Set<number>> = {};
+    let tankDefinitionsParsed: any[] = [];
+
+    if (tankDefinitionsRaw) {
+      try {
+        const parsedTanks = typeof tankDefinitionsRaw === 'string' ? JSON.parse(tankDefinitionsRaw) : tankDefinitionsRaw;
+        if (Array.isArray(parsedTanks)) {
+          tankDefinitionsParsed = parsedTanks;
+          for (const tank of parsedTanks) {
+            const tankName = (tank.TankName || tank.tankName || '').trim();
+            const fuelType = (tank.FuelType || tank.fuelType || '').trim();
+            const rate = Number(tank.Rate ?? tank.rate);
+            if (tankName && fuelType) {
+              tankFuelTypes[tankName] = fuelType;
+              tankFuelTypes[tankName.toUpperCase()] = fuelType;
+            }
+            if (!isNaN(rate) && rate > 0) {
+              if (tankName) {
+                tankRates[tankName] = rate;
+                tankRates[tankName.toUpperCase()] = rate;
+              }
+              if (fuelType) {
+                const uFuel = fuelType.toUpperCase();
+                if (!fuelTypeCandidateMap[uFuel]) {
+                  fuelTypeCandidateMap[uFuel] = new Set<number>();
+                }
+                fuelTypeCandidateMap[uFuel].add(rate);
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed to parse TankDefinitionsJson:', err);
+      }
+    }
+
+    // Build ambiguity-checked fuelTypeRates:
+    let fuelTypeRates: Record<string, number> = {};
+    for (const [fuelKey, rateSet] of Object.entries(fuelTypeCandidateMap)) {
+      if (rateSet.size === 1) {
+        fuelTypeRates[fuelKey] = Array.from(rateSet)[0];
+      }
+    }
 
     function findRateInMap(map: Record<string, number>, keywords: string[], excludeKeywords: string[] = []): number | undefined {
       for (const [k, v] of Object.entries(map)) {
@@ -674,18 +814,39 @@ async function fetchAndCacheStationConfig(cleanId: string, cacheKey: string): Pr
       return undefined;
     }
 
+    // Strict independent rate resolution with ZERO cross-contamination
+    const hsdFromTanks = fuelTypeRates['HSD'] ?? findRateInMap(tankRates, ['HSD'], ['II', 'MS-II']);
     const hsdFromMap = findRateInMap(fuelRates, ['HSD', 'DIESEL'], ['II', 'MS-II']);
-    const msIFromMap = findRateInMap(fuelRates, ['MS-I', 'MS -', 'PETROL', 'MS1']) ?? (fuelRates['MS'] && fuelRates['MS'] > 0 ? fuelRates['MS'] : undefined);
-    const speedFromMap = findRateInMap(fuelRates, ['SPEED', 'XP95', 'POWER', 'TURBO', 'EXTRA']);
-    const msIIFromMap = findRateInMap(fuelRates, ['MS-II', 'MS2', 'MS_II', '20KL II']) ?? speedFromMap;
-    const cngFromMap = findRateInMap(fuelRates, ['CNG']);
+    const hsdRate = hsdFromTanks ?? hsdFromMap ?? (rawHsd && Number(rawHsd) > 0 ? Number(rawHsd) : 90.35);
 
-    // Authoritative rate resolution: dynamic fuelRates map takes precedence over scalar columns, which take precedence over hardcoded defaults
-    const hsdRate = hsdFromMap ?? (rawHsd && Number(rawHsd) > 0 ? Number(rawHsd) : 90.35);
-    const msIRate = msIFromMap ?? (rawMsI && Number(rawMsI) > 0 ? Number(rawMsI) : 103.81);
-    const msIIRate = msIIFromMap ?? (rawMsII && Number(rawMsII) > 0 ? Number(rawMsII) : (speedFromMap ?? 0));
-    const speedRate = speedFromMap ?? (rawSpeed && Number(rawSpeed) > 0 ? Number(rawSpeed) : (rawMsII && Number(rawMsII) > 0 ? Number(rawMsII) : 0));
-    const cngRate = cngFromMap ?? (rawCng && Number(rawCng) > 0 ? Number(rawCng) : 85.0);
+    const msIExclude = ['II', 'MS-II', 'MS2', 'MS_II', 'SPEED', 'XP95', 'XP-95', 'POWER', 'HSD', 'CNG'];
+    const msIFromTanks = fuelTypeRates['MS-I'] ?? fuelTypeRates['MS'] ?? findRateInMap(tankRates, ['MS-I', 'MS - 20KL', 'PETROL'], msIExclude);
+    const msIFromMap = findRateInMap(fuelRates, ['MS-I', 'MS -', 'PETROL', 'MS1'], msIExclude) ?? (fuelRates['MS'] && fuelRates['MS'] > 0 ? fuelRates['MS'] : undefined);
+    const msIRate = msIFromTanks ?? msIFromMap ?? (rawMsI && Number(rawMsI) > 0 ? Number(rawMsI) : 103.81);
+
+    const speedFromTanks = fuelTypeRates['SPEED'] ?? findRateInMap(tankRates, ['SPEED']);
+    const speedFromMap = findRateInMap(fuelRates, ['SPEED']);
+    const rawSpeed = data.SpeedRate ?? data.speed_rate ?? data.speedrate;
+    const speedRate = speedFromTanks ?? speedFromMap ?? (rawSpeed && Number(rawSpeed) > 0 ? Number(rawSpeed) : undefined);
+
+    const msIIFromTanks = fuelTypeRates['MS-II'] ?? fuelTypeRates['MS2'] ?? findRateInMap(tankRates, ['MS-II', 'MS - 20KL II', 'HSD - 20KL II']);
+    const msIIFromMap = findRateInMap(fuelRates, ['MS-II', 'MS2', 'MS_II', '20KL II']);
+    const msIIRate = msIIFromTanks ?? msIIFromMap ?? (rawMsII && Number(rawMsII) > 0 ? Number(rawMsII) : undefined);
+
+    const cngFromTanks = fuelTypeRates['CNG'] ?? findRateInMap(tankRates, ['CNG']);
+    const cngFromMap = findRateInMap(fuelRates, ['CNG']);
+    const cngRate = cngFromTanks ?? cngFromMap ?? (rawCng && Number(rawCng) > 0 ? Number(rawCng) : 85.0);
+
+    // Speed verification status:
+    const speedVerified = (speedRate !== undefined && speedRate > 0) && (
+      (tankDefinitionsParsed.some(t => {
+        const name = (t.TankName || t.tankName || '').toUpperCase();
+        const ftype = (t.FuelType || t.fuelType || '').toUpperCase();
+        return (name.includes('SPEED') || ftype.includes('SPEED')) && Number(t.Rate ?? t.rate) > 0;
+      })) ||
+      Boolean(speedFromMap && speedFromMap > 0) ||
+      Boolean(rawSpeed && Number(rawSpeed) > 0)
+    );
 
     // Normalize canonical keys into fuelRates map for direct lookup
     if (speedRate && !fuelRates['Speed']) fuelRates['Speed'] = speedRate;
@@ -719,11 +880,16 @@ async function fetchAndCacheStationConfig(cleanId: string, cacheKey: string): Pr
       collectionTypes: hasAuthoritativeCollectionTypes ? collectionTypes : getDefaultCollectionTypes(),
       isDynamic: hasAuthoritativeCollectionTypes,
       fuelRates,
+      tankRates,
+      tankFuelTypes,
+      fuelTypeRates,
       hsdRate,
       msIRate,
       msIIRate,
       speedRate,
       cngRate,
+      cacheSchemaVersion: 2,
+      speedVerified,
     };
 
     try {
@@ -733,8 +899,175 @@ async function fetchAndCacheStationConfig(cleanId: string, cacheKey: string): Pr
     return config;
   } catch (err) {
     console.error('Exception in fetchAndCacheStationConfig:', err);
+    try {
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed && parsed.stationId === cleanId) {
+          return sanitizeCachedStationConfig(parsed, cleanId);
+        }
+      }
+    } catch {}
     return getDefaultStationConfig(cleanId);
   }
+}
+
+export interface NozzleRateResolutionResult {
+  rate: number;
+  sourceTier: 'TANK' | 'FUEL_TYPE' | 'CATEGORY' | 'CONFLICT' | 'UNRESOLVED';
+  error?: string;
+}
+
+export function validateNozzleRateResolution(
+  config: StationConfig | null | undefined,
+  fuelType: string,
+  tankName?: string
+): NozzleRateResolutionResult {
+  if (!config) {
+    return { rate: 0, sourceTier: 'UNRESOLVED', error: 'Station configuration is not loaded.' };
+  }
+
+  const normTank = (tankName || '').trim();
+  const normFuel = (fuelType || '').trim();
+  const upperTank = normTank.toUpperCase();
+  const upperFuel = normFuel.toUpperCase();
+
+  const nozzleFamily = normalizeFuelProductFamily(normFuel);
+  const declaredTankFuel = normTank
+    ? (config.tankFuelTypes?.[normTank] ?? config.tankFuelTypes?.[upperTank])
+    : undefined;
+  const tankFamily = declaredTankFuel
+    ? normalizeFuelProductFamily(declaredTankFuel)
+    : normalizeFuelProductFamily(normTank);
+
+  // Tank-product compatibility guard:
+  // 1. If TankDefinitionsJson declared a FuelType for this tank, nozzle FuelType must match it.
+  // 2. A SPEED nozzle must never resolve against an MS-I / MS-II / HSD / CNG / XP95 / POWER tank.
+  if (normTank && nozzleFamily && tankFamily && nozzleFamily !== tankFamily) {
+    if (declaredTankFuel || nozzleFamily === 'SPEED') {
+      return {
+        rate: 0,
+        sourceTier: 'CONFLICT',
+        error: `Configuration mismatch: Nozzle FuelType '${normFuel}' is mapped to tank '${normTank}' (${declaredTankFuel || tankFamily}).`,
+      };
+    }
+  }
+
+  // Tier 1: TankName direct or case-insensitive match in tankRates or fuelRates
+  if (normTank) {
+    if (config.tankRates) {
+      if (config.tankRates[normTank] !== undefined && config.tankRates[normTank] > 0) {
+        return { rate: Number(config.tankRates[normTank]), sourceTier: 'TANK' };
+      }
+      if (config.tankRates[upperTank] !== undefined && config.tankRates[upperTank] > 0) {
+        return { rate: Number(config.tankRates[upperTank]), sourceTier: 'TANK' };
+      }
+    }
+    if (config.fuelRates) {
+      if (config.fuelRates[normTank] !== undefined && config.fuelRates[normTank] > 0) {
+        return { rate: Number(config.fuelRates[normTank]), sourceTier: 'TANK' };
+      }
+      for (const [k, v] of Object.entries(config.fuelRates)) {
+        if (k.trim().toUpperCase() === upperTank && Number(v) > 0) {
+          return { rate: Number(v), sourceTier: 'TANK' };
+        }
+      }
+    }
+  }
+
+  // Tier 2: FuelType direct or case-insensitive match in fuelTypeRates or fuelRates
+  if (normFuel) {
+    if (config.fuelTypeRates) {
+      if (config.fuelTypeRates[normFuel] !== undefined && config.fuelTypeRates[normFuel] > 0) {
+        return { rate: Number(config.fuelTypeRates[normFuel]), sourceTier: 'FUEL_TYPE' };
+      }
+      if (config.fuelTypeRates[upperFuel] !== undefined && config.fuelTypeRates[upperFuel] > 0) {
+        return { rate: Number(config.fuelTypeRates[upperFuel]), sourceTier: 'FUEL_TYPE' };
+      }
+    }
+    if (config.fuelRates) {
+      if (config.fuelRates[normFuel] !== undefined && config.fuelRates[normFuel] > 0) {
+        return { rate: Number(config.fuelRates[normFuel]), sourceTier: 'FUEL_TYPE' };
+      }
+      for (const [k, v] of Object.entries(config.fuelRates)) {
+        if (k.trim().toUpperCase() === upperFuel && Number(v) > 0) {
+          return { rate: Number(v), sourceTier: 'FUEL_TYPE' };
+        }
+      }
+    }
+  }
+
+  // Tier 3: Strict product category fallback based on keywords (ZERO cross-contamination!)
+  const combined = `${upperFuel} ${upperTank}`.trim();
+
+  // SPEED (BPCL Premium Petrol)
+  if (combined.includes('SPEED')) {
+    if (config.speedRate && config.speedRate > 0) {
+      return { rate: config.speedRate, sourceTier: 'CATEGORY' };
+    }
+    return {
+      rate: 0,
+      sourceTier: 'UNRESOLVED',
+      error: `SPEED rate is missing or unverified for '${normTank || normFuel}'.`,
+    };
+  }
+
+  // XP95 (IOCL Premium Petrol - independent product)
+  if (combined.includes('XP95') || combined.includes('XP-95')) {
+    const xpRate = config.fuelRates?.['XP95'] || config.tankRates?.['XP95'];
+    if (xpRate && xpRate > 0) {
+      return { rate: xpRate, sourceTier: 'CATEGORY' };
+    }
+    return { rate: 0, sourceTier: 'UNRESOLVED', error: `XP95 rate is not configured.` };
+  }
+
+  // POWER (HPCL Premium Petrol - independent product)
+  if (combined.includes('POWER')) {
+    const pwrRate = config.fuelRates?.['Power'] || config.fuelRates?.['POWER'] || config.tankRates?.['Power'];
+    if (pwrRate && pwrRate > 0) {
+      return { rate: pwrRate, sourceTier: 'CATEGORY' };
+    }
+    return { rate: 0, sourceTier: 'UNRESOLVED', error: `Power rate is not configured.` };
+  }
+
+  // MS-II
+  if (combined.includes('MS-II') || combined.includes('MS2') || combined.includes('MS_II') || combined.includes('20KL II')) {
+    if (config.msIIRate && config.msIIRate > 0) {
+      return { rate: config.msIIRate, sourceTier: 'CATEGORY' };
+    }
+    return { rate: 0, sourceTier: 'UNRESOLVED', error: `MS-II rate is not configured.` };
+  }
+
+  // HSD / Diesel
+  if (combined.includes('HSD') || combined.includes('DIESEL')) {
+    if (config.hsdRate && config.hsdRate > 0) {
+      return { rate: config.hsdRate, sourceTier: 'CATEGORY' };
+    }
+    return { rate: 0, sourceTier: 'UNRESOLVED', error: `HSD rate is not configured.` };
+  }
+
+  // CNG
+  if (combined.includes('CNG')) {
+    if (config.cngRate && config.cngRate > 0) {
+      return { rate: config.cngRate, sourceTier: 'CATEGORY' };
+    }
+    return { rate: 0, sourceTier: 'UNRESOLVED', error: `CNG rate is not configured.` };
+  }
+
+  // MS-I / Regular Petrol
+  if (nozzleFamily === 'MS-I') {
+    if (config.msIRate && config.msIRate > 0) {
+      return { rate: config.msIRate, sourceTier: 'CATEGORY' };
+    }
+    return { rate: 0, sourceTier: 'UNRESOLVED', error: `MS-I rate is not configured.` };
+  }
+
+  // Tier 4: Unknown product
+  return {
+    rate: 0,
+    sourceTier: 'UNRESOLVED',
+    error: `Fuel rate could not be resolved for '${normFuel || normTank || 'UNKNOWN'}'.`,
+  };
 }
 
 export function resolveFuelRate(
@@ -742,94 +1075,26 @@ export function resolveFuelRate(
   fuelType: string,
   tankName?: string
 ): number {
-  if (!config) return 0;
-  const ratesMap = config.fuelRates || {};
-  const normFuel = (fuelType || '').trim();
-  const normTank = (tankName || '').trim();
+  return validateNozzleRateResolution(config, fuelType, tankName).rate;
+}
 
-  // 1. Direct match on tankName or fuelType
-  if (normTank && ratesMap[normTank] !== undefined && ratesMap[normTank] > 0) return Number(ratesMap[normTank]);
-  if (normFuel && ratesMap[normFuel] !== undefined && ratesMap[normFuel] > 0) return Number(ratesMap[normFuel]);
-
-  // 2. Case-insensitive key match
-  const upperTank = normTank.toUpperCase();
-  const upperFuel = normFuel.toUpperCase();
-  for (const [k, v] of Object.entries(ratesMap)) {
-    const key = k.trim().toUpperCase();
-    const val = Number(v);
-    if (val <= 0) continue;
-    if (upperTank && key === upperTank) return val;
-    if (upperFuel && key === upperFuel) return val;
-  }
-
-  // 3. Keyword-based matching
-  const combined = `${normFuel} ${normTank}`.toUpperCase();
-
-  // Speed / Premium Petrol
-  if (combined.includes('SPEED') || combined.includes('XP95') || combined.includes('POWER') || combined.includes('TURBO') || combined.includes('EXTRA')) {
-    for (const [k, v] of Object.entries(ratesMap)) {
-      const key = k.toUpperCase();
-      const val = Number(v);
-      if (val > 0 && (key.includes('SPEED') || key.includes('XP95') || key.includes('POWER') || key.includes('EXTRA'))) return val;
+export function reconcileNozzleRowRates<
+  T extends { fuelType: string; tankName?: string; rate: number; rateError?: string }
+>(rows: T[], config: StationConfig | null | undefined): { rows: T[]; changed: boolean } {
+  let changed = false;
+  const updated = rows.map((row) => {
+    const res = validateNozzleRateResolution(config, row.fuelType, row.tankName);
+    const nextRate = res.rate > 0 ? res.rate : 0;
+    const nextError = res.error;
+    if (Math.abs(nextRate - (Number(row.rate) || 0)) > 0.0001 || (row.rateError || '') !== (nextError || '')) {
+      changed = true;
+      return {
+        ...row,
+        rate: nextRate,
+        rateError: nextError,
+      };
     }
-    // Also check MS-II in ratesMap as alias
-    for (const [k, v] of Object.entries(ratesMap)) {
-      const key = k.toUpperCase();
-      const val = Number(v);
-      if (val > 0 && (key.includes('MS-II') || key.includes('MS2') || key.includes('20KL II'))) return val;
-    }
-    if (config.speedRate && config.speedRate > 0) return config.speedRate;
-    if (config.msIIRate && config.msIIRate > 0) return config.msIIRate;
-    return 0; // Crucial: never return msIRate for Speed!
-  }
-
-  // HSD / Diesel
-  if (combined.includes('HSD') || combined.includes('DIESEL')) {
-    for (const [k, v] of Object.entries(ratesMap)) {
-      const key = k.toUpperCase();
-      const val = Number(v);
-      if (val > 0 && (key.includes('HSD') || key.includes('DIESEL')) && !key.includes('II')) return val;
-    }
-    if (config.hsdRate && config.hsdRate > 0) return config.hsdRate;
-  }
-
-  // MS-II
-  if (combined.includes('MS-II') || combined.includes('MS2') || combined.includes('MS_II') || combined.includes('20KL II')) {
-    for (const [k, v] of Object.entries(ratesMap)) {
-      const key = k.toUpperCase();
-      const val = Number(v);
-      if (val > 0 && (key.includes('MS-II') || key.includes('MS2') || key.includes('20KL II') || key.includes('SPEED') || key.includes('XP95') || key.includes('POWER'))) return val;
-    }
-    if (config.msIIRate && config.msIIRate > 0) return config.msIIRate;
-    if (config.speedRate && config.speedRate > 0) return config.speedRate;
-  }
-
-  // MS-I / Petrol
-  if (combined.includes('MS-I') || combined.includes('MS') || combined.includes('PETROL')) {
-    for (const [k, v] of Object.entries(ratesMap)) {
-      const key = k.toUpperCase();
-      const val = Number(v);
-      if (val > 0 && (key.includes('MS-I') || key === 'MS' || key.includes('PETROL') || key.includes('MS -'))) return val;
-    }
-    if (config.msIRate && config.msIRate > 0) return config.msIRate;
-  }
-
-  // CNG
-  if (combined.includes('CNG')) {
-    for (const [k, v] of Object.entries(ratesMap)) {
-      const key = k.toUpperCase();
-      const val = Number(v);
-      if (val > 0 && key.includes('CNG')) return val;
-    }
-    if (config.cngRate && config.cngRate > 0) return config.cngRate;
-  }
-
-  // 4. Exact fuelType fallbacks
-  if (upperFuel.includes('SPEED') || upperFuel.includes('XP95') || upperFuel.includes('POWER')) return config.speedRate || config.msIIRate || 0;
-  if (upperFuel.includes('HSD')) return config.hsdRate || 90.35;
-  if (upperFuel.includes('CNG')) return config.cngRate || 85.0;
-  if (upperFuel.includes('MS-II')) return config.msIIRate || config.speedRate || 103.81;
-  if (upperFuel.includes('MS-I') || upperFuel.includes('MS') || upperFuel.includes('PETROL')) return config.msIRate || 103.81;
-
-  return config.msIRate || 103.81;
+    return row;
+  });
+  return { rows: updated, changed };
 }

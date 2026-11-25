@@ -278,10 +278,10 @@ describe('Integration Fixes Verification (PWA)', () => {
       expect(resolveFuelRate(mockConfig, 'MS-I')).toBe(50.0);
       expect(resolveFuelRate(mockConfig, 'Speed')).toBe(80.0);
       expect(resolveFuelRate(mockConfig, 'MS', 'Speed Tank')).toBe(80.0);
-      expect(resolveFuelRate(mockConfig, 'XP95')).toBe(80.0); // Premium category matches Speed rate
+      expect(resolveFuelRate(mockConfig, 'XP95')).toBe(0); // XP95 is an independent product and does not alias Speed
       expect(resolveFuelRate(mockConfig, 'HSD')).toBe(92.5);
       expect(resolveFuelRate(mockConfig, 'CNG')).toBe(75.0);
-      expect(resolveFuelRate(mockConfig, 'UNKNOWN')).toBe(50.0); // Falls back to station msIRate
+      expect(resolveFuelRate(mockConfig, 'UNKNOWN')).toBe(0); // Zero fallback for unknown fuel types to prevent cross-contamination
     });
   });
 
