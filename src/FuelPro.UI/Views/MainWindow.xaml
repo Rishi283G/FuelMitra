@@ -192,7 +192,7 @@
                     </Button>
 
                     <!-- DSM Approval Queue with Badge -->
-                    <Button Command="{Binding NavigateToDsmApprovalQueueCommand}" ToolTip="DSM Approval Queue" Margin="0,4"
+                    <Button Command="{Binding NavigateToDsmApprovalQueueCommand}" ToolTip="{Binding PendingDsmTooltip}" Margin="0,4"
                             Visibility="{Binding IsDsmApprovalQueueVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <Button.Style>
                             <Style TargetType="Button" BasedOn="{StaticResource MaterialDesignIconButton}">
@@ -212,6 +212,9 @@
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding PendingDsmCount}" Value="0">
                                             <Setter Property="Badge" Value="{x:Null}"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding HasAuthoritativePendingCount}" Value="False">
+                                            <Setter Property="Badge" Value="!"/>
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
@@ -359,8 +362,8 @@
                 </Grid.RowDefinitions>
 
                 <!-- Persistent Top Toolbar -->
-                <Border Grid.Row="0" Background="White" BorderThickness="0,0,0,1" BorderBrush="#E0E0E0" Padding="20,10">
-                    <Grid>
+                <Border Grid.Row="0" Background="White" BorderThickness="0,0,0,1" BorderBrush="#E0E0E0" Height="52" Padding="20,0">
+                    <Grid VerticalAlignment="Center">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
@@ -374,25 +377,22 @@
 
                         <!-- Right: Sync status indicator & Force Sync button -->
                         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                            <Ellipse Width="10" Height="10" Margin="0,0,8,0" VerticalAlignment="Center">
+                            <Ellipse Width="10" Height="10" Margin="0,0,8,0" VerticalAlignment="Center" ToolTip="{Binding SyncStatusToolTip}">
                                 <Ellipse.Style>
                                     <Style TargetType="Ellipse">
                                         <Setter Property="Fill" Value="#F44336"/>
-                                        <Setter Property="ToolTip" Value="Offline"/>
                                         <Style.Triggers>
-                                            <DataTrigger Binding="{Binding SyncStatusText}" Value="Synced">
+                                            <DataTrigger Binding="{Binding IsSyncConnected}" Value="True">
                                                 <Setter Property="Fill" Value="#4CAF50"/>
-                                                <Setter Property="ToolTip" Value="Synced"/>
                                             </DataTrigger>
                                             <DataTrigger Binding="{Binding SyncStatusText}" Value="Syncing">
                                                 <Setter Property="Fill" Value="#FFEB3B"/>
-                                                <Setter Property="ToolTip" Value="Syncing"/>
                                             </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
                                 </Ellipse.Style>
                             </Ellipse>
-                            <TextBlock Text="{Binding SyncStatusText}" FontSize="12" FontWeight="Medium" VerticalAlignment="Center" Margin="0,0,16,0" Opacity="0.8"/>
+                            <TextBlock Text="{Binding SyncStatusText}" ToolTip="{Binding SyncStatusToolTip}" FontSize="12" FontWeight="Medium" VerticalAlignment="Center" Margin="0,0,16,0" Opacity="0.8" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" MaxWidth="220"/>
 
                             <Button Command="{Binding ForceSyncCommand}" Style="{StaticResource MaterialDesignOutlinedButton}" Height="32" Padding="12,0" Margin="0,0,8,0">
                                 <StackPanel Orientation="Horizontal">

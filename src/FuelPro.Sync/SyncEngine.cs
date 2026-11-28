@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Net.Http;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
@@ -12,21 +14,121 @@ using FuelPro.Core.Services;
 using FuelPro.Data;
 using Serilog;
 
+[assembly: InternalsVisibleTo("FuelPro.Tests")]
+
 namespace FuelPro.Sync;
 
-public class SyncEngine
+public class SyncEngine : IDisposable
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly SyncConfigService _configService;
     private readonly SupabaseHttpClient _httpClient;
+    private readonly StationPairingService _pairingService;
     private readonly ILogger _logger = Log.ForContext<SyncEngine>();
     
     private Timer? _syncTimer;
     private readonly SemaphoreSlim _syncLock = new(1, 1);
     private bool _isSyncing;
+    private string? _lastPushErrorMessage;
+    public string? LastPushErrorMessage => _lastPushErrorMessage;
+    private bool _isDisposed;
+    private bool _isStopped = true;
+    private readonly TimeSpan _syncInterval = TimeSpan.FromSeconds(3);
     private DateTime _lastPullTime = DateTime.MinValue;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, HashSet<string>> _knownMissingColumnsByTable = new(StringComparer.OrdinalIgnoreCase);
+
+    private static readonly JsonSerializerSettings PullJsonSettings = new()
+    {
+        DateParseHandling = DateParseHandling.None
+    };
 
     public event Action<SyncStatusInfo>? SyncStatusChanged;
+    public event Action? PullCompleted;
+    public event Action? OperationalDataPulled;
+    internal void RaisePullCompleted() => PullCompleted?.Invoke();
+
+    private static readonly HashSet<string> OperationalDsmNotificationTables = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Shifts",
+        "DsmEntries",
+        "NozzleReadings",
+        "PaymentCollections",
+        "DebitEntries",
+        "TestingEntries",
+        "Expenses",
+        "CashDenominations",
+        "ShiftOtherCash",
+        "ShiftFuelRates",
+        "Creditors",
+        "CreditorRepayments",
+        "DsmPersonalDebtors",
+        "DsmPersonalDebtorRepayments",
+        "KhandharePetroleumEntries",
+        "DsmQrPayments",
+        "AgsShiftImports",
+        "AgsNozzleReadings",
+        "AgsDailySummaries"
+    };
+
+    private static readonly HashSet<string> PettyCashNotificationTables = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "PumpExpenses",
+        "ExpenseCategories",
+        "PumpExpenseCategoryItems",
+        "PettyCashTransactions"
+    };
+
+    private static readonly HashSet<string> InventoryNotificationTables = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "ProductMasters",
+        "OilDefInventories",
+        "OilDefPurchases",
+        "OilDefDailyLogs",
+        "FuelTankers",
+        "TankDailyStocks"
+    };
+
+    private static readonly HashSet<string> PayrollNotificationTables = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "DsmProfiles",
+        "DsmSalaryAdjustments",
+        "DsmSalaryHistories",
+        "DsmSalaryPayments"
+    };
+
+    private static readonly HashSet<string> DebtorNotificationTables = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "OpeningBalances",
+        "Creditors",
+        "CreditorRepayments",
+        "DebitEntries",
+        "DsmPersonalDebtors",
+        "DsmPersonalDebtorRepayments"
+    };
+
+    private void StripKnownMissingColumns(string tableName, IDictionary<string, object?> row)
+    {
+        if (_knownMissingColumnsByTable.TryGetValue(tableName, out var cols))
+        {
+            lock (cols)
+            {
+                foreach (var col in cols)
+                {
+                    row.Remove(col);
+                }
+            }
+        }
+    }
+
+    private void RecordKnownMissingColumn(string tableName, string columnName)
+    {
+        if (string.IsNullOrWhiteSpace(columnName)) return;
+        var cols = _knownMissingColumnsByTable.GetOrAdd(tableName, _ => new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+        lock (cols)
+        {
+            cols.Add(columnName);
+        }
+    }
     
     public SyncStatusInfo CurrentStatus { get; private set; } = new();
 
@@ -80,9 +182,8 @@ public class SyncEngine
         "TankDailyStocks",
         // Salary & Payroll
         "DsmSalaryHistories",
-        "DsmSalaryPayments",
+        "DsmSalaryPayments"
         // Dynamic Configurations (TankDefinitions, CollectionTypes, AppFeatureSettings, PaymentCollectionItems synced via Settings & PaymentCollections)
-        "DsmQrPayments"
     };
 
     // ── FK Configuration ──────────────────────────────────────────────
@@ -152,9 +253,6 @@ public class SyncEngine
         new TableSyncConfig("KhandharePetroleumEntries", new[] {
             new FkMapping("DsmEntryId", "DsmEntries")
         }),
-        new TableSyncConfig("DsmQrPayments", new[] {
-            new FkMapping("DsmEntryId", "DsmEntries")
-        }),
         new TableSyncConfig("FuelTankers", Array.Empty<FkMapping>()),
         new TableSyncConfig("TankDailyStocks", new[] { new FkMapping("ShiftId", "Shifts") }),
         new TableSyncConfig("DsmSalaryHistories", new[] { new FkMapping("DsmProfileId", "DsmProfiles") }),
@@ -177,18 +275,33 @@ public class SyncEngine
         _serviceProvider = serviceProvider;
         _configService = serviceProvider.GetRequiredService<SyncConfigService>();
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+        _pairingService = serviceProvider.GetService<StationPairingService>()
+            ?? new StationPairingService(_configService, _httpClient);
     }
 
     public void Start()
     {
         _logger.Information("Starting background sync engine...");
-        _syncTimer = new Timer(async _ => await OnTimerTickAsync(), null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(3));
+        _isStopped = false;
+        _syncTimer?.Dispose();
+        _syncTimer = new Timer(async _ => await OnTimerTickAsync(), null, TimeSpan.FromSeconds(2), Timeout.InfiniteTimeSpan);
     }
 
     public void Stop()
     {
         _logger.Information("Stopping background sync engine...");
+        _isStopped = true;
+        _syncTimer?.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
         _syncTimer?.Dispose();
+        _syncTimer = null;
+    }
+
+    public void Dispose()
+    {
+        if (_isDisposed) return;
+        _isDisposed = true;
+        Stop();
+        _syncLock.Dispose();
     }
 
     public async Task<int> GetPendingCountAsync()
@@ -223,7 +336,85 @@ public class SyncEngine
         {
             _logger.Error(ex, "Failed to queue unsynced historical records during force sync.");
         }
-        await RunSyncCycleAsync(forcePull: true);
+        await RunSyncCycleAsync(forcePull: true, waitForLock: true);
+    }
+
+    /// <summary>
+    /// Executes a serialized immediate sync cycle and verifies whether the specified local record
+    /// has no remaining un-synced pending change logs or push errors.
+    /// </summary>
+    public async Task<(bool Success, string? ErrorMessage)> ForceSyncAndVerifyRecordAsync(string tableName, int localRecordId)
+    {
+        var settings = await _configService.GetSettingsAsync();
+        if (!settings.SyncEnabled || string.IsNullOrEmpty(settings.SupabaseUrl) || string.IsNullOrEmpty(settings.SupabaseApiKey))
+        {
+            return (false, "Cloud sync is disabled or unconfigured.");
+        }
+
+        try
+        {
+            await RunSyncCycleAsync(forcePull: true, waitForLock: true);
+
+            using var scope = _serviceProvider.CreateScope();
+            using var context = scope.ServiceProvider.GetRequiredService<FuelProDbContext>();
+            bool hasPending = await context.SyncChangeLogs
+                .AnyAsync(l => l.TableName == tableName && l.RecordId == localRecordId && !l.IsSynced);
+
+            if (hasPending || !string.IsNullOrWhiteSpace(_lastPushErrorMessage))
+            {
+                return (false, !string.IsNullOrWhiteSpace(_lastPushErrorMessage)
+                    ? _lastPushErrorMessage
+                    : CurrentStatus.StatusMessage);
+            }
+
+            if (!CurrentStatus.IsConnected)
+            {
+                return (false, CurrentStatus.StatusMessage);
+            }
+
+            return (true, null);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "ForceSyncAndVerifyRecordAsync failed for {Table} LocalId={Id}", tableName, localRecordId);
+            return (false, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Attaches this workstation to <paramref name="newStationId"/> safely:
+    /// when a fresh secondary install (no local Shifts or DsmEntries) switches away from its
+    /// auto-generated temporary StationId, pulls the station's authoritative cloud state first
+    /// so seeded local defaults never overwrite another computer's configured station data.
+    /// </summary>
+    public async Task AttachToStationAndSyncAsync(string oldStationId, string newStationId)
+    {
+        var trimmedNew = (newStationId ?? string.Empty).Trim();
+        var trimmedOld = (oldStationId ?? string.Empty).Trim();
+        var settings = await _configService.GetSettingsAsync();
+
+        if (!string.IsNullOrWhiteSpace(trimmedOld)
+            && !string.Equals(trimmedOld, trimmedNew, StringComparison.OrdinalIgnoreCase)
+            && settings.SyncEnabled
+            && !string.IsNullOrEmpty(settings.SupabaseUrl)
+            && !string.IsNullOrEmpty(settings.SupabaseApiKey))
+        {
+            using var scope = _serviceProvider.CreateScope();
+            using var context = scope.ServiceProvider.GetRequiredService<FuelProDbContext>();
+            bool hasOperationalData = await context.DsmEntries.AnyAsync() || await context.Shifts.AnyAsync();
+            if (!hasOperationalData)
+            {
+                await context.Database.ExecuteSqlRawAsync(
+                    "UPDATE SyncChangeLogs SET IsSynced = 1, SyncedAt = {0} WHERE IsSynced = 0 AND StationId = {1}",
+                    DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff"), trimmedOld);
+
+                _httpClient.Configure(settings.SupabaseUrl, settings.SupabaseApiKey);
+                await PerformPullAsync(settings, forcePull: true);
+            }
+        }
+
+        await QueueAllHistoricalRecordsForStationAsync(trimmedNew);
+        await ForceSyncAsync();
     }
 
     public async Task QueueAllUnsyncedHistoricalRecordsAsync()
@@ -319,14 +510,14 @@ public class SyncEngine
 
         try
         {
-            // Reset IsSynced = 0 for any existing logs with this stationId or unassigned so they are pushed immediately
+            // Backfill stationId for unassigned legacy logs without resetting IsSynced status
             await context.Database.ExecuteSqlRawAsync(
-                "UPDATE SyncChangeLogs SET IsSynced = 0, StationId = {0} WHERE StationId = {0} OR StationId IS NULL OR StationId = ''",
+                "UPDATE SyncChangeLogs SET StationId = {0} WHERE StationId IS NULL OR StationId = ''",
                 stationId);
         }
         catch (Exception ex)
         {
-            _logger.Warning(ex, "Failed to reset IsSynced flags on SyncChangeLogs");
+            _logger.Warning(ex, "Failed to backfill missing stationId on SyncChangeLogs");
         }
 
         foreach (var tableName in SyncedTables)
@@ -402,6 +593,8 @@ public class SyncEngine
 
     private async Task OnTimerTickAsync()
     {
+        if (_isStopped || _isDisposed) return;
+
         try
         {
             await RunSyncCycleAsync(forcePull: false);
@@ -410,13 +603,34 @@ public class SyncEngine
         {
             _logger.Error(ex, "Background timer tick sync failed.");
         }
+        finally
+        {
+            if (!_isStopped && !_isDisposed && _syncTimer != null)
+            {
+                try
+                {
+                    _syncTimer.Change(_syncInterval, Timeout.InfiniteTimeSpan);
+                }
+                catch (ObjectDisposedException) { }
+            }
+        }
     }
 
-    private async Task RunSyncCycleAsync(bool forcePull = false)
+    private async Task RunSyncCycleAsync(bool forcePull = false, bool waitForLock = false)
     {
-        if (_isSyncing) return;
-        
-        if (!await _syncLock.WaitAsync(0)) return;
+        if (waitForLock)
+        {
+            if (!await _syncLock.WaitAsync(TimeSpan.FromSeconds(20)))
+            {
+                _logger.Warning("Timed out waiting for sync lock during queued sync request.");
+                return;
+            }
+        }
+        else
+        {
+            if (_isSyncing) return;
+            if (!await _syncLock.WaitAsync(0)) return;
+        }
 
         _isSyncing = true;
         try
@@ -437,10 +651,22 @@ public class SyncEngine
 
             _httpClient.Configure(settings.SupabaseUrl, settings.SupabaseApiKey);
 
+            // In Multi-Computer mode, verify device authorization before proceeding
+            if (settings.MultiComputerEnabled)
+            {
+                var (isAuthorized, reason) = await _pairingService.CheckDeviceAuthorizationAsync(settings.StationId, settings.MachineId);
+                if (!isAuthorized)
+                {
+                    UpdateStatus(settings.LastSyncTime, 0, false, $"Access Revoked: {reason}");
+                    _logger.Warning("Sync cycle aborted: Machine {MachineId} is revoked for station {StationId}: {Reason}", settings.MachineId, settings.StationId, reason);
+                    return;
+                }
+            }
+
             var authService = _serviceProvider.GetRequiredService<AuthService>();
             
             bool isOwner = authService.IsOwner;
-            bool shouldPull = forcePull || isOwner || (DateTime.Now - _lastPullTime).TotalMinutes >= 1;
+            bool shouldPull = forcePull || isOwner || settings.MultiComputerEnabled || (DateTime.Now - _lastPullTime).TotalMinutes >= 1;
 
             // Check roles and route accordingly
             if (authService.IsOwner)
@@ -487,8 +713,12 @@ public class SyncEngine
             
             CurrentStatus.IsConnected = false;
             CurrentStatus.PendingRecords = pendingCount;
-            var lastSyncStr = settings.LastSyncTime == DateTime.MinValue ? "Never" : settings.LastSyncTime.ToString("dd MMM yyyy hh:mm tt");
-            CurrentStatus.StatusMessage = $"Offline\nPending Changes: {pendingCount}\nLast Successful Sync:\n{lastSyncStr}\nRetrying Automatically...";
+            var lastSyncDisplay = settings.LastSyncTime == DateTime.MinValue
+                ? "Never"
+                : (settings.LastSyncTime.Kind == DateTimeKind.Utc
+                    ? settings.LastSyncTime.ToLocalTime()
+                    : settings.LastSyncTime).ToString("dd MMM yyyy hh:mm tt");
+            CurrentStatus.StatusMessage = $"Offline\nPending Changes: {pendingCount}\nLast Successful Sync:\n{lastSyncDisplay}\nRetrying Automatically...";
             SyncStatusChanged?.Invoke(CurrentStatus);
         }
         catch (Exception ex)
@@ -510,6 +740,490 @@ public class SyncEngine
     // PUSH SYNC — Local changes → Supabase (GUID-based)
     // ═══════════════════════════════════════════════════════════════════
 
+    private async Task<bool> RecordSyncChangeLogTombstoneAsync(SyncChangeLog del, string targetRecordGuid, SyncSettings settings)
+    {
+        var logDict = new Dictionary<string, object?>
+        {
+            { "SyncGuid", del.SyncGuid },
+            { "TableName", del.TableName },
+            { "RecordGuid", targetRecordGuid },
+            { "Operation", "DELETE" },
+            { "station_id", settings.StationId },
+            { "machine_id", settings.MachineId },
+            { "Timestamp", SyncTimestampHelper.FormatUtcIso(del.CreatedAt) }
+        };
+        var logJson = JsonConvert.SerializeObject(new[] { logDict });
+        var logResponse = await _httpClient.SendRequestAsync(HttpMethod.Post, "SyncChangeLogs", logJson, isUpsert: false);
+
+        if (logResponse.IsSuccessStatusCode)
+        {
+            return true;
+        }
+
+        // Handle HTTP 409 Conflict (SyncGuid unique constraint violation)
+        if (logResponse.StatusCode == System.Net.HttpStatusCode.Conflict)
+        {
+            try
+            {
+                var verifyResponse = await _httpClient.SendRequestAsync(
+                    HttpMethod.Get, $"SyncChangeLogs?SyncGuid=eq.{del.SyncGuid}&limit=1");
+
+                if (!verifyResponse.IsSuccessStatusCode)
+                {
+                    _logger.Warning("SyncChangeLogs tombstone push returned 409 for SyncGuid={Guid}, but retrieval failed ({StatusCode}). Retaining pending.",
+                        del.SyncGuid, verifyResponse.StatusCode);
+                    return false;
+                }
+
+                var verifyJson = await verifyResponse.Content.ReadAsStringAsync();
+                var existingItems = JsonConvert.DeserializeObject<List<Dictionary<string, object?>>>(verifyJson);
+                var existing = existingItems?.FirstOrDefault();
+
+                if (existing == null)
+                {
+                    _logger.Warning("SyncChangeLogs tombstone push returned 409 for SyncGuid={Guid}, but no existing record was returned. Retaining pending.",
+                        del.SyncGuid);
+                    return false;
+                }
+
+                bool tableMatches = string.Equals(
+                    GetDictString(existing, "TableName"), del.TableName, StringComparison.OrdinalIgnoreCase);
+
+                bool recordGuidMatches = string.Equals(
+                    GetDictString(existing, "RecordGuid"), targetRecordGuid, StringComparison.OrdinalIgnoreCase);
+
+                bool operationMatches = string.Equals(
+                    GetDictString(existing, "Operation"), del.Operation, StringComparison.OrdinalIgnoreCase);
+
+                string remoteStation = GetDictString(existing, "station_id") ?? GetDictString(existing, "StationId") ?? "";
+                bool stationMatches = string.Equals(remoteStation, settings.StationId, StringComparison.OrdinalIgnoreCase);
+
+                string remoteMachine = GetDictString(existing, "machine_id") ?? GetDictString(existing, "MachineId") ?? "";
+                bool machineMatches = string.Equals(remoteMachine, settings.MachineId, StringComparison.OrdinalIgnoreCase);
+
+                object? remoteTimestamp = existing.TryGetValue("Timestamp", out var tsVal) ? tsVal : (existing.TryGetValue("CreatedAt", out var caVal) ? caVal : null);
+                bool timestampMatches = AreTimestampsEquivalent(remoteTimestamp, del.CreatedAt);
+
+                if (tableMatches && recordGuidMatches && operationMatches && stationMatches && machineMatches && timestampMatches)
+                {
+                    _logger.Information("SyncChangeLog tombstone {SyncGuid} already exists with identical payload in Supabase. Treating as acknowledged.", del.SyncGuid);
+                    return true;
+                }
+                else
+                {
+                    _logger.Error("SyncChangeLogs tombstone conflict for SyncGuid={Guid}! Existing remote payload differs from local: " +
+                        "Table({RemoteTable} vs {LocalTable}), RecordGuid({RemoteRg} vs {LocalRg}), Op({RemoteOp} vs {LocalOp}), Station({RemoteSt} vs {LocalSt}), Machine({RemoteMach} vs {LocalMach}), TimestampMatch={TimeMatch}. Conflict preserved.",
+                        del.SyncGuid,
+                        GetDictString(existing, "TableName"), del.TableName,
+                        GetDictString(existing, "RecordGuid"), targetRecordGuid,
+                        GetDictString(existing, "Operation"), del.Operation,
+                        remoteStation, settings.StationId,
+                        remoteMachine, settings.MachineId,
+                        timestampMatches);
+                    return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.Error(ex, "Error verifying 409 conflict for SyncChangeLogs tombstone {Guid}", del.SyncGuid);
+                return false;
+            }
+        }
+
+        var error = await logResponse.Content.ReadAsStringAsync();
+        _logger.Error("Failed to push DELETE log entry to Supabase SyncChangeLogs (HTTP {StatusCode}): {Error}",
+            logResponse.StatusCode, error);
+        return false;
+    }
+
+    private static bool AreTimestampsEquivalent(object? remoteVal, DateTime localDt)
+    {
+        if (remoteVal == null) return false;
+
+        DateTime remoteUtc;
+        if (remoteVal is DateTime dt)
+        {
+            remoteUtc = dt.ToUniversalTime();
+        }
+        else if (remoteVal is DateTimeOffset dto)
+        {
+            remoteUtc = dto.UtcDateTime;
+        }
+        else
+        {
+            var str = remoteVal.ToString();
+            if (string.IsNullOrWhiteSpace(str)) return false;
+
+            if (DateTimeOffset.TryParse(str, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var parsedDto))
+            {
+                remoteUtc = parsedDto.UtcDateTime;
+            }
+            else if (DateTime.TryParse(str, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var parsedDt))
+            {
+                remoteUtc = parsedDt.ToUniversalTime();
+            }
+            else
+            {
+                return false;
+            }
+        }
+
+        var localUtc = SyncTimestampHelper.ToUtcDateTime(localDt, SyncTimestampSemantics.LocalInstant);
+        return Math.Abs((remoteUtc - localUtc).TotalSeconds) <= 1.0;
+    }
+
+    private static bool AreSyncPropertyValuesEqual(object? a, object? b)
+    {
+        if (ReferenceEquals(a, b)) return true;
+        if (a == null || b == null) return false;
+        if (a is DateTime da && b is DateTime db)
+        {
+            return Math.Abs((da - db).TotalMilliseconds) < 1.0;
+        }
+        if (a is double d1 && b is double d2)
+        {
+            return Math.Abs(d1 - d2) < 1e-9;
+        }
+        return Equals(a, b);
+    }
+
+    private static bool IsIncompleteZeroRemotePaymentCollection(Dictionary<string, object?> dict)
+    {
+        if (TryGetDictValue(dict, "DynamicItemsJson", out var dynObj) && dynObj != null && !string.IsNullOrWhiteSpace(dynObj.ToString()))
+        {
+            return false;
+        }
+
+        string[] numericKeys =
+        {
+            "PhonePeMorning", "PhonePeDay", "PhonePeNight", "PhonePe",
+            "PhonePeCardMorning", "PhonePeCardDay", "PhonePeCardNight", "PhonePeCard",
+            "CreditCardMorning", "CreditCardDay", "CreditCardNight", "CreditCard",
+            "PetroCardMorning", "PetroCardDay", "PetroCardNight", "PetroCard",
+            "CashDeposit", "Others"
+        };
+
+        foreach (var k in numericKeys)
+        {
+            if (TryGetDictValue(dict, k, out var v) && v != null && Convert.ToDouble(v, CultureInfo.InvariantCulture) > 0)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private async Task<bool> ApplyPaymentCollectionLegacyFallbackAsync(
+        FuelProDbContext context,
+        PaymentCollection pc,
+        Dictionary<string, object?> dict)
+    {
+        bool changed = false;
+
+        string shiftType = "";
+        if (pc.DsmEntryId > 0)
+        {
+            var shiftRaw = await context.DsmEntries
+                .Where(e => e.DsmEntryId == pc.DsmEntryId)
+                .Select(e => e.Shift != null ? e.Shift.ShiftType : null)
+                .FirstOrDefaultAsync();
+            shiftType = (shiftRaw ?? "").Trim().ToUpperInvariant();
+        }
+        bool isDay = shiftType is "B" or "II";
+        bool isNight = shiftType is "C" or "III";
+
+        double? TryGetPositiveLegacy(string key)
+        {
+            if (TryGetDictValue(dict, key, out var raw) && raw != null)
+            {
+                double val = Convert.ToDouble(raw, CultureInfo.InvariantCulture);
+                if (val > 0) return val;
+            }
+            return null;
+        }
+
+        if (pc.PhonePeMorning == 0 && pc.PhonePeDay == 0 && pc.PhonePeNight == 0)
+        {
+            var legPh = TryGetPositiveLegacy("PhonePe");
+            if (legPh.HasValue)
+            {
+                if (isDay) pc.PhonePeDay = legPh.Value;
+                else if (isNight) pc.PhonePeNight = legPh.Value;
+                else pc.PhonePeMorning = legPh.Value;
+                changed = true;
+            }
+        }
+
+        if (pc.PhonePeCardMorning == 0 && pc.PhonePeCardDay == 0 && pc.PhonePeCardNight == 0)
+        {
+            var legPpc = TryGetPositiveLegacy("PhonePeCard");
+            if (legPpc.HasValue)
+            {
+                if (isDay) pc.PhonePeCardDay = legPpc.Value;
+                else if (isNight) pc.PhonePeCardNight = legPpc.Value;
+                else pc.PhonePeCardMorning = legPpc.Value;
+                changed = true;
+            }
+        }
+
+        if (pc.CreditCardMorning == 0 && pc.CreditCardDay == 0 && pc.CreditCardNight == 0)
+        {
+            var legCc = TryGetPositiveLegacy("CreditCard");
+            if (legCc.HasValue)
+            {
+                if (isDay) pc.CreditCardDay = legCc.Value;
+                else if (isNight) pc.CreditCardNight = legCc.Value;
+                else pc.CreditCardMorning = legCc.Value;
+                changed = true;
+            }
+        }
+
+        if (pc.PetroCardMorning == 0 && pc.PetroCardDay == 0 && pc.PetroCardNight == 0)
+        {
+            var legPetro = TryGetPositiveLegacy("PetroCard");
+            if (legPetro.HasValue)
+            {
+                if (isDay) pc.PetroCardDay = legPetro.Value;
+                else pc.PetroCardNight = legPetro.Value;
+                changed = true;
+            }
+        }
+
+        return changed;
+    }
+
+    private static async Task SyncPaymentCollectionItemsFromJsonAsync(FuelProDbContext context, PaymentCollection pc)
+    {
+        if (string.IsNullOrWhiteSpace(pc.DynamicItemsJson)) return;
+        var items = JsonConvert.DeserializeObject<List<PaymentCollectionItem>>(pc.DynamicItemsJson);
+        if (items == null || items.Count == 0) return;
+
+        var existing = await context.PaymentCollectionItems.Where(i => i.PaymentId == pc.PaymentId).ToListAsync();
+        context.PaymentCollectionItems.RemoveRange(existing);
+        foreach (var itm in items)
+        {
+            context.PaymentCollectionItems.Add(new PaymentCollectionItem
+            {
+                PaymentId = pc.PaymentId,
+                TransactionId = itm.TransactionId,
+                CollectionTypeCode = itm.CollectionTypeCode ?? "OTHERS",
+                Amount = itm.Amount,
+                Tid = itm.Tid,
+                Batch = itm.Batch,
+                Slot = itm.Slot ?? "General",
+                Otp = itm.Otp,
+                IsSyntheticSummary = itm.IsSyntheticSummary
+            });
+        }
+    }
+
+    private async Task<bool> BackfillZeroHistoricalPaymentCollectionsAsync(
+        FuelProDbContext context,
+        SyncSettings settings,
+        Dictionary<string, Dictionary<int, string>> localToGuid)
+    {
+        if (string.IsNullOrWhiteSpace(settings.StationId)) return false;
+
+        var candidates = await context.PaymentCollections
+            .Where(p =>
+                p.PhonePeMorning == 0 && p.PhonePeDay == 0 && p.PhonePeNight == 0 &&
+                p.PhonePeCardMorning == 0 && p.PhonePeCardDay == 0 && p.PhonePeCardNight == 0 &&
+                p.CreditCardMorning == 0 && p.CreditCardDay == 0 && p.CreditCardNight == 0 &&
+                p.PetroCardMorning == 0 && p.PetroCardDay == 0 && p.PetroCardNight == 0 &&
+                p.CashDeposit == 0 && p.Others == 0 &&
+                string.IsNullOrEmpty(p.DynamicItemsJson) &&
+                p.DsmEntry != null && (p.DsmEntry.TotalInDirect > 0 || p.DsmEntry.TotalCollection > 0) &&
+                !context.PaymentCollectionItems.Any(i => i.PaymentId == p.PaymentId))
+            .ToListAsync();
+
+        if (candidates.Count == 0) return false;
+        if (!localToGuid.TryGetValue("PaymentCollections", out var pcLocalToGuid) || pcLocalToGuid.Count == 0)
+            return false;
+
+        var guidToCandidate = new Dictionary<string, PaymentCollection>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pc in candidates)
+        {
+            if (pcLocalToGuid.TryGetValue(pc.PaymentId, out var g) && !string.IsNullOrWhiteSpace(g))
+            {
+                guidToCandidate[g] = pc;
+            }
+        }
+        if (guidToCandidate.Count == 0) return false;
+
+        int updatedCount = 0;
+        var guidList = guidToCandidate.Keys.ToList();
+        var stationEscaped = Uri.EscapeDataString(settings.StationId.Trim());
+
+        const int chunkSize = 50;
+        for (int offset = 0; offset < guidList.Count; offset += chunkSize)
+        {
+            var chunk = guidList.Skip(offset).Take(chunkSize).Select(Uri.EscapeDataString);
+            var endpoint = $"PaymentCollections?station_id=eq.{stationEscaped}&SyncGuid=in.({string.Join(",", chunk)})";
+            var resp = await _httpClient.SendRequestAsync(HttpMethod.Get, endpoint);
+            if (!resp.IsSuccessStatusCode) continue;
+
+            var json = await resp.Content.ReadAsStringAsync();
+            var remoteRows = JsonConvert.DeserializeObject<List<Dictionary<string, object?>>>(json, PullJsonSettings);
+            if (remoteRows == null || remoteRows.Count == 0) continue;
+
+            FuelProDbContext.BypassTracking = true;
+            try
+            {
+                var paymentType = context.Model.FindEntityType(typeof(PaymentCollection));
+                foreach (var dict in remoteRows)
+                {
+                    var rGuid = GetDictString(dict, "SyncGuid");
+                    if (string.IsNullOrWhiteSpace(rGuid) || !guidToCandidate.TryGetValue(rGuid, out var localPc))
+                        continue;
+
+                    bool rowChanged = false;
+                    var entry = context.Entry(localPc);
+                    if (paymentType != null)
+                    {
+                        foreach (var prop in paymentType.GetProperties())
+                        {
+                            if (prop.IsPrimaryKey() || prop.Name == nameof(PaymentCollection.DsmEntryId)) continue;
+                            if (!TryGetDictValue(dict, prop.Name, out var val) || val == null) continue;
+
+                            var currentVal = entry.Property(prop.Name).CurrentValue;
+                            var targetType = Nullable.GetUnderlyingType(prop.ClrType) ?? prop.ClrType;
+                            if (targetType == typeof(double))
+                            {
+                                double dVal = Convert.ToDouble(val, CultureInfo.InvariantCulture);
+                                if (currentVal is double curD && curD == 0 && dVal > 0)
+                                {
+                                    entry.Property(prop.Name).CurrentValue = dVal;
+                                    rowChanged = true;
+                                }
+                            }
+                            else if (targetType == typeof(string))
+                            {
+                                var sVal = val.ToString();
+                                if (string.IsNullOrWhiteSpace(currentVal as string) && !string.IsNullOrWhiteSpace(sVal))
+                                {
+                                    entry.Property(prop.Name).CurrentValue = sVal;
+                                    rowChanged = true;
+                                }
+                            }
+                        }
+                    }
+
+                    if (await ApplyPaymentCollectionLegacyFallbackAsync(context, localPc, dict))
+                    {
+                        rowChanged = true;
+                    }
+
+                    if (rowChanged)
+                    {
+                        updatedCount++;
+                    }
+                    if (!string.IsNullOrWhiteSpace(localPc.DynamicItemsJson))
+                    {
+                        await SyncPaymentCollectionItemsFromJsonAsync(context, localPc);
+                    }
+                }
+                await context.SaveChangesAsync();
+            }
+            finally
+            {
+                FuelProDbContext.BypassTracking = false;
+            }
+        }
+
+        if (updatedCount > 0)
+        {
+            _logger.Information("Targeted historical PaymentCollections backfill restored {Count} zero-collection records.", updatedCount);
+        }
+        return updatedCount > 0;
+    }
+
+    private static async Task<bool> SyncCollectionTypesFromJsonAsync(
+        FuelProDbContext context,
+        string? collectionTypesJson,
+        bool removeMissingNonSystem)
+    {
+        if (string.IsNullOrWhiteSpace(collectionTypesJson)) return false;
+        var types = JsonConvert.DeserializeObject<List<CollectionTypeMaster>>(collectionTypesJson);
+        if (types == null || types.Count == 0) return false;
+
+        bool configChanged = false;
+        var existingCts = await context.CollectionTypes.ToListAsync();
+        var processedCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var ct in types)
+        {
+            var existingCt = existingCts.FirstOrDefault(x => string.Equals(x.Code, ct.Code, StringComparison.OrdinalIgnoreCase));
+            if (existingCt != null)
+            {
+                if (existingCt.DisplayName != ct.DisplayName ||
+                    existingCt.Category != ct.Category ||
+                    existingCt.HasTidBatch != ct.HasTidBatch ||
+                    existingCt.HasOtp != ct.HasOtp ||
+                    existingCt.DisplayOrder != ct.DisplayOrder ||
+                    existingCt.IsActive != ct.IsActive ||
+                    existingCt.EnableMorning != ct.EnableMorning ||
+                    existingCt.EnableDay != ct.EnableDay ||
+                    existingCt.EnableNight != ct.EnableNight)
+                {
+                    existingCt.DisplayName = ct.DisplayName;
+                    existingCt.Category = ct.Category;
+                    existingCt.HasTidBatch = ct.HasTidBatch;
+                    existingCt.HasOtp = ct.HasOtp;
+                    existingCt.DisplayOrder = ct.DisplayOrder;
+                    existingCt.IsActive = ct.IsActive;
+                    existingCt.EnableMorning = ct.EnableMorning;
+                    existingCt.EnableDay = ct.EnableDay;
+                    existingCt.EnableNight = ct.EnableNight;
+                    configChanged = true;
+                }
+                processedCodes.Add(existingCt.Code);
+            }
+            else
+            {
+                context.CollectionTypes.Add(new CollectionTypeMaster
+                {
+                    Code = ct.Code,
+                    DisplayName = ct.DisplayName,
+                    Category = ct.Category,
+                    HasTidBatch = ct.HasTidBatch,
+                    HasOtp = ct.HasOtp,
+                    DisplayOrder = ct.DisplayOrder,
+                    IsActive = ct.IsActive,
+                    EnableMorning = ct.EnableMorning,
+                    EnableDay = ct.EnableDay,
+                    EnableNight = ct.EnableNight,
+                    IsSystem = ct.IsSystem,
+                    CreatedAt = DateTime.Now
+                });
+                processedCodes.Add(ct.Code);
+                configChanged = true;
+            }
+        }
+
+        foreach (var existing in existingCts)
+        {
+            bool shouldRemove = removeMissingNonSystem
+                ? (!existing.IsSystem && !processedCodes.Contains(existing.Code))
+                : !processedCodes.Contains(existing.Code);
+            if (shouldRemove && !types.Any(t => string.Equals(t.Code, existing.Code, StringComparison.OrdinalIgnoreCase)))
+            {
+                context.CollectionTypes.Remove(existing);
+                configChanged = true;
+            }
+        }
+
+        return configChanged;
+    }
+
+    private static string? GetDictString(Dictionary<string, object?> dict, string key)
+    {
+        if (dict.TryGetValue(key, out var val) && val != null)
+        {
+            return val.ToString()?.Trim();
+        }
+        return null;
+    }
+
     private async Task PerformPushAsync(SyncSettings settings)
     {
         using var context = _serviceProvider.GetRequiredService<FuelProDbContext>();
@@ -520,11 +1234,22 @@ public class SyncEngine
             .OrderBy(l => l.Id)
             .ToListAsync();
 
-        // Mark changes for non-synced tables as synced immediately to prevent errors and accumulation
-        var ignoredLogs = allPendingLogs.Where(l => !SyncedTables.Contains(l.TableName)).ToList();
-        if (ignoredLogs.Count > 0)
+        // Option 4: Mark Mitali DsmQrPayments logs as locally retained (not pushed to cloud)
+        var qrLogs = allPendingLogs.Where(l => l.TableName == "DsmQrPayments").ToList();
+        if (qrLogs.Count > 0)
         {
-            var ignoredLogIds = ignoredLogs.Select(l => l.Id).ToList();
+            var qrLogIds = qrLogs.Select(l => l.Id).ToList();
+            var paramPlaceholders = string.Join(",", qrLogIds.Select((_, i) => $"@p{i}"));
+            var sql = "UPDATE SyncChangeLogs SET IsSynced = 1, SyncedAt = NULL, RecordGuid = CASE WHEN RecordGuid IS NULL OR RecordGuid = '' THEN 'LOCAL_RETAINED' WHEN RecordGuid LIKE '%LOCAL_RETAINED%' THEN RecordGuid ELSE RecordGuid || ':LOCAL_RETAINED' END WHERE Id IN (" + paramPlaceholders + ")";
+            var parameters = qrLogIds.Select((id, i) => new Microsoft.Data.Sqlite.SqliteParameter($"@p{i}", id)).ToArray();
+            await context.Database.ExecuteSqlRawAsync(sql, parameters);
+        }
+
+        // Mark changes for other non-synced internal/configuration tables as handled to prevent accumulation (preserves original behavior)
+        var otherIgnoredLogs = allPendingLogs.Where(l => !SyncedTables.Contains(l.TableName) && l.TableName != "DsmQrPayments").ToList();
+        if (otherIgnoredLogs.Count > 0)
+        {
+            var ignoredLogIds = otherIgnoredLogs.Select(l => l.Id).ToList();
             var idsCsv = string.Join(",", ignoredLogIds);
             await context.Database.ExecuteSqlRawAsync(
                 $"UPDATE SyncChangeLogs SET IsSynced = 1, SyncedAt = '{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}' WHERE Id IN ({idsCsv})");
@@ -537,6 +1262,19 @@ public class SyncEngine
         {
             UpdateStatus(settings.LastSyncTime, 0, true, "Synced");
             return;
+        }
+
+        // In Multi-Computer mode, verify device authorization immediately before pushing data to cloud
+        if (settings.MultiComputerEnabled && _pairingService != null && !string.IsNullOrEmpty(settings.StationId) && !string.IsNullOrEmpty(settings.MachineId))
+        {
+            var (isAuthorized, reason) = await _pairingService.CheckDeviceAuthorizationAsync(settings.StationId, settings.MachineId);
+            if (!isAuthorized)
+            {
+                _logger.Warning("PerformPushAsync aborted: Workstation {MachineId} authorization is revoked: {Reason}. Local pending changes ({Count}) retained safely.",
+                    settings.MachineId, reason, pendingCount);
+                UpdateStatus(settings.LastSyncTime, pendingCount, false, $"Access Revoked: {reason}");
+                return;
+            }
         }
 
         UpdateStatus(settings.LastSyncTime, pendingCount, true, "Syncing...");
@@ -564,54 +1302,105 @@ public class SyncEngine
         {
             var tableName = group.Key;
             
-            // 1. Process Deletes first — target by SyncGuid
+            // 1. Process Deletes first — target by SyncGuid with verified tombstone and immediate acknowledgment
             var deletes = group.Where(l => l.Operation == "DELETE").ToList();
             foreach (var del in deletes)
             {
-                var syncGuid = GetExistingSyncGuid(localToGuid, tableName, del.RecordId);
-                if (string.IsNullOrEmpty(syncGuid))
+                var targetRecordGuid = GetExistingSyncGuid(localToGuid, tableName, del.RecordId);
+                if (string.IsNullOrEmpty(targetRecordGuid))
                 {
-                    syncGuid = del.RecordGuid;
+                    targetRecordGuid = del.RecordGuid;
                 }
 
-                if (!string.IsNullOrEmpty(syncGuid))
+                if (string.IsNullOrEmpty(targetRecordGuid))
                 {
-                    var response = await _httpClient.SendRequestAsync(HttpMethod.Delete, $"{tableName}?SyncGuid=eq.{syncGuid}");
-                    if (!response.IsSuccessStatusCode)
-                    {
-                        var error = await response.Content.ReadAsStringAsync();
-                        _logger.Warning("Failed to delete record SyncGuid={Guid} in Supabase table {Table}: {Error}", syncGuid, tableName, error);
-                    }
-                    // Remove the local mapping
-                    var mappingToRemove = await context.SyncIdMappings
-                        .FirstOrDefaultAsync(m => m.TableName == tableName && (m.LocalId == del.RecordId || m.RemoteGuid == syncGuid));
-                    if (mappingToRemove != null)
-                    {
-                        context.SyncIdMappings.Remove(mappingToRemove);
-                    }
+                    _logger.Warning("Push DELETE: No SyncGuid or RecordGuid mapping found for {Table} LocalId={Id}. Acknowledging local log to avoid infinite loop.", tableName, del.RecordId);
+                    await context.Database.ExecuteSqlRawAsync(
+                        "UPDATE SyncChangeLogs SET IsSynced = 1, SyncedAt = {0} WHERE Id = {1}",
+                        DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff"), del.Id);
+                    continue;
+                }
 
-                    // ALSO push this DELETE log entry to Supabase SyncChangeLogs table!
-                    var logDict = new Dictionary<string, object?>
+                // Step 1: Ensure the tombstone is confirmed in SyncChangeLogs
+                bool tombstoneOk = await RecordSyncChangeLogTombstoneAsync(del, targetRecordGuid, settings);
+                if (!tombstoneOk)
+                {
+                    _logger.Warning("Push DELETE: Tombstone unconfirmed for {Table} SyncGuid={Guid}. Retaining pending.", tableName, targetRecordGuid);
+                    continue; // Retain pending
+                }
+
+                // Step 2: Execute remote DELETE for intended record
+                var response = await _httpClient.SendRequestAsync(HttpMethod.Delete, $"{tableName}?SyncGuid=eq.{targetRecordGuid}");
+                bool deleteConfirmed = false;
+
+                if (response.IsSuccessStatusCode)
+                {
+                    deleteConfirmed = true;
+                }
+                else if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                {
+                    // HTTP 404 safeguard: Verify target row genuinely absent before treating as success
+                    try
                     {
-                        { "SyncGuid", del.SyncGuid },
-                        { "TableName", del.TableName },
-                        { "RecordGuid", syncGuid },
-                        { "Operation", "DELETE" },
-                        { "station_id", settings.StationId },
-                        { "machine_id", settings.MachineId },
-                        { "Timestamp", del.CreatedAt.ToUniversalTime().ToString("o") }
-                    };
-                    var logJson = JsonConvert.SerializeObject(new[] { logDict });
-                    var logResponse = await _httpClient.SendRequestAsync(HttpMethod.Post, "SyncChangeLogs", logJson, isUpsert: false);
-                    if (!logResponse.IsSuccessStatusCode)
+                        var verifyGet = await _httpClient.SendRequestAsync(HttpMethod.Get, $"{tableName}?SyncGuid=eq.{targetRecordGuid}&select=SyncGuid&limit=1");
+                        if (verifyGet.IsSuccessStatusCode)
+                        {
+                            var getBody = await verifyGet.Content.ReadAsStringAsync();
+                            if (string.IsNullOrWhiteSpace(getBody) || getBody.Trim() == "[]")
+                            {
+                                _logger.Information("Push DELETE: Target row SyncGuid={Guid} verified absent from Supabase {Table}. Idempotent deletion confirmed.", targetRecordGuid, tableName);
+                                deleteConfirmed = true;
+                            }
+                            else
+                            {
+                                _logger.Warning("Push DELETE: Row exists in {Table} despite 404 on DELETE. Retaining pending.", tableName);
+                            }
+                        }
+                        else
+                        {
+                            _logger.Warning("Push DELETE: Verification GET returned {StatusCode} for table {Table}. Preserving error.", verifyGet.StatusCode, tableName);
+                        }
+                    }
+                    catch (Exception ex)
                     {
-                        var logError = await logResponse.Content.ReadAsStringAsync();
-                        _logger.Error("Failed to push DELETE log entry to Supabase SyncChangeLogs: {Error}", logError);
+                        _logger.Error(ex, "Push DELETE: Exception during 404 verification for {Table} SyncGuid={Guid}", tableName, targetRecordGuid);
                     }
                 }
                 else
                 {
-                    _logger.Warning("Push DELETE: No SyncGuid or RecordGuid mapping found for {Table} LocalId={Id}. Skipping cloud delete.", tableName, del.RecordId);
+                    var error = await response.Content.ReadAsStringAsync();
+                    _logger.Warning("Failed to delete record SyncGuid={Guid} in Supabase table {Table} (HTTP {StatusCode}): {Error}",
+                        targetRecordGuid, tableName, response.StatusCode, error);
+                }
+
+                if (!deleteConfirmed)
+                {
+                    continue; // Retain pending
+                }
+
+                // Step 3: Atomically update local synchronization state in SQLite transaction
+                try
+                {
+                    using var tx = await context.Database.BeginTransactionAsync();
+
+                    var mappingToRemove = await context.SyncIdMappings
+                        .FirstOrDefaultAsync(m => m.TableName == tableName && (m.LocalId == del.RecordId || m.RemoteGuid == targetRecordGuid));
+                    if (mappingToRemove != null)
+                    {
+                        context.SyncIdMappings.Remove(mappingToRemove);
+                        await context.SaveChangesAsync();
+                    }
+
+                    await context.Database.ExecuteSqlRawAsync(
+                        "UPDATE SyncChangeLogs SET IsSynced = 1, SyncedAt = {0} WHERE Id = {1}",
+                        DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff"), del.Id);
+
+                    await tx.CommitAsync();
+                    _logger.Debug("Push DELETE: Successfully acknowledged local DELETE for {Table} LocalId={Id} RecordGuid={Guid}", tableName, del.RecordId, targetRecordGuid);
+                }
+                catch (Exception txEx)
+                {
+                    _logger.Error(txEx, "Failed to atomically acknowledge local DELETE for {Table} LocalId={Id}. Retryability preserved.", tableName, del.RecordId);
                 }
             }
 
@@ -685,6 +1474,7 @@ public class SyncEngine
                                                             parentDict["station_id"] = settings.StationId;
                                                             parentDict["local_id"] = localFkId;
                                                             parentDict["machine_id"] = settings.MachineId;
+                                                            parentDict["updated_at"] = SyncTimestampHelper.FormatUtcIso(DateTime.UtcNow);
 
                                                             // Also translate any grandparent FKs on the parent record
                                                             if (FkConfigByTable.TryGetValue(fk.ReferencedTable, out var parentFkMappings))
@@ -714,8 +1504,11 @@ public class SyncEngine
 
                             // ── Add station metadata & dynamic JSON serialization ──
                             dict["station_id"] = settings.StationId;
-                            dict["local_id"] = op.RecordId;
+                            dict["local_id"] = op.RecordId > 0
+                                ? op.RecordId
+                                : (record is Setting settingForId && settingForId.SettingId > 0 ? settingForId.SettingId : op.RecordId);
                             dict["machine_id"] = settings.MachineId;
+                            dict["updated_at"] = SyncTimestampHelper.FormatUtcIso(DateTime.UtcNow);
 
                             if (record is PaymentCollection pcPush)
                             {
@@ -724,18 +1517,24 @@ public class SyncEngine
                                 {
                                     dict["DynamicItemsJson"] = JsonConvert.SerializeObject(dynItems.Select(i => new
                                     {
+                                        i.TransactionId,
                                         i.CollectionTypeCode,
                                         i.Amount,
                                         i.Tid,
                                         i.Batch,
                                         i.Slot,
-                                        i.Otp
+                                        i.Otp,
+                                        i.IsSyntheticSummary
                                     }));
                                 }
                             }
-                            else if (record is Setting)
+                            else if (record is Setting settingRecord)
                             {
                                 var activeTanks = await context.TankDefinitions.ToListAsync();
+                                foreach (var t in activeTanks)
+                                {
+                                    t.Rate = settingRecord.GetRateFor(t.TankName, settingRecord.GetRateFor(t.FuelType, 0.0));
+                                }
                                 var activeCollTypes = await context.CollectionTypes.ToListAsync();
                                 var activeFeatures = await context.AppFeatureSettings.ToListAsync();
                                 var activePumpMappings = await context.PumpMappings.ToListAsync();
@@ -797,6 +1596,10 @@ public class SyncEngine
                     bool hasPushError = false;
                     foreach (var batch in batches)
                     {
+                        foreach (var r in batch)
+                        {
+                            StripKnownMissingColumns(tableName, r);
+                        }
                         var json = JsonConvert.SerializeObject(batch);
                         var response = await _httpClient.SendRequestAsync(HttpMethod.Post, tableName, json, isUpsert: true, onConflict: "SyncGuid");
 
@@ -808,6 +1611,7 @@ public class SyncEngine
                             if (colMatch.Success)
                             {
                                 var missingCol = colMatch.Groups[1].Value;
+                                RecordKnownMissingColumn(tableName, missingCol);
                                 _logger.Warning("Supabase table {Table} is missing column '{Col}'. Stripping and retrying push...", tableName, missingCol);
                                 foreach (var r in batch)
                                 {
@@ -829,7 +1633,14 @@ public class SyncEngine
 
                             if (response.StatusCode == System.Net.HttpStatusCode.Conflict || error.Contains("duplicate key") || error.Contains("23505"))
                             {
-                                _logger.Information("Record already exists in Supabase for table {Table}; proceeding.", tableName);
+                                var (conflictResolved, conflictErr) = await HandleUpsertConflictAsync(
+                                    context, tableName, batch, localToGuid, settings, error);
+                                if (!conflictResolved)
+                                {
+                                    _lastPushErrorMessage = conflictErr ?? $"Conflict pushing {tableName}: {error}";
+                                    hasPushError = true;
+                                    break;
+                                }
                             }
                             else if (response.StatusCode == System.Net.HttpStatusCode.NotFound || error.Contains("PGRST205") || error.Contains("Could not find the table"))
                             {
@@ -841,11 +1652,13 @@ public class SyncEngine
                                 error.Contains("PGRST") || error.Contains("column") || error.Contains("constraint"))
                             {
                                 _logger.Warning("Skipping push for table {Table} due to Supabase schema/data issue until migration is applied: {Error}", tableName, error);
+                                _lastPushErrorMessage = $"Push skipped for {tableName}: {error}";
                                 hasPushError = true;
                                 break;
                             }
                             else
                             {
+                                _lastPushErrorMessage = $"Supabase UPSERT failed for {tableName}: {error}";
                                 throw new HttpRequestException($"Supabase UPSERT failed for table {tableName}: {error}");
                             }
                         }
@@ -862,21 +1675,278 @@ public class SyncEngine
                 }
             }
 
-            // Mark these log entries as synced
-            var logIds = group.Select(l => l.Id).ToList();
-            var idsCsv = string.Join(",", logIds);
-            await context.Database.ExecuteSqlRawAsync(
-                $"UPDATE SyncChangeLogs SET IsSynced = 1, SyncedAt = '{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}' WHERE Id IN ({idsCsv})");
+            // Mark non-DELETE log entries as synced
+            var upsertLogIds = group.Where(l => l.Operation != "DELETE").Select(l => l.Id).ToList();
+            if (upsertLogIds.Count > 0)
+            {
+                var idsCsv = string.Join(",", upsertLogIds);
+                await context.Database.ExecuteSqlRawAsync(
+                    $"UPDATE SyncChangeLogs SET IsSynced = 1, SyncedAt = '{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}' WHERE Id IN ({idsCsv})");
+            }
         }
 
         // Save any new SyncIdMappings that were created during push
         await context.SaveChangesAsync();
 
-        // Update last sync time
-        settings.LastSyncTime = DateTime.Now;
+        var remainingPending = await context.SyncChangeLogs.CountAsync(l => !l.IsSynced);
+        if (remainingPending > 0 && !string.IsNullOrWhiteSpace(_lastPushErrorMessage))
+        {
+            UpdateStatus(settings.LastSyncTime, remainingPending, false, $"Sync conflict/error ({remainingPending} pending): {_lastPushErrorMessage}");
+            return;
+        }
+
+        _lastPushErrorMessage = null;
+        // Update last sync time in UTC (consistent with PerformPullAsync)
+        settings.LastSyncTime = DateTime.UtcNow;
         await _configService.SaveSettingsAsync(settings);
 
-        UpdateStatus(settings.LastSyncTime, 0, true, "Synced");
+        UpdateStatus(settings.LastSyncTime, remainingPending, true, "Synced");
+    }
+
+    /// <summary>
+    /// Safely verifies and reconciles HTTP 409 / PostgreSQL 23505 conflicts during batch push.
+    /// Never blindly marks conflicting writes synced and never blindly deactivates valid remote assignments.
+    /// </summary>
+    private async Task<(bool Resolved, string? ErrorMessage)> HandleUpsertConflictAsync(
+        FuelProDbContext context,
+        string tableName,
+        List<Dictionary<string, object?>> batch,
+        Dictionary<string, Dictionary<int, string>> localToGuid,
+        SyncSettings settings,
+        string rawError)
+    {
+        if (string.Equals(tableName, "DsmPumpAssignments", StringComparison.OrdinalIgnoreCase))
+        {
+            return await HandleDsmPumpAssignmentConflictBatchAsync(context, batch, localToGuid, settings, rawError);
+        }
+
+        // For non-assignment tables, verify that every SyncGuid in this batch actually exists remotely for this station.
+        foreach (var rec in batch)
+        {
+            var sg = rec.TryGetValue("SyncGuid", out var sgObj) ? sgObj?.ToString() : null;
+            if (string.IsNullOrWhiteSpace(sg))
+            {
+                return (false, $"409 Conflict on {tableName} with missing SyncGuid: {rawError}");
+            }
+
+            var endpoint = $"{tableName}?SyncGuid=eq.{Uri.EscapeDataString(sg)}&station_id=eq.{Uri.EscapeDataString(settings.StationId)}&select=SyncGuid&limit=1";
+            var verifyResp = await _httpClient.SendRequestAsync(HttpMethod.Get, endpoint);
+            if (!verifyResp.IsSuccessStatusCode)
+            {
+                return (false, $"409 Conflict verification failed for {tableName} ({verifyResp.StatusCode}): {rawError}");
+            }
+
+            var verifyJson = await verifyResp.Content.ReadAsStringAsync();
+            var rows = JsonConvert.DeserializeObject<List<Dictionary<string, object?>>>(verifyJson, PullJsonSettings);
+            if (rows == null || rows.Count == 0)
+            {
+                return (false, $"409 Conflict on {tableName} SyncGuid={sg}: another unique key blocked insert and record was not found by SyncGuid.");
+            }
+        }
+
+        _logger.Information("Verified all {Count} conflicting records exist in Supabase for table {Table}; proceeding.", batch.Count, tableName);
+        return (true, null);
+    }
+
+    private async Task<(bool Resolved, string? ErrorMessage)> HandleDsmPumpAssignmentConflictBatchAsync(
+        FuelProDbContext context,
+        List<Dictionary<string, object?>> batch,
+        Dictionary<string, Dictionary<int, string>> localToGuid,
+        SyncSettings settings,
+        string rawError)
+    {
+        foreach (var rec in batch)
+        {
+            var localSyncGuid = rec.TryGetValue("SyncGuid", out var sgObj) ? sgObj?.ToString() : null;
+            int localId = rec.TryGetValue("local_id", out var lidObj) && lidObj != null ? Convert.ToInt32(lidObj) : 0;
+            int pumpId = rec.TryGetValue("PumpId", out var pObj) && pObj != null ? Convert.ToInt32(pObj) : 0;
+            string shiftType = rec.TryGetValue("ShiftType", out var shObj) ? shObj?.ToString()?.Trim() ?? "" : "";
+            string? remoteDsmGuid = rec.TryGetValue("DsmUserId", out var dObj) ? dObj?.ToString() : null;
+            bool isActive = rec.TryGetValue("IsActive", out var aObj) && aObj != null && Convert.ToBoolean(aObj);
+
+            if (pumpId <= 0 || string.IsNullOrWhiteSpace(shiftType))
+            {
+                return (false, $"DsmPumpAssignments conflict on invalid Pump/Shift ({pumpId}/{shiftType}): {rawError}");
+            }
+
+            // 1. Check if this exact assignment SyncGuid already exists remotely
+            if (!string.IsNullOrWhiteSpace(localSyncGuid))
+            {
+                var selfResp = await _httpClient.SendRequestAsync(
+                    HttpMethod.Get,
+                    $"DsmPumpAssignments?SyncGuid=eq.{Uri.EscapeDataString(localSyncGuid)}&station_id=eq.{Uri.EscapeDataString(settings.StationId)}&limit=1");
+                if (selfResp.IsSuccessStatusCode)
+                {
+                    var selfRows = JsonConvert.DeserializeObject<List<Dictionary<string, object?>>>(
+                        await selfResp.Content.ReadAsStringAsync(), PullJsonSettings);
+                    if (selfRows != null && selfRows.Count > 0)
+                    {
+                        continue;
+                    }
+                }
+            }
+
+            if (!isActive)
+            {
+                return (false, $"DsmPumpAssignments deactivation conflict on Pump {pumpId} Shift {shiftType}: {rawError}");
+            }
+
+            // 2. Inspect conflicting active remote row(s) on (station_id, PumpId, ShiftType, IsActive=true)
+            var activeEndpoint = $"DsmPumpAssignments?station_id=eq.{Uri.EscapeDataString(settings.StationId)}&PumpId=eq.{pumpId}&ShiftType=eq.{Uri.EscapeDataString(shiftType)}&IsActive=eq.true";
+            var activeResp = await _httpClient.SendRequestAsync(HttpMethod.Get, activeEndpoint);
+            if (!activeResp.IsSuccessStatusCode)
+            {
+                return (false, $"Unable to inspect conflicting remote assignment for Pump {pumpId} Shift {shiftType} ({activeResp.StatusCode}).");
+            }
+
+            var remoteActives = JsonConvert.DeserializeObject<List<Dictionary<string, object?>>>(
+                await activeResp.Content.ReadAsStringAsync(), PullJsonSettings) ?? new List<Dictionary<string, object?>>();
+
+            if (remoteActives.Count == 0)
+            {
+                // Transient race resolved: retry once
+                var retryResp = await _httpClient.SendRequestAsync(
+                    HttpMethod.Post, "DsmPumpAssignments", JsonConvert.SerializeObject(new[] { rec }), isUpsert: true, onConflict: "SyncGuid");
+                if (!retryResp.IsSuccessStatusCode)
+                {
+                    return (false, $"DsmPumpAssignments retry failed for Pump {pumpId} Shift {shiftType}: {await retryResp.Content.ReadAsStringAsync()}");
+                }
+                continue;
+            }
+
+            // 3. Check if remote active row is an idempotent identical match
+            if (remoteActives.Count == 1)
+            {
+                var r0 = remoteActives[0];
+                var rGuid = GetDictString(r0, "SyncGuid");
+                var rDsmGuid = GetDictString(r0, "DsmUserId");
+                var rConnJson = GetDictString(r0, "ConnectedPumpIdsJson");
+                var lConnJson = rec.TryGetValue("ConnectedPumpIdsJson", out var lcObj) ? lcObj?.ToString() : null;
+
+                if (!string.IsNullOrWhiteSpace(rGuid) &&
+                    string.Equals(rDsmGuid, remoteDsmGuid, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(rConnJson ?? "", lConnJson ?? "", StringComparison.OrdinalIgnoreCase) &&
+                    localId > 0)
+                {
+                    var existingMap = await context.SyncIdMappings.FirstOrDefaultAsync(m => m.TableName == "DsmPumpAssignments" && m.LocalId == localId);
+                    if (existingMap != null)
+                    {
+                        existingMap.RemoteGuid = rGuid;
+                    }
+                    else
+                    {
+                        context.SyncIdMappings.Add(new SyncIdMapping { TableName = "DsmPumpAssignments", LocalId = localId, RemoteGuid = rGuid });
+                    }
+                    if (!localToGuid.ContainsKey("DsmPumpAssignments"))
+                        localToGuid["DsmPumpAssignments"] = new Dictionary<int, string>();
+                    localToGuid["DsmPumpAssignments"][localId] = rGuid;
+                    await context.SaveChangesAsync();
+                    continue;
+                }
+            }
+
+            // 4. Strict authority verification before deactivating any conflicting remote assignment:
+            // Only supersede remote row R if we verify locally that R is already deactivated/superseded
+            // for this station, pump, shift, DSM, and date (and R was not updated later by another PC).
+            var localNewEntity = localId > 0
+                ? await context.DsmPumpAssignments.AsNoTracking().FirstOrDefaultAsync(a => a.DsmPumpAssignmentId == localId)
+                : null;
+            DateTime localNewUtc = localNewEntity != null
+                ? SyncTimestampHelper.ToUtcDateTime(localNewEntity.AssignedDate, SyncTimestampSemantics.LocalInstant)
+                : DateTime.MinValue;
+
+            bool allConflictsSafelySuperseded = true;
+            foreach (var r in remoteActives)
+            {
+                var rGuid = GetDictString(r, "SyncGuid");
+                var rStation = GetDictString(r, "station_id") ?? "";
+                var rDsmGuid = GetDictString(r, "DsmUserId");
+                var rMachine = GetDictString(r, "machine_id");
+
+                if (string.IsNullOrWhiteSpace(rGuid) ||
+                    !string.Equals(rStation.Trim(), settings.StationId.Trim(), StringComparison.OrdinalIgnoreCase))
+                {
+                    allConflictsSafelySuperseded = false;
+                    break;
+                }
+
+                // Resolve local deactivated counterpart for R
+                DsmPumpAssignment? localDeactivated = null;
+                var rMap = await context.SyncIdMappings.AsNoTracking()
+                    .FirstOrDefaultAsync(m => m.TableName == "DsmPumpAssignments" && m.RemoteGuid == rGuid);
+                if (rMap != null)
+                {
+                    var mappedEntity = await context.DsmPumpAssignments.AsNoTracking()
+                        .FirstOrDefaultAsync(a => a.DsmPumpAssignmentId == rMap.LocalId);
+                    if (mappedEntity != null && !mappedEntity.IsActive && mappedEntity.PumpId == pumpId &&
+                        string.Equals(mappedEntity.ShiftType, shiftType, StringComparison.OrdinalIgnoreCase))
+                    {
+                        localDeactivated = mappedEntity;
+                    }
+                }
+                else if (!string.IsNullOrWhiteSpace(rDsmGuid))
+                {
+                    var dsmMap = await context.SyncIdMappings.AsNoTracking()
+                        .FirstOrDefaultAsync(m => m.TableName == "DsmUsers" && m.RemoteGuid == rDsmGuid);
+                    if (dsmMap != null)
+                    {
+                        localDeactivated = await context.DsmPumpAssignments.AsNoTracking()
+                            .Where(a => !a.IsActive && a.DsmUserId == dsmMap.LocalId && a.PumpId == pumpId && a.ShiftType.ToLower() == shiftType.ToLower())
+                            .OrderByDescending(a => a.AssignedDate)
+                            .FirstOrDefaultAsync();
+                    }
+                }
+
+                DateTime remoteAssignedUtc = r.TryGetValue("AssignedDate", out var raVal) && raVal != null
+                    ? SyncTimestampHelper.ToUtcDateTime(SyncTimestampHelper.ParseForPull(typeof(DsmPumpAssignment), "AssignedDate", raVal), SyncTimestampSemantics.LocalInstant)
+                    : DateTime.MaxValue;
+                DateTime remoteUpdatedUtc = r.TryGetValue("updated_at", out var ruVal) && ruVal != null && DateTime.TryParse(ruVal.ToString(), CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal, out var parsedRu)
+                    ? parsedRu
+                    : DateTime.MinValue;
+
+                bool sameMachine = string.Equals(rMachine, settings.MachineId, StringComparison.OrdinalIgnoreCase);
+                bool remoteIsNotNewer = localNewEntity != null && remoteAssignedUtc <= localNewUtc && (sameMachine || remoteUpdatedUtc <= localNewUtc);
+
+                if (localDeactivated == null || !remoteIsNotNewer)
+                {
+                    allConflictsSafelySuperseded = false;
+                    _logger.Warning(
+                        "Refusing to deactivate conflicting remote active DsmPumpAssignment SyncGuid={RemoteGuid} on Pump {Pump} Shift {Shift} (LocalDeactivatedFound={Found}, SameMachine={SameMachine}, RemoteAssignedUtc={RemoteUtc}, LocalNewUtc={LocalUtc}).",
+                        rGuid, pumpId, shiftType, localDeactivated != null, sameMachine, remoteAssignedUtc, localNewUtc);
+                    break;
+                }
+
+                var patchJson = JsonConvert.SerializeObject(new
+                {
+                    IsActive = false,
+                    updated_at = SyncTimestampHelper.FormatUtcIso(DateTime.UtcNow)
+                });
+                var patchResp = await _httpClient.SendRequestAsync(
+                    HttpMethod.Patch,
+                    $"DsmPumpAssignments?SyncGuid=eq.{Uri.EscapeDataString(rGuid)}&station_id=eq.{Uri.EscapeDataString(settings.StationId)}",
+                    patchJson);
+                if (!patchResp.IsSuccessStatusCode)
+                {
+                    allConflictsSafelySuperseded = false;
+                    break;
+                }
+            }
+
+            if (!allConflictsSafelySuperseded)
+            {
+                return (false, $"Active remote assignment conflict on Pump {pumpId} Shift {shiftType}; remote record could not be safely verified as superseded.");
+            }
+
+            // Re-attempt upserting the new active assignment after verified stale cleanup
+            var retryInsert = await _httpClient.SendRequestAsync(
+                HttpMethod.Post, "DsmPumpAssignments", JsonConvert.SerializeObject(new[] { rec }), isUpsert: true, onConflict: "SyncGuid");
+            if (!retryInsert.IsSuccessStatusCode)
+            {
+                return (false, $"DsmPumpAssignments upsert retry failed on Pump {pumpId} Shift {shiftType}: {await retryInsert.Content.ReadAsStringAsync()}");
+            }
+        }
+
+        return (true, null);
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -886,37 +1956,64 @@ public class SyncEngine
     private async Task PerformPullAsync(SyncSettings settings, bool forcePull = false)
     {
         using var context = _serviceProvider.GetRequiredService<FuelProDbContext>();
+        var pullStartTime = DateTime.UtcNow;
+        var upperWatermark = pullStartTime.ToString(SyncTimestampHelper.UtcFormat, CultureInfo.InvariantCulture);
+        bool pullSucceededCompletely = true;
 
         UpdateStatus(settings.LastSyncTime, 0, true, "Pulling updates...");
 
-        // Load ALL existing ID mappings into memory for fast lookup
-        // Map: (TableName, RemoteGuid) → LocalId
+        // Load ALL existing ID mappings into memory for fast bidirectional lookup
+        // Map: (TableName, RemoteGuid) → LocalId  AND  (TableName, LocalId) → RemoteGuid
         var allMappings = await context.SyncIdMappings.AsNoTracking().ToListAsync();
-        var guidToLocal = new Dictionary<string, Dictionary<string, int>>();
+        var guidToLocal = new Dictionary<string, Dictionary<string, int>>(StringComparer.OrdinalIgnoreCase);
+        var localToGuid = new Dictionary<string, Dictionary<int, string>>(StringComparer.OrdinalIgnoreCase);
         foreach (var m in allMappings)
         {
             if (!guidToLocal.ContainsKey(m.TableName))
-                guidToLocal[m.TableName] = new Dictionary<string, int>();
+                guidToLocal[m.TableName] = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             guidToLocal[m.TableName][m.RemoteGuid] = m.LocalId;
+
+            if (!localToGuid.ContainsKey(m.TableName))
+                localToGuid[m.TableName] = new Dictionary<int, string>();
+            localToGuid[m.TableName][m.LocalId] = m.RemoteGuid;
         }
+
+        var effectivePullTime = settings.LastPullTime == default ? settings.LastSyncTime : settings.LastPullTime;
+        var utcEffective = SyncTimestampHelper.ToUtcDateTime(effectivePullTime, SyncTimestampSemantics.LocalInstant);
+        bool operationalDataChanged = false;
+        bool configOrProfileDsmChanged = false;
+        bool pettyCashChanged = false;
+        bool inventoryChanged = false;
+        bool payrollChanged = false;
+        bool debtorChanged = false;
 
         foreach (var tableDef in PullTableOrder)
         {
             if (tableDef.TableName == "SyncChangeLogs")
             {
                 // Special handling for pulling delete propagation logs
-                var logQueryTime = (forcePull ? DateTime.MinValue : settings.LastSyncTime.AddMinutes(-5)).ToUniversalTime().ToString("o");
+                var logQueryCursor = (forcePull || utcEffective <= DateTime.MinValue.AddMinutes(5))
+                    ? DateTime.SpecifyKind(DateTime.MinValue, DateTimeKind.Utc)
+                    : utcEffective.AddMinutes(-5);
+                var logQueryTime = logQueryCursor.ToString(SyncTimestampHelper.UtcFormat, CultureInfo.InvariantCulture);
                 var logResponse = await _httpClient.SendRequestAsync(HttpMethod.Get,
-                    $"SyncChangeLogs?station_id=eq.{settings.StationId}&Timestamp=gt.{logQueryTime}");
+                    $"SyncChangeLogs?station_id=eq.{settings.StationId}&Timestamp=gt.{logQueryTime}&Timestamp=lte.{upperWatermark}");
+                if (logResponse.Headers.Date.HasValue)
+                {
+                    pullStartTime = logResponse.Headers.Date.Value.UtcDateTime;
+                    // HTTP Date headers have 1-second resolution; extend upperWatermark by 1s so sub-second writes in the current second are not skipped
+                    upperWatermark = pullStartTime.AddSeconds(1).ToString(SyncTimestampHelper.UtcFormat, CultureInfo.InvariantCulture);
+                }
                 if (logResponse.IsSuccessStatusCode)
                 {
                     var logJson = await logResponse.Content.ReadAsStringAsync();
-                    var logs = JsonConvert.DeserializeObject<List<Dictionary<string, object>>>(logJson);
+                    var logs = JsonConvert.DeserializeObject<List<Dictionary<string, object>>>(logJson, PullJsonSettings);
                     if (logs != null && logs.Count > 0)
                     {
                         FuelProDbContext.BypassTracking = true;
                         try
                         {
+                            int deletedOperationalCount = 0;
                             foreach (var logDict in logs)
                             {
                                 if (logDict.TryGetValue("machine_id", out var machineIdObj) && machineIdObj?.ToString() == settings.MachineId)
@@ -946,16 +2043,25 @@ public class SyncEngine
                                     if (entity != null)
                                     {
                                         context.Remove(entity);
+                                        if (OperationalDsmNotificationTables.Contains(deletedTableName))
+                                        {
+                                            deletedOperationalCount++;
+                                        }
                                         _logger.Information("Pull DELETE: Deleted local record from {Table} with LocalId={Id} (SyncGuid={Guid})", deletedTableName, localId, deletedRecordGuid);
                                     }
                                     context.SyncIdMappings.Remove(mapping);
                                 }
                             }
                             await context.SaveChangesAsync();
+                            if (deletedOperationalCount > 0)
+                            {
+                                operationalDataChanged = true;
+                            }
                         }
                         catch (Exception ex)
                         {
                             _logger.Error(ex, "Error processing pull deletes from SyncChangeLogs");
+                            pullSucceededCompletely = false;
                         }
                         finally
                         {
@@ -967,6 +2073,7 @@ public class SyncEngine
                 {
                     var error = await logResponse.Content.ReadAsStringAsync();
                     _logger.Warning("Supabase GET failed for SyncChangeLogs: {Error}", error);
+                    pullSucceededCompletely = false;
                 }
                 continue;
             }
@@ -981,60 +2088,191 @@ public class SyncEngine
             // Determine the query time for this specific table.
             // If forcePull is requested or table has no mappings yet, perform a full sync from beginning.
             var tableHasMappings = guidToLocal.TryGetValue(tableDef.TableName, out var mappings) && mappings.Count > 0;
-            var tableQueryTime = (forcePull || !tableHasMappings)
-                ? DateTime.MinValue.ToUniversalTime().ToString("o") 
-                : settings.LastSyncTime.AddMinutes(-5).ToUniversalTime().ToString("o");
+            var queryCursor = (forcePull || !tableHasMappings || utcEffective <= DateTime.MinValue.AddMinutes(5))
+                ? DateTime.SpecifyKind(DateTime.MinValue, DateTimeKind.Utc)
+                : utcEffective.AddMinutes(-5);
+            var tableQueryTime = queryCursor.ToString("yyyy-MM-ddTHH:mm:ss.ffffffZ", CultureInfo.InvariantCulture);
 
             // Fetch records updated since tableQueryTime for this StationId (strictly isolated per station)
-            var stationFilter = tableDef.TableName == "DsmQrPayments"
-                ? (!string.IsNullOrWhiteSpace(settings.StationId) ? $"StationId=eq.{settings.StationId.Trim()}" : "StationId=is.null")
-                : (!string.IsNullOrWhiteSpace(settings.StationId) ? $"station_id=eq.{settings.StationId.Trim()}" : "station_id=is.null");
+            var stationFilter = !string.IsNullOrWhiteSpace(settings.StationId) ? $"station_id=eq.{settings.StationId.Trim()}" : "station_id=is.null";
 
-            var response = await _httpClient.SendRequestAsync(HttpMethod.Get,
-                $"{tableDef.TableName}?{stationFilter}&updated_at=gt.{tableQueryTime}");
+            const int pageSize = 500;
+            string? cursorTimestamp = null;
+            string? cursorGuid = null;
+            bool isFallbackKeyPagination = false;
+            var records = new List<Dictionary<string, object?>>();
+            bool tableFetchSucceeded = true;
 
-            if (!response.IsSuccessStatusCode)
+            while (true)
             {
-                var error = await response.Content.ReadAsStringAsync();
-                if (error.Contains("42703"))
+                string pagedEndpoint;
+                if (!isFallbackKeyPagination)
                 {
-                    // If updated_at or StationId column is missing, fallback without updated_at filter
-                    response = await _httpClient.SendRequestAsync(HttpMethod.Get, $"{tableDef.TableName}?{stationFilter}");
-                    if (!response.IsSuccessStatusCode)
+                    if (cursorTimestamp == null)
                     {
-                        var altStationFilter = stationFilter.StartsWith("StationId")
-                            ? (!string.IsNullOrWhiteSpace(settings.StationId) ? $"station_id=eq.{settings.StationId.Trim()}" : "station_id=is.null")
-                            : (!string.IsNullOrWhiteSpace(settings.StationId) ? $"StationId=eq.{settings.StationId.Trim()}" : "StationId=is.null");
-                        response = await _httpClient.SendRequestAsync(HttpMethod.Get, $"{tableDef.TableName}?{altStationFilter}");
+                        pagedEndpoint = $"{tableDef.TableName}?{stationFilter}&updated_at=gt.{tableQueryTime}&updated_at=lte.{upperWatermark}&order=updated_at.asc,SyncGuid.asc&limit={pageSize}";
                     }
-                }
-            }
-
-            if (!response.IsSuccessStatusCode)
-            {
-                var error = await response.Content.ReadAsStringAsync();
-                if (error.Contains("PGRST205") || error.Contains("Could not find the table"))
-                {
-                    _logger.Information("Table {Table} not present in Supabase schema (PGRST205); skipping pull.", tableDef.TableName);
+                    else
+                    {
+                        if (string.IsNullOrEmpty(cursorGuid))
+                        {
+                            _logger.Warning("Aborting keyset pagination for table {Table} because boundary SyncGuid is empty; retaining pull watermark.", tableDef.TableName);
+                            tableFetchSucceeded = false;
+                            pullSucceededCompletely = false;
+                            break;
+                        }
+                        pagedEndpoint = $"{tableDef.TableName}?{stationFilter}&updated_at=gte.{cursorTimestamp}&updated_at=lte.{upperWatermark}&or=(updated_at.gt.{cursorTimestamp},SyncGuid.gt.{cursorGuid})&order=updated_at.asc,SyncGuid.asc&limit={pageSize}";
+                    }
                 }
                 else
                 {
-                    _logger.Warning("Supabase GET failed for table {Table} with filter {Filter}: {Error}", tableDef.TableName, stationFilter, error);
+                    // Fallback keyset pagination using SyncGuid alone
+                    if (cursorGuid == null)
+                    {
+                        pagedEndpoint = $"{tableDef.TableName}?{stationFilter}&order=SyncGuid.asc&limit={pageSize}";
+                    }
+                    else
+                    {
+                        if (string.IsNullOrEmpty(cursorGuid))
+                        {
+                            _logger.Warning("Aborting SyncGuid fallback pagination for table {Table} because cursor SyncGuid is empty; retaining pull watermark.", tableDef.TableName);
+                            tableFetchSucceeded = false;
+                            pullSucceededCompletely = false;
+                            break;
+                        }
+                        pagedEndpoint = $"{tableDef.TableName}?{stationFilter}&SyncGuid=gt.{cursorGuid}&order=SyncGuid.asc&limit={pageSize}";
+                    }
                 }
-                continue;
+
+                var response = await _httpClient.SendRequestAsync(HttpMethod.Get, pagedEndpoint);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    var error = await response.Content.ReadAsStringAsync();
+                    if (!isFallbackKeyPagination && error.Contains("42703"))
+                    {
+                        if (tableDef.TableName != "Settings")
+                        {
+                            _logger.Information("Table {Table} returned 42703 (missing updated_at); falling back to keyset pagination on SyncGuid.", tableDef.TableName);
+                            isFallbackKeyPagination = true;
+                            cursorTimestamp = null;
+                            cursorGuid = null;
+                            records.Clear();
+                            continue;
+                        }
+                        else
+                        {
+                            _logger.Warning("Table {Table} lacks updated_at and a usable unique pagination key (SyncGuid). Ingestion aborted safely to prevent truncation.", tableDef.TableName);
+                            tableFetchSucceeded = false;
+                            pullSucceededCompletely = false;
+                            break;
+                        }
+                    }
+
+                    if (error.Contains("PGRST205") || error.Contains("Could not find the table"))
+                    {
+                        _logger.Information("Table {Table} not present in Supabase schema (PGRST205); skipping pull.", tableDef.TableName);
+                    }
+                    else
+                    {
+                        _logger.Warning("Supabase GET failed for table {Table} with query {Endpoint}: {Error}", tableDef.TableName, pagedEndpoint, error);
+                        tableFetchSucceeded = false;
+                        pullSucceededCompletely = false;
+                    }
+                    break;
+                }
+
+                var json = await response.Content.ReadAsStringAsync();
+                var pageRawRecords = JsonConvert.DeserializeObject<List<Dictionary<string, object?>>>(json, PullJsonSettings);
+                if (pageRawRecords == null || pageRawRecords.Count == 0)
+                {
+                    break;
+                }
+
+                foreach (var r in pageRawRecords)
+                {
+                    records.Add(new Dictionary<string, object?>(r, StringComparer.OrdinalIgnoreCase));
+                }
+
+                var lastRec = pageRawRecords[pageRawRecords.Count - 1];
+                string? lastTimestamp = null;
+                string? lastGuid = null;
+
+                if (TryGetDictValue(lastRec, "updated_at", out var utObj) && utObj != null)
+                {
+                    if (SyncTimestampHelper.TryParseRemoteUtcCursor(utObj, out var parsedTs, out _))
+                    {
+                        lastTimestamp = parsedTs;
+                    }
+                    else
+                    {
+                        lastTimestamp = utObj.ToString()?.Trim();
+                    }
+                }
+
+                if (TryGetDictValue(lastRec, "SyncGuid", out var sgObj) && sgObj != null)
+                {
+                    lastGuid = sgObj.ToString()?.Trim();
+                }
+
+                if (!isFallbackKeyPagination)
+                {
+                    if (lastTimestamp == cursorTimestamp && lastGuid == cursorGuid)
+                    {
+                        _logger.Warning("Keyset pagination cursor did not advance for table {Table} (updated_at={Timestamp}, SyncGuid={Guid}). Breaking pagination to avoid infinite loop.", tableDef.TableName, lastTimestamp, lastGuid);
+                        break;
+                    }
+
+                    if (string.IsNullOrEmpty(lastTimestamp) || string.IsNullOrEmpty(lastGuid))
+                    {
+                        _logger.Warning("Boundary record in page for table {Table} is missing updated_at or SyncGuid. Keyset pagination cannot safely advance.", tableDef.TableName);
+                        if (pageRawRecords.Count >= pageSize)
+                        {
+                            tableFetchSucceeded = false;
+                            pullSucceededCompletely = false;
+                        }
+                        break;
+                    }
+
+                    cursorTimestamp = lastTimestamp;
+                    cursorGuid = lastGuid;
+                }
+                else
+                {
+                    if (lastGuid == cursorGuid)
+                    {
+                        _logger.Warning("SyncGuid pagination cursor did not advance for table {Table} (SyncGuid={Guid}). Breaking pagination to avoid infinite loop.", tableDef.TableName, lastGuid);
+                        break;
+                    }
+
+                    if (string.IsNullOrEmpty(lastGuid))
+                    {
+                        _logger.Warning("Boundary record in page for table {Table} is missing SyncGuid. Fallback pagination cannot safely advance.", tableDef.TableName);
+                        if (pageRawRecords.Count >= pageSize)
+                        {
+                            tableFetchSucceeded = false;
+                            pullSucceededCompletely = false;
+                        }
+                        break;
+                    }
+
+                    cursorGuid = lastGuid;
+                }
             }
 
-            var json = await response.Content.ReadAsStringAsync();
-            var rawRecords = JsonConvert.DeserializeObject<List<Dictionary<string, object?>>>(json);
-            if (rawRecords == null || rawRecords.Count == 0) continue;
+            if (!tableFetchSucceeded)
+            {
+                continue; // Skip processing this table since fetch failed or was incomplete
+            }
 
-            var records = rawRecords.Select(r => new Dictionary<string, object?>(r, StringComparer.OrdinalIgnoreCase)).ToList();
+            if (records.Count == 0) continue;
 
             if (!guidToLocal.ContainsKey(tableDef.TableName))
-                guidToLocal[tableDef.TableName] = new Dictionary<string, int>();
+                guidToLocal[tableDef.TableName] = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             var tableMap = guidToLocal[tableDef.TableName];
 
             var newEntities = new List<(object Entity, string RemoteGuid)>();
+            int appliedRecordCount = 0;
 
             FuelProDbContext.BypassTracking = true;
             try
@@ -1164,7 +2402,11 @@ public class SyncEngine
                         }
                         // else: it's already a local integer (legacy data), leave as-is
                     }
-                    if (fkFailed) continue;
+                    if (fkFailed)
+                    {
+                        pullSucceededCompletely = false;
+                        continue;
+                    }
 
                     // ── Step 2: Find or create the local entity ──
                     object? entity;
@@ -1229,7 +2471,7 @@ public class SyncEngine
                             if (dict.TryGetValue("ShiftDate", out var sDateObj) && sDateObj != null &&
                                 dict.TryGetValue("ShiftType", out var sTypeObj) && sTypeObj != null)
                             {
-                                DateTime sDate = Convert.ToDateTime(sDateObj).Date;
+                                DateTime sDate = SyncTimestampHelper.ParseBusinessDate(sDateObj);
                                 string sType = sTypeObj.ToString()!;
                                 var altType = sType == "A" ? "I" : (sType == "B" ? "II" : (sType == "C" ? "III" : (sType == "I" ? "A" : (sType == "II" ? "B" : (sType == "III" ? "C" : sType)))));
 
@@ -1377,30 +2619,7 @@ public class SyncEngine
                                 }
                             }
                         }
-                        else if (tableDef.TableName == "DsmQrPayments")
-                        {
-                            dict.TryGetValue("DsmEntryId", out var dsmIdObj);
-                            dict.TryGetValue("Tid", out var tidObj);
-                            dict.TryGetValue("Batch", out var batchObj);
-                            dict.TryGetValue("Amount", out var amtObj);
-                            int? localDsmId = dsmIdObj != null ? Convert.ToInt32(dsmIdObj) : null;
-                            string tid = tidObj?.ToString()?.Trim() ?? "";
-                            string batch = batchObj?.ToString()?.Trim() ?? "";
-                            double amt = amtObj != null ? Convert.ToDouble(amtObj) : 0;
 
-                            if (localDsmId.HasValue)
-                            {
-                                matchedLocalEntity = context.Set<DsmQrPaymentEntry>().Local
-                                    .FirstOrDefault(q => q.DsmEntryId == localDsmId &&
-                                                         (!string.IsNullOrEmpty(tid) ? (string.Equals(q.Tid, tid, StringComparison.OrdinalIgnoreCase) && string.Equals(q.Batch, batch, StringComparison.OrdinalIgnoreCase)) : Math.Abs(q.Amount - amt) < 0.01));
-                                if (matchedLocalEntity == null)
-                                {
-                                    matchedLocalEntity = await context.Set<DsmQrPaymentEntry>()
-                                        .FirstOrDefaultAsync(q => q.DsmEntryId == localDsmId &&
-                                                                  (!string.IsNullOrEmpty(tid) ? (q.Tid != null && q.Tid.ToLower() == tid.ToLower()) && (q.Batch != null && q.Batch.ToLower() == batch.ToLower()) : Math.Abs(q.Amount - amt) < 0.01));
-                                }
-                            }
-                        }
                         else if (tableDef.TableName == "CashDenominations")
                         {
                             // CashDenominations has a UNIQUE index on (DsmEntryId, CashType).
@@ -1520,7 +2739,7 @@ public class SyncEngine
                             dict.TryGetValue("Quantity", out var qtyObj);
                             dict.TryGetValue("UnitPrice", out var upObj);
                             int? productId = prodIdObj != null ? Convert.ToInt32(prodIdObj) : null;
-                            DateTime? purchaseDate = pDateObj != null ? Convert.ToDateTime(pDateObj) : null;
+                            DateTime? purchaseDate = pDateObj != null ? SyncTimestampHelper.ParseBusinessDate(pDateObj) : null;
                             string invoice = invoiceObj?.ToString()?.Trim() ?? "";
                             double qty = qtyObj != null ? Convert.ToDouble(qtyObj) : 0;
                             double unitPrice = upObj != null ? Convert.ToDouble(upObj) : 0;
@@ -1548,7 +2767,7 @@ public class SyncEngine
                             dict.TryGetValue("Amount", out var amtObj);
                             dict.TryGetValue("PaymentMode", out var pmObj);
                             string cName = cNameObj?.ToString()?.Trim() ?? "";
-                            DateTime? rDate = rDateObj != null ? Convert.ToDateTime(rDateObj) : null;
+                            DateTime? rDate = rDateObj != null ? SyncTimestampHelper.ParseBusinessDate(rDateObj) : null;
                             double amt = amtObj != null ? Convert.ToDouble(amtObj) : 0;
                             string payMode = pmObj?.ToString()?.Trim() ?? "";
 
@@ -1575,7 +2794,7 @@ public class SyncEngine
                             dict.TryGetValue("Amount", out var amtObj);
                             dict.TryGetValue("PaymentMethod", out var pmObj);
                             int? debtorId = debtorIdObj != null ? Convert.ToInt32(debtorIdObj) : null;
-                            DateTime? date = dateObj != null ? Convert.ToDateTime(dateObj) : null;
+                            DateTime? date = dateObj != null ? SyncTimestampHelper.ParseBusinessDate(dateObj) : null;
                             double amt = amtObj != null ? Convert.ToDouble(amtObj) : 0;
                             string payMethod = pmObj?.ToString()?.Trim() ?? "";
 
@@ -1621,7 +2840,7 @@ public class SyncEngine
                             dict.TryGetValue("Remarks", out var remObj);
                             int? productId = prodIdObj != null ? Convert.ToInt32(prodIdObj) : null;
                             int? shiftId = shiftIdObj != null ? Convert.ToInt32(shiftIdObj) : null;
-                            DateTime? logDate = logDateObj != null ? Convert.ToDateTime(logDateObj) : null;
+                            DateTime? logDate = logDateObj != null ? SyncTimestampHelper.ParseBusinessDate(logDateObj) : null;
                             double adjQty = adjQtyObj != null ? Convert.ToDouble(adjQtyObj) : 0;
                             string adjType = adjTypeObj?.ToString()?.Trim() ?? "";
                             double soldQty = soldQtyObj != null ? Convert.ToDouble(soldQtyObj) : 0;
@@ -1724,6 +2943,157 @@ public class SyncEngine
                                 }
                             }
                         }
+                        else if (tableDef.TableName == "DsmUsers")
+                        {
+                            var remoteEmpCode = TryGetDictValue(dict, "EmployeeCode", out var ec) && ec != null ? ec.ToString()!.Trim() : null;
+                            var remoteMobile = TryGetDictValue(dict, "MobileNumber", out var mn) && mn != null ? mn.ToString()!.Trim() : null;
+                            var remoteAuthUser = TryGetDictValue(dict, "AuthUserId", out var au) && au != null ? au.ToString()!.Trim() : null;
+                            var remoteFullName = TryGetDictValue(dict, "FullName", out var fn) && fn != null ? fn.ToString()!.Trim() : null;
+                            string? remoteStation = null;
+                            if (TryGetDictValue(dict, "station_id", out var st1) && st1 != null) remoteStation = st1.ToString()?.Trim();
+                            else if (TryGetDictValue(dict, "StationId", out var st2) && st2 != null) remoteStation = st2.ToString()?.Trim();
+
+                            matchedLocalEntity = await MatchLocalDsmUserAsync(
+                                context, remoteEmpCode, remoteMobile, remoteAuthUser, remoteFullName, remoteStation, settings.StationId);
+                        }
+                        else if (tableDef.TableName == "DsmPumpAssignments")
+                        {
+                            int pId = 0;
+                            if (TryGetDictValue(dict, "PumpId", out var pObj) && pObj != null) pId = Convert.ToInt32(pObj);
+                            else if (TryGetDictValue(dict, "pump_id", out var pObj2) && pObj2 != null) pId = Convert.ToInt32(pObj2);
+
+                            string sType = "";
+                            if (TryGetDictValue(dict, "ShiftType", out var sObj) && sObj != null) sType = sObj.ToString()!.Trim();
+                            else if (TryGetDictValue(dict, "shift_type", out var sObj2) && sObj2 != null) sType = sObj2.ToString()!.Trim();
+
+                            bool isActive = false;
+                            if (TryGetDictValue(dict, "IsActive", out var aObj) && aObj != null) isActive = Convert.ToBoolean(aObj);
+                            else if (TryGetDictValue(dict, "is_active", out var aObj2) && aObj2 != null) isActive = Convert.ToBoolean(aObj2);
+
+                            int localDsmUserId = 0;
+                            if (TryGetDictValue(dict, "DsmUserId", out var dObj) && dObj != null) localDsmUserId = Convert.ToInt32(dObj);
+                            else if (TryGetDictValue(dict, "dsm_user_id", out var dObj2) && dObj2 != null) localDsmUserId = Convert.ToInt32(dObj2);
+
+                            string? recStationId = null;
+                            if (TryGetDictValue(dict, "station_id", out var stObj1) && stObj1 != null) recStationId = stObj1.ToString()?.Trim();
+                            else if (TryGetDictValue(dict, "StationId", out var stObj2) && stObj2 != null) recStationId = stObj2.ToString()?.Trim();
+
+                            bool stationMatches = string.IsNullOrEmpty(recStationId) || string.IsNullOrEmpty(settings.StationId) ||
+                                string.Equals(recStationId, settings.StationId, StringComparison.OrdinalIgnoreCase);
+
+                            if (stationMatches && pId > 0 && !string.IsNullOrEmpty(sType) && localDsmUserId > 0)
+                            {
+                                // Mandatory verification: DSM identity (localDsmUserId), PumpId, and ShiftType must match.
+                                // Never match solely by PumpId and ShiftType without DSM identity verification!
+                                var candidateAssignments = context.Set<DsmPumpAssignment>().Local
+                                    .Where(a => a.DsmUserId == localDsmUserId && a.PumpId == pId && string.Equals(a.ShiftType, sType, StringComparison.OrdinalIgnoreCase))
+                                    .ToList();
+
+                                if (candidateAssignments.Count == 0)
+                                {
+                                    candidateAssignments = await context.Set<DsmPumpAssignment>()
+                                        .Where(a => a.DsmUserId == localDsmUserId && a.PumpId == pId && a.ShiftType.ToLower() == sType.ToLower())
+                                        .ToListAsync();
+                                }
+
+                                if (isActive)
+                                {
+                                    var activeCandidates = candidateAssignments.Where(a => a.IsActive).ToList();
+                                    if (activeCandidates.Count == 1)
+                                    {
+                                        matchedLocalEntity = activeCandidates[0];
+                                    }
+                                    else if (activeCandidates.Count > 1)
+                                    {
+                                        _logger.Warning("DsmPumpAssignments: Multiple active assignments found for DSM {DsmId}, Pump {Pump}, Shift {Shift}. Ambiguity detected - skipping adoption.",
+                                            localDsmUserId, pId, sType);
+                                    }
+                                }
+
+                                if (matchedLocalEntity == null && candidateAssignments.Count == 1)
+                                {
+                                    matchedLocalEntity = candidateAssignments[0];
+                                }
+                            }
+                        }
+
+                        if (matchedLocalEntity != null)
+                        {
+                            var pkValue = (int)context.Entry(matchedLocalEntity).Property(pkProp.Name).CurrentValue!;
+
+                            // Guard: Check if pkValue is ALREADY mapped to another RemoteGuid
+                            bool isAlreadyMappedToDifferentGuid = false;
+                            string? mappedGuid = null;
+                            if (localToGuid.TryGetValue(tableDef.TableName, out var localMap) &&
+                                localMap.TryGetValue(pkValue, out mappedGuid) &&
+                                !string.IsNullOrEmpty(mappedGuid) &&
+                                !string.Equals(mappedGuid, remoteGuid, StringComparison.OrdinalIgnoreCase))
+                            {
+                                isAlreadyMappedToDifferentGuid = true;
+                            }
+
+                            if (!isAlreadyMappedToDifferentGuid)
+                            {
+                                var existingDbMapping = await context.SyncIdMappings
+                                    .FirstOrDefaultAsync(m => m.TableName == tableDef.TableName 
+                                                           && m.LocalId == pkValue 
+                                                           && m.RemoteGuid != remoteGuid);
+                                if (existingDbMapping != null)
+                                {
+                                    isAlreadyMappedToDifferentGuid = true;
+                                    mappedGuid = existingDbMapping.RemoteGuid;
+                                }
+                            }
+
+                            if (isAlreadyMappedToDifferentGuid)
+                            {
+                                if (tableDef.TableName == "DsmPumpAssignments" && matchedLocalEntity is DsmPumpAssignment pa)
+                                {
+                                    // Verify that this is the verified rejected assignment for this exact DSM and pump/shift
+                                    _logger.Information("DsmPumpAssignments LocalId={Id} for DSM {DsmId} (Pump {Pump}, Shift {Shift}) was mapped to unconfirmed GUID {OldGuid}. Canonical remote GUID {RemoteGuid} supersedes it.",
+                                        pkValue, pa.DsmUserId, pa.PumpId, pa.ShiftType, mappedGuid, remoteGuid);
+
+                                    // 1. Remove stale mapping
+                                    var staleMappings = await context.SyncIdMappings
+                                        .Where(m => m.TableName == tableDef.TableName && m.LocalId == pkValue)
+                                        .ToListAsync();
+                                    if (staleMappings.Count > 0)
+                                    {
+                                        context.SyncIdMappings.RemoveRange(staleMappings);
+                                        await context.SaveChangesAsync();
+                                    }
+                                    if (localToGuid.TryGetValue(tableDef.TableName, out var lMap))
+                                    {
+                                        lMap.Remove(pkValue);
+                                    }
+
+                                    // 2. Narrowly acknowledge/clear only pending SyncChangeLogs for this specific local assignment
+                                    var pendingConflictLogs = await context.SyncChangeLogs
+                                        .Where(l => l.TableName == "DsmPumpAssignments" && (l.RecordId == pkValue || (mappedGuid != null && l.RecordGuid == mappedGuid)) && !l.IsSynced)
+                                        .ToListAsync();
+                                    if (pendingConflictLogs.Count > 0)
+                                    {
+                                        foreach (var log in pendingConflictLogs)
+                                        {
+                                            log.IsSynced = true;
+                                            log.SyncedAt = DateTime.Now;
+                                            log.RecordGuid = remoteGuid;
+                                        }
+                                        await context.SaveChangesAsync();
+                                        _logger.Information("Acknowledged {Count} pending rejected SyncChangeLogs for DsmPumpAssignment LocalId={Id}",
+                                            pendingConflictLogs.Count, pkValue);
+                                    }
+
+                                    isAlreadyMappedToDifferentGuid = false;
+                                }
+                                else
+                                {
+                                    _logger.Information("Natural-key match for {Table} LocalId={Id} rejected because it is already mapped to remote GUID {MappedGuid}. Treating incoming {RemoteGuid} as a new distinct record.",
+                                        tableDef.TableName, pkValue, mappedGuid ?? "(db)", remoteGuid);
+                                    matchedLocalEntity = null; // Do not adopt an already-mapped record!
+                                }
+                            }
+                        }
 
                         if (matchedLocalEntity != null)
                         {
@@ -1732,6 +3102,10 @@ public class SyncEngine
                             
                             // Map the remote SyncGuid to this existing local ID
                             tableMap[remoteGuid] = pkValue;
+                            if (!localToGuid.ContainsKey(tableDef.TableName))
+                                localToGuid[tableDef.TableName] = new Dictionary<int, string>();
+                            localToGuid[tableDef.TableName][pkValue] = remoteGuid;
+
                             context.SyncIdMappings.Add(new SyncIdMapping
                             {
                                 TableName = tableDef.TableName,
@@ -1752,6 +3126,8 @@ public class SyncEngine
 
                     // ── Step 3: Set all non-PK properties from Supabase data ──
                     var entry = context.Entry(entity);
+                    bool entityHadValueChange = isNew;
+                    bool preserveExistingNonZeroPayment = !isNew && entity is PaymentCollection && IsIncompleteZeroRemotePaymentCollection(dict);
                     foreach (var prop in entityType.GetProperties())
                     {
                         if (prop.IsPrimaryKey()) continue;
@@ -1763,7 +3139,12 @@ public class SyncEngine
                                 var isNullable = Nullable.GetUnderlyingType(prop.ClrType) != null || !prop.ClrType.IsValueType;
                                 if (isNullable)
                                 {
-                                    entry.Property(prop.Name).CurrentValue = null;
+                                    var existingPropVal = entry.Property(prop.Name).CurrentValue;
+                                    if (existingPropVal != null)
+                                    {
+                                        entry.Property(prop.Name).CurrentValue = null;
+                                        entityHadValueChange = true;
+                                    }
                                 }
                             }
                             else
@@ -1771,7 +3152,7 @@ public class SyncEngine
                                 var targetType = Nullable.GetUnderlyingType(prop.ClrType) ?? prop.ClrType;
                                 object? converted;
                                 if (targetType == typeof(DateTime))
-                                    converted = DateTime.Parse(val.ToString()!);
+                                    converted = SyncTimestampHelper.ParseForPull(entityType.ClrType, prop.Name, val);
                                 else if (targetType == typeof(Guid))
                                     converted = Guid.Parse(val.ToString()!);
                                 else if (targetType == typeof(bool))
@@ -1786,11 +3167,32 @@ public class SyncEngine
                                     converted = Enum.Parse(targetType, val.ToString()!);
                                 else
                                     converted = Convert.ChangeType(val, targetType);
-                                entry.Property(prop.Name).CurrentValue = converted;
+
+                                var existingPropVal = entry.Property(prop.Name).CurrentValue;
+                                if (preserveExistingNonZeroPayment && existingPropVal is double curAmt && curAmt > 0 && converted is double newAmt && newAmt == 0)
+                                {
+                                    continue;
+                                }
+                                if (!AreSyncPropertyValuesEqual(existingPropVal, converted))
+                                {
+                                    entry.Property(prop.Name).CurrentValue = converted;
+                                    entityHadValueChange = true;
+                                }
                             }
                         }
                     }
 
+                    if (entity is PaymentCollection pulledPc)
+                    {
+                        bool pcBackfilled = await ApplyPaymentCollectionLegacyFallbackAsync(context, pulledPc, dict);
+                        if (pcBackfilled)
+                        {
+                            entityHadValueChange = true;
+                        }
+                    }
+
+                    if (entityHadValueChange)
+                        appliedRecordCount++;
                     if (isNew)
                         newEntities.Add((entity, remoteGuid));
                 }
@@ -1813,6 +3215,10 @@ public class SyncEngine
                     {
                         var newLocalId = (int)context.Entry(entity).Property(pkProp.Name).CurrentValue!;
                         tableMap[remoteGuid] = newLocalId;
+                        if (!localToGuid.ContainsKey(tableDef.TableName))
+                            localToGuid[tableDef.TableName] = new Dictionary<int, string>();
+                        localToGuid[tableDef.TableName][newLocalId] = remoteGuid;
+
                         context.SyncIdMappings.Add(new SyncIdMapping
                         {
                             TableName = tableDef.TableName,
@@ -1821,6 +3227,20 @@ public class SyncEngine
                         });
                     }
                     await context.SaveChangesAsync();
+                }
+
+                if (appliedRecordCount > 0)
+                {
+                    if (OperationalDsmNotificationTables.Contains(tableDef.TableName))
+                        operationalDataChanged = true;
+                    if (PettyCashNotificationTables.Contains(tableDef.TableName))
+                        pettyCashChanged = true;
+                    if (InventoryNotificationTables.Contains(tableDef.TableName))
+                        inventoryChanged = true;
+                    if (PayrollNotificationTables.Contains(tableDef.TableName))
+                        payrollChanged = true;
+                    if (DebtorNotificationTables.Contains(tableDef.TableName))
+                        debtorChanged = true;
                 }
 
                 _logger.Information("Pulled {Count} records for table {Table}", records.Count, tableDef.TableName);
@@ -1875,34 +3295,46 @@ public class SyncEngine
                     {
                         try
                         {
-                            var pcList = await context.PaymentCollections.Where(p => !string.IsNullOrEmpty(p.DynamicItemsJson)).ToListAsync();
-                            foreach (var pc in pcList)
+                            var pcIdsNeedingItems = await context.PaymentCollections
+                                .Where(p => !string.IsNullOrEmpty(p.DynamicItemsJson)
+                                    && !context.PaymentCollectionItems.Any(i => i.PaymentId == p.PaymentId))
+                                .ToListAsync();
+
+                            // Also refresh items for records updated in this pull batch that carry DynamicItemsJson
+                            var pulledGuids = records
+                                .Select(r => GetDictString(r, "SyncGuid"))
+                                .Where(g => !string.IsNullOrWhiteSpace(g))
+                                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+                            var pulledLocalIds = new HashSet<int>();
+                            if (guidToLocal.TryGetValue("PaymentCollections", out var pcMap))
                             {
-                                if (!string.IsNullOrWhiteSpace(pc.DynamicItemsJson))
+                                foreach (var g in pulledGuids)
                                 {
-                                    var items = JsonConvert.DeserializeObject<List<PaymentCollectionItem>>(pc.DynamicItemsJson);
-                                    if (items != null && items.Count > 0)
-                                    {
-                                        var existing = await context.PaymentCollectionItems.Where(i => i.PaymentId == pc.PaymentId).ToListAsync();
-                                        context.PaymentCollectionItems.RemoveRange(existing);
-                                        foreach (var itm in items)
-                                        {
-                                            context.PaymentCollectionItems.Add(new PaymentCollectionItem
-                                            {
-                                                PaymentId = pc.PaymentId,
-                                                CollectionTypeCode = itm.CollectionTypeCode ?? "OTHERS",
-                                                Amount = itm.Amount,
-                                                Tid = itm.Tid,
-                                                Batch = itm.Batch,
-                                                Slot = itm.Slot ?? "General",
-                                                Otp = itm.Otp
-                                            });
-                                        }
-                                    }
+                                    if (pcMap.TryGetValue(g!, out var lid)) pulledLocalIds.Add(lid);
                                 }
                             }
-                            await context.SaveChangesAsync();
-                            FuelPro.Core.Services.DsmEntryService.RaiseDsmEntryChanged();
+
+                            var pulledWithJson = pulledLocalIds.Count > 0
+                                ? await context.PaymentCollections
+                                    .Where(p => pulledLocalIds.Contains(p.PaymentId) && !string.IsNullOrEmpty(p.DynamicItemsJson))
+                                    .ToListAsync()
+                                : new List<PaymentCollection>();
+
+                            var toSyncItems = pulledWithJson
+                                .Concat(pcIdsNeedingItems)
+                                .GroupBy(p => p.PaymentId)
+                                .Select(g => g.First())
+                                .ToList();
+
+                            foreach (var pc in toSyncItems)
+                            {
+                                await SyncPaymentCollectionItemsFromJsonAsync(context, pc);
+                            }
+                            if (toSyncItems.Count > 0)
+                            {
+                                await context.SaveChangesAsync();
+                            }
                         }
                         catch (Exception ex)
                         {
@@ -1974,64 +3406,10 @@ public class SyncEngine
                                     }
                                 }
 
-                                // 2. Collection Types
-                                if (!string.IsNullOrWhiteSpace(currentSetting.CollectionTypesJson))
+                                // 2. Collection Types (preserve shift enable flags & OTP configuration)
+                                if (await SyncCollectionTypesFromJsonAsync(context, currentSetting.CollectionTypesJson, removeMissingNonSystem: true))
                                 {
-                                    var types = JsonConvert.DeserializeObject<List<CollectionTypeMaster>>(currentSetting.CollectionTypesJson);
-                                    if (types != null && types.Count > 0)
-                                    {
-                                        var existingCts = await context.CollectionTypes.ToListAsync();
-                                        var processedCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-                                        foreach (var ct in types)
-                                        {
-                                            var existingCt = existingCts.FirstOrDefault(x => string.Equals(x.Code, ct.Code, StringComparison.OrdinalIgnoreCase));
-                                            if (existingCt != null)
-                                            {
-                                                if (existingCt.DisplayName != ct.DisplayName ||
-                                                    existingCt.Category != ct.Category ||
-                                                    existingCt.HasTidBatch != ct.HasTidBatch ||
-                                                    existingCt.DisplayOrder != ct.DisplayOrder ||
-                                                    existingCt.IsActive != ct.IsActive)
-                                                {
-                                                    existingCt.DisplayName = ct.DisplayName;
-                                                    existingCt.Category = ct.Category;
-                                                    existingCt.HasTidBatch = ct.HasTidBatch;
-                                                    existingCt.DisplayOrder = ct.DisplayOrder;
-                                                    existingCt.IsActive = ct.IsActive;
-                                                    configChanged = true;
-                                                }
-                                                processedCodes.Add(existingCt.Code);
-                                            }
-                                            else
-                                            {
-                                                context.CollectionTypes.Add(new CollectionTypeMaster
-                                                {
-                                                    Code = ct.Code,
-                                                    DisplayName = ct.DisplayName,
-                                                    Category = ct.Category,
-                                                    HasTidBatch = ct.HasTidBatch,
-                                                    DisplayOrder = ct.DisplayOrder,
-                                                    IsActive = ct.IsActive,
-                                                    IsSystem = ct.IsSystem,
-                                                    CreatedAt = DateTime.Now
-                                                });
-                                                processedCodes.Add(ct.Code);
-                                                configChanged = true;
-                                            }
-                                        }
-
-                                        // Remove obsolete non-system collection types not present in station config
-                                        foreach (var existing in existingCts)
-                                        {
-                                            if (!existing.IsSystem && !processedCodes.Contains(existing.Code) &&
-                                                !types.Any(t => string.Equals(t.Code, existing.Code, StringComparison.OrdinalIgnoreCase)))
-                                            {
-                                                context.CollectionTypes.Remove(existing);
-                                                configChanged = true;
-                                            }
-                                        }
-                                    }
+                                    configChanged = true;
                                 }
 
                                 // 3. Features
@@ -2149,7 +3527,7 @@ public class SyncEngine
                                     FuelPro.Core.Common.PumpConfiguration.InitializeFromDb(updatedMappings);
                                     FuelPro.Core.Common.PumpConfiguration.InitializeTanksFromDb(updatedTanks);
                                     FuelPro.Core.Services.DsmEntryService.RaiseStationConfigurationChanged();
-                                    FuelPro.Core.Services.DsmEntryService.RaiseDsmEntryChanged();
+                                    configOrProfileDsmChanged = true;
                                     _serviceProvider.GetService<FuelPro.Core.Services.ICollectionTypeService>()?.NotifyCollectionTypesChanged();
                                 }
                             }
@@ -2252,7 +3630,7 @@ public class SyncEngine
                             }
 
                             FuelPro.Core.Services.DsmEntryService.RaiseStationConfigurationChanged();
-                            FuelPro.Core.Services.DsmEntryService.RaiseDsmEntryChanged();
+                            configOrProfileDsmChanged = true;
                         }
                         catch (Exception ex)
                         {
@@ -2289,7 +3667,7 @@ public class SyncEngine
                             var currentTanks = await context.TankDefinitions.ToListAsync();
                             FuelPro.Core.Common.PumpConfiguration.InitializeTanksFromDb(currentTanks);
                             FuelPro.Core.Services.DsmEntryService.RaiseStationConfigurationChanged();
-                            FuelPro.Core.Services.DsmEntryService.RaiseDsmEntryChanged();
+                            configOrProfileDsmChanged = true;
                             _serviceProvider.GetService<IStationConfigurationService>()?.GetAllTanksAsync();
                         }
                         catch (Exception ex)
@@ -2308,7 +3686,23 @@ public class SyncEngine
                             _logger.Error(ex, "Failed to notify collection types after pull");
                         }
                     }
+                    else if (tableDef.TableName == "DsmPumpAssignments" || tableDef.TableName == "DsmUsers")
+                    {
+                        try
+                        {
+                            FuelPro.Core.Services.DsmEntryService.RaiseDsmProfileChanged();
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.Warning(ex, "Failed to raise DsmProfileChanged after pulling {Table}", tableDef.TableName);
+                        }
+                    }
                 }
+            }
+            catch (Exception ex)
+            {
+                _logger.Error(ex, "Error processing pulled records for table {Table}", tableDef.TableName);
+                pullSucceededCompletely = false;
             }
             finally
             {
@@ -2316,11 +3710,88 @@ public class SyncEngine
             }
         }
 
-        // Update last sync time
-        settings.LastSyncTime = DateTime.Now;
-        await _configService.SaveSettingsAsync(settings);
+        // Targeted, idempotent backfill ONLY when evidence shows a local PaymentCollection has all zeros
+        // while its parent DsmEntry has saved TotalCollection/TotalInDirect > 0. Never overwrites non-zero values.
+        try
+        {
+            if (await BackfillZeroHistoricalPaymentCollectionsAsync(context, settings, localToGuid))
+            {
+                operationalDataChanged = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning(ex, "Targeted historical PaymentCollections backfill failed; will retry on next cycle.");
+        }
 
-        UpdateStatus(settings.LastSyncTime, 0, true, "Synced");
+        // Raise UI refresh notifications ONLY after all operational tables in the pull cycle are persisted.
+        if (operationalDataChanged || configOrProfileDsmChanged)
+        {
+            try
+            {
+                FuelPro.Core.Services.DsmEntryService.RaiseDsmEntryChanged();
+            }
+            catch (Exception ex)
+            {
+                _logger.Warning(ex, "Error in DsmEntryChanged subscriber after pull");
+            }
+        }
+
+        if (pettyCashChanged)
+        {
+            try { FuelPro.Core.Services.DsmEntryService.RaisePettyCashChanged(); }
+            catch (Exception ex) { _logger.Warning(ex, "Error in PettyCashChanged subscriber after pull"); }
+        }
+        if (inventoryChanged)
+        {
+            try { FuelPro.Core.Services.DsmEntryService.RaiseInventoryChanged(); }
+            catch (Exception ex) { _logger.Warning(ex, "Error in InventoryChanged subscriber after pull"); }
+        }
+        if (payrollChanged)
+        {
+            try { FuelPro.Core.Services.DsmEntryService.RaisePayrollChanged(); }
+            catch (Exception ex) { _logger.Warning(ex, "Error in PayrollChanged subscriber after pull"); }
+        }
+        if (debtorChanged)
+        {
+            try { FuelPro.Core.Services.DsmEntryService.RaiseDebtorChanged(); }
+            catch (Exception ex) { _logger.Warning(ex, "Error in DebtorChanged subscriber after pull"); }
+        }
+
+        if (operationalDataChanged)
+        {
+            try
+            {
+                OperationalDataPulled?.Invoke();
+            }
+            catch (Exception ex)
+            {
+                _logger.Warning(ex, "Error in OperationalDataPulled subscriber");
+            }
+        }
+
+        // Update checkpoints: only advance LastPullTime if all tables were pulled and saved completely
+        if (pullSucceededCompletely)
+        {
+            settings.LastPullTime = pullStartTime;
+            settings.LastSyncTime = pullStartTime;
+            await _configService.SaveSettingsAsync(settings);
+
+            UpdateStatus(settings.LastSyncTime, 0, true, "Synced");
+            try
+            {
+                PullCompleted?.Invoke();
+            }
+            catch (Exception ex)
+            {
+                _logger.Warning(ex, "Error in PullCompleted subscriber");
+            }
+        }
+        else
+        {
+            _logger.Warning("PerformPullAsync completed with partial table failures. Checkpoint LastPullTime ({LastPullTime}) was retained to ensure retry on next cycle.", settings.LastPullTime);
+            UpdateStatus(settings.LastSyncTime, 0, true, "Sync completed with warnings (retrying pending tables...)");
+        }
     }
 
     /// <summary>
@@ -2346,6 +3817,17 @@ public class SyncEngine
             return (false, "Station ID is empty. Please set a Station ID.");
         }
 
+        // Multi-Computer Security Guard: Check device authorization before pushing station snapshot
+        if (settings.MultiComputerEnabled && _pairingService != null && !string.IsNullOrEmpty(settings.MachineId))
+        {
+            var (isAuthorized, reason) = await _pairingService.CheckDeviceAuthorizationAsync(stationId, settings.MachineId);
+            if (!isAuthorized)
+            {
+                _logger.Warning("PushStationSnapshotToCloudAsync aborted: Workstation {MachineId} authorization is revoked: {Reason}", settings.MachineId, reason);
+                return (false, $"Workstation authorization revoked: {reason}");
+            }
+        }
+
         try
         {
             _httpClient.Configure(settings.SupabaseUrl, settings.SupabaseApiKey);
@@ -2353,7 +3835,9 @@ public class SyncEngine
             using var scope = _serviceProvider.CreateScope();
             using var context = scope.ServiceProvider.GetRequiredService<FuelProDbContext>();
 
-            var localSetting = await context.Settings.FirstOrDefaultAsync();
+            var localSetting = await context.Settings
+                .OrderBy(s => s.SettingId)
+                .FirstOrDefaultAsync();
             if (localSetting == null)
             {
                 localSetting = new Setting();
@@ -2362,6 +3846,10 @@ public class SyncEngine
 
             // 1. Storage Tanks
             var allTanks = await context.TankDefinitions.ToListAsync();
+            foreach (var t in allTanks)
+            {
+                t.Rate = localSetting.GetRateFor(t.TankName, localSetting.GetRateFor(t.FuelType, 0.0));
+            }
             localSetting.TankDefinitionsJson = JsonConvert.SerializeObject(allTanks);
 
             // 2. Pump Mappings
@@ -2385,43 +3873,99 @@ public class SyncEngine
 
             await context.SaveChangesAsync();
 
-            // Find existing SyncGuid for this station in remote or local
-            string? targetSyncGuid = null;
+            if (localSetting.SettingId <= 0)
+            {
+                _logger.Error("Cannot push station snapshot: persisted Settings record has invalid SettingId={SettingId} for station {StationId}.",
+                    localSetting.SettingId, stationId);
+                return (false, "Local Settings record could not be persisted cleanly before cloud sync.");
+            }
+
+            var encodedStationId = Uri.EscapeDataString(stationId);
+
+            // Load existing local SyncIdMappings for Settings up-front so remote selection and
+            // reconciliation never violate UNIQUE(TableName, RemoteGuid) or steal ownership.
+            var localSettingsMappings = await context.SyncIdMappings
+                .Where(m => m.TableName == "Settings")
+                .OrderBy(m => m.Id)
+                .ToListAsync();
+            var existingMappingForLocal = localSettingsMappings
+                .FirstOrDefault(m => m.LocalId == localSetting.SettingId);
+            var mappingByRemoteGuid = new Dictionary<string, SyncIdMapping>(StringComparer.OrdinalIgnoreCase);
+            foreach (var mapping in localSettingsMappings)
+            {
+                if (!string.IsNullOrWhiteSpace(mapping.RemoteGuid) && !mappingByRemoteGuid.ContainsKey(mapping.RemoteGuid.Trim()))
+                {
+                    mappingByRemoteGuid[mapping.RemoteGuid.Trim()] = mapping;
+                }
+            }
+
+            // Deterministically inspect remote Settings rows for this station (ordered newest-first)
+            string? remoteSyncGuid = null;
+            int? remoteLocalId = null;
+            int? remoteSettingId = null;
             try
             {
-                var checkResp = await _httpClient.SendRequestAsync(HttpMethod.Get, $"Settings?station_id=eq.{stationId}&limit=1");
+                var checkResp = await _httpClient.SendRequestAsync(HttpMethod.Get, $"Settings?station_id=eq.{encodedStationId}&order=updated_at.desc&limit=10");
                 if (!checkResp.IsSuccessStatusCode)
                 {
-                    checkResp = await _httpClient.SendRequestAsync(HttpMethod.Get, $"Settings?StationId=eq.{stationId}&limit=1");
+                    checkResp = await _httpClient.SendRequestAsync(HttpMethod.Get, $"Settings?StationId=eq.{encodedStationId}&order=updated_at.desc&limit=10");
                 }
                 if (checkResp.IsSuccessStatusCode)
                 {
                     var checkJson = await checkResp.Content.ReadAsStringAsync();
                     var checkList = JsonConvert.DeserializeObject<List<Dictionary<string, object?>>>(checkJson);
-                    if (checkList != null && checkList.Count > 0)
+                    var selectedRemoteRow = SelectDeterministicRemoteSettingsRow(
+                        checkList,
+                        existingMappingForLocal?.RemoteGuid,
+                        mappingByRemoteGuid,
+                        out int remoteCandidateCount);
+
+                    if (remoteCandidateCount > 1)
                     {
-                        if (TryGetDictValue(checkList[0], "SyncGuid", out var sgVal) && sgVal != null)
+                        _logger.Warning(
+                            "Multiple remote Settings records ({Count}) found in Supabase for station {StationId}. Selecting deterministic target without merging or deleting records.",
+                            remoteCandidateCount, stationId);
+                    }
+
+                    if (selectedRemoteRow != null)
+                    {
+                        if (TryGetDictValue(selectedRemoteRow, "SyncGuid", out var sgVal) && sgVal != null && !string.IsNullOrWhiteSpace(sgVal.ToString()))
                         {
-                            targetSyncGuid = sgVal.ToString();
+                            remoteSyncGuid = sgVal.ToString()!.Trim();
+                        }
+                        if (TryGetDictValue(selectedRemoteRow, "local_id", out var lidVal) && lidVal != null && int.TryParse(lidVal.ToString(), out var parsedLocalId) && parsedLocalId > 0)
+                        {
+                            remoteLocalId = parsedLocalId;
+                        }
+                        if (TryGetDictValue(selectedRemoteRow, "SettingId", out var sidVal) && sidVal != null && int.TryParse(sidVal.ToString(), out var parsedSettingId) && parsedSettingId > 0)
+                        {
+                            remoteSettingId = parsedSettingId;
                         }
                     }
                 }
             }
             catch (Exception ex)
             {
-                _logger.Warning(ex, "Could not pre-fetch existing Settings row from Supabase");
+                _logger.Warning(ex, "Could not pre-fetch existing Settings row from Supabase for station {StationId}", stationId);
             }
 
-            if (string.IsNullOrEmpty(targetSyncGuid))
+            string targetSyncGuid;
+            SyncIdMapping? remoteOwnerMapping = null;
+            if (!string.IsNullOrEmpty(remoteSyncGuid))
             {
-                var existingMapping = await context.SyncIdMappings.FirstOrDefaultAsync(m => m.TableName == "Settings" && m.LocalId == localSetting.SettingId);
-                if (existingMapping != null && !string.IsNullOrEmpty(existingMapping.RemoteGuid))
+                targetSyncGuid = remoteSyncGuid;
+                if (mappingByRemoteGuid.TryGetValue(targetSyncGuid, out remoteOwnerMapping))
                 {
-                    targetSyncGuid = existingMapping.RemoteGuid;
+                    // Preserve existing (TableName, RemoteGuid) ownership — never overwrite or steal another LocalId's mapping
+                    if (remoteOwnerMapping.LocalId != localSetting.SettingId)
+                    {
+                        _logger.Warning(
+                            "Remote Settings SyncGuid {SyncGuid} for station {StationId} is already mapped to LocalId={OwnerLocalId} (pushing from LocalId={CurrentLocalId}). Preserving existing SyncIdMapping ownership.",
+                            targetSyncGuid, stationId, remoteOwnerMapping.LocalId, localSetting.SettingId);
+                    }
                 }
-                else
+                else if (existingMappingForLocal == null)
                 {
-                    targetSyncGuid = Guid.NewGuid().ToString();
                     context.SyncIdMappings.Add(new SyncIdMapping
                     {
                         TableName = "Settings",
@@ -2430,26 +3974,70 @@ public class SyncEngine
                     });
                     await context.SaveChangesAsync();
                 }
+                else if (!string.Equals(existingMappingForLocal.RemoteGuid, targetSyncGuid, StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.Information("Reconciling local Settings SyncIdMapping from {OldGuid} to established remote SyncGuid {NewGuid} for station {StationId}",
+                        existingMappingForLocal.RemoteGuid, targetSyncGuid, stationId);
+                    existingMappingForLocal.RemoteGuid = targetSyncGuid;
+                    await context.SaveChangesAsync();
+                }
+            }
+            else if (existingMappingForLocal != null && !string.IsNullOrEmpty(existingMappingForLocal.RemoteGuid))
+            {
+                targetSyncGuid = existingMappingForLocal.RemoteGuid;
+            }
+            else
+            {
+                targetSyncGuid = Guid.NewGuid().ToString();
+                while (mappingByRemoteGuid.ContainsKey(targetSyncGuid))
+                {
+                    targetSyncGuid = Guid.NewGuid().ToString();
+                }
+                context.SyncIdMappings.Add(new SyncIdMapping
+                {
+                    TableName = "Settings",
+                    LocalId = localSetting.SettingId,
+                    RemoteGuid = targetSyncGuid
+                });
+                await context.SaveChangesAsync();
             }
 
-            // Determine authoritative Speed rate from FuelRates, falling back to legacy MsIIRate only if absent
-            double authoritativeSpeedRate = (localSetting.FuelRates.TryGetValue("Speed", out var sRate) && sRate > 0)
-                ? sRate
-                : (localSetting.FuelRates.TryGetValue("Speed - 20KL", out var sTankRate) && sTankRate > 0
-                    ? sTankRate
-                    : (localSetting.FuelRates.TryGetValue("XP95", out var xpRate) && xpRate > 0
-                        ? xpRate
-                        : (localSetting.FuelRates.TryGetValue("Power", out var pwrRate) && pwrRate > 0
-                            ? pwrRate
-                            : localSetting.MsIIRate)));
+            // Preserve established remote local_id / SettingId when found, otherwise the owning mapping's LocalId or persisted local SettingId
+            int fallbackLocalId = remoteOwnerMapping != null && remoteOwnerMapping.LocalId > 0
+                ? remoteOwnerMapping.LocalId
+                : localSetting.SettingId;
+            int targetLocalId = remoteLocalId ?? fallbackLocalId;
+            int targetSettingId = remoteSettingId ?? fallbackLocalId;
 
-            // Prepare Payload for Supabase Settings table
+            // Determine authoritative Speed rate strictly from Speed configuration (never fallback to MsIRate/MsIIRate, and never alias from XP95 or Power)
+            double? authoritativeSpeedRate = null;
+            if (localSetting.FuelRates.TryGetValue("Speed", out var sRate) && sRate > 0)
+                authoritativeSpeedRate = sRate;
+            else if (localSetting.FuelRates.TryGetValue("SPEED", out var sRate2) && sRate2 > 0)
+                authoritativeSpeedRate = sRate2;
+            else if (localSetting.FuelRates.TryGetValue("Speed - 20KL", out var sTankRate) && sTankRate > 0)
+                authoritativeSpeedRate = sTankRate;
+            else if (localSetting.FuelRates.TryGetValue("SPEED - 20KL", out var sTankRate2) && sTankRate2 > 0)
+                authoritativeSpeedRate = sTankRate2;
+            else
+            {
+                var sVal = localSetting.GetRateFor("SPEED", 0.0);
+                if (sVal > 0) authoritativeSpeedRate = sVal;
+            }
+
+            // Prepare Payload for Supabase Settings table (always includes required NOT NULL identity columns)
+            var lastUpdatedValue = localSetting.LastUpdated == default ? DateTime.Now : localSetting.LastUpdated;
+            var stationDisplayName = string.IsNullOrWhiteSpace(localSetting.PumpStationName) ? "Fuel Station" : localSetting.PumpStationName;
             var payload = new Dictionary<string, object?>
             {
                 ["SyncGuid"] = targetSyncGuid,
                 ["station_id"] = stationId,
+                ["local_id"] = targetLocalId,
                 ["machine_id"] = settings.MachineId,
-                ["StationName"] = localSetting.PumpStationName ?? "Fuel Station",
+                ["SettingId"] = targetSettingId,
+                ["PumpStationName"] = stationDisplayName,
+                ["StationName"] = stationDisplayName,
+                ["LastUpdated"] = SyncTimestampHelper.FormatUtcIso(lastUpdatedValue),
                 ["PumpMappingsJson"] = localSetting.PumpMappingsJson,
                 ["PumpConnectionRulesJson"] = localSetting.PumpConnectionRulesJson,
                 ["TankDefinitionsJson"] = localSetting.TankDefinitionsJson,
@@ -2470,6 +4058,8 @@ public class SyncEngine
                 ["updated_at"] = DateTime.UtcNow.ToString("o")
             };
 
+            StripKnownMissingColumns("Settings", payload);
+
             var json = JsonConvert.SerializeObject(payload);
             var response = await _httpClient.SendRequestAsync(HttpMethod.Post, "Settings", json, isUpsert: true, onConflict: "SyncGuid");
 
@@ -2481,6 +4071,7 @@ public class SyncEngine
                 if (colMatch.Success)
                 {
                     var missingCol = colMatch.Groups[1].Value;
+                    RecordKnownMissingColumn("Settings", missingCol);
                     _logger.Warning("Supabase Settings table is missing column '{Col}'. Stripping and retrying push...", missingCol);
                     payload.Remove(missingCol);
                     json = JsonConvert.SerializeObject(payload);
@@ -2499,17 +4090,36 @@ public class SyncEngine
                 response = await _httpClient.SendRequestAsync(HttpMethod.Post, "Settings", json, isUpsert: true, onConflict: "station_id");
             }
 
+            bool patchUpdatedAnyRow = false;
             if (!response.IsSuccessStatusCode)
             {
                 _logger.Warning("PushStationSnapshotToCloudAsync retrying via direct PATCH Settings?station_id=eq.{StationId}...", stationId);
-                response = await _httpClient.SendRequestAsync(HttpMethod.Patch, $"Settings?station_id=eq.{stationId}", json);
-                if (!response.IsSuccessStatusCode)
+                var patchResponse = await _httpClient.SendRequestAsync(HttpMethod.Patch, $"Settings?station_id=eq.{encodedStationId}", json, returnRepresentation: true);
+                if (!patchResponse.IsSuccessStatusCode)
                 {
-                    response = await _httpClient.SendRequestAsync(HttpMethod.Patch, $"Settings?StationId=eq.{stationId}", json);
+                    patchResponse = await _httpClient.SendRequestAsync(HttpMethod.Patch, $"Settings?StationId=eq.{encodedStationId}", json, returnRepresentation: true);
+                }
+
+                if (patchResponse.IsSuccessStatusCode)
+                {
+                    var patchBody = await patchResponse.Content.ReadAsStringAsync();
+                    patchUpdatedAnyRow = DidPatchUpdateRows(patchBody);
+                    if (patchUpdatedAnyRow)
+                    {
+                        response = patchResponse;
+                    }
+                    else
+                    {
+                        _logger.Warning("PushStationSnapshotToCloudAsync PATCH returned success with 0 updated rows for station {StationId}. Falling through to insert.", stationId);
+                    }
+                }
+                else
+                {
+                    response = patchResponse;
                 }
             }
 
-            if (!response.IsSuccessStatusCode)
+            if (!response.IsSuccessStatusCode && !patchUpdatedAnyRow)
             {
                 _logger.Warning("PushStationSnapshotToCloudAsync retrying via plain POST Settings...");
                 response = await _httpClient.SendRequestAsync(HttpMethod.Post, "Settings", json, isUpsert: false);
@@ -2565,10 +4175,11 @@ public class SyncEngine
             _httpClient.Configure(settings.SupabaseUrl, settings.SupabaseApiKey);
 
             _logger.Information("Pulling station snapshot from Supabase for Station {StationId}...", stationId);
-            var response = await _httpClient.SendRequestAsync(HttpMethod.Get, $"Settings?station_id=eq.{stationId}&order=updated_at.desc&limit=1");
+            var encodedStationId = Uri.EscapeDataString(stationId);
+            var response = await _httpClient.SendRequestAsync(HttpMethod.Get, $"Settings?station_id=eq.{encodedStationId}&order=updated_at.desc&limit=1");
             if (!response.IsSuccessStatusCode)
             {
-                response = await _httpClient.SendRequestAsync(HttpMethod.Get, $"Settings?StationId=eq.{stationId}&order=updated_at.desc&limit=1");
+                response = await _httpClient.SendRequestAsync(HttpMethod.Get, $"Settings?StationId=eq.{encodedStationId}&order=updated_at.desc&limit=1");
             }
 
             if (!response.IsSuccessStatusCode)
@@ -2591,7 +4202,9 @@ public class SyncEngine
             using var scope = _serviceProvider.CreateScope();
             using var context = scope.ServiceProvider.GetRequiredService<FuelProDbContext>();
 
-            var localSetting = await context.Settings.FirstOrDefaultAsync();
+            var localSetting = await context.Settings
+                .OrderBy(s => s.SettingId)
+                .FirstOrDefaultAsync();
             if (localSetting == null)
             {
                 localSetting = new Setting();
@@ -2600,6 +4213,49 @@ public class SyncEngine
 
             if (TryGetDictValue(dict, "StationName", out var snVal) && snVal != null)
                 localSetting.PumpStationName = snVal.ToString()!;
+            else if (TryGetDictValue(dict, "PumpStationName", out var psnVal) && psnVal != null)
+                localSetting.PumpStationName = psnVal.ToString()!;
+
+            // Persist localSetting early if new so its SettingId can be mapped cleanly to remote SyncGuid
+            if (localSetting.SettingId == 0)
+            {
+                await context.SaveChangesAsync();
+            }
+
+            if (TryGetDictValue(dict, "SyncGuid", out var pulledSgVal) && pulledSgVal != null && !string.IsNullOrWhiteSpace(pulledSgVal.ToString()))
+            {
+                var pulledGuid = pulledSgVal.ToString()!.Trim();
+                var allSettingsMaps = await context.SyncIdMappings
+                    .Where(m => m.TableName == "Settings")
+                    .OrderBy(m => m.Id)
+                    .ToListAsync();
+                var existingGuidOwner = allSettingsMaps
+                    .FirstOrDefault(m => string.Equals(m.RemoteGuid, pulledGuid, StringComparison.OrdinalIgnoreCase));
+
+                if (existingGuidOwner == null)
+                {
+                    var existingSettingMap = allSettingsMaps.FirstOrDefault(m => m.LocalId == localSetting.SettingId);
+                    if (existingSettingMap == null)
+                    {
+                        context.SyncIdMappings.Add(new SyncIdMapping
+                        {
+                            TableName = "Settings",
+                            LocalId = localSetting.SettingId,
+                            RemoteGuid = pulledGuid
+                        });
+                    }
+                    else if (!string.Equals(existingSettingMap.RemoteGuid, pulledGuid, StringComparison.OrdinalIgnoreCase))
+                    {
+                        existingSettingMap.RemoteGuid = pulledGuid;
+                    }
+                }
+                else if (existingGuidOwner.LocalId != localSetting.SettingId)
+                {
+                    _logger.Warning(
+                        "PullStationSnapshotFromCloudAsync preserved existing SyncIdMapping ownership (LocalId={OwnerLocalId}) for remote Settings SyncGuid {SyncGuid}.",
+                        existingGuidOwner.LocalId, pulledGuid);
+                }
+            }
 
             // 1. Tanks
             if (TryGetDictValue(dict, "TankDefinitionsJson", out var tanksJsonObj) && tanksJsonObj != null)
@@ -2651,56 +4307,14 @@ public class SyncEngine
                 }
             }
 
-            // 2. Collection Types
+            // 2. Collection Types (preserve shift enable flags & OTP configuration)
             if (TryGetDictValue(dict, "CollectionTypesJson", out var ctJsonObj) && ctJsonObj != null)
             {
                 var ctJson = ctJsonObj.ToString();
                 if (!string.IsNullOrWhiteSpace(ctJson))
                 {
                     localSetting.CollectionTypesJson = ctJson;
-                    var types = JsonConvert.DeserializeObject<List<CollectionTypeMaster>>(ctJson);
-                    if (types != null && types.Count > 0)
-                    {
-                        var existingCts = await context.CollectionTypes.ToListAsync();
-                        var processedCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-                        foreach (var ct in types)
-                        {
-                            var existingCt = existingCts.FirstOrDefault(x => string.Equals(x.Code, ct.Code, StringComparison.OrdinalIgnoreCase));
-                            if (existingCt != null)
-                            {
-                                existingCt.DisplayName = ct.DisplayName;
-                                existingCt.Category = ct.Category;
-                                existingCt.HasTidBatch = ct.HasTidBatch;
-                                existingCt.DisplayOrder = ct.DisplayOrder;
-                                existingCt.IsActive = ct.IsActive;
-                                processedCodes.Add(existingCt.Code);
-                            }
-                            else
-                            {
-                                context.CollectionTypes.Add(new CollectionTypeMaster
-                                {
-                                    Code = ct.Code,
-                                    DisplayName = ct.DisplayName,
-                                    Category = ct.Category,
-                                    HasTidBatch = ct.HasTidBatch,
-                                    DisplayOrder = ct.DisplayOrder,
-                                    IsActive = ct.IsActive,
-                                    IsSystem = ct.IsSystem,
-                                    CreatedAt = DateTime.Now
-                                });
-                                processedCodes.Add(ct.Code);
-                            }
-                        }
-
-                        foreach (var existing in existingCts)
-                        {
-                            if (!processedCodes.Contains(existing.Code))
-                            {
-                                context.CollectionTypes.Remove(existing);
-                            }
-                        }
-                    }
+                    await SyncCollectionTypesFromJsonAsync(context, ctJson, removeMissingNonSystem: false);
                 }
             }
 
@@ -2909,6 +4523,114 @@ public class SyncEngine
     }
 
     /// <summary>
+    /// Matches an incoming remote DsmUser against local DsmUsers using station-aware natural-key verification.
+    /// Prefers EmployeeCode with verification, checks MobileNumber/AuthUserId for consistency, and protects against ambiguity.
+    /// </summary>
+    private async Task<DsmUser?> MatchLocalDsmUserAsync(
+        FuelProDbContext context,
+        string? remoteEmpCode,
+        string? remoteMobile,
+        string? remoteAuthUser,
+        string? remoteFullName,
+        string? remoteStationId,
+        string activeStationId)
+    {
+        // 1. Station context verification
+        if (!string.IsNullOrEmpty(remoteStationId) && !string.IsNullOrEmpty(activeStationId) &&
+            !string.Equals(remoteStationId, activeStationId, StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.Warning("Refusing DsmUser natural-key match: remote station {RemoteStation} does not match active station {ActiveStation}.",
+                remoteStationId, activeStationId);
+            return null;
+        }
+
+        var localUsers = await context.DsmUsers.ToListAsync();
+        if (localUsers.Count == 0) return null;
+
+        DsmUser? matchedUser = null;
+
+        // 2. Primary: Match by EmployeeCode with verification
+        if (!string.IsNullOrEmpty(remoteEmpCode))
+        {
+            var empMatches = localUsers
+                .Where(u => string.Equals(u.EmployeeCode?.Trim(), remoteEmpCode, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (empMatches.Count == 1)
+            {
+                var candidate = empMatches[0];
+                bool mobileConflict = !string.IsNullOrEmpty(remoteMobile) && !string.IsNullOrEmpty(candidate.MobileNumber) &&
+                    !string.Equals(candidate.MobileNumber.Trim(), remoteMobile, StringComparison.OrdinalIgnoreCase);
+                bool authConflict = !string.IsNullOrEmpty(remoteAuthUser) && !string.IsNullOrEmpty(candidate.AuthUserId) &&
+                    !string.Equals(candidate.AuthUserId.Trim(), remoteAuthUser, StringComparison.OrdinalIgnoreCase);
+
+                if (!mobileConflict && !authConflict)
+                {
+                    matchedUser = candidate;
+                }
+                else
+                {
+                    _logger.Warning("DsmUsers match by EmployeeCode={EmpCode} rejected due to conflicting MobileNumber or AuthUserId. Candidate: {CandName}, Remote: {RemoteName}",
+                        remoteEmpCode, candidate.FullName, remoteFullName);
+                }
+            }
+            else if (empMatches.Count > 1)
+            {
+                // Disambiguate using MobileNumber, AuthUserId, or FullName
+                var disambiguated = empMatches.Where(u =>
+                    (!string.IsNullOrEmpty(remoteMobile) && string.Equals(u.MobileNumber?.Trim(), remoteMobile, StringComparison.OrdinalIgnoreCase)) ||
+                    (!string.IsNullOrEmpty(remoteAuthUser) && string.Equals(u.AuthUserId?.Trim(), remoteAuthUser, StringComparison.OrdinalIgnoreCase)) ||
+                    (!string.IsNullOrEmpty(remoteFullName) && string.Equals(u.FullName?.Trim(), remoteFullName, StringComparison.OrdinalIgnoreCase))
+                ).ToList();
+
+                if (disambiguated.Count == 1)
+                {
+                    matchedUser = disambiguated[0];
+                }
+                else
+                {
+                    _logger.Warning("DsmUsers match for EmployeeCode={EmpCode} is ambiguous ({Count} candidates). Skipping adoption.", remoteEmpCode, empMatches.Count);
+                }
+            }
+        }
+
+        // 3. Secondary: Match by MobileNumber (if not matched by EmployeeCode)
+        if (matchedUser == null && !string.IsNullOrEmpty(remoteMobile))
+        {
+            var mobileMatches = localUsers
+                .Where(u => string.Equals(u.MobileNumber?.Trim(), remoteMobile, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (mobileMatches.Count == 1)
+            {
+                var candidate = mobileMatches[0];
+                bool authConflict = !string.IsNullOrEmpty(remoteAuthUser) && !string.IsNullOrEmpty(candidate.AuthUserId) &&
+                    !string.Equals(candidate.AuthUserId.Trim(), remoteAuthUser, StringComparison.OrdinalIgnoreCase);
+
+                if (!authConflict)
+                {
+                    matchedUser = candidate;
+                }
+            }
+        }
+
+        // 4. Tertiary: Match by AuthUserId (if not matched yet)
+        if (matchedUser == null && !string.IsNullOrEmpty(remoteAuthUser))
+        {
+            var authMatches = localUsers
+                .Where(u => string.Equals(u.AuthUserId?.Trim(), remoteAuthUser, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (authMatches.Count == 1)
+            {
+                matchedUser = authMatches[0];
+            }
+        }
+
+        return matchedUser;
+    }
+
+    /// <summary>
     /// On-demand pulls a referenced parent record from Supabase by its SyncGuid,
     /// inserting it into the local database and registering its local ID.
     /// </summary>
@@ -2952,7 +4674,7 @@ public class SyncEngine
                         return null;
                     }
 
-                    var remoteDate = Convert.ToDateTime(mappedDateValue).Date;
+                    var remoteDate = SyncTimestampHelper.ParseBusinessDate(mappedDateValue);
                     var cycleService = new ShiftCycleService();
                     var remoteType = cycleService.NormalizeShiftType(mappedTypeValue.ToString()!);
                     var localType = cycleService.NormalizeShiftType(mappedShift.ShiftType);
@@ -2978,7 +4700,7 @@ public class SyncEngine
                         TryGetDictValue(pDict, "ShiftType", out var knownTypeValue) && knownTypeValue != null)
                     {
                         var cycleService = new ShiftCycleService();
-                        if (mappedShift.ShiftDate.Date == Convert.ToDateTime(knownDateValue).Date &&
+                        if (mappedShift.ShiftDate.Date == SyncTimestampHelper.ParseBusinessDate(knownDateValue) &&
                             string.Equals(
                                 cycleService.NormalizeShiftType(mappedShift.ShiftType),
                                 cycleService.NormalizeShiftType(knownTypeValue.ToString()!),
@@ -2999,9 +4721,61 @@ public class SyncEngine
                     return null;
 
                 var json = await response.Content.ReadAsStringAsync();
-                var records = JsonConvert.DeserializeObject<List<Dictionary<string, object?>>>(json);
+                var records = JsonConvert.DeserializeObject<List<Dictionary<string, object?>>>(json, PullJsonSettings);
                 if (records == null || records.Count == 0) return null;
                 pDict = records[0];
+            }
+
+            // DsmUsers natural-key reconciliation: check for existing local record before blind insert
+            if (parentTableName == "DsmUsers")
+            {
+                var remoteEmpCode = TryGetDictValue(pDict, "EmployeeCode", out var ec) && ec != null ? ec.ToString()!.Trim() : null;
+                var remoteMobile = TryGetDictValue(pDict, "MobileNumber", out var mn) && mn != null ? mn.ToString()!.Trim() : null;
+                var remoteAuthUser = TryGetDictValue(pDict, "AuthUserId", out var au) && au != null ? au.ToString()!.Trim() : null;
+                var remoteFullName = TryGetDictValue(pDict, "FullName", out var fn) && fn != null ? fn.ToString()!.Trim() : null;
+                string? remoteStation = null;
+                if (TryGetDictValue(pDict, "station_id", out var st1) && st1 != null) remoteStation = st1.ToString()?.Trim();
+                else if (TryGetDictValue(pDict, "StationId", out var st2) && st2 != null) remoteStation = st2.ToString()?.Trim();
+
+                var matchedLocalUser = await MatchLocalDsmUserAsync(
+                    context, remoteEmpCode, remoteMobile, remoteAuthUser, remoteFullName, remoteStation, settings.StationId);
+
+                if (matchedLocalUser != null)
+                {
+                    int matchedId = matchedLocalUser.DsmUserId;
+                    if (!guidToLocal.ContainsKey(parentTableName))
+                        guidToLocal[parentTableName] = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                    guidToLocal[parentTableName][parentGuid] = matchedId;
+
+                    var existingMap = await context.SyncIdMappings
+                        .FirstOrDefaultAsync(m => m.TableName == parentTableName && m.RemoteGuid == parentGuid);
+                    if (existingMap == null)
+                    {
+                        context.SyncIdMappings.Add(new SyncIdMapping
+                        {
+                            TableName = parentTableName,
+                            RemoteGuid = parentGuid,
+                            LocalId = matchedId
+                        });
+                        await context.SaveChangesAsync();
+                    }
+                    else if (existingMap.LocalId != matchedId)
+                    {
+                        existingMap.LocalId = matchedId;
+                        await context.SaveChangesAsync();
+                    }
+
+                    _logger.Information("Resolved existing local DsmUser '{FullName}' (LocalId={Id}, EmployeeCode={EmpCode}) for remote SyncGuid={Guid}",
+                        matchedLocalUser.FullName, matchedId, matchedLocalUser.EmployeeCode, parentGuid);
+                    return matchedId;
+                }
+
+                // If mobile number already exists locally but was ambiguous or unverified, do not blind-insert
+                if (!string.IsNullOrEmpty(remoteMobile) && await context.DsmUsers.AnyAsync(u => u.MobileNumber == remoteMobile))
+                {
+                    _logger.Warning("Refusing to blind-insert DsmUser for SyncGuid={Guid}: mobile number {Mobile} already exists locally but could not be unambiguously matched.", parentGuid, remoteMobile);
+                    return null;
+                }
             }
 
             // Resolve grandparent FKs on the parent if needed
@@ -3051,7 +4825,7 @@ public class SyncEngine
                         var targetType = Nullable.GetUnderlyingType(prop.ClrType) ?? prop.ClrType;
                         object? converted;
                         if (targetType == typeof(DateTime))
-                            converted = DateTime.Parse(val.ToString()!);
+                            converted = SyncTimestampHelper.ParseForPull(parentEntityType.ClrType, prop.Name, val);
                         else if (targetType == typeof(Guid))
                             converted = Guid.Parse(val.ToString()!);
                         else if (targetType.IsEnum)
@@ -3098,7 +4872,7 @@ public class SyncEngine
     /// Gets an existing SyncGuid for a record, or creates and persists a new one.
     /// Also updates the in-memory localToGuid dictionary.
     /// </summary>
-    private async Task<string> GetOrCreateSyncGuidAsync(
+    internal async Task<string> GetOrCreateSyncGuidAsync(
         FuelProDbContext context,
         Dictionary<string, Dictionary<int, string>> localToGuid,
         string tableName,
@@ -3120,8 +4894,48 @@ public class SyncEngine
             return existing.RemoteGuid;
         }
 
-        // Generate new GUID
+        // Generate new GUID (deterministic canonical GUID for Shifts to guarantee cross-computer consistency)
         var newGuid = Guid.NewGuid().ToString();
+        if (tableName == "Shifts")
+        {
+            var shift = await context.Shifts.FindAsync(localId);
+            if (shift != null)
+            {
+                var normType = DeterministicGuid.NormalizeShiftType(shift.ShiftType);
+
+                // 1. Check if ANY shift for the exact same (ShiftDate, normalized ShiftType)
+                // already has a RemoteGuid in SyncIdMappings (e.g. historical random GUID).
+                var existingSameShiftMapping = await (
+                    from s in context.Shifts
+                    join m in context.SyncIdMappings on s.ShiftId equals m.LocalId
+                    where m.TableName == "Shifts" && s.ShiftDate.Date == shift.ShiftDate.Date
+                    select new { s.ShiftId, s.ShiftType, m.RemoteGuid }
+                ).ToListAsync();
+
+                var matchingHistorical = existingSameShiftMapping
+                    .FirstOrDefault(x => DeterministicGuid.NormalizeShiftType(x.ShiftType) == normType);
+
+                if (matchingHistorical != null && !string.IsNullOrEmpty(matchingHistorical.RemoteGuid))
+                {
+                    _logger.Information("Reusing existing RemoteGuid {Guid} for Shift {Date:yyyy-MM-dd} {Type} (LocalId={Id})",
+                        matchingHistorical.RemoteGuid, shift.ShiftDate, normType, localId);
+                    localToGuid[tableName][localId] = matchingHistorical.RemoteGuid;
+                    return matchingHistorical.RemoteGuid;
+                }
+
+                // 2. Generate canonical deterministic GUID based on stationId, date, and normalized shift type
+                var canonicalGuid = DeterministicGuid.CreateCanonicalShiftGuid(settings.StationId, shift.ShiftDate, normType);
+                var existingCanonicalMapping = await context.SyncIdMappings
+                    .FirstOrDefaultAsync(m => m.TableName == "Shifts" && m.RemoteGuid == canonicalGuid);
+                if (existingCanonicalMapping != null)
+                {
+                    localToGuid[tableName][localId] = canonicalGuid;
+                    return canonicalGuid;
+                }
+                newGuid = canonicalGuid;
+            }
+        }
+
         context.SyncIdMappings.Add(new SyncIdMapping
         {
             TableName = tableName,
@@ -3215,8 +5029,16 @@ public class SyncEngine
             if (isTestEnv && tableName == "PaymentCollections" && testExcludeCols.Contains(property.Name)) continue;
             if (tableName == "DsmPumpAssignments" && property.Name == "CompletedDate") continue;
             if (tableName == "DsmPersonalDebtorRepayments" && (property.Name == "CardBatch" || property.Name == "CardTid")) continue;
-            
-            values[property.Name] = entry.Property(property.Name).CurrentValue;
+
+            var propVal = entry.Property(property.Name).CurrentValue;
+            if (propVal is DateTime dtVal)
+            {
+                values[property.Name] = SyncTimestampHelper.FormatForPush(entity.GetType(), property.Name, dtVal);
+            }
+            else
+            {
+                values[property.Name] = propVal;
+            }
         }
         return values;
     }
@@ -3261,6 +5083,105 @@ public class SyncEngine
         if (dict.ContainsKey(noUnderscore)) { value = dict[noUnderscore]; return true; }
 
         value = null;
+        return false;
+    }
+
+    private static Dictionary<string, object?>? SelectDeterministicRemoteSettingsRow(
+        List<Dictionary<string, object?>>? rows,
+        string? preferredLocalSyncGuid,
+        IReadOnlyDictionary<string, SyncIdMapping> mappingByRemoteGuid,
+        out int candidateCount)
+    {
+        candidateCount = 0;
+        if (rows == null || rows.Count == 0)
+        {
+            return null;
+        }
+
+        var validRows = new List<(Dictionary<string, object?> Row, string SyncGuid, DateTime UpdatedAt)>();
+        foreach (var rawRow in rows)
+        {
+            if (rawRow == null) continue;
+            var dict = new Dictionary<string, object?>(rawRow, StringComparer.OrdinalIgnoreCase);
+            if (!TryGetDictValue(dict, "SyncGuid", out var sgVal) || sgVal == null) continue;
+            var sg = sgVal.ToString()?.Trim();
+            if (string.IsNullOrWhiteSpace(sg)) continue;
+
+            var updatedAt = DateTime.MinValue;
+            if (TryGetDictValue(dict, "updated_at", out var utVal) && utVal != null &&
+                DateTime.TryParse(utVal.ToString(), null, System.Globalization.DateTimeStyles.RoundtripKind, out var parsedUt))
+            {
+                updatedAt = parsedUt.ToUniversalTime();
+            }
+            validRows.Add((dict, sg, updatedAt));
+        }
+
+        candidateCount = validRows.Count;
+        if (validRows.Count == 0)
+        {
+            // Fallback to first row if no SyncGuid column present
+            return new Dictionary<string, object?>(rows[0], StringComparer.OrdinalIgnoreCase);
+        }
+
+        // Order deterministically: newest updated_at first, then lexical SyncGuid tie-breaker
+        var ordered = validRows
+            .OrderByDescending(r => r.UpdatedAt)
+            .ThenBy(r => r.SyncGuid, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        // 1. Prefer remote row matching the current local Settings record's existing SyncIdMapping
+        if (!string.IsNullOrWhiteSpace(preferredLocalSyncGuid))
+        {
+            var preferredMatch = ordered.FirstOrDefault(r =>
+                string.Equals(r.SyncGuid, preferredLocalSyncGuid.Trim(), StringComparison.OrdinalIgnoreCase));
+            if (preferredMatch.Row != null)
+            {
+                return preferredMatch.Row;
+            }
+        }
+
+        // 2. Otherwise prefer the newest remote row that already owns a SyncIdMapping in SQLite
+        var mappedMatch = ordered.FirstOrDefault(r => mappingByRemoteGuid.ContainsKey(r.SyncGuid));
+        if (mappedMatch.Row != null)
+        {
+            return mappedMatch.Row;
+        }
+
+        // 3. Otherwise return the newest remote row deterministically
+        return ordered[0].Row;
+    }
+
+    private static bool DidPatchUpdateRows(string? patchBody)
+    {
+        if (string.IsNullOrWhiteSpace(patchBody))
+        {
+            return false;
+        }
+
+        var trimmed = patchBody.Trim();
+        if (trimmed == "[]")
+        {
+            return false;
+        }
+
+        try
+        {
+            if (trimmed.StartsWith("["))
+            {
+                var arr = Newtonsoft.Json.Linq.JArray.Parse(trimmed);
+                return arr.Count > 0;
+            }
+            if (trimmed.StartsWith("{"))
+            {
+                var obj = Newtonsoft.Json.Linq.JObject.Parse(trimmed);
+                return obj.Count > 0;
+            }
+        }
+        catch
+        {
+            return false;
+        }
+
         return false;
     }
 }

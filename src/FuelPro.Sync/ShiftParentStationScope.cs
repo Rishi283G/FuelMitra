@@ -17,6 +17,11 @@ public static class ShiftParentStationScope
                $"&station_id=eq.{Uri.EscapeDataString(stationId.Trim())}";
     }
 
+    private static readonly JsonSerializerSettings PullJsonSettings = new()
+    {
+        DateParseHandling = DateParseHandling.None
+    };
+
     public static async Task<Dictionary<string, object?>?> FetchAsync(
         string syncGuid,
         string stationId,
@@ -31,7 +36,7 @@ public static class ShiftParentStationScope
             return null;
 
         var json = await response.Content.ReadAsStringAsync();
-        var records = JsonConvert.DeserializeObject<List<Dictionary<string, object?>>>(json);
+        var records = JsonConvert.DeserializeObject<List<Dictionary<string, object?>>>(json, PullJsonSettings);
         if (records is not { Count: 1 })
             return null;
 

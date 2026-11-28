@@ -63,6 +63,7 @@ public interface INozzleReadingRepository
     Task<Result> SaveReadingsAsync(int dsmEntryId, List<NozzleReading> readings);
     Task<Result<Dictionary<int, double>>> GetPreviousShiftClosingsAsync(DateTime date, string shiftType, int pumpId, int? currentDsmEntryId = null);
     Task<Result<Dictionary<int, PredecessorClosingDetail>>> GetPreviousShiftClosingDetailsAsync(DateTime date, string shiftType, int pumpId, int? currentDsmEntryId = null);
+    Task<(DateTime Date, string ShiftType)> ResolvePreviousShiftAsync(DateTime date, string shiftType);
 }
 
 public interface IPaymentRepository

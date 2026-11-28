@@ -7,7 +7,7 @@ using System.Windows.Threading;
 
 namespace FuelPro.UI.ViewModels;
 
-public partial class OwnerMainWindowViewModel : ObservableObject
+public partial class OwnerMainWindowViewModel : ObservableObject, IDisposable
 {
     private readonly AuthService _authService;
     private readonly ISettingsRepository _settingsRepo;
@@ -67,6 +67,10 @@ public partial class OwnerMainWindowViewModel : ObservableObject
     [ObservableProperty] private bool _isSyncConnected;
 
     private readonly DispatcherTimer _clockTimer;
+    private readonly FuelPro.Sync.SyncEngine _syncEngine;
+    private readonly Action _featureChangedHandler;
+    private readonly Action<FuelPro.Sync.SyncStatusInfo> _syncStatusChangedHandler;
+    private bool _disposed;
 
     public OwnerMainWindowViewModel()
     {
@@ -74,10 +78,11 @@ public partial class OwnerMainWindowViewModel : ObservableObject
         _settingsRepo = App.Services.GetRequiredService<ISettingsRepository>();
         _featureService = App.Services.GetRequiredService<IFeatureToggleService>();
 
-        _featureService.FeatureConfigurationChanged += () =>
+        _featureChangedHandler = () =>
         {
-            System.Windows.Application.Current.Dispatcher.Invoke(NotifyFeaturePropertiesChanged);
+            System.Windows.Application.Current?.Dispatcher?.Invoke(NotifyFeaturePropertiesChanged);
         };
+        _featureService.FeatureConfigurationChanged += _featureChangedHandler;
 
         _clockTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
         _clockTimer.Tick += (_, _) => CurrentDateTime = DateTime.Now.ToString("dd MMM yyyy  hh:mm tt");
@@ -87,16 +92,17 @@ public partial class OwnerMainWindowViewModel : ObservableObject
         _ = LoadStationNameAsync();
 
         // Wire Cloud Sync Status
-        var syncEngine = App.Services.GetRequiredService<FuelPro.Sync.SyncEngine>();
-        syncEngine.SyncStatusChanged += (status) =>
+        _syncEngine = App.Services.GetRequiredService<FuelPro.Sync.SyncEngine>();
+        _syncStatusChangedHandler = (status) =>
         {
-            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+            System.Windows.Application.Current?.Dispatcher?.Invoke(() =>
             {
                 UpdateSyncStatus(status.LastSyncTime, status.PendingRecords, status.IsConnected, status.StatusMessage);
             });
         };
+        _syncEngine.SyncStatusChanged += _syncStatusChangedHandler;
         // Initial sync state update
-        UpdateSyncStatus(syncEngine.CurrentStatus.LastSyncTime, syncEngine.CurrentStatus.PendingRecords, syncEngine.CurrentStatus.IsConnected, syncEngine.CurrentStatus.StatusMessage);
+        UpdateSyncStatus(_syncEngine.CurrentStatus.LastSyncTime, _syncEngine.CurrentStatus.PendingRecords, _syncEngine.CurrentStatus.IsConnected, _syncEngine.CurrentStatus.StatusMessage);
 
         // Default to Dashboard
         NavigateToDashboard();
@@ -270,10 +276,31 @@ public partial class OwnerMainWindowViewModel : ObservableObject
 
     partial void OnCurrentViewChanged(object? oldValue, object? newValue)
     {
-        if (oldValue is IDisposable disposable)
+        if (oldValue is IDisposable disposable && !ReferenceEquals(oldValue, _dashboardViewModel))
         {
             disposable.Dispose();
         }
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        _clockTimer.Stop();
+        _featureService.FeatureConfigurationChanged -= _featureChangedHandler;
+        _syncEngine.SyncStatusChanged -= _syncStatusChangedHandler;
+
+        if (CurrentView is IDisposable currentDisposable)
+        {
+            currentDisposable.Dispose();
+        }
+        if (_dashboardViewModel != null && !ReferenceEquals(_dashboardViewModel, CurrentView))
+        {
+            _dashboardViewModel.Dispose();
+        }
+        _dashboardViewModel = null;
+        GC.SuppressFinalize(this);
     }
 
     /// <summary>

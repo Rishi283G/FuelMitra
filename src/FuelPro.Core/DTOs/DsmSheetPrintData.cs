@@ -159,7 +159,10 @@ public class DsmTestingPrintRow
 
 public class DsmReconciliationPrintBlock
 {
-    public double GrossSales     { get; set; }
+    public double GrossSales            { get; set; }
+    public double TotalSales            { get; set; }
+    public double DebtorRepaymentsAdded { get; set; }
+    public double ExpectedGrossAmount   { get; set; }
     public double TotalCollection { get; set; }
     public double Creditors      { get; set; }
     public double Testing        { get; set; }

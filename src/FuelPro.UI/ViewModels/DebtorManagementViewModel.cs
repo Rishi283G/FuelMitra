@@ -223,6 +223,7 @@ public partial class DebtorManagementViewModel : ObservableObject
     // Transaction editing properties
     [ObservableProperty] private LedgerTransactionRow? _selectedTransaction;
     [ObservableProperty] private bool _isEditingTransaction;
+    [ObservableProperty] private DateTime _editTxDate = DateTime.Today;
     [ObservableProperty] private double _editTxAmount;
     [ObservableProperty] private string? _editTxSlipNumber;
     [ObservableProperty] private string? _editTxVehicleNumber;
@@ -251,12 +252,16 @@ public partial class DebtorManagementViewModel : ObservableObject
     // Debtor totals editing fields
     [ObservableProperty] private double _editTotalDebt;
     [ObservableProperty] private double _editRepaidAmount;
+    [ObservableProperty] private DateTime _editDebtDate = DateTime.Today;
+    [ObservableProperty] private DateTime _editRepaymentDate = DateTime.Today;
     [ObservableProperty] private string _editEntryDetails = "Profile Edit Adjustment";
+    [ObservableProperty] private double _editingDebtorOpeningBalance;
 
-    public double EditOutstandingBalance => EditTotalDebt - EditRepaidAmount;
+    public double EditOutstandingBalance => EditingDebtorOpeningBalance + EditTotalDebt - EditRepaidAmount;
 
     partial void OnEditTotalDebtChanged(double value) => OnPropertyChanged(nameof(EditOutstandingBalance));
     partial void OnEditRepaidAmountChanged(double value) => OnPropertyChanged(nameof(EditOutstandingBalance));
+    partial void OnEditingDebtorOpeningBalanceChanged(double value) => OnPropertyChanged(nameof(EditOutstandingBalance));
 
     // Vehicle edit form state
     [ObservableProperty] private int? _editingVehicleId;
@@ -621,40 +626,113 @@ public partial class DebtorManagementViewModel : ObservableObject
                     foreach (var r in matchingRepayments) r.CreditorName = newName;
                 }
 
-                // Balance adjustments if EditTotalDebt or EditRepaidAmount changed
-                var currentTotalDebt = await context.DebitEntries
+                // Query all existing debit entries for this debtor to determine historical date-partitioned balance
+                var existingDebits = await context.DebitEntries
+                    .Include(d => d.DsmEntry)
+                        .ThenInclude(e => e.Shift)
                     .Where(d => d.DebtorName == newName)
-                    .SumAsync(d => (double?)d.Amount) ?? 0;
+                    .ToListAsync();
 
-                var currentTotalRepaid = await context.CreditorRepayments
+                // Query all existing repayments for this debtor
+                var existingRepayments = await context.CreditorRepayments
                     .Where(r => r.CreditorName == newName)
-                    .SumAsync(r => (double?)r.Amount) ?? 0;
+                    .ToListAsync();
 
-                if (Math.Abs(EditTotalDebt - currentTotalDebt) > 0.01)
+                // 1. Resolve Debit Dates and check for unresolvable dates
+                var debitsWithDate = new List<(DebitEntry Entry, DateTime Date, DateTime CreatedAt)>();
+                foreach (var d in existingDebits)
                 {
-                    double diff = EditTotalDebt - currentTotalDebt;
+                    DateTime rawDate = d.CreatedAt != default
+                        ? d.CreatedAt
+                        : (d.DsmEntry?.Shift?.ShiftDate ?? d.DsmEntry?.CreatedAt ?? default);
+
+                    if (rawDate == default)
+                    {
+                        DebtorStatusMessage = "❌ Cannot calculate historical debt balance: unresolvable transaction date found.";
+                        return;
+                    }
+                    debitsWithDate.Add((d, rawDate.Date, d.CreatedAt != default ? d.CreatedAt : rawDate));
+                }
+
+                // 2. Resolve Repayment Dates and check for unresolvable dates
+                var repaymentsWithDate = new List<(CreditorRepayment Repayment, DateTime Date, DateTime CreatedAt)>();
+                foreach (var r in existingRepayments)
+                {
+                    DateTime rawDate = r.RepaymentDate != default
+                        ? r.RepaymentDate
+                        : (r.CreatedAt != default ? r.CreatedAt : default);
+
+                    if (rawDate == default)
+                    {
+                        DebtorStatusMessage = "❌ Cannot calculate historical repayment balance: unresolvable repayment date found.";
+                        return;
+                    }
+                    repaymentsWithDate.Add((r, rawDate.Date, r.CreatedAt != default ? r.CreatedAt : rawDate));
+                }
+
+                // 3. Date-partitioned Debt Adjustment Calculation
+                DateTime debtTargetDate = EditDebtDate.Date;
+                var debitsOnOrBefore = debitsWithDate.Where(x => x.Date <= debtTargetDate).ToList();
+                double existingDebtOnOrBefore = debitsOnOrBefore.Sum(x => x.Entry.Amount);
+                double debtDiff = EditTotalDebt - existingDebtOnOrBefore;
+
+                if (Math.Abs(debtDiff) > 0.01)
+                {
                     var latestDsm = await context.DsmEntries.OrderByDescending(e => e.CreatedAt).FirstOrDefaultAsync();
                     int dsmId = latestDsm?.DsmEntryId ?? 1;
+
+                    // Ensure deterministic chronological ordering on debtTargetDate:
+                    // The adjustment establishes the target balance AFTER all existing transactions on debtTargetDate.
+                    var sameDayDebits = debitsOnOrBefore.Where(x => x.Date == debtTargetDate).ToList();
+                    DateTime adjustmentCreatedAt;
+                    if (sameDayDebits.Any())
+                    {
+                        var maxSameDayTime = sameDayDebits.Max(x => x.CreatedAt);
+                        adjustmentCreatedAt = maxSameDayTime.AddSeconds(1);
+                    }
+                    else
+                    {
+                        adjustmentCreatedAt = debtTargetDate.Add(DateTime.Now.TimeOfDay);
+                    }
+
                     context.DebitEntries.Add(new DebitEntry
                     {
                         DsmEntryId = dsmId,
                         DebtorName = newName,
-                        Amount = diff,
+                        Amount = debtDiff,
                         PaymentMethod = "Credit",
                         Remarks = string.IsNullOrWhiteSpace(EditEntryDetails) ? "Profile Balance Adjustment" : EditEntryDetails.Trim(),
-                        CreatedAt = DateTime.Now
+                        CreatedAt = adjustmentCreatedAt
                     });
                 }
 
-                if (Math.Abs(EditRepaidAmount - currentTotalRepaid) > 0.01)
+                // 4. Date-partitioned Repayment Adjustment Calculation
+                DateTime repaymentTargetDate = EditRepaymentDate.Date;
+                var repaymentsOnOrBefore = repaymentsWithDate.Where(x => x.Date <= repaymentTargetDate).ToList();
+                double existingRepaymentsOnOrBefore = repaymentsOnOrBefore.Sum(x => x.Repayment.Amount);
+                double repaymentDiff = EditRepaidAmount - existingRepaymentsOnOrBefore;
+
+                if (Math.Abs(repaymentDiff) > 0.01)
                 {
-                    double diff = EditRepaidAmount - currentTotalRepaid;
+                    // Ensure deterministic chronological ordering on repaymentTargetDate:
+                    var sameDayRepayments = repaymentsOnOrBefore.Where(x => x.Date == repaymentTargetDate).ToList();
+                    DateTime adjustmentRepaymentDate;
+                    if (sameDayRepayments.Any())
+                    {
+                        var maxSameDayTime = sameDayRepayments.Max(x => x.CreatedAt);
+                        adjustmentRepaymentDate = maxSameDayTime.AddSeconds(1);
+                    }
+                    else
+                    {
+                        adjustmentRepaymentDate = repaymentTargetDate.Add(DateTime.Now.TimeOfDay);
+                    }
+
                     context.CreditorRepayments.Add(new CreditorRepayment
                     {
                         CreditorName = newName,
-                        Amount = diff,
+                        Amount = repaymentDiff,
                         PaymentMode = "Adjustment",
-                        RepaymentDate = DateTime.Now,
+                        RepaymentDate = adjustmentRepaymentDate,
                         CreatedAt = DateTime.Now,
                         ChequeNo = string.IsNullOrWhiteSpace(EditEntryDetails) ? "Profile Repayment Adjustment" : EditEntryDetails.Trim()
                     });
@@ -717,8 +795,11 @@ public partial class DebtorManagementViewModel : ObservableObject
         EditingDebtorId = row.CreditorId;
         NewDebtorName = row.Name;
         NewDebtorPhone = row.Phone;
+        EditingDebtorOpeningBalance = row.OpeningBalance;
         EditTotalDebt = row.TotalDebt;
         EditRepaidAmount = row.TotalRepayment;
+        EditDebtDate = DateTime.Today;
+        EditRepaymentDate = DateTime.Today;
         EditEntryDetails = "Profile Edit Adjustment";
         IsEditingDebtor = true;
         DebtorFormTitle = "Edit Debtor Profile";
@@ -732,8 +813,11 @@ public partial class DebtorManagementViewModel : ObservableObject
         EditingDebtorId = null;
         NewDebtorName = "";
         NewDebtorPhone = "";
+        EditingDebtorOpeningBalance = 0;
         EditTotalDebt = 0;
         EditRepaidAmount = 0;
+        EditDebtDate = DateTime.Today;
+        EditRepaymentDate = DateTime.Today;
         EditEntryDetails = "Profile Edit Adjustment";
         IsEditingDebtor = false;
         DebtorFormTitle = "Add New Debtor";
@@ -895,9 +979,20 @@ public partial class DebtorManagementViewModel : ObservableObject
             var allDebits = rawDebits
                 .Where(d => !string.IsNullOrWhiteSpace(d.DebtorName) && d.DebtorName.Trim().Equals(name, StringComparison.OrdinalIgnoreCase))
                 .Select(d => {
-                    DateTime date = d.CreatedAt != default
-                        ? d.CreatedAt
-                        : (d.DsmEntry?.Shift?.ShiftDate ?? d.DsmEntry?.CreatedAt ?? DateTime.Today);
+                    bool isManualAdjustment = d.Remarks != null && 
+                        (d.Remarks.StartsWith("Profile", StringComparison.OrdinalIgnoreCase) || 
+                         d.Remarks.IndexOf("Adjustment", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                         d.Remarks.IndexOf("Opening", StringComparison.OrdinalIgnoreCase) >= 0);
+
+                    DateTime? shiftDate = (!isManualAdjustment) ? d.DsmEntry?.Shift?.ShiftDate : null;
+                    DateTime? dsmEntryCreatedAt = d.DsmEntry?.CreatedAt;
+                    DateTime date = (shiftDate.HasValue && shiftDate.Value != default && shiftDate.Value != DateTime.MinValue)
+                        ? shiftDate.Value
+                        : (d.CreatedAt != default && d.CreatedAt != DateTime.MinValue 
+                            ? d.CreatedAt 
+                            : (dsmEntryCreatedAt.HasValue && dsmEntryCreatedAt.Value != default && dsmEntryCreatedAt.Value != DateTime.MinValue 
+                                ? dsmEntryCreatedAt.Value 
+                                : DateTime.Today));
                     return (Date: date, Debit: d, PumpId: d.DsmEntry?.PumpId ?? 0);
                 })
                 .ToList();
@@ -943,7 +1038,7 @@ public partial class DebtorManagementViewModel : ObservableObject
             // 2. Calculate period opening balance before start date:
             // Period Opening Balance = Historical Opening Balance + prior operational debits - prior repayments
             double openingDebits = allDebits.Where(x => x.Date.Date < start).Sum(x => (double)x.Debit.Amount);
-            double openingCredits = allRepayments.Where(r => r.RepaymentDate.Date < start).Sum(r => r.Amount);
+            double openingCredits = allRepayments.Where(r => (r.RepaymentDate != default ? r.RepaymentDate.Date : (r.CreatedAt != default ? r.CreatedAt.Date : DateTime.Today)) < start).Sum(r => r.Amount);
             double openingBalance = historicalOpening + openingDebits - openingCredits;
 
             // Check day lock status
@@ -952,7 +1047,7 @@ public partial class DebtorManagementViewModel : ObservableObject
             var isOwner = auth.CurrentUser?.IsOwner ?? false;
 
             var uniqueDates = allDebits.Select(x => x.Date.Date)
-                .Concat(allRepayments.Select(r => r.RepaymentDate.Date))
+                .Concat(allRepayments.Select(r => (r.RepaymentDate != default ? r.RepaymentDate.Date : (r.CreatedAt != default ? r.CreatedAt.Date : DateTime.Today))))
                 .Distinct()
                 .ToList();
             var dayLocks = new Dictionary<DateTime, bool>();
@@ -995,12 +1090,17 @@ public partial class DebtorManagementViewModel : ObservableObject
                 .ToList();
 
             var currentCredits = allRepayments
-                .Where(r => r.RepaymentDate.Date >= start && r.RepaymentDate.Date <= end)
-                .Select(r => {
+                .Select(r => new {
+                    Repayment = r,
+                    Date = (r.RepaymentDate != default ? r.RepaymentDate.Date : (r.CreatedAt != default ? r.CreatedAt.Date : DateTime.Today))
+                })
+                .Where(x => x.Date >= start && x.Date <= end)
+                .Select(x => {
+                    var r = x.Repayment;
                     bool canEdit = true;
                     return new LedgerTransactionRow
                     {
-                        Date = r.RepaymentDate.Date,
+                        Date = x.Date,
                         Shift = !string.IsNullOrWhiteSpace(r.ShiftNumber) ? r.ShiftNumber : "—",
                         Description = $"Repayment ({r.PaymentMode}){(string.IsNullOrEmpty(r.ChequeNo) ? "" : $" [Ref: {r.ChequeNo}]")}",
                         Debit = 0,
@@ -1010,7 +1110,7 @@ public partial class DebtorManagementViewModel : ObservableObject
                         SlipNumber = r.ChequeNo,
                         Remarks = "Repayment",
                         Amount = r.Amount,
-                        CreatedAt = r.CreatedAt,
+                        CreatedAt = r.CreatedAt != default ? r.CreatedAt : x.Date,
                         CanEdit = canEdit
                     };
                 })
@@ -1221,6 +1321,7 @@ public partial class DebtorManagementViewModel : ObservableObject
     {
         if (tx == null || !tx.CanEdit) return;
         SelectedTransaction = tx;
+        EditTxDate = tx.Date;
         EditTxAmount = tx.Amount;
         EditTxSlipNumber = tx.SlipNumber;
         EditTxVehicleNumber = tx.VehicleNumber;
@@ -1234,6 +1335,7 @@ public partial class DebtorManagementViewModel : ObservableObject
     private void CancelEditTransaction()
     {
         SelectedTransaction = null;
+        EditTxDate = DateTime.Today;
         IsEditingTransaction = false;
         EditReason = "";
         EditTxStatusMessage = "";
@@ -1345,6 +1447,13 @@ public partial class DebtorManagementViewModel : ObservableObject
                     var currentUser = auth.CurrentUser?.Username ?? "Unknown";
 
                     var changes = new Dictionary<string, (string? oldVal, string? newVal)>();
+                    DateTime currentEntryDate = entry.CreatedAt != default ? entry.CreatedAt.Date : SelectedTransaction.Date.Date;
+                    if (EditTxDate.Date != currentEntryDate)
+                    {
+                        changes["CreatedAt"] = (currentEntryDate.ToString("yyyy-MM-dd"), EditTxDate.Date.ToString("yyyy-MM-dd"));
+                        var timeOfDay = entry.CreatedAt != default ? entry.CreatedAt.TimeOfDay : DateTime.Now.TimeOfDay;
+                        entry.CreatedAt = EditTxDate.Date.Add(timeOfDay);
+                    }
                     if (Math.Abs(entry.Amount - EditTxAmount) > 0.01)
                     {
                         changes["Amount"] = (entry.Amount.ToString("F2"), EditTxAmount.ToString("F2"));
@@ -1398,6 +1507,13 @@ public partial class DebtorManagementViewModel : ObservableObject
                     var currentUser = auth.CurrentUser?.Username ?? "Unknown";
 
                     var changes = new Dictionary<string, (string? oldVal, string? newVal)>();
+                    DateTime currentRepaymentDate = repayment.RepaymentDate != default ? repayment.RepaymentDate.Date : SelectedTransaction.Date.Date;
+                    if (EditTxDate.Date != currentRepaymentDate)
+                    {
+                        changes["RepaymentDate"] = (currentRepaymentDate.ToString("yyyy-MM-dd"), EditTxDate.Date.ToString("yyyy-MM-dd"));
+                        var timeOfDay = repayment.RepaymentDate != default ? repayment.RepaymentDate.TimeOfDay : DateTime.Now.TimeOfDay;
+                        repayment.RepaymentDate = EditTxDate.Date.Add(timeOfDay);
+                    }
                     if (Math.Abs(repayment.Amount - EditTxAmount) > 0.01)
                     {
                         changes["Amount"] = (repayment.Amount.ToString("F2"), EditTxAmount.ToString("F2"));
@@ -1434,6 +1550,7 @@ public partial class DebtorManagementViewModel : ObservableObject
 
             IsEditingTransaction = false;
             SelectedTransaction = null;
+            EditTxDate = DateTime.Today;
             EditReason = "";
             EditTxStatusMessage = "";
 
@@ -1724,7 +1841,7 @@ public partial class DebtorManagementViewModel : ObservableObject
 
             var allEntriesResult = await _dsmRepo.GetEntriesForDateRangeAsync(new DateTime(2000, 1, 1), DateTime.Today.AddYears(5));
             var allDebits = allEntriesResult.Success && allEntriesResult.Data != null
-                ? allEntriesResult.Data.SelectMany(e => e.DebitEntries).ToList()
+                ? allEntriesResult.Data.SelectMany(e => e.DebitEntries).Where(d => !string.IsNullOrWhiteSpace(d.DebtorName)).ToList()
                 : new List<DebitEntry>();
 
             var debitsGrouped = allDebits
@@ -1732,11 +1849,31 @@ public partial class DebtorManagementViewModel : ObservableObject
                 .ToDictionary(g => g.Key, g => g.Sum(d => d.Amount));
 
             var repaymentsResult = await _repaymentRepo.GetByDateRangeAsync(new DateTime(2000, 1, 1), DateTime.Today.AddYears(5));
-            var allRepayments = repaymentsResult.Success ? repaymentsResult.Data ?? new List<CreditorRepayment>() : new List<CreditorRepayment>();
+            var allRepayments = repaymentsResult.Success && repaymentsResult.Data != null
+                ? repaymentsResult.Data.Where(r => !string.IsNullOrWhiteSpace(r.CreditorName)
+                    && !r.CreditorName.Contains("DSM Loss", StringComparison.OrdinalIgnoreCase)).ToList()
+                : new List<CreditorRepayment>();
 
             var repaymentsGrouped = allRepayments
                 .GroupBy(r => r.CreditorName.Trim().ToLower())
                 .ToDictionary(g => g.Key, g => g.Sum(r => r.Amount));
+
+            using var summaryCtx = App.Services.GetRequiredService<FuelProDbContext>();
+            var activeOpeningBalances = await summaryCtx.OpeningBalances
+                .AsNoTracking()
+                .Where(o => o.EntityType == "Debtor" && o.IsActive)
+                .ToListAsync();
+            var obByCreditorId = new Dictionary<int, double>();
+            var obByName = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+            foreach (var ob in activeOpeningBalances)
+            {
+                if (ob.CreditorId.HasValue)
+                    obByCreditorId[ob.CreditorId.Value] = ob.Amount;
+                else if (int.TryParse(ob.EntityIdentifier, out var cid))
+                    obByCreditorId[cid] = ob.Amount;
+                else if (!string.IsNullOrWhiteSpace(ob.EntityIdentifier))
+                    obByName[ob.EntityIdentifier.Trim()] = ob.Amount;
+            }
 
             double overallOutstanding = 0;
             int activeCount = 0;
@@ -1745,7 +1882,10 @@ public partial class DebtorManagementViewModel : ObservableObject
                 var key = c.Name.Trim().ToLower();
                 debitsGrouped.TryGetValue(key, out var totalDebt);
                 repaymentsGrouped.TryGetValue(key, out var totalRepayment);
-                var balance = totalDebt - totalRepayment;
+                double openingBal = obByCreditorId.TryGetValue(c.CreditorId, out var obAmt)
+                    ? obAmt
+                    : (obByName.TryGetValue(c.Name.Trim(), out var obNameAmt) ? obNameAmt : 0.0);
+                var balance = openingBal + totalDebt - totalRepayment;
                 if (balance > 0.01)
                 {
                     overallOutstanding += balance;

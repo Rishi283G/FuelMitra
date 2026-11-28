@@ -190,6 +190,8 @@ public partial class CashDenomRow : ObservableObject
 {
     public Action? OnTotalChanged { get; set; }
 
+    private bool _hasNonZeroDenomination;
+
     public string CashType { get; set; } = "Cash1";
     [ObservableProperty] private int? _denom500;
     [ObservableProperty] private int? _denom200;
@@ -199,6 +201,12 @@ public partial class CashDenomRow : ObservableObject
     [ObservableProperty] private int? _denom10;
     [ObservableProperty] private int? _coins;
     [ObservableProperty] private double _totalAmount;
+
+    public bool HasDenominationCounts =>
+        CashType == "Cash1" || CashType == "Cash2"
+            ? (Denom500 ?? 0) > 0 || (Denom200 ?? 0) > 0 || (Denom100 ?? 0) > 0
+            : (Denom500 ?? 0) > 0 || (Denom200 ?? 0) > 0 || (Denom100 ?? 0) > 0
+              || (Denom50 ?? 0) > 0 || (Denom20 ?? 0) > 0 || (Denom10 ?? 0) > 0 || (Coins ?? 0) > 0;
 
     partial void OnDenom500Changed(int? value) => RecalcTotal();
     partial void OnDenom200Changed(int? value) => RecalcTotal();
@@ -213,7 +221,7 @@ public partial class CashDenomRow : ObservableObject
     private void RecalcTotal()
     {
         double sum;
-        if (CashType is "Cash1" or "Cash2")
+        if (CashType == "Cash1" || CashType == "Cash2")
         {
             sum = (Denom500 ?? 0) * 500.0 + (Denom200 ?? 0) * 200.0 + (Denom100 ?? 0) * 100.0;
         }
@@ -222,7 +230,21 @@ public partial class CashDenomRow : ObservableObject
             sum = (Denom500 ?? 0) * 500.0 + (Denom200 ?? 0) * 200.0 + (Denom100 ?? 0) * 100.0
                 + (Denom50 ?? 0) * 50.0 + (Denom20 ?? 0) * 20.0 + (Denom10 ?? 0) * 10.0 + (Coins ?? 0);
         }
-        TotalAmount = sum;
+
+        OnPropertyChanged(nameof(HasDenominationCounts));
+
+        if (sum > 0)
+        {
+            _hasNonZeroDenomination = true;
+            TotalAmount = sum;
+        }
+        else if (_hasNonZeroDenomination)
+        {
+            // Only reset TotalAmount to 0 when clearing previously entered non-zero denominations;
+            // preserve scalar-only TotalAmount when denomination fields were already empty/zero.
+            _hasNonZeroDenomination = false;
+            TotalAmount = 0;
+        }
     }
 }
 
@@ -280,7 +302,10 @@ public partial class DynamicCollectionEntryRow : ObservableObject
         _isRecalculating = true;
         try
         {
-            double total = TidAmount + OtpAmount;
+            double itemized = TidAmount + OtpAmount;
+            double total = (itemized > 0 || HasTidBatch)
+                ? itemized
+                : (ManualAmount ?? 0);
             Amount = total > 0 ? total : (double?)null;
         }
         finally
@@ -296,8 +321,15 @@ public partial class DynamicCollectionEntryRow : ObservableObject
     {
         if (!_isRecalculating)
         {
-            double manual = Math.Max(0, (value ?? 0) - TidAmount - OtpAmount);
-            ManualAmount = manual > 0 ? manual : (double?)null;
+            if (HasTidBatch || TidAmount > 0 || OtpAmount > 0)
+            {
+                double manual = Math.Max(0, (value ?? 0) - TidAmount - OtpAmount);
+                ManualAmount = manual > 0 ? manual : (double?)null;
+            }
+            else
+            {
+                ManualAmount = value;
+            }
         }
         OnPropertyChanged(nameof(SummaryDisplay));
         OnPropertyChanged(nameof(HasTidOrOtp));
@@ -373,6 +405,7 @@ public partial class DsmTidTransactionRow : ObservableObject
 
 public partial class DsmEntryViewModel : ObservableObject, IDisposable
 {
+    private readonly IServiceProvider? _serviceProvider;
     private readonly DsmEntryService _dsmService;
     private readonly DraftService _draftService;
     private readonly IDsmCalculationService _dsmCalculationService;
@@ -393,6 +426,9 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
     private readonly Action _debtorChangedHandler;
     private readonly Action _fuelRatesChangedHandler;
     private readonly Action _dsmEntryChangedHandler;
+    private readonly Action _operationalDataPulledHandler;
+    private readonly FuelPro.Sync.SyncEngine? _syncEngine;
+    private readonly Dictionary<int, double?> _autoFilledAgsClosingReadings = new();
     private bool _disposed;
 
 
@@ -420,8 +456,10 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string _dsmCumulativeShiftSummaryMessage = "";
     [ObservableProperty] private bool _isSaving;
     [ObservableProperty] private bool _isSaved;
+    [ObservableProperty] private bool _isDirty;
+    [ObservableProperty] private bool _isSaveOutcomeUncertain;
     public bool IsNotSaving => !IsSaving;
-    public bool CanSaveCurrentEntry => !IsSaving && !IsSaved;
+    public bool CanSaveCurrentEntry => !IsSaving && !IsSaveOutcomeUncertain && (!IsSaved || IsDirty);
 
     partial void OnIsSavedChanged(bool value)
     {
@@ -435,11 +473,24 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(CanSaveCurrentEntry));
         SaveEntryCommand.NotifyCanExecuteChanged();
     }
+
+    partial void OnIsDirtyChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CanSaveCurrentEntry));
+        SaveEntryCommand.NotifyCanExecuteChanged();
+    }
+
+    partial void OnIsSaveOutcomeUncertainChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CanSaveCurrentEntry));
+        SaveEntryCommand.NotifyCanExecuteChanged();
+    }
     [ObservableProperty] private int? _editingEntryId;
     [ObservableProperty] private string _startTime = "08:00 AM";
     [ObservableProperty] private string _endTime = "08:00 PM";
     private double? _savedEntryGrossSales;
     private bool _isHydratingEntry;
+    private string? _savedFormSnapshot;
 
     public bool HasInProgressEntry
     {
@@ -468,27 +519,83 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
         }
     }
 
+    private bool HasActiveUnsavedEdits()
+    {
+        if (_isEditing) return true;
+        if (IsSaved) return IsDirty;
+        if (!string.IsNullOrWhiteSpace(DsmName)) return true;
+        if (NozzleReadings.Any(r => r.IsManualOpeningOverride || (r.ClosingReading.HasValue && !IsUnmodifiedAutoFilledClosing(r.NozzleNumber, r.ClosingReading.Value)))) return true;
+        if (OtpTransactions.Count > 0) return true;
+        if (TidTransactions.Count > 0) return true;
+        if (Debits.Count > 0) return true;
+        if (Expenses.Count > 0) return true;
+        if (TestingRows.Any(t => t.Litres.HasValue && t.Litres.Value > 0)) return true;
+        if ((Cash1?.TotalAmount ?? 0) > 0 || (Cash2?.TotalAmount ?? 0) > 0 || (Cash3?.TotalAmount ?? 0) > 0) return true;
+        if (DebtorRepayments.Count > 0) return true;
+        if (DynamicCollections.Any(d => (d.Amount.HasValue && d.Amount.Value > 0) || !string.IsNullOrWhiteSpace(d.Tid) || !string.IsNullOrWhiteSpace(d.Batch) || !string.IsNullOrWhiteSpace(d.Otp))) return true;
+        if (PhonePeMorning.HasValue || PhonePeNight.HasValue || PhonePeCardMorning.HasValue || PhonePeCardNight.HasValue ||
+            CreditCardMorning.HasValue || CreditCardNight.HasValue ||
+            PetroCardMorning.HasValue || PetroCardNight.HasValue ||
+            Others.HasValue || CashDeposit.HasValue || CollectionReduction.HasValue) return true;
+        if (!string.IsNullOrWhiteSpace(CardTid) || !string.IsNullOrWhiteSpace(CardBatch) ||
+            !string.IsNullOrWhiteSpace(PhonePeTid) || !string.IsNullOrWhiteSpace(PhonePeBatch) ||
+            !string.IsNullOrWhiteSpace(PetroCardTid) || !string.IsNullOrWhiteSpace(PetroCardBatch)) return true;
+        if (QrPayments.Count > 0 || KhandharePetroleumEntries.Count > 0) return true;
+        return false;
+    }
+
+    private bool IsUnmodifiedAutoFilledClosing(int nozzleNumber, double closingReading)
+    {
+        return _autoFilledAgsClosingReadings.TryGetValue(nozzleNumber, out var autoClosing)
+            && autoClosing.HasValue
+            && Math.Abs(autoClosing.Value - closingReading) <= 0.0001;
+    }
+
+    private static bool CanDispatchTo(Dispatcher? dispatcher)
+    {
+        return dispatcher != null
+            && !dispatcher.CheckAccess()
+            && !dispatcher.HasShutdownStarted
+            && !dispatcher.HasShutdownFinished
+            && dispatcher.Thread.IsAlive;
+    }
+
+    public async Task RefreshOnNavigateAsync()
+    {
+        await LoadShiftEntriesAsync();
+        if (!HasActiveUnsavedEdits() && !IsSaved)
+        {
+            await LoadNozzlesForPumpAsync();
+        }
+    }
+
     // Nozzle readings
     public ObservableCollection<NozzleReadingRow> NozzleReadings { get; } = new();
 
     [ObservableProperty] private string _phonePeDisplayName = "PhonePe";
     [ObservableProperty] private bool _phonePeHasTidBatch = true;
     [ObservableProperty] private bool _phonePeHasOtp;
-    [ObservableProperty] private bool _phonePeIsActive;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsPhonePeScalarVisible))]
+    private bool _phonePeIsActive;
     [ObservableProperty] private bool _phonePeEnableMorning = true;
     [ObservableProperty] private bool _phonePeEnableNight = true;
 
-    [ObservableProperty] private string _creditCardDisplayName = "Credit / Debit Card";
+    [ObservableProperty] private string _creditCardDisplayName = "Pine Labs Card";
     [ObservableProperty] private bool _creditCardHasTidBatch = true;
     [ObservableProperty] private bool _creditCardHasOtp;
-    [ObservableProperty] private bool _creditCardIsActive;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsCreditCardScalarVisible))]
+    private bool _creditCardIsActive;
     [ObservableProperty] private bool _creditCardEnableMorning = true;
     [ObservableProperty] private bool _creditCardEnableNight = true;
 
     [ObservableProperty] private string _petroCardDisplayName = "PetroCard";
     [ObservableProperty] private bool _petroCardHasTidBatch = true;
     [ObservableProperty] private bool _petroCardHasOtp;
-    [ObservableProperty] private bool _petroCardIsActive;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsPetroCardScalarVisible))]
+    private bool _petroCardIsActive;
     [ObservableProperty] private bool _petroCardEnableMorning = true;
     [ObservableProperty] private bool _petroCardEnableNight = true;
 
@@ -496,9 +603,32 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
     public bool IsCreditCardTidOrOtp => CreditCardHasTidBatch || CreditCardHasOtp;
     public bool IsPetroCardTidOrOtp => PetroCardHasTidBatch || PetroCardHasOtp;
 
-    public bool IsPhonePeScalarVisible => PhonePeIsActive && !IsPhonePeTidOrOtp;
-    public bool IsCreditCardScalarVisible => CreditCardIsActive && !IsCreditCardTidOrOtp;
-    public bool IsPetroCardScalarVisible => PetroCardIsActive && !IsPetroCardTidOrOtp;
+    public bool IsPhonePeScalarVisible => PhonePeIsActive 
+        || (PhonePeMorning ?? 0) > 0 
+        || (PhonePeNight ?? 0) > 0 
+        || !string.IsNullOrWhiteSpace(PhonePeTid) 
+        || !string.IsNullOrWhiteSpace(PhonePeTidMorning) 
+        || !string.IsNullOrWhiteSpace(PhonePeBatchMorning)
+        || !string.IsNullOrWhiteSpace(PhonePeTidNight)
+        || !string.IsNullOrWhiteSpace(PhonePeBatchNight);
+
+    public bool IsCreditCardScalarVisible => CreditCardIsActive 
+        || (CreditCardMorning ?? 0) > 0 
+        || (CreditCardNight ?? 0) > 0 
+        || !string.IsNullOrWhiteSpace(CardTid) 
+        || !string.IsNullOrWhiteSpace(CreditCardTidMorning) 
+        || !string.IsNullOrWhiteSpace(CreditCardBatchMorning)
+        || !string.IsNullOrWhiteSpace(CreditCardTidNight)
+        || !string.IsNullOrWhiteSpace(CreditCardBatchNight);
+
+    public bool IsPetroCardScalarVisible => PetroCardIsActive 
+        || (PetroCardMorning ?? 0) > 0 
+        || (PetroCardNight ?? 0) > 0 
+        || !string.IsNullOrWhiteSpace(PetroCardTid) 
+        || !string.IsNullOrWhiteSpace(PetroCardTidMorning) 
+        || !string.IsNullOrWhiteSpace(PetroCardBatchMorning)
+        || !string.IsNullOrWhiteSpace(PetroCardTidNight)
+        || !string.IsNullOrWhiteSpace(PetroCardBatchNight);
 
     public bool IsPhonePeSplitEnabled => IsMorningNightSplitEnabled && PhonePeEnableMorning && PhonePeEnableNight;
     public bool IsCreditCardSplitEnabled => IsMorningNightSplitEnabled && CreditCardEnableMorning && CreditCardEnableNight;
@@ -522,16 +652,29 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
 
     [ObservableProperty] private double? _phonePeCardMorning;
     [ObservableProperty] private double? _phonePeCardNight;
-    [ObservableProperty] private double? _phonePeMorning;
-    [ObservableProperty] private double? _phonePeNight;
-    [ObservableProperty] private double? _creditCardMorning;
-    [ObservableProperty] private double? _creditCardNight;
-    [ObservableProperty] private double? _petroCardMorning;
-    [ObservableProperty] private double? _petroCardNight;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsPhonePeScalarVisible))]
+    private double? _phonePeMorning;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsPhonePeScalarVisible))]
+    private double? _phonePeNight;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsCreditCardScalarVisible))]
+    private double? _creditCardMorning;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsCreditCardScalarVisible))]
+    private double? _creditCardNight;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsPetroCardScalarVisible))]
+    private double? _petroCardMorning;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsPetroCardScalarVisible))]
+    private double? _petroCardNight;
     [ObservableProperty] private double? _others;
     [ObservableProperty] private double? _cashDeposit;
     [ObservableProperty] private double? _collectionReduction;
     [ObservableProperty] private string? _collectionReductionRemark;
+    public bool IsCollectionReductionEnabled => _featureToggleService?.IsFeatureEnabled("Operations_CollectionReduction", true) ?? true;
 
     [ObservableProperty] private string? _cardTid;
     [ObservableProperty] private string? _cardBatch;
@@ -566,6 +709,27 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
     partial void OnOthersChanged(double? value) => RecalculateAll();
     partial void OnCashDepositChanged(double? value) => RecalculateAll();
     partial void OnCollectionReductionChanged(double? value) => RecalculateAll();
+    partial void OnCollectionReductionRemarkChanged(string? value) => UpdateDirtyState();
+    partial void OnStartTimeChanged(string value) => UpdateDirtyState();
+    partial void OnEndTimeChanged(string value) => UpdateDirtyState();
+    partial void OnCardTidChanged(string? value) { OnPropertyChanged(nameof(IsCreditCardScalarVisible)); UpdateDirtyState(); }
+    partial void OnCardBatchChanged(string? value) { OnPropertyChanged(nameof(IsCreditCardScalarVisible)); UpdateDirtyState(); }
+    partial void OnPhonePeTidChanged(string? value) { OnPropertyChanged(nameof(IsPhonePeScalarVisible)); UpdateDirtyState(); }
+    partial void OnPhonePeBatchChanged(string? value) { OnPropertyChanged(nameof(IsPhonePeScalarVisible)); UpdateDirtyState(); }
+    partial void OnPetroCardTidChanged(string? value) { OnPropertyChanged(nameof(IsPetroCardScalarVisible)); UpdateDirtyState(); }
+    partial void OnPetroCardBatchChanged(string? value) { OnPropertyChanged(nameof(IsPetroCardScalarVisible)); UpdateDirtyState(); }
+    partial void OnPhonePeTidMorningChanged(string? value) { OnPropertyChanged(nameof(IsPhonePeScalarVisible)); UpdateDirtyState(); }
+    partial void OnPhonePeBatchMorningChanged(string? value) { OnPropertyChanged(nameof(IsPhonePeScalarVisible)); UpdateDirtyState(); }
+    partial void OnPhonePeTidNightChanged(string? value) { OnPropertyChanged(nameof(IsPhonePeScalarVisible)); UpdateDirtyState(); }
+    partial void OnPhonePeBatchNightChanged(string? value) { OnPropertyChanged(nameof(IsPhonePeScalarVisible)); UpdateDirtyState(); }
+    partial void OnCreditCardTidMorningChanged(string? value) { OnPropertyChanged(nameof(IsCreditCardScalarVisible)); UpdateDirtyState(); }
+    partial void OnCreditCardBatchMorningChanged(string? value) { OnPropertyChanged(nameof(IsCreditCardScalarVisible)); UpdateDirtyState(); }
+    partial void OnCreditCardTidNightChanged(string? value) { OnPropertyChanged(nameof(IsCreditCardScalarVisible)); UpdateDirtyState(); }
+    partial void OnCreditCardBatchNightChanged(string? value) { OnPropertyChanged(nameof(IsCreditCardScalarVisible)); UpdateDirtyState(); }
+    partial void OnPetroCardTidMorningChanged(string? value) { OnPropertyChanged(nameof(IsPetroCardScalarVisible)); UpdateDirtyState(); }
+    partial void OnPetroCardBatchMorningChanged(string? value) { OnPropertyChanged(nameof(IsPetroCardScalarVisible)); UpdateDirtyState(); }
+    partial void OnPetroCardTidNightChanged(string? value) { OnPropertyChanged(nameof(IsPetroCardScalarVisible)); UpdateDirtyState(); }
+    partial void OnPetroCardBatchNightChanged(string? value) { OnPropertyChanged(nameof(IsPetroCardScalarVisible)); UpdateDirtyState(); }
 
     // Dynamic sections
     public ObservableCollection<DynamicCollectionEntryRow> DynamicCollections { get; } = new();
@@ -590,6 +754,7 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
     [ObservableProperty] private CashDenomRow _cash3;
     public ObservableCollection<DsmDebtorRepaymentRow> DebtorRepayments { get; } = new();
     public bool HasDebtorRepayments => DebtorRepayments.Count > 0;
+    public bool IsDebtorRepaymentEnabled => _featureToggleService?.IsFeatureEnabled("Operations_DebtorRepayment", true) ?? true;
     public ObservableCollection<string> AvailableRepaymentModes { get; } = new() { "Cash", "PhonePe", "Google Pay", "Paytm", "Card", "Cheque", "Online" };
 
     // Reconciliation (computed)
@@ -633,7 +798,18 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
     public bool IsPersonalLedgerEnabled => _featureToggleService?.IsFeatureEnabled("Operations_PersonalLedger", true) ?? true;
     public string PersonalLedgerTitle => _featureToggleService?.GetFeatureDisplayName("Operations_PersonalLedger", "Personal Ledger") ?? "Personal Ledger";
     public bool IsOtpMachineTrackingEnabled => _featureToggleService?.IsFeatureEnabled("Operations_OtpMachineTracking", true) ?? true;
+    private void OnCash1Changed()
+    {
+        OnPropertyChanged(nameof(ShowCash1DenominationFields));
+        OnPropertyChanged(nameof(ShowCash1ScalarField));
+        RecalculateAll();
+    }
+
     public bool IsCash3Enabled => (_featureToggleService?.IsFeatureEnabled("Operations_Cash3", true) ?? true) || (Cash3?.TotalAmount ?? 0) > 0;
+    public bool IsCash1DenominationsEnabled => (_featureToggleService?.IsFeatureEnabled("Operations_Cash1", true) ?? true) && (_featureToggleService?.IsFeatureEnabled("Operations_Cash1Denominations", false) ?? false);
+    public bool ShowCash1DenominationFields => IsCash1DenominationsEnabled || (Cash1?.HasDenominationCounts ?? false);
+    public bool ShowCash1ScalarField => !ShowCash1DenominationFields;
+    public bool IsCash2DenominationsEnabled => (_featureToggleService?.IsFeatureEnabled("Operations_Cash2", true) ?? true) && (_featureToggleService?.IsFeatureEnabled("Operations_Cash2Denominations", true) ?? true);
 
     public ObservableCollection<DsmOtpTransactionRow> OtpTransactions { get; } = new();
     public ObservableCollection<string> AvailableOtpCollectionTypes { get; } = new();
@@ -1082,25 +1258,28 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(HasCollectionTypeTotals));
     }
 
-    public DsmEntryViewModel()
+    public DsmEntryViewModel(IServiceProvider? serviceProvider = null)
     {
-        if (App.Services != null)
+        var services = serviceProvider ?? App.Services;
+        _serviceProvider = services;
+        if (services != null)
         {
             try
             {
-                _dsmService = App.Services.GetService<DsmEntryService>();
-                _draftService = App.Services.GetService<DraftService>();
-                _dsmCalculationService = App.Services.GetService<IDsmCalculationService>() ?? new DsmCalculationService();
-                _nozzleRepository = App.Services.GetService<Core.Repositories.INozzleReadingRepository>();
-                _agsImportRepository = App.Services.GetService<IAgsImportRepository>();
-                _dsmProfileRepo = App.Services.GetService<IDsmProfileRepository>();
-                _creditorRepo = App.Services.GetService<ICreditorRepository>();
-                _collectionTypeService = App.Services.GetService<ICollectionTypeService>()!;
-                _featureToggleService = App.Services.GetService<IFeatureToggleService>()!;
-                _stationConfigService = App.Services.GetService<IStationConfigurationService>()!;
-                _shiftCycleService = App.Services.GetService<IShiftCycleService>() ?? new ShiftCycleService();
-                _printService = App.Services.GetService<PrintService>();
-                _repaymentRepo = App.Services.GetService<ICreditorRepaymentRepository>();
+                _dsmService = services.GetService<DsmEntryService>();
+                _draftService = services.GetService<DraftService>();
+                _dsmCalculationService = services.GetService<IDsmCalculationService>() ?? new DsmCalculationService();
+                _nozzleRepository = services.GetService<Core.Repositories.INozzleReadingRepository>();
+                _agsImportRepository = services.GetService<IAgsImportRepository>();
+                _dsmProfileRepo = services.GetService<IDsmProfileRepository>();
+                _creditorRepo = services.GetService<ICreditorRepository>();
+                _collectionTypeService = services.GetService<ICollectionTypeService>()!;
+                _featureToggleService = services.GetService<IFeatureToggleService>()!;
+                _stationConfigService = services.GetService<IStationConfigurationService>()!;
+                _shiftCycleService = services.GetService<IShiftCycleService>() ?? new ShiftCycleService();
+                _printService = services.GetService<PrintService>();
+                _repaymentRepo = services.GetService<ICreditorRepaymentRepository>();
+                _syncEngine = services.GetService<FuelPro.Sync.SyncEngine>();
             }
             catch (ObjectDisposedException)
             {
@@ -1114,13 +1293,13 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
             _shiftCycleService = new ShiftCycleService();
         }
 
-        Cash1 = new CashDenomRow { CashType = "Cash1", OnTotalChanged = RecalculateAll };
+        Cash1 = new CashDenomRow { CashType = "Cash1", OnTotalChanged = OnCash1Changed };
         Cash2 = new CashDenomRow { CashType = "Cash2", OnTotalChanged = RecalculateAll };
         Cash3 = new CashDenomRow { CashType = "Cash3", OnTotalChanged = RecalculateAll };
 
         _featureChangedHandler = () =>
         {
-            System.Windows.Application.Current?.Dispatcher?.Invoke(() =>
+            void ApplyFeatureChange()
             {
                 OnPropertyChanged(nameof(IsMorningNightSplitEnabled));
                 OnPropertyChanged(nameof(MorningLabel));
@@ -1131,8 +1310,24 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
                 OnPropertyChanged(nameof(PersonalLedgerTitle));
                 OnPropertyChanged(nameof(IsOtpMachineTrackingEnabled));
                 OnPropertyChanged(nameof(IsCash3Enabled));
+                OnPropertyChanged(nameof(IsCash1DenominationsEnabled));
+                OnPropertyChanged(nameof(ShowCash1DenominationFields));
+                OnPropertyChanged(nameof(ShowCash1ScalarField));
+                OnPropertyChanged(nameof(IsCash2DenominationsEnabled));
+                OnPropertyChanged(nameof(IsCollectionReductionEnabled));
+                OnPropertyChanged(nameof(IsDebtorRepaymentEnabled));
                 _ = LoadDynamicCollectionTypesAsync();
-            });
+            }
+
+            var dispatcher = System.Windows.Application.Current?.Dispatcher;
+            if (dispatcher != null && !dispatcher.CheckAccess())
+            {
+                dispatcher.BeginInvoke(ApplyFeatureChange);
+            }
+            else
+            {
+                ApplyFeatureChange();
+            }
         };
         if (_featureToggleService != null)
         {
@@ -1259,9 +1454,9 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
         _fuelRatesChangedHandler = () =>
         {
             var dispatcher = System.Windows.Application.Current?.Dispatcher;
-            if (dispatcher != null && !dispatcher.CheckAccess())
+            if (CanDispatchTo(dispatcher))
             {
-                dispatcher.BeginInvoke(async () => await RefreshFuelRatesAsync());
+                dispatcher!.BeginInvoke(async () => await RefreshFuelRatesAsync());
             }
             else
             {
@@ -1272,21 +1467,69 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
 
         _dsmEntryChangedHandler = () =>
         {
-            if (_isEditing || HasInProgressEntry) return;
-            var dispatcher = System.Windows.Application.Current?.Dispatcher;
-            if (dispatcher != null && !dispatcher.CheckAccess())
+            void ApplyDsmEntryChanged()
             {
-                dispatcher.BeginInvoke(() =>
+                if (!_isHydratingEntry)
                 {
-                    if (!_isEditing && !HasInProgressEntry) LoadNozzlesForPump();
-                });
+                    _ = LoadShiftEntriesAsync();
+                }
+                if (!HasActiveUnsavedEdits() && !IsSaved)
+                {
+                    LoadNozzlesForPump();
+                }
+            }
+
+            var dispatcher = System.Windows.Application.Current?.Dispatcher;
+            if (CanDispatchTo(dispatcher))
+            {
+                dispatcher!.BeginInvoke(ApplyDsmEntryChanged);
             }
             else
             {
-                if (!_isEditing && !HasInProgressEntry) LoadNozzlesForPump();
+                ApplyDsmEntryChanged();
             }
         };
         FuelPro.Core.Services.DsmEntryService.DsmEntryChanged += _dsmEntryChangedHandler;
+
+        _operationalDataPulledHandler = () =>
+        {
+            void ApplyOperationalDataPulled()
+            {
+                if (!_isHydratingEntry)
+                {
+                    _ = LoadShiftEntriesAsync();
+                }
+
+                if (HasActiveUnsavedEdits())
+                {
+                    return;
+                }
+
+                if (IsSaved && !IsDirty && !_isEditing)
+                {
+                    // Previously saved entry was already committed; reset completed state so incoming
+                    // remote readings immediately populate the fresh opening meters.
+                    ClearForm();
+                    return;
+                }
+
+                LoadNozzlesForPump();
+            }
+
+            var dispatcher = System.Windows.Application.Current?.Dispatcher;
+            if (CanDispatchTo(dispatcher))
+            {
+                dispatcher!.BeginInvoke(ApplyOperationalDataPulled);
+            }
+            else
+            {
+                ApplyOperationalDataPulled();
+            }
+        };
+        if (_syncEngine != null)
+        {
+            _syncEngine.OperationalDataPulled += _operationalDataPulledHandler;
+        }
 
         // Populate pump options for default selected date
         ReloadPumpOptions();
@@ -1358,14 +1601,44 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
             }
 
             bool hasHistoricalPhonePe = (existingPayment != null && (existingPayment.PhonePe > 0 || existingPayment.PhonePeMorning > 0 || existingPayment.PhonePeNight > 0))
-                || (PhonePeMorning.GetValueOrDefault() > 0 || PhonePeNight.GetValueOrDefault() > 0);
-            bool hasHistoricalCreditCard = (existingPayment != null && (existingPayment.CreditCard > 0 || existingPayment.CreditCardMorning > 0 || existingPayment.CreditCardNight > 0))
-                || (CreditCardMorning.GetValueOrDefault() > 0 || CreditCardNight.GetValueOrDefault() > 0);
-            bool hasHistoricalPetroCard = (existingPayment != null && (existingPayment.PetroCard > 0 || existingPayment.PetroCardMorning > 0 || existingPayment.PetroCardNight > 0))
-                || (PetroCardMorning.GetValueOrDefault() > 0 || PetroCardNight.GetValueOrDefault() > 0);
+                || (PhonePeMorning.GetValueOrDefault() > 0 || PhonePeNight.GetValueOrDefault() > 0)
+                || !string.IsNullOrWhiteSpace(PhonePeTid) || !string.IsNullOrWhiteSpace(PhonePeTidMorning) || !string.IsNullOrWhiteSpace(PhonePeBatchMorning)
+                || !string.IsNullOrWhiteSpace(PhonePeTidNight) || !string.IsNullOrWhiteSpace(PhonePeBatchNight);
 
-            // 1. Resolve built-in PhonePe
-            var ph = allTypes.FirstOrDefault(c => string.Equals(c.Code, "PHONEPE", StringComparison.OrdinalIgnoreCase));
+            bool hasHistoricalCreditCard = (existingPayment != null && (existingPayment.CreditCard > 0 || existingPayment.CreditCardMorning > 0 || existingPayment.CreditCardNight > 0))
+                || (CreditCardMorning.GetValueOrDefault() > 0 || CreditCardNight.GetValueOrDefault() > 0)
+                || !string.IsNullOrWhiteSpace(CardTid) || !string.IsNullOrWhiteSpace(CreditCardTidMorning) || !string.IsNullOrWhiteSpace(CreditCardBatchMorning)
+                || !string.IsNullOrWhiteSpace(CreditCardTidNight) || !string.IsNullOrWhiteSpace(CreditCardBatchNight);
+
+            bool hasHistoricalPetroCard = (existingPayment != null && (existingPayment.PetroCard > 0 || existingPayment.PetroCardMorning > 0 || existingPayment.PetroCardNight > 0))
+                || (PetroCardMorning.GetValueOrDefault() > 0 || PetroCardNight.GetValueOrDefault() > 0)
+                || !string.IsNullOrWhiteSpace(PetroCardTid) || !string.IsNullOrWhiteSpace(PetroCardTidMorning) || !string.IsNullOrWhiteSpace(PetroCardBatchMorning)
+                || !string.IsNullOrWhiteSpace(PetroCardTidNight) || !string.IsNullOrWhiteSpace(PetroCardBatchNight);
+
+            static bool IsPineLabsCardType(CollectionTypeMaster c) =>
+                string.Equals(c.Code, "PINELABS_CARD", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(c.Code, "PINELAB_CARD", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(c.Code, "PINELABS", StringComparison.OrdinalIgnoreCase);
+
+            static bool IsCreditCardType(CollectionTypeMaster c) =>
+                string.Equals(c.Code, "CREDIT_CARD", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(c.Code, "CREDITCARD", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(c.Code, "CREDIT CARD", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(c.Code, "CREDIT_DEBIT_CARD", StringComparison.OrdinalIgnoreCase);
+
+            static bool IsPetroCardType(CollectionTypeMaster c) =>
+                string.Equals(c.Code, "PETROCARD", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(c.Code, "PETRO_CARD", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(c.Code, "PETRO CARD", StringComparison.OrdinalIgnoreCase);
+
+            static bool IsPhonePeType(CollectionTypeMaster c) =>
+                string.Equals(c.Code, "PHONEPE", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(c.Code, "PHONE_PE", StringComparison.OrdinalIgnoreCase);
+
+            // 1. Resolve built-in PhonePe (active-first)
+            var ph = allTypes.FirstOrDefault(c => c.IsActive && IsEnabledForCurrentShift(c) && IsPhonePeType(c))
+                  ?? allTypes.FirstOrDefault(c => c.IsActive && IsPhonePeType(c))
+                  ?? allTypes.FirstOrDefault(c => IsPhonePeType(c));
             if (ph != null)
             {
                 PhonePeDisplayName = ph.DisplayName;
@@ -1383,11 +1656,12 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
                 PhonePeEnableNight = true;
             }
 
-            // 2. Resolve built-in Credit Card
-            var cc = allTypes.FirstOrDefault(c => string.Equals(c.Code, "CREDIT_CARD", StringComparison.OrdinalIgnoreCase)
-                                            || string.Equals(c.Code, "CREDITCARD", StringComparison.OrdinalIgnoreCase)
-                                            || string.Equals(c.Code, "CREDIT CARD", StringComparison.OrdinalIgnoreCase)
-                                            || string.Equals(c.Code, "CREDIT_DEBIT_CARD", StringComparison.OrdinalIgnoreCase));
+            // 2. Resolve built-in Credit Card (prefer active generic CREDIT_CARD; fall back to active PineLabs for display when CREDIT_CARD is inactive)
+            var cc = allTypes.FirstOrDefault(c => c.IsActive && IsEnabledForCurrentShift(c) && IsCreditCardType(c))
+                  ?? allTypes.FirstOrDefault(c => c.IsActive && IsEnabledForCurrentShift(c) && IsPineLabsCardType(c))
+                  ?? allTypes.FirstOrDefault(c => c.IsActive && IsCreditCardType(c))
+                  ?? allTypes.FirstOrDefault(c => c.IsActive && IsPineLabsCardType(c))
+                  ?? allTypes.FirstOrDefault(c => IsCreditCardType(c));
             if (cc != null)
             {
                 CreditCardDisplayName = cc.DisplayName;
@@ -1405,10 +1679,10 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
                 CreditCardEnableNight = true;
             }
 
-            // 3. Resolve built-in PetroCard
-            var pc = allTypes.FirstOrDefault(c => string.Equals(c.Code, "PETROCARD", StringComparison.OrdinalIgnoreCase)
-                                            || string.Equals(c.Code, "PETRO_CARD", StringComparison.OrdinalIgnoreCase)
-                                            || string.Equals(c.Code, "PETRO CARD", StringComparison.OrdinalIgnoreCase));
+            // 3. Resolve built-in PetroCard (active-first)
+            var pc = allTypes.FirstOrDefault(c => c.IsActive && IsEnabledForCurrentShift(c) && IsPetroCardType(c))
+                  ?? allTypes.FirstOrDefault(c => c.IsActive && IsPetroCardType(c))
+                  ?? allTypes.FirstOrDefault(c => IsPetroCardType(c));
             if (pc != null)
             {
                 PetroCardDisplayName = pc.DisplayName;
@@ -1468,9 +1742,29 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
 
             var existingItems = existingPayment?.GetAllItems()?.ToList() ?? new List<PaymentCollectionItem>();
             var matchedCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            if (ph != null) matchedCodes.Add(ph.Code);
-            if (cc != null) matchedCodes.Add(cc.Code);
-            if (pc != null) matchedCodes.Add(pc.Code);
+            if (ph != null)
+            {
+                matchedCodes.Add(ph.Code);
+                matchedCodes.Add("PHONEPE");
+                matchedCodes.Add("PHONE_PE");
+            }
+            if (cc != null)
+            {
+                if (!IsPineLabsCardType(cc))
+                {
+                    matchedCodes.Add(cc.Code);
+                }
+                matchedCodes.Add("CREDIT_CARD");
+                matchedCodes.Add("CREDITCARD");
+                matchedCodes.Add("CREDIT CARD");
+                matchedCodes.Add("CREDIT_DEBIT_CARD");
+            }
+            if (pc != null)
+            {
+                matchedCodes.Add(pc.Code);
+                matchedCodes.Add("PETROCARD");
+                matchedCodes.Add("PETRO_CARD");
+            }
             matchedCodes.Add("CASH_DEPOSIT");
 
             var targetTypes = allTypes
@@ -1550,16 +1844,18 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
                         && string.Equals(nonOtpItems[0].Slot?.Trim(), otpItems[0].Slot?.Trim(), StringComparison.OrdinalIgnoreCase))
                 );
 
+                bool isTidConfigured = t.HasTidBatch || string.Equals(PaymentCollection.NormalizeCollectionTypeCode(t.Code), "PINELABS_CARD", StringComparison.OrdinalIgnoreCase);
+
                 var manualItems = nonOtpItems.Where(item =>
                     !item.IsSyntheticSummary && (
                         (item.TransactionId != null && item.TransactionId.StartsWith("manual-scalar-", StringComparison.OrdinalIgnoreCase))
-                        || (string.IsNullOrWhiteSpace(item.Tid) && string.IsNullOrWhiteSpace(item.Batch) && !string.Equals(PaymentCollection.NormalizeCollectionTypeCode(t.Code), "PINELABS_CARD", StringComparison.OrdinalIgnoreCase))
+                        || (!isTidConfigured && string.IsNullOrWhiteSpace(item.Tid) && string.IsNullOrWhiteSpace(item.Batch))
                     )).ToList();
 
                 var tidItems = nonOtpItems.Where(item =>
                     !item.IsSyntheticSummary &&
                     !(item.TransactionId != null && item.TransactionId.StartsWith("manual-scalar-", StringComparison.OrdinalIgnoreCase)) &&
-                    (!string.IsNullOrWhiteSpace(item.Tid) || !string.IsNullOrWhiteSpace(item.Batch) || string.Equals(PaymentCollection.NormalizeCollectionTypeCode(t.Code), "PINELABS_CARD", StringComparison.OrdinalIgnoreCase))
+                    (!string.IsNullOrWhiteSpace(item.Tid) || !string.IsNullOrWhiteSpace(item.Batch) || isTidConfigured)
                 ).ToList();
 
                 double manualPortion = isSingleAggregateHeader ? 0 : manualItems.Sum(item => item.Amount);
@@ -1727,8 +2023,9 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
                             bool isManualOnly = master != null && master.IsManualOnly;
                             bool isExplicitManualScalar = !string.IsNullOrWhiteSpace(item.TransactionId) && item.TransactionId.StartsWith("manual-scalar-", StringComparison.OrdinalIgnoreCase);
                             bool hasTidOrBatch = !string.IsNullOrWhiteSpace(item.Tid) || !string.IsNullOrWhiteSpace(item.Batch);
+                            bool isTidConfigured = master != null && master.HasTidBatch;
                             bool isTidItem = !isExplicitManualScalar &&
-                                (hasTidOrBatch || string.Equals(normType, "PINELABS_CARD", StringComparison.OrdinalIgnoreCase));
+                                (hasTidOrBatch || string.Equals(normType, "PINELABS_CARD", StringComparison.OrdinalIgnoreCase) || isTidConfigured);
 
                             if (isTidItem && (!PaymentCollection.IsStandardCollectionCode(normType) || normType is "PHONEPE" or "PETROCARD" or "CREDIT_CARD"))
                             {
@@ -1956,6 +2253,7 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
     {
         _ = RefreshConnectedPumpGrossSalesAsync();
         UpdateDsmCumulativeSummary();
+        UpdateDirtyState();
     }
     partial void OnSelectedConnectedPumpChanged(PumpDisplayItem? value)
     {
@@ -1986,9 +2284,10 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
             await ResolveActiveConnectionGroupAsync();
         }
 
-        // Capture entered values to restore later
+        // Capture entered values to restore later only when active unsaved user edits exist
         var tempReadings = new Dictionary<int, (double? Opening, double? Closing, double? Rate, bool Override)>();
-        if (!_isEditing)
+        bool preserveCurrentEdits = !_isEditing && HasActiveUnsavedEdits();
+        if (preserveCurrentEdits)
         {
             foreach (var r in NozzleReadings)
             {
@@ -1996,6 +2295,7 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
             }
         }
 
+        _autoFilledAgsClosingReadings.Clear();
         NozzleReadings.Clear();
         OpeningWarnings.Clear();
         if (SelectedPump == null) return;
@@ -2036,45 +2336,54 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
         }
 
         // Also inspect the current operational shift for earlier completed/approved entries
-        try
+        var activeServices = _serviceProvider ?? App.Services;
+        if (activeServices != null)
         {
-            var currentShiftResult = await App.Services.GetRequiredService<Core.Repositories.IShiftRepository>()
-                .GetShiftAsync(SelectedDate, SelectedShift);
-            if (currentShiftResult.Success && currentShiftResult.Data != null)
+            try
             {
-                var currentEntriesResult = await App.Services.GetRequiredService<IDsmEntryRepository>()
-                    .GetEntriesForShiftAsync(currentShiftResult.Data.ShiftId);
-                if (currentEntriesResult.Success && currentEntriesResult.Data != null)
+                var shiftRepo = activeServices.GetService<Core.Repositories.IShiftRepository>();
+                var entryRepo = activeServices.GetService<IDsmEntryRepository>();
+                if (shiftRepo != null && entryRepo != null)
                 {
-                    var relevantEntries = currentEntriesResult.Data
-                        .Where(e => !EditingEntryId.HasValue || (e.ReconciledToPumpId ?? e.DsmEntryId) < EditingEntryId.Value)
-                        .OrderBy(e => e.CreatedAt)
-                        .ThenBy(e => e.ReconciledToPumpId ?? e.DsmEntryId);
-
-                    foreach (var entry in relevantEntries)
+                    var currentShiftResult = await shiftRepo.GetShiftAsync(SelectedDate, SelectedShift);
+                    if (currentShiftResult.Success && currentShiftResult.Data != null)
                     {
-                        if (entry.NozzleReadings == null) continue;
-                        foreach (var nr in entry.NozzleReadings)
+                        var currentEntriesResult = await entryRepo.GetEntriesForShiftAsync(currentShiftResult.Data.ShiftId);
+                        if (currentEntriesResult.Success && currentEntriesResult.Data != null)
                         {
-                            if (nr.ClosingReading > 0)
+                            var relevantEntries = currentEntriesResult.Data
+                                .Where(e => !EditingEntryId.HasValue || (e.ReconciledToPumpId ?? e.DsmEntryId) < EditingEntryId.Value)
+                                .OrderBy(e => e.CreatedAt)
+                                .ThenBy(e => e.ReconciledToPumpId ?? e.DsmEntryId);
+
+                            foreach (var entry in relevantEntries)
                             {
-                                allPreviousClosings[nr.NozzleNumber] = nr.ClosingReading;
+                                if (entry.NozzleReadings == null) continue;
+                                foreach (var nr in entry.NozzleReadings)
+                                {
+                                    if (nr.ClosingReading > 0)
+                                    {
+                                        allPreviousClosings[nr.NozzleNumber] = nr.ClosingReading;
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
-        }
-        catch (Exception ex)
-        {
-            Serilog.Log.Warning(ex, "Failed to load current shift closings for continuity");
+            catch (Exception ex)
+            {
+                Serilog.Log.Warning(ex, "Failed to load current shift closings for continuity");
+            }
         }
 
         var currentShiftImport = await GetShiftImportAsync(SelectedDate, SelectedShift);
         var currentAgsReadings = currentShiftImport?.NozzleReadings
             .ToDictionary(r => r.NozzleNumber, r => r);
 
-        var (previousShiftDate, previousShiftType) = _shiftCycleService.GetPreviousShift(SelectedDate, SelectedShift);
+        var (previousShiftDate, previousShiftType) = _nozzleRepository != null
+            ? await _nozzleRepository.ResolvePreviousShiftAsync(SelectedDate, SelectedShift)
+            : _shiftCycleService.GetPreviousShift(SelectedDate, SelectedShift);
         var previousShiftImport = previousShiftType != null
             ? await GetShiftImportAsync(previousShiftDate, previousShiftType)
             : null;
@@ -2143,6 +2452,10 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
                 if (temp.Override && temp.Opening.HasValue) openingReading = temp.Opening;
                 if (temp.Closing.HasValue) closingReading = temp.Closing;
                 if (temp.Rate.HasValue) rate = temp.Rate.Value;
+            }
+            else if (hasCurrentAgs && currentAgsRow != null)
+            {
+                _autoFilledAgsClosingReadings[n] = currentAgsRow.ClosingReading;
             }
 
             NozzleReadings.Add(new NozzleReadingRow
@@ -2426,15 +2739,25 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
             // 3. Keyword-based matching for specialized and standard fuel types
             string combined = $"{normFuel} {normTank}".ToUpperInvariant();
 
-            if (combined.Contains("SPEED") || combined.Contains("XP95") || combined.Contains("POWER") || combined.Contains("TURBO") || combined.Contains("EXTRA"))
+            if (combined.Contains("SPEED"))
             {
-                var speedMatch = ratesMap.FirstOrDefault(kv => kv.Value > 0 && (kv.Key.Contains("SPEED", StringComparison.OrdinalIgnoreCase) || kv.Key.Contains("XP95", StringComparison.OrdinalIgnoreCase) || kv.Key.Contains("POWER", StringComparison.OrdinalIgnoreCase)));
+                var speedMatch = ratesMap.FirstOrDefault(kv => kv.Value > 0 && kv.Key.Contains("SPEED", StringComparison.OrdinalIgnoreCase));
                 if (speedMatch.Value > 0) return speedMatch.Value;
+                return 0.0;
+            }
 
-                var ms2Match = ratesMap.FirstOrDefault(kv => kv.Value > 0 && (kv.Key.Contains("MS-II", StringComparison.OrdinalIgnoreCase) || kv.Key.Contains("MS2", StringComparison.OrdinalIgnoreCase) || kv.Key.Contains("20KL II", StringComparison.OrdinalIgnoreCase)));
-                if (ms2Match.Value > 0) return ms2Match.Value;
+            if (combined.Contains("XP95") || combined.Contains("XP-95"))
+            {
+                var xpMatch = ratesMap.FirstOrDefault(kv => kv.Value > 0 && (kv.Key.Contains("XP95", StringComparison.OrdinalIgnoreCase) || kv.Key.Contains("XP-95", StringComparison.OrdinalIgnoreCase)));
+                if (xpMatch.Value > 0) return xpMatch.Value;
+                return 0.0;
+            }
 
-                if (msIIRate > 0) return msIIRate;
+            if (combined.Contains("POWER"))
+            {
+                var pwrMatch = ratesMap.FirstOrDefault(kv => kv.Value > 0 && kv.Key.Contains("POWER", StringComparison.OrdinalIgnoreCase));
+                if (pwrMatch.Value > 0) return pwrMatch.Value;
+                return 0.0;
             }
 
             if (combined.Contains("HSD") || combined.Contains("DIESEL"))
@@ -2445,7 +2768,7 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
 
             if (combined.Contains("MS-II") || combined.Contains("MS2") || combined.Contains("MS_II") || combined.Contains("20KL II"))
             {
-                var ms2Match = ratesMap.FirstOrDefault(kv => kv.Value > 0 && (kv.Key.Contains("MS-II", StringComparison.OrdinalIgnoreCase) || kv.Key.Contains("MS2", StringComparison.OrdinalIgnoreCase) || kv.Key.Contains("20KL II", StringComparison.OrdinalIgnoreCase) || kv.Key.Contains("SPEED", StringComparison.OrdinalIgnoreCase) || kv.Key.Contains("XP95", StringComparison.OrdinalIgnoreCase)));
+                var ms2Match = ratesMap.FirstOrDefault(kv => kv.Value > 0 && (kv.Key.Contains("MS-II", StringComparison.OrdinalIgnoreCase) || kv.Key.Contains("MS2", StringComparison.OrdinalIgnoreCase) || kv.Key.Contains("20KL II", StringComparison.OrdinalIgnoreCase)));
                 if (ms2Match.Value > 0) return ms2Match.Value;
                 if (msIIRate > 0) return msIIRate;
             }
@@ -2463,10 +2786,10 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
             }
         }
 
-        // Fallback to standard 4-rate switch
+        // Fallback to standard 4-rate switch (specialized fuels must never fall back to regular petrol)
         string c = $"{(fuelTypeName ?? "")} {(tankName ?? "")}".ToUpperInvariant();
         if (c.Contains("SPEED") || c.Contains("XP95") || c.Contains("POWER") || c.Contains("TURBO") || c.Contains("EXTRA"))
-            return msIIRate > 0 ? msIIRate : msIRate;
+            return 0.0;
 
         return fuelType switch
         {
@@ -2521,10 +2844,6 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
 
     public void RecalculateAll()
     {
-        if (!_isEditing && IsSaved)
-        {
-            IsSaved = false;
-        }
         TotalLitres = NozzleReadings.Sum(n => n.SaleLitres);
         UpdateFuelTypeSummaries();
         var calc = _dsmCalculationService.Calculate(BuildCalculationDto());
@@ -2555,6 +2874,7 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
         FinalAdjusted = (double)calc.TotalCollection;
         Difference = (double)calc.Mismatch;
         UpdateCollectionTypeTotals();
+        UpdateDirtyState();
     }
 
     private void UpdateFuelTypeSummaries()
@@ -2570,7 +2890,7 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
             var first = g.First();
             var totalLitres = g.Sum(n => n.SaleLitres);
             var rate = g.FirstOrDefault(n => (n.Rate ?? 0) > 0)?.Rate ?? 0;
-            var totalAmount = g.Sum(n => n.Amount);
+            var totalAmount = Math.Round(totalLitres * rate, 2);
 
             FuelTypeSummaries.Add(new FuelTypeReadingSummary
             {
@@ -2584,7 +2904,7 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
-    private void AddDebit() => Debits.Add(new DebitRow(Creditors, RecalculateAll));
+    private void AddDebit() { Debits.Add(new DebitRow(Creditors, RecalculateAll)); RecalculateAll(); }
 
     [RelayCommand]
     private void RemoveDebit(DebitRow? row) { if (row != null) Debits.Remove(row); RecalculateAll(); }
@@ -2595,9 +2915,14 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
         DebtorRepayments.Add(new DsmDebtorRepaymentRow
         {
             PaymentMode = AvailableRepaymentModes.FirstOrDefault() ?? "Cash",
-            OnRowChanged = () => OnPropertyChanged(nameof(HasDebtorRepayments))
+            OnRowChanged = () =>
+            {
+                OnPropertyChanged(nameof(HasDebtorRepayments));
+                UpdateDirtyState();
+            }
         });
         OnPropertyChanged(nameof(HasDebtorRepayments));
+        UpdateDirtyState();
     }
 
     [RelayCommand]
@@ -2607,47 +2932,242 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
         {
             DebtorRepayments.Remove(row);
             OnPropertyChanged(nameof(HasDebtorRepayments));
+            UpdateDirtyState();
         }
     }
 
     [RelayCommand]
-    private void AddExpense() => Expenses.Add(new ExpenseRow { OnRowChanged = RecalculateAll });
+    private void AddExpense() { Expenses.Add(new ExpenseRow { OnRowChanged = RecalculateAll }); RecalculateAll(); }
 
     [RelayCommand]
     private void RemoveExpense(ExpenseRow? row) { if (row != null) Expenses.Remove(row); RecalculateAll(); }
 
     [RelayCommand]
-    private void AddKhandharePetroleumEntry() => KhandharePetroleumEntries.Add(new KhandharePetroleumRow { OnRowChanged = RecalculateAll });
+    private void AddKhandharePetroleumEntry() { KhandharePetroleumEntries.Add(new KhandharePetroleumRow { OnRowChanged = RecalculateAll }); RecalculateAll(); }
 
     [RelayCommand]
     private void RemoveKhandharePetroleumEntry(KhandharePetroleumRow? row) { if (row != null) KhandharePetroleumEntries.Remove(row); RecalculateAll(); }
 
     [RelayCommand]
-    private void AddQrPayment() => QrPayments.Add(new QrPaymentRow { OnRowChanged = RecalculateAll });
+    private void AddQrPayment() { QrPayments.Add(new QrPaymentRow { OnRowChanged = RecalculateAll }); RecalculateAll(); }
 
     [RelayCommand]
     private void RemoveQrPayment(QrPaymentRow? row) { if (row != null) QrPayments.Remove(row); RecalculateAll(); }
 
-    private bool CanSaveEntry() => !IsSaving && !IsSaved;
-
-    [RelayCommand(CanExecute = nameof(CanSaveEntry))]
-    private async Task SaveEntryAsync()
+    public void UpdateDirtyState()
     {
-        if (IsSaving) return;
+        if (_isHydratingEntry || _isEditing) return;
 
-        var validationErrors = ValidateBeforeSave();
-        if (validationErrors.Count > 0)
+        var current = CaptureFormSnapshot();
+        bool isDirty = _savedFormSnapshot != null && !string.Equals(_savedFormSnapshot, current, StringComparison.Ordinal);
+        if (IsDirty != isDirty)
         {
-            ValidationSummary = string.Join(Environment.NewLine, validationErrors);
-            StatusMessage = $"❌ Validation failed.{Environment.NewLine}{ValidationSummary}";
-            MessageBox.Show(ValidationSummary, "Validation Summary", MessageBoxButton.OK, MessageBoxImage.Warning);
+            IsDirty = isDirty;
+        }
+    }
+
+    public string CaptureFormSnapshot()
+    {
+        var sb = new System.Text.StringBuilder(1024);
+
+        // Header
+        sb.Append(SelectedDate.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)).Append('|');
+        sb.Append((SelectedShift ?? string.Empty).Trim()).Append('|');
+        sb.Append((DsmName ?? string.Empty).Trim()).Append('|');
+        sb.Append(SelectedPump?.PumpId ?? 0).Append('|');
+        sb.Append(SelectedConnectedPump?.PumpId ?? 0).Append('|');
+        if (ActiveConnectedPumpIds != null && ActiveConnectedPumpIds.Count > 0)
+        {
+            sb.Append(string.Join(",", ActiveConnectedPumpIds.OrderBy(x => x)));
+        }
+        sb.Append('|');
+        sb.Append((StartTime ?? string.Empty).Trim()).Append('|');
+        sb.Append((EndTime ?? string.Empty).Trim()).Append('|');
+
+        // Nozzles
+        foreach (var n in NozzleReadings.OrderBy(x => x.NozzleNumber))
+        {
+            sb.Append(n.NozzleNumber).Append(':')
+              .Append((n.OpeningReading ?? 0).ToString("F3", System.Globalization.CultureInfo.InvariantCulture)).Append(':')
+              .Append((n.ClosingReading ?? 0).ToString("F3", System.Globalization.CultureInfo.InvariantCulture)).Append(':')
+              .Append((n.Rate ?? 0).ToString("F2", System.Globalization.CultureInfo.InvariantCulture)).Append(':')
+              .Append(n.IsManualOpeningOverride ? "1" : "0").Append(';');
+        }
+        sb.Append('|');
+
+        // Payments (Scalars)
+        sb.Append((PhonePeCardMorning ?? 0).ToString("F2", System.Globalization.CultureInfo.InvariantCulture)).Append(';')
+          .Append((PhonePeCardNight ?? 0).ToString("F2", System.Globalization.CultureInfo.InvariantCulture)).Append(';')
+          .Append((PhonePeMorning ?? 0).ToString("F2", System.Globalization.CultureInfo.InvariantCulture)).Append(';')
+          .Append((PhonePeNight ?? 0).ToString("F2", System.Globalization.CultureInfo.InvariantCulture)).Append(';')
+          .Append((CreditCardMorning ?? 0).ToString("F2", System.Globalization.CultureInfo.InvariantCulture)).Append(';')
+          .Append((CreditCardNight ?? 0).ToString("F2", System.Globalization.CultureInfo.InvariantCulture)).Append(';')
+          .Append((PetroCardMorning ?? 0).ToString("F2", System.Globalization.CultureInfo.InvariantCulture)).Append(';')
+          .Append((PetroCardNight ?? 0).ToString("F2", System.Globalization.CultureInfo.InvariantCulture)).Append(';')
+          .Append((Others ?? 0).ToString("F2", System.Globalization.CultureInfo.InvariantCulture)).Append(';')
+          .Append((CashDeposit ?? 0).ToString("F2", System.Globalization.CultureInfo.InvariantCulture)).Append(';')
+          .Append((CollectionReduction ?? 0).ToString("F2", System.Globalization.CultureInfo.InvariantCulture)).Append(';')
+          .Append((CollectionReductionRemark ?? string.Empty).Trim()).Append(';');
+
+        // Payment TIDs / Batches
+        sb.Append((CardTid ?? string.Empty).Trim()).Append(';')
+          .Append((CardBatch ?? string.Empty).Trim()).Append(';')
+          .Append((PhonePeTid ?? string.Empty).Trim()).Append(';')
+          .Append((PhonePeBatch ?? string.Empty).Trim()).Append(';')
+          .Append((PetroCardTid ?? string.Empty).Trim()).Append(';')
+          .Append((PetroCardBatch ?? string.Empty).Trim()).Append(';')
+          .Append((PhonePeTidMorning ?? string.Empty).Trim()).Append(';')
+          .Append((PhonePeBatchMorning ?? string.Empty).Trim()).Append(';')
+          .Append((PhonePeTidNight ?? string.Empty).Trim()).Append(';')
+          .Append((PhonePeBatchNight ?? string.Empty).Trim()).Append(';')
+          .Append((CreditCardTidMorning ?? string.Empty).Trim()).Append(';')
+          .Append((CreditCardBatchMorning ?? string.Empty).Trim()).Append(';')
+          .Append((CreditCardTidNight ?? string.Empty).Trim()).Append(';')
+          .Append((CreditCardBatchNight ?? string.Empty).Trim()).Append(';')
+          .Append((PetroCardTidMorning ?? string.Empty).Trim()).Append(';')
+          .Append((PetroCardBatchMorning ?? string.Empty).Trim()).Append(';')
+          .Append((PetroCardTidNight ?? string.Empty).Trim()).Append(';')
+          .Append((PetroCardBatchNight ?? string.Empty).Trim()).Append('|');
+
+        // OtpTransactions
+        foreach (var tx in OtpTransactions.OrderBy(t => t.CollectionTypeCode).ThenBy(t => t.Slot).ThenBy(t => t.Otp))
+        {
+            sb.Append((tx.CollectionTypeCode ?? string.Empty).Trim()).Append(':')
+              .Append((tx.Slot ?? string.Empty).Trim()).Append(':')
+              .Append(tx.Amount.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)).Append(':')
+              .Append((tx.Otp ?? string.Empty).Trim()).Append(':')
+              .Append((tx.Tid ?? string.Empty).Trim()).Append(':')
+              .Append((tx.Batch ?? string.Empty).Trim()).Append(';');
+        }
+        sb.Append('|');
+
+        // TidTransactions
+        foreach (var tx in TidTransactions.OrderBy(t => t.CollectionTypeCode).ThenBy(t => t.Slot))
+        {
+            sb.Append((tx.CollectionTypeCode ?? string.Empty).Trim()).Append(':')
+              .Append((tx.Slot ?? string.Empty).Trim()).Append(':')
+              .Append(tx.Amount.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)).Append(':')
+              .Append((tx.Tid ?? string.Empty).Trim()).Append(':')
+              .Append((tx.Batch ?? string.Empty).Trim()).Append(';');
+        }
+        sb.Append('|');
+
+        // DynamicCollections
+        foreach (var d in DynamicCollections.OrderBy(x => x.Code))
+        {
+            sb.Append((d.Code ?? string.Empty).Trim()).Append(':')
+              .Append((d.Amount ?? 0).ToString("F2", System.Globalization.CultureInfo.InvariantCulture)).Append(':')
+              .Append((d.ManualAmount ?? 0).ToString("F2", System.Globalization.CultureInfo.InvariantCulture)).Append(':')
+              .Append((d.Otp ?? string.Empty).Trim()).Append(':')
+              .Append((d.Tid ?? string.Empty).Trim()).Append(':')
+              .Append((d.Batch ?? string.Empty).Trim()).Append(';');
+        }
+        sb.Append('|');
+
+        // Debits
+        foreach (var d in Debits.OrderBy(x => x.DebtorName).ThenBy(x => x.Amount))
+        {
+            sb.Append((d.DebtorName ?? string.Empty).Trim()).Append(':')
+              .Append((d.VehicleNumber ?? string.Empty).Trim()).Append(':')
+              .Append((d.Amount ?? 0).ToString("F2", System.Globalization.CultureInfo.InvariantCulture)).Append(':')
+              .Append((d.PaymentMethod ?? string.Empty).Trim()).Append(':')
+              .Append((d.ChequeNo ?? string.Empty).Trim()).Append(':')
+              .Append((d.CardTid ?? string.Empty).Trim()).Append(':')
+              .Append((d.CardBatch ?? string.Empty).Trim()).Append(';');
+        }
+        sb.Append('|');
+
+        // TestingRows
+        foreach (var t in TestingRows.OrderBy(x => x.NozzleNumber))
+        {
+            sb.Append(t.NozzleNumber).Append(':')
+              .Append((t.Litres ?? 0).ToString("F3", System.Globalization.CultureInfo.InvariantCulture)).Append(':')
+              .Append((t.Rate ?? 0).ToString("F2", System.Globalization.CultureInfo.InvariantCulture)).Append(';');
+        }
+        sb.Append('|');
+
+        // Expenses
+        foreach (var e in Expenses.OrderBy(x => x.Description).ThenBy(x => x.Amount))
+        {
+            sb.Append((e.Description ?? string.Empty).Trim()).Append(':')
+              .Append((e.Amount ?? 0).ToString("F2", System.Globalization.CultureInfo.InvariantCulture)).Append(';');
+        }
+        sb.Append('|');
+
+        // Cash1, Cash2, Cash3
+        AppendCashDenom(sb, Cash1);
+        AppendCashDenom(sb, Cash2);
+        AppendCashDenom(sb, Cash3);
+        sb.Append('|');
+
+        // KhandharePetroleumEntries
+        foreach (var k in KhandharePetroleumEntries.OrderBy(x => x.Name).ThenBy(x => x.Amount))
+        {
+            sb.Append((k.Name ?? string.Empty).Trim()).Append(':')
+              .Append((k.VehicleNumber ?? string.Empty).Trim()).Append(':')
+              .Append((k.SlipNumber ?? string.Empty).Trim()).Append(':')
+              .Append((k.Amount ?? 0).ToString("F2", System.Globalization.CultureInfo.InvariantCulture)).Append(';');
+        }
+        sb.Append('|');
+
+        // QrPayments
+        foreach (var q in QrPayments.OrderBy(x => x.TargetDsmName).ThenBy(x => x.Amount))
+        {
+            sb.Append((q.TargetDsmName ?? string.Empty).Trim()).Append(':')
+              .Append((q.Amount ?? 0).ToString("F2", System.Globalization.CultureInfo.InvariantCulture)).Append(':')
+              .Append((q.Tid ?? string.Empty).Trim()).Append(':')
+              .Append((q.Batch ?? string.Empty).Trim()).Append(':')
+              .Append((q.Slot ?? string.Empty).Trim()).Append(';');
+        }
+        sb.Append('|');
+
+        // DebtorRepayments
+        foreach (var r in DebtorRepayments.OrderBy(x => x.DebtorName).ThenBy(x => x.Amount))
+        {
+            sb.Append((r.DebtorName ?? string.Empty).Trim()).Append(':')
+              .Append((r.Amount ?? 0).ToString("F2", System.Globalization.CultureInfo.InvariantCulture)).Append(':')
+              .Append((r.PaymentMode ?? string.Empty).Trim()).Append(':')
+              .Append((r.Notes ?? string.Empty).Trim()).Append(';');
+        }
+
+        return sb.ToString();
+    }
+
+    private static void AppendCashDenom(System.Text.StringBuilder sb, CashDenomRow? c)
+    {
+        if (c == null)
+        {
+            sb.Append("null;");
             return;
         }
+        sb.Append(c.Denom500 ?? 0).Append(':')
+          .Append(c.Denom200 ?? 0).Append(':')
+          .Append(c.Denom100 ?? 0).Append(':')
+          .Append(c.Denom50 ?? 0).Append(':')
+          .Append(c.Denom20 ?? 0).Append(':')
+          .Append(c.Denom10 ?? 0).Append(':')
+          .Append(c.Coins ?? 0).Append(';');
+    }
+
+    private bool CanSaveEntry() => !IsSaving && !IsSaveOutcomeUncertain && (!IsSaved || IsDirty);
+
+    [RelayCommand(CanExecute = nameof(CanSaveEntry), AllowConcurrentExecutions = false)]
+    private async Task SaveEntryAsync()
+    {
+        if (IsSaving || IsSaveOutcomeUncertain) return;
 
         IsSaving = true;
         StatusMessage = "Saving...";
         try
         {
+            var validationErrors = ValidateBeforeSave();
+            if (validationErrors.Count > 0)
+            {
+                ValidationSummary = string.Join(Environment.NewLine, validationErrors);
+                StatusMessage = $"❌ Validation failed.{Environment.NewLine}{ValidationSummary}";
+                MessageBox.Show(ValidationSummary, "Validation Summary", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
             var nozzleModels = NozzleReadings.Select(n => new NozzleReading
             {
                 NozzleNumber = n.NozzleNumber,
@@ -2889,26 +3409,122 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
             {
                 EditingEntryId = result.Data?.DsmEntryId ?? EditingEntryId;
 
-                // Process Debtor Repayments received directly by DSM into CreditorRepayments table
-                if (DebtorRepayments.Count > 0 && _repaymentRepo != null)
+                if (result.Data != null)
                 {
-                    foreach (var rep in DebtorRepayments)
+                    double savedGross = (double)result.Data.GrossSales;
+                    double savedNetGross = (double)result.Data.NetGrossSales;
+                    double testingAmt = (double)(result.Data.TestingEntries?.Sum(t => (decimal)t.Amount) ?? 0m);
+
+                    MeterGrossSales = savedGross;
+                    GrossSales = savedGross;
+                    TotalTestingAmount = testingAmt;
+                    HasTesting = testingAmt > 0;
+                    MeterGrossSalesSubtitle = HasTesting
+                        ? $"Meter: ₹{MeterGrossSales:N2} - Test: ₹{TotalTestingAmount:N2}"
+                        : string.Empty;
+                    NetGrossSales = savedNetGross;
+
+                    TotalPaymentIn = (double)result.Data.TotalInDirect;
+                    TotalDebtors = (double)result.Data.TotalCreditors;
+                    FinalAdjusted = (double)result.Data.TotalCollection;
+                    Difference = (double)result.Data.Mismatch;
+                    UpdateCollectionTypeTotals();
+                }
+
+                // Process Debtor Repayments received directly by DSM into CreditorRepayments table
+                if (DebtorRepayments.Count > 0)
+                {
+                    using var db = App.Services.GetRequiredService<FuelPro.Data.FuelProDbContext>();
+                    var shiftDate = SelectedDate.Date;
+                    var shiftNum = SelectedShift;
+                    var dsmName = DsmName;
+                    var dsmTag = $"DSM: {dsmName}";
+                    int entryId = EditingEntryId ?? result.Data?.DsmEntryId ?? 0;
+
+                    var existingReps = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.ToListAsync(
+                        db.CreditorRepayments
+                            .Where(r => (entryId > 0 && r.ChequeNo != null && r.ChequeNo.Contains($"[Entry:{entryId}"))
+                                     || (r.RepaymentDate.Date == shiftDate && r.ShiftNumber == shiftNum && (r.ChequeNo != null && r.ChequeNo.Contains(dsmTag)))));
+
+                    var existingRepMap = existingReps.ToDictionary(r => r.CreditorRepaymentId);
+                    var claimedIds = new HashSet<int>();
+                    bool dbChanged = false;
+
+                    for (int i = 0; i < DebtorRepayments.Count; i++)
                     {
+                        var rep = DebtorRepayments[i];
                         if (rep.Amount.HasValue && rep.Amount.Value > 0 && !string.IsNullOrWhiteSpace(rep.DebtorName))
                         {
-                            var repaymentEntity = new CreditorRepayment
+                            string? entryTag = entryId > 0 ? RepaymentIdentityHelper.BuildEntryTag(entryId, i) : null;
+                            string expectedCheque = RepaymentIdentityHelper.FormatChequeNo(rep.Notes, dsmName, entryTag);
+
+                            CreditorRepayment? targetEntity = null;
+
+                            // 1. Primary: match by CreditorRepaymentId
+                            if (rep.CreditorRepaymentId > 0 && existingRepMap.TryGetValue(rep.CreditorRepaymentId, out var byId))
                             {
-                                CreditorName = rep.DebtorName.Trim(),
-                                Amount = rep.Amount.Value,
-                                PaymentMode = string.IsNullOrWhiteSpace(rep.PaymentMode) ? "Cash" : rep.PaymentMode,
-                                RepaymentDate = SelectedDate.Date,
-                                ShiftNumber = SelectedShift,
-                                ChequeNo = string.IsNullOrWhiteSpace(rep.Notes)
-                                    ? $"DSM: {DsmName}"
-                                    : $"{rep.Notes.Trim()} (DSM: {DsmName})"
-                            };
-                            await _repaymentRepo.AddAsync(repaymentEntity);
+                                targetEntity = byId;
+                            }
+
+                            // 2. Secondary: match by entry identity tag
+                            if (targetEntity == null && entryId > 0)
+                            {
+                                targetEntity = existingReps.FirstOrDefault(r => 
+                                    !claimedIds.Contains(r.CreditorRepaymentId)
+                                    && RepaymentIdentityHelper.MatchesEntry(r.ChequeNo, entryId, i));
+                            }
+
+                            // 3. Fallback: match by unlinked row without stealing another row's record
+                            if (targetEntity == null)
+                            {
+                                targetEntity = existingReps.FirstOrDefault(r =>
+                                    !claimedIds.Contains(r.CreditorRepaymentId)
+                                    && !DebtorRepayments.Any(d => d.CreditorRepaymentId == r.CreditorRepaymentId)
+                                    && string.Equals(r.CreditorName, rep.DebtorName.Trim(), StringComparison.OrdinalIgnoreCase)
+                                    && Math.Abs(r.Amount - rep.Amount.Value) < 0.01
+                                    && string.Equals(r.PaymentMode ?? "Cash", string.IsNullOrWhiteSpace(rep.PaymentMode) ? "Cash" : rep.PaymentMode, StringComparison.OrdinalIgnoreCase));
+                            }
+
+                            if (targetEntity != null)
+                            {
+                                // Update existing record idempotently
+                                targetEntity.CreditorName = rep.DebtorName.Trim();
+                                targetEntity.Amount = rep.Amount.Value;
+                                targetEntity.PaymentMode = string.IsNullOrWhiteSpace(rep.PaymentMode) ? "Cash" : rep.PaymentMode;
+                                targetEntity.RepaymentDate = shiftDate;
+                                targetEntity.ShiftNumber = shiftNum;
+                                targetEntity.ChequeNo = expectedCheque;
+
+                                rep.CreditorRepaymentId = targetEntity.CreditorRepaymentId;
+                                claimedIds.Add(targetEntity.CreditorRepaymentId);
+                                dbChanged = true;
+                            }
+                            else
+                            {
+                                // Insert new record
+                                var newEntity = new CreditorRepayment
+                                {
+                                    CreditorName = rep.DebtorName.Trim(),
+                                    Amount = rep.Amount.Value,
+                                    PaymentMode = string.IsNullOrWhiteSpace(rep.PaymentMode) ? "Cash" : rep.PaymentMode,
+                                    RepaymentDate = shiftDate,
+                                    ShiftNumber = shiftNum,
+                                    ChequeNo = expectedCheque
+                                };
+                                await db.CreditorRepayments.AddAsync(newEntity);
+                                await db.SaveChangesAsync();
+
+                                rep.CreditorRepaymentId = newEntity.CreditorRepaymentId;
+                                claimedIds.Add(newEntity.CreditorRepaymentId);
+                                existingReps.Add(newEntity);
+                                existingRepMap[newEntity.CreditorRepaymentId] = newEntity;
+                                dbChanged = true;
+                            }
                         }
+                    }
+                    if (dbChanged)
+                    {
+                        await db.SaveChangesAsync();
                     }
                     FuelPro.Core.Services.DsmEntryService.RaiseDebtorChanged();
                 }
@@ -2916,24 +3532,29 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
                 StatusMessage = "✅ DSM Entry saved successfully!";
                 _draftService.ClearDraft();
                 await LoadShiftEntriesAsync();
+
+                IsSaveOutcomeUncertain = false;
+                _savedFormSnapshot = CaptureFormSnapshot();
                 IsSaved = true;
+                IsDirty = false;
                 OnPropertyChanged(nameof(CanSaveCurrentEntry));
                 SaveEntryCommand.NotifyCanExecuteChanged();
 
                 // Trigger background sync now that transaction is fully committed
-                var syncEngine = App.Services.GetRequiredService<FuelPro.Sync.SyncEngine>();
-                _ = syncEngine.ForceSyncAsync();
+                var syncEngine = App.Services.GetService<FuelPro.Sync.SyncEngine>();
+                _ = syncEngine?.ForceSyncAsync();
             }
             else
             {
+                IsSaveOutcomeUncertain = false;
                 StatusMessage = $"❌ {result.Error}";
                 IsSaved = false;
             }
         }
         catch (Exception ex)
         {
-            StatusMessage = $"❌ Save failed: {ex.Message}";
-            IsSaved = false;
+            IsSaveOutcomeUncertain = true;
+            StatusMessage = $"❌ Save outcome is unconfirmed ({ex.Message}). Save is disabled to prevent duplicate entries. Please verify Shift Entries or reload this shift before retrying.";
         }
         finally
         {
@@ -2951,6 +3572,9 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
         EditingEntryId = null;
         _isEditing = false;
         IsSaved = false;
+        IsDirty = false;
+        IsSaveOutcomeUncertain = false;
+        _savedFormSnapshot = null;
         StartTime = "08:00 AM";
         EndTime = "08:00 PM";
         PhonePeCardMorning = PhonePeCardNight = null;
@@ -2999,14 +3623,16 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
         }
         RefreshAvailableTidCollectionTypes();
         RefreshAvailableOtpCollectionTypes();
+        _autoFilledAgsClosingReadings.Clear();
         NozzleReadings.Clear();
         FuelTypeSummaries.Clear();
         ValidationSummary = "";
         _savedEntryGrossSales = null;
-        Cash1 = new CashDenomRow { CashType = "Cash1", OnTotalChanged = RecalculateAll };
+        Cash1 = new CashDenomRow { CashType = "Cash1", OnTotalChanged = OnCash1Changed };
         Cash2 = new CashDenomRow { CashType = "Cash2", OnTotalChanged = RecalculateAll };
         Cash3 = new CashDenomRow { CashType = "Cash3", OnTotalChanged = RecalculateAll };
         LoadNozzlesForPump();
+        _ = LoadShiftEntriesAsync();
         RecalculateAll();
         StatusMessage = "Form cleared — ready for new entry";
         OnPropertyChanged(nameof(CanSaveCurrentEntry));
@@ -3120,23 +3746,79 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
             bool isShiftB = shiftNormEdit == "B";
             bool isShiftC = shiftNormEdit == "C";
 
+            // Extract items-based card fallbacks strictly for CREDIT_CARD when scalar properties are 0 / null
+            var cardItems = paymentSource?.GetAllItems()
+                ?.Where(i => PaymentCollection.NormalizeCollectionTypeCode(i.CollectionTypeCode) == "CREDIT_CARD")
+                .ToList() ?? new List<PaymentCollectionItem>();
+
+            double? cardItemDay = cardItems.Where(i => PaymentCollection.ExtractSlotFromMode(i.CollectionTypeCode, i.Slot) == "Day").Sum(i => i.Amount);
+            if (cardItemDay <= 0) cardItemDay = null;
+            double? cardItemMorning = cardItems.Where(i => PaymentCollection.ExtractSlotFromMode(i.CollectionTypeCode, i.Slot) == "Morning").Sum(i => i.Amount);
+            if (cardItemMorning <= 0) cardItemMorning = null;
+            double? cardItemNight = cardItems.Where(i => PaymentCollection.ExtractSlotFromMode(i.CollectionTypeCode, i.Slot) == "Night").Sum(i => i.Amount);
+            if (cardItemNight <= 0) cardItemNight = null;
+
+            double unslottedCardAmt = cardItems.Where(i => {
+                var slot = PaymentCollection.ExtractSlotFromMode(i.CollectionTypeCode, i.Slot);
+                return slot != "Day" && slot != "Morning" && slot != "Night";
+            }).Sum(i => i.Amount);
+
+            if (unslottedCardAmt > 0)
+            {
+                if (isShiftB) cardItemDay = (cardItemDay ?? 0) + unslottedCardAmt;
+                else if (isShiftC) cardItemNight = (cardItemNight ?? 0) + unslottedCardAmt;
+                else cardItemMorning = (cardItemMorning ?? 0) + unslottedCardAmt;
+            }
+
+            string? cardItemTid = cardItems.FirstOrDefault(i => !string.IsNullOrWhiteSpace(i.Tid))?.Tid;
+            string? cardItemBatch = cardItems.FirstOrDefault(i => !string.IsNullOrWhiteSpace(i.Batch))?.Batch;
+
+            // Extract items-based card fallbacks for PetroCard when scalar properties are 0 / null
+            var petroItems = paymentSource?.GetAllItems()
+                ?.Where(i => {
+                    var norm = PaymentCollection.NormalizeCollectionTypeCode(i.CollectionTypeCode);
+                    return norm == "PETROCARD";
+                }).ToList() ?? new List<PaymentCollectionItem>();
+
+            double? petroItemDay = petroItems.Where(i => PaymentCollection.ExtractSlotFromMode(i.CollectionTypeCode, i.Slot) == "Day").Sum(i => i.Amount);
+            if (petroItemDay <= 0) petroItemDay = null;
+            double? petroItemMorning = petroItems.Where(i => PaymentCollection.ExtractSlotFromMode(i.CollectionTypeCode, i.Slot) == "Morning").Sum(i => i.Amount);
+            if (petroItemMorning <= 0) petroItemMorning = null;
+            double? petroItemNight = petroItems.Where(i => PaymentCollection.ExtractSlotFromMode(i.CollectionTypeCode, i.Slot) == "Night").Sum(i => i.Amount);
+            if (petroItemNight <= 0) petroItemNight = null;
+
+            double unslottedPetroAmt = petroItems.Where(i => {
+                var slot = PaymentCollection.ExtractSlotFromMode(i.CollectionTypeCode, i.Slot);
+                return slot != "Day" && slot != "Morning" && slot != "Night";
+            }).Sum(i => i.Amount);
+
+            if (unslottedPetroAmt > 0)
+            {
+                if (isShiftB) petroItemDay = (petroItemDay ?? 0) + unslottedPetroAmt;
+                else if (isShiftC) petroItemNight = (petroItemNight ?? 0) + unslottedPetroAmt;
+                else petroItemMorning = (petroItemMorning ?? 0) + unslottedPetroAmt;
+            }
+
+            string? petroItemTid = petroItems.FirstOrDefault(i => !string.IsNullOrWhiteSpace(i.Tid))?.Tid;
+            string? petroItemBatch = petroItems.FirstOrDefault(i => !string.IsNullOrWhiteSpace(i.Batch))?.Batch;
+
             if (isShiftB)
             {
                 PhonePeCardMorning = paymentSource?.PhonePeCardDay > 0 ? paymentSource.PhonePeCardDay : (paymentSource?.PhonePeCardMorning > 0 ? paymentSource.PhonePeCardMorning : (double?)null);
                 PhonePeCardNight = null;
                 PhonePeMorning = paymentSource?.PhonePeDay > 0 ? paymentSource.PhonePeDay : (paymentSource?.PhonePeMorning > 0 ? paymentSource.PhonePeMorning : (double?)null);
                 PhonePeNight = null;
-                CreditCardMorning = paymentSource?.CreditCardDay > 0 ? paymentSource.CreditCardDay : (paymentSource?.CreditCardMorning > 0 ? paymentSource.CreditCardMorning : (double?)null);
+                CreditCardMorning = paymentSource?.CreditCardDay > 0 ? paymentSource.CreditCardDay : (paymentSource?.CreditCardMorning > 0 ? paymentSource.CreditCardMorning : (cardItemDay > 0 ? cardItemDay : (cardItemMorning > 0 ? cardItemMorning : (double?)null)));
                 CreditCardNight = null;
-                PetroCardMorning = paymentSource?.PetroCardDay > 0 ? paymentSource.PetroCardDay : (paymentSource?.PetroCardMorning > 0 ? paymentSource.PetroCardMorning : (double?)null);
+                PetroCardMorning = paymentSource?.PetroCardDay > 0 ? paymentSource.PetroCardDay : (paymentSource?.PetroCardMorning > 0 ? paymentSource.PetroCardMorning : (petroItemDay > 0 ? petroItemDay : (petroItemMorning > 0 ? petroItemMorning : (paymentSource?.PetroCard > 0 ? paymentSource.PetroCard : (double?)null))));
                 PetroCardNight = null;
 
                 PhonePeTidMorning = paymentSource?.PhonePeTidDay ?? paymentSource?.PhonePeTidMorning ?? paymentSource?.PhonePeTid;
                 PhonePeBatchMorning = paymentSource?.PhonePeBatchDay ?? paymentSource?.PhonePeBatchMorning ?? paymentSource?.PhonePeBatch;
-                CreditCardTidMorning = paymentSource?.CreditCardTidDay ?? paymentSource?.CreditCardTidMorning ?? paymentSource?.CardTid;
-                CreditCardBatchMorning = paymentSource?.CreditCardBatchDay ?? paymentSource?.CreditCardBatchMorning ?? paymentSource?.CardBatch;
-                PetroCardTidMorning = paymentSource?.PetroCardTidDay ?? paymentSource?.PetroCardTidMorning ?? paymentSource?.PetroCardTid;
-                PetroCardBatchMorning = paymentSource?.PetroCardBatchDay ?? paymentSource?.PetroCardBatchMorning ?? paymentSource?.PetroCardBatch;
+                CreditCardTidMorning = paymentSource?.CreditCardTidDay ?? paymentSource?.CreditCardTidMorning ?? paymentSource?.CardTid ?? cardItemTid;
+                CreditCardBatchMorning = paymentSource?.CreditCardBatchDay ?? paymentSource?.CreditCardBatchMorning ?? paymentSource?.CardBatch ?? cardItemBatch;
+                PetroCardTidMorning = paymentSource?.PetroCardTidDay ?? paymentSource?.PetroCardTidMorning ?? paymentSource?.PetroCardTid ?? petroItemTid;
+                PetroCardBatchMorning = paymentSource?.PetroCardBatchDay ?? paymentSource?.PetroCardBatchMorning ?? paymentSource?.PetroCardBatch ?? petroItemBatch;
 
                 PhonePeTidNight = null;
                 PhonePeBatchNight = null;
@@ -3151,17 +3833,17 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
                 PhonePeCardNight = null;
                 PhonePeMorning = paymentSource?.PhonePeNight > 0 ? paymentSource.PhonePeNight : (paymentSource?.PhonePeMorning > 0 ? paymentSource.PhonePeMorning : (double?)null);
                 PhonePeNight = null;
-                CreditCardMorning = paymentSource?.CreditCardNight > 0 ? paymentSource.CreditCardNight : (paymentSource?.CreditCardMorning > 0 ? paymentSource.CreditCardMorning : (double?)null);
+                CreditCardMorning = paymentSource?.CreditCardNight > 0 ? paymentSource.CreditCardNight : (paymentSource?.CreditCardMorning > 0 ? paymentSource.CreditCardMorning : (cardItemNight > 0 ? cardItemNight : (cardItemMorning > 0 ? cardItemMorning : (double?)null)));
                 CreditCardNight = null;
-                PetroCardMorning = paymentSource?.PetroCardNight > 0 ? paymentSource.PetroCardNight : (paymentSource?.PetroCardMorning > 0 ? paymentSource.PetroCardMorning : (double?)null);
+                PetroCardMorning = paymentSource?.PetroCardNight > 0 ? paymentSource.PetroCardNight : (paymentSource?.PetroCardMorning > 0 ? paymentSource.PetroCardMorning : (petroItemNight > 0 ? petroItemNight : (petroItemMorning > 0 ? petroItemMorning : (paymentSource?.PetroCard > 0 ? paymentSource.PetroCard : (double?)null))));
                 PetroCardNight = null;
 
                 PhonePeTidMorning = paymentSource?.PhonePeTidNight ?? paymentSource?.PhonePeTidMorning ?? paymentSource?.PhonePeTid;
                 PhonePeBatchMorning = paymentSource?.PhonePeBatchNight ?? paymentSource?.PhonePeBatchMorning ?? paymentSource?.PhonePeBatch;
-                CreditCardTidMorning = paymentSource?.CreditCardTidNight ?? paymentSource?.CreditCardTidMorning ?? paymentSource?.CardTid;
-                CreditCardBatchMorning = paymentSource?.CreditCardBatchNight ?? paymentSource?.CreditCardBatchMorning ?? paymentSource?.CardBatch;
-                PetroCardTidMorning = paymentSource?.PetroCardTidNight ?? paymentSource?.PetroCardTidMorning ?? paymentSource?.PetroCardTid;
-                PetroCardBatchMorning = paymentSource?.PetroCardBatchNight ?? paymentSource?.PetroCardBatchMorning ?? paymentSource?.PetroCardBatch;
+                CreditCardTidMorning = paymentSource?.CreditCardTidNight ?? paymentSource?.CreditCardTidMorning ?? paymentSource?.CardTid ?? cardItemTid;
+                CreditCardBatchMorning = paymentSource?.CreditCardBatchNight ?? paymentSource?.CreditCardBatchMorning ?? paymentSource?.CardBatch ?? cardItemBatch;
+                PetroCardTidMorning = paymentSource?.PetroCardTidNight ?? paymentSource?.PetroCardTidMorning ?? paymentSource?.PetroCardTid ?? petroItemTid;
+                PetroCardBatchMorning = paymentSource?.PetroCardBatchNight ?? paymentSource?.PetroCardBatchMorning ?? paymentSource?.PetroCardBatch ?? petroItemBatch;
 
                 PhonePeTidNight = null;
                 PhonePeBatchNight = null;
@@ -3176,25 +3858,25 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
                 PhonePeCardNight = paymentSource?.PhonePeCardNight;
                 PhonePeMorning = paymentSource?.PhonePeMorning > 0 ? paymentSource.PhonePeMorning : (double?)null;
                 PhonePeNight = paymentSource?.PhonePeNight;
-                CreditCardMorning = paymentSource?.CreditCardMorning > 0 ? paymentSource.CreditCardMorning : (double?)null;
-                CreditCardNight = paymentSource?.CreditCardNight;
-                PetroCardMorning = paymentSource?.PetroCardMorning > 0 ? paymentSource.PetroCardMorning : (double?)null;
-                PetroCardNight = paymentSource?.PetroCardNight;
+                CreditCardMorning = paymentSource?.CreditCardMorning > 0 ? paymentSource.CreditCardMorning : (cardItemMorning > 0 ? cardItemMorning : (double?)null);
+                CreditCardNight = paymentSource?.CreditCardNight > 0 ? paymentSource.CreditCardNight : (cardItemNight > 0 ? cardItemNight : (double?)null);
+                PetroCardMorning = paymentSource?.PetroCardMorning > 0 ? paymentSource.PetroCardMorning : (paymentSource?.PetroCardDay > 0 ? paymentSource.PetroCardDay : (petroItemMorning > 0 ? petroItemMorning : (petroItemDay > 0 ? petroItemDay : (paymentSource?.PetroCard > 0 ? paymentSource.PetroCard : (double?)null))));
+                PetroCardNight = paymentSource?.PetroCardNight > 0 ? paymentSource.PetroCardNight : (petroItemNight > 0 ? petroItemNight : (double?)null);
 
                 PhonePeTidMorning = paymentSource?.PhonePeTidMorning ?? paymentSource?.PhonePeTid;
                 PhonePeBatchMorning = paymentSource?.PhonePeBatchMorning ?? paymentSource?.PhonePeBatch;
                 PhonePeTidNight = paymentSource?.PhonePeTidNight;
                 PhonePeBatchNight = paymentSource?.PhonePeBatchNight;
 
-                CreditCardTidMorning = paymentSource?.CreditCardTidMorning ?? paymentSource?.CardTid;
-                CreditCardBatchMorning = paymentSource?.CreditCardBatchMorning ?? paymentSource?.CardBatch;
-                CreditCardTidNight = paymentSource?.CreditCardTidNight;
-                CreditCardBatchNight = paymentSource?.CreditCardBatchNight;
+                CreditCardTidMorning = paymentSource?.CreditCardTidMorning ?? paymentSource?.CardTid ?? cardItems.FirstOrDefault(i => PaymentCollection.ExtractSlotFromMode(i.CollectionTypeCode, i.Slot) == "Morning" && !string.IsNullOrWhiteSpace(i.Tid))?.Tid ?? cardItemTid;
+                CreditCardBatchMorning = paymentSource?.CreditCardBatchMorning ?? paymentSource?.CardBatch ?? cardItems.FirstOrDefault(i => PaymentCollection.ExtractSlotFromMode(i.CollectionTypeCode, i.Slot) == "Morning" && !string.IsNullOrWhiteSpace(i.Batch))?.Batch ?? cardItemBatch;
+                CreditCardTidNight = paymentSource?.CreditCardTidNight ?? cardItems.FirstOrDefault(i => PaymentCollection.ExtractSlotFromMode(i.CollectionTypeCode, i.Slot) == "Night" && !string.IsNullOrWhiteSpace(i.Tid))?.Tid;
+                CreditCardBatchNight = paymentSource?.CreditCardBatchNight ?? cardItems.FirstOrDefault(i => PaymentCollection.ExtractSlotFromMode(i.CollectionTypeCode, i.Slot) == "Night" && !string.IsNullOrWhiteSpace(i.Batch))?.Batch;
 
-                PetroCardTidMorning = paymentSource?.PetroCardTidMorning ?? paymentSource?.PetroCardTid;
-                PetroCardBatchMorning = paymentSource?.PetroCardBatchMorning ?? paymentSource?.PetroCardBatch;
-                PetroCardTidNight = paymentSource?.PetroCardTidNight;
-                PetroCardBatchNight = paymentSource?.PetroCardBatchNight;
+                PetroCardTidMorning = paymentSource?.PetroCardTidMorning ?? paymentSource?.PetroCardTid ?? petroItems.FirstOrDefault(i => PaymentCollection.ExtractSlotFromMode(i.CollectionTypeCode, i.Slot) == "Morning" && !string.IsNullOrWhiteSpace(i.Tid))?.Tid ?? petroItemTid;
+                PetroCardBatchMorning = paymentSource?.PetroCardBatchMorning ?? paymentSource?.PetroCardBatch ?? petroItems.FirstOrDefault(i => PaymentCollection.ExtractSlotFromMode(i.CollectionTypeCode, i.Slot) == "Morning" && !string.IsNullOrWhiteSpace(i.Batch))?.Batch ?? petroItemBatch;
+                PetroCardTidNight = paymentSource?.PetroCardTidNight ?? petroItems.FirstOrDefault(i => PaymentCollection.ExtractSlotFromMode(i.CollectionTypeCode, i.Slot) == "Night" && !string.IsNullOrWhiteSpace(i.Tid))?.Tid;
+                PetroCardBatchNight = paymentSource?.PetroCardBatchNight ?? petroItems.FirstOrDefault(i => PaymentCollection.ExtractSlotFromMode(i.CollectionTypeCode, i.Slot) == "Night" && !string.IsNullOrWhiteSpace(i.Batch))?.Batch;
             }
 
             Others = paymentSource?.Others;
@@ -3510,18 +4192,27 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
             // Populate cash denominations
             var cash1Data = entry.CashDenominations.FirstOrDefault(c => c.CashType == "Cash1")
                 ?? allSlaveEntries.Select(s => s.CashDenominations?.FirstOrDefault(c => c.CashType == "Cash1")).FirstOrDefault(c => c != null);
+            bool cash1HasDenoms = cash1Data != null && (cash1Data.Denom500 > 0 || cash1Data.Denom200 > 0 || cash1Data.Denom100 > 0);
+            double cash1ScalarTotal = (cash1Data != null && cash1Data.TotalAmount > 0) ? cash1Data.TotalAmount : (CashDeposit ?? 0);
             Cash1 = new CashDenomRow
             {
                 CashType = "Cash1",
-                Denom500 = cash1Data?.Denom500,
-                Denom200 = cash1Data?.Denom200,
-                Denom100 = cash1Data?.Denom100,
-                Denom50 = cash1Data?.Denom50,
-                Denom20 = cash1Data?.Denom20,
-                Denom10 = cash1Data?.Denom10,
-                Coins = cash1Data?.Coins,
-                TotalAmount = cash1Data?.TotalAmount ?? 0,
-                OnTotalChanged = RecalculateAll
+                Denom500 = cash1HasDenoms ? cash1Data!.Denom500 : null,
+                Denom200 = cash1HasDenoms ? cash1Data!.Denom200 : null,
+                Denom100 = cash1HasDenoms ? cash1Data!.Denom100 : null,
+                Denom50 = cash1HasDenoms && cash1Data!.Denom50 > 0 ? cash1Data.Denom50 : null,
+                Denom20 = cash1HasDenoms && cash1Data!.Denom20 > 0 ? cash1Data.Denom20 : null,
+                Denom10 = cash1HasDenoms && cash1Data!.Denom10 > 0 ? cash1Data.Denom10 : null,
+                Coins = cash1HasDenoms && cash1Data!.Coins > 0 ? cash1Data.Coins : null,
+                TotalAmount = cash1HasDenoms && cash1Data!.TotalAmount <= 0
+                    ? cash1Data.Denom500 * 500.0 + cash1Data.Denom200 * 200.0 + cash1Data.Denom100 * 100.0
+                    : cash1ScalarTotal,
+                OnTotalChanged = () =>
+                {
+                    OnPropertyChanged(nameof(ShowCash1DenominationFields));
+                    OnPropertyChanged(nameof(ShowCash1ScalarField));
+                    RecalculateAll();
+                }
             };
 
             var cash2Data = entry.CashDenominations.FirstOrDefault(c => c.CashType == "Cash2")
@@ -3566,12 +4257,22 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
                         .Where(a => a.ApprovedDataJson.Contains($"\"DsmEntryId\":{entry.DsmEntryId}") 
                                  || a.ApprovedDataJson.Contains($"\"DsmEntryId\": {entry.DsmEntryId}")));
 
+                var shiftDate = entry.Shift?.ShiftDate.Date ?? SelectedDate.Date;
+                var shiftNum = entry.Shift?.ShiftType ?? SelectedShift;
+                var dsmTag = $"DSM: {entry.DsmName}";
+                var existingDbReps = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.ToListAsync(
+                    db.CreditorRepayments
+                        .Where(r => (entry.DsmEntryId > 0 && r.ChequeNo != null && r.ChequeNo.Contains($"[Entry:{entry.DsmEntryId}"))
+                                 || (r.RepaymentDate.Date == shiftDate && r.ShiftNumber == shiftNum && (r.ChequeNo != null && r.ChequeNo.Contains(dsmTag)))));
+
                 if (audit != null && !string.IsNullOrEmpty(audit.OriginalDataJson))
                 {
                     var parsed = JsonConvert.DeserializeObject<dynamic>(audit.OriginalDataJson);
                     var repRawList = parsed?.debtorRepayments ?? parsed?.DebtorRepayments ?? parsed?.settlements;
                     if (repRawList != null)
                     {
+                        var matchedIds = new HashSet<int>();
+                        int auditRepIndex = 0;
                         foreach (var rep in repRawList)
                         {
                             string debtorName = (rep.debtorName ?? rep.DebtorName ?? rep.customerName ?? rep.customer ?? string.Empty).ToString();
@@ -3581,37 +4282,57 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
 
                             if (amount > 0 && !string.IsNullOrWhiteSpace(debtorName))
                             {
+                                var dbMatch = existingDbReps.FirstOrDefault(r => 
+                                    !matchedIds.Contains(r.CreditorRepaymentId)
+                                    && RepaymentIdentityHelper.MatchesEntry(r.ChequeNo, entry.DsmEntryId, auditRepIndex))
+                                    ?? existingDbReps.FirstOrDefault(r => 
+                                        !matchedIds.Contains(r.CreditorRepaymentId)
+                                        && string.Equals(r.CreditorName, debtorName.Trim(), StringComparison.OrdinalIgnoreCase)
+                                        && Math.Abs(r.Amount - amount) < 0.01);
+
+                                int repId = 0;
+                                if (dbMatch != null)
+                                {
+                                    repId = dbMatch.CreditorRepaymentId;
+                                    matchedIds.Add(repId);
+                                }
+
                                 DebtorRepayments.Add(new DsmDebtorRepaymentRow
                                 {
+                                    CreditorRepaymentId = repId,
                                     DebtorName = debtorName,
                                     Amount = amount,
                                     PaymentMode = paymentMode,
-                                    Notes = notes,
-                                    OnRowChanged = () => OnPropertyChanged(nameof(HasDebtorRepayments))
+                                    Notes = !string.IsNullOrWhiteSpace(notes) ? notes : RepaymentIdentityHelper.ExtractUserNotes(dbMatch?.ChequeNo, dsmTag),
+                                    OnRowChanged = () =>
+                                    {
+                                        OnPropertyChanged(nameof(HasDebtorRepayments));
+                                        UpdateDirtyState();
+                                    }
                                 });
+                                auditRepIndex++;
                             }
                         }
                     }
                 }
 
                 // If none from audit, check CreditorRepayments for this shift/DSM
-                if (DebtorRepayments.Count == 0 && entry.Shift != null)
+                if (DebtorRepayments.Count == 0 && existingDbReps.Count > 0)
                 {
-                    var shiftDate = entry.Shift.ShiftDate.Date;
-                    var shiftNum = entry.Shift.ShiftType;
-                    var dsmTag = $"DSM: {entry.DsmName}";
-                    var reps = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.ToListAsync(
-                        db.CreditorRepayments
-                            .Where(r => r.RepaymentDate.Date == shiftDate && r.ShiftNumber == shiftNum && (r.ChequeNo != null && r.ChequeNo.Contains(dsmTag))));
-                    foreach (var r in reps)
+                    foreach (var r in existingDbReps)
                     {
                         DebtorRepayments.Add(new DsmDebtorRepaymentRow
                         {
+                            CreditorRepaymentId = r.CreditorRepaymentId,
                             DebtorName = r.CreditorName,
                             Amount = r.Amount,
                             PaymentMode = r.PaymentMode ?? "Cash",
-                            Notes = r.ChequeNo ?? "",
-                            OnRowChanged = () => OnPropertyChanged(nameof(HasDebtorRepayments))
+                            Notes = RepaymentIdentityHelper.ExtractUserNotes(r.ChequeNo, dsmTag),
+                            OnRowChanged = () =>
+                            {
+                                OnPropertyChanged(nameof(HasDebtorRepayments));
+                                UpdateDirtyState();
+                            }
                         });
                     }
                 }
@@ -3622,8 +4343,17 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
             }
             OnPropertyChanged(nameof(HasDebtorRepayments));
             OnPropertyChanged(nameof(IsCash3Enabled));
+            OnPropertyChanged(nameof(IsCash1DenominationsEnabled));
+            OnPropertyChanged(nameof(ShowCash1DenominationFields));
+            OnPropertyChanged(nameof(ShowCash1ScalarField));
 
             RecalculateAll();
+            _savedFormSnapshot = CaptureFormSnapshot();
+            IsSaved = true;
+            IsDirty = false;
+            IsSaveOutcomeUncertain = false;
+            OnPropertyChanged(nameof(CanSaveCurrentEntry));
+            SaveEntryCommand.NotifyCanExecuteChanged();
         }
         finally
         {
@@ -3782,8 +4512,17 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task LoadShiftEntriesAsync()
     {
-        var shiftResult = await App.Services.GetRequiredService<Core.Repositories.IShiftRepository>()
-            .GetShiftAsync(SelectedDate, SelectedShift);
+        IsSaveOutcomeUncertain = false;
+        var services = _serviceProvider ?? App.Services;
+        var shiftRepo = services?.GetService<Core.Repositories.IShiftRepository>();
+        if (shiftRepo == null || _dsmService == null)
+        {
+            ShiftEntries.Clear();
+            ShiftFuelTypeSummaries.Clear();
+            HasShiftFuelTypeSummaries = false;
+            return;
+        }
+        var shiftResult = await shiftRepo.GetShiftAsync(SelectedDate, SelectedShift);
         if (!shiftResult.Success)
         {
             ShiftEntries.Clear();
@@ -3959,6 +4698,9 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
         if (_dsmEntryChangedHandler != null)
             FuelPro.Core.Services.DsmEntryService.DsmEntryChanged -= _dsmEntryChangedHandler;
 
+        if (_syncEngine != null && _operationalDataPulledHandler != null)
+            _syncEngine.OperationalDataPulled -= _operationalDataPulledHandler;
+
         if (_autoSaveTimer != null)
         {
             _autoSaveTimer.Stop();
@@ -3980,9 +4722,97 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
         catch { /* draft save is best-effort */ }
     }
 
+    public static void DeductDebtorRepaymentsFromCollections(
+        IEnumerable<DsmDebtorRepaymentRow>? repayments,
+        ref double cashDeposit,
+        ref double cash2,
+        ref double cash3,
+        ref double phonePe,
+        ref double creditCard,
+        ref double petroCard,
+        IDictionary<string, double>? dynamicAmounts = null)
+    {
+        if (repayments == null) return;
+
+        foreach (var rep in repayments)
+        {
+            if (!rep.Amount.HasValue || rep.Amount.Value <= 0) continue;
+            double rem = rep.Amount.Value;
+            string rawMode = (rep.PaymentMode ?? "").Trim();
+            string normMode = PaymentCollection.NormalizeCollectionTypeCode(rawMode);
+
+            // 1. Check if matches custom dynamic collection code or name
+            if (dynamicAmounts != null && dynamicAmounts.Count > 0)
+            {
+                var dynKey = dynamicAmounts.Keys.FirstOrDefault(k =>
+                    string.Equals(k, normMode, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(k, rawMode, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(k.Replace("_", " "), rawMode, StringComparison.OrdinalIgnoreCase));
+
+                if (dynKey != null)
+                {
+                    double cur = dynamicAmounts[dynKey];
+                    double deduct = Math.Min(cur, rem);
+                    dynamicAmounts[dynKey] = cur - deduct;
+                    rem -= deduct;
+                    if (rem <= 0.001) continue;
+                }
+            }
+
+            // 2. Standard modes
+            if (normMode == "PHONEPE" || string.Equals(rawMode, "PhonePe", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(rawMode, "UPI", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(rawMode, "Google Pay", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(rawMode, "Paytm", StringComparison.OrdinalIgnoreCase))
+            {
+                double deduct = Math.Min(phonePe, rem);
+                phonePe -= deduct;
+                rem -= deduct;
+            }
+            else if (normMode == "CREDIT_CARD" || string.Equals(rawMode, "Credit Card", StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(rawMode, "Card", StringComparison.OrdinalIgnoreCase))
+            {
+                double deduct = Math.Min(creditCard, rem);
+                creditCard -= deduct;
+                rem -= deduct;
+            }
+            else if (normMode == "PETROCARD" || string.Equals(rawMode, "PetroCard", StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(rawMode, "Petro Card", StringComparison.OrdinalIgnoreCase))
+            {
+                double deduct = Math.Min(petroCard, rem);
+                petroCard -= deduct;
+                rem -= deduct;
+            }
+            else if (string.Equals(rawMode, "Cash", StringComparison.OrdinalIgnoreCase) ||
+                     string.IsNullOrWhiteSpace(rawMode) ||
+                     rawMode.StartsWith("Cash", StringComparison.OrdinalIgnoreCase))
+            {
+                if (cash3 > 0)
+                {
+                    double deduct = Math.Min(cash3, rem);
+                    cash3 -= deduct;
+                    rem -= deduct;
+                }
+                if (rem > 0.001 && cash2 > 0)
+                {
+                    double deduct = Math.Min(cash2, rem);
+                    cash2 -= deduct;
+                    rem -= deduct;
+                }
+                if (rem > 0.001 && cashDeposit > 0)
+                {
+                    double deduct = Math.Min(cashDeposit, rem);
+                    cashDeposit -= deduct;
+                    rem -= deduct;
+                }
+            }
+        }
+    }
+
     private DsmEntryDto BuildCalculationDto()
     {
-        var ccTxs = TidTransactions.Where(t => PaymentCollection.NormalizeCollectionTypeCode(t.CollectionTypeCode) == "CREDIT_CARD").ToList();
+        var ccTxs = TidTransactions.Where(t =>
+            PaymentCollection.NormalizeCollectionTypeCode(t.CollectionTypeCode) == "CREDIT_CARD").ToList();
         var phTxs = TidTransactions.Where(t => PaymentCollection.NormalizeCollectionTypeCode(t.CollectionTypeCode) == "PHONEPE").ToList();
         var pcTxs = TidTransactions.Where(t => PaymentCollection.NormalizeCollectionTypeCode(t.CollectionTypeCode) == "PETROCARD").ToList();
 
@@ -3990,7 +4820,8 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
         decimal petroCardFromTid = (decimal)pcTxs.Sum(t => t.Amount);
         decimal ccFromTid = (decimal)ccTxs.Sum(t => t.Amount);
 
-        decimal ccOtpSum = (decimal)OtpTransactions.Where(t => PaymentCollection.NormalizeCollectionTypeCode(t.CollectionTypeCode) == "CREDIT_CARD").Sum(t => t.Amount);
+        decimal ccOtpSum = (decimal)OtpTransactions.Where(t =>
+            PaymentCollection.NormalizeCollectionTypeCode(t.CollectionTypeCode) == "CREDIT_CARD").Sum(t => t.Amount);
         decimal pcOtpSum = (decimal)OtpTransactions.Where(t => PaymentCollection.NormalizeCollectionTypeCode(t.CollectionTypeCode) == "PETROCARD").Sum(t => t.Amount);
         decimal phOtpSum = (decimal)OtpTransactions.Where(t => PaymentCollection.NormalizeCollectionTypeCode(t.CollectionTypeCode) == "PHONEPE").Sum(t => t.Amount);
 
@@ -4003,9 +4834,9 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
         decimal ccItemized = ccFromTid + ccOtpSum;
         decimal pcItemized = petroCardFromTid + pcOtpSum;
 
-        decimal effectivePhonePe = ((IsPhonePeTidOrOtp || phonePeItemized > 0) ? (phonePeItemized > 0 ? phonePeItemized : phonePeScalar) : phonePeScalar) + qrSum;
+        decimal effectivePhonePe = ((IsPhonePeTidOrOtp || phonePeItemized > 0) ? Math.Max(phonePeItemized, phonePeScalar) : phonePeScalar) + qrSum;
         decimal effectiveCreditCard = (IsCreditCardTidOrOtp || ccItemized > 0) ? (ccItemized > 0 ? ccItemized : creditCardScalar) : creditCardScalar;
-        decimal effectivePetroCard = (IsPetroCardTidOrOtp || pcItemized > 0) ? (pcItemized > 0 ? pcItemized : petroCardScalar) : petroCardScalar;
+        decimal effectivePetroCard = (IsPetroCardTidOrOtp || pcItemized > 0) ? Math.Max(pcItemized, petroCardScalar) : petroCardScalar;
 
         var allDynamicTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var t in TidTransactions.Where(t => !PaymentCollection.IsStandardCollectionCode(t.CollectionTypeCode)))
@@ -4023,7 +4854,8 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
             decimal tidSum = (decimal)TidTransactions.Where(t => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(t.CollectionTypeCode), normCode, StringComparison.OrdinalIgnoreCase)).Sum(t => t.Amount);
             decimal otpSum = (decimal)OtpTransactions.Where(t => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(t.CollectionTypeCode), normCode, StringComparison.OrdinalIgnoreCase)).Sum(t => t.Amount);
             decimal manualSum = (decimal)ManualCollections.Where(m => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(m.Code), normCode, StringComparison.OrdinalIgnoreCase)).Sum(m => m.Amount ?? 0);
-            decimal dynRowAmt = (decimal)(DynamicCollections.FirstOrDefault(d => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(d.Code), normCode, StringComparison.OrdinalIgnoreCase))?.Amount ?? 0);
+            var dynRow = DynamicCollections.FirstOrDefault(d => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(d.Code), normCode, StringComparison.OrdinalIgnoreCase));
+            decimal dynRowAmt = (decimal)(dynRow?.Amount ?? 0);
 
             decimal typeTotal = tidSum + otpSum + manualSum;
             if (typeTotal == 0 && dynRowAmt > 0)
@@ -4041,11 +4873,12 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
                 // Others is NOT included in TotalInDirect — it is informational only
                 PhonePe = effectivePhonePe,
                 CreditCard = effectiveCreditCard,
-                PetroCard = effectivePetroCard,
-                DynamicPayments = dynamicPayments,
-                CashDeposit = (decimal)Cash1.TotalAmount,
+                CashDeposit = Cash1.TotalAmount > 0 ? (decimal)Cash1.TotalAmount : (decimal)(CashDeposit ?? 0),
                 PhysicalCash = (decimal)Cash2.TotalAmount,
                 Cash3 = (decimal)Cash3.TotalAmount,
+                PetroCard = effectivePetroCard,
+                Others = (decimal)(Others ?? 0),
+                DynamicPayments = dynamicPayments,
                 CollectionReduction = (decimal)(CollectionReduction ?? 0),
                 CollectionReductionRemark = CollectionReductionRemark
             },
@@ -4181,6 +5014,138 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
         return true;
     }
 
+    public List<FuelTypeReadingSummary> BuildDsmScopedCumulativeSales()
+    {
+        var distinctNozzleDict = new Dictionary<(int PumpId, int NozzleNumber), (string FuelType, double SaleLitres, double Rate, double Amount)>();
+
+        // 1. Primary pump nozzles from active viewmodel
+        int primaryPumpId = SelectedPump?.PumpId ?? 0;
+        if (primaryPumpId > 0)
+        {
+            foreach (var n in NozzleReadings)
+            {
+                if (string.IsNullOrWhiteSpace(n.FuelType)) continue;
+                distinctNozzleDict[(primaryPumpId, n.NozzleNumber)] = (
+                    FuelType: n.FuelType.Trim(),
+                    SaleLitres: n.SaleLitres,
+                    Rate: n.Rate ?? 0.0,
+                    Amount: n.Amount
+                );
+            }
+        }
+
+        // 2. Connected pump nozzles (if configured and active)
+        var effectiveConnectedPumps = ActiveConnectedPumpIds != null
+            ? ActiveConnectedPumpIds.Where(p => SelectedPump == null || p != SelectedPump.PumpId).Distinct().ToList()
+            : new List<int>();
+        if (effectiveConnectedPumps.Count == 0 && SelectedConnectedPump != null && SelectedPump != null && SelectedConnectedPump.PumpId != SelectedPump.PumpId)
+        {
+            effectiveConnectedPumps.Add(SelectedConnectedPump.PumpId);
+        }
+
+        if (effectiveConnectedPumps.Count > 0)
+        {
+            try
+            {
+                var shiftRepo = App.Services.GetRequiredService<Core.Repositories.IShiftRepository>();
+                var shiftResult = shiftRepo.GetShiftAsync(SelectedDate, SelectedShift).GetAwaiter().GetResult();
+                if (shiftResult.Success && shiftResult.Data != null)
+                {
+                    var dsmRepo = App.Services.GetRequiredService<IDsmEntryRepository>();
+                    var entriesResult = dsmRepo.GetEntriesForShiftAsync(shiftResult.Data.ShiftId).GetAwaiter().GetResult();
+                    if (entriesResult.Success && entriesResult.Data != null)
+                    {
+                        foreach (var connPumpId in effectiveConnectedPumps)
+                        {
+                            DsmEntry? connEntry = null;
+                            if (EditingEntryId.HasValue)
+                            {
+                                connEntry = entriesResult.Data.FirstOrDefault(e =>
+                                    e.PumpId == connPumpId
+                                    && (e.ReconciledToPumpId == EditingEntryId.Value || e.ReconciledToPumpId == primaryPumpId));
+                            }
+                            if (connEntry == null)
+                            {
+                                connEntry = entriesResult.Data
+                                    .Where(e => e.PumpId == connPumpId
+                                        && (e.ReconciledToPumpId == primaryPumpId
+                                            || (string.Equals(e.DsmName, DsmName, StringComparison.OrdinalIgnoreCase) && (!e.ReconciledToPumpId.HasValue || e.ReconciledToPumpId == primaryPumpId))))
+                                    .OrderByDescending(e => e.DsmEntryId)
+                                    .FirstOrDefault();
+                            }
+
+                            if (connEntry != null)
+                            {
+                                var readings = connEntry.NozzleReadings;
+                                if (readings == null || readings.Count == 0)
+                                {
+                                    var fullEntry = dsmRepo.GetFullEntryAsync(connEntry.DsmEntryId).GetAwaiter().GetResult();
+                                    if (fullEntry.Success && fullEntry.Data != null)
+                                    {
+                                        readings = fullEntry.Data.NozzleReadings;
+                                    }
+                                }
+
+                                if (readings != null)
+                                {
+                                    foreach (var rn in readings)
+                                    {
+                                        if (string.IsNullOrWhiteSpace(rn.FuelType)) continue;
+                                        var key = (connPumpId, rn.NozzleNumber);
+                                        if (!distinctNozzleDict.ContainsKey(key))
+                                        {
+                                            distinctNozzleDict[key] = (
+                                                FuelType: rn.FuelType.Trim(),
+                                                SaleLitres: (double)rn.SaleLitres,
+                                                Rate: (double)rn.Rate,
+                                                Amount: (double)rn.Amount
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Serilog.Log.Warning(ex, "Could not fetch connected pump readings for DSM-scoped cumulative sales in PrintDsm");
+            }
+        }
+
+        // Fallback: If no nozzles resolved, use FuelTypeSummaries
+        if (distinctNozzleDict.Count == 0)
+        {
+            return FuelTypeSummaries.Select(f => new FuelTypeReadingSummary
+            {
+                FuelType = f.FuelType,
+                NozzleCount = f.NozzleCount,
+                TotalLitres = f.TotalLitres,
+                Rate = f.Rate,
+                TotalAmount = Math.Round(f.TotalLitres * f.Rate, 2)
+            }).ToList();
+        }
+
+        return distinctNozzleDict.Values
+            .GroupBy(n => n.FuelType.Trim().ToUpperInvariant())
+            .OrderBy(g => g.Key)
+            .Select(g =>
+            {
+                var litres = g.Sum(n => n.SaleLitres);
+                var rate = g.FirstOrDefault(n => n.Rate > 0).Rate;
+                return new FuelTypeReadingSummary
+                {
+                    FuelType = g.First().FuelType,
+                    NozzleCount = g.Count(),
+                    TotalLitres = litres,
+                    Rate = rate,
+                    TotalAmount = Math.Round(litres * rate, 2)
+                };
+            })
+            .ToList();
+    }
+
     // ── Print Commands ────────────────────────────────────────────────────────
 
     [RelayCommand]
@@ -4192,37 +5157,14 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
             return;
         }
 
+        RecalculateAll();
+
         var settings = App.Services.GetRequiredService<ISettingsRepository>();
         var settingsResult = settings.GetSettingsAsync().GetAwaiter().GetResult();
         var stationName = settingsResult.Success && !string.IsNullOrWhiteSpace(settingsResult.Data?.PumpStationName) ? settingsResult.Data.PumpStationName : "Mitali Service Station";
 
         UpdateFuelTypeSummaries();
-
-        // If Shift-level fuel summaries are not loaded yet, attempt to fetch them
-        if (ShiftFuelTypeSummaries.Count == 0)
-        {
-            try
-            {
-                var shiftRepo = App.Services.GetRequiredService<Core.Repositories.IShiftRepository>();
-                var shiftResult = shiftRepo.GetShiftAsync(SelectedDate, SelectedShift).GetAwaiter().GetResult();
-                if (shiftResult.Success && shiftResult.Data != null)
-                {
-                    var fuelResult = _dsmService.GetShiftFuelTypeSummariesAsync(shiftResult.Data.ShiftId).GetAwaiter().GetResult();
-                    if (fuelResult.Success && fuelResult.Data != null && fuelResult.Data.Count > 0)
-                    {
-                        foreach (var f in fuelResult.Data) ShiftFuelTypeSummaries.Add(f);
-                        HasShiftFuelTypeSummaries = true;
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Serilog.Log.Warning(ex, "Could not fetch ShiftFuelTypeSummaries in PrintDsm");
-            }
-        }
-
-        var sourceSummaries = ShiftFuelTypeSummaries.Count > 0 ? ShiftFuelTypeSummaries : FuelTypeSummaries;
-        var cumulativeSales = sourceSummaries.Select(f => new FuelTypeReadingSummary
+        var cumulativeSales = FuelTypeSummaries.Select(f => new FuelTypeReadingSummary
         {
             FuelType = f.FuelType,
             NozzleCount = f.NozzleCount,
@@ -4362,55 +5304,30 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
         var testing = TestingRows.Where(t => t.Amount > 0)
             .Select(t => new DsmTestingPrintRow { FuelType = t.FuelType, Litres = t.Litres ?? 0, Rate = t.Rate ?? 0, Amount = t.Amount }).ToList();
 
-        var recon = new DsmReconciliationPrintBlock
-        {
-            GrossSales      = GrossSales,
-            TotalCollection = FinalAdjusted,
-            Creditors       = TotalDebtors,
-            Testing         = TestingRows.Sum(t => t.Amount),
-            Expenses        = Expenses.Sum(e => e.Amount ?? 0),
-            Cash            = Cash2.TotalAmount,
-            Mismatch        = Difference
-        };
+        double c1 = Cash1.TotalAmount;
+        double c2 = Cash2.TotalAmount;
+        double c3 = Cash3.TotalAmount;
 
-        var breakdownList = new List<CollectionCategoryDto>();
-        if (Cash1.TotalAmount > 0)
-        {
-            breakdownList.Add(new CollectionCategoryDto { Category = "Cash 1", Amount = Cash1.TotalAmount, BaseAmount = Cash1.TotalAmount });
-        }
-        if (Cash2.TotalAmount > 0)
-        {
-            breakdownList.Add(new CollectionCategoryDto { Category = "Cash 2", Amount = Cash2.TotalAmount, BaseAmount = Cash2.TotalAmount });
-        }
-        if (Cash3.TotalAmount > 0)
-        {
-            breakdownList.Add(new CollectionCategoryDto { Category = "Cash 3", Amount = Cash3.TotalAmount, BaseAmount = Cash3.TotalAmount });
-        }
+        double phonePeFromTid = TidTransactions.Where(t => PaymentCollection.NormalizeCollectionTypeCode(t.CollectionTypeCode) == "PHONEPE").Sum(t => t.Amount);
+        double phOtpSum = OtpTransactions.Where(t => PaymentCollection.NormalizeCollectionTypeCode(t.CollectionTypeCode) == "PHONEPE").Sum(t => t.Amount);
+        double qrSum = QrPayments.Sum(q => q.Amount ?? 0);
+        double phonePeScalar = (PhonePeMorning ?? 0) + (IsPhonePeSplitEnabled ? (PhonePeNight ?? 0) : 0) + (PhonePeCardMorning ?? 0) + (IsPhonePeSplitEnabled ? (PhonePeCardNight ?? 0) : 0);
+        double phonePeItemized = phonePeFromTid + phOtpSum;
+        double phonePeTotal = Math.Max(phonePeScalar, phonePeItemized) + qrSum;
 
-        double phonePeTotal = (PhonePeMorning ?? 0) + (PhonePeNight ?? 0) + (PhonePeCardMorning ?? 0) + (PhonePeCardNight ?? 0)
-            + TidTransactions.Where(t => PaymentCollection.NormalizeCollectionTypeCode(t.CollectionTypeCode) == "PHONEPE").Sum(t => t.Amount)
-            + OtpTransactions.Where(t => PaymentCollection.NormalizeCollectionTypeCode(t.CollectionTypeCode) == "PHONEPE").Sum(t => t.Amount)
-            + QrPayments.Sum(q => q.Amount ?? 0);
-        if (phonePeTotal > 0)
-        {
-            breakdownList.Add(new CollectionCategoryDto { Category = "PhonePe", Amount = phonePeTotal, BaseAmount = phonePeTotal });
-        }
+        double ccFromTid = TidTransactions.Where(t =>
+            PaymentCollection.NormalizeCollectionTypeCode(t.CollectionTypeCode) == "CREDIT_CARD").Sum(t => t.Amount);
+        double ccOtpSum = OtpTransactions.Where(t =>
+            PaymentCollection.NormalizeCollectionTypeCode(t.CollectionTypeCode) == "CREDIT_CARD").Sum(t => t.Amount);
+        double creditCardScalar = (CreditCardMorning ?? 0) + (IsCreditCardSplitEnabled ? (CreditCardNight ?? 0) : 0);
+        double ccItemized = ccFromTid + ccOtpSum;
+        double cardTotal = ccItemized > 0 ? ccItemized : creditCardScalar;
 
-        double cardTotal = (CreditCardMorning ?? 0) + (CreditCardNight ?? 0)
-            + TidTransactions.Where(t => PaymentCollection.NormalizeCollectionTypeCode(t.CollectionTypeCode) == "CREDIT_CARD").Sum(t => t.Amount)
-            + OtpTransactions.Where(t => PaymentCollection.NormalizeCollectionTypeCode(t.CollectionTypeCode) == "CREDIT_CARD").Sum(t => t.Amount);
-        if (cardTotal > 0)
-        {
-            breakdownList.Add(new CollectionCategoryDto { Category = "Credit Card", Amount = cardTotal, BaseAmount = cardTotal });
-        }
-
-        double petroTotal = (PetroCardMorning ?? 0) + (PetroCardNight ?? 0)
-            + TidTransactions.Where(t => PaymentCollection.NormalizeCollectionTypeCode(t.CollectionTypeCode) == "PETROCARD").Sum(t => t.Amount)
-            + OtpTransactions.Where(t => PaymentCollection.NormalizeCollectionTypeCode(t.CollectionTypeCode) == "PETROCARD").Sum(t => t.Amount);
-        if (petroTotal > 0)
-        {
-            breakdownList.Add(new CollectionCategoryDto { Category = "PetroCard", Amount = petroTotal, BaseAmount = petroTotal });
-        }
+        double pcFromTid = TidTransactions.Where(t => PaymentCollection.NormalizeCollectionTypeCode(t.CollectionTypeCode) == "PETROCARD").Sum(t => t.Amount);
+        double pcOtpSum = OtpTransactions.Where(t => PaymentCollection.NormalizeCollectionTypeCode(t.CollectionTypeCode) == "PETROCARD").Sum(t => t.Amount);
+        double petroCardScalar = (PetroCardMorning ?? 0) + (IsPetroCardSplitEnabled ? (PetroCardNight ?? 0) : 0);
+        double pcItemized = pcFromTid + pcOtpSum;
+        double petroTotal = Math.Max(petroCardScalar, pcItemized);
 
         var allDynamicTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var t in TidTransactions.Where(t => !PaymentCollection.IsStandardCollectionCode(t.CollectionTypeCode)))
@@ -4421,6 +5338,9 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
             allDynamicTypes.Add(PaymentCollection.NormalizeCollectionTypeCode(d.Code));
         foreach (var m in ManualCollections.Where(m => !PaymentCollection.IsStandardCollectionCode(m.Code)))
             allDynamicTypes.Add(PaymentCollection.NormalizeCollectionTypeCode(m.Code));
+
+        var dynamicAmounts = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        var dynamicDisplayNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var normCode in allDynamicTypes)
         {
@@ -4435,12 +5355,43 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
             {
                 total = matchingDyn.Amount ?? 0;
             }
-            if (total > 0)
-            {
-                breakdownList.Add(new CollectionCategoryDto { Category = displayName, Amount = total, BaseAmount = total });
-            }
+            dynamicAmounts[normCode] = total;
+            dynamicDisplayNames[normCode] = displayName;
         }
 
+        var breakdownList = new List<CollectionCategoryDto>();
+        if (c1 > 0)
+        {
+            breakdownList.Add(new CollectionCategoryDto { Category = "Cash 1", Amount = c1, BaseAmount = c1 });
+        }
+        if (c2 > 0)
+        {
+            breakdownList.Add(new CollectionCategoryDto { Category = "Cash 2", Amount = c2, BaseAmount = c2 });
+        }
+        if (c3 > 0)
+        {
+            breakdownList.Add(new CollectionCategoryDto { Category = "Cash 3", Amount = c3, BaseAmount = c3 });
+        }
+        if (phonePeTotal > 0)
+        {
+            breakdownList.Add(new CollectionCategoryDto { Category = "PhonePe", Amount = phonePeTotal, BaseAmount = phonePeTotal });
+        }
+        if (cardTotal > 0)
+        {
+            breakdownList.Add(new CollectionCategoryDto { Category = "Credit Card", Amount = cardTotal, BaseAmount = cardTotal });
+        }
+        if (petroTotal > 0)
+        {
+            breakdownList.Add(new CollectionCategoryDto { Category = "PetroCard", Amount = petroTotal, BaseAmount = petroTotal });
+        }
+        foreach (var kvp in dynamicAmounts)
+        {
+            if (kvp.Value > 0)
+            {
+                string disp = dynamicDisplayNames.TryGetValue(kvp.Key, out var dname) ? dname : kvp.Key;
+                breakdownList.Add(new CollectionCategoryDto { Category = disp, Amount = kvp.Value, BaseAmount = kvp.Value });
+            }
+        }
         if (TotalDebtors > 0)
         {
             breakdownList.Add(new CollectionCategoryDto { Category = "Debtors", Amount = TotalDebtors, BaseAmount = TotalDebtors });
@@ -4460,6 +5411,28 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
             breakdownList.Add(new CollectionCategoryDto { Category = "Collection Reduction", Amount = -(CollectionReduction ?? 0), BaseAmount = -(CollectionReduction ?? 0) });
         }
 
+        double totalFuelCollection = breakdownList.Where(b => !b.IsInformational).Sum(b => b.Amount);
+        double authoritativeCollection = totalFuelCollection > 0 ? totalFuelCollection : FinalAdjusted;
+        double authoritativeGross = GrossSales;
+        double authoritativeMismatch = authoritativeCollection - authoritativeGross;
+        double totalDebtorRepayments = DebtorRepayments
+            .Where(r => (r.Amount ?? 0) > 0)
+            .Sum(r => r.Amount ?? 0);
+
+        var recon = new DsmReconciliationPrintBlock
+        {
+            GrossSales            = authoritativeGross,
+            TotalSales            = authoritativeGross,
+            DebtorRepaymentsAdded = totalDebtorRepayments,
+            ExpectedGrossAmount   = authoritativeGross,
+            TotalCollection       = authoritativeCollection,
+            Creditors             = TotalDebtors,
+            Testing               = testAmt,
+            Expenses              = expAmt,
+            Cash                  = c2,
+            Mismatch              = authoritativeMismatch
+        };
+
         var personalDebtorPrintRows = DebtorRepayments
             .Where(r => !string.IsNullOrWhiteSpace(r.DebtorName) && (r.Amount ?? 0) > 0)
             .Select(r => new DsmPersonalDebtorPrintRow
@@ -4475,11 +5448,11 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
         {
             StationName  = stationName,
             CompanyName  = stationName,
-            Date         = SelectedDate.ToString("dd/MM/yyyy"),
+            Date         = SelectedDate.ToString("dd/MM/yyyy", System.Globalization.CultureInfo.InvariantCulture),
             Shift        = SelectedShift,
             DsmName      = DsmName,
             PumpNo       = SelectedPump?.DisplayText ?? "",
-            PrintedAt    = DateTime.Now.ToString("dd/MM/yyyy HH:mm"),
+            PrintedAt    = DateTime.Now.ToString("dd/MM/yyyy HH:mm", System.Globalization.CultureInfo.InvariantCulture),
             StartTime    = StartTime,
             EndTime      = EndTime,
             NozzleRows   = nozzleRows,
@@ -4554,9 +5527,9 @@ public partial class DsmEntryViewModel : ObservableObject, IDisposable
         var printData = new ShiftSummaryPrintData
         {
             StationName    = stationName,
-            Date           = SelectedDate.ToString("dd/MM/yyyy"),
+            Date           = SelectedDate.ToString("dd/MM/yyyy", System.Globalization.CultureInfo.InvariantCulture),
             Shift          = SelectedShift,
-            PrintedAt      = DateTime.Now.ToString("dd/MM/yyyy HH:mm"),
+            PrintedAt      = DateTime.Now.ToString("dd/MM/yyyy HH:mm", System.Globalization.CultureInfo.InvariantCulture),
             Rows           = rows,
             CumulativeFuelSales = ShiftFuelTypeSummaries.ToList(),
             TotalSales     = rows.Sum(r => r.GrossSales),

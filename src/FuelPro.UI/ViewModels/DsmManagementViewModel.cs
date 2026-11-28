@@ -411,20 +411,21 @@ public partial class DsmManagementViewModel : ObservableObject, IDisposable
         {
             using var context = _serviceProvider.GetRequiredService<FuelProDbContext>();
 
-            // Validation Rule: One pump can only have one active DSM per Shift
-            var activeAssignment = await context.DsmPumpAssignments
+            // Validation Rule: One pump can only have one active DSM per Shift — deactivate any existing active matches
+            var activeAssignments = await context.DsmPumpAssignments
                 .Include(a => a.DsmUser)
-                .FirstOrDefaultAsync(a => a.PumpId == SelectedPumpId.Value && 
-                                          a.ShiftType == SelectedShift && 
-                                          a.IsActive);
+                .Where(a => a.PumpId == SelectedPumpId.Value &&
+                            a.ShiftType == SelectedShift &&
+                            a.IsActive)
+                .ToListAsync();
 
-            if (activeAssignment != null)
+            foreach (var activeAssignment in activeAssignments)
             {
                 // Deactivate the old active assignment to ensure only one active DSM exists at a time
                 activeAssignment.IsActive = false;
                 context.Entry(activeAssignment).State = EntityState.Modified;
-                _logger.Information("Deactivating previous active assignment of {DsmName} on Pump {PumpId} Shift {Shift}",
-                    activeAssignment.DsmUser?.FullName, activeAssignment.PumpId, activeAssignment.ShiftType);
+                _logger.Information("Deactivating previous active assignment {AssignmentId} of {DsmName} on Pump {PumpId} Shift {Shift}",
+                    activeAssignment.DsmPumpAssignmentId, activeAssignment.DsmUser?.FullName, activeAssignment.PumpId, activeAssignment.ShiftType);
             }
 
             var selectedConnected = ConnectedPumpOptions
@@ -457,22 +458,33 @@ public partial class DsmManagementViewModel : ObservableObject, IDisposable
             context.DsmPumpAssignments.Add(assignment);
             await context.SaveChangesAsync();
 
-            // Force immediate cloud push so PWA receives new assignment instantly
+            // Queue serialized cloud push and verify confirmation before reporting cloud sync success
+            string statusMessage = "✅ Assignment saved locally (cloud sync is disabled).";
             try
             {
+                var syncConfig = App.Services?.GetService(typeof(FuelPro.Sync.SyncConfigService)) as FuelPro.Sync.SyncConfigService;
+                var syncSettings = syncConfig != null ? await syncConfig.GetSettingsAsync() : null;
                 var syncEngine = App.Services?.GetService(typeof(FuelPro.Sync.SyncEngine)) as FuelPro.Sync.SyncEngine;
-                if (syncEngine != null)
+                if (syncEngine != null && syncSettings?.SyncEnabled == true)
                 {
-                    _ = syncEngine.ForceSyncAsync();
+                    AssignmentStatusMessage = "⏳ Assignment saved locally; syncing to cloud...";
+                    var (syncOk, syncErr) = await syncEngine.ForceSyncAndVerifyRecordAsync("DsmPumpAssignments", assignment.DsmPumpAssignmentId);
+                    statusMessage = syncOk
+                        ? "✅ Assignment saved and synced to cloud."
+                        : $"⚠️ Assignment saved locally, but cloud sync failed ({syncErr ?? "pending retry"}).";
                 }
             }
-            catch { }
+            catch (Exception syncEx)
+            {
+                _logger.Warning(syncEx, "Failed to verify assignment cloud sync after save");
+                statusMessage = $"⚠️ Assignment saved locally, but cloud sync failed ({syncEx.Message}).";
+            }
 
             // Reset selection fields
             foreach (var opt in ConnectedPumpOptions) opt.IsSelected = false;
             SelectedConnectedPumpId = null;
 
-            AssignmentStatusMessage = "✅ Assignment saved successfully.";
+            AssignmentStatusMessage = statusMessage;
             await LoadDataAsync();
         }
         catch (Exception ex)
@@ -491,6 +503,7 @@ public partial class DsmManagementViewModel : ObservableObject, IDisposable
         {
             using var context = _serviceProvider.GetRequiredService<FuelProDbContext>();
             var dbAssignment = await context.DsmPumpAssignments.FirstOrDefaultAsync(a => a.DsmPumpAssignmentId == assignment.DsmPumpAssignmentId);
+            string statusMessage = "✅ Assignment deactivated locally.";
             if (dbAssignment != null)
             {
                 dbAssignment.IsActive = false;
@@ -499,16 +512,29 @@ public partial class DsmManagementViewModel : ObservableObject, IDisposable
 
                 try
                 {
+                    var syncConfig = App.Services?.GetService(typeof(FuelPro.Sync.SyncConfigService)) as FuelPro.Sync.SyncConfigService;
+                    var syncSettings = syncConfig != null ? await syncConfig.GetSettingsAsync() : null;
                     var syncEngine = App.Services?.GetService(typeof(FuelPro.Sync.SyncEngine)) as FuelPro.Sync.SyncEngine;
-                    if (syncEngine != null)
+                    if (syncEngine != null && syncSettings?.SyncEnabled == true)
                     {
-                        _ = syncEngine.ForceSyncAsync();
+                        var (syncOk, syncErr) = await syncEngine.ForceSyncAndVerifyRecordAsync("DsmPumpAssignments", dbAssignment.DsmPumpAssignmentId);
+                        statusMessage = syncOk
+                            ? "✅ Assignment deactivated and synced to cloud."
+                            : $"⚠️ Assignment deactivated locally, but cloud sync failed ({syncErr ?? "pending retry"}).";
+                    }
+                    else
+                    {
+                        statusMessage = "✅ Assignment deactivated locally (cloud sync is disabled).";
                     }
                 }
-                catch { }
+                catch (Exception syncEx)
+                {
+                    _logger.Warning(syncEx, "Failed to verify assignment deactivation sync");
+                    statusMessage = $"⚠️ Assignment deactivated locally, but cloud sync failed ({syncEx.Message}).";
+                }
             }
 
-            AssignmentStatusMessage = "✅ Assignment deactivated.";
+            AssignmentStatusMessage = statusMessage;
             await LoadDataAsync();
         }
         catch (Exception ex)

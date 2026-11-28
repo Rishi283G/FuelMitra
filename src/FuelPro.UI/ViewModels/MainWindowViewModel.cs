@@ -8,7 +8,7 @@ using System.Windows.Threading;
 
 namespace FuelPro.UI.ViewModels;
 
-public partial class MainWindowViewModel : ObservableObject
+public partial class MainWindowViewModel : ObservableObject, IDisposable
 {
     private readonly AuthService _authService;
     private readonly ISettingsRepository _settingsRepo;
@@ -69,12 +69,38 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty] private string _lastSyncTime = "—";
     [ObservableProperty] private int _pendingSyncCount;
     [ObservableProperty] private string _syncStatusText = "Not Connected";
+    [ObservableProperty] private string _syncStatusToolTip = "Sync Status: Not Connected";
     [ObservableProperty] private bool _isSyncConnected;
 
     // DSM status
     [ObservableProperty] private int _pendingDsmCount;
+    [ObservableProperty] private bool _hasAuthoritativePendingCount = true;
+    [ObservableProperty] private string _pendingDsmTooltip = "DSM Approval Queue";
 
     private readonly DispatcherTimer _clockTimer;
+    private readonly FuelPro.Sync.SyncEngine _syncEngine;
+    private readonly FuelPro.Sync.DsmSubmissionPollingService _pollingService;
+    private readonly Action _featureChangedHandler;
+    private readonly Action<FuelPro.Sync.SyncStatusInfo> _syncStatusChangedHandler;
+    private readonly Action<int> _pendingCountChangedHandler;
+    private readonly Action _pollStateChangedHandler;
+    private bool _disposed;
+
+    private static readonly bool _isTestHost = AppDomain.CurrentDomain.GetAssemblies()
+        .Any(a => string.Equals(a.GetName().Name, "FuelPro.Tests", StringComparison.OrdinalIgnoreCase));
+
+    public static void DispatchOnUiThread(Action action)
+    {
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        if (!_isTestHost && dispatcher != null && !dispatcher.CheckAccess())
+        {
+            dispatcher.Invoke(action);
+        }
+        else
+        {
+            action();
+        }
+    }
 
     public MainWindowViewModel()
     {
@@ -82,10 +108,11 @@ public partial class MainWindowViewModel : ObservableObject
         _settingsRepo = App.Services.GetRequiredService<ISettingsRepository>();
         _featureService = App.Services.GetRequiredService<IFeatureToggleService>();
 
-        _featureService.FeatureConfigurationChanged += () =>
+        _featureChangedHandler = () =>
         {
-            System.Windows.Application.Current.Dispatcher.Invoke(NotifyFeaturePropertiesChanged);
+            DispatchOnUiThread(NotifyFeaturePropertiesChanged);
         };
+        _featureService.FeatureConfigurationChanged += _featureChangedHandler;
 
         _clockTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
         _clockTimer.Tick += (_, _) => CurrentDateTime = DateTime.Now.ToString("dd MMM yyyy  hh:mm tt");
@@ -95,27 +122,37 @@ public partial class MainWindowViewModel : ObservableObject
         _ = LoadStationNameAsync();
 
         // Wire Cloud Sync Status
-        var syncEngine = App.Services.GetRequiredService<FuelPro.Sync.SyncEngine>();
-        syncEngine.SyncStatusChanged += (status) =>
+        _syncEngine = App.Services.GetRequiredService<FuelPro.Sync.SyncEngine>();
+        _syncStatusChangedHandler = (status) =>
         {
-            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+            DispatchOnUiThread(() =>
             {
                 UpdateSyncStatus(status.LastSyncTime, status.PendingRecords, status.IsConnected, status.StatusMessage);
             });
         };
+        _syncEngine.SyncStatusChanged += _syncStatusChangedHandler;
         // Initial sync state update
-        UpdateSyncStatus(syncEngine.CurrentStatus.LastSyncTime, syncEngine.CurrentStatus.PendingRecords, syncEngine.CurrentStatus.IsConnected, syncEngine.CurrentStatus.StatusMessage);
+        UpdateSyncStatus(_syncEngine.CurrentStatus.LastSyncTime, _syncEngine.CurrentStatus.PendingRecords, _syncEngine.CurrentStatus.IsConnected, _syncEngine.CurrentStatus.StatusMessage);
 
-        // Wire DSM Poller Count
-        var pollingService = App.Services.GetRequiredService<FuelPro.Sync.DsmSubmissionPollingService>();
-        pollingService.PendingCountChanged += (count) =>
+        // Wire DSM Poller Count safely (guarded against null Application.Current during headless tests)
+        _pollingService = App.Services.GetRequiredService<FuelPro.Sync.DsmSubmissionPollingService>();
+
+        void ApplyPollState()
         {
-            System.Windows.Application.Current.Dispatcher.Invoke(() =>
-            {
-                PendingDsmCount = count;
-            });
-        };
-        PendingDsmCount = pollingService.CurrentPendingCount;
+            PendingDsmCount = _pollingService.CurrentPendingCount;
+            HasAuthoritativePendingCount = _pollingService.HasAuthoritativeCount;
+            PendingDsmTooltip = !_pollingService.HasAuthoritativeCount && !string.IsNullOrWhiteSpace(_pollingService.LastError)
+                ? $"DSM Approval Queue (Offline / Refresh Failed: {_pollingService.LastError})"
+                : (_pollingService.CurrentPendingCount > 0
+                    ? $"DSM Approval Queue ({_pollingService.CurrentPendingCount} pending)"
+                    : "DSM Approval Queue");
+        }
+
+        _pendingCountChangedHandler = (count) => DispatchOnUiThread(() => PendingDsmCount = count);
+        _pollStateChangedHandler = () => DispatchOnUiThread(ApplyPollState);
+        _pollingService.PendingCountChanged += _pendingCountChangedHandler;
+        _pollingService.PollStateChanged += _pollStateChangedHandler;
+        ApplyPollState();
     }
 
 
@@ -170,10 +207,15 @@ public partial class MainWindowViewModel : ObservableObject
     {
         if (!IsDsmEntryVisible) return;
         SelectedNavIndex = 0;
+        bool wasCached = _cachedViews.ContainsKey(typeof(DsmEntryViewModel));
         var dsmVm = GetOrCreateView<DsmEntryViewModel>();
         if (dsmVm.IsSaved || dsmVm.EditingEntryId.HasValue)
         {
             dsmVm.ClearForm();
+        }
+        else if (wasCached)
+        {
+            _ = dsmVm.RefreshOnNavigateAsync();
         }
         _ = dsmVm.LoadSuggestionsAsync();
         CurrentView = dsmVm;
@@ -192,7 +234,13 @@ public partial class MainWindowViewModel : ObservableObject
     {
         if (!IsFinalCalculationVisible) return;
         SelectedNavIndex = 2;
-        CurrentView = GetOrCreateView<FinalCalculationViewModel>();
+        bool wasCached = _cachedViews.ContainsKey(typeof(FinalCalculationViewModel));
+        var vm = GetOrCreateView<FinalCalculationViewModel>();
+        CurrentView = vm;
+        if (wasCached && !vm.IsLoading)
+        {
+            _ = vm.LoadShiftDataCommand.ExecuteAsync(null);
+        }
     }
 
     [RelayCommand]
@@ -200,7 +248,13 @@ public partial class MainWindowViewModel : ObservableObject
     {
         if (!IsDayTotalVisible) return;
         SelectedNavIndex = 3;
-        CurrentView = GetOrCreateView<DayTotalViewModel>();
+        bool wasCached = _cachedViews.ContainsKey(typeof(DayTotalViewModel));
+        var vm = GetOrCreateView<DayTotalViewModel>();
+        CurrentView = vm;
+        if (wasCached && !vm.IsLoading)
+        {
+            _ = vm.RefreshCommand.ExecuteAsync(null);
+        }
     }
 
     [RelayCommand]
@@ -247,7 +301,9 @@ public partial class MainWindowViewModel : ObservableObject
     {
         if (!IsDsmApprovalQueueVisible) return;
         SelectedNavIndex = 5;
-        CurrentView = GetOrCreateView<DsmApprovalQueueViewModel>();
+        var vm = GetOrCreateView<DsmApprovalQueueViewModel>();
+        CurrentView = vm;
+        _ = vm.RefreshQueueAsync();
     }
 
     [RelayCommand]
@@ -335,10 +391,39 @@ public partial class MainWindowViewModel : ObservableObject
 
     partial void OnCurrentViewChanged(object? oldValue, object? newValue)
     {
-        if (oldValue is IDisposable disposable)
+        // Retain cached ViewModels across screen navigation so their sync/data subscriptions stay active
+        // without re-subscribing; only dispose uncached views here, and dispose cached views in Dispose().
+        if (oldValue is IDisposable disposable && !_cachedViews.Values.Any(v => ReferenceEquals(v, oldValue)))
         {
             disposable.Dispose();
         }
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        _clockTimer.Stop();
+        _featureService.FeatureConfigurationChanged -= _featureChangedHandler;
+        _syncEngine.SyncStatusChanged -= _syncStatusChangedHandler;
+        _pollingService.PendingCountChanged -= _pendingCountChangedHandler;
+        _pollingService.PollStateChanged -= _pollStateChangedHandler;
+
+        var disposed = new HashSet<object>(ReferenceEqualityComparer.Instance);
+        if (CurrentView is IDisposable currentDisposable && disposed.Add(currentDisposable))
+        {
+            currentDisposable.Dispose();
+        }
+        foreach (var cached in _cachedViews.Values)
+        {
+            if (cached is IDisposable cachedDisposable && disposed.Add(cachedDisposable))
+            {
+                cachedDisposable.Dispose();
+            }
+        }
+        _cachedViews.Clear();
+        GC.SuppressFinalize(this);
     }
 
     public void UpdateSyncStatus(DateTime lastSync, int pendingCount, bool isConnected, string statusMessage)
@@ -346,16 +431,18 @@ public partial class MainWindowViewModel : ObservableObject
         PendingSyncCount = pendingCount;
         IsSyncConnected = isConnected;
         
+        var lastSyncStr = lastSync == DateTime.MinValue ? "Never" : lastSync.ToString("dd MMM yyyy hh:mm tt");
+        LastSyncTime = lastSyncStr;
+
         if (!isConnected)
         {
-            var lastSyncStr = lastSync == DateTime.MinValue ? "Never" : lastSync.ToString("dd MMM yyyy hh:mm tt");
-            SyncStatusText = $"Offline\nPending Changes: {pendingCount}\nLast Successful Sync:\n{lastSyncStr}\nRetrying Automatically...";
-            LastSyncTime = lastSync == DateTime.MinValue ? "Never" : lastSync.ToString("dd MMM yyyy hh:mm tt");
+            SyncStatusText = pendingCount > 0 ? $"Offline ({pendingCount} pending)" : "Offline";
+            SyncStatusToolTip = $"Status: Offline\nPending Changes: {pendingCount}\nLast Successful Sync: {lastSyncStr}\nRetrying automatically in the background...";
         }
         else
         {
-            SyncStatusText = statusMessage;
-            LastSyncTime = lastSync == DateTime.MinValue ? "Never" : lastSync.ToString("dd MMM yyyy hh:mm tt");
+            SyncStatusText = string.IsNullOrWhiteSpace(statusMessage) ? "Synced" : statusMessage;
+            SyncStatusToolTip = $"Status: Online / Synced\nLast Successful Sync: {lastSyncStr}";
         }
     }
 }

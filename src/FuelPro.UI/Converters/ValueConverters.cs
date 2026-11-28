@@ -373,6 +373,24 @@ public class IntToVisibilityConverter : IValueConverter
 }
 
 /// <summary>
+/// Converts a positive double/decimal/int value to Visibility.Visible (collapsed if <= 0).
+/// </summary>
+public class PositiveToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is double d && d > 0.005) return Visibility.Visible;
+        if (value is decimal m && m > 0.005m) return Visibility.Visible;
+        if (value is int i && i > 0) return Visibility.Visible;
+        if (value is float f && f > 0.005f) return Visibility.Visible;
+        return Visibility.Collapsed;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotImplementedException();
+}
+
+/// <summary>
 /// Returns Neon Green for Cash/PhonePe/Card, Orange for Cheque/Bank Transfer, Red for DSM Short.
 /// </summary>
 public class PaymentCategoryToColorConverter : IValueConverter

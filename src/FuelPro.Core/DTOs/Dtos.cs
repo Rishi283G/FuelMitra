@@ -239,7 +239,7 @@ public class DsmSummaryRowDto
     public double PhonePeTotal => (PhonePeMorning + PhonePeNight + PhonePeDay) > 0 ? (PhonePeMorning + PhonePeNight + PhonePeDay) : PhonePe;
     public double PhonePeCardTotal => (PhonePeCardMorning + PhonePeCardNight + PhonePeCardDay) > 0 ? (PhonePeCardMorning + PhonePeCardNight + PhonePeCardDay) : PhonePeCard;
     public double CreditCardPureTotal => (CreditCardMorning + CreditCardNight + CreditCardDay) > 0 ? (CreditCardMorning + CreditCardNight + CreditCardDay) : CreditCard;
-    public double CreditCardTotal => (CreditCardPureTotal > 0 ? CreditCardPureTotal : PineLabsCard) + PhonePeCardTotal;
+    public double CreditCardTotal => CreditCardPureTotal + PhonePeCardTotal;
     public double PetroCardTotal => (PetroCardMorning + PetroCardNight + PetroCardDay) > 0 ? (PetroCardMorning + PetroCardNight + PetroCardDay) : PetroCard;
     public double BankCash => CashDeposit;
     public double DebtorSales => Debit;
@@ -255,16 +255,9 @@ public class DsmSummaryRowDto
                 return StoredTotalCollection.Value;
             }
 
-            double cardAmount;
-            if (DynamicCollections != null && DynamicCollections.ContainsKey("PINELABS_CARD"))
-            {
-                cardAmount = CreditCardPureTotal + PhonePeCardTotal;
-            }
-            else
-            {
-                cardAmount = CreditCardTotal;
-            }
-            return CashDeposit + CashInHand + Cash3 + PhonePeTotal + cardAmount + PetroCardTotal + DynamicCollectionsTotal + Debit + Expenses - CollectionReduction;
+            double cardAmount = CreditCardPureTotal + PhonePeCardTotal;
+            double pineLabsAmount = (DynamicCollections != null && (DynamicCollections.ContainsKey("PINELABS_CARD") || DynamicCollections.ContainsKey("PINELAB_CARD") || DynamicCollections.ContainsKey("PINELABS") || DynamicCollections.ContainsKey("PINELAB"))) ? 0 : PineLabsCard;
+            return CashDeposit + CashInHand + Cash3 + PhonePeTotal + cardAmount + pineLabsAmount + PetroCardTotal + DynamicCollectionsTotal + Debit + Expenses - CollectionReduction;
         }
     }
     public double Difference => StoredMismatch.HasValue ? StoredMismatch.Value : (TotalCollection - NetGrossSales);
@@ -293,9 +286,9 @@ public class DsmSummaryRowDto
         if (clean.Equals("PHONEPE", StringComparison.OrdinalIgnoreCase))
             return PhonePeTotal;
         if (clean.Equals("CREDITCARD", StringComparison.OrdinalIgnoreCase) || clean.Equals("CREDITDEBITCARD", StringComparison.OrdinalIgnoreCase) || clean.Equals("CARD", StringComparison.OrdinalIgnoreCase))
-            return CreditCardPureTotal > 0 ? CreditCardPureTotal : (CreditCardTotal > 0 ? CreditCardTotal : 0);
+            return CreditCardPureTotal;
         if (clean.Equals("PINELABCARD", StringComparison.OrdinalIgnoreCase) || clean.Equals("PINELABS", StringComparison.OrdinalIgnoreCase) || clean.Equals("PINELABSCARD", StringComparison.OrdinalIgnoreCase) || clean.Equals("PINELAB", StringComparison.OrdinalIgnoreCase))
-            return PineLabsCard > 0 ? PineLabsCard : (DynamicCollections != null && DynamicCollections.TryGetValue("PINELABS_CARD", out var pv) ? pv : (CreditCardTotal > 0 && CreditCardPureTotal == 0 ? CreditCardTotal : 0));
+            return PineLabsCard > 0 ? PineLabsCard : (DynamicCollections != null && DynamicCollections.TryGetValue("PINELABS_CARD", out var pv) ? pv : 0);
         if (clean.Equals("PETROCARD", StringComparison.OrdinalIgnoreCase) || clean.Equals("PETRO", StringComparison.OrdinalIgnoreCase))
             return PetroCardTotal;
         if (clean.Equals("CASHDEPOSIT", StringComparison.OrdinalIgnoreCase) || clean.Equals("BANKCASH", StringComparison.OrdinalIgnoreCase) || clean.Equals("CASH1", StringComparison.OrdinalIgnoreCase))
@@ -514,6 +507,7 @@ public class DsmShiftTotalDto
     public double PhonePeCard { get; set; }
     public double CreditCard { get; set; }
     public double PetroCard { get; set; }
+    public double PineLabsCard { get; set; }
     public double DynamicCollectionsTotal { get; set; }
     public Dictionary<string, double> DynamicCollections { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public string DynamicBreakdownDisplay
@@ -542,8 +536,10 @@ public class DsmShiftTotalDto
 
         if (clean.Equals("PHONEPE", StringComparison.OrdinalIgnoreCase))
             return PhonePe;
-        if (clean.Equals("CREDITCARD", StringComparison.OrdinalIgnoreCase) || clean.Equals("PINELABCARD", StringComparison.OrdinalIgnoreCase) || clean.Equals("CARD", StringComparison.OrdinalIgnoreCase))
+        if (clean.Equals("CREDITCARD", StringComparison.OrdinalIgnoreCase) || clean.Equals("CREDITDEBITCARD", StringComparison.OrdinalIgnoreCase) || clean.Equals("CARD", StringComparison.OrdinalIgnoreCase))
             return CreditCard + PhonePeCard;
+        if (clean.Equals("PINELABCARD", StringComparison.OrdinalIgnoreCase) || clean.Equals("PINELABS", StringComparison.OrdinalIgnoreCase) || clean.Equals("PINELABSCARD", StringComparison.OrdinalIgnoreCase) || clean.Equals("PINELAB", StringComparison.OrdinalIgnoreCase))
+            return PineLabsCard > 0 ? PineLabsCard : (DynamicCollections != null && DynamicCollections.TryGetValue("PINELABS_CARD", out var pv) ? pv : 0);
         if (clean.Equals("PETROCARD", StringComparison.OrdinalIgnoreCase) || clean.Equals("PETRO", StringComparison.OrdinalIgnoreCase))
             return PetroCard;
         if (clean.Equals("CASHDEPOSIT", StringComparison.OrdinalIgnoreCase) || clean.Equals("BANKCASH", StringComparison.OrdinalIgnoreCase) || clean.Equals("CASH1", StringComparison.OrdinalIgnoreCase))

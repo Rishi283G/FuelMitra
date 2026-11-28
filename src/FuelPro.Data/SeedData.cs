@@ -650,7 +650,7 @@ public static class SeedData
         {
             var now = DateTime.Now;
             context.CollectionTypes.AddRange(
-                new CollectionTypeMaster { Code = "PHONEPE", DisplayName = "PhonePe", Category = "Online", HasTidBatch = true, DisplayOrder = 1, IsActive = true, IsSystem = true, CreatedAt = now },
+                new CollectionTypeMaster { Code = "PHONEPE", DisplayName = "PhonePe", Category = "Online", HasTidBatch = false, HasOtp = false, DisplayOrder = 1, IsActive = true, IsSystem = true, CreatedAt = now },
                 new CollectionTypeMaster { Code = "CREDIT_CARD", DisplayName = "Credit / Debit Card", Category = "Card", HasTidBatch = true, DisplayOrder = 2, IsActive = true, IsSystem = true, CreatedAt = now },
                 new CollectionTypeMaster { Code = "PETROCARD", DisplayName = "PetroCard", Category = "Card", HasTidBatch = true, DisplayOrder = 3, IsActive = true, IsSystem = true, CreatedAt = now },
                 new CollectionTypeMaster { Code = "PINELABS_CARD", DisplayName = "Pine Labs Card", Category = "Card", HasTidBatch = true, DisplayOrder = 4, IsActive = true, IsSystem = true, CreatedAt = now },

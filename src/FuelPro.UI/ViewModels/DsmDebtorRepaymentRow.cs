@@ -7,6 +7,7 @@ public partial class DsmDebtorRepaymentRow : ObservableObject
 {
     public Action? OnRowChanged { get; set; }
 
+    [ObservableProperty] private int _creditorRepaymentId;
     [ObservableProperty] private string _debtorName = string.Empty;
     [ObservableProperty] private string _paymentMode = "Cash";
     [ObservableProperty] private double? _amount;

@@ -54,7 +54,23 @@ public class ReportService : IReportService
         dto.GrandTotalSaleAmount = dto.TotalFuelAmount;
 
         // 2. DSM Summary (Table A)
-        var summaryRows = _aggregation.BuildDsmSummaryRows(entriesList);
+        var colService = _serviceProvider?.GetService<ICollectionTypeService>();
+        List<CollectionTypeMaster> allColTypes = new();
+        if (colService != null)
+        {
+            try
+            {
+                var task = colService.GetAllCollectionTypesAsync();
+                task.Wait(1000);
+                if (task.IsCompletedSuccessfully)
+                {
+                    allColTypes = task.Result ?? new List<CollectionTypeMaster>();
+                }
+            }
+            catch { }
+        }
+
+        var summaryRows = _aggregation.BuildDsmSummaryRows(entriesList, allColTypes);
         dto.DsmSummaryRows = summaryRows;
         dto.DsmSummaryTotals = _aggregation.BuildDsmSummaryTotalRow(summaryRows);
         dto.DsmShiftTotals = _aggregation.BuildDsmShiftTotals(summaryRows);
@@ -254,6 +270,15 @@ public class ReportService : IReportService
         // Debtor repayments excluded from operational sales totals per client specification
         double finalCashDeposit = dto.Cash1.GrandTotal;
         double finalCashInHand = dto.Cash2.GrandTotal;
+        if (finalCashInHand == 0)
+        {
+            double summaryCashInHand = summaryRows.Sum(r => r.CashInHand);
+            if (summaryCashInHand > 0)
+            {
+                finalCashInHand = summaryCashInHand;
+                dto.Cash2.GrandTotal = finalCashInHand;
+            }
+        }
         double finalPhonePeMorning = phonePeMorning;
         double finalPhonePeNight = phonePeNight;
         double finalCreditCardMorning = creditCardMorning;
@@ -322,15 +347,16 @@ public class ReportService : IReportService
         dto.TotalDsmShort = totalDsmShort;
 
         // 11. Standardized dynamic collection categories with audit breakdown (Oil & DEF sales excluded from Final Reconciliation)
-        var colService = _serviceProvider?.GetService<ICollectionTypeService>();
-        List<CollectionTypeMaster> allColTypes = new();
-        if (colService != null)
+        if (allColTypes.Count == 0 && colService != null)
         {
             try
             {
                 var task = colService.GetAllCollectionTypesAsync();
-                task.Wait();
-                allColTypes = task.Result ?? new List<CollectionTypeMaster>();
+                task.Wait(1000);
+                if (task.IsCompletedSuccessfully)
+                {
+                    allColTypes = task.Result ?? new List<CollectionTypeMaster>();
+                }
             }
             catch { }
         }
@@ -339,13 +365,12 @@ public class ReportService : IReportService
             ?? allColTypes.FirstOrDefault(c => string.Equals(c.Code?.Replace("_", "")?.Replace(" ", ""), "PHONEPE", StringComparison.OrdinalIgnoreCase));
 
         var ccType = allColTypes.FirstOrDefault(c => c.IsActive && (
-            (c.Code?.ToUpper().Replace("_", "").Replace(" ", "") ?? "").Contains("PINELAB") ||
-            (c.Code?.ToUpper().Replace("_", "").Replace(" ", "") ?? "").Contains("CREDITCARD") ||
-            (c.Code?.ToUpper().Replace("_", "").Replace(" ", "") ?? "").Contains("CREDITDEBITCARD") ||
+            (c.Code?.ToUpper().Replace("_", "").Replace(" ", "") ?? "") == "CREDITCARD" ||
+            (c.Code?.ToUpper().Replace("_", "").Replace(" ", "") ?? "") == "CREDITDEBITCARD" ||
             (c.Code?.ToUpper().Replace("_", "").Replace(" ", "") ?? "") == "CARD"))
             ?? allColTypes.FirstOrDefault(c => {
                 string nc = c.Code?.ToUpper().Replace("_", "").Replace(" ", "") ?? "";
-                return nc.Contains("PINELAB") || nc.Contains("CREDITCARD") || nc.Contains("CREDITDEBITCARD") || nc == "CARD";
+                return nc == "CREDITCARD" || nc == "CREDITDEBITCARD" || nc == "CARD";
             });
 
         var pcType = allColTypes.FirstOrDefault(c => c.IsActive && (
@@ -360,12 +385,12 @@ public class ReportService : IReportService
             ?? allColTypes.FirstOrDefault(c => string.Equals(c.Code?.Replace("_", "")?.Replace(" ", ""), "CASHDEPOSIT", StringComparison.OrdinalIgnoreCase));
 
         bool phActive = phType?.IsActive ?? (allColTypes.Count == 0);
-        bool ccActive = ccType?.IsActive ?? (allColTypes.Count == 0);
+        bool ccActive = ccType != null ? ccType.IsActive : (allColTypes.Count == 0);
         bool pcActive = pcType?.IsActive ?? (allColTypes.Count == 0);
         bool cdActive = cdType?.IsActive ?? true;
 
         string phName = phType?.DisplayName ?? "PhonePe";
-        string ccName = ccType?.DisplayName ?? "PineLab Card";
+        string ccName = ccType?.DisplayName ?? "Credit / Debit Card";
         string pcName = pcType?.DisplayName ?? "PetroCard";
         string cdName = cdType?.DisplayName ?? "Cash Deposit";
 
@@ -416,44 +441,55 @@ public class ReportService : IReportService
 
         if (ccActive)
         {
-            double shiftCard = summaryRows.Sum(r => r.CreditCardTotal);
-            if (shiftCard == 0) shiftCard = summaryRows.Sum(r => r.PineLabsCard);
-            if (shiftCard == 0) shiftCard = finalCreditCardMorning + finalCreditCardNight + finalPhonePeCardMorning + finalPhonePeCardNight;
+            double shiftCard = summaryRows.Sum(r => r.CreditCardPureTotal);
+            if (shiftCard == 0) shiftCard = finalCreditCardMorning + finalCreditCardNight;
 
+            if (shiftCard > 0 || dto.CreditCardRepayments > 0 || ccType != null)
+            {
+                breakdownList.Add(new CollectionCategoryDto
+                {
+                    Category = ccName,
+                    Amount = shiftCard,
+                    BaseAmount = shiftCard,
+                    RecoveryAmount = dto.CreditCardRepayments
+                });
+            }
+        }
+
+        double shiftPineLabs = summaryRows.Sum(r => r.PineLabsCard);
+        if (shiftPineLabs > 0 && !allColTypes.Any(t => t.IsActive && (t.Code?.Contains("PINELAB", StringComparison.OrdinalIgnoreCase) == true || t.DisplayName?.Contains("Pine", StringComparison.OrdinalIgnoreCase) == true)))
+        {
             breakdownList.Add(new CollectionCategoryDto
             {
-                Category = ccType?.DisplayName ?? "PineLabs Card",
-                Amount = shiftCard,
-                BaseAmount = shiftCard,
-                RecoveryAmount = dto.CreditCardRepayments
+                Category = "PineLab Card",
+                Amount = shiftPineLabs,
+                BaseAmount = shiftPineLabs
             });
         }
 
         if (pcActive)
         {
-            breakdownList.Add(new CollectionCategoryDto
+            if (finalPetroCard > 0 || dto.PetroCardRepayments > 0 || pcType != null)
             {
-                Category = pcType?.DisplayName ?? "PetroCard",
-                Amount = finalPetroCard,
-                BaseAmount = petroCard,
-                RecoveryAmount = dto.PetroCardRepayments
-            });
+                breakdownList.Add(new CollectionCategoryDto
+                {
+                    Category = pcType?.DisplayName ?? "PetroCard",
+                    Amount = finalPetroCard,
+                    BaseAmount = petroCard,
+                    RecoveryAmount = dto.PetroCardRepayments
+                });
+            }
         }
 
         // All other enabled dynamic collection types from Dev side (always show with 0 if no entries)
         var builtInCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) 
         { 
-            "PHONEPE", "PETROCARD", "CASH_DEPOSIT" 
+            "PHONEPE", "PETROCARD", "CASH_DEPOSIT", "CREDIT_CARD", "CREDITCARD" 
         };
         if (ccType != null)
         {
             builtInCodes.Add(ccType.Code);
             builtInCodes.Add(ccType.Code.Replace("_", ""));
-        }
-        else
-        {
-            builtInCodes.Add("CREDIT_CARD");
-            builtInCodes.Add("CREDITCARD");
         }
 
         var dynamicActiveTypes = allColTypes
@@ -475,12 +511,29 @@ public class ReportService : IReportService
             var cleanTCode = t.Code?.Replace("_", "")?.Replace(" ", "") ?? "";
             double sum = entryDynamicItems
                 .Where(i => string.Equals(i.CollectionTypeCode, t.Code, StringComparison.OrdinalIgnoreCase) ||
-                            string.Equals(i.CollectionTypeCode?.Replace("_", "")?.Replace(" ", ""), cleanTCode, StringComparison.OrdinalIgnoreCase))
+                            string.Equals(i.CollectionTypeCode?.Replace("_", "")?.Replace(" ", ""), cleanTCode, StringComparison.OrdinalIgnoreCase) ||
+                            (cleanTCode.Contains("PINELAB") && (PaymentCollection.NormalizeCollectionTypeCode(i.CollectionTypeCode) == "PINELABS_CARD" || (i.CollectionTypeCode?.ToUpperInvariant().Replace("_", "").Replace(" ", "").Contains("PINELAB") ?? false))))
                 .Sum(x => x.Amount);
 
-            if (sum == 0 && (cleanTCode.Contains("PINELAB") || cleanTCode.Contains("CREDITCARD")))
+            if (cleanTCode.Contains("PINELAB"))
             {
-                sum = summaryRows.Sum(r => r.PineLabsCard);
+                double summaryPine = summaryRows.Sum(r => r.PineLabsCard);
+                bool hasCompleteSummary = summaryRows.Count >= entriesList.Count && summaryRows.Count > 0;
+
+                if (summaryPine > 0)
+                {
+                    if (sum > 0 && Math.Abs(sum - summaryPine) > 0.01)
+                    {
+                        _logger.Warning("Shift Report (Shift {ShiftType}, {Date:yyyy-MM-dd}): Pine Labs Card discrepancy detected between raw dynamic items (₹{ItemSum}) and DSM summary rows (₹{SummarySum}). Using authoritative DSM summary total.", 
+                            shiftType, date, sum, summaryPine);
+                    }
+                    sum = summaryPine;
+                }
+                else if (sum > 0)
+                {
+                    _logger.Warning("Shift Report (Shift {ShiftType}, {Date:yyyy-MM-dd}): Pine Labs Card has ₹{ItemSum} in dynamic collection items, but DSM summary rows total is ₹0. Retaining dynamic items amount for breakdown.",
+                        shiftType, date, sum);
+                }
             }
 
             double dynamicRecovery = repaymentsList
@@ -497,6 +550,7 @@ public class ReportService : IReportService
                 RecoveryAmount = dynamicRecovery
             });
         }
+
 
         if (dto.BankCashRepayments > 0 && !breakdownList.Any(c => c.Category.IndexOf("Bank Transfer", StringComparison.OrdinalIgnoreCase) >= 0 || c.Category.IndexOf("Cheque", StringComparison.OrdinalIgnoreCase) >= 0 || c.Category.IndexOf("Bank Deposit", StringComparison.OrdinalIgnoreCase) >= 0))
         {
@@ -581,9 +635,10 @@ public class ReportService : IReportService
             });
         }
 
-        if (totalDsmShort != 0) breakdownList.Add(new() { Category = "DSM Short", Amount = totalDsmShort, BaseAmount = totalDsmShort, RecoveryAmount = 0 });
+        // totalDsmShort is preserved on DTO metadata (TotalDsmShort), excluded from CollectionBreakdown
 
         dto.CollectionBreakdown = breakdownList;
+        dto.CollectionTypes = allColTypes;
 
 
         dto.GrandTotalSaleAmount = dto.DsrTotalFuelAmount + dto.OilDefSalesTotal;
@@ -700,7 +755,23 @@ public class ReportService : IReportService
         dto.GrandTotalSaleAmount = dto.TotalFuelAmount;
 
         // 2. DSM Summary (Table A)
-        var summaryRows = _aggregation.BuildDsmSummaryRows(todayEntries);
+        var dayColService = _serviceProvider?.GetService<ICollectionTypeService>();
+        List<CollectionTypeMaster> dayColTypes = new();
+        if (dayColService != null)
+        {
+            try
+            {
+                var task = dayColService.GetAllCollectionTypesAsync();
+                task.Wait(1000);
+                if (task.IsCompletedSuccessfully)
+                {
+                    dayColTypes = task.Result ?? new List<CollectionTypeMaster>();
+                }
+            }
+            catch { }
+        }
+
+        var summaryRows = _aggregation.BuildDsmSummaryRows(todayEntries, dayColTypes);
         dto.DsmSummaryRows = summaryRows;
         dto.DsmSummaryTotals = _aggregation.BuildDsmSummaryTotalRow(summaryRows);
         dto.DsmShiftTotals = _aggregation.BuildDsmShiftTotals(summaryRows);
@@ -708,6 +779,11 @@ public class ReportService : IReportService
         // 3. Cash Summary (Table B)
         dto.Cash1 = _aggregation.AggregateCash(todayEntries, "Cash1");
         dto.Cash2 = _aggregation.AggregateCash(todayEntries, "Cash2");
+        double dayCashInHand = summaryRows.Sum(r => r.CashInHand);
+        if (dto.Cash2.GrandTotal == 0 && dayCashInHand > 0)
+        {
+            dto.Cash2.GrandTotal = dayCashInHand;
+        }
         dto.Cash3 = _aggregation.AggregateCash(todayEntries, "Cash3");
 
         // 4. Debtors (Table C)
@@ -816,9 +892,9 @@ public class ReportService : IReportService
         double phonePeCardMorning = 0;
         double phonePeCardDay = 0;
         double phonePeCardNight = 0;
-        double pineLabsCardMorning = 0;
-        double pineLabsCardDay = 0;
-        double pineLabsCardNight = 0;
+        double creditCardMorning = 0;
+        double creditCardDay = 0;
+        double creditCardNight = 0;
         double petroCardMorning = 0;
         double petroCardDay = 0;
         double petroCardNight = 0;
@@ -847,13 +923,13 @@ public class ReportService : IReportService
             }
 
             phonePeCardMorning += pc?.PhonePeCardMorning ?? 0;
-            pineLabsCardMorning += pc?.CreditCardMorning ?? 0;
+            creditCardMorning += pc?.CreditCardMorning ?? 0;
             petroCardMorning += pc?.PetroCardMorning ?? 0;
             phonePeCardNight += pc?.PhonePeCardNight ?? 0;
-            pineLabsCardNight += pc?.CreditCardNight ?? 0;
+            creditCardNight += pc?.CreditCardNight ?? 0;
             petroCardNight += pc?.PetroCardNight ?? 0;
             phonePeCardDay += pc?.PhonePeCardDay ?? 0;
-            pineLabsCardDay += pc?.CreditCardDay ?? 0;
+            creditCardDay += pc?.CreditCardDay ?? 0;
             petroCardDay += pc?.PetroCardDay ?? 0;
         }
 
@@ -862,8 +938,8 @@ public class ReportService : IReportService
         double finalPhonePeNight = phonePeDirectNight;
         double finalPhonePeCardMorning = phonePeCardMorning + phonePeCardDay;
         double finalPhonePeCardNight = phonePeCardNight;
-        double finalCreditCardMorning = pineLabsCardMorning + pineLabsCardDay;
-        double finalCreditCardNight = pineLabsCardNight;
+        double finalCreditCardMorning = creditCardMorning + creditCardDay;
+        double finalCreditCardNight = creditCardNight;
         double finalPetroCard = petroCardMorning + petroCardDay + petroCardNight;
         double dayPetroTotal = summaryRows.Sum(r => r.PetroCardTotal);
         if (finalPetroCard == 0 && dayPetroTotal > 0)
@@ -941,15 +1017,17 @@ public class ReportService : IReportService
         dto.OilDefSalesTotal = oilDefResult.Total;
 
         // 12. Build standardized dynamic collection categories with audit breakdown (Oil & DEF sales excluded from Final Reconciliation)
-        var colService = _serviceProvider?.GetService<ICollectionTypeService>();
-        List<CollectionTypeMaster> allColTypes = new();
-        if (colService != null)
+        var allColTypes = dayColTypes;
+        if (allColTypes.Count == 0 && dayColService != null)
         {
             try
             {
-                var task = colService.GetAllCollectionTypesAsync();
-                task.Wait();
-                allColTypes = task.Result;
+                var task = dayColService.GetAllCollectionTypesAsync();
+                task.Wait(1000);
+                if (task.IsCompletedSuccessfully)
+                {
+                    allColTypes = task.Result ?? new List<CollectionTypeMaster>();
+                }
             }
             catch { }
         }
@@ -958,13 +1036,12 @@ public class ReportService : IReportService
             ?? allColTypes.FirstOrDefault(c => string.Equals(c.Code?.Replace("_", "")?.Replace(" ", ""), "PHONEPE", StringComparison.OrdinalIgnoreCase));
 
         var ccType = allColTypes.FirstOrDefault(c => c.IsActive && (
-            (c.Code?.ToUpper().Replace("_", "").Replace(" ", "") ?? "").Contains("PINELAB") ||
-            (c.Code?.ToUpper().Replace("_", "").Replace(" ", "") ?? "").Contains("CREDITCARD") ||
-            (c.Code?.ToUpper().Replace("_", "").Replace(" ", "") ?? "").Contains("CREDITDEBITCARD") ||
+            (c.Code?.ToUpper().Replace("_", "").Replace(" ", "") ?? "") == "CREDITCARD" ||
+            (c.Code?.ToUpper().Replace("_", "").Replace(" ", "") ?? "") == "CREDITDEBITCARD" ||
             (c.Code?.ToUpper().Replace("_", "").Replace(" ", "") ?? "") == "CARD"))
             ?? allColTypes.FirstOrDefault(c => {
                 string nc = c.Code?.ToUpper().Replace("_", "").Replace(" ", "") ?? "";
-                return nc.Contains("PINELAB") || nc.Contains("CREDITCARD") || nc.Contains("CREDITDEBITCARD") || nc == "CARD";
+                return nc == "CREDITCARD" || nc == "CREDITDEBITCARD" || nc == "CARD";
             });
 
         var pcType = allColTypes.FirstOrDefault(c => c.IsActive && (
@@ -979,12 +1056,12 @@ public class ReportService : IReportService
             ?? allColTypes.FirstOrDefault(c => string.Equals(c.Code?.Replace("_", "")?.Replace(" ", ""), "CASHDEPOSIT", StringComparison.OrdinalIgnoreCase));
 
         bool phActive = phType?.IsActive ?? (allColTypes.Count == 0);
-        bool ccActive = ccType?.IsActive ?? (allColTypes.Count == 0);
+        bool ccActive = ccType != null ? ccType.IsActive : (allColTypes.Count == 0);
         bool pcActive = pcType?.IsActive ?? (allColTypes.Count == 0);
         bool cdActive = cdType?.IsActive ?? true;
 
         string phName = phType?.DisplayName ?? "PhonePe Direct";
-        string ccName = ccType?.DisplayName ?? "PineLabs Card";
+        string ccName = ccType?.DisplayName ?? "Credit / Debit Card";
         string pcName = pcType?.DisplayName ?? "PetroCard";
         string cdName = cdType?.DisplayName ?? "Cash Deposit";
 
@@ -1011,11 +1088,23 @@ public class ReportService : IReportService
         if (ccActive)
         {
             double ccTotal = summaryRows.Sum(r => r.CreditCardPureTotal);
-            if (ccTotal == 0) ccTotal = summaryRows.Sum(r => r.PineLabsCard);
-            if (ccTotal == 0) ccTotal = summaryRows.Sum(r => r.CreditCardTotal);
             if (ccTotal == 0) ccTotal = finalCreditCardMorning + finalCreditCardNight;
 
-            dayBreakdown.Add(new() { Category = ccName, Amount = ccTotal, BaseAmount = ccTotal, RecoveryAmount = dto.CreditCardRepayments });
+            if (ccTotal > 0 || dto.CreditCardRepayments > 0 || ccType != null)
+            {
+                dayBreakdown.Add(new() { Category = ccName, Amount = ccTotal, BaseAmount = ccTotal, RecoveryAmount = dto.CreditCardRepayments });
+            }
+        }
+
+        double dayPineLabs = summaryRows.Sum(r => r.PineLabsCard);
+        if (dayPineLabs > 0 && !allColTypes.Any(t => t.IsActive && (t.Code?.Contains("PINELAB", StringComparison.OrdinalIgnoreCase) == true || t.DisplayName?.Contains("Pine", StringComparison.OrdinalIgnoreCase) == true)))
+        {
+            dayBreakdown.Add(new CollectionCategoryDto
+            {
+                Category = "PineLab Card",
+                Amount = dayPineLabs,
+                BaseAmount = dayPineLabs
+            });
         }
 
         if (pcActive)
@@ -1024,23 +1113,21 @@ public class ReportService : IReportService
             if (pcTotal == 0) pcTotal = summaryRows.Sum(r => r.PetroCardTotal);
             double basePc = petroCardMorning + petroCardDay + petroCardNight;
             if (basePc == 0) basePc = pcTotal;
-            dayBreakdown.Add(new() { Category = pcName, Amount = pcTotal, BaseAmount = basePc, RecoveryAmount = dto.PetroCardRepayments });
+            if (pcTotal > 0 || dto.PetroCardRepayments > 0 || pcType != null)
+            {
+                dayBreakdown.Add(new() { Category = pcName, Amount = pcTotal, BaseAmount = basePc, RecoveryAmount = dto.PetroCardRepayments });
+            }
         }
 
         // All other enabled dynamic collection types from Dev side (always show with 0 if no entries)
         var builtInCodesDay = new HashSet<string>(StringComparer.OrdinalIgnoreCase) 
         { 
-            "PHONEPE", "PETROCARD", "CASH_DEPOSIT" 
+            "PHONEPE", "PETROCARD", "CASH_DEPOSIT", "CREDIT_CARD", "CREDITCARD" 
         };
         if (ccType != null)
         {
             builtInCodesDay.Add(ccType.Code);
             builtInCodesDay.Add(ccType.Code.Replace("_", ""));
-        }
-        else
-        {
-            builtInCodesDay.Add("CREDIT_CARD");
-            builtInCodesDay.Add("CREDITCARD");
         }
 
         var dynamicActiveTypesDay = allColTypes
@@ -1062,12 +1149,29 @@ public class ReportService : IReportService
             var cleanTCode = t.Code?.Replace("_", "")?.Replace(" ", "") ?? "";
             double sum = todayDynamicItems
                 .Where(i => string.Equals(i.CollectionTypeCode, t.Code, StringComparison.OrdinalIgnoreCase) ||
-                            string.Equals(i.CollectionTypeCode?.Replace("_", "")?.Replace(" ", ""), cleanTCode, StringComparison.OrdinalIgnoreCase))
+                            string.Equals(i.CollectionTypeCode?.Replace("_", "")?.Replace(" ", ""), cleanTCode, StringComparison.OrdinalIgnoreCase) ||
+                            (cleanTCode.Contains("PINELAB") && (PaymentCollection.NormalizeCollectionTypeCode(i.CollectionTypeCode) == "PINELABS_CARD" || (i.CollectionTypeCode?.ToUpperInvariant().Replace("_", "").Replace(" ", "").Contains("PINELAB") ?? false))))
                 .Sum(x => x.Amount);
 
-            if (sum == 0 && (cleanTCode.Contains("PINELAB") || cleanTCode.Contains("CREDITCARD")))
+            if (cleanTCode.Contains("PINELAB"))
             {
-                sum = summaryRows.Sum(r => r.PineLabsCard);
+                double summaryPine = summaryRows.Sum(r => r.PineLabsCard);
+                bool hasCompleteSummary = summaryRows.Count >= todayEntries.Count && summaryRows.Count > 0;
+
+                if (summaryPine > 0)
+                {
+                    if (sum > 0 && Math.Abs(sum - summaryPine) > 0.01)
+                    {
+                        _logger.Warning("Day Report ({Date:yyyy-MM-dd}): Pine Labs Card discrepancy detected between raw dynamic items (₹{ItemSum}) and DSM summary rows (₹{SummarySum}). Using authoritative DSM summary total.", 
+                            startDate, sum, summaryPine);
+                    }
+                    sum = summaryPine;
+                }
+                else if (sum > 0)
+                {
+                    _logger.Warning("Day Report ({Date:yyyy-MM-dd}): Pine Labs Card has ₹{ItemSum} in dynamic collection items, but DSM summary rows total is ₹0. Retaining dynamic items amount for breakdown.",
+                        startDate, sum);
+                }
             }
 
             double dynamicRecovery = repaymentsList
@@ -1084,6 +1188,7 @@ public class ReportService : IReportService
                 RecoveryAmount = dynamicRecovery
             });
         }
+
 
         if (dto.BankCashRepayments > 0 && !dayBreakdown.Any(c => c.Category.IndexOf("Bank Transfer", StringComparison.OrdinalIgnoreCase) >= 0 || c.Category.IndexOf("Cheque", StringComparison.OrdinalIgnoreCase) >= 0 || c.Category.IndexOf("Bank Deposit", StringComparison.OrdinalIgnoreCase) >= 0))
         {
@@ -1172,6 +1277,7 @@ public class ReportService : IReportService
         }
 
         dto.CollectionBreakdown = dayBreakdown;
+        dto.CollectionTypes = allColTypes;
 
         // 12. Final Reconciliation
         dto.GrandTotalSaleAmount = dto.DsrTotalFuelAmount + dto.OilDefSalesTotal;
@@ -1263,6 +1369,17 @@ public class ReportService : IReportService
             ? (double)e.GrossSales 
             : (e.NozzleReadings != null && e.NozzleReadings.Count > 0 ? e.NozzleReadings.Sum(n => n.Amount) : 0);
 
+        double testing = e.TestingEntries?.Sum(t => t.Amount) ?? 0;
+        double netGrossSales = (e.NetGrossSales > 0) ? (double)e.NetGrossSales : (gs - testing);
+
+        if (e.TotalCollection > 0)
+        {
+            double storedMismatch = (e.Mismatch != 0 && Math.Abs((double)e.Mismatch - ((double)e.TotalCollection - netGrossSales)) < 0.01)
+                ? (double)e.Mismatch
+                : ((double)e.TotalCollection - netGrossSales);
+            return (gs, (double)e.TotalCollection, storedMismatch);
+        }
+
         double cash1 = e.CashDenominations != null && e.CashDenominations.Any(c => c.CashType == "Cash1")
             ? e.CashDenominations.Where(c => c.CashType == "Cash1").Sum(c => c.TotalAmount)
             : (e.PaymentCollection?.CashDeposit ?? 0);
@@ -1303,10 +1420,14 @@ public class ReportService : IReportService
         double debits = e.DebitEntries?.Sum(d => d.Amount) ?? 0;
         double expenses = (e.Expenses?.Sum(x => x.Amount) ?? 0) + (e.KhandharePetroleumEntries?.Sum(kp => kp.Amount) ?? 0);
         double reduction = e.PaymentCollection?.CollectionReduction ?? 0;
-        double testing = e.TestingEntries?.Sum(t => t.Amount) ?? 0;
+
+        if (cash2 == 0 && e.TotalInDirect > 0)
+        {
+            double directNonCash = cash1 + cash3 + phTotal + ppcTotal + ccTotal + petroTotal + dynamicColl;
+            cash2 = Math.Max(0, (double)e.TotalInDirect - directNonCash);
+        }
 
         double totalCollection = cash1 + cash2 + cash3 + phTotal + ppcTotal + ccTotal + petroTotal + dynamicColl + debits + expenses - reduction;
-        double netGrossSales = (e.NetGrossSales > 0) ? (double)e.NetGrossSales : (gs - testing);
         double mismatch = totalCollection - netGrossSales;
 
         return (gs, totalCollection, mismatch);
@@ -1344,70 +1465,68 @@ public class ReportService : IReportService
             || string.Equals(mode, "Petro Card", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static List<DsmEntry> MergeConnectedPumpEntries(List<DsmEntry> entries)
+    public static List<DsmEntry> MergeConnectedPumpEntries(List<DsmEntry> entries)
     {
         if (entries == null || entries.Count == 0) return new List<DsmEntry>();
 
         var primaryEntries = entries.Where(e => !e.ReconciledToPumpId.HasValue).OrderBy(e => e.DsmEntryId).ToList();
         var slaveEntries = entries.Where(e => e.ReconciledToPumpId.HasValue).ToList();
+        var allPrimaryIds = new HashSet<int>(primaryEntries.Select(p => p.DsmEntryId));
         var usedSlaveIds = new HashSet<int>();
         var mergedEntries = new List<DsmEntry>();
 
         foreach (var primary in primaryEntries)
         {
             var primaryConnectedPumps = primary.GetEffectiveConnectedPumpIds();
-            var connectedSlaves = new List<DsmEntry>();
+            var connectedSlaves = slaveEntries
+                .Where(s => !usedSlaveIds.Contains(s.DsmEntryId)
+                    && (s.ShiftId == primary.ShiftId || primary.ShiftId == 0 || s.ShiftId == 0)
+                    && (s.ReconciledToPumpId == primary.DsmEntryId
+                        || (!allPrimaryIds.Contains(s.ReconciledToPumpId!.Value)
+                            && string.Equals((s.DsmName ?? "").Trim(), (primary.DsmName ?? "").Trim(), StringComparison.OrdinalIgnoreCase)
+                            && (primaryConnectedPumps.Contains(s.PumpId)
+                                || (primary.ConnectedPumpId.HasValue && s.PumpId == primary.ConnectedPumpId.Value)
+                                || (s.ReconciledToPumpId == primary.PumpId)))))
+                .OrderBy(s => s.ReconciledToPumpId == primary.DsmEntryId ? 0 : 1)
+                .ThenBy(s => s.DsmEntryId)
+                .ToList();
 
-            foreach (var slavePumpId in primaryConnectedPumps)
+            foreach (var s in connectedSlaves)
             {
-                var candidates = slaveEntries
-                    .Where(s => !usedSlaveIds.Contains(s.DsmEntryId)
-                        && s.PumpId == slavePumpId
-                        && (s.ShiftId == primary.ShiftId || primary.ShiftId == 0 || s.ShiftId == 0))
-                    .ToList();
-
-                var bestSlave = candidates
-                    .OrderBy(s => {
-                        bool nameMatches = string.IsNullOrWhiteSpace(s.DsmName) || string.IsNullOrWhiteSpace(primary.DsmName)
-                            || string.Equals((s.DsmName ?? "").Trim(), (primary.DsmName ?? "").Trim(), StringComparison.OrdinalIgnoreCase);
-                        bool explicitRecon = s.ReconciledToPumpId == primary.DsmEntryId;
-                        bool notClaimed = !s.ReconciledToPumpId.HasValue || !primaryEntries.Any(p => p.DsmEntryId == s.ReconciledToPumpId.Value && p.DsmEntryId != primary.DsmEntryId);
-
-                        if (nameMatches && explicitRecon) return 0;
-                        if (nameMatches && notClaimed) return 1;
-                        if (nameMatches) return 2;
-                        if (explicitRecon) return 3;
-                        if (!claimedByOther(s, primaryEntries, primary)) return 4;
-                        return 5;
-
-                        static bool claimedByOther(DsmEntry slave, List<DsmEntry> primaries, DsmEntry curPrimary) =>
-                            slave.ReconciledToPumpId.HasValue && primaries.Any(p => p.DsmEntryId == slave.ReconciledToPumpId.Value && p.DsmEntryId != curPrimary.DsmEntryId);
-                    })
-                    .ThenBy(s => s.DsmEntryId >= primary.DsmEntryId ? (s.DsmEntryId - primary.DsmEntryId) : (100000 + Math.Abs(s.DsmEntryId - primary.DsmEntryId)))
-                    .FirstOrDefault();
-
-                if (bestSlave != null)
-                {
-                    usedSlaveIds.Add(bestSlave.DsmEntryId);
-                    connectedSlaves.Add(bestSlave);
-                }
+                usedSlaveIds.Add(s.DsmEntryId);
             }
 
             var group = new List<DsmEntry> { primary };
             group.AddRange(connectedSlaves);
 
-            var distinctNozzles = group
-                .SelectMany(e => e.NozzleReadings ?? new List<NozzleReading>())
-                .GroupBy(n => n.NozzleNumber)
-                .Select(g => g.First())
+            var allNozzleReadingsWithPump = new List<(int PumpId, NozzleReading Reading)>();
+            foreach (var entry in group)
+            {
+                if (entry.NozzleReadings != null)
+                {
+                    foreach (var nr in entry.NozzleReadings)
+                    {
+                        int pId = entry.PumpId > 0
+                            ? entry.PumpId
+                            : (PumpConfiguration.GetPumpIdForNozzle(nr.NozzleNumber, entry.Shift?.ShiftDate) is var resolvedId && resolvedId > 0
+                                ? resolvedId
+                                : 0);
+                        allNozzleReadingsWithPump.Add((pId, nr));
+                    }
+                }
+            }
+
+            var distinctNozzles = allNozzleReadingsWithPump
+                .GroupBy(pair => (pair.PumpId, pair.Reading.NozzleNumber))
+                .Select(g => g.First().Reading)
                 .ToList();
 
             decimal grossSales = distinctNozzles.Count > 0 
                 ? (decimal)distinctNozzles.Sum(n => n.Amount)
-                : (primary.GrossSales > 0 ? primary.GrossSales : (decimal)group.Sum(e => e.GrossSales));
+                : (decimal)group.Sum(e => e.GrossSales);
 
-            // Legacy first connected pump ID:
-            int? firstSlavePumpId = primary.ConnectedPumpId ?? connectedSlaves.FirstOrDefault()?.PumpId;
+            // Connected pump ID:
+            int? firstSlavePumpId = connectedSlaves.FirstOrDefault()?.PumpId ?? (string.IsNullOrWhiteSpace(primary.ConnectedPumpIdsJson) ? null : primary.ConnectedPumpId);
 
             var merged = new DsmEntry
             {
@@ -1417,7 +1536,7 @@ public class ReportService : IReportService
                 DsmName = primary.DsmName,
                 PumpId = primary.PumpId,
                 ConnectedPumpId = firstSlavePumpId,
-                ConnectedPumpIdsJson = primary.ConnectedPumpIdsJson ?? (connectedSlaves.Count > 0 ? JsonSerializer.Serialize(connectedSlaves.Select(s => s.PumpId).Distinct().ToList()) : null),
+                ConnectedPumpIdsJson = connectedSlaves.Count > 0 ? JsonSerializer.Serialize(connectedSlaves.Select(s => s.PumpId).Distinct().ToList()) : (string.IsNullOrWhiteSpace(primary.ConnectedPumpIdsJson) ? null : primary.ConnectedPumpIdsJson),
                 ReconciledToPumpId = null,
                 StartTime = primary.StartTime,
                 EndTime = primary.EndTime,
@@ -1438,12 +1557,17 @@ public class ReportService : IReportService
             merged.CashDenominations = (primary.CashDenominations != null && primary.CashDenominations.Count > 0)
                 ? primary.CashDenominations
                 : connectedSlaves.SelectMany(s => s.CashDenominations ?? new List<CashDenomination>()).ToList();
-            merged.DebitEntries = (primary.DebitEntries != null && primary.DebitEntries.Count > 0)
-                ? primary.DebitEntries
-                : connectedSlaves.SelectMany(s => s.DebitEntries ?? new List<DebitEntry>()).ToList();
-            merged.Expenses = (primary.Expenses != null && primary.Expenses.Count > 0)
-                ? primary.Expenses
-                : connectedSlaves.SelectMany(s => s.Expenses ?? new List<Expense>()).ToList();
+            merged.DebitEntries = (primary.DebitEntries ?? new List<DebitEntry>())
+                .Concat(connectedSlaves.SelectMany(s => s.DebitEntries ?? new List<DebitEntry>()))
+                .GroupBy(d => d.DebitId > 0 ? $"ID_{d.DebitId}" : (!string.IsNullOrWhiteSpace(d.SlipNumber) ? $"SLIP_{d.SlipNumber}" : Guid.NewGuid().ToString()))
+                .Select(g => g.First())
+                .ToList();
+
+            merged.Expenses = (primary.Expenses ?? new List<Expense>())
+                .Concat(connectedSlaves.SelectMany(s => s.Expenses ?? new List<Expense>()))
+                .GroupBy(x => x.ExpenseId > 0 ? $"ID_{x.ExpenseId}" : $"{x.Description}_{x.Amount}")
+                .Select(g => g.First())
+                .ToList();
             merged.TestingEntries = (primary.TestingEntries ?? new List<TestingEntry>())
                 .Concat(connectedSlaves.SelectMany(s => s.TestingEntries ?? new List<TestingEntry>()))
                 .ToList();

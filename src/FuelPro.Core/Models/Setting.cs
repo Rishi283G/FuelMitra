@@ -113,7 +113,7 @@ public class Setting
                 // Fallbacks for standard tanks / fuel types if not in JSON
                 if (!dict.ContainsKey("HSD - 20KL") && !dict.ContainsKey("HSD")) dict["HSD - 20KL"] = HsdRate;
                 if (!dict.ContainsKey("MS - 20KL") && !dict.ContainsKey("MS-I") && !dict.ContainsKey("MS")) dict["MS - 20KL"] = MsIRate;
-                if (!dict.ContainsKey("HSD - 20KL II") && !dict.ContainsKey("HSD II") && !dict.ContainsKey("MS-II") && !dict.ContainsKey("Speed")) dict["HSD - 20KL II"] = MsIIRate;
+                if (!dict.ContainsKey("HSD - 20KL II") && !dict.ContainsKey("HSD II") && !dict.ContainsKey("MS-II")) dict["HSD - 20KL II"] = MsIIRate;
                 if (!dict.ContainsKey("CNG") && !dict.ContainsKey("CNG Line")) dict["CNG"] = CngRate;
 
                 // Ensure cross-aliases exist so lookups by standard fuel name or tank name succeed
@@ -124,9 +124,9 @@ public class Setting
                 if (!dict.ContainsKey("MS - 20KL") && dict.TryGetValue("MS-I", out var mVal2)) dict["MS - 20KL"] = mVal2;
 
                 if (!dict.ContainsKey("Speed") && dict.TryGetValue("Speed - 20KL", out var spVal)) dict["Speed"] = spVal;
-                else if (!dict.ContainsKey("Speed") && dict.TryGetValue("MS-II", out var spVal2)) dict["Speed"] = spVal2;
                 if (!dict.ContainsKey("Speed - 20KL") && dict.TryGetValue("Speed", out var spVal3)) dict["Speed - 20KL"] = spVal3;
-                if (!dict.ContainsKey("MS-II") && dict.TryGetValue("Speed", out var spVal4)) dict["MS-II"] = spVal4;
+                if (!dict.ContainsKey("MS-II") && dict.TryGetValue("MS - 20KL II", out var ms2Val)) dict["MS-II"] = ms2Val;
+                if (!dict.ContainsKey("MS - 20KL II") && dict.TryGetValue("MS-II", out var ms2Val2)) dict["MS - 20KL II"] = ms2Val2;
 
                 if (!dict.ContainsKey("CNG") && dict.TryGetValue("CNG Line", out var cVal)) dict["CNG"] = cVal;
                 if (!dict.ContainsKey("CNG Line") && dict.TryGetValue("CNG", out var cVal2)) dict["CNG Line"] = cVal2;
@@ -144,14 +144,10 @@ public class Setting
                 HsdRate = hsd;
             if (_fuelRatesCache.TryGetValue("MS - 20KL", out var ms1) || _fuelRatesCache.TryGetValue("MS", out ms1) || _fuelRatesCache.TryGetValue("MS-I", out ms1))
                 MsIRate = ms1;
-            if (_fuelRatesCache.TryGetValue("Speed", out var spRate) || 
-                _fuelRatesCache.TryGetValue("Speed - 20KL", out spRate) ||
-                _fuelRatesCache.TryGetValue("SPEED", out spRate) ||
-                _fuelRatesCache.TryGetValue("XP95", out spRate) ||
-                _fuelRatesCache.TryGetValue("Power", out spRate) ||
-                _fuelRatesCache.TryGetValue("MS-II", out spRate) ||
-                _fuelRatesCache.TryGetValue("HSD - 20KL II", out spRate))
-                MsIIRate = spRate;
+            if (_fuelRatesCache.TryGetValue("MS-II", out var ms2Rate) ||
+                _fuelRatesCache.TryGetValue("MS - 20KL II", out ms2Rate) ||
+                _fuelRatesCache.TryGetValue("HSD - 20KL II", out ms2Rate))
+                MsIIRate = ms2Rate;
             if (_fuelRatesCache.TryGetValue("CNG", out var cng) || _fuelRatesCache.TryGetValue("CNG Line", out cng))
                 CngRate = cng;
 
@@ -159,8 +155,11 @@ public class Setting
             if (!_fuelRatesCache.ContainsKey("HSD")) _fuelRatesCache["HSD"] = HsdRate;
             if (!_fuelRatesCache.ContainsKey("MS-I")) _fuelRatesCache["MS-I"] = MsIRate;
             if (!_fuelRatesCache.ContainsKey("MS-II")) _fuelRatesCache["MS-II"] = MsIIRate;
-            if (!_fuelRatesCache.ContainsKey("Speed")) _fuelRatesCache["Speed"] = MsIIRate;
             if (!_fuelRatesCache.ContainsKey("CNG")) _fuelRatesCache["CNG"] = CngRate;
+
+            // Synchronize canonical SPEED keys if present
+            if (_fuelRatesCache.TryGetValue("Speed", out var spR) && !_fuelRatesCache.ContainsKey("SPEED")) _fuelRatesCache["SPEED"] = spR;
+            if (_fuelRatesCache.TryGetValue("SPEED", out var spR2) && !_fuelRatesCache.ContainsKey("Speed")) _fuelRatesCache["Speed"] = spR2;
 
             try
             {
@@ -186,21 +185,68 @@ public class Setting
         string normalized = key.Trim();
         if (rates.TryGetValue(normalized, out rate) && rate > 0) return rate;
 
-        // Try standard mappings
-        if (normalized.Contains("HSD", StringComparison.OrdinalIgnoreCase))
+        // 1. Check SPEED (BPCL premium product)
+        if (normalized.Contains("SPEED", StringComparison.OrdinalIgnoreCase))
+        {
+            if (rates.TryGetValue("SPEED", out rate) && rate > 0) return rate;
+            if (rates.TryGetValue("Speed", out rate) && rate > 0) return rate;
+            if (rates.TryGetValue("SPEED - 20KL", out rate) && rate > 0) return rate;
+            if (rates.TryGetValue("Speed - 20KL", out rate) && rate > 0) return rate;
+            return defaultFallback;
+        }
+
+        // 1b. Check XP95 (Independent IOCL premium product - never alias with SPEED)
+        if (normalized.Contains("XP95", StringComparison.OrdinalIgnoreCase) || normalized.Contains("XP-95", StringComparison.OrdinalIgnoreCase))
+        {
+            if (rates.TryGetValue("XP95", out rate) && rate > 0) return rate;
+            if (rates.TryGetValue("XP-95", out rate) && rate > 0) return rate;
+            if (rates.TryGetValue("XP95 - 20KL", out rate) && rate > 0) return rate;
+            return defaultFallback;
+        }
+
+        // 1c. Check Power (Independent HPCL premium product - never alias with SPEED)
+        if (normalized.Contains("POWER", StringComparison.OrdinalIgnoreCase))
+        {
+            if (rates.TryGetValue("Power", out rate) && rate > 0) return rate;
+            if (rates.TryGetValue("POWER", out rate) && rate > 0) return rate;
+            if (rates.TryGetValue("Power - 20KL", out rate) && rate > 0) return rate;
+            return defaultFallback;
+        }
+
+        // 2. Check HSD / Diesel
+        if (normalized.Contains("HSD", StringComparison.OrdinalIgnoreCase) || 
+            normalized.Contains("DIESEL", StringComparison.OrdinalIgnoreCase))
         {
             if (rates.TryGetValue("HSD - 20KL", out rate) && rate > 0) return rate;
             if (rates.TryGetValue("HSD", out rate) && rate > 0) return rate;
             return HsdRate > 0 ? HsdRate : defaultFallback;
         }
-        if (normalized.Contains("MS", StringComparison.OrdinalIgnoreCase) || normalized.Contains("PETROL", StringComparison.OrdinalIgnoreCase))
+
+        // 3. Check MS-II / Regular Petrol Tank 2
+        if (normalized.Contains("MS-II", StringComparison.OrdinalIgnoreCase) || 
+            normalized.Contains("MS2", StringComparison.OrdinalIgnoreCase) || 
+            normalized.Contains("20KL II", StringComparison.OrdinalIgnoreCase))
+        {
+            if (rates.TryGetValue("MS - 20KL II", out rate) && rate > 0) return rate;
+            if (rates.TryGetValue("MS-II", out rate) && rate > 0) return rate;
+            if (rates.TryGetValue("HSD - 20KL II", out rate) && rate > 0) return rate;
+            return MsIIRate > 0 ? MsIIRate : defaultFallback;
+        }
+
+        // 4. Check MS-I / Regular Petrol
+        if (normalized.Contains("MS", StringComparison.OrdinalIgnoreCase) || 
+            normalized.Contains("PETROL", StringComparison.OrdinalIgnoreCase))
         {
             if (rates.TryGetValue("MS - 20KL", out rate) && rate > 0) return rate;
+            if (rates.TryGetValue("MS-I", out rate) && rate > 0) return rate;
             if (rates.TryGetValue("MS", out rate) && rate > 0) return rate;
             return MsIRate > 0 ? MsIRate : defaultFallback;
         }
+
+        // 5. Check CNG
         if (normalized.Contains("CNG", StringComparison.OrdinalIgnoreCase))
         {
+            if (rates.TryGetValue("CNG Line", out rate) && rate > 0) return rate;
             if (rates.TryGetValue("CNG", out rate) && rate > 0) return rate;
             return CngRate > 0 ? CngRate : defaultFallback;
         }

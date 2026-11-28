@@ -127,12 +127,36 @@
                                         
                                         <!-- Edit Fields (Visible only during edit) -->
                                         <StackPanel Visibility="{Binding IsEditingDebtor, Converter={StaticResource BoolToVis}}" Margin="0,0,0,12">
-                                            <TextBox Text="{Binding EditTotalDebt, UpdateSourceTrigger=LostFocus, StringFormat=F2}" 
-                                                     materialDesign:HintAssist.Hint="Total Debt Amount (₹)" 
-                                                     Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,0,12"/>
-                                            <TextBox Text="{Binding EditRepaidAmount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" 
-                                                     materialDesign:HintAssist.Hint="Repaid Amount (₹)" 
-                                                     Style="{StaticResource MaterialDesignOutlinedTextBox}" Margin="0,0,0,12"/>
+                                            <!-- Total Debt Amount & Debt Date -->
+                                            <Grid Margin="0,0,0,12">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="6*"/>
+                                                    <ColumnDefinition Width="8"/>
+                                                    <ColumnDefinition Width="4*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBox Grid.Column="0" Text="{Binding EditTotalDebt, UpdateSourceTrigger=LostFocus, StringFormat=F2}" 
+                                                         materialDesign:HintAssist.Hint="Total Debt Amount (₹)" 
+                                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                                                <DatePicker Grid.Column="2" SelectedDate="{Binding EditDebtDate}" 
+                                                            materialDesign:HintAssist.Hint="Debt Date" 
+                                                            Style="{StaticResource MaterialDesignOutlinedDatePicker}"/>
+                                            </Grid>
+
+                                            <!-- Repaid Amount & Repayment Date -->
+                                            <Grid Margin="0,0,0,12">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="6*"/>
+                                                    <ColumnDefinition Width="8"/>
+                                                    <ColumnDefinition Width="4*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBox Grid.Column="0" Text="{Binding EditRepaidAmount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" 
+                                                         materialDesign:HintAssist.Hint="Repaid Amount (₹)" 
+                                                         Style="{StaticResource MaterialDesignOutlinedTextBox}"/>
+                                                <DatePicker Grid.Column="2" SelectedDate="{Binding EditRepaymentDate}" 
+                                                            materialDesign:HintAssist.Hint="Repayment Date" 
+                                                            Style="{StaticResource MaterialDesignOutlinedDatePicker}"/>
+                                            </Grid>
+
                                             <TextBlock Margin="0,0,0,12" FontWeight="SemiBold">
                                                 <Run Text="Outstanding Balance: "/>
                                                 <Run Text="{Binding EditOutstandingBalance, Mode=OneWay, Converter={StaticResource CurrencyConverter}}" Foreground="Red"/>
@@ -468,6 +492,11 @@
                             <ScrollViewer VerticalScrollBarVisibility="Auto">
                                 <StackPanel>
                                     <TextBlock Text="Edit Transaction" Style="{StaticResource SectionTitle}"/>
+
+                                    <DatePicker SelectedDate="{Binding EditTxDate}" 
+                                                materialDesign:HintAssist.Hint="Transaction Date" 
+                                                Style="{StaticResource MaterialDesignOutlinedDatePicker}" 
+                                                Margin="0,0,0,12"/>
 
                                     <TextBox Text="{Binding EditTxAmount, UpdateSourceTrigger=LostFocus, StringFormat=F2}" 
                                              materialDesign:HintAssist.Hint="Amount (₹)" 

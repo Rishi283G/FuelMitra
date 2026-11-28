@@ -111,6 +111,8 @@ public partial class OwnerDashboardViewModel : ObservableObject, IDisposable
 
 
     private bool _isApplyingPreset;
+    private DayReportDto? _cachedDayReport;
+    private readonly System.Threading.SemaphoreSlim _loadLock = new(1, 1);
 
     public OwnerDashboardViewModel()
     {
@@ -138,6 +140,7 @@ public partial class OwnerDashboardViewModel : ObservableObject, IDisposable
         DsmEntryService.DebtorChanged += OnDataChanged;
         DsmEntryService.PayrollChanged += OnDataChanged;
         DsmEntryService.InventoryChanged += OnDataChanged;
+        DsmEntryService.SettingsChanged += OnDataChanged;
         DsmEntryService.StationConfigurationChanged += OnDataChanged;
         if (_collectionTypeService != null) _collectionTypeService.CollectionTypesChanged += OnDataChanged;
 
@@ -146,15 +149,31 @@ public partial class OwnerDashboardViewModel : ObservableObject, IDisposable
 
     private void OnSyncStatusChanged(FuelPro.Sync.SyncStatusInfo status)
     {
-        System.Windows.Application.Current.Dispatcher.Invoke(() =>
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        if (dispatcher != null)
+        {
+            dispatcher.Invoke(() =>
+            {
+                UpdateSyncDisplay(status.LastSyncTime == default ? (DateTime?)null : status.LastSyncTime, status.PendingRecords);
+            });
+        }
+        else
         {
             UpdateSyncDisplay(status.LastSyncTime == default ? (DateTime?)null : status.LastSyncTime, status.PendingRecords);
-        });
+        }
     }
 
     private void OnDataChanged()
     {
-        System.Windows.Application.Current.Dispatcher.InvokeAsync(async () => await LoadDataAsync(isBackgroundRefresh: true));
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        if (dispatcher != null)
+        {
+            dispatcher.InvokeAsync(async () => await LoadDataAsync(isBackgroundRefresh: true));
+        }
+        else
+        {
+            _ = LoadDataAsync(isBackgroundRefresh: true);
+        }
     }
 
     public void Dispose()
@@ -165,6 +184,7 @@ public partial class OwnerDashboardViewModel : ObservableObject, IDisposable
         DsmEntryService.DebtorChanged -= OnDataChanged;
         DsmEntryService.PayrollChanged -= OnDataChanged;
         DsmEntryService.InventoryChanged -= OnDataChanged;
+        DsmEntryService.SettingsChanged -= OnDataChanged;
         DsmEntryService.StationConfigurationChanged -= OnDataChanged;
         if (_collectionTypeService != null) _collectionTypeService.CollectionTypesChanged -= OnDataChanged;
         GC.SuppressFinalize(this);
@@ -235,28 +255,37 @@ public partial class OwnerDashboardViewModel : ObservableObject, IDisposable
         {
             IsLoading = true;
         }
+        await _loadLock.WaitAsync();
         try
         {
-            var entriesResult = await _dsmEntryRepository.GetEntriesForDateRangeAsync(StartDate.Date, EndDate.Date.AddDays(1));
-            var entries = entriesResult.Success && entriesResult.Data != null ? entriesResult.Data : new List<DsmEntry>();
+            // Clear any retained tracked entities before reloading after sync notifications
+            _dbContext.ChangeTracker.Clear();
 
-            var shiftsResult = await _shiftRepository.GetShiftsByDateRangeAsync(StartDate.Date, EndDate.Date.AddDays(1));
+            var start = StartDate.Date;
+            var end = EndDate.Date;
+            var endExclusive = end.AddDays(1);
+
+            var entriesResult = await _dsmEntryRepository.GetEntriesForDateRangeAsync(start, end);
+            var rawEntries = entriesResult.Success && entriesResult.Data != null ? entriesResult.Data : new List<DsmEntry>();
+            var entries = rawEntries
+                .Where(e => e.Shift == null || (e.Shift.ShiftDate.Date >= start && e.Shift.ShiftDate.Date <= end))
+                .ToList();
+
+            var shiftsResult = await _shiftRepository.GetShiftsByDateRangeAsync(start, end);
             var shifts = shiftsResult.Success && shiftsResult.Data != null ? shiftsResult.Data : new List<Shift>();
 
-            var todayShifts = shifts.Where(s => s.ShiftDate.Date >= StartDate.Date && s.ShiftDate.Date <= EndDate.Date).ToList();
+            var todayShifts = shifts.Where(s => s.ShiftDate.Date >= start && s.ShiftDate.Date <= end).ToList();
             var todayShiftIds = todayShifts.Select(s => s.ShiftId).ToList();
 
             var shiftExpensesResult = await _expenseRepo.GetExpensesByShiftIdsAsync(todayShiftIds);
             var shiftExpenses = shiftExpensesResult.Success && shiftExpensesResult.Data != null ? shiftExpensesResult.Data : new List<Expense>();
 
-            var otherCashResult = await App.Services.GetRequiredService<IShiftOtherCashRepository>().GetByDateRangeAsync(StartDate.Date, EndDate.Date);
-            var otherCashList = otherCashResult.Success && otherCashResult.Data != null ? otherCashResult.Data : new List<ShiftOtherCash>();
-
             var repayments = await _dbContext.CreditorRepayments
-                .Where(r => r.RepaymentDate >= StartDate.Date && r.RepaymentDate <= EndDate.Date.AddDays(1))
+                .AsNoTracking()
+                .Where(r => r.RepaymentDate >= start && r.RepaymentDate < endExclusive)
                 .ToListAsync();
 
-            var settings = await _dbContext.Settings.FirstOrDefaultAsync();
+            var settings = await _dbContext.Settings.AsNoTracking().FirstOrDefaultAsync();
             double defaultHsd = settings != null ? settings.HsdRate : 90.35;
             double defaultMsI = settings != null ? settings.MsIRate : 103.81;
             double defaultMsII = settings != null ? settings.MsIIRate : 103.81;
@@ -264,14 +293,15 @@ public partial class OwnerDashboardViewModel : ObservableObject, IDisposable
             string stationName = settings != null ? settings.PumpStationName : "Mitali Service Station";
 
             var dayReport = _reportService.CalculateDayReport(
-                StartDate.Date,
-                EndDate.Date,
+                start,
+                end,
                 entries,
                 shiftExpenses,
                 repayments,
                 defaultHsd, defaultMsI, defaultMsII, defaultCng,
                 stationName);
 
+            _cachedDayReport = dayReport;
             TotalDsmEntries = entries.Count;
 
             var aggregationService = App.Services.GetRequiredService<IShiftAggregationService>();
@@ -372,16 +402,32 @@ public partial class OwnerDashboardViewModel : ObservableObject, IDisposable
             }
 
             // 3. Active configured collection types (excluding duplicate cash variants)
+            double phonePeCardTotal = summaryRows.Sum(r => r.PhonePeCardTotal);
+            bool phonePeCardShown = false;
             if (activeTypes != null && activeTypes.Any())
             {
                 foreach (var t in activeTypes.Where(t => !IsCashVariant(t)))
                 {
-                    var match = breakdown.FirstOrDefault(c => string.Equals(c.Category, t.DisplayName, StringComparison.OrdinalIgnoreCase) ||
-                                                              string.Equals(c.Category, t.Code, StringComparison.OrdinalIgnoreCase) ||
-                                                              (t.DisplayName.Contains("PhonePe", StringComparison.OrdinalIgnoreCase) && c.Category.Contains("PhonePe", StringComparison.OrdinalIgnoreCase)) ||
-                                                              (t.DisplayName.Contains("Petro", StringComparison.OrdinalIgnoreCase) && c.Category.Contains("Petro", StringComparison.OrdinalIgnoreCase)));
+                    bool isTypePhonePeCard = string.Equals(t.Code, "PHONEPE_CARD", StringComparison.OrdinalIgnoreCase)
+                        || (t.DisplayName.Contains("PhonePe", StringComparison.OrdinalIgnoreCase) && t.DisplayName.Contains("Card", StringComparison.OrdinalIgnoreCase));
+
+                    var match = breakdown.FirstOrDefault(c =>
+                        string.Equals(c.Category, t.DisplayName, StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(c.Category, t.Code, StringComparison.OrdinalIgnoreCase) ||
+                        (!isTypePhonePeCard && t.DisplayName.Contains("PhonePe", StringComparison.OrdinalIgnoreCase)
+                            && c.Category.Contains("PhonePe", StringComparison.OrdinalIgnoreCase)
+                            && !c.Category.Contains("Card", StringComparison.OrdinalIgnoreCase)) ||
+                        (t.DisplayName.Contains("Petro", StringComparison.OrdinalIgnoreCase) && c.Category.Contains("Petro", StringComparison.OrdinalIgnoreCase)));
 
                     double amt = match?.Amount ?? 0;
+                    if (isTypePhonePeCard)
+                    {
+                        phonePeCardShown = true;
+                        if ((match == null || Math.Abs(amt) < 0.001) && phonePeCardTotal > 0)
+                        {
+                            amt = phonePeCardTotal;
+                        }
+                    }
                     if (match != null) handledCategories.Add(match.Category);
                     handledCategories.Add(t.DisplayName);
                     handledCategories.Add(t.Code);
@@ -415,6 +461,11 @@ public partial class OwnerDashboardViewModel : ObservableObject, IDisposable
                 handledCategories.Add("PhonePe");
                 handledCategories.Add("PineLabs Card");
                 handledCategories.Add("PetroCard");
+            }
+
+            if (!phonePeCardShown && phonePeCardTotal > 0 && !newPaymentRows.Any(r => r.CollectionMode.Contains("PhonePe", StringComparison.OrdinalIgnoreCase) && r.CollectionMode.Contains("Card", StringComparison.OrdinalIgnoreCase)))
+            {
+                newPaymentRows.Add(new DayCollectionSummaryRow { CollectionMode = "PhonePe Card", Amount = phonePeCardTotal, DisplayColor = "#7E57C2" });
             }
 
             // 4. Debtors (Credit)
@@ -487,7 +538,7 @@ public partial class OwnerDashboardViewModel : ObservableObject, IDisposable
                             (f.Description != null && f.Description.Contains("CNG", StringComparison.OrdinalIgnoreCase)))
                 .Sum(f => f.Litres);
             TodayTotalLitres = dayReport.TotalFuelLitres;
-            TodayTotalMismatch = dayReport.Difference;
+            TodayTotalMismatch = dayReport.Difference < -0.01 ? -dayReport.TotalDsmShort : (dayReport.Difference > 0.01 ? dayReport.Difference : 0);
             OilDefSalesTotal = dayReport.OilDefSalesTotal;
             TodayTotalDsmShort = dayReport.TotalDsmShort;
 
@@ -496,10 +547,88 @@ public partial class OwnerDashboardViewModel : ObservableObject, IDisposable
             RangeNetProfit = finResult.NetProfit;
             OilDefProfitTotal = finResult.OilProfit.TotalProfit + finResult.DefProfit.TotalProfit;
 
-            // Lifetime Outstanding Debtors (overall balance is a lifetime KPI)
-            double totalDebits = await _dbContext.DebitEntries.SumAsync(d => d.Amount);
-            double totalRepayments = await _dbContext.CreditorRepayments.SumAsync(r => r.Amount);
-            OutstandingDebtors = totalDebits - totalRepayments;
+            // Lifetime Outstanding Debtors aligned with DebtorManagementViewModel
+            // (active Creditors + active Debtor OpeningBalances + DebitEntries - non-"DSM Loss" CreditorRepayments)
+            var creditors = await _dbContext.Creditors.AsNoTracking().ToListAsync();
+            var inactiveNames = new HashSet<string>(
+                creditors.Where(c => !c.IsActive).Select(c => (c.Name ?? "").Trim()),
+                StringComparer.OrdinalIgnoreCase);
+
+            var activeOpeningBalances = await _dbContext.OpeningBalances
+                .AsNoTracking()
+                .Where(o => o.EntityType == "Debtor" && o.IsActive)
+                .ToListAsync();
+
+            var obByCreditorId = new Dictionary<int, double>();
+            var obByName = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+            foreach (var ob in activeOpeningBalances)
+            {
+                if (ob.CreditorId.HasValue)
+                    obByCreditorId[ob.CreditorId.Value] = ob.Amount;
+                else if (int.TryParse(ob.EntityIdentifier, out var cid))
+                    obByCreditorId[cid] = ob.Amount;
+                else if (!string.IsNullOrWhiteSpace(ob.EntityIdentifier))
+                    obByName[ob.EntityIdentifier.Trim()] = ob.Amount;
+            }
+
+            var allDebits = await _dbContext.DebitEntries
+                .AsNoTracking()
+                .Where(d => !string.IsNullOrWhiteSpace(d.DebtorName))
+                .ToListAsync();
+            var debitsByName = allDebits
+                .GroupBy(d => d.DebtorName.Trim(), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.Sum(d => d.Amount), StringComparer.OrdinalIgnoreCase);
+
+            var allTradeRepayments = (await _dbContext.CreditorRepayments
+                .AsNoTracking()
+                .Where(r => !string.IsNullOrEmpty(r.CreditorName))
+                .ToListAsync())
+                .Where(r => !string.IsNullOrWhiteSpace(r.CreditorName)
+                    && !r.CreditorName.Contains("DSM Loss", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            var repaymentsByName = allTradeRepayments
+                .GroupBy(r => r.CreditorName.Trim(), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.Sum(r => r.Amount), StringComparer.OrdinalIgnoreCase);
+
+            double outstandingSum = 0;
+            var countedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var c in creditors.Where(c => c.IsActive))
+            {
+                var nameKey = (c.Name ?? "").Trim();
+                if (string.IsNullOrEmpty(nameKey)) continue;
+                countedNames.Add(nameKey);
+
+                debitsByName.TryGetValue(nameKey, out var dAmt);
+                repaymentsByName.TryGetValue(nameKey, out var rAmt);
+                double obAmt = obByCreditorId.TryGetValue(c.CreditorId, out var byId)
+                    ? byId
+                    : (obByName.TryGetValue(nameKey, out var byN) ? byN : 0.0);
+                double balance = obAmt + dAmt - rAmt;
+                if (balance > 0.01)
+                {
+                    outstandingSum += balance;
+                }
+            }
+
+            // Include unregistered debit/repayment names (matching DebtorManagementViewModel auto-registration) unless explicitly deactivated
+            var unregisteredNames = debitsByName.Keys
+                .Concat(repaymentsByName.Keys)
+                .Concat(obByName.Keys)
+                .Where(n => !countedNames.Contains(n) && !inactiveNames.Contains(n))
+                .Distinct(StringComparer.OrdinalIgnoreCase);
+            foreach (var uName in unregisteredNames)
+            {
+                debitsByName.TryGetValue(uName, out var dAmt);
+                repaymentsByName.TryGetValue(uName, out var rAmt);
+                obByName.TryGetValue(uName, out var obAmt);
+                double balance = obAmt + dAmt - rAmt;
+                if (balance > 0.01)
+                {
+                    outstandingSum += balance;
+                }
+            }
+
+            OutstandingDebtors = outstandingSum;
         }
         catch (Exception ex)
         {
@@ -507,6 +636,7 @@ public partial class OwnerDashboardViewModel : ObservableObject, IDisposable
         }
         finally
         {
+            _loadLock.Release();
             if (!isBackgroundRefresh)
             {
                 IsLoading = false;
@@ -673,14 +803,21 @@ public partial class OwnerDashboardViewModel : ObservableObject, IDisposable
                     debtorsOutstanding = OutstandingDebtors,
                     dsmEntries = TotalDsmEntries
                 },
-                fuelSales = FuelSalesBreakdown.Select(f => new
+                fuelSales = FuelSalesBreakdown.Select(f =>
                 {
-                    description = f.Description,
-                    fuelType = f.FuelType,
-                    litres = f.Litres,
-                    rate = f.Rate,
-                    amount = f.Amount,
-                    testingLitres = 0.0
+                    double testLitres = _cachedDayReport?.TestingSummaryItems
+                        ?.Where(t => string.Equals(t.TankName, f.Description, StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(t.FuelType, f.FuelType, StringComparison.OrdinalIgnoreCase))
+                        .Sum(t => t.VolumeLitres) ?? 0.0;
+                    return new
+                    {
+                        description = f.Description,
+                        fuelType = f.FuelType,
+                        litres = f.Litres,
+                        rate = f.Rate,
+                        amount = f.Amount,
+                        testingLitres = testLitres
+                    };
                 }).ToList(),
                 paymentBreakdown = PaymentBreakdown.Select(p => new
                 {

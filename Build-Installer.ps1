@@ -1,5 +1,6 @@
 param(
-    [string]$Configuration = "Release"
+    [string]$Configuration = "Release",
+    [string]$OutputDir = ""
 )
 
 Write-Host "==========================================" -ForegroundColor Cyan
@@ -59,13 +60,21 @@ Write-Host "[SUCCESS] Inno Setup compiler found." -ForegroundColor Green
 # 3. Compile the Installer
 Write-Host "`n[3/3] Compiling Inno Setup Script..." -ForegroundColor Yellow
 
-& $isccPath ".\installer.iss"
+if (![string]::IsNullOrEmpty($OutputDir)) {
+    if (!(Test-Path $OutputDir)) {
+        New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
+    }
+    & $isccPath "/O$OutputDir" ".\installer.iss"
+} else {
+    & $isccPath ".\installer.iss"
+}
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "`n[ERROR] Inno Setup compilation failed!" -ForegroundColor Red
     exit 1
 }
 
+$outReportDir = if (![string]::IsNullOrEmpty($OutputDir)) { $OutputDir } else { ".\installer_output\" }
 Write-Host "`n==========================================" -ForegroundColor Cyan
-Write-Host "[SUCCESS] Installer generated in .\installer_output\" -ForegroundColor Green
+Write-Host "[SUCCESS] Installer generated in $outReportDir" -ForegroundColor Green
 Write-Host "==========================================" -ForegroundColor Cyan

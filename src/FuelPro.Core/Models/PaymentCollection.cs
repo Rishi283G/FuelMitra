@@ -28,7 +28,8 @@ public class PaymentCollection
         {
             double scalar = CreditCardMorning + CreditCardDay + CreditCardNight;
             if (scalar > 0) return scalar;
-            var items = GetAllItems().Where(i => NormalizeCollectionTypeCode(i.CollectionTypeCode) == "CREDIT_CARD").ToList();
+            var items = GetAllItems().Where(i => 
+                string.Equals(NormalizeCollectionTypeCode(i.CollectionTypeCode), "CREDIT_CARD", StringComparison.OrdinalIgnoreCase)).ToList();
             return items.Count > 0 ? items.Sum(i => i.Amount) : 0;
         }
     }
@@ -84,7 +85,7 @@ public class PaymentCollection
         {
             double scalar = PetroCardMorning + PetroCardDay + PetroCardNight;
             if (scalar > 0) return scalar;
-            var items = GetAllItems().Where(i => NormalizeCollectionTypeCode(i.CollectionTypeCode) == "PETROCARD").ToList();
+            var items = GetAllItems().Where(i => string.Equals(NormalizeCollectionTypeCode(i.CollectionTypeCode), "PETROCARD", StringComparison.OrdinalIgnoreCase)).ToList();
             return items.Count > 0 ? items.Sum(i => i.Amount) : 0;
         }
     }
@@ -107,7 +108,7 @@ public class PaymentCollection
         {
             double scalar = PhonePeMorning + PhonePeDay + PhonePeNight;
             if (scalar > 0) return scalar;
-            var items = GetAllItems().Where(i => NormalizeCollectionTypeCode(i.CollectionTypeCode) == "PHONEPE").ToList();
+            var items = GetAllItems().Where(i => string.Equals(NormalizeCollectionTypeCode(i.CollectionTypeCode), "PHONEPE", StringComparison.OrdinalIgnoreCase)).ToList();
             return items.Count > 0 ? items.Sum(i => i.Amount) : 0;
         }
     }
@@ -130,7 +131,16 @@ public class PaymentCollection
     /// <summary>
     /// Serialized JSON for dynamic collection items, ensuring reliable cloud sync.
     /// </summary>
-    public string? DynamicItemsJson { get; set; }
+    private string? _dynamicItemsJson;
+    public string? DynamicItemsJson
+    {
+        get => _dynamicItemsJson;
+        set
+        {
+            _dynamicItemsJson = value;
+            _deserializedCache = null;
+        }
+    }
 
     public static bool IsStandardCollectionCode(string? code)
     {
@@ -320,6 +330,9 @@ public class PaymentCollection
         return IsDuplicateManualAndOtp(nonOtp.Amount, nonOtp.Tid, nonOtp.Batch, otp.Amount, otp.Tid, otp.Batch);
     }
 
+    [NotMapped]
+    private List<PaymentCollectionItem>? _deserializedCache;
+
     /// <summary>
     /// Returns Items if loaded, otherwise attempts to deserialize from DynamicItemsJson.
     /// </summary>
@@ -330,6 +343,11 @@ public class PaymentCollection
             return Items;
         }
 
+        if (_deserializedCache != null && _deserializedCache.Count > 0)
+        {
+            return _deserializedCache;
+        }
+
         if (!string.IsNullOrWhiteSpace(DynamicItemsJson))
         {
             try
@@ -338,7 +356,19 @@ public class PaymentCollection
                 var deserialized = System.Text.Json.JsonSerializer.Deserialize<List<PaymentCollectionItem>>(DynamicItemsJson, options);
                 if (deserialized != null && deserialized.Count > 0)
                 {
+                    _deserializedCache = deserialized;
                     return deserialized;
+                }
+            }
+            catch { }
+
+            try
+            {
+                var deserializedNewtonsoft = Newtonsoft.Json.JsonConvert.DeserializeObject<List<PaymentCollectionItem>>(DynamicItemsJson);
+                if (deserializedNewtonsoft != null && deserializedNewtonsoft.Count > 0)
+                {
+                    _deserializedCache = deserializedNewtonsoft;
+                    return deserializedNewtonsoft;
                 }
             }
             catch { }

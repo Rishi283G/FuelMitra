@@ -10,5 +10,6 @@ public partial class OwnerMainWindow : Window
     {
         InitializeComponent();
         DataContext = App.Services.GetRequiredService<OwnerMainWindowViewModel>();
+        Closed += (_, _) => (DataContext as IDisposable)?.Dispose();
     }
 }

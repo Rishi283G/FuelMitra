@@ -45,6 +45,35 @@ public class AgsInventoryService : IAgsInventoryService
     }
 
     /// <summary>
+    /// Matches fuel types supporting bidirectional aliases:
+    /// - SPEED &lt;-&gt; MS-II
+    /// - Petrol &lt;-&gt; MS-I / MS
+    /// - Diesel &lt;-&gt; HSD
+    /// Strict equality for all others, preventing cross-matching between unrelated fuel types.
+    /// </summary>
+    public static bool FuelMatches(string? a, string? b)
+    {
+        if (string.IsNullOrWhiteSpace(a) || string.IsNullOrWhiteSpace(b)) return false;
+        if (string.Equals(a, b, StringComparison.OrdinalIgnoreCase)) return true;
+
+        var normA = a.Trim().ToUpperInvariant();
+        var normB = b.Trim().ToUpperInvariant();
+
+        if (normA == normB) return true;
+
+        // SPEED <-> MS-II
+        if ((normA == "SPEED" || normA == "MS-II") && (normB == "SPEED" || normB == "MS-II")) return true;
+
+        // Petrol <-> MS-I / MS
+        if ((normA == "PETROL" || normA == "MS-I" || normA == "MS") && (normB == "PETROL" || normB == "MS-I" || normB == "MS")) return true;
+
+        // Diesel <-> HSD
+        if ((normA == "DIESEL" || normA == "HSD") && (normB == "DIESEL" || normB == "HSD")) return true;
+
+        return false;
+    }
+
+    /// <summary>
     /// Resolves measurement provenance according to 4-tier specification:
     /// 1. Locally persisted explicit provenance (HasPhysicalDip = true, honors measured stock including 0.0)
     /// 2. AGS import evidence (verified AGS PDF import)
@@ -61,7 +90,9 @@ public class AgsInventoryService : IAgsInventoryService
         // 1. Locally persisted explicit provenance
         if (tankStock != null && tankStock.HasPhysicalDip)
         {
-            return (true, tankStock.ClosingStockLitres, tankStock.ClosingDipMM, tankStock.DipSource ?? "Manual");
+            string src = tankStock.DipSource ?? "Manual";
+            double stock = (src == "DipOnly") ? 0.0 : tankStock.ClosingStockLitres;
+            return (true, stock, tankStock.ClosingDipMM, src);
         }
 
         // 2. AGS import evidence: verified AGS PDF tank measurement
@@ -297,11 +328,32 @@ public class AgsInventoryService : IAgsInventoryService
 
                 double receipts = 0;
                 var tankerRepo = _serviceProvider.GetService<IFuelTankerRepository>();
-                if (tankerRepo != null && (shiftType == "B" || shiftType == "II"))
+                if (tankerRepo != null)
                 {
-                    var tankersRes = await tankerRepo.GetByDateRangeAsync(date.Date, date.Date);
-                    var tankers = (tankersRes.Success && tankersRes.Data != null) ? tankersRes.Data : new List<FuelTanker>();
-                    receipts = tankers.Where(t => string.Equals(t.FuelType, tank.FuelType, StringComparison.OrdinalIgnoreCase)).Sum(t => t.Quantity);
+                    bool isRecipient = false;
+                    var normShift = NormalizeShiftType(shiftType);
+                    if (normShift == "B")
+                    {
+                        isRecipient = true;
+                    }
+                    else if (normShift == "C")
+                    {
+                        var bRes = await _agsRepo.GetActiveShiftImportAsync(date.Date, "B");
+                        isRecipient = !bRes.Success || bRes.Data == null;
+                    }
+                    else if (normShift == "A")
+                    {
+                        var bRes = await _agsRepo.GetActiveShiftImportAsync(date.Date, "B");
+                        var cRes = await _agsRepo.GetActiveShiftImportAsync(date.Date, "C");
+                        isRecipient = (!bRes.Success || bRes.Data == null) && (!cRes.Success || cRes.Data == null);
+                    }
+
+                    if (isRecipient)
+                    {
+                        var tankersRes = await tankerRepo.GetByDateRangeAsync(date.Date, date.Date);
+                        var tankers = (tankersRes.Success && tankersRes.Data != null) ? tankersRes.Data : new List<FuelTanker>();
+                        receipts = tankers.Where(t => FuelMatches(t.FuelType, tank.FuelType)).Sum(t => t.Quantity);
+                    }
                 }
 
                 var tankStock = import?.TankStocks?.FirstOrDefault(ts => string.Equals(ts.FuelType, tank.FuelType, StringComparison.OrdinalIgnoreCase));
@@ -309,8 +361,6 @@ public class AgsInventoryService : IAgsInventoryService
 
                 double openingStock = (prevTankStock != null) ? prevTankStock.ClosingStockLitres : (tankStock?.OpeningStockLitres ?? 0.0);
                 var prov = ResolveMeasurementProvenance(tankStock, import, dailySummary?.ShiftBreakdownJson, shiftType, tank.FuelType);
-                double dip = prov.HasMeasurement ? prov.DipValue : (tankStock?.ClosingDipMM ?? 0.0);
-                double stock = prov.HasMeasurement ? prov.MeasuredStock : (openingStock - dispensed + testingLitres + receipts);
 
                 var groupDto = new NozzleGroupDto
                 {
@@ -319,12 +369,32 @@ public class AgsInventoryService : IAgsInventoryService
                     OpeningStock = openingStock,
                     FuelDispensed = dispensed,
                     TestingLitres = testingLitres,
-                    Receipts = receipts,
-                    Dip = dip,
-                    Stock = stock,
-                    HasPhysicalDip = prov.HasMeasurement,
-                    DipSource = prov.Source
+                    Receipts = receipts
                 };
+
+                if (prov.HasMeasurement)
+                {
+                    groupDto.HasPhysicalDip = true;
+                    groupDto.DipSource = prov.Source;
+
+                    if (prov.Source == "DipOnly")
+                    {
+                        groupDto.Dip = prov.DipValue;
+                        groupDto.ManualStock = null;
+                    }
+                    else
+                    {
+                        groupDto.ManualStock = prov.MeasuredStock;
+                        groupDto.Dip = (prov.DipValue > 0.001) ? prov.DipValue : (double?)null;
+                    }
+                }
+                else
+                {
+                    groupDto.ManualStock = null;
+                    groupDto.Dip = null;
+                    groupDto.HasPhysicalDip = false;
+                    groupDto.DipSource = null;
+                }
 
                 for (int i = 0; i < tankNozzles.Count; i += 3)
                 {
@@ -353,14 +423,37 @@ public class AgsInventoryService : IAgsInventoryService
         var tankerRepoFallback = _serviceProvider.GetService<IFuelTankerRepository>();
         if (tankerRepoFallback != null)
         {
-            var tankersRes = await tankerRepoFallback.GetByDateRangeAsync(date.Date, date.Date);
-            var tankers = (tankersRes.Success && tankersRes.Data != null) ? tankersRes.Data : new List<FuelTanker>();
-
-            if (shiftType == "B" || shiftType == "II")
+            bool isRecipient = false;
+            var normShift = NormalizeShiftType(shiftType);
+            if (normShift == "B")
             {
-                msIReceipts = tankers.Where(t => t.FuelType == "MS-I").Sum(t => t.Quantity);
-                hsdReceipts = tankers.Where(t => t.FuelType == "HSD").Sum(t => t.Quantity);
-                msIIReceipts = tankers.Where(t => t.FuelType == "MS-II").Sum(t => t.Quantity);
+                isRecipient = true;
+            }
+            else if (normShift == "C")
+            {
+                var bRes = await _agsRepo.GetActiveShiftImportAsync(date.Date, "B");
+                isRecipient = !bRes.Success || bRes.Data == null;
+            }
+            else if (normShift == "A")
+            {
+                var bRes = await _agsRepo.GetActiveShiftImportAsync(date.Date, "B");
+                var cRes = await _agsRepo.GetActiveShiftImportAsync(date.Date, "C");
+                isRecipient = (!bRes.Success || bRes.Data == null) && (!cRes.Success || cRes.Data == null);
+            }
+
+            if (isRecipient)
+            {
+                var tankersRes = await tankerRepoFallback.GetByDateRangeAsync(date.Date, date.Date);
+                var tankers = (tankersRes.Success && tankersRes.Data != null) ? tankersRes.Data : new List<FuelTanker>();
+                msIReceipts = tankers.Where(t => FuelMatches(t.FuelType, "MS-I")).Sum(t => t.Quantity);
+                hsdReceipts = tankers.Where(t => FuelMatches(t.FuelType, "HSD")).Sum(t => t.Quantity);
+                msIIReceipts = tankers.Where(t => FuelMatches(t.FuelType, "MS-II")).Sum(t => t.Quantity);
+            }
+            else
+            {
+                msIReceipts = 0.0;
+                hsdReceipts = 0.0;
+                msIIReceipts = 0.0;
             }
         }
         else
@@ -382,12 +475,30 @@ public class AgsInventoryService : IAgsInventoryService
             OpeningStock = msIOpeningStock,
             FuelDispensed = msIDispensed,
             TestingLitres = msITesting,
-            Receipts = msIReceipts,
-            Dip = provMsI.HasMeasurement ? provMsI.DipValue : (msITank?.ClosingDipMM ?? 0),
-            Stock = provMsI.HasMeasurement ? provMsI.MeasuredStock : (msIOpeningStock - msIDispensed + msITesting + msIReceipts),
-            HasPhysicalDip = provMsI.HasMeasurement,
-            DipSource = provMsI.Source
+            Receipts = msIReceipts
         };
+        if (provMsI.HasMeasurement)
+        {
+            msGroup1.HasPhysicalDip = true;
+            msGroup1.DipSource = provMsI.Source;
+            if (provMsI.Source == "DipOnly")
+            {
+                msGroup1.Dip = provMsI.DipValue;
+                msGroup1.ManualStock = null;
+            }
+            else
+            {
+                msGroup1.ManualStock = provMsI.MeasuredStock;
+                msGroup1.Dip = (provMsI.DipValue > 0.001) ? provMsI.DipValue : (double?)null;
+            }
+        }
+        else
+        {
+            msGroup1.ManualStock = null;
+            msGroup1.Dip = null;
+            msGroup1.HasPhysicalDip = false;
+            msGroup1.DipSource = null;
+        }
         msGroup1.Rows.Add(new List<NozzleDisplayItem> { group1Nozzles[0], group1Nozzles[1], group1Nozzles[2] });
         msGroup1.Rows.Add(new List<NozzleDisplayItem> { group1Nozzles[3], group1Nozzles[4], group1Nozzles[5] });
         groups.Add(msGroup1);
@@ -400,12 +511,30 @@ public class AgsInventoryService : IAgsInventoryService
             OpeningStock = hsdOpeningStock,
             FuelDispensed = hsdDispensed,
             TestingLitres = hsdTesting,
-            Receipts = hsdReceipts,
-            Dip = provHsd.HasMeasurement ? provHsd.DipValue : (hsdTank?.ClosingDipMM ?? 0),
-            Stock = provHsd.HasMeasurement ? provHsd.MeasuredStock : (hsdOpeningStock - hsdDispensed + hsdTesting + hsdReceipts),
-            HasPhysicalDip = provHsd.HasMeasurement,
-            DipSource = provHsd.Source
+            Receipts = hsdReceipts
         };
+        if (provHsd.HasMeasurement)
+        {
+            hsdGroup2.HasPhysicalDip = true;
+            hsdGroup2.DipSource = provHsd.Source;
+            if (provHsd.Source == "DipOnly")
+            {
+                hsdGroup2.Dip = provHsd.DipValue;
+                hsdGroup2.ManualStock = null;
+            }
+            else
+            {
+                hsdGroup2.ManualStock = provHsd.MeasuredStock;
+                hsdGroup2.Dip = (provHsd.DipValue > 0.001) ? provHsd.DipValue : (double?)null;
+            }
+        }
+        else
+        {
+            hsdGroup2.ManualStock = null;
+            hsdGroup2.Dip = null;
+            hsdGroup2.HasPhysicalDip = false;
+            hsdGroup2.DipSource = null;
+        }
         hsdGroup2.Rows.Add(new List<NozzleDisplayItem> { group2Nozzles[0], group2Nozzles[1] });
         hsdGroup2.Rows.Add(new List<NozzleDisplayItem> { group2Nozzles[2], group2Nozzles[3] });
         groups.Add(hsdGroup2);
@@ -418,12 +547,30 @@ public class AgsInventoryService : IAgsInventoryService
             OpeningStock = msIIOpeningStock,
             FuelDispensed = msIIDispensed,
             TestingLitres = msIITesting,
-            Receipts = msIIReceipts,
-            Dip = provMsII.HasMeasurement ? provMsII.DipValue : (msIITank?.ClosingDipMM ?? 0),
-            Stock = provMsII.HasMeasurement ? provMsII.MeasuredStock : (msIIOpeningStock - msIIDispensed + msIITesting + msIIReceipts),
-            HasPhysicalDip = provMsII.HasMeasurement,
-            DipSource = provMsII.Source
+            Receipts = msIIReceipts
         };
+        if (provMsII.HasMeasurement)
+        {
+            hsdGroup3.HasPhysicalDip = true;
+            hsdGroup3.DipSource = provMsII.Source;
+            if (provMsII.Source == "DipOnly")
+            {
+                hsdGroup3.Dip = provMsII.DipValue;
+                hsdGroup3.ManualStock = null;
+            }
+            else
+            {
+                hsdGroup3.ManualStock = provMsII.MeasuredStock;
+                hsdGroup3.Dip = (provMsII.DipValue > 0.001) ? provMsII.DipValue : (double?)null;
+            }
+        }
+        else
+        {
+            hsdGroup3.ManualStock = null;
+            hsdGroup3.Dip = null;
+            hsdGroup3.HasPhysicalDip = false;
+            hsdGroup3.DipSource = null;
+        }
         hsdGroup3.Rows.Add(new List<NozzleDisplayItem> { group3Nozzles[0], group3Nozzles[1] });
         groups.Add(hsdGroup3);
 
@@ -465,36 +612,68 @@ public class AgsInventoryService : IAgsInventoryService
             {
                 string fuelTypeInDb = g.GroupName switch
                 {
-                    string s when s.Contains("Tank 1") => "MS-I",
-                    string s when s.Contains("Tank 2") => "HSD",
-                    string s when s.Contains("Tank 3") => "MS-II",
-                    _ => g.FuelType
+                    string s when s.Contains("Tank 1") && (s.Contains("Petrol") || s.Contains("MS")) => "MS-I",
+                    string s when s.Contains("Tank 2") && (s.Contains("Diesel") || s.Contains("HSD")) => "HSD",
+                    string s when s.Contains("Tank 3") && (s.Contains("Diesel") || s.Contains("Speed") || s.Contains("MS")) => "MS-II",
+                    _ => g.FuelType switch
+                    {
+                        "Petrol" => "MS-I",
+                        "Diesel" => "HSD",
+                        "SPEED" => "SPEED",
+                        _ => g.FuelType
+                    }
                 };
 
-                var tank = import.TankStocks.FirstOrDefault(t => t.FuelType == fuelTypeInDb);
+                var tank = import.TankStocks.FirstOrDefault(t => 
+                    string.Equals(t.FuelType, fuelTypeInDb, StringComparison.OrdinalIgnoreCase) ||
+                    (fuelTypeInDb == "MS-II" && string.Equals(t.FuelType, "SPEED", StringComparison.OrdinalIgnoreCase)) ||
+                    (fuelTypeInDb == "SPEED" && string.Equals(t.FuelType, "MS-II", StringComparison.OrdinalIgnoreCase)));
+
                 if (tank == null)
                 {
                     tank = new AgsTankStock
                     {
                         FuelType = fuelTypeInDb,
-                        TankNumber = fuelTypeInDb switch { "HSD" => 1, "MS-I" => 2, "MS-II" => 3, _ => 1 }
+                        TankNumber = fuelTypeInDb switch { "HSD" => 1, "MS-I" => 2, "MS-II" or "SPEED" => 3, _ => 1 }
                     };
                     import.TankStocks.Add(tank);
                 }
 
-                var prevClosingDip = prevImport?.TankStocks?.FirstOrDefault(t => t.FuelType == fuelTypeInDb)?.ClosingDipMM ?? 0.0;
+                var prevClosingDip = prevImport?.TankStocks?.FirstOrDefault(t => 
+                    string.Equals(t.FuelType, fuelTypeInDb, StringComparison.OrdinalIgnoreCase) ||
+                    (fuelTypeInDb == "MS-II" && string.Equals(t.FuelType, "SPEED", StringComparison.OrdinalIgnoreCase)) ||
+                    (fuelTypeInDb == "SPEED" && string.Equals(t.FuelType, "MS-II", StringComparison.OrdinalIgnoreCase)))?.ClosingDipMM ?? 0.0;
 
                 tank.OpeningStockLitres = g.OpeningStock;
                 tank.OpeningDipMM = prevClosingDip;
                 tank.FuelDispensedLitres = g.FuelDispensed;
                 tank.ReceiptLitres = g.Receipts;
-                tank.ClosingDipMM = g.Dip;
 
-                bool hasExplicitMeasurement = g.HasMeasurement;
-                tank.HasPhysicalDip = hasExplicitMeasurement;
-                tank.DipSource = g.DipSource ?? (hasExplicitMeasurement ? "Manual" : null);
+                double closingStock;
+                if (g.HasManualStockEntry && g.ManualStock.HasValue)
+                {
+                    closingStock = g.ManualStock.Value;
+                    tank.HasPhysicalDip = true;
+                    tank.ClosingDipMM = g.Dip ?? 0.0;
+                    tank.DipSource = (g.HasManualDipEntry || (g.Dip.HasValue && g.Dip.Value > 0.001)) ? (g.DipSource ?? "Manual") : "ManualStockOnly";
+                }
+                else if (g.HasManualDipEntry && g.Dip.HasValue && (g.Dip.Value > 0.001 || g.HasPhysicalDip == true))
+                {
+                    // Dip-only: preserve dip, but closing stock is book stock
+                    closingStock = g.CalculatedStock;
+                    tank.HasPhysicalDip = true;
+                    tank.ClosingDipMM = g.Dip.Value;
+                    tank.DipSource = "DipOnly";
+                }
+                else
+                {
+                    // No measurement
+                    closingStock = g.CalculatedStock;
+                    tank.HasPhysicalDip = false;
+                    tank.ClosingDipMM = 0.0;
+                    tank.DipSource = null;
+                }
 
-                double closingStock = hasExplicitMeasurement ? g.Stock : g.CalculatedStock;
                 tank.ClosingStockLitres = closingStock;
 
                 // Sync to parent denormalized columns for dashboard/reporting consistency!
@@ -508,7 +687,7 @@ public class AgsInventoryService : IAgsInventoryService
                     import.MsIOpeningStock = g.OpeningStock;
                     import.MsIClosingStock = closingStock;
                 }
-                else if (fuelTypeInDb == "MS-II")
+                else if (fuelTypeInDb == "MS-II" || fuelTypeInDb == "SPEED")
                 {
                     import.MsIIOpeningStock = g.OpeningStock;
                     import.MsIIClosingStock = closingStock;
@@ -555,9 +734,11 @@ public class AgsInventoryService : IAgsInventoryService
                 .ThenBy(x => _shiftCycleService.NormalizeShiftType(x.ShiftType) switch { "B" => 1, "C" => 2, "A" => 3, _ => 4 })
                 .ToList();
 
+            int targetOrder = _shiftCycleService.NormalizeShiftType(startShiftType) switch { "B" => 1, "C" => 2, "A" => 3, _ => 4 };
             var startIdx = sortedImports.FindIndex(x =>
-                x.ImportDate.Date == startDate.Date &&
-                NormalizeShiftType(x.ShiftType) == startShiftType);
+                x.ImportDate.Date > startDate.Date ||
+                (x.ImportDate.Date == startDate.Date &&
+                 (_shiftCycleService.NormalizeShiftType(x.ShiftType) switch { "B" => 1, "C" => 2, "A" => 3, _ => 4 }) >= targetOrder));
             if (startIdx < 0) return Result.Ok(); // Nothing downstream found
 
             for (int i = startIdx; i < sortedImports.Count; i++)
@@ -574,19 +755,26 @@ public class AgsInventoryService : IAgsInventoryService
                 {
                     string fuelTypeInDb = g.GroupName switch
                     {
-                        string s when s.Contains("Tank 1") => "MS-I",
-                        string s when s.Contains("Tank 2") => "HSD",
-                        string s when s.Contains("Tank 3") => "MS-II",
-                        _ => g.FuelType
+                        string s when s.Contains("Tank 1") && (s.Contains("Petrol") || s.Contains("MS")) => "MS-I",
+                        string s when s.Contains("Tank 2") && (s.Contains("Diesel") || s.Contains("HSD")) => "HSD",
+                        string s when s.Contains("Tank 3") && (s.Contains("Diesel") || s.Contains("Speed") || s.Contains("MS")) => "MS-II",
+                        _ => g.FuelType switch
+                        {
+                            "Petrol" => "MS-I",
+                            "Diesel" => "HSD",
+                            "SPEED" => "SPEED",
+                            _ => g.FuelType
+                        }
                     };
 
-                    var tank = import.TankStocks.FirstOrDefault(t => t.FuelType == fuelTypeInDb);
+                    var tank = import.TankStocks.FirstOrDefault(t => FuelMatches(t.FuelType, fuelTypeInDb));
+
                     if (tank == null)
                     {
                         tank = new AgsTankStock
                         {
                             FuelType = fuelTypeInDb,
-                            TankNumber = fuelTypeInDb switch { "HSD" => 1, "MS-I" => 2, "MS-II" => 3, _ => 1 }
+                            TankNumber = fuelTypeInDb switch { "HSD" => 1, "MS-I" => 2, "MS-II" or "SPEED" => 3, _ => 1 }
                         };
                         import.TankStocks.Add(tank);
                     }
@@ -595,12 +783,18 @@ public class AgsInventoryService : IAgsInventoryService
                     tank.FuelDispensedLitres = g.FuelDispensed;
                     tank.ReceiptLitres = g.Receipts;
 
-                    bool hasExplicitMeasurement = g.HasMeasurement;
-                    tank.HasPhysicalDip = hasExplicitMeasurement;
-                    tank.DipSource = g.DipSource ?? (hasExplicitMeasurement ? "Manual" : null);
-
-                    double closingStock = hasExplicitMeasurement ? g.Stock : g.CalculatedStock;
-                    tank.ClosingStockLitres = closingStock; // Recompute book stock!
+                    double closingStock;
+                    if (tank.HasPhysicalDip && tank.DipSource != "DipOnly")
+                    {
+                        // Keep previously recorded physical measurement
+                        closingStock = tank.ClosingStockLitres;
+                    }
+                    else
+                    {
+                        // Recompute book stock
+                        closingStock = g.CalculatedStock;
+                        tank.ClosingStockLitres = closingStock;
+                    }
 
                     if (fuelTypeInDb == "HSD")
                     {
@@ -612,7 +806,7 @@ public class AgsInventoryService : IAgsInventoryService
                         import.MsIOpeningStock = g.OpeningStock;
                         import.MsIClosingStock = closingStock;
                     }
-                    else if (fuelTypeInDb == "MS-II")
+                    else if (fuelTypeInDb == "MS-II" || fuelTypeInDb == "SPEED")
                     {
                         import.MsIIOpeningStock = g.OpeningStock;
                         import.MsIIClosingStock = closingStock;
@@ -662,7 +856,7 @@ public class AgsInventoryService : IAgsInventoryService
 
         var hsdTank = lastShift?.TankStocks?.FirstOrDefault(t => t.FuelType == "HSD");
         var msITank = lastShift?.TankStocks?.FirstOrDefault(t => t.FuelType == "MS-I");
-        var msIITank = lastShift?.TankStocks?.FirstOrDefault(t => t.FuelType == "MS-II");
+        var msIITank = lastShift?.TankStocks?.FirstOrDefault(t => t.FuelType == "MS-II" || t.FuelType == "SPEED");
 
         // Fetch previous shift closings/dips before startDate
         var (prevDate, prevShift) = GetPreviousShift(startDate.Date, _shiftCycleService.GetOpeningShiftForDate(startDate.Date));
@@ -671,7 +865,7 @@ public class AgsInventoryService : IAgsInventoryService
 
         var prevHsdTank = prevImport?.TankStocks?.FirstOrDefault(t => t.FuelType == "HSD");
         var prevMsITank = prevImport?.TankStocks?.FirstOrDefault(t => t.FuelType == "MS-I");
-        var prevMsIITank = prevImport?.TankStocks?.FirstOrDefault(t => t.FuelType == "MS-II");
+        var prevMsIITank = prevImport?.TankStocks?.FirstOrDefault(t => t.FuelType == "MS-II" || t.FuelType == "SPEED");
 
         var hsdOpeningStock = (prevHsdTank != null) ? prevHsdTank.ClosingStockLitres : (sortedShifts.FirstOrDefault()?.TankStocks?.FirstOrDefault(t => t.FuelType == "HSD")?.OpeningStockLitres ?? 0.0);
         var msIOpeningStock = (prevMsITank != null) ? prevMsITank.ClosingStockLitres : (sortedShifts.FirstOrDefault()?.TankStocks?.FirstOrDefault(t => t.FuelType == "MS-I")?.OpeningStockLitres ?? 0.0);
@@ -698,9 +892,26 @@ public class AgsInventoryService : IAgsInventoryService
             }
         }
 
+        // Filter entries strictly to requested date range
+        var validEntries = (loadedEntries ?? new List<DsmEntry>())
+            .Where(e => e.Shift == null || (e.Shift.ShiftDate.Date >= startDate.Date && e.Shift.ShiftDate.Date <= endDate.Date))
+            .ToList();
+
+        // Deduplicate nozzle readings per (ShiftId, NozzleNumber) to eliminate duplicate entry submissions in the same shift
+        var distinctNozzleReadings = validEntries
+            .SelectMany(e => (e.NozzleReadings ?? Enumerable.Empty<NozzleReading>()).Select(r => new { Entry = e, Reading = r }))
+            .GroupBy(x => new {
+                ShiftDate = x.Entry.Shift?.ShiftDate.Date ?? startDate.Date,
+                ShiftType = _shiftCycleService.NormalizeShiftType(x.Entry.Shift?.ShiftType ?? "A"),
+                ShiftId = x.Entry.ShiftId,
+                x.Reading.NozzleNumber
+            })
+            .Select(g => g.OrderByDescending(x => x.Reading.SaleLitres > 0).ThenByDescending(x => x.Reading.ClosingReading).First().Reading)
+            .ToList();
+
         // Aggregate manual readings
         var manualReadings = new Dictionary<int, (double Opening, double Closing, double Sale)>();
-        foreach (var group in loadedEntries.SelectMany(e => e.NozzleReadings).GroupBy(r => r.NozzleNumber))
+        foreach (var group in distinctNozzleReadings.GroupBy(r => r.NozzleNumber))
         {
             var sorted = group.OrderBy(r => r.OpeningReading).ToList();
             var opening = sorted.FirstOrDefault()?.OpeningReading ?? 0.0;
@@ -716,7 +927,7 @@ public class AgsInventoryService : IAgsInventoryService
         double hsdTesting = 0;
         double msIITesting = 0;
 
-        foreach (var entry in loadedEntries)
+        foreach (var entry in validEntries)
         {
             foreach (var t in entry.TestingEntries ?? Enumerable.Empty<TestingEntry>())
             {
@@ -848,7 +1059,7 @@ public class AgsInventoryService : IAgsInventoryService
                 {
                     var tankersRes = await tankerRepo.GetByDateRangeAsync(startDate.Date, endDate.Date);
                     var tankers = tankersRes.Success && tankersRes.Data != null ? tankersRes.Data : new List<FuelTanker>();
-                    receipts = tankers.Where(t => string.Equals(t.FuelType, tank.FuelType, StringComparison.OrdinalIgnoreCase)).Sum(t => t.Quantity);
+                    receipts = tankers.Where(t => FuelMatches(t.FuelType, tank.FuelType)).Sum(t => t.Quantity);
                 }
 
                 var tankStock = lastShift?.TankStocks?.FirstOrDefault(ts => string.Equals(ts.FuelType, tank.FuelType, StringComparison.OrdinalIgnoreCase));
@@ -856,8 +1067,6 @@ public class AgsInventoryService : IAgsInventoryService
 
                 double openingStock = (prevTankStock != null) ? prevTankStock.ClosingStockLitres : (tankStock?.OpeningStockLitres ?? 0.0);
                 var prov = ResolveMeasurementProvenance(tankStock, lastShift, null, lastShift?.ShiftType ?? "", tank.FuelType);
-                double dip = prov.HasMeasurement ? prov.DipValue : (tankStock?.ClosingDipMM ?? 0.0);
-                double stock = prov.HasMeasurement ? prov.MeasuredStock : (openingStock - dispensed + testingLitres + receipts);
 
                 var groupDto = new NozzleGroupDto
                 {
@@ -866,12 +1075,32 @@ public class AgsInventoryService : IAgsInventoryService
                     OpeningStock = openingStock,
                     FuelDispensed = dispensed,
                     TestingLitres = testingLitres,
-                    Receipts = receipts,
-                    Dip = dip,
-                    Stock = stock,
-                    HasPhysicalDip = prov.HasMeasurement,
-                    DipSource = prov.Source
+                    Receipts = receipts
                 };
+
+                if (prov.HasMeasurement)
+                {
+                    groupDto.HasPhysicalDip = true;
+                    groupDto.DipSource = prov.Source;
+
+                    if (prov.Source == "DipOnly")
+                    {
+                        groupDto.Dip = prov.DipValue;
+                        groupDto.ManualStock = null;
+                    }
+                    else
+                    {
+                        groupDto.ManualStock = prov.MeasuredStock;
+                        groupDto.Dip = (prov.DipValue > 0.001) ? prov.DipValue : (double?)null;
+                    }
+                }
+                else
+                {
+                    groupDto.ManualStock = null;
+                    groupDto.Dip = null;
+                    groupDto.HasPhysicalDip = false;
+                    groupDto.DipSource = null;
+                }
 
                 for (int i = 0; i < tankNozzles.Count; i += 3)
                 {
@@ -930,12 +1159,30 @@ public class AgsInventoryService : IAgsInventoryService
             OpeningStock = msIOpeningStock,
             FuelDispensed = msIDispensed,
             TestingLitres = msITesting,
-            Receipts = msIReceipts,
-            Dip = provMsI.HasMeasurement ? provMsI.DipValue : (msITank?.ClosingDipMM ?? 0),
-            Stock = provMsI.HasMeasurement ? provMsI.MeasuredStock : (msIOpeningStock - msIDispensed + msITesting + msIReceipts),
-            HasPhysicalDip = provMsI.HasMeasurement,
-            DipSource = provMsI.Source
+            Receipts = msIReceipts
         };
+        if (provMsI.HasMeasurement)
+        {
+            msGroup1.HasPhysicalDip = true;
+            msGroup1.DipSource = provMsI.Source;
+            if (provMsI.Source == "DipOnly")
+            {
+                msGroup1.Dip = provMsI.DipValue;
+                msGroup1.ManualStock = null;
+            }
+            else
+            {
+                msGroup1.ManualStock = provMsI.MeasuredStock;
+                msGroup1.Dip = (provMsI.DipValue > 0.001) ? provMsI.DipValue : (double?)null;
+            }
+        }
+        else
+        {
+            msGroup1.ManualStock = null;
+            msGroup1.Dip = null;
+            msGroup1.HasPhysicalDip = false;
+            msGroup1.DipSource = null;
+        }
         msGroup1.Rows.Add(new List<NozzleDisplayItem> { group1Nozzles[0], group1Nozzles[1], group1Nozzles[2] });
         msGroup1.Rows.Add(new List<NozzleDisplayItem> { group1Nozzles[3], group1Nozzles[4], group1Nozzles[5] });
         groups.Add(msGroup1);
@@ -948,12 +1195,30 @@ public class AgsInventoryService : IAgsInventoryService
             OpeningStock = hsdOpeningStock,
             FuelDispensed = hsdDispensed,
             TestingLitres = hsdTesting,
-            Receipts = hsdReceipts,
-            Dip = provHsd.HasMeasurement ? provHsd.DipValue : (hsdTank?.ClosingDipMM ?? 0),
-            Stock = provHsd.HasMeasurement ? provHsd.MeasuredStock : (hsdOpeningStock - hsdDispensed + hsdTesting + hsdReceipts),
-            HasPhysicalDip = provHsd.HasMeasurement,
-            DipSource = provHsd.Source
+            Receipts = hsdReceipts
         };
+        if (provHsd.HasMeasurement)
+        {
+            hsdGroup2.HasPhysicalDip = true;
+            hsdGroup2.DipSource = provHsd.Source;
+            if (provHsd.Source == "DipOnly")
+            {
+                hsdGroup2.Dip = provHsd.DipValue;
+                hsdGroup2.ManualStock = null;
+            }
+            else
+            {
+                hsdGroup2.ManualStock = provHsd.MeasuredStock;
+                hsdGroup2.Dip = (provHsd.DipValue > 0.001) ? provHsd.DipValue : (double?)null;
+            }
+        }
+        else
+        {
+            hsdGroup2.ManualStock = null;
+            hsdGroup2.Dip = null;
+            hsdGroup2.HasPhysicalDip = false;
+            hsdGroup2.DipSource = null;
+        }
         hsdGroup2.Rows.Add(new List<NozzleDisplayItem> { group2Nozzles[0], group2Nozzles[1] });
         hsdGroup2.Rows.Add(new List<NozzleDisplayItem> { group2Nozzles[2], group2Nozzles[3] });
         groups.Add(hsdGroup2);
@@ -966,12 +1231,30 @@ public class AgsInventoryService : IAgsInventoryService
             OpeningStock = msIIOpeningStock,
             FuelDispensed = msIIDispensed,
             TestingLitres = msIITesting,
-            Receipts = msIIReceipts,
-            Dip = provMsII.HasMeasurement ? provMsII.DipValue : (msIITank?.ClosingDipMM ?? 0),
-            Stock = provMsII.HasMeasurement ? provMsII.MeasuredStock : (msIIOpeningStock - msIIDispensed + msIITesting + msIIReceipts),
-            HasPhysicalDip = provMsII.HasMeasurement,
-            DipSource = provMsII.Source
+            Receipts = msIIReceipts
         };
+        if (provMsII.HasMeasurement)
+        {
+            hsdGroup3.HasPhysicalDip = true;
+            hsdGroup3.DipSource = provMsII.Source;
+            if (provMsII.Source == "DipOnly")
+            {
+                hsdGroup3.Dip = provMsII.DipValue;
+                hsdGroup3.ManualStock = null;
+            }
+            else
+            {
+                hsdGroup3.ManualStock = provMsII.MeasuredStock;
+                hsdGroup3.Dip = (provMsII.DipValue > 0.001) ? provMsII.DipValue : (double?)null;
+            }
+        }
+        else
+        {
+            hsdGroup3.ManualStock = null;
+            hsdGroup3.Dip = null;
+            hsdGroup3.HasPhysicalDip = false;
+            hsdGroup3.DipSource = null;
+        }
         hsdGroup3.Rows.Add(new List<NozzleDisplayItem> { group3Nozzles[0], group3Nozzles[1] });
         groups.Add(hsdGroup3);
 

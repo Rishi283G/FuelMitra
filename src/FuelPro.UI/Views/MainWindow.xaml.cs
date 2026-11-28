@@ -11,6 +11,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         var vm = App.Services.GetRequiredService<MainWindowViewModel>();
         DataContext = vm;
+        Closed += (_, _) => (DataContext as IDisposable)?.Dispose();
         vm.NavigateToDsmEntryCommand.Execute(null);
     }
 }

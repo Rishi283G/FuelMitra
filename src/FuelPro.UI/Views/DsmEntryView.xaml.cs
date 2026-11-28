@@ -162,6 +162,168 @@ public partial class DsmEntryView : UserControl
         e.Handled = true;
     }
 
+    /// <summary>
+    /// Handles Tab, Shift+Tab, and Enter navigation inside the NozzleReadings DataGrid so focus
+    /// transfers directly to the next editable TextBox (receiving real keyboard focus for immediate typing)
+    /// and exits cleanly at grid boundaries without looping.
+    /// </summary>
+    internal void NozzleReadingsDataGrid_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (sender is not DataGrid grid) return;
+        if (e.Key != Key.Tab && e.Key != Key.Enter) return;
+
+        bool reverse = e.Key == Key.Tab && (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift;
+        var currentTb = Keyboard.FocusedElement as TextBox ?? FindVisualParent<TextBox>(e.OriginalSource as DependencyObject);
+
+        if (currentTb != null)
+        {
+            var binding = currentTb.GetBindingExpression(TextBox.TextProperty);
+            binding?.UpdateSource();
+        }
+
+        if (TryMoveNozzleReadingFocus(grid, currentTb, reverse))
+        {
+            e.Handled = true;
+            return;
+        }
+
+        // At grid boundary: exit cleanly to the next/previous control outside the DataGrid without looping.
+        MoveFocusOutsideGrid(grid, reverse ? FocusNavigationDirection.Previous : FocusNavigationDirection.Next);
+        e.Handled = true;
+    }
+
+    private void NozzleReadingsDataGrid_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not DataGrid) return;
+        var source = e.OriginalSource as DependencyObject;
+        if (source == null || FindVisualParent<TextBox>(source) != null) return;
+
+        var cell = FindVisualParent<DataGridCell>(source);
+        if (cell == null) return;
+
+        var innerTb = FindEditableTextBoxes(cell).FirstOrDefault();
+        if (innerTb != null)
+        {
+            FocusTextBoxForTyping(innerTb, selectAll: false);
+            e.Handled = true;
+        }
+    }
+
+    internal static bool TryMoveNozzleReadingFocus(DataGrid grid, TextBox? currentTb, bool reverse)
+    {
+        var editableBoxes = GetOrderedEditableNozzleTextBoxes(grid);
+        if (editableBoxes.Count == 0) return false;
+
+        int targetIdx;
+        if (currentTb == null)
+        {
+            targetIdx = reverse ? editableBoxes.Count - 1 : 0;
+        }
+        else
+        {
+            int currentIdx = editableBoxes.IndexOf(currentTb);
+            if (currentIdx < 0)
+            {
+                targetIdx = reverse ? editableBoxes.Count - 1 : 0;
+            }
+            else
+            {
+                targetIdx = reverse ? currentIdx - 1 : currentIdx + 1;
+            }
+        }
+
+        if (targetIdx < 0 || targetIdx >= editableBoxes.Count)
+        {
+            return false;
+        }
+
+        FocusTextBoxForTyping(editableBoxes[targetIdx], selectAll: true);
+        return true;
+    }
+
+    internal static List<TextBox> GetOrderedEditableNozzleTextBoxes(DataGrid grid)
+    {
+        var result = new List<TextBox>();
+        grid.UpdateLayout();
+
+        for (int i = 0; i < grid.Items.Count; i++)
+        {
+            var row = grid.ItemContainerGenerator.ContainerFromIndex(i) as DataGridRow;
+            if (row == null)
+            {
+                grid.ScrollIntoView(grid.Items[i]);
+                grid.UpdateLayout();
+                row = grid.ItemContainerGenerator.ContainerFromIndex(i) as DataGridRow;
+            }
+
+            if (row != null)
+            {
+                result.AddRange(FindEditableTextBoxes(row));
+            }
+        }
+
+        return result;
+    }
+
+    private static IEnumerable<TextBox> FindEditableTextBoxes(DependencyObject root)
+    {
+        int count = System.Windows.Media.VisualTreeHelper.GetChildrenCount(root);
+        for (int i = 0; i < count; i++)
+        {
+            var child = System.Windows.Media.VisualTreeHelper.GetChild(root, i);
+            if (child is TextBox tb)
+            {
+                if (tb.Focusable && tb.IsEnabled && !tb.IsReadOnly && tb.Visibility == Visibility.Visible)
+                {
+                    yield return tb;
+                }
+                continue;
+            }
+
+            foreach (var nested in FindEditableTextBoxes(child))
+            {
+                yield return nested;
+            }
+        }
+    }
+
+    private static void FocusTextBoxForTyping(TextBox textBox, bool selectAll)
+    {
+        textBox.BringIntoView();
+        textBox.Focus();
+        Keyboard.Focus(textBox);
+        if (selectAll && !string.IsNullOrEmpty(textBox.Text))
+        {
+            textBox.SelectAll();
+        }
+    }
+
+    private static void MoveFocusOutsideGrid(DataGrid grid, FocusNavigationDirection direction)
+    {
+        var orderedBoxes = GetOrderedEditableNozzleTextBoxes(grid);
+        DependencyObject anchor = direction == FocusNavigationDirection.Next
+            ? (DependencyObject?)orderedBoxes.LastOrDefault() ?? grid
+            : (DependencyObject?)orderedBoxes.FirstOrDefault() ?? grid;
+
+        if (anchor is FrameworkElement fe)
+        {
+            KeyboardNavigation.SetTabNavigation(grid, KeyboardNavigationMode.Once);
+            fe.MoveFocus(new TraversalRequest(direction));
+            KeyboardNavigation.SetTabNavigation(grid, KeyboardNavigationMode.Continue);
+        }
+    }
+
+    private static T? FindVisualParent<T>(DependencyObject? child) where T : DependencyObject
+    {
+        var current = child;
+        while (current != null)
+        {
+            if (current is T typed) return typed;
+            current = System.Windows.Media.VisualTreeHelper.GetParent(current);
+        }
+        return null;
+    }
+
     private void DsmComboBox_DropDownOpened(object sender, EventArgs e)
     {
         if (DataContext is ViewModels.DsmEntryViewModel vm)

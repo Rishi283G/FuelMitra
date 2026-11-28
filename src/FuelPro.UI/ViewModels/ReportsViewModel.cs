@@ -160,14 +160,40 @@ public partial class ReportsViewModel : ObservableObject
                 var shiftIds = shifts.Select(s => s.ShiftId).ToList();
 
                 var expensesByCategory = new Dictionary<string, double>();
+                var detailedExpenses = new List<object>();
+                var kpEntries = new List<object>();
+                double totalKp = 0;
+
                 foreach (var entry in entries)
                 {
-                    foreach (var exp in entry.Expenses)
+                    var shift = shifts.FirstOrDefault(s => s.ShiftId == entry.ShiftId);
+                    var shiftName = shift != null ? $"Shift {shift.ShiftType}" : "Shift";
+                    var dateStr = (shift?.ShiftDate ?? entry.CreatedAt).ToString("dd-MMM-yyyy");
+
+                    foreach (var exp in entry.Expenses ?? Enumerable.Empty<Expense>())
                     {
                         var cat = exp.Description ?? "Other";
                         if (!expensesByCategory.ContainsKey(cat)) expensesByCategory[cat] = 0;
                         expensesByCategory[cat] += exp.Amount;
+                        detailedExpenses.Add(new { date = dateStr, shift = shiftName, dsm = entry.DsmName, particulars = cat, amount = exp.Amount });
                     }
+                    foreach (var kp in entry.KhandharePetroleumEntries ?? Enumerable.Empty<KhandharePetroleumEntry>())
+                    {
+                        totalKp += kp.Amount;
+                        kpEntries.Add(new
+                        {
+                            date = kp.Date.ToString("dd-MMM-yyyy"),
+                            dsmName = kp.DsmName,
+                            name = kp.Name,
+                            slipNumber = kp.SlipNumber,
+                            vehicleNumber = kp.VehicleNumber ?? "-",
+                            amount = kp.Amount
+                        });
+                    }
+                }
+                if (totalKp > 0)
+                {
+                    expensesByCategory["Khandhare Petroleum"] = totalKp;
                 }
                 var shiftExpResult = await _expenseRepo.GetExpensesByShiftIdsAsync(shiftIds);
                 if (shiftExpResult.Success && shiftExpResult.Data != null)
@@ -177,6 +203,15 @@ public partial class ReportsViewModel : ObservableObject
                         var cat = exp.Description ?? "Shift Expense";
                         if (!expensesByCategory.ContainsKey(cat)) expensesByCategory[cat] = 0;
                         expensesByCategory[cat] += exp.Amount;
+                        var shift = shifts.FirstOrDefault(s => s.ShiftId == exp.ShiftId);
+                        detailedExpenses.Add(new
+                        {
+                            date = shift != null ? shift.ShiftDate.ToString("dd-MMM-yyyy") : startDate.ToString("dd-MMM-yyyy"),
+                            shift = shift != null ? $"Shift {shift.ShiftType}" : "Shift",
+                            dsm = "Shift Level",
+                            particulars = cat,
+                            amount = exp.Amount
+                        });
                     }
                 }
 
@@ -205,6 +240,9 @@ public partial class ReportsViewModel : ObservableObject
                         msIILitres = financials.FuelProfit.MsIILitres,
                         msIIMargin = financials.FuelProfit.MsIIMargin,
                         msIIProfit = financials.FuelProfit.MsIIProfit,
+                        cngLitres = financials.FuelProfit.CngLitres,
+                        cngMargin = financials.FuelProfit.CngMargin,
+                        cngProfit = financials.FuelProfit.CngProfit,
                         totalLitres = financials.FuelProfit.TotalLitres,
                         totalFuelProfit = financials.FuelProfit.TotalFuelProfit
                     },
@@ -227,6 +265,24 @@ public partial class ReportsViewModel : ObservableObject
                         totalProfit = financials.DefProfit.TotalProfit
                     },
                     expenses = expenseRows,
+                    detailedExpenses,
+                    kpEntries,
+                    totalKpDrawings = totalKp,
+                    operatingExpensesExcludingKp = Math.Max(0, financials.TotalExpenses - totalKp),
+                    pumpRent = financials.PumpRent,
+                    pumpSalary = financials.PumpSalary,
+                    pumpTripSheetLoss = financials.PumpTripSheetLoss,
+                    pumpDsmShort = financials.PumpDsmShort,
+                    pumpBankingExpenses = financials.PumpBankingExpenses,
+                    pumpBpclPortalExpenses = financials.PumpBpclPortalExpenses,
+                    pumpUsedFuel = financials.PumpFuelAndTravel,
+                    pumpOilPurchase = financials.PumpOilPurchase,
+                    pumpRepairsAndMaintenance = financials.PumpRepairsAndMaintenance,
+                    pumpElectricity = financials.PumpElectricity,
+                    pumpOfficeExpenses = financials.PumpOfficeExpenses,
+                    pumpPrintingExpense = financials.PumpPrintingExpense,
+                    pumpOtherAmount = financials.PumpOtherAmount,
+                    totalPumpExpenses = financials.TotalPumpExpenses,
                     totalExpenses = financials.TotalExpenses,
                     totalDsmSalaries = financials.TotalDsmSalaries,
                     grossProfit = financials.GrossProfit,

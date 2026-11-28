@@ -39,5 +39,12 @@ public class TankDefinition
     /// </summary>
     public bool HasTesting { get; set; } = true;
 
+    /// <summary>
+    /// Dynamic fuel rate associated with this tank for canonical cloud transport contract.
+    /// Not mapped to local SQLite database table to prevent unnecessary schema migrations.
+    /// </summary>
+    [NotMapped]
+    public double? Rate { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.Now;
 }

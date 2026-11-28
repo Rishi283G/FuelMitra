@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using FuelPro.Core.Models;
 
 namespace FuelPro.Core.DTOs;
 
@@ -71,6 +72,7 @@ public class ShiftReportDto
 
     // Standardized Collection Breakdown (16 categories)
     public List<CollectionCategoryDto> CollectionBreakdown { get; set; } = new();
+    public List<CollectionTypeMaster> CollectionTypes { get; set; } = new();
 
     // Final Reconciliation
     public List<TestingSummaryItem> TestingSummaryItems { get; set; } = new();
@@ -151,6 +153,7 @@ public class DayReportDto
 
     // Standardized Collection Breakdown (16 categories)
     public List<CollectionCategoryDto> CollectionBreakdown { get; set; } = new();
+    public List<CollectionTypeMaster> CollectionTypes { get; set; } = new();
 
     // Final Reconciliation
     public List<TestingSummaryItem> TestingSummaryItems { get; set; } = new();

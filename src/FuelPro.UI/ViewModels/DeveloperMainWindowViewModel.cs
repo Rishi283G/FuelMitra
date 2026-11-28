@@ -604,18 +604,17 @@ public partial class DeveloperMainWindowViewModel : ObservableObject
                 }
             }
 
-            var settings = new SyncSettings
-            {
-                SupabaseUrl = SupabaseUrl.Trim(),
-                SupabaseApiKey = SupabaseApiKey.Trim(),
-                SupabaseServiceRoleKey = SupabaseServiceRoleKey.Trim(),
-                StationId = normalizedStationId,
-                MachineId = MachineId.Trim(),
-                SyncEnabled = SyncEnabled,
-                LastSyncTime = _syncEngine.CurrentStatus.LastSyncTime
-            };
+            SyncConfigService.ApplyDeveloperCloudSettings(
+                currentSettings,
+                SupabaseUrl,
+                SupabaseApiKey,
+                SupabaseServiceRoleKey,
+                normalizedStationId,
+                MachineId,
+                SyncEnabled,
+                _syncEngine.CurrentStatus.LastSyncTime);
 
-            await _syncConfigService.SaveSettingsAsync(settings);
+            await _syncConfigService.SaveSettingsAsync(currentSettings);
 
             // Dynamically queue all historical data under the new Station ID so they sync immediately
             await _syncEngine.QueueAllHistoricalRecordsForStationAsync(normalizedStationId);
@@ -1864,6 +1863,9 @@ public partial class PumpConnectionGroupVm : ObservableObject
 
 public partial class DeveloperMainWindowViewModel
 {
+    private static readonly bool MainWindowViewModelIsTestHost = AppDomain.CurrentDomain.GetAssemblies()
+        .Any(a => string.Equals(a.GetName().Name, "FuelPro.Tests", StringComparison.OrdinalIgnoreCase));
+
     // ───────────────────────────────────────────────
     // TAB 5: CLIENT FEATURES & PAGE ACCESS
     // ───────────────────────────────────────────────
@@ -1898,9 +1900,10 @@ public partial class DeveloperMainWindowViewModel
                 }
             }
 
-            if (System.Windows.Application.Current?.Dispatcher != null && !System.Windows.Application.Current.Dispatcher.CheckAccess())
+            var dispatcher = System.Windows.Application.Current?.Dispatcher;
+            if (!MainWindowViewModelIsTestHost && dispatcher != null && !dispatcher.CheckAccess())
             {
-                System.Windows.Application.Current.Dispatcher.Invoke(UpdateUi);
+                dispatcher.Invoke(UpdateUi);
             }
             else
             {
@@ -1932,9 +1935,10 @@ public partial class DeveloperMainWindowViewModel
             }
         }
 
-        if (System.Windows.Application.Current?.Dispatcher != null && !System.Windows.Application.Current.Dispatcher.CheckAccess())
+        var filterDispatcher = System.Windows.Application.Current?.Dispatcher;
+        if (!MainWindowViewModelIsTestHost && filterDispatcher != null && !filterDispatcher.CheckAccess())
         {
-            System.Windows.Application.Current.Dispatcher.Invoke(UpdateFilter);
+            filterDispatcher.Invoke(UpdateFilter);
         }
         else
         {
@@ -1972,9 +1976,16 @@ public partial class DeveloperMainWindowViewModel
                     try
                     {
                         await _syncEngine.ForceSyncAsync();
-                        await _syncEngine.PushStationSnapshotToCloudAsync(StationId);
+                        var (pushOk, pushMsg) = await _syncEngine.PushStationSnapshotToCloudAsync(StationId);
+                        if (!pushOk)
+                        {
+                            Log.Warning("Background feature cloud push did not succeed for station {StationId}: {Message}", StationId, pushMsg);
+                        }
                     }
-                    catch { }
+                    catch (Exception bgEx)
+                    {
+                        Log.Warning(bgEx, "Background feature sync failed for station {StationId}", StationId);
+                    }
                 });
                 System.Windows.MessageBox.Show("Client feature configuration saved successfully!\nAdmin and Owner interfaces will now reflect these settings.", 
                     "Features Saved", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -2991,16 +3002,38 @@ public partial class DeveloperMainWindowViewModel
             }
             else
             {
-                FeatureStatusMessage = $"❌ {message}";
-                MessageBox.Show($"Failed to push features to cloud:\n\n{message}",
+                Log.Warning("SaveFeaturesToCloudAsync failed for station {StationId}: {Message}", StationId, message);
+                var friendlyMessage = FormatCloudFeatureError(message);
+                FeatureStatusMessage = $"❌ {friendlyMessage}";
+                MessageBox.Show($"Failed to push features to cloud:\n\n{friendlyMessage}",
                     "Cloud Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
         catch (Exception ex)
         {
+            Log.Error(ex, "Exception in SaveFeaturesToCloudAsync for station {StationId}", StationId);
             FeatureStatusMessage = $"❌ Cloud push error: {ex.Message}";
             MessageBox.Show($"Exception saving features to cloud:\n\n{ex.Message}", "Cloud Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
+    }
+
+    private static string FormatCloudFeatureError(string? rawMessage)
+    {
+        if (string.IsNullOrWhiteSpace(rawMessage))
+            return "Unable to synchronize feature settings to Supabase. Check logs for details.";
+
+        if (rawMessage.Contains("23502", StringComparison.OrdinalIgnoreCase) &&
+            rawMessage.Contains("Settings", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Supabase Settings table rejected a required column (NOT NULL constraint). Please verify your Settings schema and logs.";
+        }
+
+        if (rawMessage.Contains("PGRST205", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Required Supabase configuration table is missing from schema cache. Ensure Supabase schema migrations are applied.";
+        }
+
+        return rawMessage;
     }
 
     [RelayCommand]

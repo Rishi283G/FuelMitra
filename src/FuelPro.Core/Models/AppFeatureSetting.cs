@@ -65,7 +65,7 @@ public class AppFeatureSetting
 
     /// <summary>
     /// Returns the single canonical source of truth for all default application feature definitions.
-    /// Total: 36 features (16 Manager, 15 Owner, 5 Global).
+    /// Total: 45 features (16 Manager, 15 Owner, 14 Global).
     /// </summary>
     public static List<AppFeatureSetting> GetCanonicalDefaults(DateTime? timestamp = null)
     {
@@ -112,15 +112,22 @@ public class AppFeatureSetting
             new() { FeatureKey = "Owner_Reports", TargetRole = "Owner", DisplayName = "Reports & Analytics", Category = "Reports", DisplayOrder = 15, IsEnabled = true, Description = "Comprehensive print and PDF reporting suite.", UpdatedAt = now },
 
             // ───────────────────────────────────────────────
-            // GLOBAL & WORKFLOW FEATURES (5 items)
+            // GLOBAL & WORKFLOW FEATURES (14 items)
             // ───────────────────────────────────────────────
             new() { FeatureKey = "Integration_DsmPwa", TargetRole = "Global", DisplayName = "DSM PWA Mobile App Integration", Category = "Integrations", DisplayOrder = 1, IsEnabled = true, Description = "Enable mobile PWA nozzle entry and operator shift synchronization via cloud.", UpdatedAt = now },
             new() { FeatureKey = "Collection_UseMorningNight", TargetRole = "Global", DisplayName = "Split Collections into Morning / Night", Category = "Collections", DisplayOrder = 2, IsEnabled = false, Description = "Split collection entry fields into morning/day/night shifts vs combined daily amounts.", UpdatedAt = now },
-            new() { FeatureKey = "Operations_CashDenominations", TargetRole = "Global", DisplayName = "Cash Denomination Entry", Category = "Collections", DisplayOrder = 3, IsEnabled = false, Description = "Display cash denomination count inputs (₹500, ₹200, ₹100) for Cash 1 in DSM PWA and calculate totals dynamically.", UpdatedAt = now },
-            new() { FeatureKey = "Operations_OtpMachineTracking", TargetRole = "Global", DisplayName = "Slip Number Machine Transaction Tracking", Category = "Collections", DisplayOrder = 4, IsEnabled = true, Description = "Track multiple individual transactions with Amount and Slip Number per machine/TID in DSM PWA and Manual Entry.", UpdatedAt = now },
-            new() { FeatureKey = "Operations_MultiTidTransactions", TargetRole = "Global", DisplayName = "Multiple TID / Itemized Swipes Tracking", Category = "Collections", DisplayOrder = 5, IsEnabled = true, Description = "Track multiple individual card/digital transactions per TID in DSM PWA and Manual Entry.", UpdatedAt = now },
-            new() { FeatureKey = "Operations_Cash3", TargetRole = "Global", DisplayName = "Cash 3 (Final Cash) Collection", Category = "Collections", DisplayOrder = 6, IsEnabled = false, Description = "Enable Cash 3 as final cash collection with denominations across DSM Entry, PWA, and prints (Cash 1 = Advance Cash, Cash 2 = Middle Cash, Cash 3 = Final Cash).", UpdatedAt = now },
-            new() { FeatureKey = "UI_DebtorManagement_AsNewPage", TargetRole = "Global", DisplayName = "Debtor Management on Dedicated Page (vs Shift Total)", Category = "Navigation", DisplayOrder = 7, IsEnabled = true, Description = "When enabled, Debtor Management appears as a dedicated page below Oil & DEF Log. When disabled, it embeds inside Shift Total (Final Calculation).", UpdatedAt = now }
+            new() { FeatureKey = "Operations_Cash1", TargetRole = "Global", DisplayName = "Cash 1 (Bank Deposit) Payment Method", Category = "Collections", DisplayOrder = 3, IsEnabled = true, Description = "Enable Cash 1 (Cash Deposit in Bank) payment method in DSM PWA and desktop.", UpdatedAt = now },
+            new() { FeatureKey = "Operations_Cash2", TargetRole = "Global", DisplayName = "Cash 2 (Cash in Hand) Payment Method", Category = "Collections", DisplayOrder = 4, IsEnabled = true, Description = "Enable Cash 2 (Cash in Hand) payment method in DSM PWA and desktop.", UpdatedAt = now },
+            new() { FeatureKey = "Operations_Cash1Denominations", TargetRole = "Global", DisplayName = "Cash 1 Denominations Entry", Category = "Collections", DisplayOrder = 5, IsEnabled = false, Description = "Display cash denomination count inputs (₹500, ₹200, ₹100) for Cash 1 (Bank Deposit) in DSM PWA and calculate totals dynamically.", UpdatedAt = now },
+            new() { FeatureKey = "Operations_Cash2Denominations", TargetRole = "Global", DisplayName = "Cash 2 Denominations Entry", Category = "Collections", DisplayOrder = 6, IsEnabled = true, Description = "Display cash denomination count inputs for Cash 2 (Cash in Hand) in DSM PWA and calculate totals dynamically.", UpdatedAt = now },
+            new() { FeatureKey = "Operations_DebtorRepayment", TargetRole = "Global", DisplayName = "Debtor Repayment (Recoveries) in DSM PWA", Category = "Collections", DisplayOrder = 7, IsEnabled = true, Description = "Enable Debtor Repayment / Customer recovery entries in DSM PWA.", UpdatedAt = now },
+            new() { FeatureKey = "Operations_CollectionReduction", TargetRole = "Global", DisplayName = "Collection Reduction in DSM PWA", Category = "Collections", DisplayOrder = 8, IsEnabled = true, Description = "Enable Collection Reduction (Deduction from Total) in DSM PWA.", UpdatedAt = now },
+            new() { FeatureKey = "Operations_CashDenominations", TargetRole = "Global", DisplayName = "Cash Denomination Entry (Legacy)", Category = "Collections", DisplayOrder = 9, IsEnabled = false, Description = "Legacy toggle for cash denomination count inputs for Cash 1 in DSM PWA.", UpdatedAt = now },
+            new() { FeatureKey = "Operations_OtpMachineTracking", TargetRole = "Global", DisplayName = "Slip Number Machine Transaction Tracking", Category = "Collections", DisplayOrder = 10, IsEnabled = true, Description = "Track multiple individual transactions with Amount and Slip Number per machine/TID in DSM PWA and Manual Entry.", UpdatedAt = now },
+            new() { FeatureKey = "Operations_MultiTidTransactions", TargetRole = "Global", DisplayName = "Multiple TID / Itemized Swipes Tracking", Category = "Collections", DisplayOrder = 11, IsEnabled = true, Description = "Track multiple individual card/digital transactions per TID in DSM PWA and Manual Entry.", UpdatedAt = now },
+            new() { FeatureKey = "Operations_Cash3", TargetRole = "Global", DisplayName = "Cash 3 (Final Cash) Collection", Category = "Collections", DisplayOrder = 12, IsEnabled = false, Description = "Enable Cash 3 as final cash collection with denominations across DSM Entry, PWA, and prints (Cash 1 = Advance Cash, Cash 2 = Middle Cash, Cash 3 = Final Cash).", UpdatedAt = now },
+            new() { FeatureKey = "UI_DebtorManagement_AsNewPage", TargetRole = "Global", DisplayName = "Debtor Management on Dedicated Page (vs Shift Total)", Category = "Navigation", DisplayOrder = 13, IsEnabled = true, Description = "When enabled, Debtor Management appears as a dedicated page below Oil & DEF Log. When disabled, it embeds inside Shift Total (Final Calculation).", UpdatedAt = now },
+            new() { FeatureKey = "System_MultiComputer", TargetRole = "Global", DisplayName = "Multi-Computer Station Access", Category = "Integrations", DisplayOrder = 14, IsEnabled = false, Description = "Enable multi-desktop synchronization, device pairing, and concurrent Admin/Manager computer operation.", UpdatedAt = now }
         };
     }
 }

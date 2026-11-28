@@ -83,7 +83,7 @@ public class SupabaseHttpClient
         _apiKey = apiKey;
     }
 
-    public async Task<HttpResponseMessage> SendRequestAsync(HttpMethod method, string endpoint, string? jsonBody = null, bool isUpsert = false, string? onConflict = null)
+    public async Task<HttpResponseMessage> SendRequestAsync(HttpMethod method, string endpoint, string? jsonBody = null, bool isUpsert = false, string? onConflict = null, bool returnRepresentation = false)
     {
         if (string.IsNullOrEmpty(_url) || string.IsNullOrEmpty(_apiKey))
         {
@@ -104,10 +104,18 @@ public class SupabaseHttpClient
         request.Headers.Add("apikey", _apiKey);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
 
-        if (isUpsert)
+        if (isUpsert && returnRepresentation)
+        {
+            request.Headers.Add("Prefer", "resolution=merge-duplicates,return=representation");
+        }
+        else if (isUpsert)
         {
             // PostgREST upsert headers
             request.Headers.Add("Prefer", "resolution=merge-duplicates");
+        }
+        else if (returnRepresentation)
+        {
+            request.Headers.Add("Prefer", "return=representation");
         }
 
         if (jsonBody != null)

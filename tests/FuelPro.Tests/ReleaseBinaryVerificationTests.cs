@@ -20,6 +20,19 @@ public class ReleaseBinaryVerificationTests
         var coreDllPath = Path.Combine(repoRoot, "publish_output", "FuelPro.Core.dll");
         string[] candidateNames =
         [
+            "PyroSync_Setup_v1.3.68.exe",
+            "PyroSync_Setup_v1.3.67.exe",
+            "PyroSync_Setup_v1.3.66-pinelab-fix.exe",
+            "PyroSync_Setup_v1.3.66.exe",
+            "PyroSync_Setup_v1.3.65.exe",
+            "PyroSync_Setup_v1.3.64.exe",
+            "PyroSync_Setup_v1.3.63.exe",
+            "PyroSync_Setup_v1.3.62.exe",
+            "PyroSync_Setup_v1.3.61.exe",
+            "PyroSync_Setup_v1.3.60.exe",
+
+            "PyroSync_Setup_v1.3.59.exe",
+            "PyroSync_Setup_v1.3.58.exe",
             "PyroSync_Setup_v1.3.57.exe",
             "PyroSync_Setup_v1.3.56.exe",
             "PyroSync_Setup_v1.3.55.exe",
@@ -36,19 +49,29 @@ public class ReleaseBinaryVerificationTests
             "PyroSync_Setup_v1.3.44.exe",
             "PyroSync_Setup_v1.3.43.exe"
         ];
-        var installerPath = candidateNames
-            .Select(name => Path.Combine(repoRoot, "installer_output", name))
-            .FirstOrDefault(File.Exists) ?? Path.Combine(repoRoot, "installer_output", candidateNames[0]);
+        var uiVer = FileVersionInfo.GetVersionInfo(uiDllPath);
+        string[] allowedVersions =
+        [
+            "1.3.73.0", "1.3.72.0", "1.3.71.0", "1.3.70.0", "1.3.69.0", "1.3.68.0", "1.3.67.0", "1.3.66.0", "1.3.65.0", "1.3.64.0",
+            "1.3.63.0", "1.3.62.0", "1.3.61.0", "1.3.60.0", "1.3.59.0", "1.3.58.0",
+            "1.3.57.0", "1.3.56.0", "1.3.55.0", "1.3.54.0", "1.3.53.0", "1.3.52.0",
+            "1.3.51.0", "1.3.50.0", "1.3.49.0", "1.3.48.0", "1.3.47.0", "1.3.46.0",
+            "1.3.45.0", "1.3.44.0", "1.3.43.0"
+        ];
+        Assert.Contains(uiVer.FileVersion, allowedVersions);
 
+        var expectedInstallerName = $"PyroSync_Setup_v{uiVer.FileMajorPart}.{uiVer.FileMinorPart}.{uiVer.FileBuildPart}.exe";
+        var installerPath = Path.Combine(repoRoot, "installer_output", expectedInstallerName);
         Assert.True(File.Exists(uiDllPath), $"FuelPro.UI.dll missing in publish_output: {uiDllPath}");
         Assert.True(File.Exists(coreDllPath), $"FuelPro.Core.dll missing in publish_output: {coreDllPath}");
-        Assert.True(File.Exists(installerPath), $"Installer missing in installer_output: {installerPath}");
-
-        var uiVer = FileVersionInfo.GetVersionInfo(uiDllPath);
-        Assert.True(uiVer.FileVersion == "1.3.57.0" || uiVer.FileVersion == "1.3.56.0" || uiVer.FileVersion == "1.3.55.0" || uiVer.FileVersion == "1.3.54.0" || uiVer.FileVersion == "1.3.53.0" || uiVer.FileVersion == "1.3.52.0" || uiVer.FileVersion == "1.3.51.0" || uiVer.FileVersion == "1.3.50.0" || uiVer.FileVersion == "1.3.49.0" || uiVer.FileVersion == "1.3.48.0" || uiVer.FileVersion == "1.3.47.0" || uiVer.FileVersion == "1.3.46.0" || uiVer.FileVersion == "1.3.45.0" || uiVer.FileVersion == "1.3.44.0" || uiVer.FileVersion == "1.3.43.0", $"Unexpected FileVersion: {uiVer.FileVersion}");
+        Assert.True(File.Exists(installerPath), $"Exact installer missing in installer_output: {installerPath}");
 
         var installerFileInfo = new FileInfo(installerPath);
         Assert.True(installerFileInfo.Length > 50_000_000, "Installer size seems too small");
+        var installerVer = FileVersionInfo.GetVersionInfo(installerPath);
+        Assert.True(
+            string.IsNullOrEmpty(installerVer.ProductVersion) || installerVer.ProductVersion.StartsWith($"{uiVer.FileMajorPart}.{uiVer.FileMinorPart}.{uiVer.FileBuildPart}", StringComparison.Ordinal),
+            $"Installer metadata mismatch: {installerVer.ProductVersion} vs {uiVer.FileVersion}");
     }
 
     [Fact]

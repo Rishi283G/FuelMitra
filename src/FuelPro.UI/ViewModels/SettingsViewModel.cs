@@ -47,6 +47,7 @@ public partial class SettingsViewModel : ObservableObject
     private readonly LicenseManager _licenseManager;
     private readonly FuelPro.Sync.SyncConfigService _syncConfigService;
     private readonly FuelPro.Sync.SyncEngine _syncEngine;
+    private readonly FuelPro.Sync.StationPairingService? _pairingService;
     private readonly IStationConfigurationService? _stationConfigService;
 
     [ObservableProperty] private string _pumpStationName = "";
@@ -69,6 +70,20 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _syncEnabled;
     [ObservableProperty] private string _syncStatusMessage = "";
     [ObservableProperty] private string _lastSyncTimeDisplay = "—";
+
+    // Multi-Computer Access Settings
+    [ObservableProperty] private bool _isMultiComputerEnabled;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasPairingCode))]
+    private string _pairingCodeDisplay = "";
+
+    public bool HasPairingCode => !string.IsNullOrWhiteSpace(PairingCodeDisplay);
+    [ObservableProperty] private string _pairingCodeInput = "";
+    [ObservableProperty] private string _deviceFriendlyName = Environment.MachineName;
+    [ObservableProperty] private string _multiComputerStatusMessage = "";
+    [ObservableProperty] private bool _isPairingInProgress;
+    [ObservableProperty] private StationDevice? _selectedDevice;
+    public ObservableCollection<StationDevice> StationDevices { get; } = new();
     [ObservableProperty] private string _msIRate = "";
     [ObservableProperty] private string _msIIRate = "";
     [ObservableProperty] private string _cngRate = "";
@@ -150,6 +165,7 @@ public partial class SettingsViewModel : ObservableObject
         _licenseManager = App.Services.GetRequiredService<LicenseManager>();
         _syncConfigService = App.Services.GetRequiredService<FuelPro.Sync.SyncConfigService>();
         _syncEngine = App.Services.GetRequiredService<FuelPro.Sync.SyncEngine>();
+        _pairingService = App.Services.GetService<FuelPro.Sync.StationPairingService>();
         _profileRepo = App.Services.GetRequiredService<IDsmProfileRepository>();
         _stationConfigService = App.Services.GetService<IStationConfigurationService>();
         OpeningBalanceVm = App.Services.GetRequiredService<OpeningBalanceManagementViewModel>();
@@ -170,15 +186,6 @@ public partial class SettingsViewModel : ObservableObject
             };
         }
 
-        for (var month = 1; month <= 12; month++)
-        {
-            MonthOptions.Add(new KeyValuePair<int, string>(month, CultureInfo.CurrentCulture.DateTimeFormat.GetMonthName(month)));
-        }
-        var thisYear = DateTime.Today.Year;
-        for (var year = thisYear - 2; year <= thisYear + 2; year++)
-        {
-            YearOptions.Add(year);
-        }
         _ = LoadAsync();
         LoadLicenseInfo();
     }
@@ -280,7 +287,13 @@ public partial class SettingsViewModel : ObservableObject
         SyncStationId = syncSettings.StationId;
         SyncMachineId = syncSettings.MachineId;
         SyncEnabled = syncSettings.SyncEnabled;
+        IsMultiComputerEnabled = syncSettings.MultiComputerEnabled;
         LastSyncTimeDisplay = syncSettings.LastSyncTime.ToString("dd MMM yyyy hh:mm tt");
+
+        if (IsMultiComputerEnabled)
+        {
+            await RefreshDevicesAsync();
+        }
 
         var usersResult = await _userRepo.GetAllUsersAsync();
         Users.Clear();
@@ -293,19 +306,11 @@ public partial class SettingsViewModel : ObservableObject
             foreach (var c in creditorsResult.Data!) Creditors.Add(c);
     }
 
-    [RelayCommand]
-    private async Task SaveSettingsAsync()
+    public static Dictionary<string, double> BuildFuelRatesDictionary(IEnumerable<FuelRateItemVm> items)
     {
-        if (_settings == null) return;
-
         var ratesDict = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
-        foreach (var item in FuelRateItems)
+        foreach (var item in items)
         {
-            if (item.Rate <= 0)
-            {
-                StatusMessage = $"❌ Invalid rate for {item.DisplayName}. Please enter a positive number.";
-                return;
-            }
             if (!string.IsNullOrWhiteSpace(item.TankName))
                 ratesDict[item.TankName] = item.Rate;
             if (!string.IsNullOrWhiteSpace(item.FuelType))
@@ -313,13 +318,25 @@ public partial class SettingsViewModel : ObservableObject
             if (!string.IsNullOrWhiteSpace(item.DisplayName))
                 ratesDict[item.DisplayName] = item.Rate;
 
-            // Normalize cross-aliases
+            // Normalize independent product aliases (never cross-contaminate SPEED with XP95 or Power)
             string combined = $"{item.FuelType} {item.TankName} {item.DisplayName}".ToUpperInvariant();
-            if (combined.Contains("SPEED") || combined.Contains("XP95") || combined.Contains("POWER"))
+            if (combined.Contains("SPEED"))
             {
                 ratesDict["Speed"] = item.Rate;
                 ratesDict["SPEED"] = item.Rate;
-                if (!ratesDict.ContainsKey("MS-II")) ratesDict["MS-II"] = item.Rate;
+            }
+            else if (combined.Contains("XP95") || combined.Contains("XP-95"))
+            {
+                ratesDict["XP95"] = item.Rate;
+            }
+            else if (combined.Contains("POWER"))
+            {
+                ratesDict["Power"] = item.Rate;
+                ratesDict["POWER"] = item.Rate;
+            }
+            else if (combined.Contains("MS-II"))
+            {
+                ratesDict["MS-II"] = item.Rate;
             }
             else if (combined.Contains("MS-I") || combined.Contains("MS - 20KL") || combined.Contains("PETROL"))
             {
@@ -335,6 +352,24 @@ public partial class SettingsViewModel : ObservableObject
                 ratesDict["CNG"] = item.Rate;
             }
         }
+        return ratesDict;
+    }
+
+    [RelayCommand]
+    private async Task SaveSettingsAsync()
+    {
+        if (_settings == null) return;
+
+        foreach (var item in FuelRateItems)
+        {
+            if (item.Rate <= 0)
+            {
+                StatusMessage = $"❌ Invalid rate for {item.DisplayName}. Please enter a positive number.";
+                return;
+            }
+        }
+
+        var ratesDict = BuildFuelRatesDictionary(FuelRateItems);
 
         _settings.FuelRates = ratesDict;
         _settings.PumpStationName = PumpStationName;
@@ -346,13 +381,10 @@ public partial class SettingsViewModel : ObservableObject
             var v = kvp.Value;
             if (k.Contains("HSD", StringComparison.OrdinalIgnoreCase) && !k.Contains("II", StringComparison.OrdinalIgnoreCase))
                 _settings.HsdRate = v;
-            else if (k.Contains("MS-I", StringComparison.OrdinalIgnoreCase) || k.Equals("MS", StringComparison.OrdinalIgnoreCase) || k.Contains("MS -", StringComparison.OrdinalIgnoreCase))
+            else if (k.Contains("MS-I", StringComparison.OrdinalIgnoreCase) || k.Equals("MS", StringComparison.OrdinalIgnoreCase) || (k.Contains("MS -", StringComparison.OrdinalIgnoreCase) && !k.Contains("II", StringComparison.OrdinalIgnoreCase)))
                 _settings.MsIRate = v;
             else if (k.Contains("MS-II", StringComparison.OrdinalIgnoreCase) || 
-                     k.Contains("HSD - 20KL II", StringComparison.OrdinalIgnoreCase) ||
-                     k.Contains("Speed", StringComparison.OrdinalIgnoreCase) ||
-                     k.Contains("XP95", StringComparison.OrdinalIgnoreCase) ||
-                     k.Contains("Power", StringComparison.OrdinalIgnoreCase))
+                     k.Contains("HSD - 20KL II", StringComparison.OrdinalIgnoreCase))
                 _settings.MsIIRate = v;
             else if (k.Contains("CNG", StringComparison.OrdinalIgnoreCase))
                 _settings.CngRate = v;
@@ -360,6 +392,36 @@ public partial class SettingsViewModel : ObservableObject
 
         // Re-assign to ensure legacy scalar updates and canonical keys are serialized in FuelRatesJson
         _settings.FuelRates = ratesDict;
+
+        // Enrich TankDefinitionsJson with authoritative rates for canonical cloud transport contract
+        try
+        {
+            if (_stationConfigService != null)
+            {
+                var allTanks = await _stationConfigService.GetAllTanksAsync();
+                foreach (var t in allTanks)
+                {
+                    t.Rate = _settings.GetRateFor(t.TankName, _settings.GetRateFor(t.FuelType, 0.0));
+                }
+                _settings.TankDefinitionsJson = System.Text.Json.JsonSerializer.Serialize(allTanks);
+            }
+            else if (!string.IsNullOrWhiteSpace(_settings.TankDefinitionsJson))
+            {
+                var tanks = System.Text.Json.JsonSerializer.Deserialize<List<FuelPro.Core.Models.TankDefinition>>(_settings.TankDefinitionsJson);
+                if (tanks != null)
+                {
+                    foreach (var t in tanks)
+                    {
+                        t.Rate = _settings.GetRateFor(t.TankName, _settings.GetRateFor(t.FuelType, 0.0));
+                    }
+                    _settings.TankDefinitionsJson = System.Text.Json.JsonSerializer.Serialize(tanks);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Warning(ex, "Failed to enrich TankDefinitionsJson with rates in SaveSettingsAsync");
+        }
 
         _settings.Shift1Manager = Shift1Manager?.Trim();
         _settings.Shift2Manager = Shift2Manager?.Trim();
@@ -603,136 +665,6 @@ public partial class SettingsViewModel : ObservableObject
         }
     }
 
-    // DSM Short Report
-    [ObservableProperty] private string? _selectedReportDsm;
-    [ObservableProperty] private int _selectedReportMonthNumber = DateTime.Today.Month;
-    [ObservableProperty] private int _selectedReportYear = DateTime.Today.Year;
-    public ObservableCollection<FuelPro.Core.DTOs.DsmShortReportRowDto> DsmShortReportRows { get; } = new();
-    [ObservableProperty] private double _totalShortAmount;
-    [ObservableProperty] private string _reportStatusMessage = "";
-    public ObservableCollection<KeyValuePair<int, string>> MonthOptions { get; } = new();
-    public ObservableCollection<int> YearOptions { get; } = new();
-
-    [RelayCommand]
-    private async Task GenerateShortReportAsync()
-    {
-        if (string.IsNullOrWhiteSpace(SelectedReportDsm))
-        {
-            ReportStatusMessage = "❌ Please select a DSM";
-            return;
-        }
-
-        ReportStatusMessage = "⏳ Generating report...";
-        var dsmRepo = App.Services.GetRequiredService<IDsmEntryRepository>();
-        var calcService = App.Services.GetRequiredService<IDsmCalculationService>();
-
-        var result = await dsmRepo.GetEntriesForDsmAndMonthAsync(SelectedReportDsm, SelectedReportYear, SelectedReportMonthNumber);
-        DsmShortReportRows.Clear();
-        TotalShortAmount = 0;
-
-        if (!result.Success)
-        {
-            ReportStatusMessage = $"❌ {result.Error}";
-            return;
-        }
-
-        foreach (var entry in result.Data!)
-        {
-            if (entry.ReconciledToPumpId.HasValue)
-            {
-                continue;
-            }
-
-            var cash1 = entry.CashDenominations.Where(c => c.CashType == "Cash1").Sum(c => c.TotalAmount);
-            var cash2 = entry.CashDenominations.Where(c => c.CashType == "Cash2").Sum(c => c.TotalAmount);
-            
-            var dto = new FuelPro.Core.DTOs.DsmEntryDto
-            {
-                NozzleReadings = entry.NozzleReadings.Select(n => new FuelPro.Core.DTOs.NozzleReadingDto { Amount = (decimal)n.Amount }).ToList(),
-                PaymentCollection = new FuelPro.Core.DTOs.PaymentCollectionDto
-                {
-                    PhonePe = (decimal)((entry.PaymentCollection?.PhonePe ?? 0) + (entry.PaymentCollection?.PhonePeCard ?? 0)),
-                    CreditCard = (decimal)((entry.PaymentCollection?.CreditCard ?? 0) + (entry.PaymentCollection?.PetroCard ?? 0)),
-                    CashDeposit = (decimal)(cash1 + cash2 + (entry.PaymentCollection?.CashDeposit ?? 0)),
-                    PhysicalCash = 0
-                },
-                DebitEntries = entry.DebitEntries.Select(d => new FuelPro.Core.DTOs.DebitEntryDto { Amount = (decimal)d.Amount }).ToList(),
-                TestingEntries = entry.TestingEntries.Select(t => new FuelPro.Core.DTOs.TestingEntryDto { Amount = (decimal)t.Amount }).ToList(),
-                Expenses = entry.Expenses.Select(e => new FuelPro.Core.DTOs.ExpenseDto { Amount = (decimal)e.Amount }).ToList()
-            };
-
-            var calcResult = calcService.Calculate(dto);
-            // Mismatch < 0 means short (Collection < GrossSales)
-            if (calcResult.Mismatch < 0)
-            {
-                var shortAmount = Math.Abs((double)calcResult.Mismatch);
-                DsmShortReportRows.Add(new FuelPro.Core.DTOs.DsmShortReportRowDto
-                {
-                    Date = entry.Shift?.ShiftDate ?? DateTime.Today,
-                    ShiftType = entry.Shift?.ShiftType ?? "",
-                    ShortAmount = shortAmount
-                });
-                TotalShortAmount += shortAmount;
-            }
-        }
-
-        if (DsmShortReportRows.Count == 0)
-        {
-            ReportStatusMessage = "✅ No shorts found for this month.";
-        }
-        else
-        {
-            ReportStatusMessage = $"✅ Found {DsmShortReportRows.Count} short entries.";
-        }
-    }
-
-    [RelayCommand]
-    private void PrintShortReport()
-    {
-        if (DsmShortReportRows.Count == 0)
-        {
-            System.Windows.MessageBox.Show("No report data to print. Please generate the report first.", "Short Report", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
-            return;
-        }
-
-        try
-        {
-            var printService = App.Services.GetRequiredService<PrintService>();
-            var monthName = MonthOptions.FirstOrDefault(m => m.Key == SelectedReportMonthNumber).Value ?? SelectedReportMonthNumber.ToString();
-
-            var summaryCards = new List<GenericGridPrintCard>
-            {
-                new() { Label = "Total Short Amount", Value = "₹" + TotalShortAmount.ToString("N2"), Highlight = true }
-            };
-
-            var headers = new List<string> { "Date", "Shift", "Short Amount" };
-
-            var rows = DsmShortReportRows.Select(r => new List<string>
-            {
-                r.Date.ToString("dd MMM yyyy"),
-                r.ShiftType,
-                "₹" + r.ShortAmount.ToString("N2")
-            }).ToList();
-
-            var printData = new GenericGridPrintData
-            {
-                Title = "DSM Short Report",
-                Subtitle = $"DSM: {SelectedReportDsm}  |  Period: {monthName} {SelectedReportYear}",
-                SummaryCards = summaryCards,
-                Headers = headers,
-                Rows = rows,
-                ShowSignatures = true
-            };
-
-            printService.PrintGenericGrid(printData);
-        }
-        catch (Exception ex)
-        {
-            Serilog.Log.Error(ex, "Failed to print DSM Short Report");
-            System.Windows.MessageBox.Show($"Print failed: {ex.Message}", "Print Error", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
-        }
-    }
-
     // License Management
     [ObservableProperty] private string _licenseProductName = "Unknown";
     [ObservableProperty] private string _licenseStatus = "Unknown";
@@ -820,25 +752,29 @@ public partial class SettingsViewModel : ObservableObject
     {
         try
         {
-            var settings = new FuelPro.Sync.SyncSettings
-            {
-                SupabaseUrl = SupabaseUrl.Trim(),
-                SupabaseApiKey = SupabaseApiKey.Trim(),
-                StationId = SyncStationId.Trim(),
-                MachineId = SyncMachineId,
-                SyncEnabled = SyncEnabled,
-                LastSyncTime = _syncEngine.CurrentStatus.LastSyncTime
-            };
             var newStationId = SyncStationId.Trim();
+            var settings = await _syncConfigService.GetSettingsAsync();
+            var oldStationId = settings.StationId;
+            FuelPro.Sync.SyncConfigService.ApplyAdminSyncSettings(
+                settings,
+                SupabaseUrl,
+                SupabaseApiKey,
+                newStationId,
+                SyncMachineId,
+                SyncEnabled,
+                IsMultiComputerEnabled,
+                _syncEngine.CurrentStatus.LastSyncTime);
             await _syncConfigService.SaveSettingsAsync(settings);
 
-            // Dynamically queue all historical data under the new Station ID so they sync immediately
-            await _syncEngine.QueueAllHistoricalRecordsForStationAsync(newStationId);
-
             SyncStatusMessage = "✅ Sync settings saved!";
-            
-            // Trigger sync update
-            await _syncEngine.ForceSyncAsync();
+
+            // Safely attach to the station (pulling first if fresh workstation) and synchronize
+            await _syncEngine.AttachToStationAndSyncAsync(oldStationId, newStationId);
+
+            if (IsMultiComputerEnabled)
+            {
+                await RefreshDevicesAsync();
+            }
         }
         catch (System.Exception ex)
         {
@@ -856,6 +792,16 @@ public partial class SettingsViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private void CopyPairingCode()
+    {
+        if (!string.IsNullOrEmpty(PairingCodeDisplay))
+        {
+            System.Windows.Clipboard.SetText(PairingCodeDisplay);
+            MultiComputerStatusMessage = "✅ Pairing code copied to clipboard!";
+        }
+    }
+
+    [RelayCommand]
     private async Task ForceSyncAsync()
     {
         SyncStatusMessage = "⏳ Syncing...";
@@ -869,6 +815,183 @@ public partial class SettingsViewModel : ObservableObject
         catch (System.Exception ex)
         {
             SyncStatusMessage = $"❌ Sync error: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    public async Task RefreshDevicesAsync()
+    {
+        if (_pairingService == null || string.IsNullOrWhiteSpace(SyncStationId)) return;
+        try
+        {
+            var devices = await _pairingService.ListStationDevicesAsync(SyncStationId.Trim());
+            StationDevices.Clear();
+            foreach (var d in devices)
+            {
+                StationDevices.Add(d);
+            }
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Failed to refresh station devices list");
+        }
+    }
+
+    [RelayCommand]
+    public async Task GeneratePairingCodeAsync()
+    {
+        if (_pairingService == null) return;
+        if (!IsMultiComputerEnabled)
+        {
+            PairingCodeDisplay = "";
+            MultiComputerStatusMessage = "❌ Enable Multi-Computer Network Mode and save Cloud Settings before generating a pairing code.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(SyncStationId))
+        {
+            PairingCodeDisplay = "";
+            MultiComputerStatusMessage = "❌ Station ID is required before generating a pairing code.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(SupabaseUrl) || string.IsNullOrWhiteSpace(SupabaseApiKey))
+        {
+            PairingCodeDisplay = "";
+            MultiComputerStatusMessage = "❌ Supabase URL and API key must be configured before generating a pairing code.";
+            return;
+        }
+        if (SupabaseApiKey.Contains("service_role", StringComparison.OrdinalIgnoreCase))
+        {
+            PairingCodeDisplay = "";
+            MultiComputerStatusMessage = "❌ Administrative service_role keys cannot be used for pairing. Enter the standard client API key.";
+            return;
+        }
+        if (!SyncEnabled)
+        {
+            PairingCodeDisplay = "";
+            MultiComputerStatusMessage = "❌ Enable Cloud Synchronization and save Cloud Settings before generating a pairing code.";
+            return;
+        }
+
+        IsPairingInProgress = true;
+        PairingCodeDisplay = "";
+        MultiComputerStatusMessage = "Generating secure pairing code...";
+        try
+        {
+            // Persist current explicit UI cloud & multi-computer settings before publishing code
+            var currentSettings = await _syncConfigService.GetSettingsAsync();
+            FuelPro.Sync.SyncConfigService.ApplyAdminSyncSettings(
+                currentSettings,
+                SupabaseUrl,
+                SupabaseApiKey,
+                SyncStationId,
+                string.IsNullOrWhiteSpace(SyncMachineId) ? currentSettings.MachineId : SyncMachineId,
+                SyncEnabled,
+                IsMultiComputerEnabled,
+                _syncEngine.CurrentStatus.LastSyncTime);
+            await _syncConfigService.SaveSettingsAsync(currentSettings);
+            SyncMachineId = currentSettings.MachineId;
+
+            var result = await _pairingService.GeneratePairingCodeAsync();
+            if (result.Success && !string.IsNullOrEmpty(result.Data))
+            {
+                PairingCodeDisplay = result.Data;
+                System.Windows.Clipboard.SetText(result.Data);
+                MultiComputerStatusMessage = "✅ Code copied to clipboard! Valid for 15 minutes.";
+                await RefreshDevicesAsync();
+            }
+            else
+            {
+                PairingCodeDisplay = "";
+                MultiComputerStatusMessage = $"❌ {result.Error}";
+            }
+        }
+        catch (Exception ex)
+        {
+            PairingCodeDisplay = "";
+            MultiComputerStatusMessage = $"❌ Error: {ex.Message}";
+        }
+        finally
+        {
+            IsPairingInProgress = false;
+        }
+    }
+
+    [RelayCommand]
+    public async Task RedeemPairingCodeAsync()
+    {
+        if (_pairingService == null) return;
+        if (!IsMultiComputerEnabled)
+        {
+            MultiComputerStatusMessage = "❌ Enable Multi-Computer Network Mode before connecting with a pairing code.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(PairingCodeInput))
+        {
+            MultiComputerStatusMessage = "❌ Please enter a pairing code.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(SupabaseUrl) || string.IsNullOrWhiteSpace(SupabaseApiKey))
+        {
+            MultiComputerStatusMessage = "❌ Cloud URL and API key must be configured to redeem code.";
+            return;
+        }
+        if (SupabaseApiKey.Contains("service_role", StringComparison.OrdinalIgnoreCase))
+        {
+            MultiComputerStatusMessage = "❌ Administrative service_role keys cannot be used for pairing. Enter the standard client API key.";
+            return;
+        }
+
+        IsPairingInProgress = true;
+        MultiComputerStatusMessage = "Redeeming pairing code and connecting...";
+        try
+        {
+            var result = await _pairingService.RedeemPairingCodeAsync(PairingCodeInput, DeviceFriendlyName, SupabaseUrl.Trim(), SupabaseApiKey.Trim());
+            if (result.Success && result.Data != null)
+            {
+                SyncStationId = result.Data.StationId;
+                IsMultiComputerEnabled = true;
+                PairingCodeInput = "";
+                MultiComputerStatusMessage = "✅ Successfully paired! Synchronization activated.";
+                await RefreshDevicesAsync();
+                await ForceSyncAsync();
+            }
+            else
+            {
+                MultiComputerStatusMessage = $"❌ {result.Error}";
+            }
+        }
+        catch (Exception ex)
+        {
+            MultiComputerStatusMessage = $"❌ Error: {ex.Message}";
+        }
+        finally
+        {
+            IsPairingInProgress = false;
+        }
+    }
+
+    [RelayCommand]
+    public async Task RevokeDeviceAsync(StationDevice? device)
+    {
+        if (_pairingService == null) return;
+        var target = device ?? SelectedDevice;
+        if (target == null) return;
+
+        if (string.Equals(target.MachineId, SyncMachineId, StringComparison.OrdinalIgnoreCase))
+        {
+            MultiComputerStatusMessage = "⚠️ You cannot revoke authorization for the current computer.";
+            return;
+        }
+
+        var success = await _pairingService.RevokeDeviceAsync(SyncStationId, target.MachineId, "Revoked by Administrator");
+        if (success)
+        {
+            MultiComputerStatusMessage = $"✅ Device '{target.MachineName}' revoked.";
+            await RefreshDevicesAsync();
+        }
+        else
+        {
+            MultiComputerStatusMessage = "❌ Failed to revoke device.";
         }
     }
 

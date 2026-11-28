@@ -404,7 +404,7 @@ public partial class FinalCalculationView : UserControl
 
     private void UserControl_Loaded(object sender, RoutedEventArgs e)
     {
-        if (DataContext is FinalCalculationViewModel vm && !vm.HasData)
+        if (DataContext is FinalCalculationViewModel vm && !vm.IsLoading)
         {
             vm.LoadShiftDataCommand.Execute(null);
         }
@@ -412,7 +412,23 @@ public partial class FinalCalculationView : UserControl
 
     private void PrintButton_Click(object sender, RoutedEventArgs e)
     {
-        if (DataContext is not FinalCalculationViewModel vm || !vm.HasData || vm.CurrentReport == null)
+        if (DataContext is not FinalCalculationViewModel vm) return;
+
+        if (vm.LoadingState == ReportLoadingState.Loading)
+        {
+            MessageBox.Show("Shift data is currently loading. Please wait.",
+                "Print", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        if (vm.LoadingState == ReportLoadingState.Error)
+        {
+            MessageBox.Show($"Cannot print: Failed to load shift data.\n\nError: {vm.LoadingErrorMessage}",
+                "Print Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+
+        if (vm.LoadingState != ReportLoadingState.Loaded || !vm.HasData || vm.CurrentReport == null)
         {
             MessageBox.Show("No shift data loaded to print.",
                 "Print", MessageBoxButton.OK, MessageBoxImage.Information);

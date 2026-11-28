@@ -13,22 +13,45 @@ public class ShiftAggregationService : IShiftAggregationService
 {
     private readonly ILogger _logger = Log.ForContext<ShiftAggregationService>();
     private readonly IShiftCycleService _shiftCycleService;
+    private readonly ICollectionTypeService? _collectionTypeService;
 
-    public ShiftAggregationService(IShiftCycleService? shiftCycleService = null)
+    public ShiftAggregationService(
+        IShiftCycleService? shiftCycleService = null,
+        ICollectionTypeService? collectionTypeService = null)
     {
         _shiftCycleService = shiftCycleService ?? new ShiftCycleService();
+        _collectionTypeService = collectionTypeService;
     }
 
     /// <summary>
     /// TABLE A — One row per DSM entry with all payment/cash/expense columns.
     /// </summary>
-    public List<DsmSummaryRowDto> BuildDsmSummaryRows(List<DsmEntry> entries)
+    public List<DsmSummaryRowDto> BuildDsmSummaryRows(List<DsmEntry> entries, IEnumerable<CollectionTypeMaster>? collectionTypes = null)
     {
         try
         {
+            List<CollectionTypeMaster>? effectiveColTypes = collectionTypes?.ToList();
+            if (effectiveColTypes == null && _collectionTypeService != null)
+            {
+                try
+                {
+                    var task = _collectionTypeService.GetAllCollectionTypesAsync();
+                    task.Wait(1000);
+                    if (task.IsCompletedSuccessfully)
+                    {
+                        effectiveColTypes = task.Result;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.Warning(ex, "Failed to load collection types in ShiftAggregationService");
+                }
+            }
+
             var rows = new List<DsmSummaryRowDto>();
             var primaryEntries = entries.Where(e => !e.ReconciledToPumpId.HasValue).OrderBy(e => e.DsmEntryId).ToList();
             var slaveEntries = entries.Where(e => e.ReconciledToPumpId.HasValue).ToList();
+            var allPrimaryIds = new HashSet<int>(primaryEntries.Select(p => p.DsmEntryId));
             var usedSlaveIds = new HashSet<int>();
 
             foreach (var entry in primaryEntries)
@@ -36,27 +59,43 @@ public class ShiftAggregationService : IShiftAggregationService
                 var primaryConnectedPumps = entry.GetEffectiveConnectedPumpIds();
                 var connectedSlaves = new List<DsmEntry>();
 
+                static bool IsOperatorCompatible(string? a, string? b) =>
+                    string.IsNullOrWhiteSpace(a) || string.IsNullOrWhiteSpace(b)
+                    || string.Equals(a.Trim(), b.Trim(), StringComparison.OrdinalIgnoreCase);
+
+                bool IsClaimedByDifferentPrimary(DsmEntry slave)
+                {
+                    if (!slave.ReconciledToPumpId.HasValue) return false;
+                    int reconId = slave.ReconciledToPumpId.Value;
+                    if (reconId == entry.DsmEntryId || reconId == entry.PumpId) return false;
+
+                    return primaryEntries.Any(other =>
+                        other.DsmEntryId != entry.DsmEntryId
+                        && (other.ShiftId == slave.ShiftId || other.ShiftId == 0 || slave.ShiftId == 0)
+                        && IsOperatorCompatible(slave.DsmName, other.DsmName)
+                        && (other.DsmEntryId == reconId || other.PumpId == reconId));
+                }
+
                 foreach (var slavePumpId in primaryConnectedPumps)
                 {
                     var candidates = slaveEntries
                         .Where(s => !usedSlaveIds.Contains(s.DsmEntryId)
                             && s.PumpId == slavePumpId
-                            && (s.ShiftId == entry.ShiftId || entry.ShiftId == 0 || s.ShiftId == 0))
+                            && (s.ShiftId == entry.ShiftId || entry.ShiftId == 0 || s.ShiftId == 0)
+                            && IsOperatorCompatible(s.DsmName, entry.DsmName)
+                            && !IsClaimedByDifferentPrimary(s))
                         .ToList();
 
                     var bestSlave = candidates
                         .OrderBy(s => {
-                            bool nameMatches = string.IsNullOrWhiteSpace(s.DsmName) || string.IsNullOrWhiteSpace(entry.DsmName)
-                                || string.Equals((s.DsmName ?? "").Trim(), (entry.DsmName ?? "").Trim(), StringComparison.OrdinalIgnoreCase);
-                            bool explicitRecon = s.ReconciledToPumpId == entry.DsmEntryId;
+                            bool explicitEntryRecon = s.ReconciledToPumpId == entry.DsmEntryId;
+                            bool explicitPumpRecon = s.ReconciledToPumpId == entry.PumpId;
                             bool notClaimed = !s.ReconciledToPumpId.HasValue || !primaryEntries.Any(p => p.DsmEntryId == s.ReconciledToPumpId.Value && p.DsmEntryId != entry.DsmEntryId);
 
-                            if (nameMatches && explicitRecon) return 0;
-                            if (nameMatches && notClaimed) return 1;
-                            if (nameMatches) return 2;
-                            if (explicitRecon) return 3;
-                            if (notClaimed) return 4;
-                            return 5;
+                            if (explicitEntryRecon) return 0;
+                            if (explicitPumpRecon) return 1;
+                            if (notClaimed) return 2;
+                            return 3;
                         })
                         .ThenBy(s => s.DsmEntryId >= entry.DsmEntryId ? (s.DsmEntryId - entry.DsmEntryId) : (100000 + Math.Abs(s.DsmEntryId - entry.DsmEntryId)))
                         .FirstOrDefault();
@@ -68,22 +107,60 @@ public class ShiftAggregationService : IShiftAggregationService
                     }
                 }
 
-                // Fuel/nozzle sales: aggregate primary + ALL connected slaves
-                var allNozzleReadings = new List<NozzleReading>();
-                if (entry.NozzleReadings != null) allNozzleReadings.AddRange(entry.NozzleReadings);
-                foreach (var slave in connectedSlaves)
+                // Also attach any remaining explicit ReconciledToPumpId == entry.DsmEntryId slaves whose operator matches
+                // when not already captured via primaryConnectedPumps.
+                var extraExplicitSlaves = slaveEntries
+                    .Where(s => !usedSlaveIds.Contains(s.DsmEntryId)
+                        && (s.ShiftId == entry.ShiftId || entry.ShiftId == 0 || s.ShiftId == 0)
+                        && s.ReconciledToPumpId == entry.DsmEntryId
+                        && IsOperatorCompatible(s.DsmName, entry.DsmName))
+                    .OrderBy(s => s.DsmEntryId)
+                    .ToList();
+
+                foreach (var s in extraExplicitSlaves)
                 {
-                    if (slave.NozzleReadings != null) allNozzleReadings.AddRange(slave.NozzleReadings);
+                    usedSlaveIds.Add(s.DsmEntryId);
+                    connectedSlaves.Add(s);
                 }
 
-                var distinctNozzles = allNozzleReadings
-                    .GroupBy(n => n.NozzleNumber)
-                    .Select(g => g.First())
+                // Fuel/nozzle sales: aggregate primary + ALL connected slaves using physical (PumpId, NozzleNumber) coordinates
+                var allNozzleReadingsWithPump = new List<(int PumpId, NozzleReading Reading)>();
+                if (entry.NozzleReadings != null)
+                {
+                    foreach (var nr in entry.NozzleReadings)
+                    {
+                        int pId = entry.PumpId > 0
+                            ? entry.PumpId
+                            : (PumpConfiguration.GetPumpIdForNozzle(nr.NozzleNumber, entry.Shift?.ShiftDate) is var resolvedId && resolvedId > 0
+                                ? resolvedId
+                                : 0);
+                        allNozzleReadingsWithPump.Add((pId, nr));
+                    }
+                }
+                foreach (var slave in connectedSlaves)
+                {
+                    if (slave.NozzleReadings != null)
+                    {
+                        foreach (var nr in slave.NozzleReadings)
+                        {
+                            int pId = slave.PumpId > 0
+                                ? slave.PumpId
+                                : (PumpConfiguration.GetPumpIdForNozzle(nr.NozzleNumber, slave.Shift?.ShiftDate ?? entry.Shift?.ShiftDate) is var resolvedId && resolvedId > 0
+                                    ? resolvedId
+                                    : 0);
+                            allNozzleReadingsWithPump.Add((pId, nr));
+                        }
+                    }
+                }
+
+                var distinctNozzles = allNozzleReadingsWithPump
+                    .GroupBy(pair => (pair.PumpId, pair.Reading.NozzleNumber))
+                    .Select(g => g.First().Reading)
                     .ToList();
 
                 double grossSales = distinctNozzles.Count > 0
                     ? distinctNozzles.Sum(n => (double)n.Amount)
-                    : (entry.GrossSales > 0 ? (double)entry.GrossSales : (double)(entry.GrossSales + connectedSlaves.Sum(s => s.GrossSales)));
+                    : (double)(entry.GrossSales + connectedSlaves.Sum(s => s.GrossSales));
 
                 // Financial collections: PRIMARY ONLY per Phase 3 rules, with graceful fallback to slave if primary is empty
                 var primaryCashDenoms = entry.CashDenominations ?? new List<CashDenomination>();
@@ -131,10 +208,13 @@ public class ShiftAggregationService : IShiftAggregationService
 
                 var p1 = entry.PaymentCollection ?? connectedSlaves.FirstOrDefault(s => s.PaymentCollection != null)?.PaymentCollection;
 
-                var shiftType = _shiftCycleService.NormalizeShiftType(entry.Shift?.ShiftType ?? "");
+                var shiftType = !string.IsNullOrWhiteSpace(entry.Shift?.ShiftType)
+                    ? _shiftCycleService.NormalizeShiftType(entry.Shift.ShiftType)
+                    : "";
                 bool isDay = shiftType == "B";
                 bool isShiftC = shiftType == "C";
                 bool isShiftA = shiftType == "A";
+                bool isUnassigned = string.IsNullOrWhiteSpace(shiftType);
 
                 double qrSum = entry.QrPayments?.Sum(q => q.Amount) ?? 0;
                 double qrM = entry.QrPayments?.Where(q => q.Slot == "Morning" || (isDay && q.Slot == "Day") || string.IsNullOrEmpty(q.Slot)).Sum(q => q.Amount) ?? 0;
@@ -238,7 +318,7 @@ public class ShiftAggregationService : IShiftAggregationService
                 }
 
                 var pineLabsItems = allItems.Where(IsPineLabsCardItem).ToList();
-                double pineLabsM = pineLabsItems.Where(i => i.Slot == "Morning" || (isShiftA && string.IsNullOrWhiteSpace(i.Slot))).Sum(i => i.Amount);
+                double pineLabsM = pineLabsItems.Where(i => i.Slot == "Morning" || ((isShiftA || isUnassigned) && string.IsNullOrWhiteSpace(i.Slot))).Sum(i => i.Amount);
                 double pineLabsD = pineLabsItems.Where(i => i.Slot == "Day" || (isDay && string.IsNullOrWhiteSpace(i.Slot))).Sum(i => i.Amount);
                 double pineLabsN = pineLabsItems.Where(i => i.Slot == "Night" || (isShiftC && string.IsNullOrWhiteSpace(i.Slot))).Sum(i => i.Amount);
                 double pineLabsTotal = pineLabsItems.Sum(i => i.Amount);
@@ -255,26 +335,80 @@ public class ShiftAggregationService : IShiftAggregationService
                     else { finalCcM = ccFromItems; finalCc = ccFromItems; }
                 }
 
-                if (finalCc == 0 && pineLabsTotal > 0)
+                // Determine whether scalar finalCc should be attributed to Pine Labs Card per station/shift configuration
+                if (effectiveColTypes != null && effectiveColTypes.Count > 0 && finalCc > 0)
                 {
-                    if (isDay)
+                    static bool IsShiftActive(CollectionTypeMaster type, string sType)
                     {
-                        finalCcD = (pineLabsD > 0 ? pineLabsD : pineLabsTotal);
-                        finalCcM = 0; finalCcN = 0;
-                        finalCc = pineLabsTotal;
+                        if (string.Equals(sType, "C", StringComparison.OrdinalIgnoreCase)) return type.EnableNight;
+                        if (string.Equals(sType, "B", StringComparison.OrdinalIgnoreCase)) return type.EnableDay;
+                        return type.EnableMorning;
                     }
-                    else if (isShiftC)
+
+                    bool isPineLabsConfiguredActive = effectiveColTypes.Any(c => c.IsActive && IsShiftActive(c, shiftType) &&
+                        (PaymentCollection.NormalizeCollectionTypeCode(c.Code) == "PINELABS_CARD" ||
+                         (c.Code?.ToUpperInvariant().Replace("_", "").Replace(" ", "").Contains("PINELAB") ?? false)));
+
+                    bool isGenericCcConfiguredActive = effectiveColTypes.Any(c => c.IsActive && IsShiftActive(c, shiftType) &&
+                        (PaymentCollection.NormalizeCollectionTypeCode(c.Code) == "CREDIT_CARD" ||
+                         string.Equals(c.Code?.ToUpperInvariant().Replace("_", "").Replace(" ", ""), "CREDITCARD", StringComparison.OrdinalIgnoreCase) ||
+                         string.Equals(c.Code?.ToUpperInvariant().Replace("_", "").Replace(" ", ""), "CARD", StringComparison.OrdinalIgnoreCase)));
+
+                    bool attributeScalarToPineLabs = false;
+                    if (isPineLabsConfiguredActive && !isGenericCcConfiguredActive)
                     {
-                        finalCcN = (pineLabsN > 0 ? pineLabsN : pineLabsTotal);
-                        finalCcM = 0; finalCcD = 0;
-                        finalCc = pineLabsTotal;
+                        // Pine Labs Card is the active card provider, generic Credit Card is disabled: attribute scalar to Pine Labs
+                        attributeScalarToPineLabs = true;
                     }
-                    else
+                    else if (isPineLabsConfiguredActive && isGenericCcConfiguredActive)
                     {
-                        finalCcM = (pineLabsM > 0 ? pineLabsM : (pineLabsN == 0 ? pineLabsTotal : 0));
-                        finalCcN = pineLabsN;
-                        finalCcD = 0;
-                        finalCc = pineLabsTotal;
+                        // Both are active. If items already contains itemized Pine Labs, keep finalCc as Credit Card!
+                        if (pineLabsTotal == 0)
+                        {
+                            var primaryCard = effectiveColTypes
+                                .Where(c => c.IsActive && IsShiftActive(c, shiftType))
+                                .OrderBy(c => c.DisplayOrder)
+                                .FirstOrDefault(c => 
+                                    (PaymentCollection.NormalizeCollectionTypeCode(c.Code) == "CREDIT_CARD" ||
+                                     string.Equals(c.Code?.ToUpperInvariant().Replace("_", "").Replace(" ", ""), "CREDITCARD", StringComparison.OrdinalIgnoreCase) ||
+                                     string.Equals(c.Code?.ToUpperInvariant().Replace("_", "").Replace(" ", ""), "CARD", StringComparison.OrdinalIgnoreCase))
+                                    ||
+                                    (PaymentCollection.NormalizeCollectionTypeCode(c.Code) == "PINELABS_CARD" ||
+                                     (c.Code?.ToUpperInvariant().Replace("_", "").Replace(" ", "").Contains("PINELAB") ?? false)));
+
+                            if (primaryCard != null && (primaryCard.Code?.ToUpperInvariant().Replace("_", "").Replace(" ", "").Contains("PINELAB") ?? false))
+                            {
+                                attributeScalarToPineLabs = true;
+                            }
+                        }
+                    }
+
+                    if (attributeScalarToPineLabs)
+                    {
+                        if (pineLabsTotal > 0 && Math.Abs(pineLabsTotal - finalCc) < 0.01)
+                        {
+                            // Duplicate representation of the exact same transaction in both scalar and items:
+                            // Retain itemized pineLabsTotal, zero out finalCc to prevent double-counting
+                            finalCc = 0; finalCcM = 0; finalCcD = 0; finalCcN = 0;
+                        }
+                        else if (pineLabsTotal > 0)
+                        {
+                            // Additional amount entered in scalar alongside items
+                            pineLabsTotal += finalCc;
+                            pineLabsM += finalCcM;
+                            pineLabsD += finalCcD;
+                            pineLabsN += finalCcN;
+                            finalCc = 0; finalCcM = 0; finalCcD = 0; finalCcN = 0;
+                        }
+                        else
+                        {
+                            // Pure scalar entry for Pine Labs Card
+                            pineLabsTotal = finalCc;
+                            pineLabsM = finalCcM;
+                            pineLabsD = finalCcD;
+                            pineLabsN = finalCcN;
+                            finalCc = 0; finalCcM = 0; finalCcD = 0; finalCcN = 0;
+                        }
                     }
                 }
 
@@ -289,41 +423,28 @@ public class ShiftAggregationService : IShiftAggregationService
                 }
 
                 var petroCardItems = allItems.Where(IsPetroCardItem).ToList();
-                double petroItemsM = petroCardItems.Where(i => i.Slot == "Morning" || (isShiftA && string.IsNullOrWhiteSpace(i.Slot))).Sum(i => i.Amount);
+                double petroItemsM = petroCardItems.Where(i => i.Slot == "Morning" || ((isShiftA || isUnassigned) && string.IsNullOrWhiteSpace(i.Slot))).Sum(i => i.Amount);
                 double petroItemsD = petroCardItems.Where(i => i.Slot == "Day" || (isDay && string.IsNullOrWhiteSpace(i.Slot))).Sum(i => i.Amount);
                 double petroItemsN = petroCardItems.Where(i => i.Slot == "Night" || (isShiftC && string.IsNullOrWhiteSpace(i.Slot))).Sum(i => i.Amount);
                 double petroItemsTotal = petroCardItems.Sum(i => i.Amount);
 
-                if (finalPetro == 0 && petroItemsTotal > 0)
+                if (petroItemsTotal > 0)
                 {
+                    finalPetroM = (petroM > 0 && Math.Abs(petroM - petroItemsM) < 0.01) ? petroM : (petroM + petroItemsM);
+                    finalPetroD = (petroD > 0 && Math.Abs(petroD - petroItemsD) < 0.01) ? petroD : (petroD + petroItemsD);
+                    finalPetroN = (petroN > 0 && Math.Abs(petroN - petroItemsN) < 0.01) ? petroN : (petroN + petroItemsN);
+
                     if (isDay)
                     {
-                        finalPetroD = (petroItemsD > 0 ? petroItemsD : petroItemsTotal);
-                        finalPetroM = 0; finalPetroN = 0;
-                        finalPetro = petroItemsTotal;
+                        finalPetro = finalPetroD > 0 ? finalPetroD : (finalPetroM + finalPetroN);
                     }
                     else if (isShiftC)
                     {
-                        finalPetroN = (petroItemsN > 0 ? petroItemsN : petroItemsTotal);
-                        finalPetroM = 0; finalPetroD = 0;
-                        finalPetro = petroItemsTotal;
+                        finalPetro = finalPetroN > 0 ? finalPetroN : (finalPetroM + finalPetroD);
                     }
                     else
                     {
-                        finalPetroM = (petroItemsM > 0 ? petroItemsM : (petroItemsN == 0 ? petroItemsTotal : 0));
-                        finalPetroN = petroItemsN;
-                        finalPetroD = 0;
-                        finalPetro = petroItemsTotal;
-                    }
-                }
-                else if (petroItemsTotal > 0 && petroItemsTotal > finalPetro)
-                {
-                    if (isDay) { finalPetroD = petroItemsTotal; finalPetro = petroItemsTotal; }
-                    else if (isShiftC) { finalPetroN = petroItemsTotal; finalPetro = petroItemsTotal; }
-                    else
-                    {
-                        finalPetroM = petroItemsM > 0 ? petroItemsM : (finalPetroM + (petroItemsTotal - finalPetro));
-                        finalPetro = petroItemsTotal;
+                        finalPetro = finalPetroM + finalPetroD + finalPetroN;
                     }
                 }
 
@@ -331,7 +452,7 @@ public class ShiftAggregationService : IShiftAggregationService
                 double paytm = allItems.Where(i => string.Equals(i.CollectionTypeCode, "PAYTM", StringComparison.OrdinalIgnoreCase)).Sum(i => i.Amount);
                 double qrPayment = allItems.Where(i => string.Equals(i.CollectionTypeCode, "QR", StringComparison.OrdinalIgnoreCase) || string.Equals(i.CollectionTypeCode?.Replace("_", "")?.Replace(" ", ""), "QRONLINE", StringComparison.OrdinalIgnoreCase)).Sum(i => i.Amount);
                 double mobikwik = allItems.Where(i => string.Equals(i.CollectionTypeCode, "MOBIKWIK", StringComparison.OrdinalIgnoreCase) || string.Equals(i.CollectionTypeCode, "MOBIKWICK", StringComparison.OrdinalIgnoreCase)).Sum(i => i.Amount);
-                bool pineLabsIsMainCard = (finalCc == pineLabsTotal && ccFromItems == 0 && (p1?.CreditCardMorning ?? 0) == 0 && (p1?.CreditCardNight ?? 0) == 0 && (p1?.CreditCardDay ?? 0) == 0 && (p1?.CreditCard ?? 0) == 0);
+                bool pineLabsIsMainCard = false;
 
                 var dynamicOnlyItems = allItems
                     .Where(i => !PaymentCollection.IsStandardCollectionCode(i.CollectionTypeCode) 
@@ -362,8 +483,8 @@ public class ShiftAggregationService : IShiftAggregationService
                     ShiftDate = entry.Shift?.ShiftDate ?? (entry.CreatedAt != default ? entry.CreatedAt.Date : (DateTime?)null),
                     Shift = entry.Shift?.ShiftType ?? "",
                     PumpId = entry.PumpId,
-                    ConnectedPumpId = entry.ConnectedPumpId ?? connectedSlaves.FirstOrDefault()?.PumpId,
-                    ConnectedPumpIdsJson = entry.ConnectedPumpIdsJson ?? (connectedSlaves.Count > 0 ? System.Text.Json.JsonSerializer.Serialize(connectedSlaves.Select(s => s.PumpId).Distinct()) : null),
+                    ConnectedPumpId = connectedSlaves.FirstOrDefault()?.PumpId ?? (string.IsNullOrWhiteSpace(entry.ConnectedPumpIdsJson) ? null : entry.ConnectedPumpId),
+                    ConnectedPumpIdsJson = connectedSlaves.Count > 0 ? System.Text.Json.JsonSerializer.Serialize(connectedSlaves.Select(s => s.PumpId).Distinct()) : (string.IsNullOrWhiteSpace(entry.ConnectedPumpIdsJson) ? null : entry.ConnectedPumpIdsJson),
                     PhonePeCard = finalPpc,
                     PhonePeCardMorning = finalPpcM,
                     PhonePeCardDay = finalPpcD,
@@ -376,7 +497,7 @@ public class ShiftAggregationService : IShiftAggregationService
                     CreditCardMorning = finalCcM,
                     CreditCardDay = finalCcD,
                     CreditCardNight = finalCcN,
-                    PineLabsCard = pineLabsTotal > 0 ? pineLabsTotal : (finalCc > 0 ? finalCc : 0),
+                    PineLabsCard = pineLabsTotal,
                     PetroCard = finalPetro,
                     PetroCardMorning = finalPetroM,
                     PetroCardDay = finalPetroD,
@@ -395,8 +516,8 @@ public class ShiftAggregationService : IShiftAggregationService
                     CashInHand = cash2,
                     Cash3 = cash3,
                     CollectionReduction = p1?.CollectionReduction ?? 0,
-                    StoredTotalCollection = entry.TotalCollection > 0 ? (double)entry.TotalCollection : (double?)null,
-                    StoredMismatch = (entry.TotalCollection > 0 || entry.Mismatch != 0) ? (double)entry.Mismatch : (double?)null,
+                    StoredTotalCollection = entry.TotalCollection > 0 ? (double)(entry.TotalCollection + connectedSlaves.Sum(s => s.TotalCollection)) : (double?)null,
+                    StoredMismatch = (entry.TotalCollection > 0 || entry.Mismatch != 0 || connectedSlaves.Count > 0) ? (double)(entry.Mismatch + connectedSlaves.Sum(s => s.Mismatch)) : (double?)null,
                     GrossSales = grossSales
                 });
             }
@@ -461,7 +582,9 @@ public class ShiftAggregationService : IShiftAggregationService
             CashInHand = rows.Sum(r => r.CashInHand),
             Cash3 = rows.Sum(r => r.Cash3),
             CollectionReduction = rows.Sum(r => r.CollectionReduction),
-            GrossSales = rows.Sum(r => r.GrossSales)
+            GrossSales = rows.Sum(r => r.GrossSales),
+            StoredTotalCollection = rows.Sum(r => r.TotalCollection),
+            StoredMismatch = rows.Sum(r => r.Difference)
         };
     }
 
@@ -495,6 +618,7 @@ public class ShiftAggregationService : IShiftAggregationService
                 double phonePeCard = g.Sum(r => r.PhonePeCardTotal);
                 double creditCard = g.Sum(r => r.CreditCardPureTotal);
                 double petroCard = g.Sum(r => r.PetroCardTotal);
+                double pineLabsCard = g.Sum(r => r.PineLabsCard);
                 double others = g.Sum(r => r.Others);
                 double debit = g.Sum(r => r.Debit);
                 double expenses = g.Sum(r => r.Expenses);
@@ -538,6 +662,7 @@ public class ShiftAggregationService : IShiftAggregationService
                     PhonePeCard = phonePeCard,
                     CreditCard = creditCard,
                     PetroCard = petroCard,
+                    PineLabsCard = pineLabsCard,
                     DynamicCollectionsTotal = dynamicTotal,
                     DynamicCollections = dynDict,
                     Debit = debit,

@@ -793,4 +793,46 @@ public class RemoteSyncDataParityTests : IDisposable
             Assert.Equal(1.10, Math.Round(kiraRow.Mismatch, 2));
         }
     }
+
+    [Fact]
+    public void BuildDsmSummaryRows_MultiDsmConnectedPumps_DoesNotCrossAssignSlaveByEntryIdCollision()
+    {
+        var aggService = new ShiftAggregationService(new ShiftCycleService());
+        var shift = new Shift { ShiftId = 1, ShiftDate = new DateTime(2026, 10, 20), ShiftType = "A" };
+
+        // Primary 5 belongs to Operator A (connected to Pump 2).
+        // Slave 7 belongs to Operator A (Pump 2, ReconciledToPumpId = 3 matching pump 3, not entry ID 5).
+        // Slave 10 belongs to Operator B (Pump 2, ReconciledToPumpId = 5 colliding with Operator A's DsmEntryId!).
+        // Primary 9 belongs to Operator B (connected to Pump 2).
+        var entries = new List<DsmEntry>
+        {
+            new()
+            {
+                DsmEntryId = 5, ShiftId = 1, Shift = shift, DsmName = "OPERATOR A", PumpId = 1, ConnectedPumpId = 2, ReconciledToPumpId = null,
+                NozzleReadings = new List<NozzleReading> { new() { NozzleNumber = 1, Amount = 1000 } }
+            },
+            new()
+            {
+                DsmEntryId = 7, ShiftId = 1, Shift = shift, DsmName = "OPERATOR A", PumpId = 2, ReconciledToPumpId = 3,
+                NozzleReadings = new List<NozzleReading> { new() { NozzleNumber = 4, Amount = 500 } }
+            },
+            new()
+            {
+                DsmEntryId = 9, ShiftId = 1, Shift = shift, DsmName = "OPERATOR B", PumpId = 1, ConnectedPumpId = 2, ReconciledToPumpId = null,
+                NozzleReadings = new List<NozzleReading> { new() { NozzleNumber = 1, Amount = 2000 } }
+            },
+            new()
+            {
+                DsmEntryId = 10, ShiftId = 1, Shift = shift, DsmName = "OPERATOR B", PumpId = 2, ReconciledToPumpId = 5,
+                NozzleReadings = new List<NozzleReading> { new() { NozzleNumber = 4, Amount = 3000 } }
+            }
+        };
+
+        var rows = aggService.BuildDsmSummaryRows(entries);
+        var opA = rows.Single(r => r.DsmName == "OPERATOR A");
+        var opB = rows.Single(r => r.DsmName == "OPERATOR B");
+
+        Assert.Equal(1500.0, opA.GrossSales);
+        Assert.Equal(5000.0, opB.GrossSales);
+    }
 }

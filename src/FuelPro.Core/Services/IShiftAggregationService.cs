@@ -9,7 +9,7 @@ namespace FuelPro.Core.Services;
 /// </summary>
 public interface IShiftAggregationService
 {
-    List<DsmSummaryRowDto> BuildDsmSummaryRows(List<DsmEntry> entries);
+    List<DsmSummaryRowDto> BuildDsmSummaryRows(List<DsmEntry> entries, IEnumerable<CollectionTypeMaster>? collectionTypes = null);
     DsmSummaryRowDto BuildDsmSummaryTotalRow(List<DsmSummaryRowDto> rows);
     List<DsmShiftTotalDto> BuildDsmShiftTotals(List<DsmSummaryRowDto> rows);
     CashAggregateDto AggregateCash(List<DsmEntry> entries, string cashType);

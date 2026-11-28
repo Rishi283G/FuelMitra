@@ -239,6 +239,10 @@ public class StationConfigurationService : IStationConfigurationService
                 var setting = await db.Settings.FirstOrDefaultAsync();
                 if (setting != null)
                 {
+                    foreach (var t in allActiveTanks)
+                    {
+                        t.Rate = setting.GetRateFor(t.TankName, setting.GetRateFor(t.FuelType, 0.0));
+                    }
                     setting.TankDefinitionsJson = System.Text.Json.JsonSerializer.Serialize(allActiveTanks);
                     setting.LastUpdated = DateTime.Now;
                     db.Entry(setting).State = EntityState.Modified;
@@ -318,6 +322,10 @@ public class StationConfigurationService : IStationConfigurationService
                 var setting = await db.Settings.FirstOrDefaultAsync();
                 if (setting != null)
                 {
+                    foreach (var t in allActiveTanks)
+                    {
+                        t.Rate = setting.GetRateFor(t.TankName, setting.GetRateFor(t.FuelType, 0.0));
+                    }
                     setting.TankDefinitionsJson = System.Text.Json.JsonSerializer.Serialize(allActiveTanks);
                     setting.LastUpdated = DateTime.Now;
                     db.Entry(setting).State = EntityState.Modified;
@@ -365,6 +373,10 @@ public class StationConfigurationService : IStationConfigurationService
                     var setting = await db.Settings.FirstOrDefaultAsync();
                     if (setting != null)
                     {
+                        foreach (var t in allActiveTanks)
+                        {
+                            t.Rate = setting.GetRateFor(t.TankName, setting.GetRateFor(t.FuelType, 0.0));
+                        }
                         setting.TankDefinitionsJson = System.Text.Json.JsonSerializer.Serialize(allActiveTanks);
                         setting.LastUpdated = DateTime.Now;
                         db.Entry(setting).State = EntityState.Modified;

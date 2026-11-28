@@ -190,6 +190,7 @@ public class RecalculationMigrationService
                 // Find primary entry matching this audit by entry ID or matching DSM name and shift
                 var entry = await _dbContext.DsmEntries
                     .Include(e => e.NozzleReadings)
+                    .Include(e => e.TestingEntries)
                     .Include(e => e.Shift)
                     .FirstOrDefaultAsync(e => e.DsmEntryId == approvedEntryId);
 
@@ -201,6 +202,7 @@ public class RecalculationMigrationService
                 {
                     var realPrimary = await _dbContext.DsmEntries
                         .Include(e => e.NozzleReadings)
+                        .Include(e => e.TestingEntries)
                         .Include(e => e.Shift)
                         .FirstOrDefaultAsync(e => e.DsmEntryId == entry.ReconciledToPumpId.Value);
 
@@ -220,17 +222,24 @@ public class RecalculationMigrationService
                     primaryEntry.ConnectedPumpId = 2;
                 }
 
+                DateTime? shiftDate = primaryEntry.Shift?.ShiftDate ?? (primaryEntry.CreatedAt != default ? primaryEntry.CreatedAt.Date : (DateTime?)null);
+
                 // Look for slave entry linked to primaryEntry.DsmEntryId
                 DsmEntry? slaveEntry = await _dbContext.DsmEntries
                     .Include(e => e.NozzleReadings)
+                    .Include(e => e.TestingEntries)
                     .FirstOrDefaultAsync(e => e.ShiftId == primaryEntry.ShiftId
                         && e.PumpId == primaryEntry.ConnectedPumpId.Value
                         && e.ReconciledToPumpId == primaryEntry.DsmEntryId);
 
+                bool nozzleReadingsHealed = false;
+                bool slaveEntryCreated = false;
+                bool slaveLinkRepaired = false;
+
                 // If slave entry missing or incorrectly linked, repair link or create it
                 if (slaveEntry == null)
                 {
-                    var connNozzles = PumpConfiguration.GetNozzlesForPump(primaryEntry.ConnectedPumpId.Value, primaryEntry.Shift?.ShiftDate ?? DateTime.Today);
+                    var connNozzles = PumpConfiguration.GetNozzlesForPump(primaryEntry.ConnectedPumpId.Value, shiftDate);
                     var targetNozzleIds = connNozzles != null && connNozzles.Length > 0 ? connNozzles : (primaryEntry.ConnectedPumpId.Value == 2 ? new int[] { 2, 4 } : Array.Empty<int>());
 
                     var connReadings = expectedReadings.Where(r => targetNozzleIds.Contains(r.NozzleId)).ToList();
@@ -239,6 +248,7 @@ public class RecalculationMigrationService
                         // Check if there is an unlinked/mismatched slave entry we can re-assign
                         slaveEntry = await _dbContext.DsmEntries
                             .Include(e => e.NozzleReadings)
+                            .Include(e => e.TestingEntries)
                             .FirstOrDefaultAsync(e => e.ShiftId == primaryEntry.ShiftId
                                 && e.PumpId == primaryEntry.ConnectedPumpId.Value
                                 && e.ReconciledToPumpId.HasValue
@@ -247,6 +257,9 @@ public class RecalculationMigrationService
                         if (slaveEntry != null)
                         {
                             slaveEntry.ReconciledToPumpId = primaryEntry.DsmEntryId;
+                            _dbContext.Entry(slaveEntry).State = EntityState.Modified;
+                            slaveLinkRepaired = true;
+                            anyRepaired = true;
                         }
                         else
                         {
@@ -264,6 +277,13 @@ public class RecalculationMigrationService
                             };
                             _dbContext.DsmEntries.Add(slaveEntry);
                             await _dbContext.SaveChangesAsync();
+                            slaveEntryCreated = true;
+                            anyRepaired = true;
+                        }
+
+                        if (slaveLinkRepaired)
+                        {
+                            _logger.Information("Re-linked existing slave entry {SlaveId} to primary entry {PrimaryId} (link-only repair)", slaveEntry.DsmEntryId, primaryEntry.DsmEntryId);
                         }
 
                         if (slaveEntry.NozzleReadings == null) slaveEntry.NozzleReadings = new List<NozzleReading>();
@@ -273,11 +293,16 @@ public class RecalculationMigrationService
                             var existingNr = slaveEntry.NozzleReadings.FirstOrDefault(n => n.NozzleNumber == cr.NozzleId);
                             if (existingNr != null)
                             {
-                                existingNr.OpeningReading = cr.Opening;
-                                existingNr.ClosingReading = cr.Closing;
-                                existingNr.SaleLitres = cr.Closing - cr.Opening;
-                                existingNr.Rate = cr.Rate;
-                                existingNr.Amount = (cr.Closing - cr.Opening) * cr.Rate;
+                                if (Math.Abs(existingNr.OpeningReading - cr.Opening) > 0.001 || Math.Abs(existingNr.ClosingReading - cr.Closing) > 0.001)
+                                {
+                                    existingNr.OpeningReading = cr.Opening;
+                                    existingNr.ClosingReading = cr.Closing;
+                                    existingNr.SaleLitres = cr.Closing - cr.Opening;
+                                    existingNr.Rate = cr.Rate;
+                                    existingNr.Amount = (cr.Closing - cr.Opening) * cr.Rate;
+                                    nozzleReadingsHealed = true;
+                                    anyRepaired = true;
+                                }
                             }
                             else
                             {
@@ -291,17 +316,20 @@ public class RecalculationMigrationService
                                     Rate = cr.Rate,
                                     Amount = (cr.Closing - cr.Opening) * cr.Rate
                                 };
-                                _dbContext.NozzleReadings.Add(nr);
                                 slaveEntry.NozzleReadings.Add(nr);
+                                if (!slaveEntryCreated)
+                                {
+                                    nozzleReadingsHealed = true;
+                                }
+                                anyRepaired = true;
                             }
                         }
                         slaveEntry.GrossSales = (decimal)slaveEntry.NozzleReadings.Sum(r => r.Amount);
                         await _dbContext.SaveChangesAsync();
-                        anyRepaired = true;
                     }
                 }
 
-                bool entryHealed = false;
+                bool slaveHealed = false;
 
                 // Fix slave entry readings if slave exists
                 if (slaveEntry != null && slaveEntry.NozzleReadings != null)
@@ -317,16 +345,11 @@ public class RecalculationMigrationService
                                 sReading.ClosingReading = exp.Closing;
                                 sReading.SaleLitres = sReading.ClosingReading - sReading.OpeningReading;
                                 sReading.Amount = sReading.SaleLitres * sReading.Rate;
-                                entryHealed = true;
+                                slaveHealed = true;
+                                nozzleReadingsHealed = true;
+                                anyRepaired = true;
                             }
                         }
-                    }
-
-                    if (entryHealed)
-                    {
-                        slaveEntry.GrossSales = (decimal)slaveEntry.NozzleReadings.Sum(r => r.Amount);
-                        slaveEntry.Mismatch = 0m;
-                        _dbContext.Entry(slaveEntry).State = EntityState.Modified;
                     }
                 }
 
@@ -344,18 +367,113 @@ public class RecalculationMigrationService
                                 pReading.ClosingReading = exp.Closing;
                                 pReading.SaleLitres = pReading.ClosingReading - pReading.OpeningReading;
                                 pReading.Amount = pReading.SaleLitres * pReading.Rate;
-                                entryHealed = true;
+                                nozzleReadingsHealed = true;
+                                anyRepaired = true;
                             }
                         }
                     }
                 }
 
-                if (entryHealed || (primaryEntry.ConnectedPumpId.HasValue && slaveEntry != null))
+                // --- STRICT AUTHORITATIVE NOZZLE COMPLETENESS VALIDATION ---
+                int[] configuredPrimaryNozzles = shiftDate.HasValue 
+                    ? (PumpConfiguration.GetNozzlesForPump(primaryEntry.PumpId, shiftDate.Value) ?? Array.Empty<int>())
+                    : Array.Empty<int>();
+
+                int[] configuredSlaveNozzles = (shiftDate.HasValue && primaryEntry.ConnectedPumpId.HasValue)
+                    ? (PumpConfiguration.GetNozzlesForPump(primaryEntry.ConnectedPumpId.Value, shiftDate.Value) ?? Array.Empty<int>())
+                    : Array.Empty<int>();
+
+                var auditNozzleIds = expectedReadings.Select(r => r.NozzleId).ToList();
+                bool auditHasDuplicates = auditNozzleIds.Count != auditNozzleIds.Distinct().Count();
+
+                var auditPrimaryIds = auditNozzleIds.Where(id => configuredPrimaryNozzles.Contains(id)).Distinct().ToList();
+                bool auditPrimaryExact = !auditHasDuplicates 
+                    && configuredPrimaryNozzles.Length > 0 
+                    && auditPrimaryIds.Count == configuredPrimaryNozzles.Length 
+                    && configuredPrimaryNozzles.All(id => auditPrimaryIds.Contains(id));
+
+                var auditSlaveIds = auditNozzleIds.Where(id => configuredSlaveNozzles.Contains(id)).Distinct().ToList();
+                bool auditSlaveExact = !auditHasDuplicates 
+                    && (!primaryEntry.ConnectedPumpId.HasValue || (configuredSlaveNozzles.Length > 0 && auditSlaveIds.Count == configuredSlaveNozzles.Length && configuredSlaveNozzles.All(id => auditSlaveIds.Contains(id))));
+
+                var allConfiguredNozzles = configuredPrimaryNozzles.Concat(configuredSlaveNozzles).ToHashSet();
+                bool auditHasUnexpected = auditNozzleIds.Any(id => !allConfiguredNozzles.Contains(id));
+
+                var actualPrimaryNozzles = primaryEntry.NozzleReadings?.ToList() ?? new List<NozzleReading>();
+                bool primaryHasDuplicates = actualPrimaryNozzles.GroupBy(n => n.NozzleNumber).Any(g => g.Count() > 1);
+                bool primaryHasUnexpected = actualPrimaryNozzles.Any(n => !configuredPrimaryNozzles.Contains(n.NozzleNumber));
+                bool primaryMissingAny = configuredPrimaryNozzles.Any(id => !actualPrimaryNozzles.Any(n => n.NozzleNumber == id));
+
+                bool primaryValidAndComplete = !primaryHasDuplicates && !primaryHasUnexpected && !primaryMissingAny
+                    && configuredPrimaryNozzles.Length > 0 && actualPrimaryNozzles.Count == configuredPrimaryNozzles.Length;
+
+                bool slaveValidAndComplete = true;
+                List<NozzleReading> actualSlaveNozzles = new();
+                if (primaryEntry.ConnectedPumpId.HasValue)
                 {
-                    double primaryGross = primaryEntry.NozzleReadings?.Sum(r => r.Amount) ?? (double)primaryEntry.GrossSales;
-                    double slaveGross = slaveEntry?.NozzleReadings?.Sum(r => r.Amount) ?? (double)(slaveEntry?.GrossSales ?? 0m);
-                    primaryEntry.GrossSales = (decimal)(primaryGross + slaveGross);
-                    primaryEntry.Mismatch = primaryEntry.TotalCollection - primaryEntry.GrossSales;
+                    actualSlaveNozzles = slaveEntry?.NozzleReadings?.ToList() ?? new List<NozzleReading>();
+                    bool slaveHasDuplicates = actualSlaveNozzles.GroupBy(n => n.NozzleNumber).Any(g => g.Count() > 1);
+                    bool slaveHasUnexpected = actualSlaveNozzles.Any(n => !configuredSlaveNozzles.Contains(n.NozzleNumber));
+                    bool slaveMissingAny = configuredSlaveNozzles.Any(id => !actualSlaveNozzles.Any(n => n.NozzleNumber == id));
+
+                    slaveValidAndComplete = slaveEntry != null && !slaveHasDuplicates && !slaveHasUnexpected && !slaveMissingAny
+                        && configuredSlaveNozzles.Length > 0 && actualSlaveNozzles.Count == configuredSlaveNozzles.Length;
+                }
+
+                bool hasCompleteNozzleData = shiftDate.HasValue
+                    && configuredPrimaryNozzles.Length > 0
+                    && (!primaryEntry.ConnectedPumpId.HasValue || (configuredSlaveNozzles.Length > 0 && !configuredPrimaryNozzles.Intersect(configuredSlaveNozzles).Any()))
+                    && !auditHasDuplicates
+                    && auditPrimaryExact
+                    && auditSlaveExact
+                    && !auditHasUnexpected
+                    && primaryValidAndComplete
+                    && slaveValidAndComplete;
+
+                decimal primaryGross = hasCompleteNozzleData ? (decimal)actualPrimaryNozzles.Sum(n => n.Amount) : 0m;
+                decimal slaveGross = (hasCompleteNozzleData && primaryEntry.ConnectedPumpId.HasValue) ? (decimal)actualSlaveNozzles.Sum(n => n.Amount) : 0m;
+                decimal combinedNozzleGross = primaryGross + slaveGross;
+
+                bool grossDiscrepancy = hasCompleteNozzleData && Math.Abs(primaryEntry.GrossSales - combinedNozzleGross) > 0.01m;
+
+                if (!hasCompleteNozzleData)
+                {
+                    _logger.Warning("Incomplete nozzle dataset for approved entry {EntryId} (ShiftDate: {ShiftDate}, Pump: {PumpId}, ConnectedPump: {ConnectedPumpId}). Skipping financial recalculation.",
+                        primaryEntry.DsmEntryId, shiftDate, primaryEntry.PumpId, primaryEntry.ConnectedPumpId);
+                }
+
+                if (hasCompleteNozzleData && (nozzleReadingsHealed || slaveEntryCreated || grossDiscrepancy))
+                {
+                    if (slaveEntry != null && (slaveHealed || slaveEntryCreated))
+                    {
+                        slaveEntry.GrossSales = slaveGross;
+                        slaveEntry.Mismatch = 0m;
+                        _dbContext.Entry(slaveEntry).State = EntityState.Modified;
+                    }
+
+                    primaryEntry.GrossSales = combinedNozzleGross;
+
+                    // Aggregate testing entries across primary and slave exactly once
+                    var groupTestingList = new List<TestingEntry>();
+                    if (primaryEntry.TestingEntries != null)
+                    {
+                        groupTestingList.AddRange(primaryEntry.TestingEntries);
+                    }
+                    if (slaveEntry?.TestingEntries != null)
+                    {
+                        foreach (var st in slaveEntry.TestingEntries)
+                        {
+                            if (st.TestingId > 0 && groupTestingList.Any(t => t.TestingId == st.TestingId))
+                                continue;
+                            if (groupTestingList.Contains(st))
+                                continue;
+                            groupTestingList.Add(st);
+                        }
+                    }
+
+                    decimal groupTesting = (decimal)groupTestingList.Sum(t => t.Amount);
+                    decimal netSales = primaryEntry.GrossSales - groupTesting;
+                    primaryEntry.Mismatch = primaryEntry.TotalCollection - netSales;
                     _dbContext.Entry(primaryEntry).State = EntityState.Modified;
                     anyRepaired = true;
                 }

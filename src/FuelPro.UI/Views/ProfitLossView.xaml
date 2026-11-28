@@ -123,9 +123,9 @@
                 <!-- Operational Expenses Card -->
                 <materialDesign:Card Style="{StaticResource KpiCardStyle}">
                     <StackPanel>
-                        <TextBlock Text="Pump Expenses" FontSize="11" Opacity="0.7" Margin="0,0,0,4" FontWeight="SemiBold"/>
+                        <TextBlock Text="Operational Expenses" FontSize="11" Opacity="0.7" Margin="0,0,0,4" FontWeight="SemiBold"/>
                         <TextBlock Text="{Binding TotalExpenses, Converter={StaticResource CurrencyConverter}}" FontSize="20" FontWeight="Bold" Foreground="#EF6C00"/>
-                        <TextBlock Text="Operational Expenses" FontSize="10" Opacity="0.5" Margin="0,4,0,0"/>
+                        <TextBlock Text="DSM, Shift &amp; Personal Drawings" FontSize="10" Opacity="0.5" Margin="0,4,0,0"/>
                     </StackPanel>
                 </materialDesign:Card>
                 
@@ -200,7 +200,7 @@
                                             <TextBlock Grid.Row="2" Grid.Column="3" Text="{Binding MsIProfit, Converter={StaticResource CurrencyConverter}}" Margin="0,8" TextAlignment="Right" FontWeight="SemiBold"/>
 
                                             <!-- MS-II Row -->
-                                            <TextBlock Grid.Row="3" Grid.Column="0" Text="HSD - 20KL II (Diesel)" Margin="0,8"/>
+                                            <TextBlock Grid.Row="3" Grid.Column="0" Text="Speed (MS-II)" Margin="0,8"/>
                                             <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding MsIILitres, StringFormat='{}{0:N2} L'}" Margin="0,8" TextAlignment="Right"/>
                                             <TextBlock Grid.Row="3" Grid.Column="2" Text="{Binding MsIIMargin, StringFormat='{}₹{0:N2}'}" Margin="0,8" TextAlignment="Right"/>
                                             <TextBlock Grid.Row="3" Grid.Column="3" Text="{Binding MsIIProfit, Converter={StaticResource CurrencyConverter}}" Margin="0,8" TextAlignment="Right" FontWeight="SemiBold"/>
@@ -268,7 +268,7 @@
                                             <TextBlock Grid.Row="2" Grid.Column="4" Text="{Binding MsIPurchaseProfit, Converter={StaticResource CurrencyConverter}}" Margin="0,8" TextAlignment="Right" FontWeight="SemiBold"/>
 
                                             <!-- Speed Row -->
-                                            <TextBlock Grid.Row="3" Grid.Column="0" Text="HSD - 20KL II (Diesel)" Margin="0,8"/>
+                                            <TextBlock Grid.Row="3" Grid.Column="0" Text="Speed (MS-II)" Margin="0,8"/>
                                             <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding MsIILitres, StringFormat='{}{0:N2} L'}" Margin="0,8" TextAlignment="Right"/>
                                             <TextBlock Grid.Row="3" Grid.Column="2" Text="{Binding MsIIAvgSaleRate, StringFormat='{}₹{0:N2}'}" Margin="0,8" TextAlignment="Right"/>
                                             <TextBlock Grid.Row="3" Grid.Column="3" Text="{Binding MsIIAvgPurchaseRate, StringFormat='{}₹{0:N2}'}" Margin="0,8" TextAlignment="Right"/>
@@ -438,7 +438,7 @@
                                 <TextBlock Text="{Binding DsmBaseSalaries, Converter={StaticResource CurrencyConverter}, StringFormat='-{0}'}" FontWeight="Medium" HorizontalAlignment="Right" Foreground="#C62828"/>
                             </Grid>
                             <Grid Margin="0,4">
-                                <TextBlock Text="Pump Expenses" FontSize="13"/>
+                                <TextBlock Text="Operational Expenses" FontSize="13"/>
                                 <TextBlock Text="{Binding TotalExpenses, Converter={StaticResource CurrencyConverter}, StringFormat='-{0}'}" FontWeight="Medium" HorizontalAlignment="Right" Foreground="#C62828"/>
                             </Grid>
                             <Grid Margin="0,4">
@@ -446,8 +446,12 @@
                                 <TextBlock Text="{Binding SalaryAdjustments, Converter={StaticResource CurrencyConverter}, StringFormat='-{0}'}" FontWeight="Medium" HorizontalAlignment="Right" Foreground="#C62828"/>
                             </Grid>
                             <Grid Margin="0,4">
-                                <TextBlock Text="Other Recoveries" FontSize="13"/>
+                                <TextBlock Text="Short Recoveries" FontSize="13"/>
                                 <TextBlock Text="{Binding ShortRecoveries, Converter={StaticResource CurrencyConverter}, StringFormat='+{0}'}" FontWeight="Medium" HorizontalAlignment="Right" Foreground="#2E7D32"/>
+                            </Grid>
+                            <Grid Margin="0,4">
+                                <TextBlock Text="Owner Pump Expenses" FontSize="13"/>
+                                <TextBlock Text="{Binding TotalPumpExpenses, Converter={StaticResource CurrencyConverter}, StringFormat='-{0}'}" FontWeight="Medium" HorizontalAlignment="Right" Foreground="#C62828"/>
                             </Grid>
                             <Grid Margin="0,4">
                                 <TextBlock Text="Owner Outer Expenses" FontSize="13"/>

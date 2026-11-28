@@ -540,4 +540,71 @@ public class Stage2DsmOtpTests
         Assert.Contains("PHONEPE", vm.AvailableOtpCollectionTypes);
         Assert.DoesNotContain("PINELABS_CARD", vm.AvailableOtpCollectionTypes);
     }
+
+    [Fact]
+    public void IsCreditCardScalarVisible_WhenActive_IsVisibleEvenWithZeroAmountAndTidBatch()
+    {
+        var vm = new DsmEntryViewModel();
+        vm.CreditCardIsActive = true;
+        vm.CreditCardHasTidBatch = true;
+        vm.CreditCardMorning = null;
+        vm.CreditCardNight = null;
+
+        // When active, it MUST be visible even if amount is 0 and TID/Batch is enabled (State A)
+        Assert.True(vm.IsCreditCardScalarVisible);
+    }
+
+    [Fact]
+    public void IsCreditCardScalarVisible_WhenInactive_IsVisibleIfHistoricalAmountOrTidExists()
+    {
+        var vm = new DsmEntryViewModel();
+        vm.CreditCardIsActive = false;
+        vm.CreditCardMorning = null;
+        vm.CardTid = null;
+        Assert.False(vm.IsCreditCardScalarVisible);
+
+        // Historical amount makes it visible
+        vm.CreditCardMorning = 1500;
+        Assert.True(vm.IsCreditCardScalarVisible);
+
+        // Or historical TID makes it visible
+        vm.CreditCardMorning = null;
+        vm.CardTid = "T12345";
+        Assert.True(vm.IsCreditCardScalarVisible);
+    }
+
+    [Fact]
+    public async Task LoadDynamicCollectionTypes_PrioritizesActivePineLabsCardOverInactiveCreditCard()
+    {
+        var vm = new DsmEntryViewModel();
+        var types = new List<CollectionTypeMaster>
+        {
+            new() { CollectionTypeId = 1, Code = "CREDIT_CARD", DisplayName = "Credit / Debit Card", HasTidBatch = true, IsActive = false, DisplayOrder = 2 },
+            new() { CollectionTypeId = 2, Code = "PINELABS_CARD", DisplayName = "Pine Labs Card", HasTidBatch = true, IsActive = true, DisplayOrder = 4 }
+        };
+
+        var serviceField = typeof(DsmEntryViewModel).GetField("_collectionTypeService", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        var stubService = new StubCollectionTypeService(types);
+        serviceField?.SetValue(vm, stubService);
+
+        await vm.LoadDynamicCollectionTypesAsync();
+
+        // Must resolve to active Pine Labs Card rather than inactive generic Credit Card
+        Assert.True(vm.CreditCardIsActive);
+        Assert.Equal("Pine Labs Card", vm.CreditCardDisplayName);
+        Assert.True(vm.IsCreditCardScalarVisible);
+    }
+
+    private class StubCollectionTypeService : ICollectionTypeService
+    {
+        private readonly List<CollectionTypeMaster> _types;
+        public StubCollectionTypeService(List<CollectionTypeMaster> types) => _types = types;
+        public event Action? CollectionTypesChanged;
+        public void NotifyCollectionTypesChanged() => CollectionTypesChanged?.Invoke();
+        public Task<List<CollectionTypeMaster>> GetActiveCollectionTypesAsync() => Task.FromResult(_types.Where(t => t.IsActive).ToList());
+        public Task<List<CollectionTypeMaster>> GetAllCollectionTypesAsync() => Task.FromResult(_types.ToList());
+        public Task<bool> SaveCollectionTypeAsync(CollectionTypeMaster item) => Task.FromResult(true);
+        public Task<bool> DeleteCollectionTypeAsync(int collectionTypeId) => Task.FromResult(true);
+        public Task<bool> UpdateDisplayOrdersAsync(IEnumerable<(int Id, int Order)> orders) => Task.FromResult(true);
+    }
 }

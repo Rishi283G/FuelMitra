@@ -93,12 +93,12 @@
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="Date" Binding="{Binding Date, StringFormat=dd-MMM-yyyy}" Width="110"/>
                         <DataGridTextColumn Header="Fuel" Binding="{Binding FuelType}" FontWeight="SemiBold" Width="85"/>
-                        <DataGridTextColumn Header="Day Opening (B)" Binding="{Binding DayOpeningStock, StringFormat=N2}" Width="120"/>
+                        <DataGridTextColumn Header="Day Opening (A)" Binding="{Binding DayOpeningStock, StringFormat=N2}" Width="120"/>
                         <DataGridTextColumn Header="Sales" Binding="{Binding DaySales, StringFormat=N2}" Width="100"/>
                         <DataGridTextColumn Header="Testing" Binding="{Binding DayTesting, StringFormat=N2}" Width="90"/>
                         <DataGridTextColumn Header="Receipts" Binding="{Binding DayReceipts, StringFormat=N2}" Width="100"/>
                         <DataGridTextColumn Header="Book Stock" Binding="{Binding DayBookStock, StringFormat=N2}" FontWeight="SemiBold" Width="115"/>
-                        <DataGridTextColumn Header="Day Closing (A)" Binding="{Binding DayClosingStock, StringFormat=N2}" Width="120"/>
+                        <DataGridTextColumn Header="Day Closing (C)" Binding="{Binding DayClosingStock, StringFormat=N2}" Width="120"/>
                         
                         <DataGridTemplateColumn Header="Physical Stock" Width="115">
                             <DataGridTemplateColumn.CellTemplate>
@@ -302,7 +302,7 @@
                             <materialDesign:PackIcon Kind="Compare" VerticalAlignment="Center" Margin="0,0,6,0"/>
                             <TextBlock Text="Shift Sequence Comparison for " FontWeight="Bold" VerticalAlignment="Center"/>
                             <TextBlock Text="{Binding SelectedComparison.Date, StringFormat=dd-MMM-yyyy}" FontWeight="Bold" Foreground="{DynamicResource MaterialDesign.Brush.Primary}" VerticalAlignment="Center"/>
-                            <TextBlock Text=" (Shift B → Shift C → Shift A)" FontStyle="Italic" Opacity="0.7" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                            <TextBlock Text=" (Shift A → Shift B → Shift C)" FontStyle="Italic" Opacity="0.7" Margin="8,0,0,0" VerticalAlignment="Center"/>
                         </StackPanel>
 
                         <ItemsControl Grid.Row="1" ItemsSource="{Binding SelectedComparison.Shifts}">

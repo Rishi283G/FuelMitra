@@ -26,6 +26,8 @@ public partial class App : Application
 
     protected override async void OnStartup(StartupEventArgs e)
     {
+        Helpers.DatePickerFormatHelper.RegisterGlobalFormat();
+
         // Setup Serilog
         var logPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -1497,7 +1499,7 @@ public partial class App : Application
         Log.Information("Added missing legacy column {ColumnName} to {TableName}", columnName, tableName);
     }
 
-    private static void ConfigureServices(IServiceCollection services)
+    public static void ConfigureServices(IServiceCollection services)
     {
         // Database
         services.AddDbContext<FuelProDbContext>(options =>
@@ -1563,7 +1565,9 @@ public partial class App : Application
         services.AddSingleton<IShiftCycleService, ShiftCycleService>();
 
         // Sync Services
+        services.AddSingleton<FuelPro.Sync.SupabaseHttpClient>();
         services.AddSingleton<FuelPro.Sync.SyncConfigService>();
+        services.AddSingleton<FuelPro.Sync.StationPairingService>();
         services.AddSingleton<FuelPro.Sync.SyncEngine>();
         services.AddSingleton<FuelPro.Sync.DsmSubmissionPollingService>();
 
@@ -1630,9 +1634,11 @@ public partial class App : Application
         {
             var syncEngine = Services.GetService<FuelPro.Sync.SyncEngine>();
             syncEngine?.Stop();
+            syncEngine?.Dispose();
 
             var pollingService = Services.GetService<FuelPro.Sync.DsmSubmissionPollingService>();
             pollingService?.Stop();
+            pollingService?.Dispose();
         }
         catch (Exception ex)
         {

@@ -27,26 +27,34 @@ public class FinancialCalculationService : IFinancialCalculationService
             EndDate = endDate
         };
 
-        // 1. Fetch shifts within date range
+        var endExclusive = endDate.Date.AddDays(1);
+
+        // 1. Fetch shifts within date range (including DSM-level expenses; AsNoTracking prevents stale cached entities after sync)
         var shifts = await _dbContext.Shifts
+            .AsNoTracking()
             .Include(s => s.DsmEntries)
                 .ThenInclude(d => d.NozzleReadings)
+            .Include(s => s.DsmEntries)
+                .ThenInclude(d => d.Expenses)
             .Include(s => s.Expenses)
-            .Where(s => s.ShiftDate >= startDate.Date && s.ShiftDate <= endDate.Date)
+            .Where(s => s.ShiftDate >= startDate.Date && s.ShiftDate < endExclusive)
             .ToListAsync();
 
         // 2. Fetch other cash adjustments
         var otherCash = await _dbContext.ShiftOtherCash
-            .Where(o => o.ShiftDate >= startDate.Date && o.ShiftDate <= endDate.Date)
+            .AsNoTracking()
+            .Where(o => o.ShiftDate >= startDate.Date && o.ShiftDate < endExclusive)
             .ToListAsync();
 
         // 3. Fetch margins sorted by effective date for historical lookup
         var margins = await _dbContext.FuelProfitMargins
+            .AsNoTracking()
             .OrderBy(m => m.EffectiveDate)
             .ToListAsync();
 
         // Fetch fuel tankers for purchase-based profit tracking
         var tankers = await _dbContext.FuelTankers
+            .AsNoTracking()
             .OrderBy(t => t.TankerDate)
             .ToListAsync();
 
@@ -54,7 +62,7 @@ public class FinancialCalculationService : IFinancialCalculationService
         double GetMargin(string fuelType, DateTime date)
         {
             var match = margins
-                .Where(m => string.Equals(m.FuelType, fuelType, StringComparison.OrdinalIgnoreCase) && m.EffectiveDate <= date)
+                .Where(m => string.Equals(m.FuelType, fuelType, StringComparison.OrdinalIgnoreCase) && m.EffectiveDate.Date <= date.Date)
                 .OrderByDescending(m => m.EffectiveDate)
                 .FirstOrDefault();
 
@@ -74,8 +82,9 @@ public class FinancialCalculationService : IFinancialCalculationService
         // Helper to lookup historical purchase rate
         double GetPurchaseRate(string fuelType, DateTime date, double saleRate)
         {
+            var dateEndExclusive = date.Date.AddDays(1);
             var match = tankers
-                .Where(t => string.Equals(t.FuelType, fuelType, StringComparison.OrdinalIgnoreCase) && t.TankerDate.Date <= date.Date)
+                .Where(t => string.Equals(t.FuelType, fuelType, StringComparison.OrdinalIgnoreCase) && t.TankerDate < dateEndExclusive)
                 .OrderByDescending(t => t.TankerDate)
                 .FirstOrDefault();
 
@@ -179,7 +188,8 @@ public class FinancialCalculationService : IFinancialCalculationService
         double entryExpenses = shifts.SelectMany(s => s.DsmEntries).SelectMany(e => e.Expenses).Sum(ex => ex.Amount);
         double shiftExpenses = shifts.SelectMany(s => s.Expenses).Sum(ex => ex.Amount);
         double khandhareDrawings = await _dbContext.KhandharePetroleumEntries
-            .Where(kp => kp.Date >= startDate.Date && kp.Date <= endDate.Date)
+            .AsNoTracking()
+            .Where(kp => kp.Date >= startDate.Date && kp.Date < endExclusive)
             .SumAsync(kp => kp.Amount);
         result.TotalExpenses = entryExpenses + shiftExpenses + khandhareDrawings;
         result.ManagerExpenses = entryExpenses + shiftExpenses + khandhareDrawings;
@@ -223,7 +233,8 @@ public class FinancialCalculationService : IFinancialCalculationService
 
         // 7. Calculate Pump Expenses (Owner added) in range
         var pumpExps = await _dbContext.PumpExpenses
-            .Where(e => e.ExpenseDate >= startDate.Date && e.ExpenseDate <= endDate.Date)
+            .AsNoTracking()
+            .Where(e => e.ExpenseDate >= startDate.Date && e.ExpenseDate < endExclusive)
             .ToListAsync();
 
         result.PumpRent = Math.Round(pumpExps.Sum(e => e.Rent), 2);
@@ -242,7 +253,8 @@ public class FinancialCalculationService : IFinancialCalculationService
 
         // Fetch local-only Owner Outer Expenses in range
         var outerExpSum = await _dbContext.OuterExpenses
-            .Where(e => e.ExpenseDate >= startDate.Date && e.ExpenseDate <= endDate.Date)
+            .AsNoTracking()
+            .Where(e => e.ExpenseDate >= startDate.Date && e.ExpenseDate < endExclusive)
             .SumAsync(e => e.Amount);
         result.OwnerOuterExpenses = Math.Round(outerExpSum, 2);
 
@@ -264,30 +276,36 @@ public class FinancialCalculationService : IFinancialCalculationService
     {
         // Fetch all shifts in that month
         var shifts = await _dbContext.Shifts
+            .AsNoTracking()
             .Include(s => s.DsmEntries)
             .Where(s => s.ShiftDate.Year == year && s.ShiftDate.Month == month)
             .ToListAsync();
 
-        // Get unique DSM names who worked
+        // Get unique DSM names who worked (normalized case-insensitively to prevent duplicate salary rows)
         var activeDsmNames = shifts
             .SelectMany(s => s.DsmEntries)
-            .Select(e => e.DsmName)
+            .Select(e => (e.DsmName ?? "").Trim())
             .Where(name => !string.IsNullOrEmpty(name))
-            .Distinct()
+            .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
         // Get profiles
-        var profiles = await _dbContext.DsmProfiles.ToListAsync();
+        var profiles = await _dbContext.DsmProfiles.AsNoTracking().ToListAsync();
 
         // Union to include all profile employees even if they did not work this month
-        var allNames = activeDsmNames.Union(profiles.Select(p => p.DsmName)).Distinct().ToList();
+        var allNames = activeDsmNames
+            .Union(profiles.Select(p => (p.DsmName ?? "").Trim()).Where(n => !string.IsNullOrEmpty(n)), StringComparer.OrdinalIgnoreCase)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
         // Fetch salary adjustments
         var adjustments = await _dbContext.DsmSalaryAdjustments
+            .AsNoTracking()
             .Where(a => a.Year == year && a.Month == month)
             .ToListAsync();
 
         var allPersonalDebtors = await _dbContext.DsmPersonalDebtors
+            .AsNoTracking()
             .Where(d => d.Date.Year == year && d.Date.Month == month
                         && d.EntryType != "OpeningBalance"
                         && d.EntryType != "DeactivatedOpening")
@@ -297,10 +315,10 @@ public class FinancialCalculationService : IFinancialCalculationService
 
         foreach (var name in allNames)
         {
-            var profile = profiles.FirstOrDefault(p => string.Equals(p.DsmName, name, StringComparison.OrdinalIgnoreCase));
+            var profile = profiles.FirstOrDefault(p => string.Equals((p.DsmName ?? "").Trim(), name, StringComparison.OrdinalIgnoreCase));
             var dsmEntries = shifts
                 .SelectMany(s => s.DsmEntries)
-                .Where(e => string.Equals(e.DsmName, name, StringComparison.OrdinalIgnoreCase))
+                .Where(e => string.Equals((e.DsmName ?? "").Trim(), name, StringComparison.OrdinalIgnoreCase))
                 .ToList();
 
             var salaryType = profile?.SalaryType ?? "FixedMonthly";
@@ -440,6 +458,7 @@ public class FinancialCalculationService : IFinancialCalculationService
     {
         var categoryLower = category.ToLower();
         var products = await _dbContext.ProductMasters
+            .AsNoTracking()
             .Where(p => p.Category.ToLower() == categoryLower)
             .ToListAsync();
 
@@ -459,11 +478,13 @@ public class FinancialCalculationService : IFinancialCalculationService
         };
 
         var endOfDay = endDate.Date.AddDays(1);
+        var historicalUnitPrices = new List<double>();
 
         foreach (var product in products)
         {
             // 1. Opening Stock: last daily log before startDate
             var lastLogBefore = await _dbContext.OilDefDailyLogs
+                .AsNoTracking()
                 .Where(l => l.ProductId == product.Id && l.LogDate.Date < startDate.Date)
                 .OrderByDescending(l => l.LogDate)
                 .ThenByDescending(l => l.Id)
@@ -478,6 +499,7 @@ public class FinancialCalculationService : IFinancialCalculationService
             {
                 // Fallback to monthly inventory table opening stock
                 var monthInv = await _dbContext.OilDefInventories
+                    .AsNoTracking()
                     .Where(i => i.ProductId == product.Id && i.Year == startDate.Year && i.Month == startDate.Month)
                     .FirstOrDefaultAsync();
                 opening = monthInv?.OpeningStock ?? 0.0;
@@ -486,6 +508,7 @@ public class FinancialCalculationService : IFinancialCalculationService
 
             // 2. Closing Stock: last daily log in range or before
             var lastLogInRange = await _dbContext.OilDefDailyLogs
+                .AsNoTracking()
                 .Where(l => l.ProductId == product.Id && l.LogDate.Date >= startDate.Date && l.LogDate.Date < endOfDay)
                 .OrderByDescending(l => l.LogDate)
                 .ThenByDescending(l => l.Id)
@@ -504,6 +527,7 @@ public class FinancialCalculationService : IFinancialCalculationService
 
             // 3. Purchases in range
             var purchases = await _dbContext.OilDefPurchases
+                .AsNoTracking()
                 .Where(p => p.ProductId == product.Id && p.PurchaseDate >= startDate.Date && p.PurchaseDate < endOfDay)
                 .ToListAsync();
 
@@ -521,14 +545,24 @@ public class FinancialCalculationService : IFinancialCalculationService
             else
             {
                 var lastPurchase = await _dbContext.OilDefPurchases
+                    .AsNoTracking()
                     .Where(p => p.ProductId == product.Id && p.PurchaseDate < startDate.Date)
                     .OrderByDescending(p => p.PurchaseDate)
                     .FirstOrDefaultAsync();
-                avgPurchasePrice = lastPurchase?.UnitPrice ?? product.DefaultSaleRate * 0.8;
+                if (lastPurchase != null)
+                {
+                    avgPurchasePrice = lastPurchase.UnitPrice;
+                    historicalUnitPrices.Add(lastPurchase.UnitPrice);
+                }
+                else
+                {
+                    avgPurchasePrice = product.DefaultSaleRate * 0.8;
+                }
             }
 
             // 4. Sales and Adjustments in range
             var logs = await _dbContext.OilDefDailyLogs
+                .AsNoTracking()
                 .Where(l => l.ProductId == product.Id && l.LogDate >= startDate.Date && l.LogDate < endOfDay)
                 .ToListAsync();
 
@@ -555,6 +589,14 @@ public class FinancialCalculationService : IFinancialCalculationService
         if (detail.PurchasesQuantity > 0)
         {
             detail.AveragePurchasePrice = detail.PurchasesCost / detail.PurchasesQuantity;
+        }
+        else if (detail.SalesQuantity > 0)
+        {
+            detail.AveragePurchasePrice = detail.CostOfGoodsSold / detail.SalesQuantity;
+        }
+        else if (historicalUnitPrices.Count > 0)
+        {
+            detail.AveragePurchasePrice = historicalUnitPrices.Average();
         }
         else
         {

@@ -47,6 +47,13 @@ public class NozzleGroupDto : INotifyPropertyChanged
         set { _hasManualDipEntry = value; OnPropertyChanged(); OnPropertyChanged(nameof(HasMeasurement)); OnPropertyChanged(nameof(StockVarianceDisplay)); OnPropertyChanged(nameof(StockVarianceStatus)); }
     }
 
+    private bool _hasManualStockEntry;
+    public bool HasManualStockEntry
+    {
+        get => _hasManualStockEntry;
+        set { _hasManualStockEntry = value; OnPropertyChanged(); OnPropertyChanged(nameof(HasMeasurement)); OnPropertyChanged(nameof(StockVarianceDisplay)); OnPropertyChanged(nameof(StockVarianceStatus)); }
+    }
+
     private bool? _hasPhysicalDip;
     public bool? HasPhysicalDip
     {
@@ -65,73 +72,109 @@ public class NozzleGroupDto : INotifyPropertyChanged
     {
         get
         {
-            if (HasPhysicalDip.HasValue)
-            {
-                return HasPhysicalDip.Value || HasManualDipEntry;
-            }
-            return HasManualDipEntry || (Dip > 0.001) || (_hasExplicitStock && Stock > 0.001);
+            if (HasPhysicalDip.HasValue && !HasPhysicalDip.Value) return false;
+            if (HasManualStockEntry && ManualStock.HasValue) return true;
+            if (HasManualDipEntry && (Dip.HasValue && (Dip.Value > 0.001 || HasPhysicalDip == true))) return true;
+            if (HasPhysicalDip.HasValue && HasPhysicalDip.Value && (ManualStock.HasValue || Dip.HasValue)) return true;
+            return false;
         }
     }
 
-    private double _dip;
-    public double Dip
+    private double? _dip;
+    public double? Dip
     {
         get => _dip;
         set 
         { 
-            _dip = Math.Round(value, 2); 
-            if (value > 0.001)
+            _dip = value.HasValue ? Math.Round(value.Value, 2) : (double?)null; 
+            if (value.HasValue)
             {
-                HasPhysicalDip = true;
-                HasManualDipEntry = true;
-                DipSource ??= "Manual";
+                if (value.Value > 0.001 || HasPhysicalDip == true || HasManualDipEntry)
+                {
+                    HasPhysicalDip = true;
+                    HasManualDipEntry = true;
+                    DipSource ??= "Manual";
+                }
+            }
+            else
+            {
+                HasManualDipEntry = false;
+                if (!HasManualStockEntry)
+                {
+                    HasPhysicalDip = false;
+                    DipSource = null;
+                }
             }
             OnPropertyChanged(); 
-            OnPropertyChanged(nameof(HasMeasurement));
             OnPropertyChanged(nameof(DipMm));
             OnPropertyChanged(nameof(DipDisplay));
+            OnPropertyChanged(nameof(HasMeasurement));
+            OnPropertyChanged(nameof(PhysicalStock));
             OnPropertyChanged(nameof(StockVariance));
             OnPropertyChanged(nameof(StockVarianceDisplay));
             OnPropertyChanged(nameof(StockVarianceStatus));
         }
     }
 
-    public void RecordManualDip(double dip, double measuredStock)
+    private double? _manualStock;
+    public double? ManualStock
     {
-        _dip = Math.Round(dip, 2);
-        _stock = Math.Round(measuredStock, 2);
-        HasManualDipEntry = true;
-        HasPhysicalDip = true;
-        _hasExplicitStock = true;
-        DipSource = "Manual";
-        OnPropertyChanged(nameof(Dip));
-        OnPropertyChanged(nameof(Stock));
-        OnPropertyChanged(nameof(HasMeasurement));
-        OnPropertyChanged(nameof(DipMm));
-        OnPropertyChanged(nameof(DipDisplay));
-        OnPropertyChanged(nameof(StockVariance));
-        OnPropertyChanged(nameof(StockVarianceDisplay));
-        OnPropertyChanged(nameof(StockVarianceStatus));
-    }
-
-    private bool _hasExplicitStock;
-    private double _stock;
-    public double Stock
-    {
-        get => _stock;
-        set 
-        { 
-            _stock = Math.Round(value, 2); 
-            if (value > 0.001)
+        get => _manualStock;
+        set
+        {
+            _manualStock = value.HasValue ? Math.Round(value.Value, 2) : (double?)null;
+            if (value.HasValue && value.Value >= 0)
             {
                 _hasExplicitStock = true;
+                HasManualStockEntry = true;
+                HasPhysicalDip = true;
+                DipSource ??= "Manual";
             }
-            OnPropertyChanged(); 
+            else
+            {
+                _hasExplicitStock = false;
+                HasManualStockEntry = false;
+                if (!HasManualDipEntry)
+                {
+                    HasPhysicalDip = false;
+                    DipSource = null;
+                }
+            }
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(Stock));
             OnPropertyChanged(nameof(StockLtr));
+            OnPropertyChanged(nameof(PhysicalStock));
+            OnPropertyChanged(nameof(HasMeasurement));
             OnPropertyChanged(nameof(StockVariance));
             OnPropertyChanged(nameof(StockVarianceDisplay));
             OnPropertyChanged(nameof(StockVarianceStatus));
-            OnPropertyChanged(nameof(HasMeasurement));
+        }
+    }
+
+    public double? PhysicalStock => (HasManualStockEntry && ManualStock.HasValue) ? ManualStock : null;
+
+    public void RecordManualDip(double dip, double measuredStock)
+    {
+        Dip = dip;
+        ManualStock = measuredStock;
+        DipSource = "Manual";
+    }
+
+    private bool _hasExplicitStock;
+
+    public double Stock
+    {
+        get => ManualStock ?? CalculatedStock;
+        set
+        {
+            if (HasPhysicalDip == false && !HasManualStockEntry)
+            {
+                // Unmeasured compatibility assignment: do not create manual measurement
+            }
+            else
+            {
+                ManualStock = value;
+            }
         }
     }
 
@@ -185,17 +228,16 @@ public class NozzleGroupDto : INotifyPropertyChanged
         }
     }
 
-    private void RecalcCalculatedStock()
+    public void SetCalculatedStockInternal(double value)
     {
-        double oldCalculated = _calculatedStock;
+        CalculatedStock = value;
+    }
+
+    public void RecalcCalculatedStock()
+    {
         CalculatedStock = Math.Round(OpeningStock - FuelDispensed + TestingLitres + Receipts, 2);
-        if (!HasMeasurement || Stock == 0 || Math.Abs(Stock - oldCalculated) < 0.001)
-        {
-            if (!HasMeasurement)
-            {
-                Stock = CalculatedStock;
-            }
-        }
+        OnPropertyChanged(nameof(Stock));
+        OnPropertyChanged(nameof(StockLtr));
         OnPropertyChanged(nameof(StockVariance));
         OnPropertyChanged(nameof(AutomaticStockDisplay));
         OnPropertyChanged(nameof(StockVarianceDisplay));
@@ -207,23 +249,23 @@ public class NozzleGroupDto : INotifyPropertyChanged
     public IEnumerable<NozzleDisplayItem> FlatNozzles => Rows?.SelectMany(r => r) ?? Enumerable.Empty<NozzleDisplayItem>();
     public IEnumerable<NozzleDisplayItem> Nozzles => FlatNozzles;
 
-    public double DipMm => Dip;
-    public double StockLtr => Stock;
+    public double DipMm => Dip.GetValueOrDefault(0.0);
+    public double StockLtr => PhysicalStock ?? CalculatedStock;
     public double SaleLitres => FuelDispensed;
-    public double StockVariance => Stock - CalculatedStock;
+    public double StockVariance => PhysicalStock.HasValue ? Math.Round(PhysicalStock.Value - CalculatedStock, 2) : 0.0;
 
     public bool HasValidOpeningStock => OpeningStock > 0;
     public string AutomaticStockDisplay => HasValidOpeningStock ? CalculatedStock.ToString("N2") : "—";
     
-    public string DipDisplay => IsCng ? "N/A" : (HasMeasurement ? Dip.ToString("N2") : "Dip Not Recorded");
+    public string DipDisplay => IsCng ? "N/A" : ((Dip.HasValue && Dip.Value > 0.001) ? Dip.Value.ToString("N2") : (HasMeasurement ? "0.00" : "Dip Not Recorded"));
 
     public string StockVarianceDisplay
     {
         get
         {
-            if (IsCng) return "N/A";
-            if (!HasValidOpeningStock || !HasMeasurement) return "—";
-            return StockVariance >= 0 ? $"+{StockVariance:N2}" : $"{StockVariance:N2}";
+            if (!HasMeasurement || !PhysicalStock.HasValue || !HasValidOpeningStock) return "—";
+            var diff = Math.Round(PhysicalStock.Value - CalculatedStock, 2);
+            return diff >= 0 ? $"+{diff:N2}" : $"{diff:N2}";
         }
     }
 
@@ -231,10 +273,11 @@ public class NozzleGroupDto : INotifyPropertyChanged
     {
         get
         {
-            if (IsCng) return "N/A";
-            if (!HasMeasurement) return "Dip Not Recorded";
-            if (Math.Abs(StockVariance) < 0.001) return "Balanced";
-            return StockVariance > 0 ? "Excess" : "Shortage";
+            if (!HasMeasurement) return IsCng ? "N/A" : "Dip Not Recorded";
+            if (!PhysicalStock.HasValue) return "Dip Recorded";
+            var diff = Math.Round(PhysicalStock.Value - CalculatedStock, 2);
+            if (Math.Abs(diff) < 0.001) return "Balanced";
+            return diff > 0 ? "Excess" : "Shortage";
         }
     }
 

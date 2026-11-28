@@ -23,6 +23,7 @@
         <converters:PumpIdDisplayConverter x:Key="PumpIdConverter" />
         <converters:FuelTypeToBrushConverter x:Key="FuelTypeToBrushConverter" />
         <converters:FuelTypeToLightBgBrushConverter x:Key="FuelTypeToLightBgBrushConverter" />
+        <converters:PositiveToVisibilityConverter x:Key="PositiveToVis" />
 
         <Style TargetType="materialDesign:Card" x:Key="SectionCard">
             <Setter Property="Margin" Value="0,0,0,16" />
@@ -296,6 +297,7 @@
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
@@ -307,6 +309,11 @@
 
                                     <TextBlock Grid.Row="1" Grid.Column="0" Text="Total Day Sale (B)" FontWeight="Bold" Margin="0,8,0,0" FontSize="16"/>
                                     <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding GrossDaySaleTotal, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" Margin="0,8,0,0" FontSize="16" Foreground="Green"/>
+
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Total DSM Short" FontWeight="Bold" Margin="0,8,0,0" FontSize="16" Foreground="#D32F2F"
+                                               Visibility="{Binding TotalDsmShort, Converter={StaticResource PositiveToVis}}"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding TotalDsmShort, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" Margin="0,8,0,0" FontSize="16" Foreground="#D32F2F"
+                                               Visibility="{Binding TotalDsmShort, Converter={StaticResource PositiveToVis}}"/>
                                 </Grid>
                             </Border>
 
@@ -381,12 +388,12 @@
                                                   <!-- Row 1: 2. Manual Dip and Manual Stock -->
                                                   <StackPanel Grid.Row="1" Grid.Column="0" Orientation="Horizontal" Margin="2,1" VerticalAlignment="Center">
                                                       <TextBlock Text="Manual Dip: " FontWeight="Bold" FontSize="12" Opacity="0.85" VerticalAlignment="Center"/>
-                                                      <TextBox Text="{Binding Dip, UpdateSourceTrigger=LostFocus, StringFormat={}{0:N2}}" FontWeight="Bold" FontSize="12" Width="55" />
+                                                      <TextBox Text="{Binding Dip, UpdateSourceTrigger=LostFocus, TargetNullValue='', StringFormat={}{0:N2}}" FontWeight="Bold" FontSize="12" Width="55" />
                                                       <TextBlock Text=" mm" Opacity="0.75" FontSize="12" VerticalAlignment="Center"/>
                                                   </StackPanel>
                                                   <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="2,1" VerticalAlignment="Center">
                                                       <TextBlock Text="Manual Stock: " FontWeight="Bold" FontSize="12" Foreground="Green" VerticalAlignment="Center"/>
-                                                      <TextBox Text="{Binding Stock, UpdateSourceTrigger=LostFocus, StringFormat={}{0:N2}}" FontWeight="Bold" FontSize="12" Foreground="Green" Width="68" />
+                                                      <TextBox Text="{Binding ManualStock, UpdateSourceTrigger=LostFocus, TargetNullValue='', StringFormat={}{0:N2}}" FontWeight="Bold" FontSize="12" Foreground="Green" Width="68" />
                                                       <TextBlock Text="{Binding FullUnit, StringFormat=' {0}'}" FontWeight="Bold" FontSize="12" Foreground="Green" VerticalAlignment="Center"/>
                                                   </StackPanel>
 

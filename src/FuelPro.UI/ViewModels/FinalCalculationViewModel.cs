@@ -57,6 +57,8 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
     [ObservableProperty] private double _cash1Total;
     [ObservableProperty] private ObservableCollection<CashDenomDisplayRow> _cash2Rows = new();
     [ObservableProperty] private double _cash2Total;
+    [ObservableProperty] private ObservableCollection<CashDenomDisplayRow> _cash3Rows = new();
+    [ObservableProperty] private double _cash3Total;
 
     // TABLE C
     [ObservableProperty] private ObservableCollection<DebitRegisterRowDto> _creditorRows = new();
@@ -102,6 +104,9 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool _isBalanced;
     [ObservableProperty] private bool _includeOtherCashInGrossSale;
     [ObservableProperty] private double _totalDsmShort;
+    [ObservableProperty] private ReportLoadingState _loadingState = ReportLoadingState.Empty;
+    [ObservableProperty] private string _loadingErrorMessage = "";
+    private int _activeLoadSequence = 0;
 
     // TABLE E: DSM LOSS (PERSONAL DEBTORS)
     [ObservableProperty] private ObservableCollection<DsmPersonalDebtorPrintDto> _personalDebtorRows = new();
@@ -135,11 +140,11 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
     private List<DsmEntry> _loadedEntries = new();
     public IReadOnlyList<DsmEntry> LoadedEntries => _loadedEntries;
 
-    private readonly IFeatureToggleService _featureService;
+    private readonly IFeatureToggleService? _featureService;
     private readonly ICollectionTypeService? _collectionTypeService;
-    private readonly Action _featureChangedHandler;
+    private readonly Action? _featureChangedHandler;
     private readonly Action? _collectionTypesChangedHandler;
-    public bool IsDsmPersonalDebtorVisible => _featureService.IsFeatureEnabled("Admin_DsmPersonalDebtor", true);
+    public bool IsDsmPersonalDebtorVisible => _featureService?.IsFeatureEnabled("Admin_DsmPersonalDebtor", true) ?? true;
     public bool IsDebtorManagementInShiftTotalVisible => !(_featureService?.IsFeatureEnabled("UI_DebtorManagement_AsNewPage", true) ?? true);
     public bool IsDebtorManagementAsNewPage => _featureService?.IsFeatureEnabled("UI_DebtorManagement_AsNewPage", true) ?? true;
     public string PersonalLedgerTitle => _featureService?.GetFeatureDisplayName("Operations_PersonalLedger", "Personal Ledger") ?? "Personal Ledger";
@@ -172,52 +177,55 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
     private DebtorManagementViewModel? _debtorManagementVm;
     public DebtorManagementViewModel DebtorManagementVm
     {
-        get => _debtorManagementVm ??= App.Services.GetRequiredService<DebtorManagementViewModel>();
+        get => _debtorManagementVm ??= App.Services?.GetService<DebtorManagementViewModel>()!;
         set => _debtorManagementVm = value;
     }
 
     public FinalCalculationViewModel()
     {
-        _shiftRepo = App.Services.GetRequiredService<IShiftRepository>();
-        _dsmRepo = App.Services.GetRequiredService<IDsmEntryRepository>();
-        _expenseRepo = App.Services.GetRequiredService<IExpenseRepository>();
-        _settingsRepo = App.Services.GetRequiredService<ISettingsRepository>();
-        _otherCashRepo = App.Services.GetRequiredService<IShiftOtherCashRepository>();
-        _fuelRateRepo = App.Services.GetRequiredService<IShiftFuelRateRepository>();
-        _aggregation = App.Services.GetRequiredService<IShiftAggregationService>();
-        _creditorRepo = App.Services.GetRequiredService<ICreditorRepository>();
-        _repaymentRepo = App.Services.GetRequiredService<ICreditorRepaymentRepository>();
-        _personalDebtorRepo = App.Services.GetRequiredService<IDsmPersonalDebtorRepository>();
-        _tidService = App.Services.GetRequiredService<ITidCalculationService>();
-        _inventoryService = App.Services.GetRequiredService<IAgsInventoryService>();
-        _reportService = App.Services.GetRequiredService<IReportService>();
-        _featureService = App.Services.GetRequiredService<IFeatureToggleService>();
+        _shiftRepo = App.Services?.GetService<IShiftRepository>()!;
+        _dsmRepo = App.Services?.GetService<IDsmEntryRepository>()!;
+        _expenseRepo = App.Services?.GetService<IExpenseRepository>()!;
+        _settingsRepo = App.Services?.GetService<ISettingsRepository>()!;
+        _otherCashRepo = App.Services?.GetService<IShiftOtherCashRepository>()!;
+        _fuelRateRepo = App.Services?.GetService<IShiftFuelRateRepository>()!;
+        _aggregation = App.Services?.GetService<IShiftAggregationService>()!;
+        _creditorRepo = App.Services?.GetService<ICreditorRepository>()!;
+        _repaymentRepo = App.Services?.GetService<ICreditorRepaymentRepository>()!;
+        _personalDebtorRepo = App.Services?.GetService<IDsmPersonalDebtorRepository>()!;
+        _tidService = App.Services?.GetService<ITidCalculationService>()!;
+        _inventoryService = App.Services?.GetService<IAgsInventoryService>()!;
+        _reportService = App.Services?.GetService<IReportService>()!;
+        _featureService = App.Services?.GetService<IFeatureToggleService>()!;
         _collectionTypeService = App.Services?.GetService<ICollectionTypeService>();
 
-        _featureChangedHandler = () =>
+        if (_featureService != null)
         {
-            var dispatcher = System.Windows.Application.Current?.Dispatcher;
-            if (dispatcher != null && !dispatcher.CheckAccess())
+            _featureChangedHandler = () =>
             {
-                dispatcher.BeginInvoke(() =>
+                var dispatcher = System.Windows.Application.Current?.Dispatcher;
+                if (dispatcher != null && !dispatcher.CheckAccess())
+                {
+                    dispatcher.BeginInvoke(() =>
+                    {
+                        OnPropertyChanged(nameof(IsDsmPersonalDebtorVisible));
+                        OnPropertyChanged(nameof(IsDebtorManagementInShiftTotalVisible));
+                        OnPropertyChanged(nameof(IsDebtorManagementAsNewPage));
+                        OnPropertyChanged(nameof(PersonalLedgerTitle));
+                        OnPropertyChanged(nameof(PersonalLedgerRegisterHeader));
+                    });
+                }
+                else
                 {
                     OnPropertyChanged(nameof(IsDsmPersonalDebtorVisible));
                     OnPropertyChanged(nameof(IsDebtorManagementInShiftTotalVisible));
                     OnPropertyChanged(nameof(IsDebtorManagementAsNewPage));
                     OnPropertyChanged(nameof(PersonalLedgerTitle));
                     OnPropertyChanged(nameof(PersonalLedgerRegisterHeader));
-                });
-            }
-            else
-            {
-                OnPropertyChanged(nameof(IsDsmPersonalDebtorVisible));
-                OnPropertyChanged(nameof(IsDebtorManagementInShiftTotalVisible));
-                OnPropertyChanged(nameof(IsDebtorManagementAsNewPage));
-                OnPropertyChanged(nameof(PersonalLedgerTitle));
-                OnPropertyChanged(nameof(PersonalLedgerRegisterHeader));
-            }
-        };
-        _featureService.FeatureConfigurationChanged += _featureChangedHandler;
+                }
+            };
+            _featureService.FeatureConfigurationChanged += _featureChangedHandler;
+        }
 
         if (_collectionTypeService != null)
         {
@@ -237,8 +245,11 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
         }
         _ = UpdateCollectionHeadersAsync();
 
-        DsmEntryService.DsmEntryChanged += OnDataChanged;
-        DsmEntryService.DebtorChanged += OnDataChanged;
+        if (App.Services != null)
+        {
+            DsmEntryService.DsmEntryChanged += OnDataChanged;
+            DsmEntryService.DebtorChanged += OnDataChanged;
+        }
     }
 
     public ObservableCollection<CollectionTypeMaster> ActiveCollectionTypes { get; } = new();
@@ -260,7 +271,7 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
             var ph = types.FirstOrDefault(c => string.Equals(c.Code, "PHONEPE", StringComparison.OrdinalIgnoreCase));
             var cc = types.FirstOrDefault(c => {
                 var nc = c.Code?.ToUpper().Replace("_", "").Replace(" ", "") ?? "";
-                return nc.Contains("PINELAB") || nc.Contains("CREDITCARD") || nc == "CARD";
+                return nc.Contains("CREDITCARD") || nc.Contains("CREDITDEBITCARD") || nc == "CARD";
             });
             var pc = types.FirstOrDefault(c => string.Equals(c.Code, "PETROCARD", StringComparison.OrdinalIgnoreCase)
                                             || string.Equals(c.Code, "PETRO_CARD", StringComparison.OrdinalIgnoreCase));
@@ -276,12 +287,24 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
 
     private void OnDataChanged()
     {
-        System.Windows.Application.Current.Dispatcher.InvokeAsync(async () => await LoadShiftDataAsync());
+        if (_shiftRepo == null) return;
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        if (dispatcher != null && !dispatcher.HasShutdownStarted && !dispatcher.HasShutdownFinished && dispatcher.Thread.IsAlive)
+        {
+            dispatcher.InvokeAsync(async () => await LoadShiftDataAsync());
+        }
+        else
+        {
+            _ = LoadShiftDataAsync();
+        }
     }
 
     public void Dispose()
     {
-        _featureService.FeatureConfigurationChanged -= _featureChangedHandler;
+        if (_featureService != null && _featureChangedHandler != null)
+        {
+            _featureService.FeatureConfigurationChanged -= _featureChangedHandler;
+        }
         if (_collectionTypeService != null && _collectionTypesChangedHandler != null)
         {
             _collectionTypeService.CollectionTypesChanged -= _collectionTypesChangedHandler;
@@ -308,6 +331,10 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
         IsLoading = true;
         StatusMessage = "";
         HasData = false;
+        CurrentReport = null;
+        int currentSeq = System.Threading.Interlocked.Increment(ref _activeLoadSequence);
+        LoadingState = ReportLoadingState.Loading;
+        LoadingErrorMessage = "";
         try
         {
             // Launch parallel tasks for all independent queries
@@ -323,6 +350,8 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
             var shiftResult = await shiftTask;
             if (!shiftResult.Success || shiftResult.Data == null)
             {
+                if (currentSeq != _activeLoadSequence) return;
+                LoadingState = ReportLoadingState.Empty;
                 StatusMessage = "No DSM entries found for this date and shift.";
                 ClearAll();
                 return;
@@ -341,6 +370,8 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
             var entriesResult = await entriesTask;
             if (!entriesResult.Success || entriesResult.Data == null || entriesResult.Data.Count == 0)
             {
+                if (currentSeq != _activeLoadSequence) return;
+                LoadingState = ReportLoadingState.Empty;
                 StatusMessage = "No DSM entries found for this date and shift.";
                 ClearAll();
                 return;
@@ -464,6 +495,9 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
             Cash2Rows = new ObservableCollection<CashDenomDisplayRow>(report.Cash2.ToDisplayRows(false));
             Cash2Total = report.Cash2.GrandTotal;
 
+            Cash3Rows = new ObservableCollection<CashDenomDisplayRow>(report.Cash3.ToDisplayRows(false));
+            Cash3Total = report.Cash3.GrandTotal;
+
             CreditorRows = new ObservableCollection<DebitRegisterRowDto>(report.CreditorRows);
             CreditorsTotal = report.CreditorsTotal;
 
@@ -537,7 +571,8 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
             TotalDsmShort = report.TotalDsmShort;
             PersonalDebtorRows = new ObservableCollection<DsmPersonalDebtorPrintDto>(report.PersonalDebtors ?? new());
             TotalDsmLoss = PersonalDebtorRows.Sum(p => p.Amount);
-            Difference = report.Difference < -0.01 ? -report.TotalDsmShort : (report.Difference > 0.01 ? report.Difference : 0);
+            Difference = report.Difference;
+            IsBalanced = report.IsBalanced;
             IsBalanced = Math.Abs(Difference) < 0.01;
 
             // Bind repayment breakdown for debtor recovery section
@@ -567,11 +602,18 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
                 _logger.Warning(ex, "Failed to load AGS nozzle groups for calculation");
             }
 
+            if (currentSeq != _activeLoadSequence) return;
+            LoadingState = ReportLoadingState.Loaded;
             HasData = true;
             StatusMessage = IsShiftLocked ? "🔒 SHIFT LOCKED" : "";
         }
         catch (Exception ex)
         {
+            if (currentSeq == _activeLoadSequence)
+            {
+                LoadingState = ReportLoadingState.Error;
+                LoadingErrorMessage = ex.Message;
+            }
             _logger.Error(ex, "Failed to load shift data");
             StatusMessage = $"Error loading data: {ex.Message}";
         }
@@ -648,12 +690,14 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
         TotalDsmShort = report.TotalDsmShort;
         PersonalDebtorRows = new ObservableCollection<DsmPersonalDebtorPrintDto>(report.PersonalDebtors ?? new());
         TotalDsmLoss = PersonalDebtorRows.Sum(p => p.Amount);
-        Difference = report.Difference < -0.01 ? -report.TotalDsmShort : (report.Difference > 0.01 ? report.Difference : 0);
+        Difference = report.Difference;
+        IsBalanced = report.IsBalanced;
         IsBalanced = Math.Abs(Difference) < 0.01;
     }
 
     private void ClearAll()
     {
+        CurrentReport = null;
         _loadedEntries.Clear();
         DsmSummaryRows.Clear();
         DsmSummaryTotals = null;
@@ -661,6 +705,7 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
         CollectionBreakdown.Clear();
         Cash1Rows.Clear(); Cash1Total = 0;
         Cash2Rows.Clear(); Cash2Total = 0;
+        Cash3Rows.Clear(); Cash3Total = 0;
         CreditorRows.Clear(); CreditorsTotal = 0;
         ExpenseRows.Clear(); ExpensesTotal = 0;
         OtherCashRows.Clear(); OtherCashTotal = 0;
@@ -809,7 +854,7 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
         else StatusMessage = $"❌ {result.Error}";
     }
 
-    private readonly ExcelExportService _excelExportService = App.Services.GetRequiredService<ExcelExportService>();
+    private readonly ExcelExportService? _excelExportService = App.Services?.GetService<ExcelExportService>();
 
     [RelayCommand]
     private async Task ExportExcelAsync()
@@ -872,8 +917,9 @@ public partial class FinalCalculationViewModel : ObservableObject, IDisposable
             WriteCsvEntry(zip, $"Cash_Details_{dateStr}_Shift{shiftLabel}.csv", w =>
             {
                 w.WriteLine("Type,Amount");
-                w.WriteLine($"Bank Deposit,{Cash1Total:F2}");
-                w.WriteLine($"Cash In Hand,{Cash2Total:F2}");
+                w.WriteLine($"Cash 1,{Cash1Total:F2}");
+                w.WriteLine($"Cash 2,{Cash2Total:F2}");
+                w.WriteLine($"Cash 3,{Cash3Total:F2}");
             });
 
             WriteCsvEntry(zip, $"Debtors_{dateStr}_Shift{shiftLabel}.csv", w =>

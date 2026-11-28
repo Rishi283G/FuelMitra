@@ -276,8 +276,8 @@ if (data.cumulativeFuelSales && data.cumulativeFuelSales.length > 0) {
   let cumAmount = 0;
   data.cumulativeFuelSales.forEach(c => {
     const litres = Number(c.totalLitres != null ? c.totalLitres : (c.saleLitres != null ? c.saleLitres : 0));
-    const amt = Number(c.totalAmount != null ? c.totalAmount : (c.amount != null ? c.amount : 0));
     const rate = Number(c.rate || 0);
+    const amt = Math.round(litres * rate * 100) / 100;
     const unit = (c.fuelType && c.fuelType.toUpperCase().includes('CNG')) ? ' Kg' : ' L';
     cumLitres += litres;
     cumAmount += amt;

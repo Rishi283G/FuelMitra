@@ -100,6 +100,9 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
     [ObservableProperty] private double _difference;
     [ObservableProperty] private bool _isBalanced;
     [ObservableProperty] private double _totalDsmShort;
+    [ObservableProperty] private ReportLoadingState _loadingState = ReportLoadingState.Empty;
+    [ObservableProperty] private string _loadingErrorMessage = "";
+    private int _activeLoadSequence = 0;
     [ObservableProperty] private double _oilDefSalesTotal;
     public bool HasOilDefSales => OilDefSalesTotal > 0.005;
     [ObservableProperty] private ObservableCollection<DsmPersonalDebtorPrintDto> _personalDebtorRows = new();
@@ -122,11 +125,11 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
     [ObservableProperty] private double _totalTesting;
     public ObservableCollection<TestingSummaryItem> TestingSummaryRows { get; } = new();
 
-    private readonly IFeatureToggleService _featureService;
+    private readonly IFeatureToggleService? _featureService;
     private readonly ICollectionTypeService? _collectionTypeService;
-    private readonly Action _featureChangedHandler;
+    private readonly Action? _featureChangedHandler;
     private readonly Action? _collectionTypesChangedHandler;
-    public bool IsDsmPersonalDebtorVisible => _featureService.IsFeatureEnabled("Admin_DsmPersonalDebtor", true);
+    public bool IsDsmPersonalDebtorVisible => _featureService?.IsFeatureEnabled("Admin_DsmPersonalDebtor", true) ?? true;
     public string PersonalLedgerTitle => _featureService?.GetFeatureDisplayName("Operations_PersonalLedger", "Personal Ledger") ?? "Personal Ledger";
     public string PersonalLedgerRegisterHeader => $"4b. {PersonalLedgerTitle} Register";
 
@@ -137,41 +140,44 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
 
     public DayTotalViewModel()
     {
-        _shiftRepo = App.Services.GetRequiredService<IShiftRepository>();
-        _dsmRepo = App.Services.GetRequiredService<IDsmEntryRepository>();
-        _expenseRepo = App.Services.GetRequiredService<IExpenseRepository>();
-        _settingsRepo = App.Services.GetRequiredService<ISettingsRepository>();
-        _fuelRateRepo = App.Services.GetRequiredService<IShiftFuelRateRepository>();
-        _aggregation = App.Services.GetRequiredService<IShiftAggregationService>();
-        _repaymentRepo = App.Services.GetRequiredService<ICreditorRepaymentRepository>();
-        _personalDebtorRepo = App.Services.GetRequiredService<IDsmPersonalDebtorRepository>();
-        _tidService = App.Services.GetRequiredService<ITidCalculationService>();
-        _inventoryService = App.Services.GetRequiredService<IAgsInventoryService>();
-        _reportService = App.Services.GetRequiredService<IReportService>();
+        _shiftRepo = App.Services?.GetService<IShiftRepository>()!;
+        _dsmRepo = App.Services?.GetService<IDsmEntryRepository>()!;
+        _expenseRepo = App.Services?.GetService<IExpenseRepository>()!;
+        _settingsRepo = App.Services?.GetService<ISettingsRepository>()!;
+        _fuelRateRepo = App.Services?.GetService<IShiftFuelRateRepository>()!;
+        _aggregation = App.Services?.GetService<IShiftAggregationService>()!;
+        _repaymentRepo = App.Services?.GetService<ICreditorRepaymentRepository>()!;
+        _personalDebtorRepo = App.Services?.GetService<IDsmPersonalDebtorRepository>()!;
+        _tidService = App.Services?.GetService<ITidCalculationService>()!;
+        _inventoryService = App.Services?.GetService<IAgsInventoryService>()!;
+        _reportService = App.Services?.GetService<IReportService>()!;
         _shiftCycleService = App.Services?.GetService<IShiftCycleService>() ?? new ShiftCycleService();
-        _featureService = App.Services.GetRequiredService<IFeatureToggleService>();
+        _featureService = App.Services?.GetService<IFeatureToggleService>()!;
         _collectionTypeService = App.Services?.GetService<ICollectionTypeService>();
 
-        _featureChangedHandler = () =>
+        if (_featureService != null)
         {
-            var dispatcher = System.Windows.Application.Current?.Dispatcher;
-            if (dispatcher != null && !dispatcher.CheckAccess())
+            _featureChangedHandler = () =>
             {
-                dispatcher.BeginInvoke(() =>
+                var dispatcher = System.Windows.Application.Current?.Dispatcher;
+                if (dispatcher != null && !dispatcher.CheckAccess())
+                {
+                    dispatcher.BeginInvoke(() =>
+                    {
+                        OnPropertyChanged(nameof(IsDsmPersonalDebtorVisible));
+                        OnPropertyChanged(nameof(PersonalLedgerTitle));
+                        OnPropertyChanged(nameof(PersonalLedgerRegisterHeader));
+                    });
+                }
+                else
                 {
                     OnPropertyChanged(nameof(IsDsmPersonalDebtorVisible));
                     OnPropertyChanged(nameof(PersonalLedgerTitle));
                     OnPropertyChanged(nameof(PersonalLedgerRegisterHeader));
-                });
-            }
-            else
-            {
-                OnPropertyChanged(nameof(IsDsmPersonalDebtorVisible));
-                OnPropertyChanged(nameof(PersonalLedgerTitle));
-                OnPropertyChanged(nameof(PersonalLedgerRegisterHeader));
-            }
-        };
-        _featureService.FeatureConfigurationChanged += _featureChangedHandler;
+                }
+            };
+            _featureService.FeatureConfigurationChanged += _featureChangedHandler;
+        }
 
         if (_collectionTypeService != null)
         {
@@ -191,9 +197,12 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
         }
         _ = UpdateCollectionDisplayNamesAsync();
 
-        DsmEntryService.DsmEntryChanged += OnDataChanged;
-        DsmEntryService.DebtorChanged += OnDataChanged;
-        DsmEntryService.StationConfigurationChanged += OnDataChanged;
+        if (App.Services != null)
+        {
+            DsmEntryService.DsmEntryChanged += OnDataChanged;
+            DsmEntryService.DebtorChanged += OnDataChanged;
+            DsmEntryService.StationConfigurationChanged += OnDataChanged;
+        }
     }
 
     private async Task UpdateCollectionDisplayNamesAsync()
@@ -205,13 +214,13 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
             var ph = types.FirstOrDefault(c => string.Equals(c.Code, "PHONEPE", StringComparison.OrdinalIgnoreCase));
             var cc = types.FirstOrDefault(c => {
                 var nc = c.Code?.ToUpper().Replace("_", "").Replace(" ", "") ?? "";
-                return nc.Contains("PINELAB") || nc.Contains("CREDITCARD") || nc == "CARD";
+                return nc.Contains("CREDITCARD") || nc.Contains("CREDITDEBITCARD") || nc == "CARD";
             });
             var pc = types.FirstOrDefault(c => string.Equals(c.Code, "PETROCARD", StringComparison.OrdinalIgnoreCase)
                                             || string.Equals(c.Code, "PETRO_CARD", StringComparison.OrdinalIgnoreCase));
 
             PhonePeDisplayName = ph?.DisplayName ?? "PhonePe Direct";
-            CreditCardDisplayName = cc?.DisplayName ?? "PineLabs Card";
+            CreditCardDisplayName = cc?.DisplayName ?? "Credit / Debit Card";
             PetroCardDisplayName = pc?.DisplayName ?? "Petro Card";
         }
         catch { }
@@ -219,18 +228,31 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
 
     private void OnDataChanged()
     {
-        System.Windows.Application.Current.Dispatcher.InvokeAsync(async () => await LoadDayDataAsync());
+        if (_shiftRepo == null) return;
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        if (dispatcher != null && !dispatcher.HasShutdownStarted && !dispatcher.HasShutdownFinished && dispatcher.Thread.IsAlive)
+        {
+            dispatcher.InvokeAsync(async () => await LoadDayDataAsync());
+        }
+        else
+        {
+            _ = LoadDayDataAsync();
+        }
     }
 
     public void Dispose()
     {
-        _featureService.FeatureConfigurationChanged -= _featureChangedHandler;
+        if (_featureService != null && _featureChangedHandler != null)
+        {
+            _featureService.FeatureConfigurationChanged -= _featureChangedHandler;
+        }
         if (_collectionTypeService != null && _collectionTypesChangedHandler != null)
         {
             _collectionTypeService.CollectionTypesChanged -= _collectionTypesChangedHandler;
         }
         DsmEntryService.DsmEntryChanged -= OnDataChanged;
         DsmEntryService.DebtorChanged -= OnDataChanged;
+        DsmEntryService.StationConfigurationChanged -= OnDataChanged;
         GC.SuppressFinalize(this);
     }
 
@@ -333,6 +355,10 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
         IsLoading = true;
         StatusMessage = "";
         HasData = false;
+        CurrentReport = null;
+        int currentSeq = System.Threading.Interlocked.Increment(ref _activeLoadSequence);
+        LoadingState = ReportLoadingState.Loading;
+        LoadingErrorMessage = "";
         try
         {
             DsmPrintRows = new List<(string Shift, DsmSummaryRowDto Row)>();
@@ -362,6 +388,8 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
 
             if (allEntries.Where(e => e.Shift != null && e.Shift.ShiftDate.Date >= StartDate.Date && e.Shift.ShiftDate.Date <= EndDate.Date).Count() == 0)
             {
+                if (currentSeq != _activeLoadSequence) return;
+                LoadingState = ReportLoadingState.Empty;
                 StatusMessage = "No entries found for this date range.";
                 ClearAll();
                 return;
@@ -459,8 +487,9 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
                 CurrentReport.Shift3Manager = SelectedShift3Manager;
             }
 
-            // 1. Calculate Nozzle-wise Sale
-            CalculateNozzleWiseSale(allEntries);
+            // 1. Calculate Nozzle-wise Sale (filtered strictly to date range)
+            var todayEntries = allEntries.Where(e => e.Shift != null && e.Shift.ShiftDate.Date >= StartDate.Date && e.Shift.ShiftDate.Date <= EndDate.Date).ToList();
+            CalculateNozzleWiseSale(todayEntries);
 
             var dsrSource = report.DsrFuelSales ?? report.FuelSales;
 
@@ -563,14 +592,18 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
             BankCashTotal = getAmt("Cash Deposit") > 0 ? getAmt("Cash Deposit") : getAmt("Bank Cash");
             CashInHandTotal = getAmt("Cash In Hand");
             PhonePeTotal = breakdown.Where(x => x.Category.Contains("PhonePe", StringComparison.OrdinalIgnoreCase)).Sum(x => x.Amount);
-            CreditCardTotal = breakdown.Where(x => (x.Category.Contains("Card", StringComparison.OrdinalIgnoreCase) || x.Category.Contains("PineLab", StringComparison.OrdinalIgnoreCase)) && !x.Category.Contains("Petro", StringComparison.OrdinalIgnoreCase) && !x.Category.Contains("PhonePe", StringComparison.OrdinalIgnoreCase)).Sum(x => x.Amount);
+            CreditCardTotal = breakdown.Where(x => (x.Category.Contains("Credit", StringComparison.OrdinalIgnoreCase) || x.Category.Equals("Card", StringComparison.OrdinalIgnoreCase)) && !x.Category.Contains("Petro", StringComparison.OrdinalIgnoreCase) && !x.Category.Contains("PhonePe", StringComparison.OrdinalIgnoreCase) && !x.Category.Contains("Pine", StringComparison.OrdinalIgnoreCase)).Sum(x => x.Amount);
             PetroCardTotal = breakdown.Where(x => x.Category.Contains("Petro", StringComparison.OrdinalIgnoreCase)).Sum(x => x.Amount);
 
             // Splits
             SplitCash = TotalCash;
             SplitPhonePe = PhonePeTotal;
             SplitUpi = PhonePeCardTotal;
-            SplitPineLabsCard = CreditCardTotal;
+            SplitPineLabsCard = breakdown.FirstOrDefault(x => x.Category.Contains("Pine", StringComparison.OrdinalIgnoreCase))?.Amount ?? 0;
+            if (SplitPineLabsCard == 0 && CreditCardTotal > 0)
+            {
+                SplitPineLabsCard = CreditCardTotal;
+            }
             SplitCredit = CreditorsTotal;
             SplitOther = PetroCardTotal + report.OtherCashTotal;
             OthersTotal = (report.DsmSummaryTotals?.Others ?? 0) > 0 ? report.DsmSummaryTotals!.Others : report.OtherCashTotal;
@@ -593,13 +626,15 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
             TotalDsmShort = report.TotalDsmShort;
             PersonalDebtorRows = new ObservableCollection<DsmPersonalDebtorPrintDto>(report.PersonalDebtors ?? new());
             TotalDsmLoss = PersonalDebtorRows.Sum(p => p.Amount);
-            Difference = report.Difference < -0.01 ? -report.TotalDsmShort : (report.Difference > 0.01 ? report.Difference : 0);
+            Difference = report.Difference;
+            IsBalanced = report.IsBalanced;
             IsBalanced = Math.Abs(Difference) < 0.01;
 
             // Load AGS Nozzle readings for the day range
+            var todayEntriesForNozzles = _allEntries.Where(e => e.Shift != null && e.Shift.ShiftDate.Date >= StartDate.Date && e.Shift.ShiftDate.Date <= EndDate.Date).ToList();
             try
             {
-                var nozzleGroupsList = await _inventoryService.BuildNozzleGroupsForDateRangeAsync(StartDate, EndDate, _allEntries);
+                var nozzleGroupsList = await _inventoryService.BuildNozzleGroupsForDateRangeAsync(StartDate, EndDate, todayEntriesForNozzles);
                 NozzleGroups = new ObservableCollection<NozzleGroupDto>(nozzleGroupsList);
                 if (report != null)
                 {
@@ -609,7 +644,7 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
             catch (Exception ex)
             {
                 _logger.Warning(ex, "Failed to load AGS nozzle groups for day total");
-                var fallbackGroups = await _inventoryService.BuildNozzleGroupsForDateRangeAsync(StartDate, EndDate, _allEntries);
+                var fallbackGroups = await _inventoryService.BuildNozzleGroupsForDateRangeAsync(StartDate, EndDate, todayEntriesForNozzles);
                 NozzleGroups = new ObservableCollection<NozzleGroupDto>(fallbackGroups);
                 if (report != null)
                 {
@@ -617,10 +652,17 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
                 }
             }
 
+            if (currentSeq != _activeLoadSequence) return;
+            LoadingState = ReportLoadingState.Loaded;
             HasData = true;
         }
         catch (Exception ex)
         {
+            if (currentSeq == _activeLoadSequence)
+            {
+                LoadingState = ReportLoadingState.Error;
+                LoadingErrorMessage = ex.Message;
+            }
             _logger.Error(ex, "Failed to load day data");
             StatusMessage = $"Error loading data: {ex.Message}";
         }
@@ -634,15 +676,24 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
     {
         var nozzleRows = new List<NozzleSummaryRowDto>();
 
-        // Group by Pump and fuel type
-        var allReadings = allEntries.SelectMany(e => e.NozzleReadings.Select(r => new
+        // Filter entries strictly to requested date range
+        var validEntries = allEntries
+            .Where(e => e.Shift == null || (e.Shift.ShiftDate.Date >= StartDate.Date && e.Shift.ShiftDate.Date <= EndDate.Date))
+            .ToList();
+
+        // Group by Pump and fuel type, deduplicating readings per (ShiftId, NozzleNumber)
+        var allReadings = validEntries.SelectMany(e => (e.NozzleReadings ?? Enumerable.Empty<NozzleReading>()).Select(r => new
         {
             e.PumpId,
+            ShiftId = e.ShiftId,
             Reading = r,
             CanonicalFuelType = (!string.IsNullOrWhiteSpace(r.FuelType) && !int.TryParse(r.FuelType, out _))
                 ? r.FuelType
                 : FuelPro.Core.Common.PumpConfiguration.GetFuelTypeDisplayName(e.PumpId, r.NozzleNumber, e.Shift?.ShiftDate ?? SelectedDate)
-        })).ToList();
+        }))
+        .GroupBy(x => new { x.ShiftId, x.Reading.NozzleNumber })
+        .Select(g => g.OrderByDescending(x => x.Reading.SaleLitres > 0).ThenByDescending(x => x.Reading.ClosingReading).First())
+        .ToList();
 
         var pumpGroups = allReadings.GroupBy(x => new { x.PumpId, FuelType = x.CanonicalFuelType });
 
@@ -680,6 +731,7 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
 
     private void ClearAll()
     {
+        CurrentReport = null;
         NozzleSaleRows.Clear();
         TotalDayLitres = 0;
         TotalHsdLitres = TotalMsILitres = TotalMsIILitres = TotalMsLitres = TotalCngLitres = 0;
@@ -700,7 +752,7 @@ public partial class DayTotalViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task RefreshAsync() => await LoadDayDataAsync();
 
-    private readonly ExcelExportService _excelExportService = App.Services.GetRequiredService<ExcelExportService>();
+    private readonly ExcelExportService? _excelExportService = App.Services?.GetService<ExcelExportService>();
 
     [RelayCommand]
     private async Task ExportExcelAsync()

@@ -196,7 +196,7 @@
 
   <!-- SECTION 2B: Cumulative Fuel Sales -->
   <div class="section" id="cumulativeSection" style="display: none;">
-    <div class="section-title">📊 Section 2B — Shift Cumulative Fuel Sales (All Pumps)</div>
+    <div class="section-title">📊 Section 2B — Cumulative Fuel Sales (Assigned Pumps)</div>
     <table id="cumulativeTable">
       <thead>
         <tr>
@@ -251,7 +251,7 @@
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 6px;">
           <!-- Cash 1 Table -->
           <div>
-            <div style="font-weight: 700; font-size: 10px; color: #1565C0; margin-bottom: 2px;">Cash 1 (Bank / Advance)</div>
+            <div style="font-weight: 700; font-size: 10px; color: #1565C0; margin-bottom: 2px;">Cash 1</div>
             <table id="cash1Table">
               <thead><tr><th>Denom</th><th>Qty</th><th class="num">Amount (₹)</th></tr></thead>
               <tbody id="cash1Body"></tbody>
@@ -266,7 +266,7 @@
 
           <!-- Cash 2 Table -->
           <div>
-            <div style="font-weight: 700; font-size: 10px; color: #1565C0; margin-bottom: 2px;">Cash 2 (Cash in Hand)</div>
+            <div style="font-weight: 700; font-size: 10px; color: #1565C0; margin-bottom: 2px;">Cash 2</div>
             <table id="cash2Table">
               <thead><tr><th>Denom</th><th>Qty</th><th class="num">Amount (₹)</th></tr></thead>
               <tbody id="cash2Body"></tbody>
@@ -282,7 +282,7 @@
 
         <!-- Cash 3 Table (Whole Denomination: 500, 200, 100, 50, 20, 10, Coins) -->
         <div id="cash3Section" style="margin-bottom: 6px;">
-          <div style="font-weight: 700; font-size: 10px; color: #1565C0; margin-bottom: 2px;">Cash 3 (Final Cash — Full Denomination)</div>
+          <div style="font-weight: 700; font-size: 10px; color: #1565C0; margin-bottom: 2px;">Cash 3</div>
           <table id="cash3Table">
             <thead><tr><th>Denomination</th><th>Qty</th><th class="num">Amount (₹)</th></tr></thead>
             <tbody id="cash3Body"></tbody>
@@ -462,8 +462,8 @@ if (data.cumulativeFuelSales && data.cumulativeFuelSales.length > 0) {
   let cumAmount = 0;
   data.cumulativeFuelSales.forEach(c => {
     const litres = Number(c.totalLitres != null ? c.totalLitres : (c.saleLitres != null ? c.saleLitres : 0));
-    const amt = Number(c.totalAmount != null ? c.totalAmount : (c.amount != null ? c.amount : 0));
     const rate = Number(c.rate || 0);
+    const amt = Math.round(litres * rate * 100) / 100;
     const unit = (c.fuelType && c.fuelType.toUpperCase().includes('CNG')) ? ' Kg' : ' L';
     cumLitres += litres;
     cumAmount += amt;
@@ -475,8 +475,8 @@ if (data.cumulativeFuelSales && data.cumulativeFuelSales.length > 0) {
       <td class="num" style="font-weight:600;">${INR(amt)}</td>
     </tr>`;
   });
-  document.getElementById('cumTotalLitres').textContent = NUM(cumLitres, 2);
-  document.getElementById('cumTotalAmount').textContent = INR(cumAmount);
+  document.getElementById('cumTotalLitres').textContent = NUM(data.totalLitres, 2);
+  document.getElementById('cumTotalAmount').textContent = INR(data.grossSales);
 }
 
 // Section 3 — Payment Collection
@@ -484,26 +484,80 @@ const p = data.payments || {};
 let payHtml = '<div class="payment-grid">';
 const payRows = [];
 
+function normCode(c) {
+  return (c || '').toUpperCase().replace(/[\\s_\\-]/g, '');
+}
+
+const allItems = p.items || [];
+const phItems = allItems.filter(function(i) {
+  var nc = normCode(i.collectionTypeCode);
+  return nc === 'PHONEPE' || nc === 'UPI' || nc === 'PHONEPEUPI';
+});
+const ccItems = allItems.filter(function(i) {
+  var nc = normCode(i.collectionTypeCode);
+  return nc.indexOf('PINELAB') >= 0 || nc.indexOf('CREDITCARD') >= 0 || nc === 'CARD';
+});
+const pcItems = allItems.filter(function(i) {
+  var nc = normCode(i.collectionTypeCode);
+  return nc.indexOf('PETRO') >= 0;
+});
+const otherItems = allItems.filter(function(i) {
+  var nc = normCode(i.collectionTypeCode);
+  return !(nc === 'PHONEPE' || nc === 'UPI' || nc === 'PHONEPEUPI' ||
+           nc.indexOf('PINELAB') >= 0 || nc.indexOf('CREDITCARD') >= 0 || nc === 'CARD' ||
+           nc.indexOf('PETRO') >= 0);
+});
+
 // Unified PhonePe
 var phVal = (p.phonePeTotal || 0) || ((p.phonePeMorning || 0) + (p.phonePeNight || 0) + (p.phonePe || 0));
-if (phVal > 0) {
+var phItemsSum = phItems.reduce(function(acc, x){ return acc + (x.amount || 0); }, 0);
+if (phItems.length > 0) {
+  phItems.forEach(function(item) {
+    if (item.amount > 0) {
+      payRows.push({ label: item.displayName || 'PhonePe', val: item.amount, tid: item.tid, batch: item.batch, otp: item.otp });
+    }
+  });
+  if (phVal > phItemsSum + 0.005) {
+    payRows.push({ label: (p.phonePeDisplayName || 'PhonePe') + ' (Direct)', val: phVal - phItemsSum });
+  }
+} else if (phVal > 0) {
   payRows.push({ label: p.phonePeDisplayName || 'PhonePe', val: phVal, tid: p.phonePeTid || p.phonePeTidMorning || p.phonePeTidNight, batch: p.phonePeBatch || p.phonePeBatchMorning || p.phonePeBatchNight });
 }
 
 // Unified Card / PineLab
 var ccVal = (p.creditCardTotal || 0) || ((p.creditCardMorning || 0) + (p.creditCardNight || 0) + (p.creditCard || 0) + (p.phonePeCardMorning || 0) + (p.phonePeCardNight || 0));
-if (ccVal > 0) {
+var ccItemsSum = ccItems.reduce(function(acc, x){ return acc + (x.amount || 0); }, 0);
+if (ccItems.length > 0) {
+  ccItems.forEach(function(item) {
+    if (item.amount > 0) {
+      payRows.push({ label: item.displayName || 'PineLab Card', val: item.amount, tid: item.tid, batch: item.batch, otp: item.otp });
+    }
+  });
+  if (ccVal > ccItemsSum + 0.005) {
+    payRows.push({ label: (p.creditCardDisplayName || 'PineLab Card') + ' (Direct)', val: ccVal - ccItemsSum });
+  }
+} else if (ccVal > 0) {
   payRows.push({ label: p.creditCardDisplayName || 'PineLab Card', val: ccVal, tid: p.cardTid || p.creditCardTidMorning || p.creditCardTidNight, batch: p.cardBatch || p.creditCardBatchMorning || p.creditCardBatchNight });
 }
 
 // Unified Petro Card
 var petroVal = (p.petroCardTotal || 0) || (p.petroCard || 0) || ((p.petroCardMorning || 0) + (p.petroCardNight || 0));
-if (petroVal > 0) {
+var pcItemsSum = pcItems.reduce(function(acc, x){ return acc + (x.amount || 0); }, 0);
+if (pcItems.length > 0) {
+  pcItems.forEach(function(item) {
+    if (item.amount > 0) {
+      payRows.push({ label: item.displayName || 'Petro Card', val: item.amount, tid: item.tid, batch: item.batch, otp: item.otp });
+    }
+  });
+  if (petroVal > pcItemsSum + 0.005) {
+    payRows.push({ label: (p.petroCardDisplayName || 'Petro Card') + ' (Direct)', val: petroVal - pcItemsSum });
+  }
+} else if (petroVal > 0) {
   payRows.push({ label: p.petroCardDisplayName || 'Petro Card', val: petroVal, tid: p.petroCardTid || p.petroCardTidMorning || p.petroCardTidNight, batch: p.petroCardBatch || p.petroCardBatchMorning || p.petroCardBatchNight });
 }
 
-// Dynamic Custom Collections
-(p.items || []).forEach(function(item) {
+// Dynamic Custom & Manual Collections
+otherItems.forEach(function(item) {
   if (item.amount > 0) {
     payRows.push({ label: item.displayName || item.collectionTypeCode, val: item.amount, tid: item.tid, batch: item.batch, otp: item.otp });
   }
@@ -659,29 +713,35 @@ const rc = data.reconciliation || {};
 const reb = document.getElementById('reconBody');
 reb.innerHTML = '';
 
+let breakdownSum = 0;
 if (data.collectionBreakdown && data.collectionBreakdown.length > 0) {
   data.collectionBreakdown.forEach((c) => {
     const isInfo = Boolean(c.isInformational);
+    if (!isInfo) {
+      breakdownSum += Number(c.amount || 0);
+    }
     reb.innerHTML += `<tr class="total-row">
       <td style="font-weight:600">${c.descriptionWithBreakdown || c.category}${isInfo ? ' (Info)' : ''}</td>
       <td class="num">${INR(c.amount)}</td>
     </tr>`;
   });
+  const totCol = (rc.totalCollection != null && rc.totalCollection > 0) ? rc.totalCollection : breakdownSum;
   reb.innerHTML += `<tr class="grand-total-row" style="background:#E8F5E9">
     <td style="font-weight:700">Total Collection</td>
-    <td class="num" style="font-weight:700">${INR(rc.totalCollection)}</td>
+    <td class="num" style="font-weight:700">${INR(totCol)}</td>
   </tr>`;
+  const expGross = (rc.grossSales != null && rc.grossSales > 0) ? rc.grossSales : Number(data.grossSales || 0);
   reb.innerHTML += `<tr class="total-row">
     <td style="font-weight:600">Expected Gross Sale</td>
-    <td class="num">${INR(rc.grossSales)}</td>
+    <td class="num">${INR(expGross)}</td>
   </tr>`;
 } else {
   const reconLines = [
     ['Gross Sales', rc.grossSales, false],
     ['Total Digital Payments', (data.payments||{}).totalDigital, false],
-    ['Cash 1 (Bank / Advance)', c1Tot, false],
-    ['Cash 2 (Cash in Hand)', c2Tot, false],
-    ['Cash 3 (Final Cash)', c3Tot, false],
+    ['Cash 1', c1Tot, false],
+    ['Cash 2', c2Tot, false],
+    ['Cash 3', c3Tot, false],
     ['Debtors', rc.creditors, false],
     ['Testing', rc.testing, false],
     ['Expenses', rc.expenses, false],
@@ -693,10 +753,13 @@ if (data.collectionBreakdown && data.collectionBreakdown.length > 0) {
       <td class="num">${INR(val)}</td>
     </tr>`;
   });
+
 }
 
 // Mismatch — highlighted
-const mis = rc.mismatch || 0;
+const expGrossForMis = (rc.grossSales != null && rc.grossSales > 0) ? rc.grossSales : Number(data.grossSales || 0);
+const totColForMis = (rc.totalCollection != null && rc.totalCollection > 0) ? rc.totalCollection : breakdownSum;
+const mis = (rc.mismatch != null && rc.totalCollection != null && rc.totalCollection > 0) ? rc.mismatch : (totColForMis - expGrossForMis);
 const misClass = Math.abs(mis) < 0.005 ? 'mismatch-zero' : mis > 0 ? 'mismatch-pos' : 'mismatch-neg';
 reb.innerHTML += `<tr class="mismatch-row" style="background:#FFF9C4">
   <td style="font-weight:800;font-size:12px;">⚠️ Mismatch (Collection − Sales)</td>

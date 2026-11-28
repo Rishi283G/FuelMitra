@@ -92,6 +92,7 @@ public class FinancialPipelineIntegrationTests : IDisposable
         services.AddTransient<IFeatureToggleService, FeatureToggleService>();
         services.AddTransient<ICollectionTypeService, CollectionTypeService>();
         services.AddTransient<IStationConfigurationService, StationConfigurationService>();
+        services.AddTransient<IShiftCycleService, ShiftCycleService>();
 
         // Sync services (needed by OwnerDashboardViewModel)
         services.AddSingleton<SyncConfigService>();
@@ -108,6 +109,7 @@ public class FinancialPipelineIntegrationTests : IDisposable
         services.AddTransient<OwnerDashboardViewModel>();
         services.AddTransient<DsmEntryViewModel>();
         services.AddTransient<DsmApprovalQueueViewModel>();
+        services.AddTransient<DebtorManagementViewModel>();
 
         _serviceProvider = services.BuildServiceProvider();
 
@@ -294,8 +296,8 @@ public class FinancialPipelineIntegrationTests : IDisposable
         //                    + (Bank Cash) 100 + (Cash in hand) 100 + (Debtors) 50 + (Expenses) 50 + (Testing) 50
         //                  = 3050
         // Sales = 3000
-        // Expected Mismatch = 50 (Total Collections 3050 - Sales 3000), but Entry 2 had individual shortage of 1050
-        Assert.Equal(-1050, dayTotalVm.Difference);
+        // Expected Mismatch = -1250 from report.Difference (DayTotalViewModel now faithfully preserves ReportService difference without override)
+        Assert.Equal(-1250, dayTotalVm.Difference);
         Assert.Equal(50, dashboardVm.TodayTotalMismatch);
         Assert.Equal(-1050, ownerVm.TodayTotalMismatch);
 
@@ -800,6 +802,676 @@ public class FinancialPipelineIntegrationTests : IDisposable
         Assert.Contains(dayReport.QrPayments, q => q.TargetDsmName == "Bob Builder" && q.Amount == 300);
     }
 
+    [Fact]
+    public async Task DebtorManagement_SaveDebtorAsync_CustomDebtDateAndRepaymentDate_PersistedAndReflectedInLedger()
+    {
+        using var context = _serviceProvider.GetRequiredService<FuelProDbContext>();
+        context.Database.EnsureCreated();
+
+        var shift = new Shift { ShiftId = 1, ShiftDate = new DateTime(2026, 11, 1), ShiftType = "A" };
+        var dsm = new DsmEntry { DsmEntryId = 1, ShiftId = 1, PumpId = 1, DsmName = "Test DSM", CreatedAt = DateTime.Now };
+        context.Shifts.Add(shift);
+        context.DsmEntries.Add(dsm);
+
+        var creditor = new Creditor { Name = "Alpha Logistics", Phone = "9876543210", IsActive = true, CreatedAt = DateTime.Today };
+        context.Creditors.Add(creditor);
+        await context.SaveChangesAsync();
+
+        var vm = _serviceProvider.GetRequiredService<DebtorManagementViewModel>();
+        await vm.LoadDataAsync();
+
+        var row = vm.Debtors.FirstOrDefault(d => d.CreditorId == creditor.CreditorId);
+        Assert.NotNull(row);
+
+        // Edit debtor profile with custom dates
+        vm.EditDebtorCommand.Execute(row);
+        Assert.True(vm.IsEditingDebtor);
+
+        var debtDate = new DateTime(2026, 11, 1);
+        var repaymentDate = new DateTime(2026, 11, 2);
+
+        vm.EditTotalDebt = 5000;
+        vm.EditDebtDate = debtDate;
+        vm.EditRepaidAmount = 2000;
+        vm.EditRepaymentDate = repaymentDate;
+        vm.EditEntryDetails = "Initial Balances Setup";
+
+        await vm.SaveDebtorCommand.ExecuteAsync(null);
+
+        // Verify entities in database have the selected dates
+        using var verifyContext = _serviceProvider.GetRequiredService<FuelProDbContext>();
+        var debit = await verifyContext.DebitEntries.FirstOrDefaultAsync(d => d.DebtorName == "Alpha Logistics");
+        Assert.NotNull(debit);
+        Assert.Equal(5000, debit.Amount);
+        Assert.Equal(debtDate.Date, debit.CreatedAt.Date);
+
+        var repayment = await verifyContext.CreditorRepayments.FirstOrDefaultAsync(r => r.CreditorName == "Alpha Logistics");
+        Assert.NotNull(repayment);
+        Assert.Equal(2000, repayment.Amount);
+        Assert.Equal(repaymentDate.Date, repayment.RepaymentDate.Date);
+
+        // Now test Account Statements (Ledger) loading
+        vm.LedgerDebtorName = "Alpha Logistics";
+        vm.LedgerStartDate = new DateTime(2026, 11, 1);
+        vm.LedgerEndDate = new DateTime(2026, 11, 5);
+        await vm.LoadLedgerAsync();
+
+        // 1 Opening Balance row + 1 Debt row (Nov 1) + 1 Repayment row (Nov 2)
+        Assert.Equal(3, vm.LedgerTransactions.Count);
+        var debtRow = vm.LedgerTransactions.FirstOrDefault(t => t.TransactionType == "Debt");
+        Assert.NotNull(debtRow);
+        Assert.Equal(debtDate.Date, debtRow.Date.Date);
+        Assert.Equal(5000, debtRow.Debit);
+
+        var repaymentRow = vm.LedgerTransactions.FirstOrDefault(t => t.TransactionType == "Repayment");
+        Assert.NotNull(repaymentRow);
+        Assert.Equal(repaymentDate.Date, repaymentRow.Date.Date);
+        Assert.Equal(2000, repaymentRow.Credit);
+        Assert.Equal(3000, vm.LedgerOutstandingBalance);
+    }
+
+    [Fact]
+    public async Task DebtorManagement_SaveTransactionEditAsync_ChangeDate_PreservesAmountAndUpdatesDate()
+    {
+        using var context = _serviceProvider.GetRequiredService<FuelProDbContext>();
+        context.Database.EnsureCreated();
+
+        var origDate = DateTime.Today.AddHours(10);
+        var shift = new Shift { ShiftId = 1, ShiftDate = origDate.Date, ShiftType = "A" };
+        var dsm = new DsmEntry { DsmEntryId = 1, ShiftId = 1, PumpId = 1, DsmName = "Test DSM", CreatedAt = DateTime.Now };
+        context.Shifts.Add(shift);
+        context.DsmEntries.Add(dsm);
+
+        var creditor = new Creditor { Name = "Beta Transporters", IsActive = true, CreatedAt = DateTime.Today };
+        context.Creditors.Add(creditor);
+
+        var debit = new DebitEntry
+        {
+            DsmEntryId = 1,
+            DebtorName = "Beta Transporters",
+            Amount = 1500,
+            PaymentMethod = "Credit",
+            Remarks = "Fuel Delivery",
+            CreatedAt = origDate
+        };
+        context.DebitEntries.Add(debit);
+        await context.SaveChangesAsync();
+
+        var vm = _serviceProvider.GetRequiredService<DebtorManagementViewModel>();
+        vm.LedgerDebtorName = "Beta Transporters";
+        vm.LedgerStartDate = DateTime.Today.AddDays(-10);
+        vm.LedgerEndDate = DateTime.Today.AddDays(5);
+        await vm.LoadLedgerAsync();
+
+        var txRow = vm.LedgerTransactions.FirstOrDefault(t => t.TransactionType == "Debt");
+        Assert.NotNull(txRow);
+
+        // Start edit
+        vm.StartEditTransactionCommand.Execute(txRow);
+        Assert.True(vm.IsEditingTransaction);
+        Assert.Equal(origDate.Date, vm.EditTxDate.Date);
+        Assert.Equal(1500, vm.EditTxAmount);
+
+        // Change Date only, preserve amount
+        var newDate = DateTime.Today.AddDays(-3);
+        vm.EditTxDate = newDate;
+
+        await vm.SaveTransactionEditCommand.ExecuteAsync(null);
+
+        // Verify in DB
+        using var verifyContext = _serviceProvider.GetRequiredService<FuelProDbContext>();
+        var updatedDebit = await verifyContext.DebitEntries.FindAsync(debit.DebitId);
+        Assert.NotNull(updatedDebit);
+        Assert.Equal(newDate.Date, updatedDebit.CreatedAt.Date);
+        Assert.Equal(1500, updatedDebit.Amount);
+
+        // Verify audit log
+        var audit = await verifyContext.AuditLogs.FirstOrDefaultAsync(a => a.RecordId == debit.DebitId && a.FieldName == "CreatedAt");
+        Assert.NotNull(audit);
+        Assert.Equal(origDate.Date.ToString("yyyy-MM-dd"), audit.OldValue);
+        Assert.Equal(newDate.Date.ToString("yyyy-MM-dd"), audit.NewValue);
+    }
+
+    [Fact]
+    public async Task DebtorManagement_SaveTransactionEditAsync_ChangeAmount_PreservesOriginalDate()
+    {
+        using var context = _serviceProvider.GetRequiredService<FuelProDbContext>();
+        context.Database.EnsureCreated();
+
+        var creditor = new Creditor { Name = "Gamma Travels", IsActive = true, CreatedAt = DateTime.Today };
+        context.Creditors.Add(creditor);
+
+        var origDate = new DateTime(2026, 11, 2, 14, 0, 0);
+        var repayment = new CreditorRepayment
+        {
+            CreditorName = "Gamma Travels",
+            Amount = 800,
+            PaymentMode = "Cash",
+            RepaymentDate = origDate,
+            CreatedAt = origDate
+        };
+        context.CreditorRepayments.Add(repayment);
+        await context.SaveChangesAsync();
+
+        var vm = _serviceProvider.GetRequiredService<DebtorManagementViewModel>();
+        vm.LedgerDebtorName = "Gamma Travels";
+        vm.LedgerStartDate = new DateTime(2026, 11, 1);
+        vm.LedgerEndDate = new DateTime(2026, 11, 5);
+        await vm.LoadLedgerAsync();
+
+        var txRow = vm.LedgerTransactions.FirstOrDefault(t => t.TransactionType == "Repayment");
+        Assert.NotNull(txRow);
+
+        // Start edit
+        vm.StartEditTransactionCommand.Execute(txRow);
+        Assert.True(vm.IsEditingTransaction);
+        Assert.Equal(origDate.Date, vm.EditTxDate.Date);
+
+        // Change amount only
+        vm.EditTxAmount = 1250;
+
+        await vm.SaveTransactionEditCommand.ExecuteAsync(null);
+
+        // Verify in DB
+        using var verifyContext = _serviceProvider.GetRequiredService<FuelProDbContext>();
+        var updatedRepayment = await verifyContext.CreditorRepayments.FindAsync(repayment.CreditorRepaymentId);
+        Assert.NotNull(updatedRepayment);
+        Assert.Equal(origDate.Date, updatedRepayment.RepaymentDate.Date);
+        Assert.Equal(1250, updatedRepayment.Amount);
+
+        // Verify audit log
+        var audit = await verifyContext.AuditLogs.FirstOrDefaultAsync(a => a.RecordId == repayment.CreditorRepaymentId && a.FieldName == "Amount");
+        Assert.NotNull(audit);
+        Assert.Equal("800.00", audit.OldValue);
+        Assert.Equal("1250.00", audit.NewValue);
+    }
+
+    [Fact]
+    public async Task DebtorManagement_LedgerOpeningBalance_CalculatesPriorDebitsAndRepaymentsCorrectly()
+    {
+        using var context = _serviceProvider.GetRequiredService<FuelProDbContext>();
+        context.Database.EnsureCreated();
+
+        var shift = new Shift { ShiftId = 1, ShiftDate = new DateTime(2026, 10, 20), ShiftType = "A" };
+        var shift2 = new Shift { ShiftId = 2, ShiftDate = new DateTime(2026, 11, 2), ShiftType = "A" };
+        var dsm = new DsmEntry { DsmEntryId = 1, ShiftId = 1, PumpId = 1, DsmName = "Test DSM", CreatedAt = DateTime.Now };
+        var dsm2 = new DsmEntry { DsmEntryId = 2, ShiftId = 2, PumpId = 1, DsmName = "Test DSM 2", CreatedAt = DateTime.Now };
+        context.Shifts.AddRange(shift, shift2);
+        context.DsmEntries.AddRange(dsm, dsm2);
+
+        var creditor = new Creditor { Name = "Delta Express", IsActive = true, CreatedAt = DateTime.Today };
+        context.Creditors.Add(creditor);
+        await context.SaveChangesAsync();
+
+        // Historical opening balance = 500
+        context.OpeningBalances.Add(new OpeningBalance
+        {
+            EntityType = "Debtor",
+            EntityIdentifier = creditor.CreditorId.ToString(),
+            CreditorId = creditor.CreditorId,
+            Amount = 500,
+            IsActive = true
+        });
+
+        // Prior debt on Oct 25 = 1000
+        context.DebitEntries.Add(new DebitEntry
+        {
+            DsmEntryId = 1,
+            DebtorName = "Delta Express",
+            Amount = 1000,
+            PaymentMethod = "Credit",
+            Remarks = "Old Fuel",
+            CreatedAt = new DateTime(2026, 10, 25, 10, 0, 0)
+        });
+
+        // Prior repayment on Oct 28 = 400
+        context.CreditorRepayments.Add(new CreditorRepayment
+        {
+            CreditorName = "Delta Express",
+            Amount = 400,
+            PaymentMode = "Cash",
+            RepaymentDate = new DateTime(2026, 10, 28, 12, 0, 0),
+            CreatedAt = new DateTime(2026, 10, 28, 12, 0, 0)
+        });
+
+        // Current period debt on Nov 2 = 700
+        context.DebitEntries.Add(new DebitEntry
+        {
+            DsmEntryId = 2,
+            DebtorName = "Delta Express",
+            Amount = 700,
+            PaymentMethod = "Credit",
+            Remarks = "New Fuel",
+            CreatedAt = new DateTime(2026, 11, 2, 10, 0, 0)
+        });
+
+        await context.SaveChangesAsync();
+
+        var vm = _serviceProvider.GetRequiredService<DebtorManagementViewModel>();
+        vm.LedgerDebtorName = "Delta Express";
+        vm.LedgerStartDate = new DateTime(2026, 11, 1);
+        vm.LedgerEndDate = new DateTime(2026, 11, 10);
+        await vm.LoadLedgerAsync();
+
+        // Period Opening Balance = 500 (historical) + 1000 (prior debt) - 400 (prior repayment) = 1100
+        Assert.Equal(1100, vm.LedgerOpeningBalance);
+
+        // Final balance = 1100 + 700 = 1800
+        Assert.Equal(1800, vm.LedgerOutstandingBalance);
+    }
+
+    [Fact]
+    public async Task DebtorManagement_DatePartitionedBalance_SairajTransportScenario_AllCheckpointsPass()
+    {
+        using var context = _serviceProvider.GetRequiredService<FuelProDbContext>();
+        context.Database.EnsureCreated();
+
+        // 1. Seed Shifts and DSM entries for Oct 1 to Oct 5
+        var shift1 = new Shift { ShiftId = 1, ShiftDate = new DateTime(2026, 10, 1), ShiftType = "A" };
+        var shift2 = new Shift { ShiftId = 2, ShiftDate = new DateTime(2026, 10, 2), ShiftType = "A" };
+        var shift3 = new Shift { ShiftId = 3, ShiftDate = new DateTime(2026, 10, 3), ShiftType = "A" };
+        var shift4 = new Shift { ShiftId = 4, ShiftDate = new DateTime(2026, 10, 4), ShiftType = "A" };
+        var shift5 = new Shift { ShiftId = 5, ShiftDate = new DateTime(2026, 10, 5), ShiftType = "A" };
+        context.Shifts.AddRange(shift1, shift2, shift3, shift4, shift5);
+
+        var dsm1 = new DsmEntry { DsmEntryId = 1, ShiftId = 1, PumpId = 1, DsmName = "DSM 1", CreatedAt = new DateTime(2026, 10, 1, 8, 0, 0) };
+        var dsm2 = new DsmEntry { DsmEntryId = 2, ShiftId = 2, PumpId = 1, DsmName = "DSM 2", CreatedAt = new DateTime(2026, 10, 2, 8, 0, 0) };
+        var dsm3 = new DsmEntry { DsmEntryId = 3, ShiftId = 3, PumpId = 1, DsmName = "DSM 3", CreatedAt = new DateTime(2026, 10, 3, 8, 0, 0) };
+        var dsm4 = new DsmEntry { DsmEntryId = 4, ShiftId = 4, PumpId = 1, DsmName = "DSM 4", CreatedAt = new DateTime(2026, 10, 4, 8, 0, 0) };
+        var dsm5 = new DsmEntry { DsmEntryId = 5, ShiftId = 5, PumpId = 1, DsmName = "DSM 5", CreatedAt = new DateTime(2026, 10, 5, 8, 0, 0) };
+        context.DsmEntries.AddRange(dsm1, dsm2, dsm3, dsm4, dsm5);
+
+        var creditor = new Creditor { Name = "SAIRAJ TRANSPORT", Phone = "9876543210", IsActive = true, CreatedAt = new DateTime(2026, 10, 1) };
+        context.Creditors.Add(creditor);
+        await context.SaveChangesAsync();
+
+        var vm = _serviceProvider.GetRequiredService<DebtorManagementViewModel>();
+        await vm.LoadDataAsync();
+
+        var row = vm.Debtors.FirstOrDefault(d => d.CreditorId == creditor.CreditorId);
+        Assert.NotNull(row);
+
+        // Step 1: On 1 Oct 2026, Manager sets effective debt balance = 5,000
+        vm.EditDebtorCommand.Execute(row);
+        vm.EditTotalDebt = 5000;
+        vm.EditDebtDate = new DateTime(2026, 10, 1);
+        vm.EditRepaidAmount = 0;
+        vm.EditRepaymentDate = new DateTime(2026, 10, 1);
+        vm.EditEntryDetails = "Initial Opening Setup";
+        await vm.SaveDebtorCommand.ExecuteAsync(null);
+
+        // Step 2: On 2 Oct 2026, New debt entry = +2,000
+        using (var updateCtx = _serviceProvider.GetRequiredService<FuelProDbContext>())
+        {
+            updateCtx.DebitEntries.Add(new DebitEntry
+            {
+                DsmEntryId = 2,
+                DebtorName = "SAIRAJ TRANSPORT",
+                Amount = 2000,
+                PaymentMethod = "Credit",
+                Remarks = "Diesel refill",
+                CreatedAt = new DateTime(2026, 10, 2, 10, 0, 0)
+            });
+            await updateCtx.SaveChangesAsync();
+        }
+
+        // Step 3: On 3 Oct 2026, New debt entry = +1,500
+        using (var updateCtx = _serviceProvider.GetRequiredService<FuelProDbContext>())
+        {
+            updateCtx.DebitEntries.Add(new DebitEntry
+            {
+                DsmEntryId = 3,
+                DebtorName = "SAIRAJ TRANSPORT",
+                Amount = 1500,
+                PaymentMethod = "Credit",
+                Remarks = "Diesel refill 2",
+                CreatedAt = new DateTime(2026, 10, 3, 11, 0, 0)
+            });
+            await updateCtx.SaveChangesAsync();
+        }
+
+        // Step 4: On 4 Oct 2026, Repayment = 1,000
+        using (var updateCtx = _serviceProvider.GetRequiredService<FuelProDbContext>())
+        {
+            updateCtx.CreditorRepayments.Add(new CreditorRepayment
+            {
+                CreditorName = "SAIRAJ TRANSPORT",
+                Amount = 1000,
+                PaymentMode = "Cash",
+                RepaymentDate = new DateTime(2026, 10, 4, 15, 0, 0),
+                CreatedAt = new DateTime(2026, 10, 4, 15, 0, 0)
+            });
+            await updateCtx.SaveChangesAsync();
+        }
+
+        // Verify Checkpoint 1: 1 Oct 2026 (balance = 5,000)
+        vm.LedgerDebtorName = "SAIRAJ TRANSPORT";
+        vm.LedgerStartDate = new DateTime(2026, 10, 1);
+        vm.LedgerEndDate = new DateTime(2026, 10, 1);
+        await vm.LoadLedgerAsync();
+        Assert.Equal(0, vm.LedgerOpeningBalance);
+        Assert.Equal(5000, vm.LedgerTotalDebt);
+        Assert.Equal(0, vm.LedgerTotalRepayments);
+        Assert.Equal(5000, vm.LedgerOutstandingBalance);
+
+        // Verify Checkpoint 2: 3 Oct 2026 (balance = 8,500)
+        vm.LedgerStartDate = new DateTime(2026, 10, 1);
+        vm.LedgerEndDate = new DateTime(2026, 10, 3);
+        await vm.LoadLedgerAsync();
+        Assert.Equal(0, vm.LedgerOpeningBalance);
+        Assert.Equal(8500, vm.LedgerTotalDebt); // 5000 + 2000 + 1500
+        Assert.Equal(0, vm.LedgerTotalRepayments);
+        Assert.Equal(8500, vm.LedgerOutstandingBalance);
+
+        // Verify Checkpoint 3: 5 Oct 2026 (balance = 7,500)
+        vm.LedgerStartDate = new DateTime(2026, 10, 1);
+        vm.LedgerEndDate = new DateTime(2026, 10, 5);
+        await vm.LoadLedgerAsync();
+        Assert.Equal(0, vm.LedgerOpeningBalance);
+        Assert.Equal(8500, vm.LedgerTotalDebt);
+        Assert.Equal(1000, vm.LedgerTotalRepayments);
+        Assert.Equal(7500, vm.LedgerOutstandingBalance);
+
+        // Verify Debtor Row in main grid
+        await vm.LoadDataAsync();
+        var updatedRow = vm.Debtors.FirstOrDefault(d => d.Name == "SAIRAJ TRANSPORT");
+        Assert.NotNull(updatedRow);
+        Assert.Equal(8500, updatedRow.TotalDebt);
+        Assert.Equal(1000, updatedRow.TotalRepayment);
+        Assert.Equal(7500, updatedRow.OutstandingBalance);
+    }
+
+    [Fact]
+    public async Task DebtorManagement_BackdatedDebtAdjustment_PreservesSubsequentTransactions()
+    {
+        using var context = _serviceProvider.GetRequiredService<FuelProDbContext>();
+        context.Database.EnsureCreated();
+
+        var shift1 = new Shift { ShiftId = 1, ShiftDate = new DateTime(2026, 10, 1), ShiftType = "A" };
+        var shift2 = new Shift { ShiftId = 2, ShiftDate = new DateTime(2026, 10, 5), ShiftType = "A" };
+        context.Shifts.AddRange(shift1, shift2);
+
+        var dsm1 = new DsmEntry { DsmEntryId = 1, ShiftId = 1, PumpId = 1, DsmName = "DSM 1", CreatedAt = new DateTime(2026, 10, 1, 8, 0, 0) };
+        var dsm2 = new DsmEntry { DsmEntryId = 2, ShiftId = 2, PumpId = 1, DsmName = "DSM 2", CreatedAt = new DateTime(2026, 10, 5, 8, 0, 0) };
+        context.DsmEntries.AddRange(dsm1, dsm2);
+
+        var creditor = new Creditor { Name = "BHARAT CARRIERS", IsActive = true, CreatedAt = new DateTime(2026, 10, 1) };
+        context.Creditors.Add(creditor);
+        await context.SaveChangesAsync();
+
+        // Historical debt on Oct 1: 1000
+        context.DebitEntries.Add(new DebitEntry
+        {
+            DsmEntryId = 1,
+            DebtorName = "BHARAT CARRIERS",
+            Amount = 1000,
+            PaymentMethod = "Credit",
+            Remarks = "Oct 1 Fuel",
+            CreatedAt = new DateTime(2026, 10, 1, 10, 0, 0)
+        });
+
+        // Future debt on Oct 5: 2000
+        context.DebitEntries.Add(new DebitEntry
+        {
+            DsmEntryId = 2,
+            DebtorName = "BHARAT CARRIERS",
+            Amount = 2000,
+            PaymentMethod = "Credit",
+            Remarks = "Oct 5 Fuel",
+            CreatedAt = new DateTime(2026, 10, 5, 10, 0, 0)
+        });
+
+        // Future repayment on Oct 10: 500
+        context.CreditorRepayments.Add(new CreditorRepayment
+        {
+            CreditorName = "BHARAT CARRIERS",
+            Amount = 500,
+            PaymentMode = "Cash",
+            RepaymentDate = new DateTime(2026, 10, 10, 10, 0, 0),
+            CreatedAt = new DateTime(2026, 10, 10, 10, 0, 0)
+        });
+        await context.SaveChangesAsync();
+
+        var vm = _serviceProvider.GetRequiredService<DebtorManagementViewModel>();
+        await vm.LoadDataAsync();
+
+        var row = vm.Debtors.FirstOrDefault(d => d.CreditorId == creditor.CreditorId);
+        Assert.NotNull(row);
+
+        // Manager sets effective debt on Oct 2 = 3000
+        // (Existing on or before Oct 2 is 1000, so adjustment should be +2000 dated Oct 2)
+        vm.EditDebtorCommand.Execute(row);
+        vm.EditTotalDebt = 3000;
+        vm.EditDebtDate = new DateTime(2026, 10, 2);
+        vm.EditRepaidAmount = 0; // Existing on or before Oct 2 is 0
+        vm.EditRepaymentDate = new DateTime(2026, 10, 2);
+        vm.EditEntryDetails = "Oct 2 Audit Correction";
+        await vm.SaveDebtorCommand.ExecuteAsync(null);
+
+        // Full history total debt should now be: Target 3000 + Oct 5 debt (2000) = 5000
+        // Total repaid: 500 (from Oct 10, preserved!)
+        // Net outstanding: 4500
+        await vm.LoadDataAsync();
+        var updatedRow = vm.Debtors.FirstOrDefault(d => d.Name == "BHARAT CARRIERS");
+        Assert.NotNull(updatedRow);
+        Assert.Equal(5000, updatedRow.TotalDebt);
+        Assert.Equal(500, updatedRow.TotalRepayment);
+        Assert.Equal(4500, updatedRow.OutstandingBalance);
+    }
+
+    [Fact]
+    public async Task DebtorManagement_NegativeDebtAdjustment_ReducesHistoricalDebtCorrectly()
+    {
+        using var context = _serviceProvider.GetRequiredService<FuelProDbContext>();
+        context.Database.EnsureCreated();
+
+        var shift = new Shift { ShiftId = 1, ShiftDate = new DateTime(2026, 10, 1), ShiftType = "A" };
+        var dsm = new DsmEntry { DsmEntryId = 1, ShiftId = 1, PumpId = 1, DsmName = "DSM 1", CreatedAt = new DateTime(2026, 10, 1, 8, 0, 0) };
+        context.Shifts.Add(shift);
+        context.DsmEntries.Add(dsm);
+
+        var creditor = new Creditor { Name = "KIRAN TRADERS", IsActive = true, CreatedAt = new DateTime(2026, 10, 1) };
+        context.Creditors.Add(creditor);
+        await context.SaveChangesAsync();
+
+        // Existing debt on Oct 1: 5000
+        context.DebitEntries.Add(new DebitEntry
+        {
+            DsmEntryId = 1,
+            DebtorName = "KIRAN TRADERS",
+            Amount = 5000,
+            PaymentMethod = "Credit",
+            Remarks = "Overbilled Fuel",
+            CreatedAt = new DateTime(2026, 10, 1, 10, 0, 0)
+        });
+        await context.SaveChangesAsync();
+
+        var vm = _serviceProvider.GetRequiredService<DebtorManagementViewModel>();
+        await vm.LoadDataAsync();
+
+        var row = vm.Debtors.FirstOrDefault(d => d.CreditorId == creditor.CreditorId);
+        Assert.NotNull(row);
+
+        // Manager corrects effective debt on Oct 1 down to 3000 (delta = -2000)
+        vm.EditDebtorCommand.Execute(row);
+        vm.EditTotalDebt = 3000;
+        vm.EditDebtDate = new DateTime(2026, 10, 1);
+        vm.EditRepaidAmount = 0;
+        vm.EditRepaymentDate = new DateTime(2026, 10, 1);
+        vm.EditEntryDetails = "Billing Correction";
+        await vm.SaveDebtorCommand.ExecuteAsync(null);
+
+        // Verify in DB that an adjustment of -2000 was created
+        using var verifyContext = _serviceProvider.GetRequiredService<FuelProDbContext>();
+        var adjustment = await verifyContext.DebitEntries.FirstOrDefaultAsync(d => d.DebtorName == "KIRAN TRADERS" && d.Amount == -2000);
+        Assert.NotNull(adjustment);
+
+        // Verify row
+        await vm.LoadDataAsync();
+        var updatedRow = vm.Debtors.FirstOrDefault(d => d.Name == "KIRAN TRADERS");
+        Assert.NotNull(updatedRow);
+        Assert.Equal(3000, updatedRow.TotalDebt);
+        Assert.Equal(3000, updatedRow.OutstandingBalance);
+    }
+
+    [Fact]
+    public async Task DebtorManagement_SameDayOrdering_AdjustmentSequencedAfterExistingTransactions()
+    {
+        using var context = _serviceProvider.GetRequiredService<FuelProDbContext>();
+        context.Database.EnsureCreated();
+
+        var shift = new Shift { ShiftId = 1, ShiftDate = new DateTime(2026, 10, 1), ShiftType = "A" };
+        var dsm = new DsmEntry { DsmEntryId = 1, ShiftId = 1, PumpId = 1, DsmName = "DSM 1", CreatedAt = new DateTime(2026, 10, 1, 8, 0, 0) };
+        context.Shifts.Add(shift);
+        context.DsmEntries.Add(dsm);
+
+        var creditor = new Creditor { Name = "SAMARTH LOGISTICS", IsActive = true, CreatedAt = new DateTime(2026, 10, 1) };
+        context.Creditors.Add(creditor);
+        await context.SaveChangesAsync();
+
+        var existingDebitTime = new DateTime(2026, 10, 1, 10, 0, 0);
+        context.DebitEntries.Add(new DebitEntry
+        {
+            DsmEntryId = 1,
+            DebtorName = "SAMARTH LOGISTICS",
+            Amount = 1200,
+            PaymentMethod = "Credit",
+            Remarks = "Morning Fuel",
+            CreatedAt = existingDebitTime
+        });
+        await context.SaveChangesAsync();
+
+        var vm = _serviceProvider.GetRequiredService<DebtorManagementViewModel>();
+        await vm.LoadDataAsync();
+
+        var row = vm.Debtors.FirstOrDefault(d => d.CreditorId == creditor.CreditorId);
+        Assert.NotNull(row);
+
+        // Manager sets effective debt on same date (Oct 1) to 2000
+        vm.EditDebtorCommand.Execute(row);
+        vm.EditTotalDebt = 2000;
+        vm.EditDebtDate = new DateTime(2026, 10, 1);
+        vm.EditRepaidAmount = 0;
+        vm.EditRepaymentDate = new DateTime(2026, 10, 1);
+        vm.EditEntryDetails = "Evening Balance Check";
+        await vm.SaveDebtorCommand.ExecuteAsync(null);
+
+        // Check adjustment CreatedAt in DB
+        using var verifyContext = _serviceProvider.GetRequiredService<FuelProDbContext>();
+        var adj = await verifyContext.DebitEntries.FirstOrDefaultAsync(d => d.DebtorName == "SAMARTH LOGISTICS" && d.Amount == 800);
+        Assert.NotNull(adj);
+        Assert.True(adj.CreatedAt > existingDebitTime, "Adjustment should be sequenced after existing transactions on same day");
+        Assert.Equal(existingDebitTime.AddSeconds(1), adj.CreatedAt);
+
+        // Check Ledger running balances
+        vm.LedgerDebtorName = "SAMARTH LOGISTICS";
+        vm.LedgerStartDate = new DateTime(2026, 10, 1);
+        vm.LedgerEndDate = new DateTime(2026, 10, 1);
+        await vm.LoadLedgerAsync();
+
+        var debitsInLedger = vm.LedgerTransactions.Where(t => t.TransactionType == "Debt").ToList();
+        Assert.Equal(2, debitsInLedger.Count);
+        Assert.Equal(1200, debitsInLedger[0].RunningBalance);
+        Assert.Equal(2000, debitsInLedger[1].RunningBalance);
+    }
+
+    [Fact]
+    public async Task DebtorManagement_LedgerDateFiltering_OpensWithCumulativeBalanceOnStartDate()
+    {
+        using var context = _serviceProvider.GetRequiredService<FuelProDbContext>();
+        context.Database.EnsureCreated();
+
+        var shift1 = new Shift { ShiftId = 1, ShiftDate = new DateTime(2026, 10, 1), ShiftType = "A" };
+        var shift2 = new Shift { ShiftId = 2, ShiftDate = new DateTime(2026, 10, 2), ShiftType = "A" };
+        var shift3 = new Shift { ShiftId = 3, ShiftDate = new DateTime(2026, 10, 3), ShiftType = "A" };
+        var shift4 = new Shift { ShiftId = 4, ShiftDate = new DateTime(2026, 10, 4), ShiftType = "A" };
+        context.Shifts.AddRange(shift1, shift2, shift3, shift4);
+
+        var dsm1 = new DsmEntry { DsmEntryId = 1, ShiftId = 1, PumpId = 1, DsmName = "DSM 1", CreatedAt = new DateTime(2026, 10, 1, 8, 0, 0) };
+        var dsm2 = new DsmEntry { DsmEntryId = 2, ShiftId = 2, PumpId = 1, DsmName = "DSM 2", CreatedAt = new DateTime(2026, 10, 2, 8, 0, 0) };
+        var dsm3 = new DsmEntry { DsmEntryId = 3, ShiftId = 3, PumpId = 1, DsmName = "DSM 3", CreatedAt = new DateTime(2026, 10, 3, 8, 0, 0) };
+        var dsm4 = new DsmEntry { DsmEntryId = 4, ShiftId = 4, PumpId = 1, DsmName = "DSM 4", CreatedAt = new DateTime(2026, 10, 4, 8, 0, 0) };
+        context.DsmEntries.AddRange(dsm1, dsm2, dsm3, dsm4);
+
+        var creditor = new Creditor { Name = "OM SAI TRAVELS", IsActive = true, CreatedAt = new DateTime(2026, 10, 1) };
+        context.Creditors.Add(creditor);
+        await context.SaveChangesAsync();
+
+        // Oct 1: Debt 5000
+        context.DebitEntries.Add(new DebitEntry { DsmEntryId = 1, DebtorName = "OM SAI TRAVELS", Amount = 5000, PaymentMethod = "Credit", CreatedAt = new DateTime(2026, 10, 1, 10, 0, 0) });
+        // Oct 2: Debt 2000
+        context.DebitEntries.Add(new DebitEntry { DsmEntryId = 2, DebtorName = "OM SAI TRAVELS", Amount = 2000, PaymentMethod = "Credit", CreatedAt = new DateTime(2026, 10, 2, 10, 0, 0) });
+        // Oct 3: Debt 1500
+        context.DebitEntries.Add(new DebitEntry { DsmEntryId = 3, DebtorName = "OM SAI TRAVELS", Amount = 1500, PaymentMethod = "Credit", CreatedAt = new DateTime(2026, 10, 3, 10, 0, 0) });
+        // Oct 4: Repayment 1000
+        context.CreditorRepayments.Add(new CreditorRepayment { CreditorName = "OM SAI TRAVELS", Amount = 1000, PaymentMode = "Cash", RepaymentDate = new DateTime(2026, 10, 4, 10, 0, 0), CreatedAt = new DateTime(2026, 10, 4, 10, 0, 0) });
+        await context.SaveChangesAsync();
+
+        var vm = _serviceProvider.GetRequiredService<DebtorManagementViewModel>();
+        vm.LedgerDebtorName = "OM SAI TRAVELS";
+        vm.LedgerStartDate = new DateTime(2026, 10, 3);
+        vm.LedgerEndDate = new DateTime(2026, 10, 5);
+        await vm.LoadLedgerAsync();
+
+        // Cumulative before Oct 3 = 5000 + 2000 = 7000
+        Assert.Equal(7000, vm.LedgerOpeningBalance);
+
+        // Period transactions: Oct 3 debt 1500, Oct 4 repayment 1000
+        Assert.Equal(1500, vm.LedgerTotalDebt);
+        Assert.Equal(1000, vm.LedgerTotalRepayments);
+
+        // Closing outstanding balance = 7000 + 1500 - 1000 = 7500
+        Assert.Equal(7500, vm.LedgerOutstandingBalance);
+    }
+
+    [Fact]
+    public async Task DebtorManagement_SaveDebtorAsync_UnresolvableLegacyDate_AbortsWithoutCorruption()
+    {
+        using var context = _serviceProvider.GetRequiredService<FuelProDbContext>();
+        context.Database.EnsureCreated();
+
+        var shift = new Shift { ShiftId = 999, ShiftDate = default, ShiftType = "A" };
+        var dsm = new DsmEntry { DsmEntryId = 999, ShiftId = 999, PumpId = 1, DsmName = "DSM Legacy", CreatedAt = default };
+        context.Shifts.Add(shift);
+        context.DsmEntries.Add(dsm);
+
+        var creditor = new Creditor { Name = "CORRUPT LEGACY CO", IsActive = true, CreatedAt = DateTime.Today };
+        context.Creditors.Add(creditor);
+        await context.SaveChangesAsync();
+
+        // Seed a debit entry with default date and default shift date
+        context.DebitEntries.Add(new DebitEntry
+        {
+            DsmEntryId = 999,
+            DebtorName = "CORRUPT LEGACY CO",
+            Amount = 1000,
+            PaymentMethod = "Credit",
+            Remarks = "Legacy corrupted entry",
+            CreatedAt = default
+        });
+        await context.SaveChangesAsync();
+
+        var vm = _serviceProvider.GetRequiredService<DebtorManagementViewModel>();
+        await vm.LoadDataAsync();
+
+        var row = vm.Debtors.FirstOrDefault(d => d.CreditorId == creditor.CreditorId);
+        Assert.NotNull(row);
+
+        vm.EditDebtorCommand.Execute(row);
+        vm.EditTotalDebt = 2500;
+        vm.EditDebtDate = DateTime.Today;
+
+        await vm.SaveDebtorCommand.ExecuteAsync(null);
+
+        // Check that error message was set and save aborted
+        Assert.Contains("unresolvable transaction date found", vm.DebtorStatusMessage);
+
+        // Verify no adjustment was added
+        using var verifyContext = _serviceProvider.GetRequiredService<FuelProDbContext>();
+        var debitCount = await verifyContext.DebitEntries.CountAsync(d => d.DebtorName == "CORRUPT LEGACY CO");
+        Assert.Equal(1, debitCount); // Still only the original uncorrupted record
+    }
+
     public void Dispose()
     {
         try
@@ -874,9 +1546,33 @@ public class FakeSupabaseDsmService : SupabaseDsmService
 {
     public static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, dynamic> CustomCollections = new();
 
+    private class FakeSubmissionState
+    {
+        public string MachineId { get; set; } = string.Empty;
+        public string ApprovedBy { get; set; } = string.Empty;
+        public string LockId { get; set; } = string.Empty;
+        public string ClaimToken { get; set; } = string.Empty;
+        public int ClaimVersion { get; set; } = 0;
+        public DateTime ClaimedAt { get; set; } = DateTime.UtcNow;
+        public bool IsCompleted { get; set; } = false;
+    }
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, FakeSubmissionState> SubmissionsState = new();
+
+    public static void ResetState()
+    {
+        CustomCollections.Clear();
+        SubmissionsState.Clear();
+    }
+
     public FakeSupabaseDsmService(SyncConfigService syncConfigService) : base(syncConfigService) { }
 
     public override Task<Result<List<dynamic>>> FetchPendingSubmissionsAsync()
+    {
+        return Task.FromResult(Result<List<dynamic>>.Ok(new List<dynamic>()));
+    }
+
+    public override Task<Result<List<dynamic>>> FetchApprovedSubmissionsAsync()
     {
         return Task.FromResult(Result<List<dynamic>>.Ok(new List<dynamic>()));
     }
@@ -924,8 +1620,126 @@ public class FakeSupabaseDsmService : SupabaseDsmService
         return Task.FromResult(Result<dynamic>.Ok(coll));
     }
 
+    public override Task<Result<DsmClaimResult>> ClaimSubmissionWithFencingAsync(
+        Guid submissionId, string machineId, string approvedBy, string lockId)
+    {
+        var state = SubmissionsState.AddOrUpdate(
+            submissionId,
+            id => new FakeSubmissionState
+            {
+                MachineId = machineId,
+                ApprovedBy = approvedBy,
+                LockId = lockId,
+                ClaimVersion = 1,
+                ClaimToken = Guid.NewGuid().ToString("N"),
+                ClaimedAt = DateTime.UtcNow,
+                IsCompleted = false
+            },
+            (id, existing) =>
+            {
+                if (existing.IsCompleted)
+                {
+                    return existing;
+                }
+                if (existing.LockId == lockId && existing.MachineId == machineId)
+                {
+                    return existing;
+                }
+                existing.MachineId = machineId;
+                existing.ApprovedBy = approvedBy;
+                existing.LockId = lockId;
+                existing.ClaimVersion++;
+                existing.ClaimToken = Guid.NewGuid().ToString("N");
+                existing.ClaimedAt = DateTime.UtcNow;
+                return existing;
+            });
+
+        if (state.IsCompleted)
+        {
+            return Task.FromResult(Result<DsmClaimResult>.Fail("This submission has already been fully approved and completed."));
+        }
+
+        var result = new DsmClaimResult
+        {
+            Success = true,
+            Code = "CLAIMED",
+            Message = "Claimed successfully",
+            ClaimToken = state.ClaimToken,
+            ClaimVersion = state.ClaimVersion
+        };
+        return Task.FromResult(Result<DsmClaimResult>.Ok(result));
+    }
+
+    public override async Task<Result> ClaimSubmissionAsync(Guid submissionId, string machineId, string approvedBy, string lockId)
+    {
+        var res = await ClaimSubmissionWithFencingAsync(submissionId, machineId, approvedBy, lockId);
+        return res.Success ? Result.Ok() : Result.Fail(res.Error ?? "Claim failed");
+    }
+
+    public override Task<Result> RenewLeaseAsync(Guid submissionId, string machineId, string claimToken, int? claimVersion = null)
+    {
+        if (SubmissionsState.TryGetValue(submissionId, out var state))
+        {
+            if (state.IsCompleted)
+                return Task.FromResult(Result.Fail("Submission already completed."));
+
+            if (!string.IsNullOrEmpty(claimToken) && state.ClaimToken != claimToken)
+                return Task.FromResult(Result.Fail("Fencing violation: Lease has been reassigned to another claim (stale workstation token)."));
+
+            if (claimVersion.HasValue && state.ClaimVersion != claimVersion.Value)
+                return Task.FromResult(Result.Fail("Fencing violation: Stale claim version."));
+
+            state.ClaimedAt = DateTime.UtcNow;
+            return Task.FromResult(Result.Ok());
+        }
+
+        return Task.FromResult(Result.Ok());
+    }
+
+    public override Task<Result> CompleteSubmissionApprovalAsync(
+        Guid submissionId,
+        string machineId,
+        string lockId,
+        string? claimToken = null,
+        int? claimVersion = null)
+    {
+        if (SubmissionsState.TryGetValue(submissionId, out var state))
+        {
+            if (state.IsCompleted)
+            {
+                return Task.FromResult(Result.Ok());
+            }
+
+            if (!string.IsNullOrEmpty(claimToken) && state.ClaimToken != claimToken)
+                return Task.FromResult(Result.Fail("Fencing violation: Stale claim token."));
+
+            if (claimVersion.HasValue && state.ClaimVersion != claimVersion.Value)
+                return Task.FromResult(Result.Fail("Fencing violation: Stale claim version."));
+
+            state.IsCompleted = true;
+            return Task.FromResult(Result.Ok());
+        }
+
+        return Task.FromResult(Result.Ok());
+    }
+
     public override Task<Result> ApproveSubmissionAsync(Guid submissionId, string approvedBy, string lockId)
     {
+        return Task.FromResult(Result.Ok());
+    }
+
+    public override Task<Result> RejectSubmissionAsync(Guid submissionId, string reason)
+    {
+        return Task.FromResult(Result.Ok());
+    }
+
+    public override Task<Result> ResetSubmissionToPendingAsync(Guid submissionId)
+    {
+        if (SubmissionsState.TryGetValue(submissionId, out var state))
+        {
+            state.IsCompleted = false;
+            state.ClaimToken = string.Empty;
+        }
         return Task.FromResult(Result.Ok());
     }
 

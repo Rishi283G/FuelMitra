@@ -291,7 +291,18 @@ public class DsmEntryService
             var fullResult = await _dsmRepo.GetFullEntryAsync(savedEntry.DsmEntryId);
             if (fullResult.Success && fullResult.Data != null)
             {
-                var calc = _dsmCalculationService.Calculate(ToCalculationDto(fullResult.Data));
+                var calcDto = ToCalculationDto(
+                    fullResult.Data,
+                    paymentFallback: payment,
+                    debitsFallback: debits,
+                    testingFallback: testingEntries,
+                    expensesFallback: expenses,
+                    cashFallback: cashDenominations,
+                    personalDebtorsFallback: personalDebtors,
+                    kpFallback: khandharePetroleumEntries,
+                    qrFallback: qrPayments);
+
+                var calc = _dsmCalculationService.Calculate(calcDto);
                 var totalConnectedGross = (decimal)effectiveConnectedPumps
                     .Sum(slavePumpId => readingsByPump.TryGetValue(slavePumpId, out var sr) ? sr.Sum(x => x.Amount) : 0);
 
@@ -303,12 +314,41 @@ public class DsmEntryService
                                   .Sum(t => t.Amount));
                 var groupTesting = (fullResult.Data.TestingEntries?.Sum(t => (decimal)t.Amount) ?? 0m) + slaveTesting;
 
+                bool hasExplicitPositiveCollections =
+                    (payment != null && (payment.TotalDigitalPayments > 0 || payment.CashDeposit > 0 || payment.Others > 0)) ||
+                    (debits != null && debits.Any(d => d.Amount > 0)) ||
+                    (expenses != null && expenses.Any(e => e.Amount > 0)) ||
+                    (cashDenominations != null && cashDenominations.Any(c => c.TotalAmount > 0)) ||
+                    (qrPayments != null && qrPayments.Any(q => q.Amount > 0));
+
+                bool isCalculationInputIncomplete = false;
+                if (hasExplicitPositiveCollections && calc.TotalCollection == 0)
+                {
+                    isCalculationInputIncomplete = true;
+                    _logger.Warning("Recalculation produced zero TotalCollection despite presence of positive child collection records for DsmEntryId {EntryId}. Overwrite of financial summaries prevented.", savedEntry.DsmEntryId);
+                }
+                else if (calc.TotalCollection == 0 && savedEntry.TotalCollection > 0 && !hasExplicitPositiveCollections &&
+                         (debits?.Count > 0 || expenses?.Count > 0 || payment != null))
+                {
+                    isCalculationInputIncomplete = true;
+                    _logger.Warning("Recalculation produced zero TotalCollection while existing entry has valid TotalCollection ({Existing}) for DsmEntryId {EntryId}. Overwrite of financial summaries prevented.", savedEntry.TotalCollection, savedEntry.DsmEntryId);
+                }
+
                 savedEntry.GrossSales = calc.GrossSales + totalConnectedGross;
-                savedEntry.TotalInDirect = calc.TotalInDirect;
-                savedEntry.TotalCreditors = calc.TotalCreditors;
-                savedEntry.TotalCollection = calc.TotalCollection;
+                if (!isCalculationInputIncomplete)
+                {
+                    savedEntry.TotalInDirect = calc.TotalInDirect;
+                    savedEntry.TotalCreditors = calc.TotalCreditors;
+                    savedEntry.TotalCollection = calc.TotalCollection;
+                }
+                else
+                {
+                    _logger.Warning("Preserving existing financial summary values for DsmEntryId {EntryId}: TotalInDirect={Direct}, TotalCreditors={Creditors}, TotalCollection={Coll}",
+                        savedEntry.DsmEntryId, savedEntry.TotalInDirect, savedEntry.TotalCreditors, savedEntry.TotalCollection);
+                }
+
                 var netGrossSales = savedEntry.GrossSales - groupTesting;
-                savedEntry.Mismatch = calc.TotalCollection - netGrossSales;
+                savedEntry.Mismatch = savedEntry.TotalCollection - netGrossSales;
                 await _dsmRepo.SaveEntryAsync(savedEntry);
 
                 // Automatic DSM Loss (Personal Debtor) handling based on shortage (no tolerance)
@@ -580,9 +620,19 @@ public class DsmEntryService
                     ? (double)primary.NetGrossSales
                     : (totalGrossSales - totalTesting);
 
-                double mismatch = (primary.Mismatch != 0 || primary.TotalCollection > 0)
-                    ? (double)primary.Mismatch
-                    : (totalCollection - netSales);
+                double mismatch;
+                if (primary.TotalCollection > 0)
+                {
+                    mismatch = (double)primary.Mismatch;
+                }
+                else if (calc.TotalCollection > 0)
+                {
+                    mismatch = totalCollection - netSales;
+                }
+                else
+                {
+                    mismatch = (double)primary.Mismatch;
+                }
 
                 summaries.Add(new DsmEntrySummaryDto
                 {
@@ -663,27 +713,61 @@ public class DsmEntryService
         return result.Success ? result.Data! : new List<string>();
     }
 
-    private static DsmEntryDto ToCalculationDto(DsmEntry entry)
+    private static DsmEntryDto ToCalculationDto(
+        DsmEntry entry,
+        PaymentCollection? paymentFallback = null,
+        List<DebitEntry>? debitsFallback = null,
+        List<TestingEntry>? testingFallback = null,
+        List<Expense>? expensesFallback = null,
+        List<CashDenomination>? cashFallback = null,
+        List<DsmPersonalDebtor>? personalDebtorsFallback = null,
+        List<KhandharePetroleumEntry>? kpFallback = null,
+        List<DsmQrPaymentEntry>? qrFallback = null)
     {
-        var cash1Total = entry.CashDenominations.Where(c => c.CashType == "Cash1").Sum(c => c.TotalAmount);
-        var cash2Total = entry.CashDenominations.Where(c => c.CashType == "Cash2").Sum(c => c.TotalAmount);
-        var cash3Total = entry.CashDenominations.Where(c => c.CashType == "Cash3").Sum(c => c.TotalAmount);
+        var effectiveCash = (entry.CashDenominations != null && entry.CashDenominations.Count > 0)
+            ? entry.CashDenominations
+            : (cashFallback ?? new List<CashDenomination>());
 
-        var phonePe = (decimal)((entry.PaymentCollection?.PhonePe ?? 0) + (entry.QrPayments?.Sum(q => q.Amount) ?? 0));
-        var creditCard = (decimal)(entry.PaymentCollection?.CreditCard ?? 0);
-        var petroCard = (decimal)(entry.PaymentCollection?.PetroCard ?? 0);
-        var cashDeposit = (decimal)(cash1Total > 0 ? cash1Total : (entry.PaymentCollection?.CashDeposit ?? 0));
+        var cash1Total = effectiveCash.Where(c => c.CashType == "Cash1").Sum(c => c.TotalAmount);
+        var cash2Total = effectiveCash.Where(c => c.CashType == "Cash2").Sum(c => c.TotalAmount);
+        var cash3Total = effectiveCash.Where(c => c.CashType == "Cash3").Sum(c => c.TotalAmount);
+
+        var effectivePayment = entry.PaymentCollection ?? paymentFallback;
+        var effectiveQr = (entry.QrPayments != null && entry.QrPayments.Count > 0)
+            ? entry.QrPayments
+            : (qrFallback ?? new List<DsmQrPaymentEntry>());
+
+        var phonePe = (decimal)((effectivePayment?.PhonePe ?? 0) + (effectiveQr.Sum(q => q.Amount)));
+        var creditCard = (decimal)(effectivePayment?.CreditCard ?? 0);
+        var petroCard = (decimal)(effectivePayment?.PetroCard ?? 0);
+        var cashDeposit = (decimal)(cash1Total > 0 ? cash1Total : (effectivePayment?.CashDeposit ?? 0));
         var cash3 = (decimal)cash3Total;
-        var dynamicPayments = (decimal)(entry.PaymentCollection?.DynamicItemsTotal ?? 0);
+        var dynamicPayments = (decimal)(effectivePayment?.DynamicItemsTotal ?? 0);
 
         var physicalCash = cash2Total > 0
             ? (decimal)cash2Total
             : Math.Max(0m, entry.TotalInDirect - (phonePe + creditCard + petroCard + cashDeposit + cash3 + dynamicPayments));
 
+        var effectiveDebits = (entry.DebitEntries != null && entry.DebitEntries.Count > 0)
+            ? entry.DebitEntries
+            : (debitsFallback ?? new List<DebitEntry>());
+
+        var effectiveExpenses = (entry.Expenses != null && entry.Expenses.Count > 0)
+            ? entry.Expenses
+            : (expensesFallback ?? new List<Expense>());
+
+        var effectiveKp = (entry.KhandharePetroleumEntries != null && entry.KhandharePetroleumEntries.Count > 0)
+            ? entry.KhandharePetroleumEntries
+            : (kpFallback ?? new List<KhandharePetroleumEntry>());
+
+        var effectiveTesting = (entry.TestingEntries != null && entry.TestingEntries.Count > 0)
+            ? entry.TestingEntries
+            : (testingFallback ?? new List<TestingEntry>());
+
         return new DsmEntryDto
         {
             DSMEntryId = entry.DsmEntryId,
-            NozzleReadings = entry.NozzleReadings.Select(n => new NozzleReadingDto { Amount = (decimal)n.Amount }).ToList(),
+            NozzleReadings = (entry.NozzleReadings ?? new List<NozzleReading>()).Select(n => new NozzleReadingDto { Amount = (decimal)n.Amount }).ToList(),
             PaymentCollection = new PaymentCollectionDto
             {
                 // Others is NOT included in TotalInDirect — it is informational only
@@ -694,15 +778,15 @@ public class DsmEntryService
                 PhysicalCash = physicalCash,
                 Cash3        = cash3,
                 DynamicPayments = dynamicPayments,
-                Others       = (decimal)(entry.PaymentCollection?.Others ?? 0),
-                CollectionReduction = (decimal)(entry.PaymentCollection?.CollectionReduction ?? 0),
-                CollectionReductionRemark = entry.PaymentCollection?.CollectionReductionRemark
+                Others       = (decimal)(effectivePayment?.Others ?? 0),
+                CollectionReduction = (decimal)(effectivePayment?.CollectionReduction ?? 0),
+                CollectionReductionRemark = effectivePayment?.CollectionReductionRemark
             },
-            DebitEntries   = entry.DebitEntries.Select(d => new DebitEntryDto { Amount = (decimal)d.Amount }).ToList(),
-            Expenses       = entry.Expenses.Select(e => new ExpenseDto { Amount = (decimal)e.Amount })
-                                .Concat(entry.KhandharePetroleumEntries?.Select(kp => new ExpenseDto { Amount = (decimal)kp.Amount }) ?? Array.Empty<ExpenseDto>())
+            DebitEntries   = effectiveDebits.Select(d => new DebitEntryDto { Amount = (decimal)d.Amount }).ToList(),
+            Expenses       = effectiveExpenses.Select(e => new ExpenseDto { Amount = (decimal)e.Amount })
+                                .Concat(effectiveKp.Select(kp => new ExpenseDto { Amount = (decimal)kp.Amount }))
                                 .ToList(),
-            TestingEntries = entry.TestingEntries.Select(t => new TestingEntryDto
+            TestingEntries = effectiveTesting.Select(t => new TestingEntryDto
             {
                 FuelType = t.FuelType,
                 Litres = (decimal)t.Litres,
@@ -1044,6 +1128,7 @@ public class DsmEntryService
             var fullEntry = await context.Set<DsmEntry>()
                 .Include(e => e.NozzleReadings)
                 .Include(e => e.PaymentCollection)
+                    .ThenInclude(p => p.Items)
                 .Include(e => e.DebitEntries)
                 .Include(e => e.TestingEntries)
                 .Include(e => e.Expenses)
@@ -1051,6 +1136,7 @@ public class DsmEntryService
                 .Include(e => e.PersonalDebtors)
                 .Include(e => e.KhandharePetroleumEntries)
                 .Include(e => e.QrPayments)
+                .AsNoTracking()
                 .FirstOrDefaultAsync(e => e.DsmEntryId == savedEntryId);
 
             var shiftEntries = await context.Set<DsmEntry>()
@@ -1058,9 +1144,21 @@ public class DsmEntryService
                 .Where(e => e.ShiftId == shift.ShiftId)
                 .ToListAsync();
 
-            if (fullEntry != null)
+            if (fullEntry != null || entry != null)
             {
-                var calc = _dsmCalculationService.Calculate(ToCalculationDto(fullEntry));
+                var targetEntry = fullEntry ?? entry;
+                var calcDto = ToCalculationDto(
+                    targetEntry,
+                    paymentFallback: payment,
+                    debitsFallback: debits,
+                    testingFallback: testingEntries,
+                    expensesFallback: expenses,
+                    cashFallback: cashDenominations,
+                    personalDebtorsFallback: personalDebtors,
+                    kpFallback: khandharePetroleumEntries,
+                    qrFallback: qrPayments);
+
+                var calc = _dsmCalculationService.Calculate(calcDto);
                 var totalConnectedGross = (decimal)effectiveConnectedPumps
                     .Sum(slavePumpId => readingsByPump.TryGetValue(slavePumpId, out var sr) ? sr.Sum(x => x.Amount) : 0);
 
@@ -1068,14 +1166,49 @@ public class DsmEntryService
                     shiftEntries.Where(e => e.PumpId == spId && e.TestingEntries != null)
                                 .SelectMany(e => e.TestingEntries)
                                 .Sum(t => t.Amount));
-                var groupTesting = (fullEntry.TestingEntries?.Sum(t => (decimal)t.Amount) ?? 0m) + slaveTesting;
+                var groupTesting = ((fullEntry?.TestingEntries ?? testingEntries)?.Sum(t => (decimal)t.Amount) ?? 0m) + slaveTesting;
+
+                var effectivePayment = fullEntry?.PaymentCollection ?? payment;
+                var effectiveDebits = (fullEntry?.DebitEntries != null && fullEntry.DebitEntries.Count > 0) ? fullEntry.DebitEntries : debits;
+                var effectiveExpenses = (fullEntry?.Expenses != null && fullEntry.Expenses.Count > 0) ? fullEntry.Expenses : expenses;
+                var effectiveCash = (fullEntry?.CashDenominations != null && fullEntry.CashDenominations.Count > 0) ? fullEntry.CashDenominations : cashDenominations;
+                var effectiveQr = (fullEntry?.QrPayments != null && fullEntry.QrPayments.Count > 0) ? fullEntry.QrPayments : qrPayments;
+
+                bool hasExplicitPositiveCollections =
+                    (effectivePayment != null && (effectivePayment.TotalDigitalPayments > 0 || effectivePayment.CashDeposit > 0 || effectivePayment.Others > 0)) ||
+                    (effectiveDebits != null && effectiveDebits.Any(d => d.Amount > 0)) ||
+                    (effectiveExpenses != null && effectiveExpenses.Any(e => e.Amount > 0)) ||
+                    (effectiveCash != null && effectiveCash.Any(c => c.TotalAmount > 0)) ||
+                    (effectiveQr != null && effectiveQr.Any(q => q.Amount > 0));
+
+                bool isCalculationInputIncomplete = false;
+                if (hasExplicitPositiveCollections && calc.TotalCollection == 0)
+                {
+                    isCalculationInputIncomplete = true;
+                    _logger.Warning("Recalculation produced zero TotalCollection despite presence of positive child collection records for DsmEntryId {EntryId}. Overwrite of financial summaries prevented.", entry.DsmEntryId);
+                }
+                else if (calc.TotalCollection == 0 && entry.TotalCollection > 0 && !hasExplicitPositiveCollections &&
+                         (effectiveDebits?.Count > 0 || effectiveExpenses?.Count > 0 || effectivePayment != null))
+                {
+                    isCalculationInputIncomplete = true;
+                    _logger.Warning("Recalculation produced zero TotalCollection while existing entry has valid TotalCollection ({Existing}) for DsmEntryId {EntryId}. Overwrite of financial summaries prevented.", entry.TotalCollection, entry.DsmEntryId);
+                }
 
                 entry.GrossSales = calc.GrossSales + totalConnectedGross;
-                entry.TotalInDirect = calc.TotalInDirect;
-                entry.TotalCreditors = calc.TotalCreditors;
-                entry.TotalCollection = calc.TotalCollection;
+                if (!isCalculationInputIncomplete)
+                {
+                    entry.TotalInDirect = calc.TotalInDirect;
+                    entry.TotalCreditors = calc.TotalCreditors;
+                    entry.TotalCollection = calc.TotalCollection;
+                }
+                else
+                {
+                    _logger.Warning("Preserving existing financial summary values for DsmEntryId {EntryId}: TotalInDirect={Direct}, TotalCreditors={Creditors}, TotalCollection={Coll}",
+                        entry.DsmEntryId, entry.TotalInDirect, entry.TotalCreditors, entry.TotalCollection);
+                }
+
                 var netGrossSales = entry.GrossSales - groupTesting;
-                entry.Mismatch = calc.TotalCollection - netGrossSales;
+                entry.Mismatch = entry.TotalCollection - netGrossSales;
                 entry.UpdatedAt = DateTime.Now;
 
                 // Automatic DSM Loss (Personal Debtor) handling based on shortage (no tolerance)

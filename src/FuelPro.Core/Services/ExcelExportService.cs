@@ -344,7 +344,8 @@ public class ExcelExportService
         DateTime startDate,
         DateTime endDate,
         FinancialCalculationResult financials,
-        List<(string Category, double Amount)> expenses)
+        List<(string Category, double Amount)> expenses,
+        bool usePurchaseBasedProfit = false)
     {
         return await Task.Run(() =>
         {
@@ -409,12 +410,20 @@ public class ExcelExportService
 
             // Rows
             var fuel = financials.FuelProfit;
+            double hsdEffProfit = usePurchaseBasedProfit ? fuel.HsdPurchaseProfit : fuel.HsdProfit;
+            double msIEffProfit = usePurchaseBasedProfit ? fuel.MsIPurchaseProfit : fuel.MsIProfit;
+            double msIIEffProfit = usePurchaseBasedProfit ? fuel.MsIIPurchaseProfit : fuel.MsIIProfit;
+            double cngEffProfit = usePurchaseBasedProfit ? fuel.CngPurchaseProfit : fuel.CngProfit;
+            double totalEffFuelProfit = usePurchaseBasedProfit ? fuel.TotalPurchaseFuelProfit : fuel.TotalFuelProfit;
+            double effGrossProfit = totalEffFuelProfit + financials.OilProfit.TotalProfit + financials.DefProfit.TotalProfit;
+            double effNetProfit = effGrossProfit - financials.TotalExpenses - financials.DsmBaseSalaries - financials.SalaryAdjustments + financials.ShortRecoveries - financials.OwnerOuterExpenses - financials.TotalPumpExpenses + financials.TotalMismatch;
+
             var fuelRows = new List<(string Name, double Litres, double Margin, double Profit, string Unit)>
             {
-                ("Diesel (HSD)", fuel.HsdLitres, fuel.HsdMargin, fuel.HsdProfit, "L"),
-                ("Petrol (MS-I)", fuel.MsILitres, fuel.MsIMargin, fuel.MsIProfit, "L"),
-                ("Power (MS-II)", fuel.MsIILitres, fuel.MsIIMargin, fuel.MsIIProfit, "L"),
-                ("CNG", fuel.CngLitres, fuel.CngMargin, fuel.CngProfit, "Kg")
+                ("Diesel (HSD)", fuel.HsdLitres, usePurchaseBasedProfit && fuel.HsdLitres > 0 ? hsdEffProfit / fuel.HsdLitres : fuel.HsdMargin, hsdEffProfit, "L"),
+                ("Petrol (MS-I)", fuel.MsILitres, usePurchaseBasedProfit && fuel.MsILitres > 0 ? msIEffProfit / fuel.MsILitres : fuel.MsIMargin, msIEffProfit, "L"),
+                ("Speed (MS-II)", fuel.MsIILitres, usePurchaseBasedProfit && fuel.MsIILitres > 0 ? msIIEffProfit / fuel.MsIILitres : fuel.MsIIMargin, msIIEffProfit, "L"),
+                ("CNG", fuel.CngLitres, usePurchaseBasedProfit && fuel.CngLitres > 0 ? cngEffProfit / fuel.CngLitres : fuel.CngMargin, cngEffProfit, "Kg")
             };
 
             foreach (var r in fuelRows)
@@ -452,7 +461,7 @@ public class ExcelExportService
             worksheet.Cell(currentRow, 3).Value = "-";
             worksheet.Cell(currentRow, 3).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
 
-            worksheet.Cell(currentRow, 4).Value = fuel.TotalFuelProfit;
+            worksheet.Cell(currentRow, 4).Value = totalEffFuelProfit;
             worksheet.Cell(currentRow, 4).Style.Font.Bold = true;
             worksheet.Cell(currentRow, 4).Style.NumberFormat.Format = "₹#,##0.00";
             worksheet.Cell(currentRow, 4).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
@@ -614,12 +623,13 @@ public class ExcelExportService
 
             var summaryData = new List<(string Label, double Val, bool Highlight)>
             {
-                ("Gross Profit (Fuel + Inventory)", financials.GrossProfit, false),
-                ("Total DSM Salaries Paid", financials.TotalDsmSalaries, false),
+                ("Gross Profit (Fuel + Inventory)", effGrossProfit, false),
+                ("Total DSM Salaries (Net of Short Recovery)", financials.TotalDsmSalaries, false),
                 ("Total Operational Expenses", financials.ManagerExpenses, false),
                 ("Total Pump/Owner Expenses", financials.TotalPumpExpenses, false),
+                ("Total Owner Outer Expenses", financials.OwnerOuterExpenses, false),
                 ("Net Mismatch (Excess/Shortage)", financials.TotalMismatch, false),
-                ("Net Profit", financials.NetProfit, true)
+                ("Net Profit", effNetProfit, true)
             };
 
             foreach (var s in summaryData)
@@ -1036,28 +1046,47 @@ public class ExcelExportService
             if (report.DsmSummaryRows != null && report.DsmSummaryRows.Count > 0)
             {
                 WriteSectionHeader(worksheet, ref r, "3. DSM Sales & Collection Summary", maxCols);
-                var dsmHeaders = new List<string> { "DSM Name", "Pump", "PhonePe (M)", "PhonePe (N)", "Card (M)", "Card (N)", "PetroCard", "Bank Cash", "Cash In Hand", "Debtors", "Expenses", "Testing", "Others", "Gross Sales", "Difference" };
+                var dynKeys = report.DsmSummaryRows
+                    .Where(row => row.DynamicCollections != null)
+                    .SelectMany(row => row.DynamicCollections)
+                    .GroupBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
+                    .Where(g => !string.Equals(g.Key, "PETROCARD", StringComparison.OrdinalIgnoreCase) && g.Sum(x => x.Value) > 0.001)
+                    .Select(g => g.Key)
+                    .ToList();
+                var dsmHeaders = new List<string> { "DSM Name", "Pump", "PhonePe (M)", "PhonePe (N)", "Card (M)", "Card (N)", "PetroCard" };
+                foreach (var dk in dynKeys) dsmHeaders.Add(dk.Replace("_", " "));
+                dsmHeaders.AddRange(new[] { "Bank Cash", "Cash In Hand", "Debtors", "Expenses", "Testing", "Others", "Gross Sales", "Difference" });
+                int dsmColCount = dsmHeaders.Count;
                 WriteTableHeaders(worksheet, ref r, dsmHeaders);
 
                 bool isAlt = false;
                 foreach (var row in report.DsmSummaryRows)
                 {
-                    worksheet.Cell(r, 1).Value = row.DsmName;
-                    worksheet.Cell(r, 2).Value = row.PumpId > 0 ? $"Pump #{row.PumpId}" : "—";
-                    worksheet.Cell(r, 3).Value = row.PhonePeMorning; worksheet.Cell(r, 3).Style.NumberFormat.Format = "₹#,##0.00";
-                    worksheet.Cell(r, 4).Value = row.PhonePeNight; worksheet.Cell(r, 4).Style.NumberFormat.Format = "₹#,##0.00";
-                    worksheet.Cell(r, 5).Value = row.CreditCardMorning; worksheet.Cell(r, 5).Style.NumberFormat.Format = "₹#,##0.00";
-                    worksheet.Cell(r, 6).Value = row.CreditCardNight; worksheet.Cell(r, 6).Style.NumberFormat.Format = "₹#,##0.00";
-                    worksheet.Cell(r, 7).Value = row.PetroCard; worksheet.Cell(r, 7).Style.NumberFormat.Format = "₹#,##0.00";
-                    worksheet.Cell(r, 8).Value = row.BankCash; worksheet.Cell(r, 8).Style.NumberFormat.Format = "₹#,##0.00";
-                    worksheet.Cell(r, 9).Value = row.CashInHand; worksheet.Cell(r, 9).Style.NumberFormat.Format = "₹#,##0.00";
-                    worksheet.Cell(r, 10).Value = row.DebtorSales; worksheet.Cell(r, 10).Style.NumberFormat.Format = "₹#,##0.00";
-                    worksheet.Cell(r, 11).Value = row.Expenses; worksheet.Cell(r, 11).Style.NumberFormat.Format = "₹#,##0.00";
-                    worksheet.Cell(r, 12).Value = row.Testing; worksheet.Cell(r, 12).Style.NumberFormat.Format = "₹#,##0.00";
-                    worksheet.Cell(r, 13).Value = row.Others; worksheet.Cell(r, 13).Style.NumberFormat.Format = "₹#,##0.00";
-                    worksheet.Cell(r, 14).Value = row.GrossSale; worksheet.Cell(r, 14).Style.NumberFormat.Format = "₹#,##0.00";
-                    worksheet.Cell(r, 15).Value = row.Difference; worksheet.Cell(r, 15).Style.NumberFormat.Format = "₹#,##0.00";
-                    ApplyRowBorders(worksheet, r, 15, isAlt);
+                    int c = 1;
+                    worksheet.Cell(r, c++).Value = row.DsmName;
+                    worksheet.Cell(r, c++).Value = row.PumpId > 0 ? $"Pump #{row.PumpId}" : "—";
+                    double phM = row.PhonePeMorning > 0 ? row.PhonePeMorning : row.PhonePeDay;
+                    double ccM = (row.CreditCardMorning > 0 ? row.CreditCardMorning : row.CreditCardDay) + row.PhonePeCardMorning + row.PhonePeCardDay;
+                    double ccN = row.CreditCardNight + row.PhonePeCardNight;
+                    worksheet.Cell(r, c).Value = phM; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, c).Value = row.PhonePeNight; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, c).Value = ccM; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, c).Value = ccN; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, c).Value = row.PetroCardTotal > 0 ? row.PetroCardTotal : row.PetroCard; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    foreach (var dk in dynKeys)
+                    {
+                        double dv = row.DynamicCollections != null && row.DynamicCollections.TryGetValue(dk, out var found) ? found : 0;
+                        worksheet.Cell(r, c).Value = dv; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    }
+                    worksheet.Cell(r, c).Value = row.BankCash; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, c).Value = row.CashInHand; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, c).Value = row.DebtorSales; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, c).Value = row.Expenses; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, c).Value = row.Testing; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, c).Value = row.Others; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, c).Value = row.GrossSale; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, c).Value = row.Difference; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    ApplyRowBorders(worksheet, r, dsmColCount, isAlt);
                     isAlt = !isAlt;
                     r++;
                 }
@@ -1065,22 +1094,31 @@ public class ExcelExportService
                 if (report.DsmSummaryTotals != null)
                 {
                     var t = report.DsmSummaryTotals;
-                    worksheet.Cell(r, 1).Value = "TOTAL";
-                    worksheet.Cell(r, 2).Value = "";
-                    worksheet.Cell(r, 3).Value = t.PhonePeMorning; worksheet.Cell(r, 3).Style.NumberFormat.Format = "₹#,##0.00";
-                    worksheet.Cell(r, 4).Value = t.PhonePeNight; worksheet.Cell(r, 4).Style.NumberFormat.Format = "₹#,##0.00";
-                    worksheet.Cell(r, 5).Value = t.CreditCardMorning; worksheet.Cell(r, 5).Style.NumberFormat.Format = "₹#,##0.00";
-                    worksheet.Cell(r, 6).Value = t.CreditCardNight; worksheet.Cell(r, 6).Style.NumberFormat.Format = "₹#,##0.00";
-                    worksheet.Cell(r, 7).Value = t.PetroCard; worksheet.Cell(r, 7).Style.NumberFormat.Format = "₹#,##0.00";
-                    worksheet.Cell(r, 8).Value = t.BankCash; worksheet.Cell(r, 8).Style.NumberFormat.Format = "₹#,##0.00";
-                    worksheet.Cell(r, 9).Value = t.CashInHand; worksheet.Cell(r, 9).Style.NumberFormat.Format = "₹#,##0.00";
-                    worksheet.Cell(r, 10).Value = t.DebtorSales; worksheet.Cell(r, 10).Style.NumberFormat.Format = "₹#,##0.00";
-                    worksheet.Cell(r, 11).Value = t.Expenses; worksheet.Cell(r, 11).Style.NumberFormat.Format = "₹#,##0.00";
-                    worksheet.Cell(r, 12).Value = t.Testing; worksheet.Cell(r, 12).Style.NumberFormat.Format = "₹#,##0.00";
-                    worksheet.Cell(r, 13).Value = t.Others; worksheet.Cell(r, 13).Style.NumberFormat.Format = "₹#,##0.00";
-                    worksheet.Cell(r, 14).Value = t.GrossSale; worksheet.Cell(r, 14).Style.NumberFormat.Format = "₹#,##0.00";
-                    worksheet.Cell(r, 15).Value = t.Difference; worksheet.Cell(r, 15).Style.NumberFormat.Format = "₹#,##0.00";
-                    ApplyTotalRowBorders(worksheet, r, 15);
+                    int c = 1;
+                    worksheet.Cell(r, c++).Value = "TOTAL";
+                    worksheet.Cell(r, c++).Value = "";
+                    double totPhM = t.PhonePeMorning > 0 ? t.PhonePeMorning : t.PhonePeDay;
+                    double totCcM = (t.CreditCardMorning > 0 ? t.CreditCardMorning : t.CreditCardDay) + t.PhonePeCardMorning + t.PhonePeCardDay;
+                    double totCcN = t.CreditCardNight + t.PhonePeCardNight;
+                    worksheet.Cell(r, c).Value = totPhM; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, c).Value = t.PhonePeNight; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, c).Value = totCcM; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, c).Value = totCcN; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, c).Value = t.PetroCardTotal > 0 ? t.PetroCardTotal : t.PetroCard; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    foreach (var dk in dynKeys)
+                    {
+                        double dkSum = report.DsmSummaryRows.Sum(row => row.DynamicCollections != null && row.DynamicCollections.TryGetValue(dk, out var fv) ? fv : 0);
+                        worksheet.Cell(r, c).Value = dkSum; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    }
+                    worksheet.Cell(r, c).Value = t.BankCash; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, c).Value = t.CashInHand; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, c).Value = t.DebtorSales; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, c).Value = t.Expenses; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, c).Value = t.Testing; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, c).Value = t.Others; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, c).Value = t.GrossSale; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, c).Value = t.Difference; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    ApplyTotalRowBorders(worksheet, r, dsmColCount);
                     r++;
                 }
                 r++;
@@ -1326,26 +1364,42 @@ public class ExcelExportService
             if (report.DsmSummaryRows != null && report.DsmSummaryRows.Count > 0)
             {
                 WriteSectionHeader(worksheet, ref r, "2. DSM Sales & Collection Summary", maxCols);
-                var dsmHeaders = new List<string> { "DSM Name", "Shift", "Pump", "PhonePe", "Card", "PetroCard", "Cash 1 (Bank)", "Cash 2 (Hand)", "Debtors", "Expenses", "Testing", "Gross Sales", "Difference" };
+                var dynKeys = report.DsmSummaryRows
+                    .Where(row => row.DynamicCollections != null)
+                    .SelectMany(row => row.DynamicCollections)
+                    .GroupBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
+                    .Where(g => !string.Equals(g.Key, "PETROCARD", StringComparison.OrdinalIgnoreCase) && g.Sum(x => x.Value) > 0.001)
+                    .Select(g => g.Key)
+                    .ToList();
+                var dsmHeaders = new List<string> { "DSM Name", "Shift", "Pump", "PhonePe", "Card", "PetroCard" };
+                foreach (var dk in dynKeys) dsmHeaders.Add(dk.Replace("_", " "));
+                dsmHeaders.AddRange(new[] { "Cash 1 (Bank)", "Cash 2 (Hand)", "Debtors", "Expenses", "Testing", "Gross Sales", "Difference" });
+                int dsmColCount = dsmHeaders.Count;
                 WriteTableHeaders(worksheet, ref r, dsmHeaders);
 
                 bool isAlt = false;
                 foreach (var row in report.DsmSummaryRows)
                 {
-                    worksheet.Cell(r, 1).Value = row.DsmName;
-                    worksheet.Cell(r, 2).Value = string.IsNullOrWhiteSpace(row.ShiftLabel) ? "—" : $"Shift {row.ShiftLabel}";
-                    worksheet.Cell(r, 3).Value = row.PumpId > 0 ? $"Pump #{row.PumpId}" : "—";
-                    worksheet.Cell(r, 4).Value = row.PhonePeTotal; worksheet.Cell(r, 4).Style.NumberFormat.Format = "₹#,##0.00";
-                    worksheet.Cell(r, 5).Value = row.CreditCardTotal; worksheet.Cell(r, 5).Style.NumberFormat.Format = "₹#,##0.00";
-                    worksheet.Cell(r, 6).Value = row.PetroCard; worksheet.Cell(r, 6).Style.NumberFormat.Format = "₹#,##0.00";
-                    worksheet.Cell(r, 7).Value = row.BankCash; worksheet.Cell(r, 7).Style.NumberFormat.Format = "₹#,##0.00";
-                    worksheet.Cell(r, 8).Value = row.CashInHand; worksheet.Cell(r, 8).Style.NumberFormat.Format = "₹#,##0.00";
-                    worksheet.Cell(r, 9).Value = row.DebtorSales; worksheet.Cell(r, 9).Style.NumberFormat.Format = "₹#,##0.00";
-                    worksheet.Cell(r, 10).Value = row.Expenses; worksheet.Cell(r, 10).Style.NumberFormat.Format = "₹#,##0.00";
-                    worksheet.Cell(r, 11).Value = row.Testing; worksheet.Cell(r, 11).Style.NumberFormat.Format = "₹#,##0.00";
-                    worksheet.Cell(r, 12).Value = row.GrossSale; worksheet.Cell(r, 12).Style.NumberFormat.Format = "₹#,##0.00";
-                    worksheet.Cell(r, 13).Value = row.Difference; worksheet.Cell(r, 13).Style.NumberFormat.Format = "₹#,##0.00";
-                    ApplyRowBorders(worksheet, r, 13, isAlt);
+                    int c = 1;
+                    worksheet.Cell(r, c++).Value = row.DsmName;
+                    worksheet.Cell(r, c++).Value = string.IsNullOrWhiteSpace(row.ShiftLabel) ? "—" : $"Shift {row.ShiftLabel}";
+                    worksheet.Cell(r, c++).Value = row.PumpId > 0 ? $"Pump #{row.PumpId}" : "—";
+                    worksheet.Cell(r, c).Value = row.PhonePeTotal; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, c).Value = row.CreditCardTotal; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, c).Value = row.PetroCardTotal > 0 ? row.PetroCardTotal : row.PetroCard; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    foreach (var dk in dynKeys)
+                    {
+                        double dv = row.DynamicCollections != null && row.DynamicCollections.TryGetValue(dk, out var found) ? found : 0;
+                        worksheet.Cell(r, c).Value = dv; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    }
+                    worksheet.Cell(r, c).Value = row.BankCash; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, c).Value = row.CashInHand; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, c).Value = row.DebtorSales; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, c).Value = row.Expenses; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, c).Value = row.Testing; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, c).Value = row.GrossSale; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, c).Value = row.Difference; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    ApplyRowBorders(worksheet, r, dsmColCount, isAlt);
                     isAlt = !isAlt;
                     r++;
                 }
@@ -1353,20 +1407,26 @@ public class ExcelExportService
                 if (report.DsmSummaryTotals != null)
                 {
                     var t = report.DsmSummaryTotals;
-                    worksheet.Cell(r, 1).Value = "TOTAL";
-                    worksheet.Cell(r, 2).Value = "";
-                    worksheet.Cell(r, 3).Value = "";
-                    worksheet.Cell(r, 4).Value = t.PhonePeTotal; worksheet.Cell(r, 4).Style.NumberFormat.Format = "₹#,##0.00";
-                    worksheet.Cell(r, 5).Value = t.CreditCardTotal; worksheet.Cell(r, 5).Style.NumberFormat.Format = "₹#,##0.00";
-                    worksheet.Cell(r, 6).Value = t.PetroCard; worksheet.Cell(r, 6).Style.NumberFormat.Format = "₹#,##0.00";
-                    worksheet.Cell(r, 7).Value = t.BankCash; worksheet.Cell(r, 7).Style.NumberFormat.Format = "₹#,##0.00";
-                    worksheet.Cell(r, 8).Value = t.CashInHand; worksheet.Cell(r, 8).Style.NumberFormat.Format = "₹#,##0.00";
-                    worksheet.Cell(r, 9).Value = t.DebtorSales; worksheet.Cell(r, 9).Style.NumberFormat.Format = "₹#,##0.00";
-                    worksheet.Cell(r, 10).Value = t.Expenses; worksheet.Cell(r, 10).Style.NumberFormat.Format = "₹#,##0.00";
-                    worksheet.Cell(r, 11).Value = t.Testing; worksheet.Cell(r, 11).Style.NumberFormat.Format = "₹#,##0.00";
-                    worksheet.Cell(r, 12).Value = t.GrossSale; worksheet.Cell(r, 12).Style.NumberFormat.Format = "₹#,##0.00";
-                    worksheet.Cell(r, 13).Value = t.Difference; worksheet.Cell(r, 13).Style.NumberFormat.Format = "₹#,##0.00";
-                    ApplyTotalRowBorders(worksheet, r, 13);
+                    int c = 1;
+                    worksheet.Cell(r, c++).Value = "TOTAL";
+                    worksheet.Cell(r, c++).Value = "";
+                    worksheet.Cell(r, c++).Value = "";
+                    worksheet.Cell(r, c).Value = t.PhonePeTotal; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, c).Value = t.CreditCardTotal; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, c).Value = t.PetroCardTotal > 0 ? t.PetroCardTotal : t.PetroCard; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    foreach (var dk in dynKeys)
+                    {
+                        double dkSum = report.DsmSummaryRows.Sum(row => row.DynamicCollections != null && row.DynamicCollections.TryGetValue(dk, out var fv) ? fv : 0);
+                        worksheet.Cell(r, c).Value = dkSum; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    }
+                    worksheet.Cell(r, c).Value = t.BankCash; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, c).Value = t.CashInHand; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, c).Value = t.DebtorSales; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, c).Value = t.Expenses; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, c).Value = t.Testing; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, c).Value = t.GrossSale; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    worksheet.Cell(r, c).Value = t.Difference; worksheet.Cell(r, c++).Style.NumberFormat.Format = "₹#,##0.00";
+                    ApplyTotalRowBorders(worksheet, r, dsmColCount);
                     r++;
                 }
                 r++;

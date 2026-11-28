@@ -121,9 +121,10 @@ public class Dynamic3ShiftContinuityTests
         var repo = new NozzleReadingRepository(context, _cycleService);
 
         var date = new DateTime(2026, 10, 3);
+        var prevDate = date.AddDays(-1);
 
         // Predecessor of B(D) is A(D-1)
-        var shiftA = new Shift { ShiftId = 1, ShiftDate = date.AddDays(-1), ShiftType = "A" };
+        var shiftA = new Shift { ShiftId = 1, ShiftDate = prevDate, ShiftType = "A" };
         var entryA = new DsmEntry { DsmEntryId = 1, ShiftId = 1, Shift = shiftA, PumpId = 1 };
         var readingA = new NozzleReading { NozzleReadingId = 1, DsmEntryId = 1, DsmEntry = entryA, NozzleNumber = 1, ClosingReading = 1000.50 };
         context.AddRange(shiftA, entryA, readingA);
@@ -161,7 +162,7 @@ public class Dynamic3ShiftContinuityTests
     }
 
     [Fact]
-    public async Task Test12_ShiftA_OpeningUses_ShiftC_SameDate_Closing()
+    public async Task Test12_ShiftA_OpeningUses_ShiftC_PreviousDate_Closing()
     {
         var options = new DbContextOptionsBuilder<FuelProDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
@@ -171,9 +172,10 @@ public class Dynamic3ShiftContinuityTests
         var repo = new NozzleReadingRepository(context, _cycleService);
 
         var date = new DateTime(2026, 10, 3);
+        var prevDate = date.AddDays(-1);
 
-        // Predecessor of A(D) is C(D)
-        var shiftC = new Shift { ShiftId = 3, ShiftDate = date, ShiftType = "C" };
+        // Predecessor of A(D) is C(D-1)
+        var shiftC = new Shift { ShiftId = 3, ShiftDate = prevDate, ShiftType = "C" };
         var entryC = new DsmEntry { DsmEntryId = 3, ShiftId = 3, Shift = shiftC, PumpId = 1 };
         var readingC = new NozzleReading { NozzleReadingId = 3, DsmEntryId = 3, DsmEntry = entryC, NozzleNumber = 1, ClosingReading = 2200.25 };
         context.AddRange(shiftC, entryC, readingC);
@@ -557,21 +559,21 @@ public class Dynamic3ShiftContinuityTests
 
         var shiftB = new AgsShiftImport { ImportDate = date, ShiftType = "B", IsActive = true, HsdOpeningStock = 14000, HsdClosingStock = 13000 };
         var shiftC = new AgsShiftImport { ImportDate = date, ShiftType = "C", IsActive = true, HsdOpeningStock = 13000, HsdClosingStock = 12000 };
-        var shiftA = new AgsShiftImport { ImportDate = date, ShiftType = "A", IsActive = true, HsdOpeningStock = 12000, HsdClosingStock = 11000 };
+        var shiftA = new AgsShiftImport { ImportDate = date, ShiftType = "A", IsActive = true, HsdOpeningStock = 15000, HsdClosingStock = 14000 };
 
         var summary = service.Aggregate(date, new List<AgsShiftImport> { shiftB, shiftC, shiftA });
 
         // Day Opening Stock must strictly come from Shift B: 14000
         Assert.Equal(14000, summary.HsdDayOpeningStock);
-        // Day Closing Stock must strictly come from Shift A: 11000
-        Assert.Equal(11000, summary.HsdDayClosingStock);
+        // Day Closing Stock must strictly come from Shift A: 14000
+        Assert.Equal(14000, summary.HsdDayClosingStock);
         Assert.True(summary.ShiftAImported);
         Assert.True(summary.ShiftBImported);
         Assert.True(summary.ShiftCImported);
     }
 
     [Fact]
-    public void Test26_UiDisplayOrder_Is_B_C_A()
+    public void Test26_UiDisplayOrder_Remains_B_C_A()
     {
         var shifts = _cycleService.GetShiftsForDate(DateTime.Today);
         Assert.Equal(new[] { "B", "C", "A" }, shifts);

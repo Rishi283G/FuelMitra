@@ -343,8 +343,8 @@
                             <DataGridTextColumn Header="Pumps" Binding="{Binding AssignedPumpsDisplay}"/>
                             <DataGridTextColumn Header="Gross Sales" Binding="{Binding GrossSales, Converter={StaticResource CurrencyConverter}}" FontWeight="Bold" Foreground="Green"/>
                             <DataGridTextColumn Header="Digital" Binding="{Binding DigitalTotal, Converter={StaticResource CurrencyConverter}}"/>
-                            <DataGridTextColumn Header="Bank Cash" Binding="{Binding CashDeposit, Converter={StaticResource CurrencyConverter}}"/>
-                            <DataGridTextColumn Header="Hand Cash" Binding="{Binding CashInHand, Converter={StaticResource CurrencyConverter}}"/>
+                            <DataGridTextColumn Header="Cash 1" Binding="{Binding CashDeposit, Converter={StaticResource CurrencyConverter}}"/>
+                            <DataGridTextColumn Header="Cash 2" Binding="{Binding CashInHand, Converter={StaticResource CurrencyConverter}}"/>
                             <DataGridTextColumn Header="Debtors" Binding="{Binding Debit, Converter={StaticResource CurrencyConverter}}" Foreground="Red"/>
                             <DataGridTextColumn Header="Expenses" Binding="{Binding Expenses, Converter={StaticResource CurrencyConverter}}" Foreground="Red"/>
                             <DataGridTextColumn Header="Testing" Binding="{Binding Testing, Converter={StaticResource CurrencyConverter}}"/>

@@ -1827,6 +1827,308 @@ public class PwaDsmReconciliationFixTests : IDisposable
         Assert.Equal(5000m, result.TotalCollection);
         Assert.Equal(0m, result.Mismatch);
     }
+
+    [Fact]
+    public async Task Regression_PineLabsCard_OtpOnly_ContributesExactlyOnce_AcrossApprovalAndEdit()
+    {
+        var queueVm = _serviceProvider.GetRequiredService<DsmApprovalQueueViewModel>();
+        var sub = new DsmPendingSubmission
+        {
+            Id = Guid.NewGuid(),
+            DsmName = "PineLabs OTP Operator",
+            ShiftDate = DateTime.Today,
+            ShiftType = "A",
+            PumpId = 1,
+            SubmittedAt = DateTime.UtcNow,
+            MetadataJson = JsonConvert.SerializeObject(new
+            {
+                cardSwipeDetails = new[]
+                {
+                    new { mode = "PINELABS_CARD", amount = 1250.0, tid = "PL-OTP-1", batch = "B10", otp = "9911", slot = "Morning" }
+                }
+            })
+        };
+
+        queueVm.SelectedSubmission = sub;
+        await Task.Delay(100);
+        while (queueVm.IsLoadingDetails) await Task.Delay(50);
+
+        queueVm.NozzleReadings.Clear();
+        queueVm.NozzleReadings.Add(new DsmNozzleRow { NozzleId = 1, FuelType = "MS-I", OpeningReading = 100.0, ClosingReading = 120.0, Rate = 100.0 }); // 2000 gross
+        queueVm.NozzleReadings.Add(new DsmNozzleRow { NozzleId = 5, FuelType = "Speed", OpeningReading = 50.0, ClosingReading = 50.0, Rate = 30.0 }); // 0 gross (Pump 1 2nd nozzle valid for Edit save)
+        queueVm.SubmissionTestingEntries.Clear();
+        queueVm.DebtorEntries.Clear();
+        queueVm.SubmissionExpenses.Clear();
+        queueVm.KhandhareEntries.Clear();
+        queueVm.CashAmount = 750.0;
+        queueVm.CashDepositAmount = 0.0;
+        queueVm.UpiAmount = 0.0;
+        queueVm.CardAmount = 0.0;
+        queueVm.PetroCardAmount = 0.0;
+        queueVm.ExpenseAmount = 0.0;
+        queueVm.CreditAmount = 0.0;
+        queueVm.OthersAmount = 0.0;
+
+        typeof(DsmApprovalQueueViewModel).GetMethod("RecalculateTotals", BindingFlags.NonPublic | BindingFlags.Instance)?.Invoke(queueVm, null);
+
+        Assert.Equal(1250.0, queueVm.PineLabsAmount, precision: 2);
+        Assert.Equal(2000.0, queueVm.TotalCollections, precision: 2);
+        Assert.Equal(0.0, queueVm.MismatchAmount, precision: 2);
+
+        await queueVm.ApproveCommand.ExecuteAsync(null);
+
+        using var db = _serviceProvider.GetRequiredService<FuelProDbContext>();
+        var saved = await db.DsmEntries.Include(e => e.PaymentCollection).ThenInclude(p => p!.Items)
+            .FirstOrDefaultAsync(e => e.DsmName == "PineLabs OTP Operator");
+        Assert.NotNull(saved);
+        Assert.Equal(2000m, saved!.TotalCollection);
+        Assert.Equal(0.0, saved.PaymentCollection!.CreditCard);
+
+        var repo = _serviceProvider.GetRequiredService<IDsmEntryRepository>();
+        var fullEntry = (await repo.GetFullEntryAsync(saved.DsmEntryId)).Data!;
+        var editVm = _serviceProvider.GetRequiredService<DsmEntryViewModel>();
+        await editVm.HydrateFromEntryAsync(fullEntry);
+
+        Assert.Equal(2000.0, editVm.FinalAdjusted, precision: 2);
+        Assert.Null(editVm.CreditCardMorning);
+    }
+
+    [Fact]
+    public async Task Regression_PineLabsCard_TidOnly_ContributesExactlyOnce_AcrossApprovalAndEdit()
+    {
+        var queueVm = _serviceProvider.GetRequiredService<DsmApprovalQueueViewModel>();
+        var sub = new DsmPendingSubmission
+        {
+            Id = Guid.NewGuid(),
+            DsmName = "PineLabs TID Operator",
+            ShiftDate = DateTime.Today,
+            ShiftType = "A",
+            PumpId = 1,
+            SubmittedAt = DateTime.UtcNow,
+            MetadataJson = JsonConvert.SerializeObject(new
+            {
+                formatVersion = 3,
+                dynamicItems = new[]
+                {
+                    new { transactionId = "tid-pl-1", collectionTypeCode = "PINELABS_CARD", amount = 850.0, tid = "PL01", batch = "B01", otp = "", slot = "Morning" },
+                    new { transactionId = "tid-pl-2", collectionTypeCode = "PINELABS_CARD", amount = 850.0, tid = "PL02", batch = "B01", otp = "", slot = "Morning" }
+                }
+            })
+        };
+
+        queueVm.SelectedSubmission = sub;
+        await Task.Delay(100);
+        while (queueVm.IsLoadingDetails) await Task.Delay(50);
+
+        queueVm.NozzleReadings.Clear();
+        queueVm.NozzleReadings.Add(new DsmNozzleRow { NozzleId = 1, FuelType = "MS-I", OpeningReading = 100.0, ClosingReading = 120.0, Rate = 100.0 }); // 2000 gross
+        queueVm.NozzleReadings.Add(new DsmNozzleRow { NozzleId = 5, FuelType = "Speed", OpeningReading = 50.0, ClosingReading = 50.0, Rate = 30.0 }); // 0 gross (Pump 1 2nd nozzle valid for Edit save)
+        queueVm.SubmissionTestingEntries.Clear();
+        queueVm.DebtorEntries.Clear();
+        queueVm.SubmissionExpenses.Clear();
+        queueVm.KhandhareEntries.Clear();
+        queueVm.CashAmount = 300.0;
+        queueVm.CashDepositAmount = 0.0;
+        queueVm.UpiAmount = 0.0;
+        queueVm.CardAmount = 0.0;
+        queueVm.PetroCardAmount = 0.0;
+        queueVm.ExpenseAmount = 0.0;
+        queueVm.CreditAmount = 0.0;
+        queueVm.OthersAmount = 0.0;
+
+        typeof(DsmApprovalQueueViewModel).GetMethod("RecalculateTotals", BindingFlags.NonPublic | BindingFlags.Instance)?.Invoke(queueVm, null);
+
+        Assert.Equal(1700.0, queueVm.PineLabsAmount, precision: 2);
+        Assert.Equal(2000.0, queueVm.TotalCollections, precision: 2);
+
+        await queueVm.ApproveCommand.ExecuteAsync(null);
+
+        using var db = _serviceProvider.GetRequiredService<FuelProDbContext>();
+        var saved = await db.DsmEntries.Include(e => e.PaymentCollection).ThenInclude(p => p!.Items)
+            .FirstOrDefaultAsync(e => e.DsmName == "PineLabs TID Operator");
+        Assert.NotNull(saved);
+        Assert.Equal(2000m, saved!.TotalCollection);
+
+        var repo = _serviceProvider.GetRequiredService<IDsmEntryRepository>();
+        var fullEntry = (await repo.GetFullEntryAsync(saved.DsmEntryId)).Data!;
+        var editVm = _serviceProvider.GetRequiredService<DsmEntryViewModel>();
+        await editVm.HydrateFromEntryAsync(fullEntry);
+
+        Assert.Equal(2000.0, editVm.FinalAdjusted, precision: 2);
+        Assert.Equal(2, editVm.TidTransactions.Count(t => PaymentCollection.NormalizeCollectionTypeCode(t.CollectionTypeCode) == "PINELABS_CARD"));
+    }
+
+    [Fact]
+    public async Task Regression_PineLabsCard_ExclusiveOtpReplacesStaleManualScalar_AcrossApprovalSaveAndReopen()
+    {
+        var queueVm = _serviceProvider.GetRequiredService<DsmApprovalQueueViewModel>();
+        var sub = new DsmPendingSubmission
+        {
+            Id = Guid.NewGuid(),
+            DsmName = "PineLabs OTP Exclusive Operator",
+            ShiftDate = DateTime.Today,
+            ShiftType = "A",
+            PumpId = 1,
+            SubmittedAt = DateTime.UtcNow,
+            MetadataJson = JsonConvert.SerializeObject(new
+            {
+                formatVersion = 3,
+                manualDynamicAmounts = new Dictionary<string, double> { ["PINELABS_CARD"] = 400.0 },
+                machineTransactions = new[]
+                {
+                    new { transactionId = "otp-pl-1", collectionTypeCode = "PINELABS_CARD", amount = 600.0, tid = "PL-OTP-M1", batch = "B10", otp = "445566", slot = "Morning" }
+                }
+            })
+        };
+
+        queueVm.SelectedSubmission = sub;
+        await Task.Delay(100);
+        while (queueVm.IsLoadingDetails) await Task.Delay(50);
+
+        queueVm.NozzleReadings.Clear();
+        queueVm.NozzleReadings.Add(new DsmNozzleRow { NozzleId = 1, FuelType = "MS-I", OpeningReading = 100.0, ClosingReading = 120.0, Rate = 100.0 }); // 2000 gross
+        queueVm.NozzleReadings.Add(new DsmNozzleRow { NozzleId = 5, FuelType = "Speed", OpeningReading = 50.0, ClosingReading = 50.0, Rate = 30.0 }); // 0 gross (Pump 1 2nd nozzle valid for Edit save)
+        queueVm.SubmissionTestingEntries.Clear();
+        queueVm.DebtorEntries.Clear();
+        queueVm.SubmissionExpenses.Clear();
+        queueVm.KhandhareEntries.Clear();
+        queueVm.CashAmount = 1400.0;
+        queueVm.CashDepositAmount = 0.0;
+        queueVm.UpiAmount = 0.0;
+        queueVm.CardAmount = 0.0;
+        queueVm.PetroCardAmount = 0.0;
+        queueVm.ExpenseAmount = 0.0;
+        queueVm.CreditAmount = 0.0;
+        queueVm.OthersAmount = 0.0;
+
+        typeof(DsmApprovalQueueViewModel).GetMethod("RecalculateTotals", BindingFlags.NonPublic | BindingFlags.Instance)?.Invoke(queueVm, null);
+
+        // Under 9b0a2f7 exclusive TID/OTP rule, OTP (600) replaces stale ManualAmount (400) -> 600, NOT 1000 and NOT double-counted in CreditCard
+        Assert.Equal(600.0, queueVm.PineLabsAmount, precision: 2);
+        Assert.Equal(2000.0, queueVm.TotalCollections, precision: 2);
+        Assert.Equal(0.0, queueVm.MismatchAmount, precision: 2);
+
+        await queueVm.ApproveCommand.ExecuteAsync(null);
+
+        using var db = _serviceProvider.GetRequiredService<FuelProDbContext>();
+        var saved = await db.DsmEntries.Include(e => e.PaymentCollection).ThenInclude(p => p!.Items)
+            .FirstOrDefaultAsync(e => e.DsmName == "PineLabs OTP Exclusive Operator");
+        Assert.NotNull(saved);
+        Assert.Equal(2000m, saved!.TotalCollection);
+        Assert.Equal(0.0, saved.PaymentCollection!.CreditCard);
+        Assert.Equal(600.0, saved.PaymentCollection.DynamicItemsTotal, precision: 2);
+
+        var repo = _serviceProvider.GetRequiredService<IDsmEntryRepository>();
+        var fullEntry = (await repo.GetFullEntryAsync(saved.DsmEntryId)).Data!;
+        var editVm = _serviceProvider.GetRequiredService<DsmEntryViewModel>();
+        await editVm.HydrateFromEntryAsync(fullEntry);
+
+        var pineRow = editVm.DynamicCollections.First(d => PaymentCollection.NormalizeCollectionTypeCode(d.Code) == "PINELABS_CARD");
+        Assert.Equal(600.0, pineRow.OtpAmount, precision: 2);
+        Assert.Equal(600.0, pineRow.Amount ?? 0.0, precision: 2);
+        Assert.Equal(2000.0, editVm.FinalAdjusted, precision: 2);
+
+        // Modify Cash2 and save, then reopen on a clean ViewModel instance
+        editVm.Cash2.Denom500 = 3; // 1500
+        await editVm.SaveEntryCommand.ExecuteAsync(null);
+        Assert.True(editVm.IsSaved);
+
+        var reopenedEntry = (await repo.GetFullEntryAsync(saved.DsmEntryId)).Data!;
+        var reopenVm = _serviceProvider.GetRequiredService<DsmEntryViewModel>();
+        await reopenVm.HydrateFromEntryAsync(reopenedEntry);
+
+        var reopenPine = reopenVm.DynamicCollections.First(d => PaymentCollection.NormalizeCollectionTypeCode(d.Code) == "PINELABS_CARD");
+        Assert.Equal(600.0, reopenPine.OtpAmount, precision: 2);
+        Assert.Equal(600.0, reopenPine.Amount ?? 0.0, precision: 2);
+        Assert.Equal(2100.0, reopenVm.FinalAdjusted, precision: 2);
+        Assert.Null(reopenVm.CreditCardMorning);
+    }
+
+    [Fact]
+    public async Task Regression_PineLabsCard_MultipleIdenticalTids_WithStaleManualScalar_ExclusiveRule_PreservedAcrossSaveAndReopen()
+    {
+        var queueVm = _serviceProvider.GetRequiredService<DsmApprovalQueueViewModel>();
+        var sub = new DsmPendingSubmission
+        {
+            Id = Guid.NewGuid(),
+            DsmName = "PineLabs Multi TID Exclusive Operator",
+            ShiftDate = DateTime.Today,
+            ShiftType = "A",
+            PumpId = 1,
+            SubmittedAt = DateTime.UtcNow,
+            MetadataJson = JsonConvert.SerializeObject(new
+            {
+                formatVersion = 3,
+                manualDynamicAmounts = new Dictionary<string, double> { ["PINELABS_CARD"] = 500.0 },
+                manualTidTransactions = new[]
+                {
+                    new { transactionId = "tid-dup-1", collectionTypeCode = "PINELABS_CARD", amount = 850.0, tid = "PL01", batch = "B01", slot = "Morning" },
+                    new { transactionId = "tid-dup-2", collectionTypeCode = "PINELABS_CARD", amount = 850.0, tid = "PL02", batch = "B01", slot = "Morning" }
+                }
+            })
+        };
+
+        queueVm.SelectedSubmission = sub;
+        await Task.Delay(100);
+        while (queueVm.IsLoadingDetails) await Task.Delay(50);
+
+        queueVm.NozzleReadings.Clear();
+        queueVm.NozzleReadings.Add(new DsmNozzleRow { NozzleId = 1, FuelType = "MS-I", OpeningReading = 100.0, ClosingReading = 125.0, Rate = 100.0 }); // 2500 gross
+        queueVm.NozzleReadings.Add(new DsmNozzleRow { NozzleId = 5, FuelType = "Speed", OpeningReading = 50.0, ClosingReading = 50.0, Rate = 30.0 }); // 0 gross (Pump 1 2nd nozzle valid for Edit save)
+        queueVm.SubmissionTestingEntries.Clear();
+        queueVm.DebtorEntries.Clear();
+        queueVm.SubmissionExpenses.Clear();
+        queueVm.KhandhareEntries.Clear();
+        queueVm.CashAmount = 800.0;
+        queueVm.CashDepositAmount = 0.0;
+        queueVm.UpiAmount = 0.0;
+        queueVm.CardAmount = 0.0;
+        queueVm.PetroCardAmount = 0.0;
+        queueVm.ExpenseAmount = 0.0;
+        queueVm.CreditAmount = 0.0;
+        queueVm.OthersAmount = 0.0;
+
+        typeof(DsmApprovalQueueViewModel).GetMethod("RecalculateTotals", BindingFlags.NonPublic | BindingFlags.Instance)?.Invoke(queueVm, null);
+
+        // Under 9b0a2f7 exclusive TID/OTP rule, 2 distinct TIDs (850 + 850 = 1700) replace stale ManualAmount (500) -> 1700
+        Assert.Equal(1700.0, queueVm.PineLabsAmount, precision: 2);
+        Assert.Equal(2500.0, queueVm.TotalCollections, precision: 2);
+        Assert.Equal(0.0, queueVm.MismatchAmount, precision: 2);
+
+        await queueVm.ApproveCommand.ExecuteAsync(null);
+
+        using var db = _serviceProvider.GetRequiredService<FuelProDbContext>();
+        var saved = await db.DsmEntries.Include(e => e.PaymentCollection).ThenInclude(p => p!.Items)
+            .FirstOrDefaultAsync(e => e.DsmName == "PineLabs Multi TID Exclusive Operator");
+        Assert.NotNull(saved);
+        Assert.Equal(2500m, saved!.TotalCollection);
+        Assert.Equal(1700.0, saved.PaymentCollection!.DynamicItemsTotal, precision: 2);
+
+        var repo = _serviceProvider.GetRequiredService<IDsmEntryRepository>();
+        var fullEntry = (await repo.GetFullEntryAsync(saved.DsmEntryId)).Data!;
+        var editVm = _serviceProvider.GetRequiredService<DsmEntryViewModel>();
+        await editVm.HydrateFromEntryAsync(fullEntry);
+
+        var pineRow = editVm.DynamicCollections.First(d => PaymentCollection.NormalizeCollectionTypeCode(d.Code) == "PINELABS_CARD");
+        Assert.Equal(1700.0, pineRow.TidAmount, precision: 2);
+        Assert.Equal(1700.0, pineRow.Amount ?? 0.0, precision: 2);
+        Assert.Equal(2500.0, editVm.FinalAdjusted, precision: 2);
+
+        editVm.Cash2.Denom200 = 5; // 1000 -> Total 2700
+        await editVm.SaveEntryCommand.ExecuteAsync(null);
+        Assert.True(editVm.IsSaved);
+
+        var reopenedEntry = (await repo.GetFullEntryAsync(saved.DsmEntryId)).Data!;
+        var reopenVm = _serviceProvider.GetRequiredService<DsmEntryViewModel>();
+        await reopenVm.HydrateFromEntryAsync(reopenedEntry);
+
+        var reopenPine = reopenVm.DynamicCollections.First(d => PaymentCollection.NormalizeCollectionTypeCode(d.Code) == "PINELABS_CARD");
+        Assert.Equal(1700.0, reopenPine.TidAmount, precision: 2);
+        Assert.Equal(1700.0, reopenPine.Amount ?? 0.0, precision: 2);
+        Assert.Equal(2, reopenVm.TidTransactions.Count(t => PaymentCollection.NormalizeCollectionTypeCode(t.CollectionTypeCode) == "PINELABS_CARD"));
+        Assert.Equal(2700.0, reopenVm.FinalAdjusted, precision: 2);
+        Assert.Null(reopenVm.CreditCardMorning);
+    }
 }
 
 

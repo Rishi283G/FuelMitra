@@ -405,6 +405,55 @@ function renderData(){
     recTotal += oilDefTot;
   }
 
+  // --- PineLab Card Reconciliation Safeguard ---
+  function isPineLabCodeOrName(s) {
+    if (!s) return false;
+    var clean = (s + '').toUpperCase().replace(/[\s_\-]/g, '');
+    return clean.indexOf('PINELAB') !== -1 || (clean.indexOf('PINE') !== -1 && clean.indexOf('CARD') !== -1);
+  }
+
+  var dsmPineLabTotal = 0;
+  (d.dsmSummaryRows || d.dsmEntries || []).forEach(function(r) {
+    var rPine = getVal(r, 'pineLabsCard') || 0;
+    var dynMap = getVal(r, 'dynamicCollections') || {};
+    var dynPine = 0;
+    for (var k in dynMap) {
+      if (isPineLabCodeOrName(k)) {
+        dynPine += (dynMap[k] || 0);
+      }
+    }
+    var rowPine = (rPine > 0 && dynPine > 0) ? Math.max(rPine, dynPine) : (rPine > 0 ? rPine : dynPine);
+    dsmPineLabTotal += rowPine;
+  });
+
+  var pineEntry = (d.collectionBreakdown || []).find(function(c) {
+    return isPineLabCodeOrName(c.category) || isPineLabCodeOrName(c.descriptionWithBreakdown);
+  });
+  var currentBreakdownPineAmt = pineEntry ? (parseFloat(pineEntry.amount) || 0) : 0;
+
+  if (dsmPineLabTotal > 0 && currentBreakdownPineAmt < dsmPineLabTotal - 0.01) {
+    var missingPineLab = dsmPineLabTotal - currentBreakdownPineAmt;
+    if (pineEntry) {
+      pineEntry.amount = dsmPineLabTotal;
+      pineEntry.baseAmount = dsmPineLabTotal;
+    } else {
+      d.collectionBreakdown = d.collectionBreakdown || [];
+      d.collectionBreakdown.push({
+        category: 'PineLab Card',
+        descriptionWithBreakdown: 'PineLab Card',
+        amount: dsmPineLabTotal,
+        baseAmount: dsmPineLabTotal,
+        recoveryAmount: 0
+      });
+    }
+
+    recTotal += missingPineLab;
+    d.actualCollection = (d.actualCollection !== undefined ? d.actualCollection : 0) + missingPineLab;
+    if (d.difference !== undefined && d.difference !== null) {
+      d.difference += missingPineLab;
+    }
+  }
+
   var totalL = d.totalFuelLitres || 0;
   var diff = (d.difference !== undefined && d.difference !== null) ? d.difference : (recTotal - expTarget);
 
@@ -427,11 +476,11 @@ function renderData(){
   var phObj = hasColConfig ? (colTypes.find(function(c){ return c.isActive && normColCode(c.code) === 'PHONEPE'; }) || colTypes.find(function(c){ return normColCode(c.code) === 'PHONEPE'; })) : { isActive: true, displayName: 'PhonePe' };
   var ccObj = hasColConfig ? (colTypes.find(function(c){ 
     var nc = normColCode(c.code);
-    return c.isActive && (nc.indexOf('PINELAB') >= 0 || nc.indexOf('CREDITCARD') >= 0 || nc === 'CARD' || nc.indexOf('DEBIT') >= 0); 
+    return c.isActive && (nc.indexOf('CREDITCARD') >= 0 || nc === 'CARD' || nc.indexOf('DEBIT') >= 0);
   }) || colTypes.find(function(c){ 
     var nc = normColCode(c.code);
-    return nc.indexOf('PINELAB') >= 0 || nc.indexOf('CREDITCARD') >= 0 || nc === 'CARD' || nc.indexOf('DEBIT') >= 0; 
-  })) : { isActive: true, displayName: 'PineLab Card' };
+    return nc.indexOf('CREDITCARD') >= 0 || nc === 'CARD' || nc.indexOf('DEBIT') >= 0;
+  })) : { isActive: false, displayName: 'Credit / Debit Card' };
   var pcObj = hasColConfig ? (colTypes.find(function(c){ 
     var nc = normColCode(c.code);
     return c.isActive && nc.indexOf('PETRO') >= 0; 
@@ -440,21 +489,53 @@ function renderData(){
     return nc.indexOf('PETRO') >= 0; 
   })) : { isActive: true, displayName: 'PetroCard' };
   
-  var isPhActive = phObj ? phObj.isActive !== false : true;
-  var isCcActive = ccObj ? ccObj.isActive !== false : true;
-  var isPcActive = pcObj ? pcObj.isActive !== false : true;
+  var dsmRowsList = d.dsmSummaryRows || d.dsmEntries || [];
+  var hasAnyPhonePeData = dsmRowsList.some(function(r){
+    return ((getVal(r, 'phonePeTotal') || 0) + (getVal(r, 'phonePeMorning') || 0) + (getVal(r, 'phonePeNight') || 0) + (getVal(r, 'phonePeDay') || 0) + (getVal(r, 'phonePe') || 0)) > 0.001;
+  });
+  var hasAnyCardData = dsmRowsList.some(function(r){
+    var rowCc = (getVal(r, 'creditCardPureTotal') || getVal(r, 'creditCard') || (getVal(r, 'creditCardMorning') || 0) + (getVal(r, 'creditCardNight') || 0) + (getVal(r, 'creditCardDay') || 0) || 0);
+    var rowPpc = (getVal(r, 'phonePeCardTotal') || ((getVal(r, 'phonePeCardMorning') || 0) + (getVal(r, 'phonePeCardNight') || 0) + (getVal(r, 'phonePeCardDay') || 0)) || 0);
+    return (rowCc + rowPpc) > 0.001;
+  });
+  var hasAnyPetroData = dsmRowsList.some(function(r){
+    var dm = getVal(r, 'dynamicCollections') || {};
+    var pv = (getVal(r, 'petroCardTotal') || getVal(r, 'petroCard') || 0) + (dm['PETROCARD'] || dm['PETRO'] || 0);
+    return pv > 0.001;
+  });
+
+  var isPhActive = (phObj ? phObj.isActive !== false : true) || hasAnyPhonePeData;
+  var isCcActive = (ccObj ? ccObj.isActive === true : false) || hasAnyCardData;
+  var isPcActive = (pcObj ? pcObj.isActive !== false : true) || hasAnyPetroData;
 
   var phTitle = phObj ? phObj.displayName : 'PhonePe';
-  var ccTitle = ccObj ? ccObj.displayName : 'PineLab Card';
+  var ccTitle = ccObj ? ccObj.displayName : 'Credit / Debit Card';
   var pcTitle = pcObj ? pcObj.displayName : 'PetroCard';
 
-  var excludeNorms = ['PHONEPE', 'PINELAB', 'PINELABS', 'PINELABCARD', 'CREDITCARD', 'CREDITDEBITCARD', 'CARD', 'PETROCARD', 'PETRO', 'CASHDEPOSIT', 'CASHINHAND', 'CASH3', 'FINALCASH'];
+  var excludeNorms = ['PHONEPE', 'CREDITCARD', 'CREDITDEBITCARD', 'CARD', 'PETROCARD', 'PETRO', 'CASHDEPOSIT', 'CASHINHAND', 'CASH3', 'FINALCASH'];
   if (phObj) excludeNorms.push(normColCode(phObj.code));
   if (ccObj) excludeNorms.push(normColCode(ccObj.code));
   if (pcObj) excludeNorms.push(normColCode(pcObj.code));
 
   var dynActiveTypes = colTypes.filter(function(c){ 
     return c.isActive && excludeNorms.indexOf(normColCode(c.code)) < 0; 
+  });
+  var seenDynNorms = {};
+  dynActiveTypes.forEach(function(dt){ seenDynNorms[normColCode(dt.code)] = true; });
+  dsmRowsList.forEach(function(r){
+    var dm = getVal(r, 'dynamicCollections') || {};
+    Object.keys(dm).forEach(function(dk){
+      var val = dm[dk] || 0;
+      var nk = normColCode(dk);
+      if (val > 0.001 && excludeNorms.indexOf(nk) < 0 && !seenDynNorms[nk]) {
+        seenDynNorms[nk] = true;
+        var matchedCfg = colTypes.find(function(c){ return normColCode(c.code) === nk; });
+        dynActiveTypes.push({
+          code: matchedCfg ? matchedCfg.code : dk,
+          displayName: matchedCfg ? matchedCfg.displayName : dk.replace(/_/g, ' ')
+        });
+      }
+    });
   });
 
   var hasCash3 = (d.isCash3Enabled !== false) || (d.cash3 && ((d.cash3.grandTotal || 0) > 0 || (d.cash3.total || 0) > 0 || (d.cash3.cashDepositTotal || 0) > 0)) ||
@@ -484,16 +565,12 @@ function renderData(){
   (d.dsmSummaryRows||d.dsmEntries||[]).forEach(function(r){
     var tr=document.createElement('tr');
     var ph = getVal(r, 'phonePeTotal') || (getVal(r, 'phonePeMorning')||0) + (getVal(r, 'phonePeNight')||0) + (getVal(r, 'phonePeDay')||0) + (getVal(r, 'phonePe')||0);
-    var cc = getVal(r, 'creditCardTotal');
-    if (cc === undefined || cc === null || isNaN(cc) || cc === 0) {
-      var dynM = getVal(r, 'dynamicCollections') || {};
-      var pineVal = getVal(r, 'pineLabsCard') || dynM['PINELABS_CARD'] || dynM['PINELAB_CARD'] || dynM['PINELABS'] || dynM['PINELAB'] || 0;
-      if (cc === 0 && pineVal > 0) {
-        cc = pineVal;
-      } else if (cc === undefined || cc === null || isNaN(cc)) {
-        cc = (getVal(r, 'creditCard')||0) + (getVal(r, 'creditCardMorning')||0) + (getVal(r, 'creditCardNight')||0) + (getVal(r, 'creditCardDay')||0) + (getVal(r, 'phonePeCard')||0) + (getVal(r, 'phonePeCardMorning')||0) + (getVal(r, 'phonePeCardNight')||0) + (getVal(r, 'phonePeCardDay')||0) + pineVal;
-      }
+    var cc = getVal(r, 'creditCardPureTotal') || getVal(r, 'creditCard') || 0;
+    if (!cc) {
+      cc = (getVal(r, 'creditCardMorning')||0) + (getVal(r, 'creditCardNight')||0) + (getVal(r, 'creditCardDay')||0);
     }
+    var ppc = getVal(r, 'phonePeCardTotal') || ((getVal(r, 'phonePeCardMorning')||0) + (getVal(r, 'phonePeCardNight')||0) + (getVal(r, 'phonePeCardDay')||0)) || 0;
+    cc += ppc;
     var pc = getVal(r, 'petroCardTotal');
     if (pc === undefined || pc === null || isNaN(pc) || pc === 0) {
       var dynM = getVal(r, 'dynamicCollections') || {};
@@ -523,7 +600,7 @@ function renderData(){
         else if ((dt.code||'').toUpperCase() === 'PAYTM') amt = getVal(r, 'paytm') || 0;
         else if ((dt.code||'').toUpperCase() === 'QR') amt = getVal(r, 'qrPayment') || 0;
         else if ((dt.code||'').toUpperCase() === 'MOBIKWIK') amt = getVal(r, 'mobikwik') || 0;
-        else if ((dt.code||'').toUpperCase().indexOf('PINELAB') !== -1) amt = getVal(r, 'pineLabsCard') || 0;
+        else if ((dt.code||'').toUpperCase().indexOf('PINELAB') !== -1) amt = getVal(r, 'pineLabsCard') || dynMap['PINELABS_CARD'] || dynMap['PINELABS'] || dynMap['PINELAB_CARD'] || dynMap['PINELABSCARD'] || 0;
       }
       dynTotalRow += amt;
     });
@@ -550,7 +627,7 @@ function renderData(){
         else if ((dt.code||'').toUpperCase() === 'PAYTM') amt = getVal(r, 'paytm') || 0;
         else if ((dt.code||'').toUpperCase() === 'QR') amt = getVal(r, 'qrPayment') || 0;
         else if ((dt.code||'').toUpperCase() === 'MOBIKWIK') amt = getVal(r, 'mobikwik') || 0;
-        else if ((dt.code||'').toUpperCase().indexOf('PINELAB') !== -1) amt = getVal(r, 'pineLabsCard') || 0;
+        else if ((dt.code||'').toUpperCase().indexOf('PINELAB') !== -1) amt = getVal(r, 'pineLabsCard') || dynMap['PINELABS_CARD'] || dynMap['PINELABS'] || dynMap['PINELAB_CARD'] || dynMap['PINELABSCARD'] || 0;
       }
       rowHtml += '<td>' + inr(amt) + '</td>';
       tot.dyn[dt.code] = (tot.dyn[dt.code] || 0) + amt;
@@ -816,6 +893,13 @@ function renderData(){
   if (tRecon) {
     tRecon.innerHTML = '';
     (d.collectionBreakdown || []).forEach(function(c) {
+      var catLower = (c.category || '').toLowerCase();
+      var isRecoveryInfo = Boolean(c.isInformational) &&
+          (catLower.indexOf('recovery') !== -1 || catLower.indexOf('repayment') !== -1 ||
+           (Number(c.baseAmount || 0) === 0 && Number(c.recoveryAmount || 0) > 0));
+      if (isRecoveryInfo) {
+        return;
+      }
       var name = c.descriptionWithBreakdown || c.category;
       var vol = c.volume || c.litres || c.testingLitres || 0;
       if (vol > 0 && name.indexOf('Ltr') === -1) {

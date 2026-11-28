@@ -38,6 +38,19 @@ public class ReleasePackageSmokeTests : IDisposable
         var repoRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
         string[] candidateNames =
         [
+            "PyroSync_Setup_v1.3.68.exe",
+            "PyroSync_Setup_v1.3.67.exe",
+            "PyroSync_Setup_v1.3.66-pinelab-fix.exe",
+            "PyroSync_Setup_v1.3.66.exe",
+            "PyroSync_Setup_v1.3.65.exe",
+            "PyroSync_Setup_v1.3.64.exe",
+            "PyroSync_Setup_v1.3.63.exe",
+            "PyroSync_Setup_v1.3.62.exe",
+            "PyroSync_Setup_v1.3.61.exe",
+            "PyroSync_Setup_v1.3.60.exe",
+
+            "PyroSync_Setup_v1.3.59.exe",
+            "PyroSync_Setup_v1.3.58.exe",
             "PyroSync_Setup_v1.3.57.exe",
             "PyroSync_Setup_v1.3.56.exe",
             "PyroSync_Setup_v1.3.55.exe",
@@ -54,16 +67,9 @@ public class ReleasePackageSmokeTests : IDisposable
             "PyroSync_Setup_v1.3.44.exe",
             "PyroSync_Setup_v1.3.43.exe"
         ];
-        var installerPath = candidateNames
-            .Select(name => Path.Combine(repoRoot, "installer_output", name))
-            .FirstOrDefault(File.Exists) ?? Path.Combine(repoRoot, "installer_output", candidateNames[0]);
         var publishDir = Path.Combine(repoRoot, "publish_output");
 
-        Assert.True(File.Exists(installerPath), $"Installer missing at {installerPath}");
-        var fileInfo = new FileInfo(installerPath);
-        Assert.True(fileInfo.Length > 55_000_000, $"Installer size {fileInfo.Length} bytes is smaller than expected.");
-
-        // Check release binaries
+        // Check release binaries first to derive exact versioned installer artifact
         var uiExe = Path.Combine(publishDir, "FuelPro.UI.exe");
         var uiDll = Path.Combine(publishDir, "FuelPro.UI.dll");
         var coreDll = Path.Combine(publishDir, "FuelPro.Core.dll");
@@ -74,9 +80,29 @@ public class ReleasePackageSmokeTests : IDisposable
         Assert.True(File.Exists(coreDll), "FuelPro.Core.dll missing from publish_output");
         Assert.True(File.Exists(dataDll), "FuelPro.Data.dll missing from publish_output");
 
+        string[] allowedVersions =
+        [
+            "1.3.73.0",
+            "1.3.72.0",
+            "1.3.71.0",
+            "1.3.70.0",
+            "1.3.69.0",
+            "1.3.68.0", "1.3.67.0", "1.3.66.0", "1.3.65.0", "1.3.64.0",
+            "1.3.63.0", "1.3.62.0", "1.3.61.0", "1.3.60.0", "1.3.59.0",
+            "1.3.58.0", "1.3.57.0", "1.3.56.0", "1.3.55.0", "1.3.54.0",
+            "1.3.53.0", "1.3.52.0", "1.3.51.0", "1.3.50.0", "1.3.49.0",
+            "1.3.48.0", "1.3.47.0", "1.3.46.0", "1.3.45.0", "1.3.44.0", "1.3.43.0"
+        ];
         var verInfo = FileVersionInfo.GetVersionInfo(uiDll);
-        Assert.True(verInfo.FileVersion == "1.3.57.0" || verInfo.FileVersion == "1.3.56.0" || verInfo.FileVersion == "1.3.55.0" || verInfo.FileVersion == "1.3.54.0" || verInfo.FileVersion == "1.3.53.0" || verInfo.FileVersion == "1.3.52.0" || verInfo.FileVersion == "1.3.51.0" || verInfo.FileVersion == "1.3.50.0" || verInfo.FileVersion == "1.3.49.0" || verInfo.FileVersion == "1.3.48.0" || verInfo.FileVersion == "1.3.47.0" || verInfo.FileVersion == "1.3.46.0" || verInfo.FileVersion == "1.3.45.0" || verInfo.FileVersion == "1.3.44.0" || verInfo.FileVersion == "1.3.43.0", $"Unexpected FileVersion: {verInfo.FileVersion}");
-        Assert.True(verInfo.ProductVersion.StartsWith("1.3.57") || verInfo.ProductVersion.StartsWith("1.3.56") || verInfo.ProductVersion.StartsWith("1.3.55") || verInfo.ProductVersion.StartsWith("1.3.54") || verInfo.ProductVersion.StartsWith("1.3.53") || verInfo.ProductVersion.StartsWith("1.3.52") || verInfo.ProductVersion.StartsWith("1.3.51") || verInfo.ProductVersion.StartsWith("1.3.50") || verInfo.ProductVersion.StartsWith("1.3.49") || verInfo.ProductVersion.StartsWith("1.3.48") || verInfo.ProductVersion.StartsWith("1.3.47") || verInfo.ProductVersion.StartsWith("1.3.46") || verInfo.ProductVersion.StartsWith("1.3.45") || verInfo.ProductVersion.StartsWith("1.3.44") || verInfo.ProductVersion.StartsWith("1.3.43"), $"Unexpected ProductVersion: {verInfo.ProductVersion}");
+        Assert.Contains(verInfo.FileVersion, allowedVersions);
+        var shortVersion = $"{verInfo.FileMajorPart}.{verInfo.FileMinorPart}.{verInfo.FileBuildPart}";
+        Assert.True(verInfo.ProductVersion != null && verInfo.ProductVersion.StartsWith(shortVersion, StringComparison.Ordinal),
+            $"Unexpected ProductVersion: {verInfo.ProductVersion}");
+
+        var installerPath = Path.Combine(repoRoot, "installer_output", $"PyroSync_Setup_v{shortVersion}.exe");
+        Assert.True(File.Exists(installerPath), $"Exact installer missing at {installerPath}");
+        var fileInfo = new FileInfo(installerPath);
+        Assert.True(fileInfo.Length > 55_000_000, $"Installer size {fileInfo.Length} bytes is smaller than expected.");
 
         // Confirm no test databases or source files exist in publish_output
         var dbFiles = Directory.GetFiles(publishDir, "*.db*", SearchOption.AllDirectories);
@@ -345,5 +371,23 @@ public class ReleasePackageSmokeTests : IDisposable
             Assert.DoesNotContain("ShiftNumber", cols);
             Assert.Contains("ShiftId", cols);
         }
+    }
+
+    [Fact]
+    public void StartupDI_Resolves_StationPairingService_And_SupabaseHttpClient()
+    {
+        var services = new ServiceCollection();
+        typeof(FuelPro.UI.App).GetProperty("DbPath", BindingFlags.Public | BindingFlags.Static)!.SetValue(null, "DataSource=:memory:");
+        FuelPro.UI.App.ConfigureServices(services);
+        using var sp = services.BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true });
+
+        var httpClient = sp.GetRequiredService<FuelPro.Sync.SupabaseHttpClient>();
+        Assert.NotNull(httpClient);
+
+        var pairingService = sp.GetRequiredService<FuelPro.Sync.StationPairingService>();
+        Assert.NotNull(pairingService);
+
+        var syncEngine = sp.GetRequiredService<FuelPro.Sync.SyncEngine>();
+        Assert.NotNull(syncEngine);
     }
 }

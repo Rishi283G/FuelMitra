@@ -33,6 +33,11 @@ public class DsmPendingSubmission : ObservableObject
     public string Notes { get; set; } = string.Empty;
     public string? AttachmentUrl { get; set; }
     public string MetadataJson { get; set; } = string.Empty;
+    public string Status { get; set; } = "Pending";
+    public string ProcessingStatus { get; set; } = "Pending";
+    public bool IsRecovery { get; set; }
+    public string? ClaimedByMachineId { get; set; }
+    public DateTime? ClaimedAt { get; set; }
 
     public List<int> ConnectedPumpIds
     {
@@ -70,12 +75,17 @@ public class DsmPendingSubmission : ObservableObject
         get
         {
             var connected = ConnectedPumpIds;
+            string baseTitle;
             if (connected.Count > 0)
             {
                 var connectedStr = string.Join(" + ", connected.Select(id => $"Pump {id}"));
-                return $"{DsmName} - Pump {PumpId} + {connectedStr} (Connected) - Shift {ShiftType}";
+                baseTitle = $"{DsmName} - Pump {PumpId} + {connectedStr} (Connected) - Shift {ShiftType}";
             }
-            return $"{DsmName} - Pump {PumpId} - Shift {ShiftType}";
+            else
+            {
+                baseTitle = $"{DsmName} - Pump {PumpId} - Shift {ShiftType}";
+            }
+            return IsRecovery ? $"{baseTitle} [RECOVERY REQUIRED]" : baseTitle;
         }
     }
     public string ShiftDateDisplay => ShiftDate.ToString("dd MMM yyyy");
@@ -142,12 +152,49 @@ public partial class DsmNozzleRow : ObservableObject
     [ObservableProperty] private string _continuityWarning = "";
     [ObservableProperty] private bool _hasContinuityError;
 
+    // Rate validation & ground truth
+    [ObservableProperty] private double _submittedRate;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanApplyRate))]
+    private double? _historicalRate;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanApplyRate))]
+    private bool _hasRateDiscrepancy;
+
+    [ObservableProperty] private bool _isHistoricalMismatch;
+    [ObservableProperty] private string _rateWarningMessage = "";
+
+    public bool CanApplyRate => HasRateDiscrepancy && HistoricalRate.HasValue && HistoricalRate.Value > 0;
+
+    [RelayCommand]
+    public void ApplyHistoricalRate()
+    {
+        if (HistoricalRate.HasValue && HistoricalRate.Value > 0)
+        {
+            Rate = HistoricalRate.Value;
+            HasRateDiscrepancy = false;
+            RateWarningMessage = "";
+            OnPropertyChanged(nameof(CanApplyRate));
+            OnRowChanged?.Invoke();
+        }
+    }
+
     public string PumpLabel => $"Pump {PumpId}";
     public string NozzleNumber => NozzleId.ToString();
 
     partial void OnOpeningReadingChanged(double value) => Recalculate();
     partial void OnClosingReadingChanged(double value) => Recalculate();
-    partial void OnRateChanged(double value) => Recalculate();
+    partial void OnRateChanged(double value)
+    {
+        Recalculate();
+        if (HistoricalRate.HasValue && Math.Abs(value - HistoricalRate.Value) < 0.001)
+        {
+            HasRateDiscrepancy = false;
+            RateWarningMessage = "";
+            OnPropertyChanged(nameof(CanApplyRate));
+        }
+    }
 
     public void Recalculate()
     {
@@ -242,6 +289,7 @@ public partial class DsmTestingRow : ObservableObject
     [ObservableProperty] private double _amount;
     [ObservableProperty] private int _pumpId;
     [ObservableProperty] private double? _rupeeAmount;
+    public bool HasExplicitRupeeAmount { get; set; }
 }
 
 public partial class DsmOilDefSaleRow : ObservableObject
@@ -261,6 +309,60 @@ public partial class DsmOilDefSaleRow : ObservableObject
 
 public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
 {
+    public static string CleanAndUnescapeJson(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return string.Empty;
+        string cur = json.Trim();
+        for (int i = 0; i < 3; i++)
+        {
+            if (cur.StartsWith("\"") && cur.EndsWith("\"") && cur.Length >= 2)
+            {
+                try
+                {
+                    var unescaped = JsonConvert.DeserializeObject<string>(cur);
+                    if (!string.IsNullOrWhiteSpace(unescaped))
+                    {
+                        cur = unescaped.Trim();
+                        continue;
+                    }
+                }
+                catch { }
+            }
+            break;
+        }
+        return cur;
+    }
+
+    public static string ExtractMetadataJson(dynamic? item)
+    {
+        if (item == null) return string.Empty;
+        object? raw = null;
+        try { raw = item.Metadata; } catch { }
+        if (raw == null) { try { raw = item.metadata; } catch { } }
+        if (raw == null && item is Newtonsoft.Json.Linq.JObject jobj)
+        {
+            raw = jobj["Metadata"] ?? jobj["metadata"];
+        }
+        if (raw == null) return string.Empty;
+        if (raw is string str) return CleanAndUnescapeJson(str);
+        if (raw is Newtonsoft.Json.Linq.JValue jval && jval.Value is string sVal) return CleanAndUnescapeJson(sVal);
+        return CleanAndUnescapeJson(JsonConvert.SerializeObject(raw));
+    }
+
+    public static Newtonsoft.Json.Linq.JObject? ParseMetadataObject(string? metadataJson)
+    {
+        if (string.IsNullOrWhiteSpace(metadataJson)) return null;
+        string clean = CleanAndUnescapeJson(metadataJson);
+        try
+        {
+            return Newtonsoft.Json.Linq.JObject.Parse(clean);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     private readonly IServiceProvider _serviceProvider;
     private readonly SupabaseDsmService _supabaseService;
     private readonly DsmEntryService _dsmEntryService;
@@ -446,6 +548,8 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
     }
 
     [ObservableProperty] private double _cashAmount;
+    private readonly System.Threading.SemaphoreSlim _refreshLock = new(1, 1);
+    private long _refreshGeneration;
     [ObservableProperty] private double _upiAmount;
     [ObservableProperty] private double _cardAmount;
     [ObservableProperty] private double _pineLabsAmount;
@@ -474,6 +578,10 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
     [ObservableProperty] private CashDenomRow _cash2;
     [ObservableProperty] private CashDenomRow _cash3;
     [ObservableProperty] private bool _isCash3Enabled;
+    public bool IsCash1DenominationsEnabled => (_featureToggleService?.IsFeatureEnabled("Operations_Cash1", true) ?? true) && (_featureToggleService?.IsFeatureEnabled("Operations_Cash1Denominations", false) ?? false);
+    public bool ShowCash1DenominationFields => IsCash1DenominationsEnabled || (Cash1?.HasDenominationCounts ?? false);
+    public bool ShowCash1ScalarField => !ShowCash1DenominationFields;
+    public bool IsCash2DenominationsEnabled => (_featureToggleService?.IsFeatureEnabled("Operations_Cash2", true) ?? true) && (_featureToggleService?.IsFeatureEnabled("Operations_Cash2Denominations", true) ?? true);
     public ObservableCollection<DsmDebtorRepaymentRow> DebtorRepayments { get; } = new();
     public bool HasDebtorRepayments => DebtorRepayments.Count > 0;
     private bool _isLoadingSubmission;
@@ -543,21 +651,27 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string _phonePeDisplayName = "PhonePe";
     [ObservableProperty] private bool _phonePeHasTidBatch = true;
     [ObservableProperty] private bool _phonePeHasOtp;
-    [ObservableProperty] private bool _phonePeIsActive = true;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsPhonePeScalarVisible))]
+    private bool _phonePeIsActive;
     [ObservableProperty] private bool _phonePeEnableMorning = true;
     [ObservableProperty] private bool _phonePeEnableNight = true;
 
-    [ObservableProperty] private string _creditCardDisplayName = "Credit / Debit Card";
+    [ObservableProperty] private string _creditCardDisplayName = "Pine Labs Card";
     [ObservableProperty] private bool _creditCardHasTidBatch = true;
     [ObservableProperty] private bool _creditCardHasOtp;
-    [ObservableProperty] private bool _creditCardIsActive;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsCreditCardScalarVisible))]
+    private bool _creditCardIsActive;
     [ObservableProperty] private bool _creditCardEnableMorning = true;
     [ObservableProperty] private bool _creditCardEnableNight = true;
 
     [ObservableProperty] private string _petroCardDisplayName = "PetroCard";
     [ObservableProperty] private bool _petroCardHasTidBatch = true;
     [ObservableProperty] private bool _petroCardHasOtp;
-    [ObservableProperty] private bool _petroCardIsActive = true;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsPetroCardScalarVisible))]
+    private bool _petroCardIsActive;
     [ObservableProperty] private bool _petroCardEnableMorning = true;
     [ObservableProperty] private bool _petroCardEnableNight = true;
 
@@ -565,9 +679,9 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
     public bool IsCreditCardTidOrOtp => CreditCardHasTidBatch || CreditCardHasOtp;
     public bool IsPetroCardTidOrOtp => PetroCardHasTidBatch || PetroCardHasOtp;
 
-    public bool IsPhonePeScalarVisible => PhonePeIsActive && !IsPhonePeTidOrOtp;
-    public bool IsCreditCardScalarVisible => CreditCardIsActive && !IsCreditCardTidOrOtp;
-    public bool IsPetroCardScalarVisible => PetroCardIsActive && !IsPetroCardTidOrOtp;
+    public bool IsPhonePeScalarVisible => PhonePeIsActive || PhonePeMorning > 0 || PhonePeNight > 0 || UpiAmount > 0;
+    public bool IsCreditCardScalarVisible => CreditCardIsActive || CreditCardMorning > 0 || CreditCardNight > 0 || CardAmount > 0;
+    public bool IsPetroCardScalarVisible => PetroCardIsActive || PetroCardMorning > 0 || PetroCardNight > 0 || PetroCardAmount > 0;
 
     public bool IsNightShift => IsThreeShiftMode 
         ? string.Equals(_shiftCycleService?.NormalizeShiftType(SelectedSubmission?.ShiftType), "C", StringComparison.OrdinalIgnoreCase)
@@ -695,6 +809,9 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
     private bool _hasContinuityWarnings;
 
     [ObservableProperty]
+    private bool _hasRateDiscrepancies;
+
+    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsSubmissionComplete))]
     [NotifyPropertyChangedFor(nameof(SubmissionIncompleteReason))]
     [NotifyPropertyChangedFor(nameof(CanApprove))]
@@ -803,6 +920,23 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
     // UI Expand state
     [ObservableProperty] private bool _isRecentlyApprovedExpanded;
 
+    public DsmApprovalQueueViewModel(IServiceProvider serviceProvider) : this()
+    {
+        _serviceProvider = serviceProvider;
+        if (_serviceProvider != null)
+        {
+            _supabaseService = _serviceProvider.GetService<SupabaseDsmService>()!;
+            _dsmEntryService = _serviceProvider.GetService<DsmEntryService>()!;
+            _nozzleRepo = _serviceProvider.GetService<INozzleReadingRepository>()!;
+            _dsmCalculationService = _serviceProvider.GetService<IDsmCalculationService>()!;
+            _authService = _serviceProvider.GetService<AuthService>()!;
+            _pollingService = _serviceProvider.GetService<DsmSubmissionPollingService>()!;
+            _featureToggleService = _serviceProvider.GetService<IFeatureToggleService>();
+            _collectionTypeService = _serviceProvider.GetService<ICollectionTypeService>();
+            _shiftCycleService = _serviceProvider.GetService<IShiftCycleService>() ?? new ShiftCycleService();
+        }
+    }
+
     public DsmApprovalQueueViewModel()
     {
         Cash1 = new CashDenomRow
@@ -813,6 +947,8 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                 if (!_isLoadingSubmission)
                 {
                     CashDepositAmount = Cash1.TotalAmount;
+                    OnPropertyChanged(nameof(ShowCash1DenominationFields));
+                    OnPropertyChanged(nameof(ShowCash1ScalarField));
                     RecalculateTotals();
                 }
             }
@@ -841,15 +977,22 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
             }
         };
         _serviceProvider = App.Services;
-        _supabaseService = _serviceProvider.GetRequiredService<SupabaseDsmService>();
-        _dsmEntryService = _serviceProvider.GetRequiredService<DsmEntryService>();
-        _nozzleRepo = _serviceProvider.GetRequiredService<INozzleReadingRepository>();
-        _dsmCalculationService = _serviceProvider.GetRequiredService<IDsmCalculationService>();
-        _authService = _serviceProvider.GetRequiredService<AuthService>();
-        _pollingService = _serviceProvider.GetRequiredService<DsmSubmissionPollingService>();
-        _featureToggleService = _serviceProvider?.GetService<IFeatureToggleService>();
-        _collectionTypeService = _serviceProvider?.GetService<ICollectionTypeService>();
-        _shiftCycleService = _serviceProvider?.GetService<IShiftCycleService>() ?? new ShiftCycleService();
+        if (_serviceProvider != null)
+        {
+            _supabaseService = _serviceProvider.GetService<SupabaseDsmService>()!;
+            _dsmEntryService = _serviceProvider.GetService<DsmEntryService>()!;
+            _nozzleRepo = _serviceProvider.GetService<INozzleReadingRepository>()!;
+            _dsmCalculationService = _serviceProvider.GetService<IDsmCalculationService>()!;
+            _authService = _serviceProvider.GetService<AuthService>()!;
+            _pollingService = _serviceProvider.GetService<DsmSubmissionPollingService>()!;
+            _featureToggleService = _serviceProvider.GetService<IFeatureToggleService>();
+            _collectionTypeService = _serviceProvider.GetService<ICollectionTypeService>();
+            _shiftCycleService = _serviceProvider.GetService<IShiftCycleService>() ?? new ShiftCycleService();
+        }
+        else
+        {
+            _shiftCycleService = new ShiftCycleService();
+        }
 
         if (_featureToggleService != null)
         {
@@ -864,6 +1007,10 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                         IsCash3Enabled = _featureToggleService.IsFeatureEnabled("Operations_Cash3", true) || Cash3.TotalAmount > 0;
                         OnPropertyChanged(nameof(PersonalLedgerTitle));
                         OnPropertyChanged(nameof(PersonalLedgerPwaHeader));
+                        OnPropertyChanged(nameof(IsCash1DenominationsEnabled));
+                        OnPropertyChanged(nameof(ShowCash1DenominationFields));
+                        OnPropertyChanged(nameof(ShowCash1ScalarField));
+                        OnPropertyChanged(nameof(IsCash2DenominationsEnabled));
                     });
                 }
                 else
@@ -871,6 +1018,10 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                     IsCash3Enabled = _featureToggleService.IsFeatureEnabled("Operations_Cash3", true) || Cash3.TotalAmount > 0;
                     OnPropertyChanged(nameof(PersonalLedgerTitle));
                     OnPropertyChanged(nameof(PersonalLedgerPwaHeader));
+                    OnPropertyChanged(nameof(IsCash1DenominationsEnabled));
+                    OnPropertyChanged(nameof(ShowCash1DenominationFields));
+                    OnPropertyChanged(nameof(ShowCash1ScalarField));
+                    OnPropertyChanged(nameof(IsCash2DenominationsEnabled));
                 }
             };
             _featureToggleService.FeatureConfigurationChanged += _featureChangedHandler;
@@ -968,97 +1119,75 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
     [RelayCommand]
     public async Task RefreshQueueAsync()
     {
-        IsLoadingSubmissions = true;
-        StatusMessage = "⏳ Querying Supabase for pending shift entries...";
-        SelectedSubmission = null;
+        long myGeneration = System.Threading.Interlocked.Increment(ref _refreshGeneration);
+        await _refreshLock.WaitAsync();
 
         try
         {
+            // Coalesce superseded queued refreshes while still ensuring at least the latest generation executes
+            IsLoadingSubmissions = true;
+            StatusMessage = "⏳ Querying Supabase for pending shift entries...";
+            SelectedSubmission = null;
+
             var result = await _supabaseService.FetchPendingSubmissionsAsync();
-            PendingSubmissions.Clear();
+            var syncConfig = _serviceProvider.GetService<SyncConfigService>();
+            var syncSettings = syncConfig != null ? await syncConfig.GetSettingsAsync() : null;
+            var activeStationId = syncSettings?.StationId;
 
             if (result.Success && result.Data != null)
             {
                 using var scope = _serviceProvider.CreateScope();
                 using var context = scope.ServiceProvider.GetRequiredService<FuelProDbContext>();
-                
-                var approvedSubIds = await context.DsmApprovalAudits
-                    .Select(a => a.SubmissionId)
-                    .ToListAsync();
-                
-                var approvedSubIdSet = new HashSet<Guid>(approvedSubIds);
+
+                var validatedAudits = syncConfig != null
+                    ? await syncConfig.GetValidatedApprovedAuditsAsync()
+                    : await SyncConfigService.ValidateApprovalAuditsAsync(context, _logger);
+
+                var approvedSubIdSet = new HashSet<Guid>(validatedAudits.Keys);
+                var evaluated = DsmPendingSubmissionEvaluator.Evaluate(result.Data, approvedSubIdSet, activeStationId);
+
                 var dedupedList = new List<DsmPendingSubmission>();
-                var seenKeys = new HashSet<string>();
-                var duplicatePendingIds = new List<Guid>();
 
-                var sortedItems = ((IEnumerable<dynamic>)result.Data)
-                    .OrderByDescending(x => (DateTime)x.SubmittedAt)
-                    .ToList();
-
-                foreach (var item in sortedItems)
+                // Auto-heal only submissions backed by validated local DsmApprovalAudit + DsmEntry evidence
+                foreach (var subId in evaluated.LocallyApprovedIds)
                 {
-                    Guid subId = item.Id;
+                    if (!validatedAudits.TryGetValue(subId, out var audit)) continue;
 
-                    // If already approved locally, skip showing it and auto-heal status on Supabase
-                    if (approvedSubIdSet.Contains(subId))
+                    var healBy = audit.ApprovedBy;
+                    var healAt = audit.ApprovedAt;
+                    _logger.Information("Submission {SubId} was already approved locally by {ApprovedBy} (DsmEntryId={EntryId}). Auto-healing Supabase status asynchronously.", subId, healBy, audit.DsmEntryId);
+                    _ = Task.Run(async () =>
                     {
-                        _logger.Information("Submission {SubId} was already approved locally. Auto-healing Supabase status asynchronously.", subId);
-                        _ = Task.Run(async () =>
+                        try
                         {
-                            try
+                            var healRes = await _supabaseService.ApproveSubmissionAsync(subId, healBy, Guid.NewGuid().ToString("N"), healAt);
+                            if (!healRes.Success)
                             {
-                                var settingsSvc = _serviceProvider.GetRequiredService<SyncConfigService>();
-                                var settings = await settingsSvc.GetSettingsAsync();
-                                await _supabaseService.ApproveSubmissionAsync(subId, "System (Sync Auto-Heal)", Guid.NewGuid().ToString("N"));
+                                _logger.Warning("Auto-heal failed for locally approved submission {SubId}: {Error}", subId, healRes.Error);
                             }
-                            catch (Exception ex)
-                            {
-                                _logger.Warning(ex, "Failed to auto-heal approved submission {SubId} in Supabase", subId);
-                            }
-                        });
-                        continue;
-                    }
-
-                    DateTime shiftDate = item.ShiftDate;
-                    string shiftType = item.ShiftType ?? "A";
-                    int pumpId = (int)item.PumpId;
-                    string dsmUserId = item.DsmUserId ?? "";
-                    string key = $"{shiftDate:yyyy-MM-dd}_{shiftType}_{pumpId}_{dsmUserId}";
-
-                    if (seenKeys.Contains(key))
-                    {
-                        // Duplicate pending submission
-                        _logger.Information("Duplicate pending submission {SubId} detected for {Key}. Marking for resolution.", subId, key);
-                        duplicatePendingIds.Add(subId);
-                        continue;
-                    }
-                    seenKeys.Add(key);
-
-                    dedupedList.Add(new DsmPendingSubmission
-                    {
-                        Id = subId,
-                        DsmName = item.DsmUsers?.FullName ?? "Unknown DSM",
-                        DsmUserId = dsmUserId,
-                        PumpId = pumpId,
-                        ShiftDate = shiftDate,
-                        ShiftType = shiftType,
-                        SubmittedAt = item.SubmittedAt,
-                        Notes = item.Notes ?? "",
-                        AttachmentUrl = item.AttachmentUrl,
-                        MetadataJson = item.Metadata != null ? JsonConvert.SerializeObject(item.Metadata) : ""
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.Warning(ex, "Exception while auto-healing approved submission {SubId} in Supabase", subId);
+                        }
                     });
                 }
 
-                // If duplicate pending submissions were detected, auto-resolve them
-                if (duplicatePendingIds.Count > 0)
+                // Auto-resolve genuine duplicate pending submissions sharing the same operational key & DsmUserId
+                if (evaluated.DuplicatePendingIds.Count > 0)
                 {
+                    var dupIds = evaluated.DuplicatePendingIds.ToList();
                     _ = Task.Run(async () =>
                     {
-                        foreach (var dupId in duplicatePendingIds)
+                        foreach (var dupId in dupIds)
                         {
                             try
                             {
-                                await _supabaseService.ApproveSubmissionAsync(dupId, "System (Duplicate Auto-Heal)", Guid.NewGuid().ToString("N"));
+                                var dupRes = await _supabaseService.ApproveSubmissionAsync(dupId, "System (Duplicate Auto-Heal)", Guid.NewGuid().ToString("N"));
+                                if (!dupRes.Success)
+                                {
+                                    _logger.Warning("Duplicate auto-heal failed for {DupId}: {Error}", dupId, dupRes.Error);
+                                }
                             }
                             catch (Exception ex)
                             {
@@ -1068,31 +1197,117 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                     });
                 }
 
+                foreach (var evalItem in evaluated.ActionableSubmissions)
+                {
+                    dedupedList.Add(new DsmPendingSubmission
+                    {
+                        Id = evalItem.Id,
+                        DsmName = evalItem.DsmName,
+                        DsmUserId = evalItem.DsmUserId,
+                        PumpId = evalItem.PumpId,
+                        ShiftDate = evalItem.ShiftDate,
+                        ShiftType = evalItem.ShiftType,
+                        SubmittedAt = evalItem.SubmittedAt,
+                        Notes = evalItem.Notes,
+                        AttachmentUrl = evalItem.AttachmentUrl,
+                        MetadataJson = evalItem.MetadataJson,
+                        Status = evalItem.Status,
+                        ProcessingStatus = evalItem.ProcessingStatus,
+                        ClaimedByMachineId = evalItem.ClaimedByMachineId,
+                        ClaimedAt = evalItem.ClaimedAt
+                    });
+                }
+
+                // Durable Crash Recovery: Inspect recent cloud-approved submissions that have NO local audit record
+                try
+                {
+                    var approvedResult = await _supabaseService.FetchApprovedSubmissionsAsync();
+                    if (approvedResult.Success && approvedResult.Data != null)
+                    {
+                        var recentApproved = ((IEnumerable<dynamic>)approvedResult.Data).Take(50);
+                        foreach (var appItem in recentApproved)
+                        {
+                            if (!DsmPendingSubmissionEvaluator.TryParseSubmission((object?)appItem, out var parsedApp) || parsedApp == null)
+                                continue;
+
+                            if (!string.IsNullOrWhiteSpace(activeStationId) &&
+                                !string.IsNullOrWhiteSpace(parsedApp.StationId) &&
+                                !string.Equals(parsedApp.StationId, activeStationId.Trim(), StringComparison.OrdinalIgnoreCase))
+                            {
+                                continue;
+                            }
+
+                            if (!approvedSubIdSet.Contains(parsedApp.Id))
+                            {
+                                string? appKey = parsedApp.OperationalKey;
+                                if (string.IsNullOrEmpty(appKey) || !evaluated.SeenOperationalKeys.Contains(appKey))
+                                {
+                                    var entryExists = await context.DsmEntries.AnyAsync(e =>
+                                        e.Shift.ShiftDate.Date == parsedApp.ShiftDate.Date &&
+                                        e.Shift.ShiftType == parsedApp.ShiftType &&
+                                        e.PumpId == parsedApp.PumpId);
+                                    if (!entryExists)
+                                    {
+                                        if (!string.IsNullOrEmpty(appKey))
+                                            evaluated.SeenOperationalKeys.Add(appKey);
+
+                                        dedupedList.Add(new DsmPendingSubmission
+                                        {
+                                            Id = parsedApp.Id,
+                                            DsmName = parsedApp.DsmName,
+                                            DsmUserId = parsedApp.DsmUserId,
+                                            PumpId = parsedApp.PumpId,
+                                            ShiftDate = parsedApp.ShiftDate,
+                                            ShiftType = parsedApp.ShiftType,
+                                            SubmittedAt = parsedApp.SubmittedAt,
+                                            Notes = parsedApp.Notes + " [Recovery Required: Incomplete Approval]",
+                                            AttachmentUrl = parsedApp.AttachmentUrl,
+                                            MetadataJson = parsedApp.MetadataJson,
+                                            ProcessingStatus = "RecoveryRequired",
+                                            IsRecovery = true
+                                        });
+                                        _logger.Warning("Crash recovery detected uncommitted cloud-approved submission {SubId}. Added to pending queue.", parsedApp.Id);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.Warning(ex, "Failed to inspect recent approved submissions for crash recovery check");
+                }
+
+                PendingSubmissions.Clear();
                 foreach (var sub in dedupedList)
                 {
                     PendingSubmissions.Add(sub);
                 }
-                
-                StatusMessage = PendingSubmissions.Count > 0 
-                    ? $"Found {PendingSubmissions.Count} pending submissions." 
+
+                StatusMessage = PendingSubmissions.Count > 0
+                    ? $"Found {PendingSubmissions.Count} pending submissions."
                     : "No pending submissions found.";
+
+                _pollingService?.SyncCountFromQueue(PendingSubmissions.Count, activeStationId);
             }
             else
             {
+                PendingSubmissions.Clear();
                 StatusMessage = $"❌ Failed to load: {result.Error}";
+                _pollingService?.MarkRefreshFailed(result.Error);
             }
-
-            // Force poll refresh
-            await _pollingService.ForceRefreshAsync();
         }
         catch (Exception ex)
         {
             _logger.Error(ex, "Failed to refresh DSM approval queue");
+            PendingSubmissions.Clear();
             StatusMessage = $"❌ Error: {ex.Message}";
+            _pollingService?.MarkRefreshFailed(ex.Message);
         }
         finally
         {
             IsLoadingSubmissions = false;
+            _refreshLock.Release();
         }
     }
 
@@ -1117,6 +1332,28 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
             }
         }
         NotifySubmissionStateChanged();
+    }
+
+    private async Task<List<int>> GetConnectedPumpsForPrimaryAsync(int pumpId)
+    {
+        try
+        {
+            var stationConfig = _serviceProvider?.GetService<FuelPro.Core.Services.IStationConfigurationService>();
+            if (stationConfig != null)
+            {
+                var config = await stationConfig.GetPumpConnectionConfigurationAsync();
+                if (config != null && config.IsEnabled)
+                {
+                    var group = config.GetGroupForPump(pumpId);
+                    if (group != null)
+                    {
+                        return group.GetConnectedPumps(pumpId);
+                    }
+                }
+            }
+        }
+        catch {}
+        return new List<int>();
     }
 
     private async Task LoadSubmissionDetailsAsync(DsmPendingSubmission submission)
@@ -1146,23 +1383,26 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
             var prevDetailsResult = await _nozzleRepo.GetPreviousShiftClosingDetailsAsync(submission.ShiftDate, submission.ShiftType, submission.PumpId);
             var prevDetails = prevDetailsResult.Success ? prevDetailsResult.Data! : new Dictionary<int, PredecessorClosingDetail>();
 
+            var effectiveConnectedPumps = new HashSet<int>();
             if (submission.ConnectedPumpIds != null && submission.ConnectedPumpIds.Count > 0)
             {
-                foreach (var connPumpId in submission.ConnectedPumpIds)
-                {
-                    var connPrevResult = await _nozzleRepo.GetPreviousShiftClosingDetailsAsync(submission.ShiftDate, submission.ShiftType, connPumpId);
-                    if (connPrevResult.Success && connPrevResult.Data != null)
-                    {
-                        foreach (var kvp in connPrevResult.Data)
-                        {
-                            prevDetails[kvp.Key] = kvp.Value;
-                        }
-                    }
-                }
+                foreach (var id in submission.ConnectedPumpIds) if (id > 0 && id != submission.PumpId) effectiveConnectedPumps.Add(id);
             }
-            else if (submission.ConnectedPumpId.HasValue)
+            if (submission.ConnectedPumpId.HasValue && submission.ConnectedPumpId.Value > 0 && submission.ConnectedPumpId.Value != submission.PumpId)
             {
-                var connPrevResult = await _nozzleRepo.GetPreviousShiftClosingDetailsAsync(submission.ShiftDate, submission.ShiftType, submission.ConnectedPumpId.Value);
+                effectiveConnectedPumps.Add(submission.ConnectedPumpId.Value);
+            }
+
+            // Fallback to configured connected pumps if not present in submission
+            if (effectiveConnectedPumps.Count == 0)
+            {
+                var cfgConnected = await GetConnectedPumpsForPrimaryAsync(submission.PumpId);
+                foreach (var cp in cfgConnected) if (cp > 0 && cp != submission.PumpId) effectiveConnectedPumps.Add(cp);
+            }
+
+            foreach (var connPumpId in effectiveConnectedPumps)
+            {
+                var connPrevResult = await _nozzleRepo.GetPreviousShiftClosingDetailsAsync(submission.ShiftDate, submission.ShiftType, connPumpId);
                 if (connPrevResult.Success && connPrevResult.Data != null)
                 {
                     foreach (var kvp in connPrevResult.Data)
@@ -1186,6 +1426,23 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                     double rate = Convert.ToDouble((object?)r.Rate);
                     
                     PredecessorClosingDetail? predDetail = prevDetails.TryGetValue(nozzleId, out var pd) ? pd : null;
+                    if (predDetail == null)
+                    {
+                        try
+                        {
+                            if (r.PumpId != null && (int)r.PumpId > 0 && (int)r.PumpId != submission.PumpId)
+                            {
+                                int rPumpId = (int)r.PumpId;
+                                var directPrevResult = await _nozzleRepo.GetPreviousShiftClosingDetailsAsync(submission.ShiftDate, submission.ShiftType, rPumpId);
+                                if (directPrevResult.Success && directPrevResult.Data != null && directPrevResult.Data.TryGetValue(nozzleId, out var dpd))
+                                {
+                                    predDetail = dpd;
+                                    prevDetails[nozzleId] = dpd;
+                                }
+                            }
+                        }
+                        catch {}
+                    }
                     double? expectedOpening = predDetail?.ClosingReading;
 
                     int nozzlePumpId = predDetail?.PumpId ?? (int)submission.PumpId;
@@ -1207,6 +1464,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                         OpeningReading = opening,
                         ClosingReading = closing,
                         Rate = rate,
+                        SubmittedRate = rate,
                         ExpectedOpening = expectedOpening,
                         PredecessorDate = predDetail?.ShiftDate,
                         PredecessorShift = predDetail?.ShiftType,
@@ -1219,6 +1477,9 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                     NozzleReadings.Add(row);
                 }
             }
+
+            // 2.5 Validate nozzle rates against historical ground truth
+            await ValidateNozzleRatesAsync(submission);
 
             // 3. Fetch collections from Supabase
             var collResult = await _supabaseService.FetchSubmissionCollectionAsync(submission.Id);
@@ -1267,178 +1528,331 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
 
             if (!string.IsNullOrEmpty(submission.MetadataJson))
             {
+                Newtonsoft.Json.Linq.JObject? metaObj = ParseMetadataObject(submission.MetadataJson);
+                if (metaObj == null)
+                {
+                    try
+                    {
+                        metaObj = Newtonsoft.Json.Linq.JObject.Parse(submission.MetadataJson);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.Warning(ex, "Failed to parse MetadataJson as JObject for submission {SubId}", submission.Id);
+                    }
+                }
+
                 try
                 {
-                    var metadata = JsonConvert.DeserializeObject<dynamic>(submission.MetadataJson);
-                    if (metadata != null)
+                    string cleanMetaJson = metaObj != null ? metaObj.ToString(Newtonsoft.Json.Formatting.None) : CleanAndUnescapeJson(submission.MetadataJson);
+                    dynamic? metadata = metaObj != null ? (dynamic)metaObj : JsonConvert.DeserializeObject<dynamic>(cleanMetaJson);
+                    if (metaObj != null || metadata != null)
                     {
-                        var cash1Meta = metadata.cash1Denominations;
-                        if (cash1Meta != null)
+                        // 1. Cash 1 Denominations (only populate non-zero breakdowns; preserve null when scalar-only)
+                        try
                         {
-                            Cash1.Denom500 = (int?)(cash1Meta.denom500);
-                            Cash1.Denom200 = (int?)(cash1Meta.denom200);
-                            Cash1.Denom100 = (int?)(cash1Meta.denom100);
-                            Cash1.Denom50 = (int?)(cash1Meta.denom50);
-                            Cash1.Denom20 = (int?)(cash1Meta.denom20);
-                            Cash1.Denom10 = (int?)(cash1Meta.denom10);
-                            Cash1.Coins = (int?)(cash1Meta.coins);
-                        }
+                            var cash1Meta = metaObj?["cash1Denominations"];
+                            if (cash1Meta != null)
+                            {
+                                int d500 = (int?)(cash1Meta["denom500"] ?? cash1Meta["c500"]) ?? 0;
+                                int d200 = (int?)(cash1Meta["denom200"] ?? cash1Meta["c200"]) ?? 0;
+                                int d100 = (int?)(cash1Meta["denom100"] ?? cash1Meta["c100"]) ?? 0;
+                                int d50 = (int?)(cash1Meta["denom50"] ?? cash1Meta["c50"]) ?? 0;
+                                int d20 = (int?)(cash1Meta["denom20"] ?? cash1Meta["c20"]) ?? 0;
+                                int d10 = (int?)(cash1Meta["denom10"] ?? cash1Meta["c10"]) ?? 0;
+                                int coinsVal = (int?)(cash1Meta["coins"]) ?? 0;
 
-                        var cash2Meta = metadata.cashDenominations;
-                        if (cash2Meta != null)
-                        {
-                            Cash2.Denom500 = (int?)(cash2Meta.denom500);
-                            Cash2.Denom200 = (int?)(cash2Meta.denom200);
-                            Cash2.Denom100 = (int?)(cash2Meta.denom100);
-                            Cash2.Denom50 = (int?)(cash2Meta.denom50);
-                            Cash2.Denom20 = (int?)(cash2Meta.denom20);
-                            Cash2.Denom10 = (int?)(cash2Meta.denom10);
-                            Cash2.Coins = (int?)(cash2Meta.coins);
+                                if (d500 > 0 || d200 > 0 || d100 > 0 || d50 > 0 || d20 > 0 || d10 > 0 || coinsVal > 0)
+                                {
+                                    Cash1.Denom500 = d500;
+                                    Cash1.Denom200 = d200;
+                                    Cash1.Denom100 = d100;
+                                    Cash1.Denom50 = d50 > 0 ? d50 : null;
+                                    Cash1.Denom20 = d20 > 0 ? d20 : null;
+                                    Cash1.Denom10 = d10 > 0 ? d10 : null;
+                                    Cash1.Coins = coinsVal > 0 ? coinsVal : null;
+                                }
+                            }
                         }
+                        catch (Exception ex) { _logger.Warning(ex, "Error parsing Cash 1 denominations"); }
 
-                        var cash3Meta = metadata.cash3Denominations;
-                        if (cash3Meta != null)
+                        // 2. Cash 2 Denominations
+                        try
                         {
-                            Cash3.Denom500 = (int?)(cash3Meta.denom500 ?? cash3Meta.c500);
-                            Cash3.Denom200 = (int?)(cash3Meta.denom200 ?? cash3Meta.c200);
-                            Cash3.Denom100 = (int?)(cash3Meta.denom100 ?? cash3Meta.c100);
-                            Cash3.Denom50 = (int?)(cash3Meta.denom50 ?? cash3Meta.c50);
-                            Cash3.Denom20 = (int?)(cash3Meta.denom20 ?? cash3Meta.c20);
-                            Cash3.Denom10 = (int?)(cash3Meta.denom10 ?? cash3Meta.c10);
-                            Cash3.Coins = (int?)(cash3Meta.coins);
+                            var cash2Meta = metaObj?["cashDenominations"] ?? metaObj?["cash2Denominations"];
+                            if (cash2Meta != null)
+                            {
+                                Cash2.Denom500 = (int?)(cash2Meta["denom500"] ?? cash2Meta["c500"]);
+                                Cash2.Denom200 = (int?)(cash2Meta["denom200"] ?? cash2Meta["c200"]);
+                                Cash2.Denom100 = (int?)(cash2Meta["denom100"] ?? cash2Meta["c100"]);
+                                Cash2.Denom50 = (int?)(cash2Meta["denom50"] ?? cash2Meta["c50"]);
+                                Cash2.Denom20 = (int?)(cash2Meta["denom20"] ?? cash2Meta["c20"]);
+                                Cash2.Denom10 = (int?)(cash2Meta["denom10"] ?? cash2Meta["c10"]);
+                                Cash2.Coins = (int?)(cash2Meta["coins"]);
+                            }
                         }
-                        else if (metadata.cash3Amount != null)
-                        {
-                            Cash3.Coins = Convert.ToInt32((object?)metadata.cash3Amount);
-                        }
+                        catch (Exception ex) { _logger.Warning(ex, "Error parsing Cash 2 denominations"); }
 
-                        if (metadata is Newtonsoft.Json.Linq.JObject mJobRed)
+                        // 3. Cash 3 Denominations
+                        try
                         {
-                            var redVal = mJobRed["collectionReduction"] ?? mJobRed["collection_reduction"] ?? mJobRed["Collections"]?["collectionReduction"];
+                            var cash3Meta = metaObj?["cash3Denominations"] ?? metaObj?["cash3"];
+                            if (cash3Meta != null)
+                            {
+                                Cash3.Denom500 = (int?)(cash3Meta["denom500"] ?? cash3Meta["c500"]);
+                                Cash3.Denom200 = (int?)(cash3Meta["denom200"] ?? cash3Meta["c200"]);
+                                Cash3.Denom100 = (int?)(cash3Meta["denom100"] ?? cash3Meta["c100"]);
+                                Cash3.Denom50 = (int?)(cash3Meta["denom50"] ?? cash3Meta["c50"]);
+                                Cash3.Denom20 = (int?)(cash3Meta["denom20"] ?? cash3Meta["c20"]);
+                                Cash3.Denom10 = (int?)(cash3Meta["denom10"] ?? cash3Meta["c10"]);
+                                Cash3.Coins = (int?)(cash3Meta["coins"]);
+                            }
+                            else if (metaObj?["cash3Amount"] != null)
+                            {
+                                Cash3.Coins = (int?)metaObj["cash3Amount"];
+                            }
+                        }
+                        catch (Exception ex) { _logger.Warning(ex, "Error parsing Cash 3 denominations"); }
+
+                        // 4. Collection Reduction
+                        try
+                        {
+                            var redVal = metaObj?["collectionReduction"] ?? metaObj?["collection_reduction"] ?? metaObj?["Collections"]?["collectionReduction"];
                             if (redVal != null) CollectionReductionAmount = (double)redVal;
-                            var redRem = mJobRed["collectionReductionRemark"] ?? mJobRed["collection_reduction_remark"] ?? mJobRed["Collections"]?["collectionReductionRemark"];
+                            var redRem = metaObj?["collectionReductionRemark"] ?? metaObj?["collection_reduction_remark"] ?? metaObj?["Collections"]?["collectionReductionRemark"];
                             if (redRem != null) CollectionReductionRemark = (string?)redRem;
                         }
-                        else
-                        {
-                            try { if (metadata.collectionReduction != null) CollectionReductionAmount = Convert.ToDouble((object?)metadata.collectionReduction); } catch {}
-                            try { if (metadata.collectionReductionRemark != null) CollectionReductionRemark = (string?)metadata.collectionReductionRemark; } catch {}
-                        }
+                        catch (Exception ex) { _logger.Warning(ex, "Error parsing collection reduction"); }
 
                         if (CollectionReductionAmount == 0 && coll != null)
                         {
-                            if (coll is IDictionary<string, object> cDict)
-                            {
-                                if (cDict.TryGetValue("CollectionReduction", out var cr) || cDict.TryGetValue("collection_reduction", out cr) || cDict.TryGetValue("collectionReduction", out cr))
-                                {
-                                    if (cr != null) CollectionReductionAmount = Convert.ToDouble(cr);
-                                }
-                                if (cDict.TryGetValue("CollectionReductionRemark", out var crr) || cDict.TryGetValue("collection_reduction_remark", out crr) || cDict.TryGetValue("collectionReductionRemark", out crr))
-                                {
-                                    if (crr != null) CollectionReductionRemark = Convert.ToString(crr);
-                                }
-                            }
-                            else if (coll is Newtonsoft.Json.Linq.JObject cJob)
-                            {
-                                var cr = cJob["CollectionReduction"] ?? cJob["collection_reduction"] ?? cJob["collectionReduction"];
-                                if (cr != null) CollectionReductionAmount = (double)cr;
-                                var crr = cJob["CollectionReductionRemark"] ?? cJob["collection_reduction_remark"] ?? cJob["collectionReductionRemark"];
-                                if (crr != null) CollectionReductionRemark = (string?)crr;
-                            }
-                        }
-
-                        IsCash3Enabled = (_featureToggleService?.IsFeatureEnabled("Operations_Cash3", true) ?? true) || Cash3.TotalAmount > 0;
-
-                        // Safeguard scalar amounts: If denomination total > 0, sync to denomination total;
-                        // Otherwise preserve saved scalar amounts from coll
-                        if (cash1Meta != null && Cash1.TotalAmount > 0)
-                        {
-                            CashDepositAmount = Cash1.TotalAmount;
-                        }
-                        else if (coll != null && coll.CashDeposit != null)
-                        {
-                            CashDepositAmount = Convert.ToDouble((object?)coll.CashDeposit);
-                        }
-
-                        if (cash2Meta != null && Cash2.TotalAmount > 0)
-                        {
-                            CashAmount = Cash2.TotalAmount;
-                        }
-                        else if (coll != null && coll.Cash != null)
-                        {
-                            CashAmount = Convert.ToDouble((object?)coll.Cash);
-                        }
-
-                        Newtonsoft.Json.Linq.JToken? debtorToken = null;
-                        if (metadata is Newtonsoft.Json.Linq.JObject mJobDeb)
-                        {
-                            debtorToken = mJobDeb["debtorEntries"] ?? mJobDeb["debitEntries"] ?? mJobDeb["debtors"];
-                        }
-                        if (debtorToken != null)
-                        {
-                            foreach (var dbEntry in debtorToken)
-                            {
-                                double dAmt = (double)(dbEntry["amount"] ?? dbEntry["Amount"] ?? 0.0);
-                                string dName = (string?)(dbEntry["debtorName"] ?? dbEntry["debtor_name"] ?? dbEntry["DebtorName"] ?? dbEntry["name"] ?? dbEntry["Name"] ?? "") ?? "";
-                                if (dAmt > 0 || !string.IsNullOrWhiteSpace(dName))
-                                {
-                                    DebtorEntries.Add(new DsmDebitRow
-                                    {
-                                        DebtorName = dName,
-                                        Amount = dAmt,
-                                        VehicleNumber = (string?)(dbEntry["vehicleNumber"] ?? dbEntry["vehicle_number"] ?? dbEntry["VehicleNumber"] ?? dbEntry["vehicleNo"] ?? dbEntry["vehicle"] ?? ""),
-                                        SlipNumber = (string?)(dbEntry["slipNumber"] ?? dbEntry["slip_number"] ?? dbEntry["SlipNumber"] ?? dbEntry["slipNo"] ?? dbEntry["slip"] ?? ""),
-                                        EntryTime = (string?)(dbEntry["time"] ?? dbEntry["Time"] ?? dbEntry["entryTime"] ?? dbEntry["EntryTime"] ?? ""),
-                                        Remarks = (string?)(dbEntry["remarks"] ?? dbEntry["Remarks"] ?? dbEntry["notes"] ?? dbEntry["Notes"] ?? ""),
-                                        OnRowChanged = RecalculateTotals
-                                    });
-                                }
-                            }
-                        }
-                        else
-                        {
                             try
                             {
-                                if (metadata.debtorEntries != null)
+                                if (coll is IDictionary<string, object> cDict)
                                 {
-                                    foreach (var dbEntry in metadata.debtorEntries)
+                                    if (cDict.TryGetValue("CollectionReduction", out var cr) || cDict.TryGetValue("collection_reduction", out cr) || cDict.TryGetValue("collectionReduction", out cr))
                                     {
-                                        DebtorEntries.Add(new DsmDebitRow
-                                        {
-                                            DebtorName = (string?)(dbEntry.debtorName ?? dbEntry.debtor_name ?? dbEntry.name ?? "") ?? "",
-                                            Amount = Convert.ToDouble((object?)(dbEntry.amount ?? 0.0)),
-                                            VehicleNumber = (string?)(dbEntry.vehicleNumber ?? dbEntry.vehicle_number ?? dbEntry.vehicleNo ?? dbEntry.vehicle ?? ""),
-                                            SlipNumber = (string?)(dbEntry.slipNumber ?? dbEntry.slip_number ?? dbEntry.slipNo ?? dbEntry.slip ?? ""),
-                                            EntryTime = (string?)(dbEntry.time ?? dbEntry.entryTime ?? ""),
-                                            Remarks = (string?)(dbEntry.remarks ?? dbEntry.Remarks ?? dbEntry.notes ?? dbEntry.Notes ?? ""),
-                                            OnRowChanged = RecalculateTotals
-                                        });
+                                        if (cr != null) CollectionReductionAmount = Convert.ToDouble(cr);
                                     }
+                                    if (cDict.TryGetValue("CollectionReductionRemark", out var crr) || cDict.TryGetValue("collection_reduction_remark", out crr) || cDict.TryGetValue("collectionReductionRemark", out crr))
+                                    {
+                                        if (crr != null) CollectionReductionRemark = Convert.ToString(crr);
+                                    }
+                                }
+                                else if (coll is Newtonsoft.Json.Linq.JObject cJob)
+                                {
+                                    var cr = cJob["CollectionReduction"] ?? cJob["collection_reduction"] ?? cJob["collectionReduction"];
+                                    if (cr != null) CollectionReductionAmount = (double)cr;
+                                    var crr = cJob["CollectionReductionRemark"] ?? cJob["collection_reduction_remark"] ?? cJob["collectionReductionRemark"];
+                                    if (crr != null) CollectionReductionRemark = (string?)crr;
                                 }
                             }
                             catch {}
                         }
 
-                        if (metadata.debtorRepayments != null)
+                        IsCash3Enabled = (_featureToggleService?.IsFeatureEnabled("Operations_Cash3", true) ?? true) || Cash3.TotalAmount > 0;
+
+                        // Safely extract scalar amounts from coll without dynamic binder crashes
+                        double? collCashDeposit = null;
+                        double? collCash = null;
+                        if (coll != null)
                         {
-                            foreach (var dr in metadata.debtorRepayments)
+                            try
                             {
-                                string dName = (string?)(dr.debtorName ?? dr.creditorName ?? dr.name ?? "") ?? "";
-                                double dAmt = Convert.ToDouble((object?)(dr.amount ?? 0.0));
-                                string dMode = (string?)(dr.paymentMode ?? dr.collectionType ?? dr.mode ?? "Cash") ?? "Cash";
-                                string dNotes = (string?)(dr.notes ?? dr.remarks ?? "") ?? "";
-                                if (dAmt > 0 && !string.IsNullOrWhiteSpace(dName))
+                                if (coll is Newtonsoft.Json.Linq.JObject collJob)
                                 {
-                                    DebtorRepayments.Add(new DsmDebtorRepaymentRow
-                                    {
-                                        DebtorName = dName,
-                                        Amount = dAmt,
-                                        PaymentMode = dMode,
-                                        Notes = dNotes,
-                                        OnRowChanged = RecalculateTotals
-                                    });
+                                    var cd = collJob["CashDeposit"] ?? collJob["cash_deposit"];
+                                    if (cd != null) collCashDeposit = (double)cd;
+                                    var c = collJob["Cash"] ?? collJob["cash"];
+                                    if (c != null) collCash = (double)c;
+                                }
+                                else if (coll is IDictionary<string, object> cDict)
+                                {
+                                    if (cDict.TryGetValue("CashDeposit", out var cd) || cDict.TryGetValue("cash_deposit", out cd))
+                                        if (cd != null) collCashDeposit = Convert.ToDouble(cd);
+                                    if (cDict.TryGetValue("Cash", out var c) || cDict.TryGetValue("cash", out c))
+                                        if (c != null) collCash = Convert.ToDouble(c);
                                 }
                             }
+                            catch {}
+                        }
+
+                        if (Cash1.TotalAmount > 0)
+                        {
+                            CashDepositAmount = Cash1.TotalAmount;
+                        }
+                        else if (collCashDeposit.HasValue)
+                        {
+                            CashDepositAmount = collCashDeposit.Value;
+                        }
+
+                        if (Cash1.TotalAmount == 0 && CashDepositAmount > 0)
+                        {
+                            Cash1.TotalAmount = CashDepositAmount;
+                        }
+                        OnPropertyChanged(nameof(ShowCash1DenominationFields));
+                        OnPropertyChanged(nameof(ShowCash1ScalarField));
+
+                        if (Cash2.TotalAmount > 0)
+                        {
+                            CashAmount = Cash2.TotalAmount;
+                        }
+                        else if (collCash.HasValue)
+                        {
+                            CashAmount = collCash.Value;
+                        }
+
+                        if (Cash2.TotalAmount == 0 && CashAmount > 0)
+                        {
+                            Cash2.TotalAmount = CashAmount;
+                        }
+
+                        // 5. Debtor Entries - safe independent parsing supporting all schema variants
+                        try
+                        {
+                            Newtonsoft.Json.Linq.JToken? debtorToken = metaObj?["debtorEntries"] 
+                                ?? metaObj?["DebtorEntries"] 
+                                ?? metaObj?["debitEntries"] 
+                                ?? metaObj?["DebitEntries"] 
+                                ?? metaObj?["debtors"] 
+                                ?? metaObj?["Debtors"] 
+                                ?? metaObj?["creditEntries"] 
+                                ?? metaObj?["CreditEntries"] 
+                                ?? metaObj?["creditSales"] 
+                                ?? metaObj?["CreditSales"] 
+                                ?? metaObj?["debtor_entries"];
+
+                            if (debtorToken != null)
+                            {
+                                foreach (var dbEntry in debtorToken)
+                                {
+                                    try
+                                    {
+                                        double dAmt = 0.0;
+                                        var amtToken = dbEntry["amount"] ?? dbEntry["Amount"];
+                                        if (amtToken != null)
+                                        {
+                                            if (amtToken.Type == Newtonsoft.Json.Linq.JTokenType.Float || amtToken.Type == Newtonsoft.Json.Linq.JTokenType.Integer)
+                                            {
+                                                dAmt = (double)amtToken;
+                                            }
+                                            else
+                                            {
+                                                double.TryParse(amtToken.ToString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out dAmt);
+                                            }
+                                        }
+
+                                        string dName = (string?)(dbEntry["debtorName"] ?? dbEntry["debtor_name"] ?? dbEntry["DebtorName"] ?? dbEntry["name"] ?? dbEntry["Name"] ?? "") ?? "";
+                                        if (dAmt > 0 || !string.IsNullOrWhiteSpace(dName))
+                                        {
+                                            DebtorEntries.Add(new DsmDebitRow
+                                            {
+                                                DebtorName = dName,
+                                                Amount = dAmt,
+                                                VehicleNumber = (string?)(dbEntry["vehicleNumber"] ?? dbEntry["vehicle_number"] ?? dbEntry["VehicleNumber"] ?? dbEntry["vehicleNo"] ?? dbEntry["vehicle"] ?? ""),
+                                                SlipNumber = (string?)(dbEntry["slipNumber"] ?? dbEntry["slip_number"] ?? dbEntry["SlipNumber"] ?? dbEntry["slipNo"] ?? dbEntry["slip"] ?? ""),
+                                                EntryTime = (string?)(dbEntry["time"] ?? dbEntry["Time"] ?? dbEntry["entryTime"] ?? dbEntry["EntryTime"] ?? ""),
+                                                Remarks = (string?)(dbEntry["remarks"] ?? dbEntry["Remarks"] ?? dbEntry["notes"] ?? dbEntry["Notes"] ?? ""),
+                                                OnRowChanged = RecalculateTotals
+                                            });
+                                        }
+                                    }
+                                    catch (Exception entryEx)
+                                    {
+                                        _logger.Warning(entryEx, "Skipping malformed individual debtor entry in submission {SubId}", submission.Id);
+                                    }
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.Warning(ex, "Failed to parse DebtorEntries from submission {SubId}", submission.Id);
+                        }
+
+                        // Debtor Repayments - safe parsing supporting all schema variants
+                        try
+                        {
+                            Newtonsoft.Json.Linq.JToken? repToken = metaObj?["debtorRepayments"] 
+                                ?? metaObj?["DebtorRepayments"] 
+                                ?? metaObj?["repayments"] 
+                                ?? metaObj?["Repayments"] 
+                                ?? metaObj?["settlements"] 
+                                ?? metaObj?["Settlements"];
+
+                            if (repToken != null)
+                            {
+                                List<CreditorRepayment>? existingSubReps = null;
+                                try
+                                {
+                                    using var db = _serviceProvider.GetRequiredService<FuelPro.Data.FuelProDbContext>();
+                                    existingSubReps = await db.CreditorRepayments
+                                        .Where(r => r.ChequeNo != null && r.ChequeNo.Contains($"[Sub:{submission.Id:N}"))
+                                        .ToListAsync();
+                                }
+                                catch { }
+
+                                var usedDbIds = new HashSet<int>();
+                                int repIndex = 0;
+                                foreach (var dr in repToken)
+                                {
+                                    try
+                                    {
+                                        string dName = (string?)(dr["debtorName"] ?? dr["DebtorName"] ?? dr["creditorName"] ?? dr["CreditorName"] ?? dr["customerName"] ?? dr["name"] ?? "") ?? "";
+                                        double dAmt = 0.0;
+                                        var rAmtToken = dr["amount"] ?? dr["Amount"];
+                                        if (rAmtToken != null)
+                                        {
+                                            if (rAmtToken.Type == Newtonsoft.Json.Linq.JTokenType.Float || rAmtToken.Type == Newtonsoft.Json.Linq.JTokenType.Integer)
+                                            {
+                                                dAmt = (double)rAmtToken;
+                                            }
+                                            else
+                                            {
+                                                double.TryParse(rAmtToken.ToString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out dAmt);
+                                            }
+                                        }
+                                        string dMode = (string?)(dr["paymentMode"] ?? dr["PaymentMode"] ?? dr["collectionType"] ?? dr["mode"] ?? "Cash") ?? "Cash";
+                                        string dNotes = (string?)(dr["notes"] ?? dr["Notes"] ?? dr["remarks"] ?? dr["Remarks"] ?? "") ?? "";
+                                        if (dAmt > 0 && !string.IsNullOrWhiteSpace(dName))
+                                        {
+                                            int repId = 0;
+                                            if (existingSubReps != null && existingSubReps.Count > 0)
+                                            {
+                                                var match = existingSubReps.FirstOrDefault(r => 
+                                                    !usedDbIds.Contains(r.CreditorRepaymentId)
+                                                    && RepaymentIdentityHelper.MatchesSubmission(r.ChequeNo, submission.Id, repIndex))
+                                                    ?? existingSubReps.FirstOrDefault(r => 
+                                                        !usedDbIds.Contains(r.CreditorRepaymentId)
+                                                        && string.Equals(r.CreditorName, dName.Trim(), StringComparison.OrdinalIgnoreCase)
+                                                        && Math.Abs(r.Amount - dAmt) < 0.01);
+                                                if (match != null)
+                                                {
+                                                    repId = match.CreditorRepaymentId;
+                                                    usedDbIds.Add(repId);
+                                                }
+                                            }
+
+                                            DebtorRepayments.Add(new DsmDebtorRepaymentRow
+                                            {
+                                                CreditorRepaymentId = repId,
+                                                DebtorName = dName,
+                                                Amount = dAmt,
+                                                PaymentMode = dMode,
+                                                Notes = dNotes,
+                                                OnRowChanged = RecalculateTotals
+                                            });
+                                            repIndex++;
+                                        }
+                                    }
+                                    catch (Exception repItemEx)
+                                    {
+                                        _logger.Warning(repItemEx, "Skipping malformed debtor repayment entry in submission {SubId}", submission.Id);
+                                    }
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.Warning(ex, "Failed to parse DebtorRepayments from submission {SubId}", submission.Id);
                         }
                         OnPropertyChanged(nameof(HasDebtorRepayments));
 
@@ -1685,8 +2099,9 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                                     {
                                         var master = allTypes.FirstOrDefault(m => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(m.Code), normDCode, StringComparison.OrdinalIgnoreCase));
                                         bool isManualOnly = master != null && master.IsManualOnly;
+                                        bool isTidConfigured = master != null && master.HasTidBatch;
                                         bool isManualScalar = (!string.IsNullOrWhiteSpace(dTxId) && dTxId.StartsWith("manual-scalar-", StringComparison.OrdinalIgnoreCase))
-                                            || (string.IsNullOrWhiteSpace(dTid) && string.IsNullOrWhiteSpace(dBatch));
+                                            || (!isTidConfigured && string.IsNullOrWhiteSpace(dTid) && string.IsNullOrWhiteSpace(dBatch));
                                         bool isTidItem = !isManualScalar;
                                         if (isTidItem)
                                         {
@@ -1874,11 +2289,14 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                                 }
                                 else
                                 {
+                                    var master = allTypes.FirstOrDefault(m => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(m.Code), normCode, StringComparison.OrdinalIgnoreCase));
+                                    bool isTidConfigured = master != null && master.HasTidBatch;
                                     bool isManualScalar = !string.IsNullOrWhiteSpace(cand.TxId) && cand.TxId.StartsWith("manual-scalar-", StringComparison.OrdinalIgnoreCase);
-                                    bool isTidItem = !isManualScalar && (!string.IsNullOrWhiteSpace(cand.Tid) || !string.IsNullOrWhiteSpace(cand.Batch) || normCode == "PINELABS_CARD");
+                                    bool isTidItem = !isManualScalar && (!string.IsNullOrWhiteSpace(cand.Tid) || !string.IsNullOrWhiteSpace(cand.Batch) || normCode == "PINELABS_CARD" || isTidConfigured);
                                     bool hasReliableId = !string.IsNullOrWhiteSpace(cand.TxId) && !isManualScalar;
                                     double effectiveAmount = cand.Amount;
 
+                                    bool wasDeductedFromOtp = false;
                                     // In legacy ingestion without unique transactionId:
                                     // If OTP items exist for this mode, deduct existing OTP from total to prevent double-counting
                                     if (!hasReliableId)
@@ -1898,6 +2316,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                                             {
                                                 // Attendant entered total (OTP + manual excess): excess portion is effective amount
                                                 effectiveAmount = effectiveAmount - existingOtp;
+                                                wasDeductedFromOtp = true;
                                             }
                                         }
                                     }
@@ -1905,7 +2324,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                                     if (isTidItem)
                                     {
                                         // Cross-section check: If already represented in OTP CardSwipeDetails, do not duplicate in ManualTidTransactions
-                                        bool inOtp = CardSwipeDetails.Any(c =>
+                                        bool inOtp = !wasDeductedFromOtp && CardSwipeDetails.Any(c =>
                                             (!string.IsNullOrWhiteSpace(c.TransactionId) && !string.IsNullOrWhiteSpace(cand.TxId) && string.Equals(c.TransactionId, cand.TxId, StringComparison.OrdinalIgnoreCase))
                                             || (!string.IsNullOrWhiteSpace(c.Otp) && string.Equals(PaymentCollection.NormalizeCollectionTypeCode(c.Mode), normCode, StringComparison.OrdinalIgnoreCase) && Math.Abs(c.Amount - effectiveAmount) < 0.01
                                                 && !string.IsNullOrWhiteSpace(c.Tid) && string.Equals(c.Tid.Trim(), cand.Tid.Trim(), StringComparison.OrdinalIgnoreCase)
@@ -2097,8 +2516,8 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                         // Clean up any redundant total row when itemized OTP transactions exist
                         CleanupRedundantTotals(metadata, collResult.Success ? collResult.Data : null);
 
-                        // In legacy formatVersion < 3, ensure _dynamicManualAmounts reflects strictly the excess manual portion (Total - OtpTotal)
-                        // for amounts originating from legacy dynamicCollectionValues.
+                        // In legacy formatVersion < 3, ensure _dynamicManualAmounts reflects strictly any un-itemized excess manual portion
+                        // (after subtracting both itemized OTP transactions and ingested ManualTidTransactions).
                         if (formatVersion < 3)
                         {
                             var allDynamicKeys = _dynamicManualAmounts.Keys.ToList();
@@ -2109,11 +2528,15 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                                     double existingOtp = CardSwipeDetails
                                         .Where(c => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(c.Mode), normCode, StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(c.Otp))
                                         .Sum(c => c.Amount);
+                                    double existingTid = ManualTidTransactions
+                                        .Where(t => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(t.Mode), normCode, StringComparison.OrdinalIgnoreCase))
+                                        .Sum(t => t.Amount);
 
-                                    if (existingOtp > 0)
-                                    {
-                                        _dynamicManualAmounts[normCode] = Math.Max(0, totalAmt - existingOtp);
-                                    }
+                                    double residualManual = Math.Max(0, totalAmt - existingOtp - existingTid);
+                                    if (residualManual > 0.009)
+                                        _dynamicManualAmounts[normCode] = residualManual;
+                                    else
+                                        _dynamicManualAmounts.Remove(normCode);
                                 }
                             }
                         }
@@ -2184,14 +2607,16 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                                     var matchN = NozzleReadings.FirstOrDefault(n => n.NozzleId == nId);
                                     if (matchN != null && matchN.Rate > 0) rate = matchN.Rate;
                                 }
-                                double rupeeAmt = Convert.ToDouble((object?)(test.rupeeAmount ?? test.RupeeAmount ?? (litres * rate)));
+                                bool hasExplicit = (test.rupeeAmount != null || test.RupeeAmount != null);
+                                double? explicitRupeeAmt = hasExplicit ? Convert.ToDouble((object?)(test.rupeeAmount ?? test.RupeeAmount)) : null;
 
                                 SubmissionTestingEntries.Add(new DsmTestingRow
                                 {
                                     NozzleId = nId,
                                     FuelType = test.fuelType ?? "",
                                     Amount = litres,
-                                    RupeeAmount = rupeeAmt > 0 ? rupeeAmt : Math.Round(litres * rate, 2),
+                                    RupeeAmount = explicitRupeeAmt,
+                                    HasExplicitRupeeAmount = hasExplicit,
                                     PumpId = (int)(test.pumpId ?? submission.PumpId)
                                 });
                             }
@@ -2422,16 +2847,18 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
         var allDynamicCodes = new HashSet<string>(_dynamicManualAmounts.Keys, StringComparer.OrdinalIgnoreCase);
         foreach (var c in CardSwipeDetails)
         {
-            if (!PaymentCollection.IsStandardCollectionCode(c.Mode) && !string.IsNullOrWhiteSpace(c.Mode))
+            var norm = PaymentCollection.NormalizeCollectionTypeCode(c.Mode);
+            if ((!PaymentCollection.IsStandardCollectionCode(c.Mode) || norm == "PINELABS_CARD") && !string.IsNullOrWhiteSpace(c.Mode))
             {
-                allDynamicCodes.Add(PaymentCollection.NormalizeCollectionTypeCode(c.Mode));
+                allDynamicCodes.Add(norm);
             }
         }
         foreach (var t in ManualTidTransactions)
         {
-            if (!string.IsNullOrWhiteSpace(t.Mode) && !PaymentCollection.IsStandardCollectionCode(t.Mode))
+            var norm = PaymentCollection.NormalizeCollectionTypeCode(t.Mode);
+            if (!string.IsNullOrWhiteSpace(t.Mode) && (!PaymentCollection.IsStandardCollectionCode(t.Mode) || norm == "PINELABS_CARD"))
             {
-                allDynamicCodes.Add(PaymentCollection.NormalizeCollectionTypeCode(t.Mode));
+                allDynamicCodes.Add(norm);
             }
         }
 
@@ -2466,7 +2893,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
             }
 
             var dynMatch = DynamicCollections.FirstOrDefault(d => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(d.Code), normCode, StringComparison.OrdinalIgnoreCase));
-            bool isManualOnly = ManualCollections.Any(m => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(m.Code), normCode, StringComparison.OrdinalIgnoreCase));
+            bool isManualOnly = (itemizedTidAmt == 0 && otpAmt == 0) && ManualCollections.Any(m => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(m.Code), normCode, StringComparison.OrdinalIgnoreCase));
             if (isManualOnly)
             {
                 // Manual-only collections (e.g. SBI Redeem, QR) are displayed in ManualCollections section; do not duplicate in summary cards
@@ -2563,6 +2990,25 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
         double effectivePhonePe = (itemizedPhonePe > 0 ? itemizedPhonePe : UpiAmount) + QrPayments.Sum(q => q.Amount);
         double effectiveCreditCard = itemizedCreditCard > 0 ? itemizedCreditCard : CardAmount;
         double effectivePetroCard = itemizedPetroCard > 0 ? itemizedPetroCard : PetroCardAmount;
+        double cashDep = CashDepositAmount;
+        double cashPhys = CashAmount;
+        double cash3Val = Cash3.TotalAmount;
+        double finalDynamicPayments = dynamicTotal;
+
+        // Debtor repayments are separate customer recovery transactions persisted to CreditorRepayments.
+        // They must neither inflate nor be deducted from pure fuel-sale collections or DSM reconciliation.
+
+        foreach (var t in SubmissionTestingEntries)
+        {
+            if (!t.HasExplicitRupeeAmount && t.NozzleId > 0)
+            {
+                var matchN = NozzleReadings.FirstOrDefault(n => n.NozzleId == t.NozzleId);
+                if (matchN != null && matchN.Rate > 0)
+                {
+                    t.RupeeAmount = Math.Round(t.Amount * matchN.Rate, 2);
+                }
+            }
+        }
 
         var dto = new FuelPro.Core.DTOs.DsmEntryDto
         {
@@ -2571,12 +3017,12 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
             {
                 PhonePe = (decimal)effectivePhonePe,
                 CreditCard = (decimal)effectiveCreditCard,
-                CashDeposit = (decimal)CashDepositAmount,
-                PhysicalCash = (decimal)CashAmount,
-                Cash3 = (decimal)Cash3.TotalAmount,
+                CashDeposit = (decimal)cashDep,
+                PhysicalCash = (decimal)cashPhys,
+                Cash3 = (decimal)cash3Val,
                 PetroCard = (decimal)effectivePetroCard,
                 Others = (decimal)OthersAmount,
-                DynamicPayments = (decimal)dynamicTotal,
+                DynamicPayments = (decimal)finalDynamicPayments,
                 CollectionReduction = (decimal)CollectionReductionAmount,
                 CollectionReductionRemark = CollectionReductionRemark
             },
@@ -2626,6 +3072,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
 
         // Check continuity warnings
         HasContinuityWarnings = NozzleReadings.Any(r => r.HasContinuityError);
+        HasRateDiscrepancies = NozzleReadings.Any(r => r.HasRateDiscrepancy);
         
         // Build validation summary
         var errors = new List<string>();
@@ -2654,6 +3101,123 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
         NotifySubmissionStateChanged();
     }
 
+    public async Task ValidateNozzleRatesAsync(DsmPendingSubmission? submission)
+    {
+        if (submission == null) return;
+        try
+        {
+            using var context = _serviceProvider.GetRequiredService<FuelProDbContext>();
+            var settings = await context.Settings.FirstOrDefaultAsync();
+            var pumpMappings = await context.PumpMappings.ToListAsync();
+
+            var shiftDateOnly = submission.ShiftDate.Date;
+            var normShift = _shiftCycleService?.NormalizeShiftType(submission.ShiftType) ?? submission.ShiftType;
+
+            // 1. Fetch approved historical entries for the SAME operational date and SAME shift
+            var historicalEntries = await context.DsmEntries
+                .Include(e => e.Shift)
+                .Include(e => e.NozzleReadings)
+                .Where(e => e.Shift != null && e.Shift.ShiftDate.Date == shiftDateOnly)
+                .ToListAsync();
+
+            var matchingShiftEntries = historicalEntries
+                .Where(e => e.Shift != null && string.Equals(_shiftCycleService?.NormalizeShiftType(e.Shift.ShiftType) ?? e.Shift.ShiftType, normShift, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            foreach (var row in NozzleReadings)
+            {
+                double submittedRate = row.SubmittedRate > 0 ? row.SubmittedRate : row.Rate;
+                string fuelType = row.FuelType;
+
+                // Establish submitted nozzle's tank assignment wherever available
+                string? submittedTank = pumpMappings.FirstOrDefault(m => m.PumpId == row.PumpId && m.NozzleNumber == row.NozzleId)?.TankName;
+                if (string.IsNullOrWhiteSpace(submittedTank))
+                {
+                    submittedTank = PumpConfiguration.GetTankName(row.PumpId, row.NozzleId, submission.ShiftDate);
+                }
+
+                // Match exact nozzle identity and matching fuel product on the SAME operational date and SAME shift.
+                // An unrelated nozzle's approved rate must NEVER be treated as ground truth for this nozzle.
+                var matchingReadingWithEntry = (from e in matchingShiftEntries
+                                                from nr in e.NozzleReadings
+                                                where nr.NozzleNumber == row.NozzleId &&
+                                                      string.Equals(nr.FuelType, fuelType, StringComparison.OrdinalIgnoreCase) &&
+                                                      nr.Rate > 0
+                                                select new { Entry = e, Reading = nr }).FirstOrDefault();
+
+                if (matchingReadingWithEntry != null)
+                {
+                    var nozzleHist = matchingReadingWithEntry.Reading;
+                    var parentEntry = matchingReadingWithEntry.Entry;
+                    double histRate = nozzleHist.Rate;
+
+                    // Establish historical nozzle's tank assignment wherever available
+                    string? histTank = pumpMappings.FirstOrDefault(m => m.PumpId == parentEntry.PumpId && m.NozzleNumber == nozzleHist.NozzleNumber)?.TankName;
+                    if (string.IsNullOrWhiteSpace(histTank))
+                    {
+                        histTank = PumpConfiguration.GetTankName(parentEntry.PumpId, nozzleHist.NozzleNumber, parentEntry.Shift?.ShiftDate);
+                    }
+
+                    // Check tank assignment compatibility:
+                    // If tank assignment is known for either and differs, or cannot be established reliably, do not treat as automatic ground truth.
+                    bool hasTankMismatch = !string.IsNullOrWhiteSpace(submittedTank) &&
+                                           !string.IsNullOrWhiteSpace(histTank) &&
+                                           !string.Equals(submittedTank.Trim(), histTank.Trim(), StringComparison.OrdinalIgnoreCase);
+
+                    if (hasTankMismatch)
+                    {
+                        // Tank assignment differs -> Preserve submitted rate, display informational guidance only
+                        row.HasRateDiscrepancy = true;
+                        row.IsHistoricalMismatch = false;
+                        row.HistoricalRate = histRate;
+                        row.RateWarningMessage = $"ℹ️ Note: Historical record found for Nozzle {row.NozzleId} ({fuelType}), but tank assignment differs (Submitted Tank: '{submittedTank}', Historical Tank: '{histTank}'). Preserving submitted rate ₹{submittedRate:F2}.";
+                    }
+                    else if (Math.Abs(row.Rate - histRate) > 0.001)
+                    {
+                        // Ground truth matches operational date, shift, nozzle identity, fuel product, and tank assignment!
+                        row.HasRateDiscrepancy = true;
+                        row.IsHistoricalMismatch = true;
+                        row.HistoricalRate = histRate;
+                        string tankDesc = !string.IsNullOrWhiteSpace(histTank) ? $", Tank: {histTank}" : "";
+                        row.RateWarningMessage = $"⚠️ Historical Ground-Truth Mismatch: Current rate is ₹{row.Rate:F2} (submitted: ₹{submittedRate:F2}), but approved Shift {normShift} on {submission.ShiftDate:dd-MMM-yyyy} recorded ₹{histRate:F2} for Nozzle {row.NozzleId} ({fuelType}{tankDesc}).";
+                    }
+                    else
+                    {
+                        row.HasRateDiscrepancy = false;
+                        row.IsHistoricalMismatch = false;
+                        row.RateWarningMessage = "";
+                    }
+                }
+                else
+                {
+                    // Historical evidence is unavailable for this exact nozzle on this shift date & shift.
+                    // Fall back to current configured Settings rate as an INFORMATIONAL note only.
+                    // Preserve the submitted rate. Do not automatically replace it.
+                    double configuredRate = settings?.GetRateFor(fuelType, 0.0) ?? 0.0;
+                    if (configuredRate > 0 && Math.Abs(row.Rate - configuredRate) > 0.001)
+                    {
+                        row.HasRateDiscrepancy = true;
+                        row.IsHistoricalMismatch = false;
+                        row.HistoricalRate = configuredRate;
+                        row.RateWarningMessage = $"ℹ️ Note: Current rate is ₹{row.Rate:F2} (submitted: ₹{submittedRate:F2}), while desktop Settings currently configures ₹{configuredRate:F2} (no approved historical record found for Nozzle {row.NozzleId} on {submission.ShiftDate:dd-MMM-yyyy} Shift {normShift}).";
+                    }
+                    else
+                    {
+                        row.HasRateDiscrepancy = false;
+                        row.IsHistoricalMismatch = false;
+                        row.RateWarningMessage = "";
+                    }
+                }
+            }
+
+            HasRateDiscrepancies = NozzleReadings.Any(n => n.HasRateDiscrepancy);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning(ex, "Failed to validate nozzle rates against historical ground truth");
+        }
+    }
+
     private void UpdateFuelTypeSummaries()
     {
         FuelTypeSummaries.Clear();
@@ -2667,7 +3231,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
             var first = g.First();
             var totalLitres = g.Sum(n => n.SaleLitres);
             var rate = g.FirstOrDefault(n => n.Rate > 0)?.Rate ?? 0;
-            var totalAmount = g.Sum(n => n.Amount);
+            var totalAmount = Math.Round(totalLitres * rate, 2);
 
             FuelTypeSummaries.Add(new FuelTypeReadingSummary
             {
@@ -2740,8 +3304,25 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
             bool hasHistoricalCreditCard = CardAmount > 0 || CreditCardMorning > 0 || CreditCardNight > 0;
             bool hasHistoricalPetroCard = PetroCardAmount > 0 || PetroCardMorning > 0 || PetroCardNight > 0;
 
-            // 1. Resolve built-in PhonePe
-            var ph = allTypes.FirstOrDefault(c => string.Equals(c.Code, "PHONEPE", StringComparison.OrdinalIgnoreCase));
+            static bool IsCreditCardType(CollectionTypeMaster c) =>
+                string.Equals(c.Code, "CREDIT_CARD", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(c.Code, "CREDITCARD", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(c.Code, "CREDIT CARD", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(c.Code, "CREDIT_DEBIT_CARD", StringComparison.OrdinalIgnoreCase);
+
+            static bool IsPetroCardType(CollectionTypeMaster c) =>
+                string.Equals(c.Code, "PETROCARD", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(c.Code, "PETRO_CARD", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(c.Code, "PETRO CARD", StringComparison.OrdinalIgnoreCase);
+
+            static bool IsPhonePeType(CollectionTypeMaster c) =>
+                string.Equals(c.Code, "PHONEPE", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(c.Code, "PHONE_PE", StringComparison.OrdinalIgnoreCase);
+
+            // 1. Resolve built-in PhonePe (active-first)
+            var ph = allTypes.FirstOrDefault(c => c.IsActive && IsEnabledForCurrentShift(c) && IsPhonePeType(c))
+                  ?? allTypes.FirstOrDefault(c => c.IsActive && IsPhonePeType(c))
+                  ?? allTypes.FirstOrDefault(c => IsPhonePeType(c));
             if (ph != null)
             {
                 PhonePeDisplayName = ph.DisplayName;
@@ -2760,11 +3341,10 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                 PhonePeEnableNight = true;
             }
 
-            // 2. Resolve built-in Credit Card
-            var cc = allTypes.FirstOrDefault(c => string.Equals(c.Code, "CREDIT_CARD", StringComparison.OrdinalIgnoreCase)
-                                            || string.Equals(c.Code, "CREDITCARD", StringComparison.OrdinalIgnoreCase)
-                                            || string.Equals(c.Code, "CREDIT CARD", StringComparison.OrdinalIgnoreCase)
-                                            || string.Equals(c.Code, "CREDIT_DEBIT_CARD", StringComparison.OrdinalIgnoreCase));
+            // 2. Resolve built-in Credit Card (active-first)
+            var cc = allTypes.FirstOrDefault(c => c.IsActive && IsEnabledForCurrentShift(c) && IsCreditCardType(c))
+                  ?? allTypes.FirstOrDefault(c => c.IsActive && IsCreditCardType(c))
+                  ?? allTypes.FirstOrDefault(c => IsCreditCardType(c));
             if (cc != null)
             {
                 CreditCardDisplayName = cc.DisplayName;
@@ -2783,10 +3363,10 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                 CreditCardEnableNight = true;
             }
 
-            // 3. Resolve built-in PetroCard
-            var pc = allTypes.FirstOrDefault(c => string.Equals(c.Code, "PETROCARD", StringComparison.OrdinalIgnoreCase)
-                                            || string.Equals(c.Code, "PETRO_CARD", StringComparison.OrdinalIgnoreCase)
-                                            || string.Equals(c.Code, "PETRO CARD", StringComparison.OrdinalIgnoreCase));
+            // 3. Resolve built-in PetroCard (active-first)
+            var pc = allTypes.FirstOrDefault(c => c.IsActive && IsEnabledForCurrentShift(c) && IsPetroCardType(c))
+                  ?? allTypes.FirstOrDefault(c => c.IsActive && IsPetroCardType(c))
+                  ?? allTypes.FirstOrDefault(c => IsPetroCardType(c));
             if (pc != null)
             {
                 PetroCardDisplayName = pc.DisplayName;
@@ -2834,9 +3414,26 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
 
             // Dynamic types
             var matchedCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            if (ph != null) matchedCodes.Add(ph.Code);
-            if (cc != null) matchedCodes.Add(cc.Code);
-            if (pc != null) matchedCodes.Add(pc.Code);
+            if (ph != null)
+            {
+                matchedCodes.Add(ph.Code);
+                matchedCodes.Add("PHONEPE");
+                matchedCodes.Add("PHONE_PE");
+            }
+            if (cc != null)
+            {
+                matchedCodes.Add(cc.Code);
+                matchedCodes.Add("CREDIT_CARD");
+                matchedCodes.Add("CREDITCARD");
+                matchedCodes.Add("CREDIT CARD");
+                matchedCodes.Add("CREDIT_DEBIT_CARD");
+            }
+            if (pc != null)
+            {
+                matchedCodes.Add(pc.Code);
+                matchedCodes.Add("PETROCARD");
+                matchedCodes.Add("PETRO_CARD");
+            }
             matchedCodes.Add("CASH_DEPOSIT");
 
             var allDynamicCodes = new HashSet<string>(_dynamicManualAmounts.Keys, StringComparer.OrdinalIgnoreCase);
@@ -3026,7 +3623,10 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
         double otpSum = CardSwipeDetails
             .Where(c => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(c.Mode), "PINELABS_CARD", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(c.Otp))
             .Sum(c => c.Amount);
-        double manualNeeded = Math.Max(0, value - otpSum);
+        double tidSum = ManualTidTransactions
+            .Where(t => string.Equals(PaymentCollection.NormalizeCollectionTypeCode(t.Mode), "PINELABS_CARD", StringComparison.OrdinalIgnoreCase))
+            .Sum(t => t.Amount);
+        double manualNeeded = Math.Max(0, value - otpSum - tidSum);
 
         _dynamicManualAmounts["PINELABS_CARD"] = manualNeeded;
         RecalculateTotals();
@@ -3179,7 +3779,14 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
         }
         RecalculateTotals();
     }
-    partial void OnCashDepositAmountChanged(double value) => RecalculateTotals();
+    partial void OnCashDepositAmountChanged(double value)
+    {
+        if (!_isLoadingSubmission && !ShowCash1DenominationFields && Cash1 != null && Math.Abs(Cash1.TotalAmount - value) > 0.001)
+        {
+            Cash1.TotalAmount = value;
+        }
+        RecalculateTotals();
+    }
     partial void OnCollectionReductionAmountChanged(double value) => RecalculateTotals();
     partial void OnCollectionReductionRemarkChanged(string? value) => RecalculateTotals();
     partial void OnOthersAmountChanged(double value) => RecalculateTotals();
@@ -3413,10 +4020,27 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
         }
     }
 
+    private static void FlushFocusedUiTextBox()
+    {
+        try
+        {
+            var focused = System.Windows.Input.Keyboard.FocusedElement as System.Windows.Controls.TextBox;
+            focused?.GetBindingExpression(System.Windows.Controls.TextBox.TextProperty)?.UpdateSource();
+        }
+        catch { }
+    }
+
     [RelayCommand]
     private async Task ApproveAsync()
     {
+        FlushFocusedUiTextBox();
         if (SelectedSubmission == null) return;
+
+        if (string.Equals(SelectedSubmission.Status, "Approved", StringComparison.OrdinalIgnoreCase))
+        {
+            ShowUiMessage("This submission has already been approved.", "Already Approved", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
 
         // Completeness Guard
         if (!IsSubmissionComplete)
@@ -4129,6 +4753,15 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                 }
             }
 
+            if (connectedPumpIds.Count == 0)
+            {
+                var cfgConn = await GetConnectedPumpsForPrimaryAsync(SelectedSubmission.PumpId);
+                foreach (var cp in cfgConn)
+                {
+                    if (cp > 0 && cp != SelectedSubmission.PumpId && !connectedPumpIds.Contains(cp))
+                        connectedPumpIds.Add(cp);
+                }
+            }
             connectedPumpId = connectedPumpIds.Count > 0 ? connectedPumpIds[0] : null;
 
             var expenseModels = SubmissionExpenses.Count > 0
@@ -4164,13 +4797,30 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                 expenseModels.Add(new Expense { Description = string.IsNullOrEmpty(ExpenseNotes) ? "DSM PWA Expense" : ExpenseNotes, Amount = ExpenseAmount });
             }
 
+            bool cash1VmHasAnyValue = Cash1.Denom500.HasValue || Cash1.Denom200.HasValue || Cash1.Denom100.HasValue
+                || Cash1.Denom50.HasValue || Cash1.Denom20.HasValue || Cash1.Denom10.HasValue || Cash1.Coins.HasValue;
+            if (!cash1VmHasAnyValue && (cash1denom500 > 0 || cash1denom200 > 0 || cash1denom100 > 0 || cash1denom50 > 0 || cash1denom20 > 0 || cash1denom10 > 0 || cash1coins > 0))
+            {
+                Cash1.Denom500 = cash1denom500;
+                Cash1.Denom200 = cash1denom200;
+                Cash1.Denom100 = cash1denom100;
+                if (cash1denom50 > 0) Cash1.Denom50 = cash1denom50;
+                if (cash1denom20 > 0) Cash1.Denom20 = cash1denom20;
+                if (cash1denom10 > 0) Cash1.Denom10 = cash1denom10;
+                if (cash1coins > 0) Cash1.Coins = cash1coins;
+            }
+
+            double finalCash1Total = Cash1.HasDenominationCounts
+                ? Cash1.TotalAmount
+                : (CashDepositAmount > 0 ? CashDepositAmount : Cash1.TotalAmount);
+
             // Cash1 is Cash 1, Cash2 is Cash in Hand
             var cashModels = new List<CashDenomination>
             {
                 new()
                 {
                     CashType = "Cash1",
-                    TotalAmount = CashDepositAmount,
+                    TotalAmount = finalCash1Total,
                     Denom500 = Cash1.Denom500 ?? 0,
                     Denom200 = Cash1.Denom200 ?? 0,
                     Denom100 = Cash1.Denom100 ?? 0,
@@ -4211,6 +4861,66 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
 
             // 3. Save locally via single database transaction (authoritative source of truth)
             using var context = _serviceProvider.GetRequiredService<FuelProDbContext>();
+            var alreadyApproved = await context.DsmApprovalAudits.AnyAsync(a => a.SubmissionId == SelectedSubmission.Id);
+            if (alreadyApproved)
+            {
+                ShowUiMessage("This shift submission has already been approved and committed by another workstation.", "Already Approved", MessageBoxButton.OK, MessageBoxImage.Information);
+                await RefreshQueueAsync();
+                return;
+            }
+
+            var submissionId = SelectedSubmission.Id;
+            var syncConfig = _serviceProvider.GetService<FuelPro.Sync.SyncConfigService>();
+            var syncSettings = syncConfig != null ? await syncConfig.GetSettingsAsync() : null;
+            var machineId = !string.IsNullOrEmpty(syncSettings?.MachineId) ? syncSettings.MachineId : Environment.MachineName;
+
+            // Multi-Computer Concurrency Guard & Single-PC Remote Verification:
+            var lockResult = await _supabaseService.ClaimSubmissionWithFencingAsync(submissionId, machineId, approvedBy, lockId);
+            string? claimToken = lockResult.Data?.ClaimToken;
+            int claimVersion = lockResult.Data?.ClaimVersion ?? 0;
+            bool awaitingCloudReconciliation = false;
+
+            if (!lockResult.Success)
+            {
+                var claimCode = lockResult.Data?.Code;
+                bool isRemoteConflictOrIneligible =
+                    claimCode is "CONCURRENCY_CONFLICT" or "REMOTE_ALREADY_PROCESSED" or "REMOTE_DELETED" or "REMOTE_MISSING" ||
+                    (lockResult.Error != null && (
+                        lockResult.Error.Contains("Concurrency conflict", StringComparison.OrdinalIgnoreCase) ||
+                        lockResult.Error.Contains("Remote status conflict", StringComparison.OrdinalIgnoreCase) ||
+                        lockResult.Error.Contains("already", StringComparison.OrdinalIgnoreCase)));
+
+                if (isRemoteConflictOrIneligible)
+                {
+                    _logger.Warning("Cloud approval check rejected submission {SubId} (Code={Code}): {Error}", submissionId, claimCode, lockResult.Error);
+                    ShowUiMessage($"Cannot approve submission:\n{lockResult.Error}\n\nQueue will be refreshed so local data stays consistent with cloud.", "Approval Conflict", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    await RefreshQueueAsync();
+                    return;
+                }
+
+                if (syncSettings != null && syncSettings.MultiComputerEnabled)
+                {
+                    _logger.Warning("Cloud approval unreachable in multi-computer mode for submission {SubId}: {Error}", submissionId, lockResult.Error);
+                    ShowUiMessage($"Cannot approve in Multi-Computer mode while offline:\n{lockResult.Error}\n\nPlease check network connectivity so submission status can be coordinated with other workstations.", "Network Required", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                awaitingCloudReconciliation = true;
+                _logger.Warning("Cloud verification unavailable in single-PC mode for {SubId}: {Error}. Proceeding with offline local commit marked awaiting cloud reconciliation.", submissionId, lockResult.Error);
+            }
+            else if (!string.IsNullOrEmpty(claimToken))
+            {
+                // Pre-processing ownership check immediately before opening local SQLite transaction
+                var preOwnership = await _supabaseService.RenewLeaseAsync(submissionId, machineId, claimToken, claimVersion);
+                if (!preOwnership.Success)
+                {
+                    _logger.Warning("Pre-processing ownership check failed for {SubId}: {Error}", submissionId, preOwnership.Error);
+                    ShowUiMessage($"Cannot proceed with approval:\n{preOwnership.Error}\n\nThe approval lease could not be validated with the cloud coordinator.", "Ownership Check Failed", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    await RefreshQueueAsync();
+                    return;
+                }
+            }
+
             transaction = await context.Database.BeginTransactionAsync();
                 var localSaveResult = await _dsmEntryService.SaveCompleteEntryWithContextAsync(
                     context,
@@ -4300,29 +5010,101 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                 // Process Debtor Repayments received by DSM into CreditorRepayments table
                 if (DebtorRepayments.Count > 0)
                 {
-                    foreach (var rep in DebtorRepayments)
+                    var shiftDate = SelectedSubmission.ShiftDate.Date;
+                    var shiftNum = SelectedSubmission.ShiftType;
+                    var dsmName = SelectedSubmission.DsmName;
+                    var dsmTag = $"DSM: {dsmName}";
+                    var subId = SelectedSubmission.Id;
+
+                    var existingReps = await context.CreditorRepayments
+                        .Where(r => (r.ChequeNo != null && r.ChequeNo.Contains($"[Sub:{subId:N}"))
+                                 || (r.RepaymentDate.Date == shiftDate && r.ShiftNumber == shiftNum && r.ChequeNo != null && r.ChequeNo.Contains(dsmTag)))
+                        .ToListAsync();
+
+                    var existingRepMap = existingReps.ToDictionary(r => r.CreditorRepaymentId);
+                    var claimedIds = new HashSet<int>();
+
+                    for (int i = 0; i < DebtorRepayments.Count; i++)
                     {
+                        var rep = DebtorRepayments[i];
                         if ((rep.Amount ?? 0) <= 0 || string.IsNullOrWhiteSpace(rep.DebtorName)) continue;
 
-                        var repaymentEntity = new CreditorRepayment
+                        string subTag = RepaymentIdentityHelper.BuildSubmissionTag(subId, i);
+                        string expectedCheque = RepaymentIdentityHelper.FormatChequeNo(rep.Notes, dsmName, subTag);
+
+                        CreditorRepayment? targetEntity = null;
+
+                        // 1. Primary: match by CreditorRepaymentId
+                        if (rep.CreditorRepaymentId > 0 && existingRepMap.TryGetValue(rep.CreditorRepaymentId, out var byId))
                         {
-                            CreditorName = rep.DebtorName.Trim(),
-                            Amount = rep.Amount ?? 0,
-                            PaymentMode = string.IsNullOrWhiteSpace(rep.PaymentMode) ? "Cash" : rep.PaymentMode,
-                            RepaymentDate = SelectedSubmission.ShiftDate,
-                            ShiftNumber = SelectedSubmission.ShiftType,
-                            ChequeNo = string.IsNullOrWhiteSpace(rep.Notes)
-                                ? $"DSM: {SelectedSubmission.DsmName}"
-                                : $"{rep.Notes.Trim()} (DSM: {SelectedSubmission.DsmName})"
-                        };
-                        await context.CreditorRepayments.AddAsync(repaymentEntity);
+                            targetEntity = byId;
+                        }
+
+                        // 2. Secondary: match by submission identity tag
+                        if (targetEntity == null)
+                        {
+                            targetEntity = existingReps.FirstOrDefault(r => 
+                                !claimedIds.Contains(r.CreditorRepaymentId)
+                                && RepaymentIdentityHelper.MatchesSubmission(r.ChequeNo, subId, i));
+                        }
+
+                        // 3. Fallback: match by unlinked row without stealing another row's record
+                        if (targetEntity == null)
+                        {
+                            targetEntity = existingReps.FirstOrDefault(r =>
+                                !claimedIds.Contains(r.CreditorRepaymentId)
+                                && !DebtorRepayments.Any(d => d.CreditorRepaymentId == r.CreditorRepaymentId)
+                                && string.Equals(r.CreditorName, rep.DebtorName.Trim(), StringComparison.OrdinalIgnoreCase)
+                                && Math.Abs(r.Amount - (rep.Amount ?? 0)) < 0.01
+                                && string.Equals(r.PaymentMode ?? "Cash", string.IsNullOrWhiteSpace(rep.PaymentMode) ? "Cash" : rep.PaymentMode, StringComparison.OrdinalIgnoreCase));
+                        }
+
+                        if (targetEntity != null)
+                        {
+                            targetEntity.CreditorName = rep.DebtorName.Trim();
+                            targetEntity.Amount = rep.Amount ?? 0;
+                            targetEntity.PaymentMode = string.IsNullOrWhiteSpace(rep.PaymentMode) ? "Cash" : rep.PaymentMode;
+                            targetEntity.RepaymentDate = shiftDate;
+                            targetEntity.ShiftNumber = shiftNum;
+                            targetEntity.ChequeNo = expectedCheque;
+
+                            rep.CreditorRepaymentId = targetEntity.CreditorRepaymentId;
+                            claimedIds.Add(targetEntity.CreditorRepaymentId);
+                        }
+                        else
+                        {
+                            var repaymentEntity = new CreditorRepayment
+                            {
+                                CreditorName = rep.DebtorName.Trim(),
+                                Amount = rep.Amount ?? 0,
+                                PaymentMode = string.IsNullOrWhiteSpace(rep.PaymentMode) ? "Cash" : rep.PaymentMode,
+                                RepaymentDate = shiftDate,
+                                ShiftNumber = shiftNum,
+                                ChequeNo = expectedCheque
+                            };
+                            await context.CreditorRepayments.AddAsync(repaymentEntity);
+                            await context.SaveChangesAsync();
+                            rep.CreditorRepaymentId = repaymentEntity.CreditorRepaymentId;
+                            claimedIds.Add(repaymentEntity.CreditorRepaymentId);
+                            existingReps.Add(repaymentEntity);
+                            existingRepMap[repaymentEntity.CreditorRepaymentId] = repaymentEntity;
+                        }
                     }
-                    DsmEntryService.RaiseDebtorChanged();
                 }
                 
                 var originalData = new
                 {
-                    Readings = NozzleReadings.Select(r => new { r.NozzleId, r.OpeningReading, r.ClosingReading, r.Rate }),
+                    Readings = NozzleReadings.Select(r => new
+                    {
+                        r.NozzleId,
+                        r.FuelType,
+                        r.OpeningReading,
+                        r.ClosingReading,
+                        SubmittedRate = (r.SubmittedRate > 0 ? r.SubmittedRate : r.Rate),
+                        Rate = (r.SubmittedRate > 0 ? r.SubmittedRate : r.Rate),
+                        r.SaleLitres,
+                        Amount = r.SaleLitres * (r.SubmittedRate > 0 ? r.SubmittedRate : r.Rate)
+                    }),
                     Collections = new
                     {
                         Cash = CashAmount,
@@ -4347,14 +5129,41 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                     debtorRepayments = DebtorRepayments.Select(r => new { r.DebtorName, r.Amount, r.PaymentMode, r.Notes })
                 };
 
+                var rateAdjustments = NozzleReadings
+                    .Where(n => n.SubmittedRate > 0 && Math.Abs(n.SubmittedRate - n.Rate) > 0.001)
+                    .Select(n => $"Nozzle #{n.NozzleId} ({n.FuelType}): rate adjusted from ₹{n.SubmittedRate:F2} to ₹{n.Rate:F2}")
+                    .ToList();
+
                 var approvedData = new
                 {
                     DsmEntryId = savedEntry.DsmEntryId,
                     ShiftId = savedEntry.ShiftId,
                     savedEntry.GrossSales,
                     savedEntry.TotalCollection,
-                    savedEntry.Mismatch
+                    savedEntry.Mismatch,
+                    Readings = NozzleReadings.Select(r => new
+                    {
+                        r.NozzleId,
+                        r.FuelType,
+                        r.OpeningReading,
+                        r.ClosingReading,
+                        ApprovedRate = r.Rate,
+                        Rate = r.Rate,
+                        r.SaleLitres,
+                        r.Amount
+                    }),
+                    RateAdjustments = rateAdjustments
                 };
+
+                string auditRemarks = HasContinuityWarnings ? $"Override Continuity: {OverrideRemark}" : "Approved as-is.";
+                if (rateAdjustments.Count > 0)
+                {
+                    auditRemarks += $" | Rate adjustments: {string.Join("; ", rateAdjustments)}";
+                }
+                if (awaitingCloudReconciliation)
+                {
+                    auditRemarks += " | [Awaiting Cloud Reconciliation]";
+                }
 
                 var audit = new DsmApprovalAudit
                 {
@@ -4363,7 +5172,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                     ApprovedDataJson = JsonConvert.SerializeObject(approvedData),
                     ApprovedBy = approvedBy,
                     ApprovedAt = DateTime.Now,
-                    Remarks = HasContinuityWarnings ? $"Override Continuity: {OverrideRemark}" : "Approved as-is."
+                    Remarks = auditRemarks
                 };
 
                 context.DsmApprovalAudits.Add(audit);
@@ -4371,36 +5180,47 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                 // 4. Complete the active DSM assignment automatically after successful approval
                 try
                 {
-                    var dsmUser = await context.DsmUsers.FirstOrDefaultAsync(u =>
-                        u.AuthUserId == SelectedSubmission.DsmUserId ||
-                        u.FullName == SelectedSubmission.DsmName);
+                    DsmUser? dsmUser = null;
+                    if (!string.IsNullOrWhiteSpace(SelectedSubmission.DsmUserId))
+                    {
+                        var userMap = await context.SyncIdMappings
+                            .FirstOrDefaultAsync(m => m.TableName == "DsmUsers" && m.RemoteGuid == SelectedSubmission.DsmUserId);
+                        if (userMap != null)
+                        {
+                            dsmUser = await context.DsmUsers.FirstOrDefaultAsync(u => u.DsmUserId == userMap.LocalId);
+                        }
+                        dsmUser ??= await context.DsmUsers.FirstOrDefaultAsync(u => u.AuthUserId == SelectedSubmission.DsmUserId);
+                    }
+                    if (dsmUser == null && !string.IsNullOrWhiteSpace(SelectedSubmission.DsmName))
+                    {
+                        var dsmNameLower = SelectedSubmission.DsmName.Trim().ToLower();
+                        dsmUser = await context.DsmUsers.FirstOrDefaultAsync(u =>
+                            u.FullName != null && u.FullName.Trim().ToLower() == dsmNameLower);
+                    }
 
                     if (dsmUser != null)
                     {
-                        var assignment = await context.DsmPumpAssignments
-                            .FirstOrDefaultAsync(a => a.IsActive
+                        var normalizedSubShift = (_shiftCycleService ?? new ShiftCycleService()).NormalizeShiftType(SelectedSubmission.ShiftType);
+                        var activeUserAssignments = await context.DsmPumpAssignments
+                            .Where(a => a.IsActive
                                 && a.DsmUserId == dsmUser.DsmUserId
-                                && a.ShiftType == SelectedSubmission.ShiftType
-                                && a.PumpId == SelectedSubmission.PumpId
-                                && a.ConnectedPumpId == connectedPumpId);
+                                && a.PumpId == SelectedSubmission.PumpId)
+                            .ToListAsync();
 
-                        if (assignment == null)
-                        {
-                            // Fallback to match without connected pump if exact match not found
-                            assignment = await context.DsmPumpAssignments
-                                .FirstOrDefaultAsync(a => a.IsActive
-                                    && a.DsmUserId == dsmUser.DsmUserId
-                                    && a.ShiftType == SelectedSubmission.ShiftType
-                                    && a.PumpId == SelectedSubmission.PumpId);
-                        }
+                        var matchingAssignments = activeUserAssignments
+                            .Where(a => string.Equals((_shiftCycleService ?? new ShiftCycleService()).NormalizeShiftType(a.ShiftType), normalizedSubShift, StringComparison.OrdinalIgnoreCase))
+                            .ToList();
 
-                        if (assignment != null)
+                        if (matchingAssignments.Count > 0)
                         {
-                            assignment.IsActive = false;
-                            assignment.CompletedDate = DateTime.Now;
-                            context.Entry(assignment).State = EntityState.Modified;
-                            _logger.Information("Automatically marked active assignment {AssignmentId} as Completed for DSM {DsmName} on Pump {PumpId}",
-                                assignment.DsmPumpAssignmentId, dsmUser.FullName, SelectedSubmission.PumpId);
+                            foreach (var assignment in matchingAssignments)
+                            {
+                                assignment.IsActive = false;
+                                assignment.CompletedDate = DateTime.Now;
+                                context.Entry(assignment).State = EntityState.Modified;
+                                _logger.Information("Automatically marked active assignment {AssignmentId} as Completed for DSM {DsmName} on Pump {PumpId}",
+                                    assignment.DsmPumpAssignmentId, dsmUser.FullName, SelectedSubmission.PumpId);
+                            }
                         }
                     }
                 }
@@ -4411,15 +5231,56 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                 }
 
                 await context.SaveChangesAsync();
+
+                // Register deterministic SyncIdMappings for cross-computer financial idempotency (Stage 2.3)
+                await RegisterDeterministicApprovalMappingsAsync(
+                    context,
+                    submissionId,
+                    savedEntry,
+                    audit,
+                    connectedPumpId,
+                    connectedPumpIds,
+                    debitModels,
+                    DebtorRepayments.ToList(),
+                    testingModels,
+                    expenseModels,
+                    cashModels,
+                    OilDefSales.ToList(),
+                    QrPayments.ToList());
+
+                await context.SaveChangesAsync();
+
+                // Pre-commit lease check: verify claim ownership has not been lost during local processing
+                if (!string.IsNullOrEmpty(claimToken))
+                {
+                    var preCommitCheck = await _supabaseService.RenewLeaseAsync(submissionId, machineId, claimToken, claimVersion);
+                    if (!preCommitCheck.Success)
+                    {
+                        _logger.Warning("Pre-commit lease check failed for {SubId}: {Error}. Rolling back local SQLite transaction.", submissionId, preCommitCheck.Error);
+                        await transaction.RollbackAsync();
+                        ShowUiMessage($"Approval aborted before commit: {preCommitCheck.Error}\n\nAnother workstation has reclaimed this submission.", "Lease Expired", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        await RefreshQueueAsync();
+                        return;
+                    }
+                }
+
                 await transaction.CommitAsync();
 
                 // Notify active subscribers (e.g. DSM Entry screen) that a DSM entry has been committed
                 FuelPro.Core.Services.DsmEntryService.RaiseDsmEntryChanged();
+
+                // Raise DebtorChanged strictly AFTER successful commit if any debtor records were persisted
+                if ((debitModels != null && debitModels.Count > 0) ||
+                    (DebtorRepayments != null && DebtorRepayments.Count > 0) ||
+                    (personalDebtors != null && personalDebtors.Count > 0))
+                {
+                    FuelPro.Core.Services.DsmEntryService.RaiseDebtorChanged();
+                    _logger.Information("Raised DebtorChanged notification after successful commit for submission {SubId}", SelectedSubmission.Id);
+                }
                 
                 _logger.Information("Local transaction successfully committed for DSM entry. SelectedSubmissionId: {SubId}", SelectedSubmission.Id);
 
                 // 5. Send approval notification to DSM asynchronously (non-blocking)
-                var submissionId = SelectedSubmission.Id;
                 var submissionDsmUserId = SelectedSubmission.DsmUserId;
                 var submissionPumpId = SelectedSubmission.PumpId;
                 var submissionShiftDateDisplay = SelectedSubmission.ShiftDateDisplay;
@@ -4440,33 +5301,77 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                     }
                 });
 
-                // 6. Update status in Supabase asynchronously with retry and exponential backoff
-                _ = Task.Run(async () =>
+                // 6. Complete status in Supabase (transitions via RPC or conditional REST PATCH fallback in single-PC mode)
+                var approvedAtTimestamp = audit.ApprovedAt;
+                bool cloudConfirmed = false;
+                string? cloudPendingReason = null;
+
+                if (!awaitingCloudReconciliation)
                 {
-                    int maxRetries = 10;
-                    int delayMs = 1000;
-                    for (int attempt = 1; attempt <= maxRetries; attempt++)
+                    var immediateComplete = await _supabaseService.CompleteSubmissionApprovalAsync(
+                        submissionId, machineId, lockId, claimToken, claimVersion, approvedBy, approvedAtTimestamp);
+                    if (immediateComplete.Success)
                     {
-                        var lockResult = await _supabaseService.ApproveSubmissionAsync(submissionId, approvedBy, lockId);
-                        if (lockResult.Success)
-                        {
-                            _logger.Information("Successfully approved submission {SubId} in Supabase on attempt {Attempt}", submissionId, attempt);
-                            break;
-                        }
-                        
-                        _logger.Warning("Attempt {Attempt} to approve submission {SubId} in Supabase failed: {Error}. Retrying in {Delay}ms...",
-                            attempt, submissionId, lockResult.Error, delayMs);
-                        
-                        await Task.Delay(delayMs);
-                        delayMs *= 2;
+                        cloudConfirmed = true;
+                        _logger.Information("Successfully completed approval for {SubId} in Supabase.", submissionId);
                     }
-                });
+                    else
+                    {
+                        cloudPendingReason = immediateComplete.Error;
+                        _logger.Warning("Initial cloud completion failed for {SubId}: {Error}. Queuing background retry.", submissionId, immediateComplete.Error);
+                    }
+                }
+                else
+                {
+                    cloudPendingReason = lockResult.Error;
+                }
+
+                if (!cloudConfirmed)
+                {
+                    _ = Task.Run(async () =>
+                    {
+                        int maxRetries = 10;
+                        int delayMs = 2000;
+                        for (int attempt = 1; attempt <= maxRetries; attempt++)
+                        {
+                            var completeResult = await _supabaseService.CompleteSubmissionApprovalAsync(
+                                submissionId, machineId, lockId, claimToken, claimVersion, approvedBy, approvedAtTimestamp);
+                            if (completeResult.Success)
+                            {
+                                _logger.Information("Successfully completed deferred cloud approval for {SubId} in Supabase on retry attempt {Attempt}", submissionId, attempt);
+                                break;
+                            }
+
+                            _logger.Warning("Retry attempt {Attempt} to complete approval for {SubId} in Supabase failed: {Error}. Retrying in {Delay}ms...",
+                                attempt, submissionId, completeResult.Error, delayMs);
+
+                            await Task.Delay(delayMs);
+                            delayMs *= 2;
+                        }
+                    });
+                }
 
                 // 7. Push local change to Supabase immediately (for DsmApprovalAudits, etc.)
-                var syncEngine = _serviceProvider.GetRequiredService<SyncEngine>();
-                _ = syncEngine.ForceSyncAsync();
+                var syncEngine = _serviceProvider.GetService<SyncEngine>();
+                if (syncEngine != null)
+                    _ = syncEngine.ForceSyncAsync();
 
-                ShowUiMessage("DSM Submission approved successfully and saved locally!", "Approved", MessageBoxButton.OK, MessageBoxImage.Information);
+                // Reconcile queue and navigation badge immediately after local commit
+                PendingSubmissions.Remove(SelectedSubmission);
+                _pollingService?.SyncCountFromQueue(PendingSubmissions.Count);
+
+                if (cloudConfirmed)
+                {
+                    ShowUiMessage("DSM Submission approved successfully, saved locally, and confirmed in cloud!", "Approved", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+                else
+                {
+                    ShowUiMessage(
+                        $"DSM Submission saved locally (awaiting cloud reconciliation).\nCloud approval has NOT been confirmed yet: {cloudPendingReason}",
+                        "Saved Locally (Awaiting Cloud Sync)",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+                }
                 
                 SelectedSubmission = null;
                 OverrideRemark = "";
@@ -4518,12 +5423,20 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
             var result = await _supabaseService.RejectSubmissionAsync(SelectedSubmission.Id, reason);
             if (result.Success)
             {
-                // Send notification to DSM
-                var settings = await _serviceProvider.GetRequiredService<SyncConfigService>().GetSettingsAsync();
-                var rejectMessage = $"Your shift submission for {SelectedSubmission.ShiftDateDisplay} Shift {SelectedSubmission.ShiftType} on Pump {SelectedSubmission.PumpId} has been rejected. Reason: {reason}";
-                await _supabaseService.SendNotificationAsync(settings.StationId, SelectedSubmission.DsmUserId, "DSM", rejectMessage);
+                var rejected = SelectedSubmission;
+                PendingSubmissions.Remove(rejected);
+                _pollingService?.SyncCountFromQueue(PendingSubmissions.Count);
 
-                MessageBox.Show("DSM Submission rejected.", "Rejected", MessageBoxButton.OK, MessageBoxImage.Information);
+                // Send notification to DSM
+                var settingsSvc = _serviceProvider.GetService<SyncConfigService>();
+                if (settingsSvc != null)
+                {
+                    var settings = await settingsSvc.GetSettingsAsync();
+                    var rejectMessage = $"Your shift submission for {rejected.ShiftDateDisplay} Shift {rejected.ShiftType} on Pump {rejected.PumpId} has been rejected. Reason: {reason}";
+                    await _supabaseService.SendNotificationAsync(settings.StationId, rejected.DsmUserId, "DSM", rejectMessage);
+                }
+
+                ShowUiMessage("DSM Submission rejected.", "Rejected", MessageBoxButton.OK, MessageBoxImage.Information);
                 SelectedSubmission = null;
                 await RefreshQueueAsync();
             }
@@ -4764,7 +5677,7 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                         ApprovedBy = item.ApprovedBy ?? "System",
                         Notes = item.Notes ?? "",
                         AttachmentUrl = item.AttachmentUrl,
-                        MetadataJson = item.Metadata != null ? JsonConvert.SerializeObject(item.Metadata) : "",
+                        MetadataJson = ExtractMetadataJson(item),
                         GrossSales = gross,
                         TotalCollection = coll,
                         Mismatch = mismatch
@@ -5275,15 +6188,17 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                     var cash2Total = entry.CashDenominations.Where(c => c.CashType == "Cash2").Sum(c => c.TotalAmount);
 
                     var cash1Denom = entry.CashDenominations.FirstOrDefault(c => c.CashType == "Cash1");
-                    if (cash1Denom != null)
+                    bool cash1HasNonZeroDenoms = cash1Denom != null && (cash1Denom.Denom500 > 0 || cash1Denom.Denom200 > 0 || cash1Denom.Denom100 > 0
+                        || cash1Denom.Denom50 > 0 || cash1Denom.Denom20 > 0 || cash1Denom.Denom10 > 0 || cash1Denom.Coins > 0);
+                    if (cash1HasNonZeroDenoms)
                     {
-                        Cash1.Denom500 = cash1Denom.Denom500;
+                        Cash1.Denom500 = cash1Denom!.Denom500;
                         Cash1.Denom200 = cash1Denom.Denom200;
                         Cash1.Denom100 = cash1Denom.Denom100;
-                        Cash1.Denom50 = cash1Denom.Denom50;
-                        Cash1.Denom20 = cash1Denom.Denom20;
-                        Cash1.Denom10 = cash1Denom.Denom10;
-                        Cash1.Coins = cash1Denom.Coins;
+                        Cash1.Denom50 = cash1Denom.Denom50 > 0 ? cash1Denom.Denom50 : null;
+                        Cash1.Denom20 = cash1Denom.Denom20 > 0 ? cash1Denom.Denom20 : null;
+                        Cash1.Denom10 = cash1Denom.Denom10 > 0 ? cash1Denom.Denom10 : null;
+                        Cash1.Coins = cash1Denom.Coins > 0 ? cash1Denom.Coins : null;
                     }
                     else
                     {
@@ -5311,6 +6226,14 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
                     CardAmount = pc.CreditCardMorning + pc.CreditCardDay + pc.CreditCardNight;
                     PetroCardAmount = pc.PetroCardMorning + pc.PetroCardDay + pc.PetroCardNight;
                     CashDepositAmount = cash1Total > 0 ? cash1Total : pc.CashDeposit;
+                    if (Cash1.TotalAmount == 0 && CashDepositAmount > 0)
+                    {
+                        Cash1.TotalAmount = CashDepositAmount;
+                    }
+                    if (Cash2.TotalAmount == 0 && CashAmount > 0)
+                    {
+                        Cash2.TotalAmount = CashAmount;
+                    }
                     CollectionReductionAmount = pc.CollectionReduction;
                     CollectionReductionRemark = pc.CollectionReductionRemark;
                     if ((CollectionReductionAmount == null || CollectionReductionAmount == 0) && !string.IsNullOrEmpty(approvedSub.MetadataJson))
@@ -5637,6 +6560,169 @@ public partial class DsmApprovalQueueViewModel : ObservableObject, IDisposable
         // No-op: Do not force overwrite nozzle readings with audit trail
         await Task.CompletedTask;
     }
+
+    private async Task RegisterDeterministicApprovalMappingsAsync(
+        FuelProDbContext context,
+        Guid submissionId,
+        DsmEntry savedEntry,
+        DsmApprovalAudit audit,
+        int? connectedPumpId,
+        IEnumerable<int>? connectedPumpIds,
+        List<DebitEntry>? debitModels,
+        List<DsmDebtorRepaymentRow>? debtorRepayments,
+        List<TestingEntry>? testingModels,
+        List<Expense>? expenseModels,
+        List<CashDenomination>? cashModels,
+        List<DsmOilDefSaleRow>? oilDefSales,
+        List<DsmQrPaymentEntry>? qrPayments)
+    {
+        try
+        {
+            // 1. DsmApprovalAudit
+            if (audit.DsmApprovalAuditId > 0)
+            {
+                var auditGuid = DeterministicGuid.CreateDsmApprovalAuditGuid(submissionId);
+                await SyncMappingPreservationHelper.RegisterOrPreserveDeterministicMappingAsync(
+                    context, "DsmApprovalAudits", audit.DsmApprovalAuditId, auditGuid);
+            }
+
+            // 2. DsmEntry
+            if (savedEntry.DsmEntryId > 0)
+            {
+                var dsmEntryGuid = DeterministicGuid.CreateDsmEntryGuid(submissionId, savedEntry.PumpId);
+                await SyncMappingPreservationHelper.RegisterOrPreserveDeterministicMappingAsync(
+                    context, "DsmEntries", savedEntry.DsmEntryId, dsmEntryGuid);
+            }
+
+            // 3. NozzleReadings for this entry
+            var nozzleReadings = await context.NozzleReadings
+                .Where(n => n.DsmEntryId == savedEntry.DsmEntryId)
+                .ToListAsync();
+
+            foreach (var nr in nozzleReadings)
+            {
+                var nrGuid = DeterministicGuid.CreateNozzleReadingGuid(submissionId, savedEntry.PumpId, nr.NozzleNumber);
+                await SyncMappingPreservationHelper.RegisterOrPreserveDeterministicMappingAsync(
+                    context, "NozzleReadings", nr.NozzleReadingId, nrGuid);
+            }
+
+            // 4. PaymentCollections
+            var paymentColl = await context.PaymentCollections
+                .FirstOrDefaultAsync(p => p.DsmEntryId == savedEntry.DsmEntryId);
+            if (paymentColl != null && paymentColl.PaymentId > 0)
+            {
+                var payGuid = DeterministicGuid.CreatePaymentCollectionGuid(submissionId, savedEntry.PumpId);
+                await SyncMappingPreservationHelper.RegisterOrPreserveDeterministicMappingAsync(
+                    context, "PaymentCollections", paymentColl.PaymentId, payGuid);
+            }
+
+            // 5. CashDenominations
+            var cashDenoms = await context.CashDenominations
+                .Where(c => c.DsmEntryId == savedEntry.DsmEntryId)
+                .ToListAsync();
+            foreach (var cd in cashDenoms)
+            {
+                var cdGuid = DeterministicGuid.CreateCashDenominationGuid(submissionId, cd.CashType);
+                await SyncMappingPreservationHelper.RegisterOrPreserveDeterministicMappingAsync(
+                    context, "CashDenominations", cd.CashDenomId, cdGuid);
+            }
+
+            // 6. DebitEntries
+            var debits = await context.DebitEntries
+                .Where(d => d.DsmEntryId == savedEntry.DsmEntryId)
+                .OrderBy(d => d.DebitId)
+                .ToListAsync();
+            for (int i = 0; i < debits.Count; i++)
+            {
+                var d = debits[i];
+                var debitGuid = DeterministicGuid.CreateDebitEntryGuid(submissionId, i, d.SlipNumber);
+                await SyncMappingPreservationHelper.RegisterOrPreserveDeterministicMappingAsync(
+                    context, "DebitEntries", d.DebitId, debitGuid);
+            }
+
+            // 7. CreditorRepayments
+            if (debtorRepayments != null && debtorRepayments.Count > 0)
+            {
+                var shift = savedEntry.Shift;
+                if (shift != null)
+                {
+                    var repayments = await context.CreditorRepayments
+                        .Where(r => r.RepaymentDate == shift.ShiftDate && r.ShiftNumber == shift.ShiftType)
+                        .OrderBy(r => r.CreditorRepaymentId)
+                        .ToListAsync();
+                    for (int i = 0; i < repayments.Count; i++)
+                    {
+                        var rep = repayments[i];
+                        var repGuid = DeterministicGuid.CreateCreditorRepaymentGuid(submissionId, i, rep.CreditorName);
+                        await SyncMappingPreservationHelper.RegisterOrPreserveDeterministicMappingAsync(
+                            context, "CreditorRepayments", rep.CreditorRepaymentId, repGuid);
+                    }
+                }
+            }
+
+            // 8. TestingEntries
+            var testings = await context.TestingEntries
+                .Where(t => t.DsmEntryId == savedEntry.DsmEntryId)
+                .OrderBy(t => t.TestingId)
+                .ToListAsync();
+            for (int i = 0; i < testings.Count; i++)
+            {
+                var t = testings[i];
+                var testGuid = DeterministicGuid.CreateTestingEntryGuid(submissionId, t.FuelType, i);
+                await SyncMappingPreservationHelper.RegisterOrPreserveDeterministicMappingAsync(
+                    context, "TestingEntries", t.TestingId, testGuid);
+            }
+
+            // 9. Expenses
+            var expenses = await context.Expenses
+                .Where(e => e.DsmEntryId == savedEntry.DsmEntryId)
+                .OrderBy(e => e.ExpenseId)
+                .ToListAsync();
+            for (int i = 0; i < expenses.Count; i++)
+            {
+                var e = expenses[i];
+                var expGuid = DeterministicGuid.CreateExpenseGuid(submissionId, i);
+                await SyncMappingPreservationHelper.RegisterOrPreserveDeterministicMappingAsync(
+                    context, "Expenses", e.ExpenseId, expGuid);
+            }
+
+            // 10. OilDefDailyLogs
+            if (oilDefSales != null && oilDefSales.Count > 0)
+            {
+                var oilSales = await context.OilDefDailyLogs
+                    .Where(o => o.ShiftId == savedEntry.ShiftId)
+                    .OrderBy(o => o.Id)
+                    .ToListAsync();
+                for (int i = 0; i < oilSales.Count; i++)
+                {
+                    var o = oilSales[i];
+                    var oilGuid = DeterministicGuid.CreateOilDefSaleGuid(submissionId, o.ProductId, i);
+                    await SyncMappingPreservationHelper.RegisterOrPreserveDeterministicMappingAsync(
+                        context, "OilDefDailyLogs", o.Id, oilGuid);
+                }
+            }
+
+            // 11. DsmQrPayments
+            if (qrPayments != null && qrPayments.Count > 0)
+            {
+                var qrs = await context.DsmQrPayments
+                    .Where(q => q.DsmEntryId == savedEntry.DsmEntryId)
+                    .OrderBy(q => q.Id)
+                    .ToListAsync();
+                for (int i = 0; i < qrs.Count; i++)
+                {
+                    var q = qrs[i];
+                    var qrGuid = DeterministicGuid.CreateQrPaymentGuid(submissionId, i, q.Tid);
+                    await SyncMappingPreservationHelper.RegisterOrPreserveDeterministicMappingAsync(
+                        context, "DsmQrPayments", q.Id, qrGuid);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning(ex, "Failed to register deterministic sync mappings for submission {SubId}", submissionId);
+        }
+    }
 }
 
 public class DsmApprovedSubmissionDto : ObservableObject
@@ -5695,12 +6781,17 @@ public class DsmApprovedSubmissionDto : ObservableObject
         get
         {
             var connected = ConnectedPumpIds;
+            string baseTitle;
             if (connected.Count > 0)
             {
                 var connectedStr = string.Join(" + ", connected.Select(id => $"Pump {id}"));
-                return $"{DsmName} - Pump {PumpId} + {connectedStr} (Connected) - Shift {ShiftType}";
+                baseTitle = $"{DsmName} - Pump {PumpId} + {connectedStr} (Connected) - Shift {ShiftType}";
             }
-            return $"{DsmName} - Pump {PumpId} - Shift {ShiftType}";
+            else
+            {
+                baseTitle = $"{DsmName} - Pump {PumpId} - Shift {ShiftType}";
+            }
+            return baseTitle;
         }
     }
     public string ShiftDateDisplay => ShiftDate.ToString("dd MMM yyyy");

@@ -317,7 +317,7 @@
             const tbody = document.getElementById('tableBody');
             const tfootTr = document.getElementById('tfootRow');
 
-            const headers = data.headers || ["Date", "Bank Cash", "Cash In Hand", "PhonePe", "Card", "Petro Card", "Debtors", "Expenses", "Day Total"];
+            const headers = data.headers || ["Date", "Cash 1", "Cash 2", "PhonePe", "Card", "Petro Card", "Debtors", "Expenses", "Day Total"];
             theadTr.innerHTML = headers.map((h, i) => `<th class="${i === 0 ? '' : 'text-right'}">${h}</th>`).join('');
 
             let rowsHtml = '';
@@ -383,11 +383,11 @@
             <div class="kpi-value" id="grandTotalVal">₹0.00</div>
         </div>
         <div class="kpi-card">
-            <div class="kpi-label">Total Bank Cash</div>
+            <div class="kpi-label">Total Cash 1</div>
             <div class="kpi-value" id="bankCashVal">₹0.00</div>
         </div>
         <div class="kpi-card">
-            <div class="kpi-label">Total Cash In Hand</div>
+            <div class="kpi-label">Total Cash 2</div>
             <div class="kpi-value" id="cashInHandVal">₹0.00</div>
         </div>
     </div>

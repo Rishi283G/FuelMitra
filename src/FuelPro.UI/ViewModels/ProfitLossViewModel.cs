@@ -419,6 +419,7 @@ public partial class ProfitLossViewModel : ObservableObject, IDisposable
                 defaultHsd, defaultMsI, defaultMsII, defaultCng,
                 stationName);
 
+            _cachedFinancialResult = result;
             _cachedEntries = entries;
             _cachedShifts = shifts;
             _cachedShiftExpenses = shiftExpensesList;
@@ -427,7 +428,7 @@ public partial class ProfitLossViewModel : ObservableObject, IDisposable
             TotalGrossSales = report.TotalFuelAmount;
             TotalCollection = report.ActualCollection;
             TotalCreditorDebits = report.CreditorsTotal;
-            TotalMismatch = report.Difference;
+            TotalMismatch = result.TotalMismatch;
         }
         catch (Exception ex)
         {
@@ -436,6 +437,7 @@ public partial class ProfitLossViewModel : ObservableObject, IDisposable
         finally { IsLoading = false; }
     }
 
+    private FinancialCalculationResult? _cachedFinancialResult;
     private List<DsmEntry> _cachedEntries = new();
     private List<Shift> _cachedShifts = new();
     private List<Expense> _cachedShiftExpenses = new();
@@ -458,19 +460,29 @@ public partial class ProfitLossViewModel : ObservableObject, IDisposable
                 .Where(t => string.Equals(t.FuelType, "SPEED", StringComparison.OrdinalIgnoreCase) || string.Equals(t.FuelType, "MS-II", StringComparison.OrdinalIgnoreCase))
                 .Sum(t => t.Litres);
 
+            double effectiveHsdProfit = UsePurchaseBasedProfit ? HsdPurchaseProfit : HsdProfit;
+            double effectiveMsIProfit = UsePurchaseBasedProfit ? MsIPurchaseProfit : MsIProfit;
+            double effectiveMsIIProfit = UsePurchaseBasedProfit ? MsIIPurchaseProfit : MsIIProfit;
+            double effectiveCngProfit = UsePurchaseBasedProfit ? CngPurchaseProfit : CngProfit;
+
             var fuelBreakdown = new List<object>
             {
-                new { name = "Diesel (HSD)", totalSale = HsdLitres, testing = hsdTesting, actualSale = Math.Max(0, HsdLitres - hsdTesting), margin = HsdMargin, profit = HsdProfit, avgSaleRate = HsdAvgSaleRate, avgPurchaseRate = HsdAvgPurchaseRate },
-                new { name = "Petrol (MS-I)", totalSale = MsILitres, testing = msITesting, actualSale = Math.Max(0, MsILitres - msITesting), margin = MsIMargin, profit = MsIProfit, avgSaleRate = MsIAvgSaleRate, avgPurchaseRate = MsIAvgPurchaseRate },
-                new { name = "Speed (MS-II)", totalSale = MsIILitres, testing = msIITesting, actualSale = Math.Max(0, MsIILitres - msIITesting), margin = MsIIMargin, profit = MsIIProfit, avgSaleRate = MsIIAvgSaleRate, avgPurchaseRate = MsIIAvgPurchaseRate },
-                new { name = "CNG", totalSale = CngLitres, testing = 0.0, actualSale = CngLitres, margin = CngMargin, profit = CngProfit, avgSaleRate = CngAvgSaleRate, avgPurchaseRate = CngAvgPurchaseRate }
+                new { name = "Diesel (HSD)", totalSale = HsdLitres, testing = hsdTesting, actualSale = Math.Max(0, HsdLitres - hsdTesting), margin = UsePurchaseBasedProfit && HsdLitres > 0 ? effectiveHsdProfit / HsdLitres : HsdMargin, profit = effectiveHsdProfit, avgSaleRate = HsdAvgSaleRate, avgPurchaseRate = HsdAvgPurchaseRate },
+                new { name = "Petrol (MS-I)", totalSale = MsILitres, testing = msITesting, actualSale = Math.Max(0, MsILitres - msITesting), margin = UsePurchaseBasedProfit && MsILitres > 0 ? effectiveMsIProfit / MsILitres : MsIMargin, profit = effectiveMsIProfit, avgSaleRate = MsIAvgSaleRate, avgPurchaseRate = MsIAvgPurchaseRate },
+                new { name = "Speed (MS-II)", totalSale = MsIILitres, testing = msIITesting, actualSale = Math.Max(0, MsIILitres - msIITesting), margin = UsePurchaseBasedProfit && MsIILitres > 0 ? effectiveMsIIProfit / MsIILitres : MsIIMargin, profit = effectiveMsIIProfit, avgSaleRate = MsIIAvgSaleRate, avgPurchaseRate = MsIIAvgPurchaseRate },
+                new { name = "CNG", totalSale = CngLitres, testing = 0.0, actualSale = CngLitres, margin = UsePurchaseBasedProfit && CngLitres > 0 ? effectiveCngProfit / CngLitres : CngMargin, profit = effectiveCngProfit, avgSaleRate = CngAvgSaleRate, avgPurchaseRate = CngAvgPurchaseRate }
             };
 
-            // 2. Oil & DEF Details
+            // 2. Oil & DEF Details (strictly real Opening/Closing stocks from FinancialCalculationService — never fabricated)
+            double oilOpening = _cachedFinancialResult?.OilProfit.OpeningStock ?? 0.0;
+            double oilClosing = _cachedFinancialResult?.OilProfit.ClosingStock ?? 0.0;
+            double defOpening = _cachedFinancialResult?.DefProfit.OpeningStock ?? 0.0;
+            double defClosing = _cachedFinancialResult?.DefProfit.ClosingStock ?? 0.0;
+
             var oilDefBreakdown = new List<object>
             {
-                new { productType = "Lube Oil", openingStock = OilSalesQty * 1.2, closingStock = OilSalesQty * 0.2, qtySold = OilSalesQty, avgCost = OilAvgPurchasePrice, avgSale = OilSalePrice, profit = OilProfit },
-                new { productType = "DEF (AdBlue)", openingStock = DefSalesQty * 1.2, closingStock = DefSalesQty * 0.2, qtySold = DefSalesQty, avgCost = DefAvgPurchasePrice, avgSale = DefSalePrice, profit = DefProfit }
+                new { productType = "Lube Oil", openingStock = oilOpening, closingStock = oilClosing, qtySold = OilSalesQty, avgCost = OilAvgPurchasePrice, avgSale = OilSalePrice, profit = OilProfit },
+                new { productType = "DEF (AdBlue)", openingStock = defOpening, closingStock = defClosing, qtySold = DefSalesQty, avgCost = DefAvgPurchasePrice, avgSale = DefSalePrice, profit = DefProfit }
             };
 
             // 3. Detailed Shift / DSM Expenses
@@ -552,25 +564,25 @@ public partial class ProfitLossViewModel : ObservableObject, IDisposable
                 FuelProfit = new
                 {
                     hsdLitres = HsdLitres,
-                    hsdMargin = HsdMargin,
-                    hsdProfit = HsdProfit,
+                    hsdMargin = UsePurchaseBasedProfit && HsdLitres > 0 ? effectiveHsdProfit / HsdLitres : HsdMargin,
+                    hsdProfit = effectiveHsdProfit,
                     msILitres = MsILitres,
-                    msIMargin = MsIMargin,
-                    msIProfit = MsIProfit,
+                    msIMargin = UsePurchaseBasedProfit && MsILitres > 0 ? effectiveMsIProfit / MsILitres : MsIMargin,
+                    msIProfit = effectiveMsIProfit,
                     msIILitres = MsIILitres,
-                    msIIMargin = MsIIMargin,
-                    msIIProfit = MsIIProfit,
+                    msIIMargin = UsePurchaseBasedProfit && MsIILitres > 0 ? effectiveMsIIProfit / MsIILitres : MsIIMargin,
+                    msIIProfit = effectiveMsIIProfit,
                     cngLitres = CngLitres,
-                    cngMargin = CngMargin,
-                    cngProfit = CngProfit,
+                    cngMargin = UsePurchaseBasedProfit && CngLitres > 0 ? effectiveCngProfit / CngLitres : CngMargin,
+                    cngProfit = effectiveCngProfit,
                     totalLitres = TotalFuelLitres,
                     totalFuelProfit = TotalFuelProfit
                 },
                 fuelBreakdown = fuelBreakdown,
                 oilProfit = new
                 {
-                    openingStock = OilSalesQty * 1.2,
-                    closingStock = OilSalesQty * 0.2,
+                    openingStock = oilOpening,
+                    closingStock = oilClosing,
                     salesQuantity = OilSalesQty,
                     averagePurchasePrice = OilAvgPurchasePrice,
                     salePrice = OilSalePrice,
@@ -578,8 +590,8 @@ public partial class ProfitLossViewModel : ObservableObject, IDisposable
                 },
                 defProfit = new
                 {
-                    openingStock = DefSalesQty * 1.2,
-                    closingStock = DefSalesQty * 0.2,
+                    openingStock = defOpening,
+                    closingStock = defClosing,
                     salesQuantity = DefSalesQty,
                     averagePurchasePrice = DefAvgPurchasePrice,
                     salePrice = DefSalePrice,
@@ -590,9 +602,13 @@ public partial class ProfitLossViewModel : ObservableObject, IDisposable
                 detailedExpenses = detailedExpenses,
                 kpEntries = kpEntries,
                 totalKpDrawings = totalKp,
+                operatingExpensesExcludingKp = Math.Max(0, TotalExpenses - totalKp),
                 pumpExpensesList = pumpExpensesList,
                 totalExpenses = TotalExpenses,
                 totalDsmSalaries = TotalDsmSalaries,
+                dsmBaseSalaries = DsmBaseSalaries,
+                salaryAdjustments = SalaryAdjustments,
+                shortRecoveries = ShortRecoveries,
                 grossProfit = GrossProfit,
                 ownerOuterExpenses = OwnerOuterExpenses,
                 totalMismatch = TotalMismatch,
@@ -639,7 +655,7 @@ public partial class ProfitLossViewModel : ObservableObject, IDisposable
             var expenses = ExpenseBreakdown.Select(e => (e.Category, e.Amount)).ToList();
 
             var exportService = App.Services.GetRequiredService<ExcelExportService>();
-            var filePath = await exportService.ExportMonthlyPLAsync(stationName, StartDate, EndDate, financials, expenses);
+            var filePath = await exportService.ExportMonthlyPLAsync(stationName, StartDate, EndDate, financials, expenses, UsePurchaseBasedProfit);
 
             MessageBox.Show($"Report exported successfully to:\n{filePath}", "Export Successful", MessageBoxButton.OK, MessageBoxImage.Information);
         }
@@ -668,6 +684,7 @@ public partial class ProfitLossViewModel : ObservableObject, IDisposable
         {
             var db = App.Services.GetRequiredService<FuelProDbContext>();
             var margins = await db.FuelProfitMargins
+                .AsNoTracking()
                 .OrderByDescending(m => m.EffectiveDate)
                 .ToListAsync();
 

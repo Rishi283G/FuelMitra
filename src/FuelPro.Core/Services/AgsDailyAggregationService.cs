@@ -54,9 +54,9 @@ public class AgsDailyAggregationService : IAgsDailyAggregationService
 
         // Tank stock: Shift B opening (day opening) → Shift A closing (day closing)
         // With provisional fallbacks for in-progress operational days
+        var shiftA = active.FirstOrDefault(s => s.ShiftType == "A" || s.ShiftType == "I");
         var shiftB = active.FirstOrDefault(s => s.ShiftType == "B" || s.ShiftType == "II");
         var shiftC = active.FirstOrDefault(s => s.ShiftType == "C" || s.ShiftType == "III");
-        var shiftA = active.FirstOrDefault(s => s.ShiftType == "A" || s.ShiftType == "I");
 
         var openingShift = shiftB ?? shiftC ?? shiftA;
         var closingShift = shiftA ?? shiftC ?? shiftB;
@@ -145,14 +145,33 @@ public class AgsDailyAggregationService : IAgsDailyAggregationService
                 var s => s
             };
 
+            var altShift = normShift switch
+            {
+                "A" => "I",
+                "B" => "II",
+                "C" => "III",
+                "I" => "A",
+                "II" => "B",
+                "III" => "C",
+                _ => normShift
+            };
+
             if (!dict.TryGetValue(normShift, out var shiftObj) || shiftObj == null)
-                return null;
+            {
+                if (!dict.TryGetValue(altShift, out shiftObj) || shiftObj == null)
+                    return null;
+            }
 
             var tmObj = shiftObj["tankMeasurements"] as Newtonsoft.Json.Linq.JObject;
             if (tmObj == null) return null;
 
             if (!tmObj.TryGetValue(fuelType, StringComparison.OrdinalIgnoreCase, out var tankToken) || tankToken is not Newtonsoft.Json.Linq.JObject tankData)
-                return null;
+            {
+                var altFuel = fuelType switch { "MS-II" => "SPEED", "SPEED" => "MS-II", _ => null };
+                if (altFuel == null || !tmObj.TryGetValue(altFuel, StringComparison.OrdinalIgnoreCase, out tankToken) || tankToken is not Newtonsoft.Json.Linq.JObject altData)
+                    return null;
+                tankData = altData;
+            }
 
             return new TankMeasurementSyncDto
             {

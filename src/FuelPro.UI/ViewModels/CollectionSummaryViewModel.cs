@@ -332,11 +332,11 @@ public partial class CollectionSummaryViewModel : ObservableObject, IDisposable
             var summaryCards = new List<GenericGridPrintCard>
             {
                 new() { Label = "Grand Total Collection", Value = "₹" + GrandTotal.ToString("N2"), Highlight = true },
-                new() { Label = "Total Bank Cash", Value = "₹" + TotalCashDeposit.ToString("N2"), Highlight = false },
-                new() { Label = "Total Cash in Hand", Value = "₹" + TotalCashInHand.ToString("N2"), Highlight = false }
+                new() { Label = "Total Cash 1", Value = "₹" + TotalCashDeposit.ToString("N2"), Highlight = false },
+                new() { Label = "Total Cash 2", Value = "₹" + TotalCashInHand.ToString("N2"), Highlight = false }
             };
 
-            var headers = new List<string> { "Date", "Bank Cash", "Cash In Hand" };
+            var headers = new List<string> { "Date", "Cash 1", "Cash 2" };
             foreach (var colType in ActiveCollectionTypes)
             {
                 headers.Add(colType.DisplayName);
@@ -392,11 +392,11 @@ public partial class CollectionSummaryViewModel : ObservableObject, IDisposable
             var summaryCards = new List<GenericGridPrintCard>
             {
                 new() { Label = "Grand Total Collection", Value = "₹" + GrandTotal.ToString("N2"), Highlight = true },
-                new() { Label = "Total Bank Cash", Value = "₹" + TotalCashDeposit.ToString("N2"), Highlight = false },
-                new() { Label = "Total Cash in Hand", Value = "₹" + TotalCashInHand.ToString("N2"), Highlight = false }
+                new() { Label = "Total Cash 1", Value = "₹" + TotalCashDeposit.ToString("N2"), Highlight = false },
+                new() { Label = "Total Cash 2", Value = "₹" + TotalCashInHand.ToString("N2"), Highlight = false }
             };
 
-            var headers = new List<string> { "Date", "Bank Cash", "Cash In Hand" };
+            var headers = new List<string> { "Date", "Cash 1", "Cash 2" };
             foreach (var colType in ActiveCollectionTypes)
             {
                 headers.Add(colType.DisplayName);

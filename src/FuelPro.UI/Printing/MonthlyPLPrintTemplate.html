@@ -769,12 +769,15 @@
             document.getElementById('sumOilProfit').innerText = formatCurrency(grossOil);
             document.getElementById('sumGrossProfit').innerText = formatCurrency(totalGrossProfit);
 
-            document.getElementById('sumOperatingExpenses').innerText = "-" + formatCurrency(opExp);
-            document.getElementById('sumDsmSalaries').innerText = "-" + formatCurrency(data.totalDsmSalaries || 0);
-            
             const totalKpDrawings = data.totalKpDrawings || sumKp;
+            const opExpDisplay = (data.operatingExpensesExcludingKp !== undefined && data.operatingExpensesExcludingKp !== null)
+                ? data.operatingExpensesExcludingKp
+                : opExp;
+            document.getElementById('sumOperatingExpenses').innerText = "-" + formatCurrency(opExpDisplay);
+            document.getElementById('sumDsmSalaries').innerText = "-" + formatCurrency(data.totalDsmSalaries || 0);
             document.getElementById('sumKpDrawings').innerText = "-" + formatCurrency(totalKpDrawings);
             document.getElementById('sumPumpExpenses').innerText = "-" + formatCurrency(data.totalPumpExpenses || sumPump);
+            document.getElementById('sumOuterExpenses').innerText = "-" + formatCurrency(data.ownerOuterExpenses || 0);
 
             const mismatchVal = data.totalMismatch || 0;
             const mismatchEl = document.getElementById('sumMismatch');
@@ -1026,6 +1029,10 @@
                     <div class="summary-line">
                         <span style="color: #b91c1c;">Less: Owner Pump Overheads</span>
                         <span id="sumPumpExpenses" style="color: #b91c1c; font-weight: 600;">-₹0.00</span>
+                    </div>
+                    <div class="summary-line">
+                        <span style="color: #b91c1c;">Less: Owner Outer Expenses</span>
+                        <span id="sumOuterExpenses" style="color: #b91c1c; font-weight: 600;">-₹0.00</span>
                     </div>
                     <div class="summary-line">
                         <span>Net Collection Mismatch (Excess/Shortage)</span>
